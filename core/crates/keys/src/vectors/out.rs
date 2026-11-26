@@ -60,6 +60,7 @@ pub(super) fn case_row(
     row: &str,
     input: Vec<(&str, JsonValue)>,
     output: Vec<(&str, JsonValue)>,
+    server: Option<&str>,
 ) -> JsonValue {
     obj(vec![
         ("name", s(name)),
@@ -67,6 +68,7 @@ pub(super) fn case_row(
         ("row", s(row)),
         ("input", obj(input)),
         ("output", obj(output)),
+        ("server", server.map_or_else(null, s)),
     ])
 }
 

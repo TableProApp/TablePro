@@ -245,6 +245,7 @@ mod tests {
     async fn seed(history: &QueryHistory, query: &str, age_days: u64, pinned: bool) {
         let id = history
             .record(tablepro_storage::query_history::NewEntry {
+                record_id: uuid::Uuid::new_v4(),
                 query: query.to_owned(),
                 driver_id: "postgres".to_owned(),
                 connection_id: uuid::Uuid::new_v4(),
@@ -349,6 +350,7 @@ mod tests {
 
     fn run_of(query: &str) -> NewEntry {
         NewEntry {
+            record_id: uuid::Uuid::new_v4(),
             query: query.to_owned(),
             driver_id: "postgres".to_owned(),
             connection_id: uuid::Uuid::new_v4(),

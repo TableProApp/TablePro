@@ -16,6 +16,7 @@ async fn open(root: &tempfile::TempDir) -> QueryHistory {
 
 fn run(query: &str, connection: Uuid) -> NewEntry {
     NewEntry {
+        record_id: Uuid::new_v4(),
         query: query.to_owned(),
         driver_id: "postgres".to_owned(),
         connection_id: connection,
@@ -31,7 +32,7 @@ fn saved(name: &str, connection: Uuid) -> NewSavedQuery {
     NewSavedQuery {
         name: name.to_owned(),
         query: "SELECT 1".to_owned(),
-        connection_id: connection,
+        connection_id: Some(connection),
         connection_name: "prod".to_owned(),
     }
 }
@@ -101,7 +102,7 @@ async fn each_store_write_raises_the_sequence() {
     raised(history.identity().await.expect("identity"), "rename");
     history
         .saved_query_folders()
-        .create(connection, "Reports", None)
+        .create(Some(connection), "Reports", None)
         .await
         .expect("folder");
     raised(history.identity().await.expect("identity"), "folder");
@@ -189,7 +190,7 @@ async fn every_saved_query_and_folder_write_tells_the_journal_its_kinds() {
     queries.rename(query.id, "c").await.expect("rename");
     queries.set_query(query.id, "SELECT 2").await.expect("set query");
     queries.set_keyword(query.id, Some("rev")).await.expect("keyword");
-    let folder = folders.create(connection, "Reports", None).await.expect("folder");
+    let folder = folders.create(Some(connection), "Reports", None).await.expect("folder");
     folders.rename(folder, "Monthly").await.expect("rename folder");
     queries
         .move_to_folder(query.id, Some(folder), None)

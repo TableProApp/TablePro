@@ -28,11 +28,10 @@ import Foundation
 /// operation is queued without a swift `Task` and executed. This forces parallel sync attempts to be made async and
 /// will run after the original sync operation is finished.
 ///
-/// Async operations are added to the queue in a detached `Task`. Before they execute their operation callback, they
-/// first ensure they are next in the queue. This is done by acquiring the queue lock and checking the queue contents.
-/// To avoid lock contention (and essentially implementing a spinlock), the task sleeps for a few milliseconds
-/// (defined by ``TreeSitterClient/Constants/taskSleepDuration``) after failing to be next in the queue. Once up for
-/// running, the operation is executed. Finally, the lock is acquired again and the task is removed from the queue.
+/// Async operations are added to the queue in a `Task`. Before they execute their operation callback, they first
+/// ensure they are next in the queue. A task that is not suspends until the queue changes or it is cancelled, so it
+/// starts the moment the task ahead of it leaves instead of on the next tick of a timer. Once up for running, the
+/// operation is executed. Finally, the lock is acquired again and the task is removed from the queue.
 ///
 final package class TreeSitterExecutor {
     /// The priority of an operation. These are used to conditionally cancel operations.
@@ -52,6 +51,8 @@ final package class TreeSitterExecutor {
 
     private let lock = NSLock()
     private var queuedTasks: [QueueItem] = []
+    // Tasks suspended until the queue changes, keyed by queue item.
+    private var waiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
 
     enum Error: Swift.Error {
         case syncUnavailable
@@ -68,9 +69,7 @@ final package class TreeSitterExecutor {
         }
         let returnVal = operation() // Execute outside critical area.
         // Critical section, modifying the queue.
-        lock.withLock {
-            queuedTasks.removeAll(where: { $0.id == queueItemID })
-        }
+        removeTask(queueItemID)
         return .success(returnVal)
     }
 
@@ -103,15 +102,7 @@ final package class TreeSitterExecutor {
         defer { lock.unlock() }
         let id = UUID()
         let task = Task(priority: .userInitiated) { // __This executes outside the outer lock's control__
-            while self.lock.withLock({ !canTaskExec(id: id, priority: priority) }) {
-                // Instead of yielding, sleeping frees up the CPU due to time off the CPU and less lock contention
-                try? await Task.sleep(for: TreeSitterClient.Constants.taskSleepDuration)
-                guard !Task.isCancelled else {
-                    removeTask(id)
-                    onCancel()
-                    return
-                }
-            }
+            await self.waitForTurn(id: id, priority: priority)
 
             guard !Task.isCancelled else {
                 removeTask(id)
@@ -141,9 +132,41 @@ final package class TreeSitterExecutor {
     }
 
     private func removeTask(_ id: UUID) {
-        self.lock.withLock {
-            self.queuedTasks.removeAll(where: { $0.id == id })
+        let woken = lock.withLock {
+            queuedTasks.removeAll(where: { $0.id == id })
+            return takeWaiters()
         }
+        woken.forEach { $0.resume(returning: false) }
+    }
+
+    /// Suspends until the task can run or is cancelled.
+    private func waitForTurn(id: UUID, priority: Priority) async {
+        while !Task.isCancelled {
+            let canRun = await withTaskCancellationHandler {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                    self.lock.withLock {
+                        if Task.isCancelled || self.canTaskExec(id: id, priority: priority) {
+                            continuation.resume(returning: true)
+                        } else {
+                            self.waiters[id] = continuation
+                        }
+                    }
+                }
+            } onCancel: {
+                let waiter = self.lock.withLock { self.waiters.removeValue(forKey: id) }
+                waiter?.resume(returning: true)
+            }
+            if canRun {
+                return
+            }
+        }
+    }
+
+    // Every waiter checks again: removing one task can let several `.access` tasks run together.
+    private func takeWaiters() -> [CheckedContinuation<Bool, Never>] {
+        let woken = Array(waiters.values)
+        waiters.removeAll()
+        return woken
     }
 
     /// Allow concurrent ``TreeSitterExecutor/Priority/access`` operations to run. Thread safe.
@@ -169,20 +192,17 @@ final package class TreeSitterExecutor {
     /// - Parameter priority: The priority to cancel below. Eg: if given `reset`, will cancel all `edit` and `access`
     ///                       operations.
     func cancelAll(below priority: Priority) {
-        lock.withLock {
-            queuedTasks.forEach { item in
-                if item.priority < priority && !(item.task?.isCancelled ?? true) {
-                    item.task?.cancel()
-                }
+        // Cancelled outside the lock: cancelling runs a waiting task's cancellation handler, which takes the lock.
+        let tasks = lock.withLock {
+            queuedTasks.compactMap { item in
+                item.priority < priority ? item.task : nil
             }
         }
+        tasks.forEach { $0.cancel() }
     }
 
     deinit {
-        lock.withLock {
-            queuedTasks.forEach { item in
-                item.task?.cancel()
-            }
-        }
+        let tasks = lock.withLock { queuedTasks.compactMap(\.task) }
+        tasks.forEach { $0.cancel() }
     }
 }

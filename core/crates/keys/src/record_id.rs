@@ -9,7 +9,8 @@ use crate::wrap::{Recipient, WrapTarget};
 
 // ADR 0051, Kinds: valid UTF-8 without U+0000, 1 to 255 UTF-16 code units.
 pub fn check_record_id(id: &str) -> Result<(), KeysError> {
-    let units = id.encode_utf16().count();
+    // Counting stops past the limit, so a long id costs no more than a short one.
+    let units = id.encode_utf16().take(256).count();
     if units == 0 || units > 255 || id.contains('\0') {
         return Err(KeysError::encoding("record id is empty, too long or holds U+0000"));
     }
@@ -355,6 +356,8 @@ mod tests {
         assert!(check_record_id("a\0b").is_err());
         assert!(check_record_id(&"x".repeat(256)).is_err());
         assert!(check_record_id(&"x".repeat(255)).is_ok());
+        assert!(check_record_id(&"\u{1F600}".repeat(127)).is_ok(), "254 UTF-16 units");
+        assert!(check_record_id(&"\u{1F600}".repeat(128)).is_err(), "256 UTF-16 units");
     }
 
     proptest! {

@@ -2,7 +2,7 @@
   "area": "encoding",
   "suite": "tp1",
   "format": 1,
-  "about": "LP framing, ids, scopes, purposes, labels, origins, base64url, Base32, versions and padding (ADR 0056, Suite and encoding)",
+  "about": "LP framing, ids, scopes, purposes, labels, origins, base64url, Base32, versions and padding (ADR 0056, Suite and encoding). The LP cases at 65,535 and 65,536 bytes frame `repeat_count` copies of `repeat_byte_hex` and give the frame's first 4 bytes and the SHA-256 of the whole frame.",
   "lp": [
     {
       "name": "LP of an empty field",
@@ -471,7 +471,8 @@
         "len": 32
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "padding",
@@ -482,7 +483,8 @@
         "len": 1
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "the standard alphabet",
@@ -493,7 +495,8 @@
         "len": 2
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "a wrong length",
@@ -504,7 +507,8 @@
         "len": 32
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     }
   ],
   "base32": [
@@ -538,7 +542,8 @@
         "value": 0
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "version 2^31",
@@ -548,7 +553,8 @@
         "value": 2147483648
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "version 2^31-1",
@@ -742,7 +748,8 @@
         "padded_hex": "41000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Padding with no 0x80, a non-zero byte after it, or a length off the scale"
     },
     {
       "name": "a non-zero byte after 0x80",
@@ -752,7 +759,8 @@
         "padded_hex": "41800000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Padding with no 0x80, a non-zero byte after it, or a length off the scale"
     },
     {
       "name": "a length off the scale",
@@ -762,7 +770,8 @@
         "padded_hex": "008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Padding with no 0x80, a non-zero byte after it, or a length off the scale"
     }
   ]
 }

@@ -3,6 +3,7 @@ use gtk4::subclass::prelude::*;
 use tablepro_storage::saved_queries::SavedQuery;
 
 use super::saved_query_object_imp as imp;
+use uuid::Uuid;
 
 glib::wrapper! {
     pub struct SavedQueryObject(ObjectSubclass<imp::SavedQueryObject>);
@@ -22,7 +23,7 @@ impl SavedQueryObject {
         self.imp().saved.get()
     }
 
-    pub(super) fn id(&self) -> Option<i64> {
+    pub(super) fn id(&self) -> Option<Uuid> {
         self.saved().map(|saved| saved.id)
     }
 
