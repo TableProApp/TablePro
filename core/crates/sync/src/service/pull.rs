@@ -356,9 +356,9 @@ impl ServiceSync {
     // Records held because their store refused the value or its copy did not read go through the pull again from the
     // copy each row keeps, so a store or a build that now takes them does, with no change on the server and after a
     // restart too (0054, Rules for both providers). The rows are the newest copy the server served, and their bases
-    // never moved past what the store holds. A record held again as it was writes nothing. Envelopes and history
-    // entries are judged at their place in the server's order, which a row does not keep, so they wait for the server
-    // to serve them again.
+    // never moved past what the store holds. A record held again as it was writes nothing. A live envelope or history
+    // entry is judged at its place in the server's order, which a row does not keep, so it waits for the server to
+    // serve it again; their deletions need no key and go again like any other.
     async fn retry_held(
         &self,
         ctx: &mut PassCtx,
@@ -378,7 +378,7 @@ impl ServiceSync {
                             || row.record.fields.is_some()
                             || row.record.deleted.is_some())
                         && row.record.kind.known().is_some_and(|kind| {
-                            !matches!(kind, Kind::SecretEnvelope | Kind::HistoryEntry)
+                            (row.record.deleted.is_some() || !matches!(kind, Kind::SecretEnvelope | Kind::HistoryEntry))
                                 && adapters.iter().any(|adapter| adapter.kind() == kind)
                         }) =>
                 {
