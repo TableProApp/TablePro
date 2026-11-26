@@ -8,22 +8,16 @@ import os
 import TableProFFI
 import TableProLogRedaction
 
-// The core's sync service over the account's core (core ADR 0054), with what only the app can do for it. One per app.
-nonisolated internal protocol SyncServiceOpening: AnyObject, Sendable {
-    func openSync(
-        config: SyncConfig,
-        cloudkit: (any CloudKitTransport)?,
-        settings: (any HostSettings)?,
-        deviceStore: (any HostDeviceStore)?,
-        legacyMirror: (any HostLegacyMirror)?,
-        listener: any SyncListener
-    ) async throws -> SyncService
+// The account a sync service opens with, on the core that holds the app's stores (core ADR 0054).
+nonisolated internal protocol SyncAccountProviding: AnyObject, Sendable {
+    // Nil when the account did not open.
+    func accountService() async -> AccountService?
 }
 
 // The core's AccountService (core/docs/decisions/0047-the-apple-apps-sign-in-through-the-core.md). It opens on a task
 // at launch and restores the last run's sign-in after that; until then the account reads as signed out, and a call
 // waits for the open.
-nonisolated internal final class CoreAccountBackend: AccountBackend, SyncServiceOpening, @unchecked Sendable {
+nonisolated internal final class CoreAccountBackend: AccountBackend, SyncAccountProviding, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CoreAccountBackend")
 
     let machineID: String
@@ -32,7 +26,6 @@ nonisolated internal final class CoreAccountBackend: AccountBackend, SyncService
     private let restored = RestoredLatch()
     private let listenerBridge: CoreAccountListener
     private let opened = OSAllocatedUnfairLock<AccountService?>(initialState: nil)
-    private let openedCore = OSAllocatedUnfairLock<Core?>(initialState: nil)
     private let opening: Task<AccountService?, Never>
 
     // Each app's own config: its client, machine ID, files and managed values.
@@ -40,16 +33,13 @@ nonisolated internal final class CoreAccountBackend: AccountBackend, SyncService
         machineID = config.machineId ?? ""
         isDevelopmentStack = config.apiUrl != nil
         listenerBridge = CoreAccountListener(restored: restored)
-        let (authenticator, listener, opened, openedCore, restored) = (
-            authenticator, listenerBridge, opened, openedCore, restored
-        )
+        let (authenticator, listener, opened, restored) = (authenticator, listenerBridge, opened, restored)
         opening = Task.detached(priority: .userInitiated) {
             do {
                 let core = try Core(
                     config: HostConfig(clientVersion: appVersion, storageDir: nil),
                     secrets: KeychainHostSecrets(keychain: keychain)
                 )
-                openedCore.withLock { $0 = core }
                 let service = try await core.openAccount(
                     config: config,
                     browser: NoLoopbackBrowser(),
@@ -194,26 +184,8 @@ nonisolated internal final class CoreAccountBackend: AccountBackend, SyncService
         service.applyPolicy(policy: policy)
     }
 
-    func openSync(
-        config: SyncConfig,
-        cloudkit: (any CloudKitTransport)?,
-        settings: (any HostSettings)?,
-        deviceStore: (any HostDeviceStore)?,
-        legacyMirror: (any HostLegacyMirror)?,
-        listener: any SyncListener
-    ) async throws -> SyncService {
-        guard let service = await opening.value, let core = openedCore.withLock({ $0 }) else {
-            throw AccountError.network("the account did not open")
-        }
-        return try core.openSync(
-            config: config,
-            account: service,
-            cloudkit: cloudkit,
-            settings: settings,
-            deviceStore: deviceStore,
-            legacyMirror: legacyMirror,
-            listener: listener
-        )
+    func accountService() async -> AccountService? {
+        await opening.value
     }
 
     // An account that did not open holds no values to allow anything by.

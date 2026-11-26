@@ -32,7 +32,7 @@ struct SavedConnectionDatabaseAdoptionTests {
         return ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults.defaults)),
+            syncJournal: SyncHostJournal(),
             keychain: InMemoryKeychain()
         )
     }

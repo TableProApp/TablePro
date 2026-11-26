@@ -15,11 +15,12 @@ struct CredentialProfileStorageTests {
     private let storage: CredentialProfileStorage
     private let connections: ConnectionStorage
     private let keychain: InMemoryKeychain
-    private let metadata: SyncMetadataStorage
     private let directory: URL
     /// The system keychain is out of reach in a test host, so every store it stamps would read back
     /// untrusted and the trust assertions here would pass or fail on the environment.
     private let integrity: ConnectionStoreIntegrity
+
+    private let tracker = SyncJournalRecorder()
 
     init() throws {
         let unique = UUID().uuidString
@@ -29,15 +30,11 @@ struct CredentialProfileStorageTests {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         keychain = InMemoryKeychain()
-        metadata = SyncMetadataStorage(
-            userDefaults: try pool.make().defaults
-        )
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
         integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: try pool.make().defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain,
             integrity: integrity
         )
@@ -45,7 +42,7 @@ struct CredentialProfileStorageTests {
         storage = CredentialProfileStorage(
             fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             integrity: integrity
         )
@@ -133,11 +130,11 @@ struct CredentialProfileStorageTests {
     func deleteRecordsTombstoneAfterPersisting() {
         let profile = makeProfile()
         #expect(storage.addProfile(profile))
-        #expect(metadata.tombstones(for: .credentialProfile).isEmpty)
+        #expect(tracker.tombstones(for: .credentialProfile).isEmpty)
 
         #expect(storage.deleteProfile(profile))
 
-        #expect(metadata.tombstones(for: .credentialProfile).contains { $0.id == profile.id.uuidString })
+        #expect(tracker.tombstones(for: .credentialProfile).contains { $0.id == profile.id.uuidString })
     }
 
     @Test("A profile whose secrets cannot be read is not deleted")
@@ -157,7 +154,7 @@ struct CredentialProfileStorageTests {
         let lockedStorage = CredentialProfileStorage(
             fileURL: lockedDirectory.appendingPathComponent("credentialProfiles.json"),
             keychain: lockedKeychain,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: lockedConnections,
             integrity: integrity
         )
@@ -186,7 +183,7 @@ struct CredentialProfileStorageTests {
         let corrupted = CredentialProfileStorage(
             fileURL: fileURL,
             keychain: InMemoryKeychain(),
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: connections,
             integrity: integrity
         )
@@ -216,7 +213,7 @@ struct CredentialProfileStorageTests {
         let reopened = CredentialProfileStorage(
             fileURL: fileURL,
             keychain: keychain,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: connections,
             integrity: integrity
         )
@@ -241,7 +238,7 @@ struct CredentialProfileStorageTests {
         let store = CredentialProfileStorage(
             fileURL: fileURL,
             keychain: keychain,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: connections,
             integrity: integrity
         )
@@ -264,7 +261,7 @@ struct CredentialProfileStorageTests {
         let store = CredentialProfileStorage(
             fileURL: fileURL,
             keychain: keychain,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: connections,
             integrity: integrity
         )

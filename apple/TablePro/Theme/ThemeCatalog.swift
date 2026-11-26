@@ -86,7 +86,7 @@ internal final class ThemeCatalog: ObservableObject {
     private let userDirectory: URL
     private let bundled: [ThemeDefinition]
     private let fileTrash: ThemeFileTrash
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let directoryWatcher = FileSystemEventWatcher()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeCatalog")
@@ -97,12 +97,12 @@ internal final class ThemeCatalog: ObservableObject {
         userDirectory: URL = ThemeCatalog.defaultUserDirectory,
         bundleDirectory: URL? = Bundle.main.resourceURL,
         fileTrash: ThemeFileTrash = .resolved(in: .shared),
-        syncTracker: SyncChangeTracker = .shared
+        syncJournal: SyncHostJournal = .shared
     ) {
         self.userDirectory = userDirectory
         self.bundled = ThemeCatalog.loadBundled(from: bundleDirectory)
         self.fileTrash = fileTrash
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         reloadSynchronously()
     }
 
@@ -139,7 +139,7 @@ internal final class ThemeCatalog: ObservableObject {
     /// what the file holds, which the format normalizes.
     internal func save(_ theme: ThemeDefinition) throws {
         try persist(theme)
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: theme.id))
+        syncJournal.recorded(.settings, written: [Self.syncCategory(for: theme.id)])
     }
 
     private func persist(_ theme: ThemeDefinition) throws {
@@ -174,7 +174,7 @@ internal final class ThemeCatalog: ObservableObject {
         userFiles[id] = nil
         vanished[id] = file.url
         publish(loaded.filter { $0.id != id })
-        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: id))
+        syncJournal.recorded(.settings, deleted: [Self.syncCategory(for: id)])
         return ThemeTrashReceipt(themeId: id, originalURL: file.url, trashedURL: trashed)
     }
 
@@ -191,7 +191,7 @@ internal final class ThemeCatalog: ObservableObject {
         try FileManager.default.moveItem(at: receipt.trashedURL, to: receipt.originalURL)
         reloadSynchronously()
         guard let id = receipt.themeId, userFiles[id] != nil else { return }
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: id))
+        syncJournal.recorded(.settings, written: [Self.syncCategory(for: id)])
     }
 
     /// Two themes with one name cannot be told apart in a popup, so a taken name is refused rather
@@ -545,7 +545,6 @@ internal extension ThemeCatalog {
         if !removed.isEmpty {
             publish(loaded.filter { !removed.contains($0.id) })
         }
-        syncTracker.discardDirty(.settings, ids: removed.sorted().map(Self.syncCategory(for:)))
         return isPersisted
     }
 
@@ -575,9 +574,8 @@ internal extension ThemeCatalog {
         vanished[theme.id] = nil
         userFiles[theme.id] = ThemeFile(url: url, contents: data)
         upsert(try ThemeFileFormat.decode(data))
-        // A pull suppresses this mark; the seed that follows it uploads the copy, which the server lacks.
         if let keptCopy {
-            syncTracker.markDirty(.settings, id: Self.syncCategory(for: keptCopy.id))
+            syncJournal.recorded(.settings, written: [Self.syncCategory(for: keptCopy.id)])
         }
         return .applied
     }

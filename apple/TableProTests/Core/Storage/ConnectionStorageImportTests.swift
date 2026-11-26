@@ -5,7 +5,6 @@
 
 import Combine
 import Foundation
-import os
 @testable import TablePro
 import TableProImport
 import TableProSSHConfig
@@ -19,9 +18,7 @@ struct ConnectionStorageImportTests {
     private let directory: URL
     private let keychain = InMemoryKeychain()
     private let suite: EphemeralDefaults
-    private let syncSuite: EphemeralDefaults
-    private let syncDefaults: DirtyWriteCountingDefaults
-    private let metadata: SyncMetadataStorage
+    private let journal = SyncJournalRecorder()
     private let events: AppEvents
 
     init() throws {
@@ -30,9 +27,6 @@ struct ConnectionStorageImportTests {
             .appendingPathComponent("connection-import-\(unique)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         suite = try EphemeralDefaults()
-        syncSuite = try EphemeralDefaults()
-        syncDefaults = try #require(DirtyWriteCountingDefaults(suiteName: syncSuite.suiteName))
-        metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         events = AppEvents()
     }
 
@@ -44,7 +38,7 @@ struct ConnectionStorageImportTests {
         ConnectionStorage(
             fileURL: fileURL,
             userDefaults: suite.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: journal.journal,
             keychain: keychain,
             appEvents: events,
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
@@ -76,14 +70,13 @@ struct ConnectionStorageImportTests {
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
             featureAccess: live.featureAccess,
-            syncMetadataStorage: metadata,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
             queryHistoryManager: live.queryHistoryManager,
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: journal.journal,
             welcomeRouter: live.welcomeRouter,
             telemetry: live.telemetry
         )
@@ -104,7 +97,7 @@ struct ConnectionStorageImportTests {
         #expect(storage.applyImport(adding: [DatabaseConnection(name: "Imported")], replacing: []) == nil)
 
         #expect(try Data(contentsOf: fileURL) == corrupt)
-        #expect(syncDefaults.dirtyWrites(for: .connection) == 0)
+        #expect(journal.changes.isEmpty)
     }
 
     @Test("The connection form blames the unreadable library, not the disk, and writes nothing")
@@ -141,7 +134,7 @@ struct ConnectionStorageImportTests {
 
         #expect(write == nil)
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
-        #expect(syncDefaults.dirtyWrites(for: .connection) == 0)
+        #expect(journal.changes.isEmpty)
         #expect(announcements == 0)
     }
 
@@ -171,8 +164,7 @@ struct ConnectionStorageImportTests {
         let storage = try makeStorage()
         let existing = DatabaseConnection(name: "Existing")
         #expect(storage.addConnection(existing))
-        metadata.clearDirty(type: .connection)
-        syncDefaults.resetWrites()
+        journal.clear()
         var announcements: [UUID?] = []
         let subscription = events.connectionUpdated.sink { announcements.append($0) }
         defer { subscription.cancel() }
@@ -184,8 +176,8 @@ struct ConnectionStorageImportTests {
         let write = storage.applyImport(adding: [synced, localOnly], replacing: [replacement])
 
         #expect(write == ConnectionImportWrite(added: [synced.id, localOnly.id], replaced: [existing.id]))
-        #expect(metadata.dirtyIds(for: .connection) == [existing.id.uuidString, synced.id.uuidString])
-        #expect(syncDefaults.dirtyWrites(for: .connection) == 1)
+        #expect(journal.dirtyIds(for: .connection) == [existing.id.uuidString, synced.id.uuidString])
+        #expect(journal.changes.count == 1)
         #expect(announcements == [nil])
     }
 
@@ -346,25 +338,5 @@ struct ConnectionStorageImportTests {
         #expect(orders.count == 3)
         #expect(orders == orders.sorted())
         #expect(Set(orders).count == 3)
-    }
-}
-
-private final class DirtyWriteCountingDefaults: UserDefaults {
-    private let writes = OSAllocatedUnfairLock(initialState: [String: Int]())
-
-    func dirtyWrites(for type: SyncRecordType) -> Int {
-        let suffix = ".dirty.\(type.rawValue)"
-        return writes.withLock { counts in
-            counts.filter { $0.key.hasSuffix(suffix) }.values.reduce(0, +)
-        }
-    }
-
-    func resetWrites() {
-        writes.withLock { $0 = [:] }
-    }
-
-    override func set(_ value: Any?, forKey defaultName: String) {
-        writes.withLock { $0[defaultName, default: 0] += 1 }
-        super.set(value, forKey: defaultName)
     }
 }

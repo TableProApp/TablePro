@@ -14,7 +14,7 @@ import TableProSyncTransport
 struct ConnectionStorageSyncDeleteTests {
     private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
-    private let metadata: SyncMetadataStorage
+    private let journal = SyncJournalRecorder()
     private let storageDirectory: URL
 
     init() throws {
@@ -27,27 +27,25 @@ struct ConnectionStorageSyncDeleteTests {
         try? FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
 
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
-        metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata)
+            syncJournal: journal.journal
         )
     }
 
-    @Test("Deleting a connection records a sync tombstone after it is persisted")
+    @Test("Deleting a connection journals its deletion after it is persisted")
     func deleteRecordsTombstoneAfterPersisting() {
         let connection = TestFixtures.makeConnection()
         storage.addConnection(connection)
-        #expect(metadata.tombstones(for: .connection).isEmpty)
+        #expect(journal.tombstones(for: .connection).isEmpty)
 
         storage.deleteConnection(connection)
 
-        #expect(metadata.tombstones(for: .connection).contains { $0.id == connection.id.uuidString })
+        #expect(journal.tombstones(for: .connection).contains { $0.id == connection.id.uuidString })
     }
 
-    @Test("A delete that fails to persist records no tombstone (persist before notify)")
+    @Test("A delete that fails to persist journals nothing")
     func failedPersistenceRecordsNoTombstone() {
         let connection = TestFixtures.makeConnection()
         storage.addConnection(connection)
@@ -55,6 +53,6 @@ struct ConnectionStorageSyncDeleteTests {
 
         storage.deleteConnection(connection)
 
-        #expect(metadata.tombstones(for: .connection).isEmpty)
+        #expect(journal.tombstones(for: .connection).isEmpty)
     }
 }

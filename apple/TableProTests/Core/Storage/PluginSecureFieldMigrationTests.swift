@@ -23,7 +23,7 @@ struct PluginSecureFieldMigrationTests {
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: suite.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults)),
+            syncJournal: SyncHostJournal(),
             keychain: keychain,
             appEvents: AppEvents(),
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: InMemoryKeychain()))
