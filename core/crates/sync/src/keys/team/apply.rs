@@ -237,6 +237,14 @@ impl KeyService {
         txn: &mut dyn StateTxn,
         team: TeamId,
     ) -> Result<TeamJudged, SyncError> {
+        // A stale file takes no wrap while it rebuilds, as `apply_team`; the commit that ends the rebuild judges the team.
+        if self.is_rebuilding() {
+            return Ok(TeamJudged {
+                team,
+                events: Vec::new(),
+                epoch: None,
+            });
+        }
         let mut book = self.load_team(txn, team).await?;
         let before = book.row().cloned();
         let mut cache = FactsCache::default();

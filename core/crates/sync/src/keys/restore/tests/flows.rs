@@ -523,6 +523,44 @@ async fn a_restart_that_passed_during_a_restore_wait_is_held_once_the_wait_clear
     );
 }
 
+// The same restart, with P's key tables still rebuilding: the wait clears, and the team takes nothing until the
+// commit that ends the rebuild judges it (0054, A stale file).
+#[tokio::test]
+async fn a_wait_that_clears_while_the_key_tables_rebuild_judges_nothing() {
+    let world = World::load();
+    let team = ScopeName::Team(world.team);
+    let rig = Rig::new(&world.origin, world.account("P"));
+    rig.service.rebuilding.store(true, std::sync::atomic::Ordering::SeqCst);
+    rig.put([
+        Row::KeyPin(crate::api::state::KeyPinRow {
+            account: world.account("M"),
+            ik: world.ik("M").public().unwrap(),
+            av: v(2),
+            how: tablepro_keys::trust::PinHow::FirstUse,
+            alert: false,
+            replaced: Vec::new(),
+        }),
+        held_row(team, &world.member("M", 2)),
+        held_row(team, &world.team_version(8, "M", 2, Start::Over)),
+        held_row(team, &world.team_wrap(8, ("M", 2), ("P", 2))),
+    ])
+    .await;
+
+    let after = apply(
+        &rig,
+        world.team,
+        team_version_row(team, Some(StoppedCause::RestoreWait)),
+        TeamVerdict::Done,
+    )
+    .await;
+
+    assert_eq!(
+        (after.version, after.state, after.stopped_cause),
+        (v(7), KeyVersionState::Ok, None)
+    );
+    assert_eq!(rig.hooks.without_notices(), [Hook::Resume(team)]);
+}
+
 #[tokio::test]
 async fn an_awaited_confirmation_that_cannot_go_back_ends_the_team_with_its_withdrawal() {
     let world = World::load();
