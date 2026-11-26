@@ -2,8 +2,11 @@ use tablepro_core::{DataModel, DriverCapabilities, ReadOnlyEnforcement, SafeMode
 
 pub(crate) fn label(level: SafeModeLevel) -> String {
     match level {
-        SafeModeLevel::Off => crate::i18n::gettext("Off"),
-        SafeModeLevel::ConfirmWrites => crate::i18n::gettext("Confirm Writes"),
+        SafeModeLevel::Silent => crate::i18n::gettext("Off"),
+        SafeModeLevel::Alert => crate::i18n::gettext("Confirm Writes"),
+        SafeModeLevel::AlertFull => crate::i18n::gettext("Confirm Everything"),
+        SafeModeLevel::SafeMode => crate::i18n::gettext("Safe Mode"),
+        SafeModeLevel::SafeModeFull => crate::i18n::gettext("Safe Mode (Full)"),
         SafeModeLevel::ReadOnly => crate::i18n::gettext("Read-Only"),
     }
 }
@@ -11,8 +14,11 @@ pub(crate) fn label(level: SafeModeLevel) -> String {
 // The window title and the connect dialog show `label`, which has no access key.
 pub(crate) fn menu_label(level: SafeModeLevel) -> String {
     match level {
-        SafeModeLevel::Off => crate::i18n::gettext("_Off"),
-        SafeModeLevel::ConfirmWrites => crate::i18n::gettext("_Confirm Writes"),
+        SafeModeLevel::Silent => crate::i18n::gettext("_Off"),
+        SafeModeLevel::Alert => crate::i18n::gettext("_Confirm Writes"),
+        SafeModeLevel::AlertFull => crate::i18n::gettext("Confirm _Everything"),
+        SafeModeLevel::SafeMode => crate::i18n::gettext("_Safe Mode"),
+        SafeModeLevel::SafeModeFull => crate::i18n::gettext("Safe Mode (_Full)"),
         SafeModeLevel::ReadOnly => crate::i18n::gettext("_Read-Only"),
     }
 }
@@ -25,25 +31,25 @@ pub(crate) fn menu_label(level: SafeModeLevel) -> String {
 pub(crate) fn subtitle(level: SafeModeLevel, capabilities: &DriverCapabilities, engine: &str) -> String {
     let keys = capabilities.data_model == DataModel::KeyValue;
     let documents = capabilities.data_model == DataModel::Document;
+    // This app runs the macOS-only levels as Read-Only.
+    let level = level.enforced();
     match (level, capabilities.read_only) {
-        (SafeModeLevel::Off, _) if keys => {
+        (SafeModeLevel::Silent, _) if keys => {
             crate::i18n::gettext("Asks only before commands that empty a database or stop the server, such as FLUSHDB.")
         }
-        (SafeModeLevel::Off, _) if documents => crate::i18n::gettext(
+        (SafeModeLevel::Silent, _) if documents => crate::i18n::gettext(
             "Asks only before dropping a collection or database, and before deleting or updating every document.",
         ),
         (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::ClientGuard) if documents => crate::i18n::gettext(
             "TablePro refuses every statement that writes before it is sent; the server has no read-only mode. Use a user with only read roles for a guarantee.",
         ),
-        (SafeModeLevel::Off, _) => {
+        (SafeModeLevel::Silent, _) => {
             crate::i18n::gettext("Asks only before DROP, TRUNCATE, and DELETE or UPDATE without WHERE.")
         }
-        (SafeModeLevel::ConfirmWrites, _) if keys => {
+        (SafeModeLevel::Alert, _) if keys => {
             crate::i18n::gettext("Asks before every command that changes the database.")
         }
-        (SafeModeLevel::ConfirmWrites, _) => {
-            crate::i18n::gettext("Asks before every statement that changes the database.")
-        }
+        (SafeModeLevel::Alert, _) => crate::i18n::gettext("Asks before every statement that changes the database."),
         (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::EngineEnforced) => {
             crate::i18n::gettext("The database refuses changes on this connection.")
         }
@@ -57,20 +63,26 @@ pub(crate) fn subtitle(level: SafeModeLevel, capabilities: &DriverCapabilities, 
         (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::ClientGuard) => crate::i18n::gettext(
             "TablePro refuses every command that writes before it is sent; the server has no read-only mode. Use an ACL user that may only read for a guarantee.",
         ),
+        (SafeModeLevel::AlertFull | SafeModeLevel::SafeMode | SafeModeLevel::SafeModeFull, _) => {
+            crate::i18n::gettext("The database refuses changes on this connection.")
+        }
     }
 }
 
 /// The level's name in the `win.safe-mode` action's state.
 pub(crate) fn action_target(level: SafeModeLevel) -> &'static str {
     match level {
-        SafeModeLevel::Off => "off",
-        SafeModeLevel::ConfirmWrites => "confirm-writes",
+        SafeModeLevel::Silent => "off",
+        SafeModeLevel::Alert => "confirm-writes",
+        SafeModeLevel::AlertFull => "confirm-everything",
+        SafeModeLevel::SafeMode => "safe-mode",
+        SafeModeLevel::SafeModeFull => "safe-mode-full",
         SafeModeLevel::ReadOnly => "read-only",
     }
 }
 
 pub(crate) fn from_action_target(target: &str) -> Option<SafeModeLevel> {
-    SafeModeLevel::ALL
+    SafeModeLevel::ENFORCED
         .into_iter()
         .find(|level| action_target(*level) == target)
 }
@@ -86,9 +98,10 @@ mod tests {
         let targets: HashSet<&str> = SafeModeLevel::ALL.into_iter().map(action_target).collect();
 
         assert_eq!(targets.len(), SafeModeLevel::ALL.len());
-        for level in SafeModeLevel::ALL {
+        for level in SafeModeLevel::ENFORCED {
             assert_eq!(from_action_target(action_target(level)), Some(level));
         }
+        assert_eq!(from_action_target("safe-mode"), None, "a level this app does not offer");
         assert_eq!(from_action_target("readonly"), None);
     }
 
@@ -122,12 +135,12 @@ mod tests {
         assert_eq!(texts.len(), enforcements.len());
         assert_eq!(
             subtitle(
-                SafeModeLevel::ConfirmWrites,
+                SafeModeLevel::Alert,
                 &capabilities(DataModel::Relational, ReadOnlyEnforcement::EngineEnforced),
                 "SQLite"
             ),
             subtitle(
-                SafeModeLevel::ConfirmWrites,
+                SafeModeLevel::Alert,
                 &capabilities(DataModel::Relational, ReadOnlyEnforcement::LoginPrivileges),
                 "SQL Server"
             ),
@@ -154,8 +167,8 @@ mod tests {
         let documents = capabilities(DataModel::Document, ReadOnlyEnforcement::ClientGuard);
         let keys = capabilities(DataModel::KeyValue, ReadOnlyEnforcement::ClientGuard);
 
-        assert!(subtitle(SafeModeLevel::Off, &documents, "MongoDB").contains("collection"));
-        assert!(!subtitle(SafeModeLevel::Off, &documents, "MongoDB").contains("WHERE"));
+        assert!(subtitle(SafeModeLevel::Silent, &documents, "MongoDB").contains("collection"));
+        assert!(!subtitle(SafeModeLevel::Silent, &documents, "MongoDB").contains("WHERE"));
         let read_only = subtitle(SafeModeLevel::ReadOnly, &documents, "MongoDB");
         assert_ne!(read_only, subtitle(SafeModeLevel::ReadOnly, &keys, "Redis"));
         assert!(
@@ -169,7 +182,7 @@ mod tests {
         let keys = capabilities(DataModel::KeyValue, ReadOnlyEnforcement::ClientGuard);
         let tables = capabilities(DataModel::Relational, ReadOnlyEnforcement::ClientGuard);
 
-        for level in [SafeModeLevel::Off, SafeModeLevel::ConfirmWrites] {
+        for level in [SafeModeLevel::Silent, SafeModeLevel::Alert] {
             assert_ne!(
                 subtitle(level, &keys, "Redis"),
                 subtitle(level, &tables, "Redis"),

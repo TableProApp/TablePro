@@ -40,10 +40,11 @@ extension SuggestionController {
         applyPlacement(windowSize: newSize)
     }
 
+    // The caret's screen, since a panel not yet ordered front may still report the one its last session was on.
     private func applyPlacement(windowSize: NSSize) {
         guard let anchor = placementAnchor,
               let window = self.window,
-              let screenFrame = window.screen?.visibleFrame else {
+              let screenFrame = (Self.screen(holding: anchor.cursorRect) ?? window.screen)?.visibleFrame else {
             return
         }
 
@@ -59,12 +60,51 @@ extension SuggestionController {
         window.setFrameOrigin(placement.origin)
     }
 
+    // A caret rect can be zero wide, which no frame intersects, so its center decides.
+    private static func screen(holding cursorRect: NSRect) -> NSScreen? {
+        let center = NSPoint(x: cursorRect.midX, y: cursorRect.midY)
+        return NSScreen.screens.first { $0.frame.contains(center) }
+    }
+
     func updateWindowSizeFromContent() {
-        guard let hostingView = window?.contentView as? NSHostingView<SuggestionContentView> else { return }
-        let fitting = hostingView.fittingSize
-        let minWidth: CGFloat = 256
-        let newSize = NSSize(width: max(fitting.width, minWidth), height: fitting.height)
+        guard let window, let hostingView = window.contentView as? NSHostingView<SuggestionContentView> else { return }
+        let newSize = contentSize(fallback: hostingView)
+        if popover == nil, window.contentRect(forFrameRect: window.frame).size == newSize { return }
         updateWindowSize(newSize: newSize)
+    }
+
+    // The list's size follows from the items alone; laying out the whole panel for it cost a SwiftUI pass per key.
+    func contentSize(fallback hostingView: NSHostingView<SuggestionContentView>) -> NSSize {
+        let minWidth: CGFloat = 256
+        let items = model.items
+        guard !items.isEmpty else {
+            let fitting = hostingView.fittingSize
+            return NSSize(width: max(fitting.width, minWidth), height: fitting.height)
+        }
+        let font = model.activeTextView?.font ?? NSFont.systemFont(ofSize: 12)
+        let width = SuggestionContentView.contentWidth(for: items, font: font)
+        var height = SuggestionContentView.listHeight(for: items)
+        if let item = model.selectedItem, SuggestionContentView.hasPreview(item) {
+            height += previewHeight(for: item, width: width, font: font)
+        }
+        return NSSize(width: max(width, minWidth), height: height)
+    }
+
+    private func previewHeight(for item: CodeSuggestionEntry, width: CGFloat, font: NSFont) -> CGFloat {
+        let key = SuggestionPreviewSizeKey(item: item, width: width, font: font)
+        if let cached = previewHeights[key] { return cached }
+        let highlight = model.syntaxHighlights(forIndex: model.selectedIndex)
+        previewSizer.rootView = AnyView(
+            VStack(spacing: 0) {
+                Divider()
+                SuggestionPreviewView(item: item, syntaxHighlight: highlight, font: font)
+            }
+            .frame(width: width)
+        )
+        let height = previewSizer.fittingSize.height
+        if previewHeights.count >= 64 { previewHeights.removeAll() }
+        previewHeights[key] = height
+        return height
     }
 
     // MARK: - Private Methods
@@ -90,5 +130,24 @@ extension SuggestionController {
         panel.backgroundColor = .clear
 
         return panel
+    }
+}
+
+// What the preview's height depends on: its text, the font and the width it wraps in.
+struct SuggestionPreviewSizeKey: Hashable {
+    let documentation: String?
+    let sourcePreview: String?
+    let pathComponents: [String]?
+    let width: CGFloat
+    let fontName: String
+    let fontSize: CGFloat
+
+    init(item: CodeSuggestionEntry, width: CGFloat, font: NSFont) {
+        documentation = item.documentation
+        sourcePreview = item.sourcePreview
+        pathComponents = item.pathComponents
+        self.width = width
+        fontName = font.fontName
+        fontSize = font.pointSize
     }
 }

@@ -45,6 +45,7 @@ public class GutterView: NSView {
     @Invalidating(.display)
     var font: NSFont = .systemFont(ofSize: 13) {
         didSet {
+            shapedLineNumbers.removeAll()
             updateFontLineHeight()
             lineNumberDigits = 0
             updateWidthIfNeeded()
@@ -150,6 +151,19 @@ public class GutterView: NSView {
     private var fontLineHeight = 1.0
 
     private(set) var selectionObserver: NSObjectProtocol?
+
+    // A number's shape depends only on the number, the font and the colour it is drawn in, and the same few dozen
+    // visible numbers are drawn on every scroll frame and every edit.
+    private struct ShapedLineNumberKey: Hashable {
+        let number: Int
+        let color: CGColor
+    }
+
+    private var shapedLineNumbers: [ShapedLineNumberKey: CTLine] = [:]
+    private static let shapedLineNumberLimit = 4_096
+
+    // The rows the caret's band and the selected line numbers were last drawn on, redrawn when the selection leaves.
+    private var drawnSelectionRows: [CGRect] = []
 
     private func updateFontLineHeight() {
         let string = NSAttributedString(string: "0", attributes: [.font: font])
@@ -303,8 +317,59 @@ public class GutterView: NSView {
             object: controller.textView.selectionManager,
             queue: .main
         ) { [weak self] _ in
-            self?.needsDisplay = true
+            self?.setNeedsDisplayForSelection()
         }
+    }
+
+    /// Redraws the numbers an edit can change: its own line, or every line from it down when the edit adds or removes
+    /// a line, or can rewrap one, since each number below then moves.
+    func setNeedsDisplayForEdit(at location: Int, movesLinesBelow: Bool) {
+        guard let line = textView?.layoutManager.textLineForOffset(location) else {
+            needsDisplay = true
+            return
+        }
+        let height = movesLinesBelow ? max(bounds.maxY - line.yPos, line.height) : line.height
+        setNeedsDisplay(CGRect(x: 0, y: line.yPos, width: frame.width, height: height))
+    }
+
+    /// Redraws the rows the selection was on and the rows it is on now: its band and its line numbers' colour.
+    func setNeedsDisplayForSelection() {
+        let current = selectionRows()
+        let dirty = drawnSelectionRows + current
+        drawnSelectionRows = current
+        for row in dirty {
+            setNeedsDisplay(row)
+        }
+    }
+
+    // A layout pass can redraw the band on rows no selection change named, so a draw remembers where it put it.
+    private func noteSelectionDrawn(in rect: NSRect) {
+        for row in selectionRows() where row.intersects(rect) && !drawnSelectionRows.contains(row) {
+            drawnSelectionRows.append(row)
+        }
+        if drawnSelectionRows.count > 16 {
+            drawnSelectionRows = [drawnSelectionRows.reduce(CGRect.null) { $0.union($1) }]
+        }
+    }
+
+    // Many carets, or a range, collapse to one rect spanning them, which is all one draw pass would cover anyway.
+    private func selectionRows() -> [CGRect] {
+        guard let textView, let selectionManager = textView.selectionManager else { return [] }
+        let layoutManager = textView.layoutManager
+        var top = CGFloat.greatestFiniteMagnitude
+        var bottom = -CGFloat.greatestFiniteMagnitude
+        var rows: [CGRect] = []
+        for selection in selectionManager.textSelections {
+            guard let first = layoutManager?.textLineForOffset(selection.range.location) else { continue }
+            let last = selection.range.isEmpty
+                ? first
+                : layoutManager?.textLineForOffset(selection.range.max) ?? first
+            rows.append(CGRect(x: 0, y: first.yPos, width: frame.width, height: last.yPos + last.height - first.yPos))
+            top = min(top, first.yPos)
+            bottom = max(bottom, last.yPos + last.height)
+        }
+        guard rows.count > 8 else { return rows }
+        return [CGRect(x: 0, y: top, width: frame.width, height: bottom - top)]
     }
 
     required init?(coder: NSCoder) {
@@ -425,10 +490,12 @@ public class GutterView: NSView {
     /// Draws selected line backgrounds from the text view's selection manager into the gutter view, making the
     /// selection background appear seamless between the gutter and text view.
     /// - Parameter context: The drawing context to use.
-    private func drawSelectedLines(_ context: CGContext) {
+    ///
+    /// Tested against the rect being drawn rather than the visible text, so a scroll that brings the caret's line in
+    /// draws its band in the newly exposed rows without redrawing the rest of the gutter.
+    private func drawSelectedLines(_ context: CGContext, dirtyRect: NSRect) {
         guard let textView = textView,
               let selectionManager = textView.selectionManager,
-              let visibleRange = textView.visibleTextRange,
               highlightSelectedLines else {
             return
         }
@@ -444,19 +511,13 @@ public class GutterView: NSView {
 
         for selection in selectionManager.textSelections where selection.range.isEmpty {
             guard let line = textView.layoutManager.textLineForOffset(selection.range.location),
-                  visibleRange.intersection(line.range) != nil || selection.range.location == textView.length,
                   !highlightedLines.contains(line.data.id) else {
                 continue
             }
+            let band = CGRect(x: xPos, y: line.yPos, width: width, height: line.height).pixelAligned
+            guard band.intersects(dirtyRect) else { continue }
             highlightedLines.insert(line.data.id)
-            context.fill(
-                CGRect(
-                    x: xPos,
-                    y: line.yPos,
-                    width: width,
-                    height: line.height
-                ).pixelAligned
-            )
+            context.fill(band)
         }
 
         context.restoreGState()
@@ -466,7 +527,10 @@ public class GutterView: NSView {
     /// Empty (caret) selections route through `textLineForOffset` so the caret at the very end of
     /// the document still highlights the last line — the IndexSet path used for ranged selections
     /// is half-open and would otherwise drop that case.
-    internal func highlightedLineIDs() -> Set<UUID> {
+    ///
+    /// A ranged selection contributes only the lines inside `drawnRange`, when given, so a draw after Select All
+    /// walks the lines it draws and not every line of the document.
+    internal func highlightedLineIDs(in drawnRange: NSRange? = nil) -> Set<UUID> {
         guard let textView = textView, let selectionManager = textView.selectionManager else { return [] }
         var ids: Set<UUID> = []
         for selection in selectionManager.textSelections {
@@ -475,7 +539,9 @@ public class GutterView: NSView {
                     ids.insert(line.data.id)
                 }
             } else {
-                for linePosition in textView.layoutManager.lineStorage.linesInRange(selection.range) {
+                let range = drawnRange.map { selection.range.intersection($0) } ?? selection.range
+                guard let range, range.length > 0 else { continue }
+                for linePosition in textView.layoutManager.lineStorage.linesInRange(range) {
                     ids.insert(linePosition.data.id)
                 }
             }
@@ -489,23 +555,21 @@ public class GutterView: NSView {
     ///   - dirtyRect: A rect to draw in, received from ``draw(_:)``.
     private func drawLineNumbers(_ context: CGContext, dirtyRect: NSRect) {
         guard let textView = textView else { return }
-        var attributes: [NSAttributedString.Key: Any] = [.font: font]
 
-        let highlightedIDs = highlightedLineIDs()
+        let highlightedIDs = highlightedLineIDs(in: textView.layoutManager.textRange(covering: dirtyRect))
+        // Resolved once per pass in the drawing appearance, so a cached shape never carries another appearance's
+        // colour.
+        let numberColor = textColor.safeCGColor
+        let highlightedNumberColor = (selectedLineTextColor ?? textColor).safeCGColor
 
         context.saveGState()
         context.clip(to: dirtyRect)
 
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         for linePosition in textView.layoutManager.linesStartingAt(dirtyRect.minY, until: dirtyRect.maxY) {
-            if highlightedIDs.contains(linePosition.data.id) {
-                attributes[.foregroundColor] = selectedLineTextColor ?? textColor
-            } else {
-                attributes[.foregroundColor] = textColor
-            }
-
-            let ctLine = CTLineCreateWithAttributedString(
-                NSAttributedString(string: "\(linePosition.index + 1)", attributes: attributes)
+            let ctLine = shapedLineNumber(
+                linePosition.index + 1,
+                color: highlightedIDs.contains(linePosition.data.id) ? highlightedNumberColor : numberColor
             )
             let fragment: LineFragment? = linePosition.data.lineFragments.first?.data
             var ascent: CGFloat = 0
@@ -525,6 +589,24 @@ public class GutterView: NSView {
         context.restoreGState()
     }
 
+    private func shapedLineNumber(_ number: Int, color: CGColor) -> CTLine {
+        let key = ShapedLineNumberKey(number: number, color: color)
+        if let shaped = shapedLineNumbers[key] {
+            return shaped
+        }
+        if shapedLineNumbers.count >= Self.shapedLineNumberLimit {
+            shapedLineNumbers.removeAll(keepingCapacity: true)
+        }
+        let shaped = CTLineCreateWithAttributedString(
+            NSAttributedString(
+                string: "\(number)",
+                attributes: [.font: font, .foregroundColor: NSColor(cgColor: color) ?? textColor]
+            )
+        )
+        shapedLineNumbers[key] = shaped
+        return shaped
+    }
+
     override public func setNeedsDisplay(_ invalidRect: NSRect) {
         updateWidthIfNeeded()
         super.setNeedsDisplay(invalidRect)
@@ -536,11 +618,12 @@ public class GutterView: NSView {
         }
         context.saveGState()
         drawBackground(context, dirtyRect: dirtyRect)
-        drawSelectedLines(context)
+        drawSelectedLines(context, dirtyRect: dirtyRect)
         if showLineNumbers {
             drawLineNumbers(context, dirtyRect: dirtyRect)
         }
         context.restoreGState()
+        noteSelectionDrawn(in: dirtyRect)
     }
 
     deinit {

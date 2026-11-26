@@ -2,7 +2,7 @@
   "area": "flows",
   "suite": "tp1",
   "format": 1,
-  "about": "ADR 0056's Vectors rows a flow or the server decides: each row's key objects from one world, with its client and server columns. tablepro-keys checks every object; the flows and the server check the outcomes.",
+  "about": "ADR 0056's Vectors rows a flow or the server decides: each row's key objects from one world, with its client and server columns. tablepro-keys checks every object as its recipient would: each signature its `verify` names, and every wrap, ring, recovery blob and envelope opened. An object whose `verify` has `error` fails with that code; the flows and the server check the outcomes.",
   "origin": "https://sync.example.com",
   "world": {
     "accounts": [
@@ -115,6 +115,118 @@
             "aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
           }
         ]
+      },
+      {
+        "name": "P from C",
+        "account": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "r_hex": "5f4ce05d9654e8e295731dc3070e6def1e962adcac10b53fa8cabeca6fdd100e",
+        "ik_hex": "996a9d7e024c5c45dd0713e59efeaacf1d18e5eb960d41dc19679e31b382f340",
+        "account_keys": [
+          {
+            "av": 1,
+            "ask_seed_hex": "39a92c055095a32ff003e0c4c6d6f5538c5052da05c68029957a056381fc3887",
+            "ask_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
+            "aek_secret_hex": "9b0467c8df3a8bd7b51bfa6da2fcc265f81dd8b94b138d1359b00b3f481af635",
+            "aek_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d"
+          }
+        ]
+      },
+      {
+        "name": "X",
+        "account": "42BE67A8-D910-4DD5-A8A5-2597F0D87F37",
+        "r_hex": "1918679a41eb526067dd257399c0f95409c9f44c5892d8065074cdc64cc072ad",
+        "ik_hex": "5bc17e596e9c0ccf1c6ab4ecf40b25bdb60eb00f4d064892a2c5e6a25f4fa726",
+        "account_keys": [
+          {
+            "av": 1,
+            "ask_seed_hex": "13380c346c9931268bb003c1645c206b834a4552ba83d71d12c1057f17a81430",
+            "ask_hex": "47b350871804512ecc69bdf7f86c6ccd73ff9de91708221d9d02a6e93feee997",
+            "aek_secret_hex": "a0e8cd885d3a365a441b556377c5cfdbb18f218c2dc64ea6d52206ac7dde9f7a",
+            "aek_hex": "a857dcf9f48daf17709a2c12bcf853c98f3d7e805ce11d740925ea0caed54372"
+          }
+        ]
+      }
+    ],
+    "devices": [
+      {
+        "name": "A device 1",
+        "key_device": "4030243F-5F20-4BAA-8358-DEAFD984ACCE",
+        "dek_secret_hex": "692f7d61619f4dd4f9955b67552060dd3c11e45411d647db72210c1290ee7d19",
+        "dek_hex": "e01e18758438b944b2ce504356095069f94633043e071ff17e4694a7f4460160",
+        "dsk_seed_hex": "906706862312c733ec9ccd39356dc0177fe47c39273dab9dc423a44c6c07378a",
+        "dsk_hex": "0bd755a82590beaad6d17e1022cdd12e45ee050871061016f604bdbff86c1051"
+      },
+      {
+        "name": "A lost device",
+        "key_device": "AAC01D2A-E6A7-409E-845F-6DC5341C3136",
+        "dek_secret_hex": "c577b1677afb581576d7a787c3787e55b753ab111867ddf206a945442b1f7741",
+        "dek_hex": "acaad66f87ddb8fa107a4201352e78ee047689eb4ea105ca100b1c5891aa2c66",
+        "dsk_seed_hex": "1c32ae029cfe10185d8a6480d9a49f64d2f4ec0d4a120f2d99686f8d12490495",
+        "dsk_hex": "91af6fefff32fb27f89079abc7bb05f746b4a8436aa403b844bcca780f72716b"
+      },
+      {
+        "name": "M device 1",
+        "key_device": "87F33152-F50A-4BD7-A45A-E285856D82F7",
+        "dek_secret_hex": "54951a4413987c3809c2b3a63640a7080168f9d07c16bba529536eb26dfa91e8",
+        "dek_hex": "cce053ee7d3845a83db1052158f9c39a27bd033f9eb0101504a56f044fd9d922",
+        "dsk_seed_hex": "62cac3350c6d84df703312a13011fa678f9ec7b0b238561492177b293975bc58",
+        "dsk_hex": "70ea458003f53e375aad13dcdf6c6a353523c59ee51ceb7e9ebf59e1da6f9584"
+      },
+      {
+        "name": "O device 1",
+        "key_device": "6DC551B4-D1FE-4F1B-9034-78A414130AE2",
+        "dek_secret_hex": "88c71adbd269f80be2ff0c8b30dbc9aec6033c81767573801fe8969532da356a",
+        "dek_hex": "20546cfdcff897ea91cb48b0f78b2426d071fbd5cf511b5ab09920746b059d3f",
+        "dsk_seed_hex": "c7dd5d8739e9c7d6c370450950d0a1b59c28583c9e13cde6ad08cae1cdae21f6",
+        "dsk_hex": "c62adc127e474d997d0298a700dfca83dea97a9ded0cc27dd36d2ab4210ca3d3"
+      },
+      {
+        "name": "P device B",
+        "key_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+        "dek_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475",
+        "dek_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+        "dsk_seed_hex": "2a811c11c61d16a37837f4905ab563943a5b18e8a984e1c99c4e113a523ab35e",
+        "dsk_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8"
+      },
+      {
+        "name": "P device C",
+        "key_device": "B412BF03-8F1F-4ED9-9320-6656F9E57E7F",
+        "dek_secret_hex": "30355ffe416e2bdbde5c9dfe0588f7a906e078c5c8a0a224490c8a10bac6f16b",
+        "dek_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79",
+        "dsk_seed_hex": "9d5da414f4a106fbca691a3df30da7a71461d5d8c627f67a9fb18cf0206a6abb",
+        "dsk_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da"
+      },
+      {
+        "name": "P device C again",
+        "key_device": "5F990D03-8D36-4E3A-BC96-D8101569C8CC",
+        "dek_secret_hex": "1a07f8106d5457e76526b6b1e643a8164d565adf4bfe660f28775bc93bf12da7",
+        "dek_hex": "526421c217df62b45268215ff6508e8f7f1917e0f99c467a2abe730ba9c90e72",
+        "dsk_seed_hex": "0f56e056d73596094a8a9a89af214ef45462bb624f2abb160ecd36514a0d14b9",
+        "dsk_hex": "20a163858bcc3824ca012149d367da08467a6b9976952ad547baa03fd62aba12"
+      },
+      {
+        "name": "P device N",
+        "key_device": "89466905-7D19-4BD8-BA1D-662DAFA2967D",
+        "dek_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+        "dek_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+        "dsk_seed_hex": "05d6d7f8c980c98460550b2c61448cacb19fec201c3c3b5b8da5e684ee0fda42",
+        "dsk_hex": "7a7c5f875ae5d25be0fda09e6c96d8b1405ee32cefd92f042262a99ccc99cf69"
+      },
+      {
+        "name": "P device N approved again",
+        "key_device": "5495ADC3-C47C-48A7-B150-0AB46595B3C0",
+        "dek_secret_hex": "b40085b5ea5bc263dda1b7202cbdd307059f9c721bda0f2e658b9a6e4d4cbeb4",
+        "dek_hex": "5f95abafec4f0a2a5210d5a398b7ef7e2293cc635778b9808368354407c35459",
+        "dsk_seed_hex": "548b446521d1093dfe4f24857925a6ded54164821b1a4e054dfd62c670b3434f",
+        "dsk_hex": "b4f3a0cc21e6704bff502f36b7d234ea1d22c75ebab89cf0aecfd10940ca6c65"
+      },
+      {
+        "name": "X device",
+        "key_device": "16CF66F4-B268-4FEF-A3F7-CCBF4743503B",
+        "dek_secret_hex": "41fb7586c2746b41301213d523837c02e57482be2429149c06d01a7b82b7d1de",
+        "dek_hex": "aad91ed328077e3eed302529aec5f006bfa5235988c62edf2848bf347ca7d616",
+        "dsk_seed_hex": "057fea84c32ed00852f9c2cdb05865627f08c6653237b423d5306a13a7ac7fb8",
+        "dsk_hex": "c01d00919008b5cef45ec4317d84f493659d712876225258e1bd37d9c6da5d59"
       }
     ],
     "team": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63",
@@ -156,7 +268,7 @@
         "key_hex": "71f32a1e4a413944c93d054f4e3c4004b4a6c8b8155b3c410c24c055ad76f781"
       }
     ],
-    "roles": "A admin, O owner, M member, E editor, P member; B, C and N are P's devices",
+    "roles": "A admin, O owner, M member, E editor, P member; B, C and N are P's devices. \"P from C\" is P's account as device C's own genesis made it, with its own R, IK and keys. X is an account the server made up",
     "version_records": [
       {
         "label": "P PK1",
@@ -451,11 +563,15 @@
                 "nonce": "DYMuUIQmFzXDxF8n",
                 "ct": "ylocHW46Rfe1Yad09vbJKSA_RyaXq9ttsGWofC9ChFk7Ai4v6XAggNWSDoPzxCTYsvaOxQ"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "4afb1f5117e3cec1d2659703c8c91e1d6406d215c50b414a4e82a5807b38090f",
+                "below_kid_hex": "92c8955c107fab2249694860eb41c01c556ddc99d257c40df2509a939ed7e314"
+              }
             }
           ],
           "client": "keys.not_holder",
-          "server": "role"
+          "server": "role",
+          "clause": "A team version signed by an account that is not a holder of the one before, or by a holder under an older `av`"
         },
         {
           "who": "A",
@@ -495,11 +611,25 @@
                 "nonce": "DYMuUIQmFzXDxF8n",
                 "ct": "ylocHW46Rfe1Yad09vbJKSA_RyaXq9ttsGWofC9ChFk7Ai4v6XAggNWSDoPzxCTYsvaOxQ"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "4afb1f5117e3cec1d2659703c8c91e1d6406d215c50b414a4e82a5807b38090f",
+                "below_kid_hex": "92c8955c107fab2249694860eb41c01c556ddc99d257c40df2509a939ed7e314"
+              }
             }
           ],
           "client": "keys.stale",
-          "server": "bad_statement"
+          "server": "bad_statement",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
+          "clause": "A team version signed by an account that is not a holder of the one before, or by a holder under an older `av`"
         }
       ]
     },
@@ -592,7 +722,18 @@
             }
           ],
           "client": "keys.stale at version 6; the client stays at version 5",
-          "server": "none"
+          "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
+          "clause": "A version signed under an older `av` than the client knows for its signer, on the way to a newer one"
         }
       ]
     },
@@ -682,7 +823,9 @@
               },
               "verify": {
                 "signer_hex": "65feaea871d26f3921caf2fb4bc5d4a247cf41c16f27374474db6a80c6b57a76",
-                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003"
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             },
             {
@@ -725,12 +868,25 @@
               },
               "verify": {
                 "signer_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "48b53e213978b29945f043742a69ff9c1645943fc8e69c795f727c084b5469a2"
               }
             }
           ],
           "client": "keys.stale at version 7; M is no holder",
-          "server": "none"
+          "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
+          "clause": "Version 7 signed with a removed device's old account key and wrapping to account M, then version 8 signed by M under its current key, in one pull"
         }
       ]
     },
@@ -811,7 +967,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to P",
@@ -832,12 +991,15 @@
               },
               "verify": {
                 "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "taken",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A stopped device offered an owner's next rotation whose signer held the last version it verified"
         },
         {
           "who": "O",
@@ -877,7 +1039,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to P, by O",
@@ -898,12 +1063,15 @@
               },
               "verify": {
                 "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "keys.not_holder",
-          "server": "applied"
+          "server": "applied",
+          "clause": "one from an account that did not"
         }
       ]
     },
@@ -1028,7 +1196,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to P, by A under av 3",
@@ -1049,12 +1220,15 @@
               },
               "verify": {
                 "signer_hex": "e4bc3a07e1e2fd51dbb7477477c388546b56df36581f3106c56043931e1e5f9f",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "taken",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A stopped device whose qualifying admin rotated its account keys since, signing the new wrap under its newest `av`"
         }
       ]
     },
@@ -1095,7 +1269,8 @@
           "does": "decide",
           "records": [],
           "client": "the team ends on the device",
-          "server": "DELETE /v2/sync/scopes/{team}/stopped"
+          "server": "DELETE /v2/sync/scopes/{team}/stopped",
+          "clause": "A stopped device with no owner or admin on the roster that held its version"
         }
       ]
     },
@@ -1165,7 +1340,9 @@
               },
               "verify": {
                 "signer_hex": "65feaea871d26f3921caf2fb4bc5d4a247cf41c16f27374474db6a80c6b57a76",
-                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003"
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
               }
             },
             {
@@ -1202,7 +1379,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to P, by M",
@@ -1223,12 +1403,15 @@
               },
               "verify": {
                 "signer_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "keys.not_holder; the device stays stopped",
-          "server": "none"
+          "server": "none",
+          "clause": "While stopped at version 6, a new wrap of version 6 to account M signed under a removed device's old account key, then M's rotation wrapping to the device under M's current key"
         }
       ]
     },
@@ -1243,15 +1426,25 @@
       "server_codes": [],
       "given": {
         "personal_state": "stopped",
+        "history_state": "stopped",
         "other_devices": []
       },
       "steps": [
         {
           "who": "P",
-          "does": "decide",
+          "does": "decide on the personal key",
           "records": [],
           "client": "recovery with R or a reset is offered",
-          "server": "none"
+          "server": "none",
+          "clause": "A device stopped on its personal or history key, with no device to approve it"
+        },
+        {
+          "who": "P",
+          "does": "decide on the history key",
+          "records": [],
+          "client": "recovery with R or a reset is offered",
+          "server": "none",
+          "clause": "A device stopped on its personal or history key, with no device to approve it"
         }
       ]
     },
@@ -1332,7 +1525,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to A",
@@ -1353,7 +1549,9 @@
               },
               "verify": {
                 "signer_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
-                "pk_r_hex": "931b0916c9d3cc36fc65cc382802b07e1937d8d88d1958d130c4d6682d58495e"
+                "pk_r_hex": "931b0916c9d3cc36fc65cc382802b07e1937d8d88d1958d130c4d6682d58495e",
+                "recipient_secret_hex": "128439ea206a467e8f11b2c2b5724e177eb1fe50c5ee7efcf036ec9303798d9d",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             },
             {
@@ -1375,7 +1573,9 @@
               },
               "verify": {
                 "signer_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
-                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003"
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             },
             {
@@ -1397,12 +1597,15 @@
               },
               "verify": {
                 "signer_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "taken",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A rotation by a member that is not an owner or admin, while due, wrapping to several holders of the version before"
         }
       ]
     },
@@ -1483,7 +1686,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to A",
@@ -1504,12 +1710,15 @@
               },
               "verify": {
                 "signer_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
-                "pk_r_hex": "931b0916c9d3cc36fc65cc382802b07e1937d8d88d1958d130c4d6682d58495e"
+                "pk_r_hex": "931b0916c9d3cc36fc65cc382802b07e1937d8d88d1958d130c4d6682d58495e",
+                "recipient_secret_hex": "128439ea206a467e8f11b2c2b5724e177eb1fe50c5ee7efcf036ec9303798d9d",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "none",
-          "server": "role"
+          "server": "role",
+          "clause": "A next team version from a member that is not an owner or admin while no rotation is due"
         }
       ]
     },
@@ -1565,7 +1774,8 @@
             }
           ],
           "client": "gets no key",
-          "server": "none"
+          "server": "none",
+          "clause": "A member the server added with no confirming wrap"
         }
       ]
     },
@@ -1627,12 +1837,15 @@
               },
               "verify": {
                 "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
-                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003"
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
               }
             }
           ],
           "client": "held until the certificate arrives",
-          "server": "key_dependency"
+          "server": "key_dependency",
+          "clause": "A team version or wrap naming an account with no `key.member` at that `av`"
         },
         {
           "who": "M",
@@ -1660,7 +1873,8 @@
             }
           ],
           "client": "the held wrap now verifies",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A team version or wrap naming an account with no `key.member` at that `av`"
         }
       ]
     },
@@ -1674,7 +1888,10 @@
       "server": "key_version_stale",
       "server_codes": ["key_version_stale"],
       "given": {
-        "pull_order": ["envelope under PK 2","PK version 3","envelope under PK 2"]
+        "client_holds": {
+          "personal": 2
+        },
+        "order": "records in each step come in revision order"
       },
       "steps": [
         {
@@ -1701,10 +1918,89 @@
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
                 "digest_hex": "66b656b395a916cd0ed9c9bb418056afaa8f638d61549833bf398a17e195f384"
               }
+            },
+            {
+              "label": "an envelope under PK 2 after version 3",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "secret_envelope",
+              "id": "connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password",
+              "fields": {
+                "suite": "tp1",
+                "kv": 2,
+                "nonce": "VixyQyG9b9sMeVYH",
+                "ct": "DcS_ZzH4BeQU0GBZTcSntBYbOPnvNruozrK23dlssCqxFID7FCBooQZ1RY03LqaL7JdmTflVVittMGjwCYdfw6g6zW4rPDb28eaWYzt0IGY1CGcCmqxCgcoSL3JAqiUnfrLuNfS0b9pYxXj1TJHjdscZaLXDY2y1jugRxoNJJwFnSTED-3trDk99Bh4zUV9f"
+              },
+              "verify": {
+                "key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "secret": "hunter2"
+              }
             }
           ],
-          "client": "the envelope before version 3 is taken; the one after it is keys.stale",
-          "server": "key_version_stale for a write under 2 once 3 is current"
+          "client": "keys.stale for the envelope after version 3",
+          "server": "key_version_stale for a write under 2 once 3 is current",
+          "checks": [
+            {
+              "op": "check_not_below",
+              "input": {
+                "held": 3,
+                "offered": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
+          "clause": "An envelope below the version in force at its place in the order, or below the copy held"
+        },
+        {
+          "who": "server",
+          "does": "pull",
+          "records": [
+            {
+              "label": "the same envelope under PK 2, before version 3",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "secret_envelope",
+              "id": "connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password",
+              "fields": {
+                "suite": "tp1",
+                "kv": 2,
+                "nonce": "4UU4KkH5ojxf_fdq",
+                "ct": "NBcP67mc7kvCJzm2ZpZmzpyzy82YiesuDPKb8OgBt0v1doZu_ooy0wzWoJmZP_qeB2konMRlhwRdbiJNQFxHMlmwuCkq_PpAXJ6S4dWRC6QtEu3wx1Oni1BnSVgxIOlRMbpeFFhVRjqoDyxl8V72w0MfR3MN-iLqdNdghPBCbvY62iIcA8N5uxV_5NvUts_A"
+              },
+              "verify": {
+                "key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "secret": "hunter2"
+              }
+            },
+            {
+              "label": "PK version 3",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.version",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/3",
+              "fields": {
+                "suite": "tp1",
+                "start": 0,
+                "kid": "4f0rB5H9-ppGRfWSH1IWKk01dWGwXJ42tbgbo-ZKIk4",
+                "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "signer_av": 2,
+                "sig": "i3_rKaNWsMOWFsQitqfdMyarUueNXPb3SXpZVZc-bjCg3B6X4kyOwPtkTM2p1YLenxwd3smBWdqwAk35df-JDg"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "digest_hex": "66b656b395a916cd0ed9c9bb418056afaa8f638d61549833bf398a17e195f384"
+              }
+            }
+          ],
+          "client": "taken",
+          "server": "applied",
+          "clause": "the same envelope before the rotation that follows it, taken"
         }
       ]
     },
@@ -1739,9 +2035,12 @@
                 "key_device": "89466905-7D19-4BD8-BA1D-662DAFA2967D",
                 "dek": "ySyAmDQqee8O9vlsYq9Js-r7wg1MqmKKGUYtO3cYuFw",
                 "dsk": "enxfh1rl0lvg_aCebJbYsUBe4yzv2S8EImKpnMyZz2k",
-                "commit": "ly5k8EBOXM8NSjk4zjM5nvsfaI1p7Fi2k1_zT_QN0AM"
+                "commit": "XDMrvquPvu5ZX3D1ZIW7yyk3eJlN9zyzv1JZRuhhqNg"
               },
-              "verify": {}
+              "verify": {
+                "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb",
+                "r_n_hex": "66ed26634a63169f70c05288b2e69b69aa9cea2053e3b4f9c56e78f28baefcdd"
+              }
             }
           ],
           "client": "none",
@@ -1770,7 +2069,8 @@
             }
           ],
           "client": "none",
-          "server": "device_not_approved"
+          "server": "device_not_approved",
+          "clause": "A `nonce` step from a device that is not approved"
         },
         {
           "who": "B",
@@ -1820,7 +2120,8 @@
             }
           ],
           "client": "none",
-          "server": "create_only"
+          "server": "create_only",
+          "clause": "a second `nonce`"
         }
       ]
     },
@@ -1851,13 +2152,48 @@
               "id": "9656B5A0-8DA7-4974-830E-C1F0631EAB84/reveal",
               "fields": {
                 "suite": "tp1",
-                "r": "ZAMowqavQoR0sceine2asKYYoug6XEaq3j9C6P_sqOQ"
+                "r": "Zu0mY0pjFp9wwFKIsuabaaqc6iBT47T5xW548ouu_N0"
               },
-              "verify": {}
+              "verify": {
+                "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb",
+                "commit_hex": "5c332bbeab8fbeee595f70f56485bbcb293778994df73cb3bf525946e861a8d8",
+                "n_key_device": "89466905-7D19-4BD8-BA1D-662DAFA2967D",
+                "n_dek_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "n_dsk_hex": "7a7c5f875ae5d25be0fda09e6c96d8b1405ee32cefd92f042262a99ccc99cf69"
+              }
             }
           ],
           "client": "keys.session",
-          "server": "request_closed"
+          "server": "request_closed",
+          "checks": [
+            {
+              "op": "sas_session",
+              "input": {
+                "view": {
+                  "origin": "https://sync.example.com",
+                  "account": "11B5B614-7D89-4728-992A-7CCA62723257",
+                  "request": "9656B5A0-8DA7-4974-830E-C1F0631EAB84",
+                  "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb",
+                  "n": {
+                    "key_device": "89466905-7D19-4BD8-BA1D-662DAFA2967D",
+                    "dek_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                    "dsk_hex": "7a7c5f875ae5d25be0fda09e6c96d8b1405ee32cefd92f042262a99ccc99cf69"
+                  },
+                  "r_n_hex": "66ed26634a63169f70c05288b2e69b69aa9cea2053e3b4f9c56e78f28baefcdd",
+                  "a": {
+                    "key_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+                    "dek_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                    "dsk_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8"
+                  },
+                  "r_a_hex": "96fd2e6f1b68d3c9209fa1d81f065780550ab8efc0d0212616a8865a59a2c9ba"
+                },
+                "role": "new_device",
+                "steps": ["reveal"]
+              },
+              "error": "keys.session"
+            }
+          ],
+          "clause": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`"
         }
       ]
     },
@@ -1891,13 +2227,17 @@
                 "key_device": "5495ADC3-C47C-48A7-B150-0AB46595B3C0",
                 "dek": "X5Wrr-xPCipSENWjmLfvfiKTzGNXeLmAg2g1RAfDVFk",
                 "dsk": "tPOgzCHmcEv_UC82t9I06h0ix166uJzwrs_RCUDKbGU",
-                "commit": "kek4NdneoTcfMdavJyDN97YGLCXwo0YONs1GRIrsJHM"
+                "commit": "M3oXpihhxt08CfsaOYuh2Ch4GY9QjWEKzzVwDbly4mo"
               },
-              "verify": {}
+              "verify": {
+                "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb",
+                "r_n_hex": "5862383eab6841aaa4f0497e1870c61cc0459a52e482ab342bf35c754c022f50"
+              }
             }
           ],
           "client": "none",
-          "server": "request_pending"
+          "server": "request_pending",
+          "clause": "A second open request from one device row"
         }
       ]
     },
@@ -1956,7 +2296,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+                "certificate_aek_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
               }
             },
             {
@@ -1978,12 +2321,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "none",
-          "server": "bad_statement"
+          "server": "bad_statement",
+          "clause": "An approval built at an `av` a rotation passed, then built again at the new `av`, taken"
         },
         {
           "who": "B",
@@ -2026,7 +2371,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -2048,19 +2396,22 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "none",
-          "server": "applied"
+          "server": "applied",
+          "clause": "An approval built at an `av` a rotation passed, then built again at the new `av`, taken"
         },
         {
           "who": "N",
           "does": "decide",
           "records": [],
           "client": "after a replace the IK the words covered changed: keys.session, and N asks again",
-          "server": "none"
+          "server": "none",
+          "clause": "a replace during a session"
         }
       ]
     },
@@ -2102,12 +2453,40 @@
             }
           ],
           "client": "keys.not_compared",
-          "server": "none"
+          "server": "none",
+          "clause": "A rotation that keeps a device that is not an own-device pin"
+        },
+        {
+          "who": "B",
+          "does": "decide",
+          "records": [
+            {
+              "label": "N's certificate, the only source of the DEK a pin would hold",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.device",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/89466905-7D19-4BD8-BA1D-662DAFA2967D/2",
+              "fields": {
+                "suite": "tp1",
+                "dek": "ySyAmDQqee8O9vlsYq9Js-r7wg1MqmKKGUYtO3cYuFw",
+                "dsk": "enxfh1rl0lvg_aCebJbYsUBe4yzv2S8EImKpnMyZz2k",
+                "sig": "I9Sh0nMGAMjPZ31mY3l1JC3ED07gK0t_lt--rOh2ulAvWvcSDQp-QqHfxDQsT6JwTxZsV22wkaGTiMS2yUo1AA"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b"
+              }
+            }
+          ],
+          "client": "keys.not_compared",
+          "server": "none",
+          "clause": "an own-device pin whose DEK came from a certificate"
         }
       ]
     },
     {
-      "name": "a change set with one bad object",
+      "name": "a genesis with one bad object",
       "op": "scenario",
       "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
       "layer": ["flow","server"],
@@ -2156,7 +2535,11 @@
                 "nonce": "hV3SOKS9ErrznBVC",
                 "ct": "aVPzzFftCs4hfRHv6lLHwTnpD9uCyqrUIDV5RZu1hJDxEKOakwWRfFL9L10px-NDw8NhjdsFBHOF0_THtzOydFnLm2Rd-1xHyqoaVUinkuY"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+                "certificate_ask_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+                "certificate_aek_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+              }
             },
             {
               "label": "B's genesis: device certificate",
@@ -2195,7 +2578,7 @@
               "verify": {
                 "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
                 "digest_hex": "08885e60f548ff5d741a91828d487ad46f921b06bc05dcf023b012d306e865bd",
-                "valid": false
+                "error": "keys.signature"
               }
             },
             {
@@ -2217,7 +2600,9 @@
               },
               "verify": {
                 "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
-                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+                "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+                "kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
               }
             },
             {
@@ -2260,12 +2645,670 @@
               },
               "verify": {
                 "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
-                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+                "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+                "kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
               }
             }
           ],
           "client": "keys.signature for the version record",
-          "server": "bad_statement for it, change_set for the rest"
+          "server": "bad_statement for it, change_set for the rest",
+          "clause": "A genesis, rotation, approval, reset or team rotation change set with one bad object"
+        }
+      ]
+    },
+    {
+      "name": "a rotation with one bad object",
+      "op": "scenario",
+      "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+      "layer": ["flow","server"],
+      "client": "that object's error",
+      "client_codes": [],
+      "server": "that object's code, change_set for the rest; nothing applies",
+      "server_codes": ["change_set"],
+      "given": {
+        "account_av": 1
+      },
+      "steps": [
+        {
+          "who": "B",
+          "does": "push change set",
+          "records": [
+            {
+              "label": "B's rotation: certificate at av 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.account",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/2",
+              "fields": {
+                "suite": "tp1",
+                "kind": 0,
+                "ik": "XnRvV-MlZ81DMcbjyRt7PEpqXzUwCi6eFLUntGdmY8s",
+                "ask": "Lbe52J-7DjBlARix5R27vxdggZ1vnZaZy-bKXOtVbRs",
+                "aek": "VdF1FzaeUB0hvTbqq1DlAyH-a-BmsovFOrBAbxPo634",
+                "sig": "1gd8aDYU-nZe3QVJ9H_TFEsLFFEnsJ5UatEqdyISWqsOctcqwqmf0MzjYGybs7cpd9tqctXoSy6KqvqPqqBFAg"
+              },
+              "verify": {
+                "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb"
+              }
+            },
+            {
+              "label": "B's rotation: recovery blob",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.recovery",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/2",
+              "fields": {
+                "suite": "tp1",
+                "nonce": "fpQbqXDwsHb4wCJk",
+                "ct": "rjb4h6G9L5O-SZMMtHAjjT7aN0ScGCbQ_H2YaeHjqbLAOTL93qqRWdbQz9C2TGyzW5f9EBrVO4eTYJjY04mTjrQB3VnhqB_hU-6zI8RxbDo"
+              },
+              "verify": {
+                "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
+            },
+            {
+              "label": "B's rotation: kept device 0",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.device",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/0FB85DA3-26AF-49CC-9A5F-44BFADD5268B/2",
+              "fields": {
+                "suite": "tp1",
+                "dek": "OkBVHshddMQTea32kIyPIp72hiN511BDWp9jwk_rSAI",
+                "dsk": "ZpMsqP5S6h-zc0u6vwfI1Cz9hcduHw0lj33amLU2uvg",
+                "sig": "NBiA3kj5BMNbLX2V62SzIbSfiKBv9GfJ_YkIm1kHXHwO_PjCDRSBMCB8u-iWRFIoUH5fsOtexscLa_VjqdqMAQ"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b"
+              }
+            },
+            {
+              "label": "B's rotation: account wrap to kept device 0",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.wrap",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/account/2/device/0FB85DA3-26AF-49CC-9A5F-44BFADD5268B/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "CuHeqLRS_HF4Gkvm0z7x_NdPAfTfmwk6Kjw3vhS_olM",
+                "ct": "92unxeqPKs1rjyh6D4HbebcGjsRFZ4htbDthZ8BzPubw_cSR6prWW4Dk9lecvtiYpXV_l7KEHo1oQN1fRXaSYm_ODwns3D0p1kbqfScF7Fs",
+                "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "wrapper_av": 2,
+                "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+                "sig": "A-XIXjtzEARz9FW4KSz8n3tfGoDqkBjqX_HweYuRtLkcGkRo3AWV-DDeCKVVbg9jze8m8f8vvOXkQyvaezTvBw"
+              },
+              "verify": {
+                "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
+                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
+            },
+            {
+              "label": "B's rotation: personal version 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.version",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+              "fields": {
+                "suite": "tp1",
+                "start": 0,
+                "kid": "yLkVpERiPzAQXF2wy2lJDsiYT3Xs9muO2I7vNT6-RmA",
+                "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "signer_av": 2,
+                "sig": "1rzZXHP9xbhiBZFR0h_TPNoAodzVGS-WC6Unvjb3LMAffkaPFEuPgU47uPc5fH-YcM4xvRAFSkoXU81Fg_AgBQ"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "digest_hex": "f8c3d514dda5f932b17f25d32ff5d217fe646e99c1d55c2d6e0f6693aa07c27e",
+                "error": "keys.signature"
+              }
+            },
+            {
+              "label": "B's rotation: personal ring 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.ring",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+              "fields": {
+                "suite": "tp1",
+                "nonce": "WoyXNadxkQpKZNJ_",
+                "ct": "dIZpBinBRutQXYkDW3BYskED5Xk2csFcXyWVVC2OohCx2T2cK1RgyzSo5qqB2Em18nCEHw"
+              },
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
+            },
+            {
+              "label": "B's rotation: personal wrap 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.wrap",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2/account/11B5B614-7D89-4728-992A-7CCA62723257/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "JbxxXtnyW1GHVMiqTyBsSDtl9IEzA6ll6toAwz6s0RA",
+                "ct": "4mfXg_ITwpc9ElBUvDGCOcrj8H-3q9ENInEsl3jEm3hZ3h1OIAapkPdNFqR0zSxP",
+                "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "wrapper_av": 2,
+                "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+                "sig": "5DVXKqwY7kBLD-gyqFcQv8VX2b6rY1fBJBtxzCYaABn_BYDkzYHZRrAY1DoDwxmUFENNPoykaOng8dcgDSg1Aw"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
+              }
+            },
+            {
+              "label": "B's rotation: history version 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.version",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/2",
+              "fields": {
+                "suite": "tp1",
+                "start": 0,
+                "kid": "e1hh3Eqv4npJ0xE-NazraiUxXBQ_C4aSCQTnR6l32KA",
+                "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "signer_av": 2,
+                "sig": "QBvOdF43ycmCMcakwq-wV6_0YFYfptoFWasFlkL8KaK5vX48n1JtktWEB5t7btZ8LLQVFjlIElH1re94uZYrBQ"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "digest_hex": "87f84054457db76ca2f6157032a89c5df7359d0ca05c23a82f6b7003316ce983"
+              }
+            },
+            {
+              "label": "B's rotation: history ring 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.ring",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/2",
+              "fields": {
+                "suite": "tp1",
+                "nonce": "LGkB_beZfZxBG9Ed",
+                "ct": "EtAsaRVjlxUh-yUACqFpNNfcbZGy_pwkSwS6g3lEOHKJRX9QCAUph3HFvjCs-1RI560y0Q"
+              },
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
+            },
+            {
+              "label": "B's rotation: history wrap 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.wrap",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/2/account/11B5B614-7D89-4728-992A-7CCA62723257/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "z5aIso56lN6w40pDcykV9VMRSUvoPg7uW0bHESAkfQQ",
+                "ct": "HBM-EXobTz5obeJ46y6VRDvLLO73gMWytK9RcDXXR3U_J9B7SiUAwy76HJbGgzRg",
+                "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "wrapper_av": 2,
+                "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+                "sig": "kc-fV-qzOb9xKKxDTm7SG4sz6WRn7xFeDjsg8A0OJIbmotmPiUCyE_jJMjw0rvpC696s6kqPeChof5Q8upqIDQ"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
+              }
+            }
+          ],
+          "client": "keys.signature for the version record",
+          "server": "bad_statement for it, change_set for the rest",
+          "clause": "A genesis, rotation, approval, reset or team rotation change set with one bad object"
+        }
+      ]
+    },
+    {
+      "name": "an approval with one bad object",
+      "op": "scenario",
+      "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+      "layer": ["flow","server"],
+      "client": "that object's error",
+      "client_codes": [],
+      "server": "that object's code, change_set for the rest; nothing applies",
+      "server_codes": ["change_set"],
+      "given": {
+        "account_av": 2,
+        "session": "revealed",
+        "nonce_from": "B",
+        "compared_dsk": "B"
+      },
+      "steps": [
+        {
+          "who": "B",
+          "does": "push change set",
+          "records": [
+            {
+              "label": "B approves N: the new device's certificate",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.device",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/89466905-7D19-4BD8-BA1D-662DAFA2967D/2",
+              "fields": {
+                "suite": "tp1",
+                "dek": "ySyAmDQqee8O9vlsYq9Js-r7wg1MqmKKGUYtO3cYuFw",
+                "dsk": "enxfh1rl0lvg_aCebJbYsUBe4yzv2S8EImKpnMyZz2k",
+                "sig": "I9Sh0nMGAMjPZ31mY3l1JC3ED07gK0t_lt--rOh2ulAvWvcSDQp-QqHfxDQsT6JwTxZsV22wkaGTiMS2yUo1AA"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b"
+              }
+            },
+            {
+              "label": "B approves N: account wrap",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.wrap",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/account/2/device/89466905-7D19-4BD8-BA1D-662DAFA2967D/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "WNbQKJB9_BwVuiGI-pb9G6fXHQ92Y7Zg18YTK6YAVUE",
+                "ct": "eQ2esslU0_vH6K4bEORX25hdgfxn45B8Pokvi9ShUni1TyeWRfRBDjDISvqsNRTJxFQ_aCxwK8pW4BqPnfVyEYZ3gJOpeLZKZDWFbsuszmQ",
+                "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "wrapper_av": 2,
+                "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+                "sig": "a_g4S_gvVQsbX5yMF0Wk8gUvc3Nposr1fDc2TQDuD3pR8Li0jqLgL7lsd-7kpbtXJwZGdodgRSrJGJd0sv5ZDQ"
+              },
+              "verify": {
+                "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "error": "keys.not_compared"
+              }
+            },
+            {
+              "label": "B approves N: trust wrap",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.wrap",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/trust/2/device/89466905-7D19-4BD8-BA1D-662DAFA2967D/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "yb_BbN3tK7COpWDh36paqQWrr1Wpnk29VI8D5cQJRlI",
+                "ct": "m_zEi1tvTYh08-Lwl_J4Ryz7gchxlplVQfkUjEm9i-TL092tprugl9jHXZP8GKM8lHu1-tcfY5-BciLclVA-lspQm95dgUXtIdNx923VO7APyi4YXgM0aT1RiJe0XpD56nNmnmxw8ETRC-9y-k7pSomMJrnZilhJactcOpUrU7QHJ0fn4H1I6_j8unAVOUTb_k_WMMVrBXPvOOAaUH7j8rDiTaSZ9VOYOx_ABShh4FsXbZHpzkfk-CasW2N6EwH6Qne9lNOTdyrqoN8AT6OopZLC1UuG1mn92jsokzDP62orWGg_5KowwaGOTOjaX_w4oUI9bj-BxjaS43xJJFYR_Y6htNPA3McsDDHB7liatLaBv2dHmUFSBz-P4qKEQjATLaC7rabJ_TGIBMhwSArPYGnhvKjnARv65GJSRWQrzZFzGZR5Gq5L4tNu0Oc9CpGDT9m7dRs6-BEWDub4Q4pM4Xe6hVGCrnhHXhFBy2Lkb5NQdWT787SQ9uPzi1vQjHhJH5syYw6uAQKMNsK4woT8EORg7CHLCRTK8qdT-3G97-2nQyjUuRtWFcA86Rvb2ifOfrgynUjSm6qg2oCODcfKmgUU-eiEXYyVQJ64iIdHv6uBj7Ftrc_gBq8Uk0OEW_PlNaU0SOWzY3YEqqpPJYnBwhiPI9L_G2L9_tUg3Cp9LX6UQ1J9vqv4__9rXPx_tCCO",
+                "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "wrapper_av": 2,
+                "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+                "sig": "KXGKIadIvEnDWEj9HSqBV85w1qS0yV0iHwtvGkzp1kF279cC5y_rhevnnGknYjeJMKq9ksBB-fnDAHhS5638Cw"
+              },
+              "verify": {
+                "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
+              }
+            }
+          ],
+          "client": "keys.not_compared for the account wrap",
+          "server": "bad_statement for it, change_set for the rest",
+          "clause": "A genesis, rotation, approval, reset or team rotation change set with one bad object"
+        }
+      ]
+    },
+    {
+      "name": "a reset activation with one bad object",
+      "op": "scenario",
+      "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+      "layer": ["flow","server"],
+      "client": "that object's error",
+      "client_codes": [],
+      "server": "that object's code, change_set for the rest; nothing applies",
+      "server_codes": ["change_set"],
+      "given": {
+        "account_av": 1,
+        "pending_reset": true,
+        "proposed_by": "B",
+        "held_until_passed": true
+      },
+      "steps": [
+        {
+          "who": "B",
+          "does": "push change set",
+          "records": [
+            {
+              "label": "P's reset proposal: the proposed certificate",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.account",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/2",
+              "fields": {
+                "suite": "tp1",
+                "kind": 2,
+                "ik": "zxLa4ucaaPUfj56QX89_8EVtWAQ8G45gKFDVZby_LQk",
+                "ask": "Lbe52J-7DjBlARix5R27vxdggZ1vnZaZy-bKXOtVbRs",
+                "aek": "VdF1FzaeUB0hvTbqq1DlAyH-a-BmsovFOrBAbxPo634",
+                "sig": "exWg2h7I0PrfXEVE_p6wRPIM7Rr_rJaEL95mv_wyIrFMRZRvGTPMJndq7gUXKCXcwExD8rJXwSOFtb5SGWSRCw"
+              },
+              "verify": {
+                "ik_hex": "cf12dae2e71a68f51f8f9e905fcf7ff0456d58043c1b8e602850d565bcbf2d09"
+              }
+            },
+            {
+              "label": "P's reset proposal: the proposed blob",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.recovery",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/2",
+              "fields": {
+                "suite": "tp1",
+                "nonce": "bZL0UYHrIWrSzHy9",
+                "ct": "9Ba5hq6TSiGNdaYqffTcOtkeokiZV4ExNZiqHiDO3ROsJIDEryKm0ybZcjxsbDIQAc8QlaZRpChhC8_5fDmlMzRGjojwIKdtZSDlxAml-yU"
+              },
+              "verify": {
+                "r_hex": "0bf8677802953c74ddf5e3494e5099b7434091081e36e19e6ed823dac5ead5d7",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
+            },
+            {
+              "label": "P's reset proposal: the proposed device certificate",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.device",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/0FB85DA3-26AF-49CC-9A5F-44BFADD5268B/2",
+              "fields": {
+                "suite": "tp1",
+                "dek": "OkBVHshddMQTea32kIyPIp72hiN511BDWp9jwk_rSAI",
+                "dsk": "ZpMsqP5S6h-zc0u6vwfI1Cz9hcduHw0lj33amLU2uvg",
+                "sig": "NBiA3kj5BMNbLX2V62SzIbSfiKBv9GfJ_YkIm1kHXHwO_PjCDRSBMCB8u-iWRFIoUH5fsOtexscLa_VjqdqMAQ"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b"
+              }
+            },
+            {
+              "label": "P's reset proposal: personal version 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.version",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+              "fields": {
+                "suite": "tp1",
+                "start": 0,
+                "kid": "yLkVpERiPzAQXF2wy2lJDsiYT3Xs9muO2I7vNT6-RmA",
+                "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "signer_av": 2,
+                "sig": "05Z8wDb_2rJGZSGvJ9kwGhh0Sv8mUj3P9iaHPQ11XDkZ2BHZwNpwJ_NTVXD04L-_gFC2IPG9w8uSkUesAfWBAQ"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "digest_hex": "f8c3d514dda5f932b17f25d32ff5d217fe646e99c1d55c2d6e0f6693aa07c27e"
+              }
+            },
+            {
+              "label": "P's reset proposal: personal ring 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.ring",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+              "fields": {
+                "suite": "tp1",
+                "nonce": "h1OMxS9rul03kAhf",
+                "ct": "lYcQS70njAceQs55T8OaT7GQFkRX25gbJwWSNTlRYO_v4myu6arAtlXJikorZ1WsysyFKw"
+              },
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
+            },
+            {
+              "label": "P's reset proposal: personal wrap 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.wrap",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2/account/11B5B614-7D89-4728-992A-7CCA62723257/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "JbxxXtnyW1GHVMiqTyBsSDtl9IEzA6ll6toAwz6s0RA",
+                "ct": "4mfXg_ITwpc9ElBUvDGCOcrj8H-3q9ENInEsl3jEm3hZ3h1OIAapkPdNFqR0zSxP",
+                "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "wrapper_av": 2,
+                "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+                "sig": "5DVXKqwY7kBLD-gyqFcQv8VX2b6rY1fBJBtxzCYaABn_BYDkzYHZRrAY1DoDwxmUFENNPoykaOng8dcgDSg1Aw"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
+              }
+            },
+            {
+              "label": "P's reset proposal: history version 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.version",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/2",
+              "fields": {
+                "suite": "tp1",
+                "start": 0,
+                "kid": "e1hh3Eqv4npJ0xE-NazraiUxXBQ_C4aSCQTnR6l32KA",
+                "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "signer_av": 2,
+                "sig": "PW-zr5hFbiWOSIIEoF8d631DDacCuhzlPvk5Efa8zZITWbtkl0M36hrxQN_oAs26ZoGFxZM-G54F0cf8__jZBA"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "digest_hex": "87f84054457db76ca2f6157032a89c5df7359d0ca05c23a82f6b7003316ce983",
+                "error": "keys.signature"
+              }
+            },
+            {
+              "label": "P's reset proposal: history ring 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.ring",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/2",
+              "fields": {
+                "suite": "tp1",
+                "nonce": "KWt1r-50FxqIQNs1",
+                "ct": "7GkEciYfdBejgzACO2j7KCCEldKdX69FzzqbI1m5h35G3AeKYAqV8SB5vhaQqjGSx6Ixiw"
+              },
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
+            },
+            {
+              "label": "P's reset proposal: history wrap 2",
+              "scope": {
+                "type": "personal",
+                "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+              },
+              "kind": "key.wrap",
+              "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/2/account/11B5B614-7D89-4728-992A-7CCA62723257/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "z5aIso56lN6w40pDcykV9VMRSUvoPg7uW0bHESAkfQQ",
+                "ct": "HBM-EXobTz5obeJ46y6VRDvLLO73gMWytK9RcDXXR3U_J9B7SiUAwy76HJbGgzRg",
+                "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+                "wrapper_av": 2,
+                "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+                "sig": "kc-fV-qzOb9xKKxDTm7SG4sz6WRn7xFeDjsg8A0OJIbmotmPiUCyE_jJMjw0rvpC696s6kqPeChof5Q8upqIDQ"
+              },
+              "verify": {
+                "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
+              }
+            }
+          ],
+          "client": "keys.signature for the version record",
+          "server": "bad_statement for it, change_set for the rest",
+          "clause": "A genesis, rotation, approval, reset or team rotation change set with one bad object"
+        }
+      ]
+    },
+    {
+      "name": "a team rotation with one bad object",
+      "op": "scenario",
+      "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+      "layer": ["flow","server"],
+      "client": "that object's error",
+      "client_codes": [],
+      "server": "that object's code, change_set for the rest; nothing applies",
+      "server_codes": ["change_set"],
+      "given": {
+        "roster": [
+          {
+            "account": "A",
+            "role": "admin"
+          },
+          {
+            "account": "O",
+            "role": "owner"
+          },
+          {
+            "account": "M",
+            "role": "member"
+          },
+          {
+            "account": "E",
+            "role": "editor"
+          },
+          {
+            "account": "P",
+            "role": "member"
+          }
+        ],
+        "server_holds": {
+          "team_version": 6,
+          "holders": ["A@2"]
+        },
+        "account_av": {
+          "A": 2,
+          "M": 2
+        }
+      },
+      "steps": [
+        {
+          "who": "A",
+          "does": "push change set",
+          "records": [
+            {
+              "label": "version 7",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.version",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7",
+              "fields": {
+                "suite": "tp1",
+                "start": 0,
+                "kid": "JbQez5h-UK12eWDMo0-5ohBSlah5RsAbwyNKEhscsWM",
+                "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+                "signer_av": 2,
+                "sig": "djLJD2f6yvPfvvDenyNxVMlX2LWXW1tmOpVf1S4JA3k8G96AEwNnAoAvGM78tQ-zFmewM-vRp6wA10Vfp9_1BA"
+              },
+              "verify": {
+                "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
+                "digest_hex": "bf3a1937f227d894a5cf87a98dddc3bd5b92a32031cef0cabe5dd548babb5690"
+              }
+            },
+            {
+              "label": "its ring",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.ring",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7",
+              "fields": {
+                "suite": "tp1",
+                "nonce": "4_7pcHTlwV_q0m4O",
+                "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
+              },
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
+            },
+            {
+              "label": "version 7 to M",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.wrap",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7/account/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "12lsRkBtqnFA88sVy0Fo4vpc21m5U6l3AXZlUHBEv1g",
+                "ct": "aG9Yo8ZbXfwwd9CtfsUkHhc3KZvfL0gafYFJILYjmHOWtPMjY2VjsYCND_8t6cB-",
+                "wrapper": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+                "wrapper_av": 2,
+                "wrapper_device": "4030243F-5F20-4BAA-8358-DEAFD984ACCE",
+                "sig": "zOLA6zf6ZwvsyIGvh_GhJrva6LiUcSmiXc1-CyBaJEiDaSyYzlLqbw4rleaV53k7A9T7VtfRFpsyt_oED5KgAQ"
+              },
+              "verify": {
+                "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163",
+                "error": "keys.signature"
+              }
+            }
+          ],
+          "client": "keys.signature for the wrap",
+          "server": "bad_statement for it, change_set for the rest",
+          "clause": "A genesis, rotation, approval, reset or team rotation change set with one bad object"
         }
       ]
     },
@@ -2319,7 +3362,11 @@
                 "nonce": "hV3SOKS9ErrznBVC",
                 "ct": "aVPzzFftCs4hfRHv6lLHwTnpD9uCyqrUIDV5RZu1hJDxEKOakwWRfFL9L10px-NDw8NhjdsFBHOF0_THtzOydFnLm2Rd-1xHyqoaVUinkuY"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+                "certificate_ask_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+                "certificate_aek_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+              }
             },
             {
               "label": "B's genesis: device certificate",
@@ -2379,7 +3426,9 @@
               },
               "verify": {
                 "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
-                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+                "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+                "kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
               }
             },
             {
@@ -2422,7 +3471,9 @@
               },
               "verify": {
                 "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
-                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+                "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+                "kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
               }
             }
           ],
@@ -2466,7 +3517,11 @@
                 "nonce": "VuZ6MpQsvSQWE7xJ",
                 "ct": "XR14vKN1w3CWatsEPoYQWRXFBLt-fmsHqm5pgpBKN6A41IGYtcfMqrs1I_ZJTCWkMkHVRSawo0bU1YUTL3YWPSl9fxVp3vxjv8ZBXRYJifU"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "5f4ce05d9654e8e295731dc3070e6def1e962adcac10b53fa8cabeca6fdd100e",
+                "certificate_ask_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
+                "certificate_aek_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d"
+              }
             },
             {
               "label": "C's genesis: device certificate",
@@ -2526,7 +3581,9 @@
               },
               "verify": {
                 "signer_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
-                "pk_r_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d"
+                "pk_r_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d",
+                "recipient_secret_hex": "9b0467c8df3a8bd7b51bfa6da2fcc265f81dd8b94b138d1359b00b3f481af635",
+                "kid_hex": "a17b7690006287a62279e22919a201509ce7610eacf6705890516c54855e0ba6"
               }
             },
             {
@@ -2569,12 +3626,15 @@
               },
               "verify": {
                 "signer_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
-                "pk_r_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d"
+                "pk_r_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d",
+                "recipient_secret_hex": "9b0467c8df3a8bd7b51bfa6da2fcc265f81dd8b94b138d1359b00b3f481af635",
+                "kid_hex": "367ce2560c7b1f387051800e85559de04feb81b16aea5c9c8b2baba5134d9d57"
               }
             }
           ],
           "client": "none",
-          "server": "create_only"
+          "server": "create_only",
+          "clause": "Two genesis change sets"
         },
         {
           "who": "B",
@@ -2613,7 +3673,11 @@
                 "nonce": "hV3SOKS9ErrznBVC",
                 "ct": "aVPzzFftCs4hfRHv6lLHwTnpD9uCyqrUIDV5RZu1hJDxEKOakwWRfFL9L10px-NDw8NhjdsFBHOF0_THtzOydFnLm2Rd-1xHyqoaVUinkuY"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+                "certificate_ask_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+                "certificate_aek_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+              }
             },
             {
               "label": "B's genesis: device certificate",
@@ -2673,7 +3737,9 @@
               },
               "verify": {
                 "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
-                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+                "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+                "kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
               }
             },
             {
@@ -2716,12 +3782,15 @@
               },
               "verify": {
                 "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
-                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+                "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+                "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+                "kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
               }
             }
           ],
           "client": "none",
-          "server": "applied"
+          "server": "applied",
+          "clause": "an identical retry after a timeout"
         }
       ]
     },
@@ -2765,7 +3834,8 @@
             }
           ],
           "client": "waits",
-          "server": "none"
+          "server": "none",
+          "clause": "A device left out of a rotation, shown the certificate but not yet the whole change set"
         },
         {
           "who": "server",
@@ -2804,7 +3874,11 @@
                 "nonce": "4wYzPxsCsO0GuwSk",
                 "ct": "A5RkvjaWw2HdJmR-Vs_0K-o8eZdDSLV181eY5HT0nd1Ev30EhuGr0CwWZedNvRrmvgly5rjXlqtMx_LKjvwcAd38aIXKQsSj7FS_npk8lP8"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "B's rotation, which leaves C out: kept device 0",
@@ -2843,7 +3917,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802"
+                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -2880,7 +3957,10 @@
                 "nonce": "uV40IY_-DXBH_7Ne",
                 "ct": "zpO-GDofcmRZqGVbZAdTA2A0e-vaMow7UReEmJVYXAfPdP38p5kQmdgim95X-t4G-dbVFQ"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
             },
             {
               "label": "B's rotation, which leaves C out: personal wrap 2",
@@ -2901,7 +3981,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -2938,7 +4020,10 @@
                 "nonce": "00-xYaJ18vaK6-ie",
                 "ct": "2j4sgOj9BsUFnPYMmKsGvUsOXBtw148zBRmH_JxwQYKQVnSibpcfZSRq09zVTQZ8YAooBA"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
             },
             {
               "label": "B's rotation, which leaves C out: history wrap 2",
@@ -2959,12 +4044,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "the whole change set: locks, erases nothing",
-          "server": "none"
+          "server": "none",
+          "clause": "then all of it"
         }
       ]
     },
@@ -3019,7 +4107,11 @@
                 "nonce": "rsrG8O6tD_6xIU_A",
                 "ct": "ojPQBvTKeP8Am3xkL-DyhT11y5YF5aXRe6mQjXgDZct2TmJ8hI1WMmTb4PJNjKxEe-iOBWsNkdb-xPThHhrZ4I7WxifF52IFnYU0BaquXco"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "N's recovery: kept device 0",
@@ -3058,7 +4150,10 @@
               },
               "verify": {
                 "signer_hex": "7a7c5f875ae5d25be0fda09e6c96d8b1405ee32cefd92f042262a99ccc99cf69",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -3095,7 +4190,10 @@
                 "nonce": "MYfPDX9qfwL4bh11",
                 "ct": "Z8BV3-cmM_uaoTFuDpDKLDWYLv9rJc1sY7_gy_PEQhogwbm80-VyxjtyRwH8yp_M5ZWjBw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
             },
             {
               "label": "N's recovery: personal wrap 2",
@@ -3116,7 +4214,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -3153,7 +4253,10 @@
                 "nonce": "Xf7P50Vy7G3f3kWT",
                 "ct": "LTOFo6fw-cL34SYZUfis296LPPs8AxiMWbHc5yWB7aBCW-5LyLfO6OMzjLRrVP3Dvqrkng"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
             },
             {
               "label": "N's recovery: history wrap 2",
@@ -3174,12 +4277,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "succeeds",
-          "server": "applied"
+          "server": "applied",
+          "clause": "Recovery from zero devices that reads the old PK and HK versions and rings before approval and carries them into the new rings"
         }
       ]
     },
@@ -3216,7 +4322,8 @@
             }
           ],
           "client": "none",
-          "server": "device_removed"
+          "server": "device_removed",
+          "clause": "A cancel from a removed row's device"
         }
       ]
     },
@@ -3270,7 +4377,8 @@
                 }
               },
               "verify": {
-                "ik_hex": "cf12dae2e71a68f51f8f9e905fcf7ff0456d58043c1b8e602850d565bcbf2d09"
+                "ik_hex": "cf12dae2e71a68f51f8f9e905fcf7ff0456d58043c1b8e602850d565bcbf2d09",
+                "r_hex": "0bf8677802953c74ddf5e3494e5099b7434091081e36e19e6ed823dac5ead5d7"
               }
             }
           ],
@@ -3314,13 +4422,30 @@
                 }
               },
               "verify": {
-                "ik_hex": "212e77a38cf7acf73c53d67f4f84ef49b3a5fd4be1b83f95eb6467563c888ead"
+                "ik_hex": "212e77a38cf7acf73c53d67f4f84ef49b3a5fd4be1b83f95eb6467563c888ead",
+                "r_hex": "d338957104dafede8ad2f9abd8a976629ae2f504c78fb659e6cce9c8c4901bb3"
               }
             }
           ],
           "client": "none",
-          "server": "bad_statement"
-        },
+          "server": "bad_statement",
+          "clause": "A reset proposal while one is pending"
+        }
+      ]
+    },
+    {
+      "name": "kinds from the wrong caller, with no reset pending",
+      "op": "scenario",
+      "row": "A reset proposal while one is pending; kind 2 from a sign-in, kind 3 from an approved device",
+      "layer": ["server"],
+      "client": "none",
+      "client_codes": [],
+      "server": "bad_statement",
+      "server_codes": ["bad_statement"],
+      "given": {
+        "pending_reset": false
+      },
+      "steps": [
         {
           "who": "N, not approved",
           "does": "push",
@@ -3358,12 +4483,14 @@
                 }
               },
               "verify": {
-                "ik_hex": "a12ceb99cb156d64348a1c1806647cec076ebbd1e5df370e04abc4df3cd1efef"
+                "ik_hex": "a12ceb99cb156d64348a1c1806647cec076ebbd1e5df370e04abc4df3cd1efef",
+                "r_hex": "93640562f5da03a4405e439a07e5a38cefddc5d0f26a526bddce06760fb93cf6"
               }
             }
           ],
           "client": "none",
-          "server": "bad_statement"
+          "server": "bad_statement",
+          "clause": "kind 2 from a sign-in, kind 3 from an approved device"
         },
         {
           "who": "B",
@@ -3402,12 +4529,14 @@
                 }
               },
               "verify": {
-                "ik_hex": "ddab6214473556c7aa8990a5f7a728db5a611c9cb0c9d49d4bd41add1342a96b"
+                "ik_hex": "ddab6214473556c7aa8990a5f7a728db5a611c9cb0c9d49d4bd41add1342a96b",
+                "r_hex": "1958edc7005d1e3e7958dcdbfedc48900631e911428dc1f850f311457dd5923a"
               }
             }
           ],
           "client": "none",
-          "server": "bad_statement"
+          "server": "bad_statement",
+          "clause": "kind 2 from a sign-in, kind 3 from an approved device"
         }
       ]
     },
@@ -3461,12 +4590,14 @@
                 }
               },
               "verify": {
-                "ik_hex": "11bb4a597124ab8214949f37aa10851cd24f97719ee8bdf304e6a85985a67eb1"
+                "ik_hex": "11bb4a597124ab8214949f37aa10851cd24f97719ee8bdf304e6a85985a67eb1",
+                "r_hex": "9c183e9db8b6b1bac880a7289d78bcc8e64d71174100841849f0ff43c7940aaa"
               }
             }
           ],
           "client": "none",
-          "server": "step_up_required"
+          "server": "step_up_required",
+          "clause": "A kind 3 proposal without a step-up"
         }
       ]
     },
@@ -3521,12 +4652,14 @@
                 }
               },
               "verify": {
-                "ik_hex": "11bb4a597124ab8214949f37aa10851cd24f97719ee8bdf304e6a85985a67eb1"
+                "ik_hex": "11bb4a597124ab8214949f37aa10851cd24f97719ee8bdf304e6a85985a67eb1",
+                "r_hex": "9c183e9db8b6b1bac880a7289d78bcc8e64d71174100841849f0ff43c7940aaa"
               }
             }
           ],
           "client": "none",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A kind 3 proposal while lost devices' rows remain"
         },
         {
           "who": "B",
@@ -3547,7 +4680,8 @@
             }
           ],
           "client": "none",
-          "server": "applied; the cancel ends it"
+          "server": "applied; the cancel ends it",
+          "clause": "one of those devices cancels it"
         }
       ]
     },
@@ -3602,12 +4736,24 @@
                 }
               },
               "verify": {
-                "ik_hex": "cf12dae2e71a68f51f8f9e905fcf7ff0456d58043c1b8e602850d565bcbf2d09"
+                "ik_hex": "cf12dae2e71a68f51f8f9e905fcf7ff0456d58043c1b8e602850d565bcbf2d09",
+                "r_hex": "0bf8677802953c74ddf5e3494e5099b7434091081e36e19e6ed823dac5ead5d7"
               }
             }
           ],
-          "client": "the reset ends with the reset's DSK; nothing changes under another key",
-          "server": "204 both"
+          "dpop": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkMjU1MTkiLCJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJacE1zcVA1UzZoLXpjMHU2dndmSTFDejloY2R1SHcwbGozM2FtTFUydXZnIn19.eyJqdGkiOiI4VFFyM1FMOXNvRTNyOVRreFRtZDFnIiwiaHRtIjoiREVMRVRFIiwiaHR1IjoiaHR0cHM6Ly9zeW5jLmV4YW1wbGUuY29tL3YyL3N5bmMva2V5LWRldmljZSIsImlhdCI6MTc2NDAwMDAwMCwiYXRoIjoid3lMZGVZUWF5cDJFaUFZNVllUl9FUTlWckN5M1NmU0RiTXljYTdDMk43SSJ9.Z4vHCu6nRU13jDEo1lcyFoWqr3ylr_mVlUOGpeP-bvHUggGIvcQo0uxOQ-aNxjcDVcR_X73vbBTHx7aRqjzBBw",
+          "client": "the reset ends",
+          "server": "204",
+          "clause": "The proposing device signs out while its reset is pending, under the reset's DSK"
+        },
+        {
+          "who": "B",
+          "does": "DELETE /v2/sync/key-device",
+          "records": [],
+          "dpop": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkMjU1MTkiLCJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJ2aUVIVUloUUZ3M013X2JialJkYUpncUZTbHA4VDBGLWYwOXc2WEVDLWRvIn19.eyJqdGkiOiIybWVWN0xHRmNiX0RxenRiRzhIT2dBIiwiaHRtIjoiREVMRVRFIiwiaHR1IjoiaHR0cHM6Ly9zeW5jLmV4YW1wbGUuY29tL3YyL3N5bmMva2V5LWRldmljZSIsImlhdCI6MTc2NDAwMDAwMCwiYXRoIjoid3lMZGVZUWF5cDJFaUFZNVllUl9FUTlWckN5M1NmU0RiTXljYTdDMk43SSJ9.ZJZsNOWILxhPxKRtLhrZj1uYK74zpv4UVBVxOQke-XadLApra-ay4LY28pwxOARj0ZlUh4GQUcoRU6rDYynzDQ",
+          "client": "nothing changes",
+          "server": "204",
+          "clause": "a proof under another key on that row"
         }
       ]
     },
@@ -3662,12 +4808,14 @@
                 }
               },
               "verify": {
-                "ik_hex": "cf12dae2e71a68f51f8f9e905fcf7ff0456d58043c1b8e602850d565bcbf2d09"
+                "ik_hex": "cf12dae2e71a68f51f8f9e905fcf7ff0456d58043c1b8e602850d565bcbf2d09",
+                "r_hex": "0bf8677802953c74ddf5e3494e5099b7434091081e36e19e6ed823dac5ead5d7"
               }
             }
           ],
           "client": "the reset ends",
-          "server": "tombstoned"
+          "server": "tombstoned",
+          "clause": "A pending reset 7 days past `held_until` with no activation"
         }
       ]
     },
@@ -3721,7 +4869,11 @@
                 "nonce": "bZL0UYHrIWrSzHy9",
                 "ct": "9Ba5hq6TSiGNdaYqffTcOtkeokiZV4ExNZiqHiDO3ROsJIDEryKm0ybZcjxsbDIQAc8QlaZRpChhC8_5fDmlMzRGjojwIKdtZSDlxAml-yU"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "0bf8677802953c74ddf5e3494e5099b7434091081e36e19e6ed823dac5ead5d7",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "P's reset proposal: the proposed device certificate",
@@ -3775,7 +4927,10 @@
                 "nonce": "h1OMxS9rul03kAhf",
                 "ct": "lYcQS70njAceQs55T8OaT7GQFkRX25gbJwWSNTlRYO_v4myu6arAtlXJikorZ1WsysyFKw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
             },
             {
               "label": "P's reset proposal: personal wrap 2",
@@ -3796,7 +4951,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -3833,7 +4990,10 @@
                 "nonce": "KWt1r-50FxqIQNs1",
                 "ct": "7GkEciYfdBejgzACO2j7KCCEldKdX69FzzqbI1m5h35G3AeKYAqV8SB5vhaQqjGSx6Ixiw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
             },
             {
               "label": "P's reset proposal: history wrap 2",
@@ -3854,12 +5014,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "none",
-          "server": "reset_held"
+          "server": "reset_held",
+          "clause": "An activation before `held_until`"
         },
         {
           "who": "B",
@@ -3898,7 +5061,11 @@
                 "nonce": "bZL0UYHrIWrSzHy9",
                 "ct": "9Ba5hq6TSiGNdaYqffTcOtkeokiZV4ExNZiqHiDO3ROsJIDEryKm0ybZcjxsbDIQAc8QlaZRpChhC8_5fDmlMzRGjojwIKdtZSDlxAml-yU"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "0bf8677802953c74ddf5e3494e5099b7434091081e36e19e6ed823dac5ead5d7",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "P's reset proposal: the proposed device certificate",
@@ -3952,7 +5119,10 @@
                 "nonce": "h1OMxS9rul03kAhf",
                 "ct": "lYcQS70njAceQs55T8OaT7GQFkRX25gbJwWSNTlRYO_v4myu6arAtlXJikorZ1WsysyFKw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
             },
             {
               "label": "P's reset proposal: personal wrap 2",
@@ -3973,7 +5143,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -4010,7 +5182,10 @@
                 "nonce": "KWt1r-50FxqIQNs1",
                 "ct": "7GkEciYfdBejgzACO2j7KCCEldKdX69FzzqbI1m5h35G3AeKYAqV8SB5vhaQqjGSx6Ixiw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
             },
             {
               "label": "P's reset proposal: history wrap 2",
@@ -4031,12 +5206,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "none",
-          "server": "bad_statement"
+          "server": "bad_statement",
+          "clause": "after the reset ended"
         },
         {
           "who": "C",
@@ -4075,7 +5253,11 @@
                 "nonce": "bZL0UYHrIWrSzHy9",
                 "ct": "9Ba5hq6TSiGNdaYqffTcOtkeokiZV4ExNZiqHiDO3ROsJIDEryKm0ybZcjxsbDIQAc8QlaZRpChhC8_5fDmlMzRGjojwIKdtZSDlxAml-yU"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "0bf8677802953c74ddf5e3494e5099b7434091081e36e19e6ed823dac5ead5d7",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "P's reset proposal: the proposed device certificate",
@@ -4129,7 +5311,10 @@
                 "nonce": "h1OMxS9rul03kAhf",
                 "ct": "lYcQS70njAceQs55T8OaT7GQFkRX25gbJwWSNTlRYO_v4myu6arAtlXJikorZ1WsysyFKw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
             },
             {
               "label": "P's reset proposal: personal wrap 2",
@@ -4150,7 +5335,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -4187,7 +5374,10 @@
                 "nonce": "KWt1r-50FxqIQNs1",
                 "ct": "7GkEciYfdBejgzACO2j7KCCEldKdX69FzzqbI1m5h35G3AeKYAqV8SB5vhaQqjGSx6Ixiw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
             },
             {
               "label": "P's reset proposal: history wrap 2",
@@ -4208,12 +5398,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "none",
-          "server": "writer_bound"
+          "server": "writer_bound",
+          "clause": "from another device"
         }
       ]
     },
@@ -4268,7 +5461,11 @@
                 "nonce": "fpQbqXDwsHb4wCJk",
                 "ct": "rjb4h6G9L5O-SZMMtHAjjT7aN0ScGCbQ_H2YaeHjqbLAOTL93qqRWdbQz9C2TGyzW5f9EBrVO4eTYJjY04mTjrQB3VnhqB_hU-6zI8RxbDo"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "B's rotation: kept device 0",
@@ -4307,7 +5504,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802"
+                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -4344,7 +5544,10 @@
                 "nonce": "WoyXNadxkQpKZNJ_",
                 "ct": "dIZpBinBRutQXYkDW3BYskED5Xk2csFcXyWVVC2OohCx2T2cK1RgyzSo5qqB2Em18nCEHw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
             },
             {
               "label": "B's rotation: personal wrap 2",
@@ -4365,7 +5568,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -4402,7 +5607,10 @@
                 "nonce": "LGkB_beZfZxBG9Ed",
                 "ct": "EtAsaRVjlxUh-yUACqFpNNfcbZGy_pwkSwS6g3lEOHKJRX9QCAUph3HFvjCs-1RI560y0Q"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
             },
             {
               "label": "B's rotation: history wrap 2",
@@ -4423,12 +5631,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "the reset ends",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A rotation while a reset is pending, which ends it"
         }
       ]
     },
@@ -4483,7 +5694,11 @@
                 "nonce": "vfSytmP2tVnQ-OVn",
                 "ct": "o18aEyhLiRs5kFXQbFHEb1R9Jl2aZl5UdF8K8DuTo61PX6Ry6uJFDpTGhTHXHBEvvAiJZStG-ck7fSdLSO79reLRbenaRr2tPEKVnrtD3SY"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "9c183e9db8b6b1bac880a7289d78bcc8e64d71174100841849f0ff43c7940aaa",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "a kind 3 proposal: the proposed device certificate",
@@ -4543,7 +5758,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -4586,12 +5803,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "start 1 and no ring",
-          "server": "applied"
+          "server": "applied",
+          "clause": "Kind 3 activation with no old PK and HK"
         },
         {
           "who": "B",
@@ -4630,7 +5850,11 @@
                 "nonce": "bZL0UYHrIWrSzHy9",
                 "ct": "9Ba5hq6TSiGNdaYqffTcOtkeokiZV4ExNZiqHiDO3ROsJIDEryKm0ybZcjxsbDIQAc8QlaZRpChhC8_5fDmlMzRGjojwIKdtZSDlxAml-yU"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "0bf8677802953c74ddf5e3494e5099b7434091081e36e19e6ed823dac5ead5d7",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "P's reset proposal: the proposed device certificate",
@@ -4684,7 +5908,10 @@
                 "nonce": "h1OMxS9rul03kAhf",
                 "ct": "lYcQS70njAceQs55T8OaT7GQFkRX25gbJwWSNTlRYO_v4myu6arAtlXJikorZ1WsysyFKw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
             },
             {
               "label": "P's reset proposal: personal wrap 2",
@@ -4705,7 +5932,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -4742,7 +5971,10 @@
                 "nonce": "KWt1r-50FxqIQNs1",
                 "ct": "7GkEciYfdBejgzACO2j7KCCEldKdX69FzzqbI1m5h35G3AeKYAqV8SB5vhaQqjGSx6Ixiw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
             },
             {
               "label": "P's reset proposal: history wrap 2",
@@ -4763,12 +5995,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "start 0 with rings",
-          "server": "applied"
+          "server": "applied",
+          "clause": "kind 2 activation with rings"
         }
       ]
     },
@@ -4849,7 +6084,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to E, removed",
@@ -4870,12 +6108,15 @@
               },
               "verify": {
                 "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
-                "pk_r_hex": "1b1e6477b4f9329a38ffdec3d0f42a8d4e5cb652fa2c4102aa8b756e69dc6006"
+                "pk_r_hex": "1b1e6477b4f9329a38ffdec3d0f42a8d4e5cb652fa2c4102aa8b756e69dc6006",
+                "recipient_secret_hex": "a2cce43a25ca6093ee61011f6f8a77ce1538f6f2ae46a04a813d1d295fa5bff5",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "none",
-          "server": "bad_statement, change_set for the rest"
+          "server": "bad_statement, change_set for the rest",
+          "clause": "A team rotation with a wrap to a removed member or to a member's superseded `av`"
         },
         {
           "who": "A",
@@ -4915,7 +6156,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to M at its superseded av 1",
@@ -4936,12 +6180,15 @@
               },
               "verify": {
                 "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
-                "pk_r_hex": "afd421ed2ebed8b1c8f3c7abd284868c7082ac6807633d9ac577d34f08657f6b"
+                "pk_r_hex": "afd421ed2ebed8b1c8f3c7abd284868c7082ac6807633d9ac577d34f08657f6b",
+                "recipient_secret_hex": "649d69716ec6a47634566d98e536d4c6ad8ee5811476093ed3b5c0a34cf084c4",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "none",
-          "server": "bad_statement, change_set for the rest"
+          "server": "bad_statement, change_set for the rest",
+          "clause": "A team rotation with a wrap to a removed member or to a member's superseded `av`"
         }
       ]
     },
@@ -5022,7 +6269,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to P, left out of 6",
@@ -5043,12 +6293,15 @@
               },
               "verify": {
                 "signer_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "none",
-          "server": "role"
+          "server": "role",
+          "clause": "A rotation by a member that is not an owner or admin, with a wrap to a member left out of the version before"
         }
       ]
     },
@@ -5093,7 +6346,7 @@
       "steps": [
         {
           "who": "O",
-          "does": "push change set",
+          "does": "the restart reaches M, a holder",
           "records": [
             {
               "label": "version 7 by O with start 1",
@@ -5135,12 +6388,305 @@
               },
               "verify": {
                 "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
-                "pk_r_hex": "94fb9a5c69b05c423e27aee3e8cef3a599e2f5fbe99f45f8dc395227b7374317"
+                "pk_r_hex": "94fb9a5c69b05c423e27aee3e8cef3a599e2f5fbe99f45f8dc395227b7374317",
+                "recipient_secret_hex": "5b99a9df4687b43a519560b88de5d337145aa67c95023465c26dcc8af8fc9bc6",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "keys.not_holder",
-          "server": "role"
+          "server": "none",
+          "clause": "A restart shown to a client whose account holds the current version"
+        },
+        {
+          "who": "O",
+          "does": "push change set while M, a holder, is on the roster",
+          "records": [
+            {
+              "label": "version 7 by O with start 1",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.version",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7",
+              "fields": {
+                "suite": "tp1",
+                "start": 1,
+                "kid": "JbQez5h-UK12eWDMo0-5ohBSlah5RsAbwyNKEhscsWM",
+                "signer": "8424AB1F-D93A-4875-8A4E-D54B300C3590",
+                "signer_av": 2,
+                "sig": "dp1qNCbACecNOKMyhIizsrDcMwLfqDj4gBCIJqRyy1l7m54mCEbVMXu2RN3Lh-RJkiFoUkdnM5CN3PRbKam0Cg"
+              },
+              "verify": {
+                "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
+                "digest_hex": "0d66cee094ff41963c6e3b32d9c8ba8abecc9dc8d1ad5c98911c17b7fb577967"
+              }
+            },
+            {
+              "label": "version 7 to O",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.wrap",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7/account/8424AB1F-D93A-4875-8A4E-D54B300C3590/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "sk9nThWiIhesQ9dBTz0XvzlUzGjnHQZk_ulD1S5Ijlk",
+                "ct": "sAHnTzDIH6Bh9g71cUXKaEc_LpymIjPGDthcAmV9tabQAP8nZFPGOnWapJ_e4fus",
+                "wrapper": "8424AB1F-D93A-4875-8A4E-D54B300C3590",
+                "wrapper_av": 2,
+                "wrapper_device": "6DC551B4-D1FE-4F1B-9034-78A414130AE2",
+                "sig": "PJqvdlj7joJLFv6nd2-wAWQ9pYzWHtiaf_n2n6EqihQdDf1dy8pwD7G0wuKYajeLguR2cdx3FwX2V_BmAbWbDw"
+              },
+              "verify": {
+                "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
+                "pk_r_hex": "94fb9a5c69b05c423e27aee3e8cef3a599e2f5fbe99f45f8dc395227b7374317",
+                "recipient_secret_hex": "5b99a9df4687b43a519560b88de5d337145aa67c95023465c26dcc8af8fc9bc6",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
+              }
+            }
+          ],
+          "client": "none",
+          "server": "role",
+          "clause": "a restart while a holder is on the roster"
+        }
+      ]
+    },
+    {
+      "name": "a restart shown to a device that held an earlier version, then accepted",
+      "op": "scenario",
+      "row": "a restart shown to a device that held an earlier version; the person compares and accepts; a restart by an account the server made up, words that differ",
+      "layer": ["flow"],
+      "client": "keys.restart_held; applied, its signer the holder",
+      "client_codes": ["keys.restart_held","applied"],
+      "server": "none",
+      "server_codes": [],
+      "given": {
+        "roster": [
+          {
+            "account": "A",
+            "role": "admin"
+          },
+          {
+            "account": "O",
+            "role": "owner"
+          },
+          {
+            "account": "M",
+            "role": "member"
+          },
+          {
+            "account": "E",
+            "role": "editor"
+          },
+          {
+            "account": "P",
+            "role": "member"
+          }
+        ],
+        "client": "M",
+        "client_holds": {
+          "team_version": 5,
+          "holders": ["O@2","M@2"]
+        },
+        "server_holds": {
+          "team_version": 6,
+          "holders": ["O@2"]
+        }
+      },
+      "steps": [
+        {
+          "who": "server",
+          "does": "pull",
+          "records": [
+            {
+              "label": "version 7 by O with start 1",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.version",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7",
+              "fields": {
+                "suite": "tp1",
+                "start": 1,
+                "kid": "JbQez5h-UK12eWDMo0-5ohBSlah5RsAbwyNKEhscsWM",
+                "signer": "8424AB1F-D93A-4875-8A4E-D54B300C3590",
+                "signer_av": 2,
+                "sig": "dp1qNCbACecNOKMyhIizsrDcMwLfqDj4gBCIJqRyy1l7m54mCEbVMXu2RN3Lh-RJkiFoUkdnM5CN3PRbKam0Cg"
+              },
+              "verify": {
+                "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
+                "digest_hex": "0d66cee094ff41963c6e3b32d9c8ba8abecc9dc8d1ad5c98911c17b7fb577967"
+              }
+            },
+            {
+              "label": "version 7 to M",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.wrap",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7/account/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "12lsRkBtqnFA88sVy0Fo4vpc21m5U6l3AXZlUHBEv1g",
+                "ct": "aG9Yo8ZbXfwwd9CtfsUkHhc3KZvfL0gafYFJILYjmHOWtPMjY2VjsYCND_8t6cB-",
+                "wrapper": "8424AB1F-D93A-4875-8A4E-D54B300C3590",
+                "wrapper_av": 2,
+                "wrapper_device": "6DC551B4-D1FE-4F1B-9034-78A414130AE2",
+                "sig": "GTmAqhqgrU9UTAwPOWSqUCjsXu6s6HJooc4T884IaQ4znTHsAjCBukNZAPADyw7jN1usDh4L1YqP60uMdqiBBA"
+              },
+              "verify": {
+                "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
+              }
+            }
+          ],
+          "client": "keys.restart_held: version 7 is not current, and M writes nothing under the team key",
+          "server": "none",
+          "clause": "a restart shown to a device that held an earlier version"
+        },
+        {
+          "who": "M",
+          "does": "the person compares O's six fingerprint words and accepts",
+          "records": [],
+          "words": ["onlooker","crawlers","swept","upheld","regulator","crummy"],
+          "client": "applied: version 7 is current, O is its holder, and O's pin is compared",
+          "server": "none",
+          "clause": "the person compares and accepts"
+        }
+      ]
+    },
+    {
+      "name": "a restart by an account the server made up",
+      "op": "scenario",
+      "row": "a restart shown to a device that held an earlier version; the person compares and accepts; a restart by an account the server made up, words that differ",
+      "layer": ["flow"],
+      "client": "keys.restart_held; stays held",
+      "client_codes": ["keys.restart_held"],
+      "server": "none",
+      "server_codes": [],
+      "given": {
+        "roster": [
+          {
+            "account": "A",
+            "role": "admin"
+          },
+          {
+            "account": "O",
+            "role": "owner"
+          },
+          {
+            "account": "M",
+            "role": "member"
+          },
+          {
+            "account": "E",
+            "role": "editor"
+          },
+          {
+            "account": "P",
+            "role": "member"
+          }
+        ],
+        "client": "M",
+        "client_holds": {
+          "team_version": 5,
+          "holders": ["O@2","M@2"]
+        },
+        "server_holds": {
+          "team_version": 6,
+          "holders": ["O@2"]
+        }
+      },
+      "steps": [
+        {
+          "who": "server",
+          "does": "pull",
+          "records": [
+            {
+              "label": "X's certificate in the team",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.member",
+              "id": "42BE67A8-D910-4DD5-A8A5-2597F0D87F37/1",
+              "fields": {
+                "suite": "tp1",
+                "kind": 0,
+                "ik": "W8F-WW6cDM8carTs9AslvbYOsA9NBkiSosXmol9PpyY",
+                "ask": "R7NQhxgEUS7Mab33-GxszXP_nekXCCIdnQKm6T_u6Zc",
+                "aek": "qFfc-fSNrxdwmiwSvPhTyY89foBc4R10CSXqDK7VQ3I",
+                "sig": "4iqXeQIajSFxF8mMx5onJASJiojtR8pG-iyVWckZ4IG4lrHY918yAbM7swCNKBUUSLvhT4MWzjayYHj4JtskDA"
+              },
+              "verify": {
+                "ik_hex": "5bc17e596e9c0ccf1c6ab4ecf40b25bdb60eb00f4d064892a2c5e6a25f4fa726"
+              }
+            },
+            {
+              "label": "version 7 by X with start 1",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.version",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7",
+              "fields": {
+                "suite": "tp1",
+                "start": 1,
+                "kid": "2vDs97iD3ZI9kPGOcaP5VnumJik70LjsJvAtLGlaV0I",
+                "signer": "42BE67A8-D910-4DD5-A8A5-2597F0D87F37",
+                "signer_av": 1,
+                "sig": "Kc6bs04dalM35QdDdT4yr-EYiZDc8VQq4JoBumewG0y-pVFZ-kYe4OY9VyD-ng9qrVaRv0DRKtF7N1ouO8rZDg"
+              },
+              "verify": {
+                "signer_hex": "47b350871804512ecc69bdf7f86c6ccd73ff9de91708221d9d02a6e93feee997",
+                "digest_hex": "babd7c7210ad26c9cd9f19d34fa04c4277c35b3dafa01551ffed024401221110"
+              }
+            },
+            {
+              "label": "version 7 to M, by X",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.wrap",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7/account/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "aNveCVOqGYjVvzKSDUlEHZBF0kD9E6eRkjB6IgKM_zg",
+                "ct": "8PkvJN7xVUFrUWUraVrUOsEXS7nGJKpd_0sH2P7EN7DcRXE1nFshlLrE_iFO5ItD",
+                "wrapper": "42BE67A8-D910-4DD5-A8A5-2597F0D87F37",
+                "wrapper_av": 1,
+                "wrapper_device": "16CF66F4-B268-4FEF-A3F7-CCBF4743503B",
+                "sig": "oZHT8mCCoIGtR2MRj2lDgnWmEZQE-W5OZ-YV9S4GUqhh6fzOvHpjIfKvpk7mL6TTv4IiuWI2a4WNSHHg8mM_Ag"
+              },
+              "verify": {
+                "signer_hex": "47b350871804512ecc69bdf7f86c6ccd73ff9de91708221d9d02a6e93feee997",
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "daf0ecf7b883dd923d90f18e71a3f9567ba626293bd0b8ec26f02d2c695a5742"
+              }
+            }
+          ],
+          "client": "keys.restart_held: version 7 is not current, and M writes nothing under the team key",
+          "server": "none",
+          "clause": "a restart shown to a device that held an earlier version"
+        },
+        {
+          "who": "M",
+          "does": "the person compares X's six fingerprint words, which match no one's, and says they differ",
+          "records": [],
+          "words": ["unstuffed","alkaline","extrude","blizzard","taking","icy"],
+          "client": "stays held: keys.restart_held",
+          "server": "none",
+          "clause": "a restart by an account the server made up, words that differ"
         }
       ]
     },
@@ -5204,7 +6750,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to O",
@@ -5225,12 +6774,15 @@
               },
               "verify": {
                 "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
-                "pk_r_hex": "94fb9a5c69b05c423e27aee3e8cef3a599e2f5fbe99f45f8dc395227b7374317"
+                "pk_r_hex": "94fb9a5c69b05c423e27aee3e8cef3a599e2f5fbe99f45f8dc395227b7374317",
+                "recipient_secret_hex": "5b99a9df4687b43a519560b88de5d337145aa67c95023465c26dcc8af8fc9bc6",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "takes its own restart",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A sole owner who reset and restarts its team from the device that held the key"
         }
       ]
     },
@@ -5252,7 +6804,8 @@
           "does": "push",
           "records": [],
           "client": "taken (history.json, pushed_again)",
-          "server": "applied; under an older version key_version_stale"
+          "server": "applied; under an older version key_version_stale",
+          "clause": "A history entry pushed again after an HK rotation, encrypted under the newest version"
         }
       ]
     },
@@ -5311,7 +6864,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to M",
@@ -5332,12 +6888,15 @@
               },
               "verify": {
                 "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
-                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003"
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "verifies",
-          "server": "applied"
+          "server": "applied",
+          "clause": "After a restore that lost a team version, its signer's device pushes it back with the same fields, every ordinary check passing"
         }
       ]
     },
@@ -5400,7 +6959,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to P",
@@ -5421,12 +6983,15 @@
               },
               "verify": {
                 "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "P's team is stopped until this applies",
-          "server": "none"
+          "server": "none",
+          "clause": "A version only another member signed, missing after a restore"
         }
       ]
     },
@@ -5495,7 +7060,10 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             },
             {
               "label": "version 7 to O",
@@ -5516,12 +7084,15 @@
               },
               "verify": {
                 "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
-                "pk_r_hex": "94fb9a5c69b05c423e27aee3e8cef3a599e2f5fbe99f45f8dc395227b7374317"
+                "pk_r_hex": "94fb9a5c69b05c423e27aee3e8cef3a599e2f5fbe99f45f8dc395227b7374317",
+                "recipient_secret_hex": "5b99a9df4687b43a519560b88de5d337145aa67c95023465c26dcc8af8fc9bc6",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "verifies",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A version one admin rotated and a member another admin confirmed, after a restore"
         },
         {
           "who": "O",
@@ -5546,12 +7117,15 @@
               },
               "verify": {
                 "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             }
           ],
           "client": "verifies",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A version one admin rotated and a member another admin confirmed, after a restore"
         }
       ]
     },
@@ -5607,11 +7181,15 @@
                 "nonce": "4_7pcHTlwV_q0m4O",
                 "ct": "VbHBeXCFvd_oVe3JjNtvCXAcppn58jCpjgiGxuFTUzAsMgW0G8oMbe_DxyKcd1UpyAh89w"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "7e3db00c0633e79810332aeb9a344c5219529d7e477230c86677e45fb3b07d9f",
+                "below_kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
+              }
             }
           ],
           "client": "the scope stays ended",
-          "server": "applied for the other device"
+          "server": "applied for the other device",
+          "clause": "A refused push of the device's own version, then another device puts it back, then a restart"
         }
       ]
     },
@@ -5673,12 +7251,15 @@
               },
               "verify": {
                 "signer_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "b69d6d502dd7ebc9276664897a2fd2c53aa8879c3f4c0378b87ef4ec5e50ab4f"
               }
             }
           ],
           "client": "none",
-          "server": "role"
+          "server": "role",
+          "clause": "After a restore that lost a confirmation, a member that is not an owner or admin pushes it back"
         }
       ]
     },
@@ -5732,7 +7313,11 @@
                 "nonce": "bZL0UYHrIWrSzHy9",
                 "ct": "9Ba5hq6TSiGNdaYqffTcOtkeokiZV4ExNZiqHiDO3ROsJIDEryKm0ybZcjxsbDIQAc8QlaZRpChhC8_5fDmlMzRGjojwIKdtZSDlxAml-yU"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "0bf8677802953c74ddf5e3494e5099b7434091081e36e19e6ed823dac5ead5d7",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "P's reset proposal: the proposed device certificate",
@@ -5786,7 +7371,10 @@
                 "nonce": "h1OMxS9rul03kAhf",
                 "ct": "lYcQS70njAceQs55T8OaT7GQFkRX25gbJwWSNTlRYO_v4myu6arAtlXJikorZ1WsysyFKw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
             },
             {
               "label": "P's reset proposal: personal wrap 2",
@@ -5807,7 +7395,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -5844,7 +7434,10 @@
                 "nonce": "KWt1r-50FxqIQNs1",
                 "ct": "7GkEciYfdBejgzACO2j7KCCEldKdX69FzzqbI1m5h35G3AeKYAqV8SB5vhaQqjGSx6Ixiw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
             },
             {
               "label": "P's reset proposal: history wrap 2",
@@ -5865,12 +7458,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "the account's devices sign out; the person recovers or resets",
-          "server": "bad_statement"
+          "server": "bad_statement",
+          "clause": "A completed reset a restore lost"
         }
       ]
     },
@@ -5893,7 +7489,8 @@
           "does": "pull",
           "records": [],
           "client": "locks; approved again with a new key device id",
-          "server": "device_not_approved"
+          "server": "device_not_approved",
+          "clause": "A device whose approval a restore lost"
         }
       ]
     },
@@ -5934,7 +7531,8 @@
             }
           ],
           "client": "none",
-          "server": "device_not_approved"
+          "server": "device_not_approved",
+          "clause": "A removed device's new key device, certified under the current ASK, offered from another row"
         }
       ]
     },
@@ -5993,7 +7591,10 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+                "certificate_aek_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
               }
             },
             {
@@ -6015,12 +7616,24 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "keys.stale; the device keeps its keys",
-          "server": "none"
+          "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
+          "clause": "An approver at `av` 1 approves a device that knows `av` 2 under the same IK, the words matching"
         }
       ]
     },
@@ -6083,7 +7696,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -6105,12 +7721,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "an alert for A",
-          "server": "none"
+          "server": "none",
+          "clause": "An approval whose trust pins another account under a different IK than the device's pin"
         }
       ]
     },
@@ -6173,7 +7791,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -6195,12 +7816,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "with the endorsement held: follows the new IK; without it: an alert",
-          "server": "none"
+          "server": "none",
+          "clause": "An approval whose trust lists the device's pinned IK as replaced, with and without the endorsement held"
         }
       ]
     },
@@ -6261,7 +7884,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -6283,12 +7909,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "keeps its own",
-          "server": "none"
+          "server": "none",
+          "clause": "An approver at the same `av` with a lower personal version, and one with another record at an equal version"
         },
         {
           "who": "C approves N",
@@ -6331,7 +7959,10 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -6353,12 +7984,45 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "keys.conflict",
-          "server": "none"
+          "server": "none",
+          "checks": [
+            {
+              "op": "check_record_digest",
+              "input": {
+                "origin": "https://sync.example.com",
+                "anchored_hex": "66b656b395a916cd0ed9c9bb418056afaa8f638d61549833bf398a17e195f384",
+                "record": {
+                  "label": "P PK3 other",
+                  "scope": {
+                    "type": "personal",
+                    "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+                  },
+                  "kind": "key.version",
+                  "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/3",
+                  "fields": {
+                    "suite": "tp1",
+                    "start": 0,
+                    "kid": "nrKgmeAjWdG8q9uiHzXxhlI0AUMQ7HepxqE-sUNg6KI",
+                    "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+                    "signer_av": 2,
+                    "sig": "Xg_qNt8fCDBeJknbXtBCHVOIaNKuONLPgImJzo5suGx41MaA_bQOjb83FJh8s0SOgseDe1B9GzFH8LTJvr4XBg"
+                  },
+                  "verify": {
+                    "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                    "digest_hex": "b742798c876eb707fce9f96e318f65c0296b1310048a75b3bba329538edc3846"
+                  }
+                }
+              },
+              "error": "keys.conflict"
+            }
+          ],
+          "clause": "An approver at the same `av` with a lower personal version, and one with another record at an equal version"
         }
       ]
     },
@@ -6422,7 +8086,10 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802"
+                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -6444,12 +8111,14 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802"
+                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475"
               }
             }
           ],
           "client": "B keeps version 6",
-          "server": "none"
+          "server": "none",
+          "clause": "B saw A's rotation and holds team version 6, stopped or not. The person approves B from C, which took version 7 under A's old account key with a wrap to M, and version 8 signed by M, because the server withheld A's rotation from C"
         },
         {
           "who": "server",
@@ -6495,7 +8164,9 @@
               },
               "verify": {
                 "signer_hex": "65feaea871d26f3921caf2fb4bc5d4a247cf41c16f27374474db6a80c6b57a76",
-                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003"
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
               }
             },
             {
@@ -6521,7 +8192,18 @@
             }
           ],
           "client": "keys.stale",
-          "server": "none"
+          "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
+          "clause": "B saw A's rotation and holds team version 6, stopped or not. The person approves B from C, which took version 7 under A's old account key with a wrap to M, and version 8 signed by M, because the server withheld A's rotation from C"
         }
       ]
     },
@@ -6645,7 +8327,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79"
+                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79",
+                "recipient_secret_hex": "30355ffe416e2bdbde5c9dfe0588f7a906e078c5c8a0a224490c8a10bac6f16b",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -6667,12 +8352,45 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79"
+                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79",
+                "recipient_secret_hex": "30355ffe416e2bdbde5c9dfe0588f7a906e078c5c8a0a224490c8a10bac6f16b"
               }
             }
           ],
           "client": "keys.conflict at version 2",
-          "server": "none"
+          "server": "none",
+          "checks": [
+            {
+              "op": "check_record_digest",
+              "input": {
+                "origin": "https://sync.example.com",
+                "anchored_hex": "f8c3d514dda5f932b17f25d32ff5d217fe646e99c1d55c2d6e0f6693aa07c27e",
+                "record": {
+                  "label": "C's personal version 2 under the old av 1",
+                  "scope": {
+                    "type": "personal",
+                    "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+                  },
+                  "kind": "key.version",
+                  "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+                  "fields": {
+                    "suite": "tp1",
+                    "start": 0,
+                    "kid": "-KsJgb7PhhxAPLeaY7TPCWTdyG9xlc0xTeqwvqLl1NQ",
+                    "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+                    "signer_av": 1,
+                    "sig": "JJu_bLH3P2t0-0K-chBwQ7c7ImJoo-GgUBHIOFYLluipLORKgdZLReYgvx_plB7zfKGTqkN-xf1bOaZk5WP2Bg"
+                  },
+                  "verify": {
+                    "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+                    "digest_hex": "26ab504fbf91a5e502a325f6a20ae45144cc7dda316bf940e5319d388584cd21"
+                  }
+                }
+              },
+              "error": "keys.conflict"
+            }
+          ],
+          "clause": "C, kept on `av` 1 by the server, took personal versions 2 and 3 signed under the old account key and still holds its version 2. B, at `av` 2 with personal version 2 signed under it, approves C"
         }
       ]
     },
@@ -6775,7 +8493,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79"
+                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79",
+                "recipient_secret_hex": "30355ffe416e2bdbde5c9dfe0588f7a906e078c5c8a0a224490c8a10bac6f16b",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -6797,12 +8518,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79"
+                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79",
+                "recipient_secret_hex": "30355ffe416e2bdbde5c9dfe0588f7a906e078c5c8a0a224490c8a10bac6f16b"
               }
             }
           ],
           "client": "C takes av 2 and B's version 2",
-          "server": "none"
+          "server": "none",
+          "clause": "The same C after an anchored rebuild that kept only its version 3, approved by B"
         }
       ]
     },
@@ -6905,7 +8628,10 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802"
+                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -6927,12 +8653,14 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802"
+                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475"
               }
             }
           ],
           "client": "B keeps its version 2",
-          "server": "none"
+          "server": "none",
+          "clause": "The same pair the other way: C, at `av` 2 but holding personal version 3 signed under `av` 1, approves B"
         }
       ]
     },
@@ -7013,7 +8741,10 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802"
+                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -7035,12 +8766,24 @@
               },
               "verify": {
                 "signer_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da",
-                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802"
+                "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475"
               }
             }
           ],
           "client": "keys.stale",
-          "server": "none"
+          "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
+          "clause": "An approval where neither side holds a personal version signed under the merged current `av`"
         }
       ]
     },
@@ -7099,7 +8842,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -7121,12 +8867,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "the personal stop clears; the team stays ended",
-          "server": "none"
+          "server": "none",
+          "clause": "An approval over a stopped personal key that brings the version signed under the current `av`, over an ended scope, and a restart after each"
         }
       ]
     },
@@ -7184,7 +8932,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -7206,12 +8957,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "takes version 6 and its record, ok",
-          "server": "none"
+          "server": "none",
+          "clause": "A team scope new to the device, imported from the approver"
         }
       ]
     },
@@ -7269,7 +9022,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79"
+                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79",
+                "recipient_secret_hex": "30355ffe416e2bdbde5c9dfe0588f7a906e078c5c8a0a224490c8a10bac6f16b",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -7291,12 +9047,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79"
+                "pk_r_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79",
+                "recipient_secret_hex": "30355ffe416e2bdbde5c9dfe0588f7a906e078c5c8a0a224490c8a10bac6f16b"
               }
             }
           ],
           "client": "the lock clears",
-          "server": "none"
+          "server": "none",
+          "clause": "A device locked by its own account's reset, approved by the resetting device"
         }
       ]
     },
@@ -7354,7 +9112,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -7376,12 +9137,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6"
               }
             }
           ],
           "client": "own-device pins: B alone",
-          "server": "none"
+          "server": "none",
+          "clause": "A device approved again: its own-device pins become the approver alone, and its next rotation can keep no other"
         }
       ]
     },
@@ -7440,7 +9203,10 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "5f95abafec4f0a2a5210d5a398b7ef7e2293cc635778b9808368354407c35459"
+                "pk_r_hex": "5f95abafec4f0a2a5210d5a398b7ef7e2293cc635778b9808368354407c35459",
+                "recipient_secret_hex": "b40085b5ea5bc263dda1b7202cbdd307059f9c721bda0f2e658b9a6e4d4cbeb4",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -7462,12 +9228,14 @@
               },
               "verify": {
                 "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
-                "pk_r_hex": "5f95abafec4f0a2a5210d5a398b7ef7e2293cc635778b9808368354407c35459"
+                "pk_r_hex": "5f95abafec4f0a2a5210d5a398b7ef7e2293cc635778b9808368354407c35459",
+                "recipient_secret_hex": "b40085b5ea5bc263dda1b7202cbdd307059f9c721bda0f2e658b9a6e4d4cbeb4"
               }
             }
           ],
           "client": "new key device id",
-          "server": "applied"
+          "server": "applied",
+          "clause": "A device approved again after a lock or a lost anchor"
         }
       ]
     },
@@ -7522,7 +9290,11 @@
                 "nonce": "agM2E1NSwLSts1oX",
                 "ct": "Jc8x9YVbDDlby74cjDH-LzP-GGl-T9cmshNCT09i_AFNgz27SPJR454F9Mj4SSRC0-fTqTUNivDdOOWUURycr_McibLhStMogJdY6bf2aLc"
               },
-              "verify": {}
+              "verify": {
+                "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+              }
             },
             {
               "label": "N's recovery from a fresh row: kept device 0",
@@ -7561,7 +9333,10 @@
               },
               "verify": {
                 "signer_hex": "7a7c5f875ae5d25be0fda09e6c96d8b1405ee32cefd92f042262a99ccc99cf69",
-                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c"
+                "pk_r_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+                "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
               }
             },
             {
@@ -7598,7 +9373,10 @@
                 "nonce": "ZYR2SxOrLC2Egk80",
                 "ct": "VDaw_gr-kMfn_aq9efPMiPoS6usngpuq3qAoVPTGAtOB1SS3UAKhWLvkSIRXnKujRbwTMw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+                "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+              }
             },
             {
               "label": "N's recovery from a fresh row: personal wrap 2",
@@ -7619,7 +9397,9 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
               }
             },
             {
@@ -7656,7 +9436,10 @@
                 "nonce": "ec651t51nUQvWrzz",
                 "ct": "fnajs2Awt8vhbyfEDGWIWpzMnDHBmk6ckqcp8gvAH4m_YE3YqLxNvgbf-3bjhaqnTkbpIw"
               },
-              "verify": {}
+              "verify": {
+                "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+                "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+              }
             },
             {
               "label": "N's recovery from a fresh row: history wrap 2",
@@ -7677,12 +9460,15 @@
               },
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
-                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+                "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+                "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+                "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
               }
             }
           ],
           "client": "succeeds",
-          "server": "applied, then approved"
+          "server": "applied, then approved",
+          "clause": "A recovery from a fresh row, then a call that needs approval"
         }
       ]
     },
@@ -7706,7 +9492,8 @@
           "does": "push change set",
           "records": [],
           "client": "succeeds at the limit (trust.json, fit)",
-          "server": "applied; over it too_large"
+          "server": "applied; over it too_large",
+          "clause": "A rotation or a trust record at the record limit"
         }
       ]
     },
@@ -7752,7 +9539,8 @@
             }
           ],
           "client": "keys.retired_ik as the newest; taken for objects signed under it before the replace",
-          "server": "none"
+          "server": "none",
+          "clause": "A certificate under an IK seen replaced, offered as the newest"
         }
       ]
     }

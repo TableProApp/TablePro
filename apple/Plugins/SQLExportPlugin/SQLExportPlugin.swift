@@ -626,9 +626,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             try writer.write("-- Table: \(sanitizedName)\n")
             try writer.write("-- --------------------------------------------------------\n\n")
             do {
-                let ddl = rewriter.rewrite(
-                    try await dataSource.fetchTableDDL(
-                        table: table.name, databaseName: table.databaseName))
+                let ddl = rewriter.rewrite(try await run.groupReads.tableDDL(for: table))
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }

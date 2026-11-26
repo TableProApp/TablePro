@@ -142,19 +142,19 @@ struct TransferProgressTests {
         #expect(TransferJob.restore.stopPolicy.confirmButton == "Stop Restore")
     }
 
-    @Test("An export's estimate note sits under the bar and never replaces the counts")
+    @Test("An export's status sits under the bar and never replaces the counts")
     func exportNoteKeepsTheCounts() {
         var state = ExportState(isExporting: true, currentTable: "orders", currentTableIndex: 2, totalTables: 3)
         state.processedRows = 500
         state.totalRows = 2_000
         state.rowTotalIsEstimate = true
-        state.estimateNote = "Progress estimated (1 table could not be counted)"
+        state.statusMessage = "Writing indexes"
 
         let progress = state.transferProgress(fileName: "shop")
 
         #expect(progress.itemText == "orders (2 of 3)")
         #expect(progress.amountText == "500 of about \(grouped(2_000)) rows")
-        #expect(progress.note == "Progress estimated (1 table could not be counted)")
+        #expect(progress.note == "Writing indexes")
         #expect(progress.fraction == 0.25)
     }
 

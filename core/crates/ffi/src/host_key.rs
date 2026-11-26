@@ -74,6 +74,8 @@ mod tests {
             username: Some("deploy".to_owned()),
             jump_hosts: Vec::new(),
             auth: SshAuthTag::Agent,
+            enabled: None,
+            options: None,
         });
 
         let wrong_host = forget(&services, &record, "other", &known_hosts).await.unwrap_err();

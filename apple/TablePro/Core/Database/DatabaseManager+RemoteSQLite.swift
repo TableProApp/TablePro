@@ -19,7 +19,7 @@ extension DatabaseManager {
         }
         guard !sshConfig.remoteFilePath.isEmpty else { throw ConnectionTunnelError.remoteFilePathMissing }
 
-        let credentials = sshCredentials(for: connection, passwordOverride: sshPasswordOverride)
+        let credentials = await sshCredentials(for: connection, passwordOverride: sshPasswordOverride)
         let endpoint = try await RemoteSQLiteTransportManager.shared.createTunnel(
             connectionId: connection.id,
             config: sshConfig,

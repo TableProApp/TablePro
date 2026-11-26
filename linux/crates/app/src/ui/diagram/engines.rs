@@ -173,7 +173,7 @@ impl NetworkServer {
                 options: Default::default(),
             },
             workspace_settings: WorkspaceSettings::workspace(false),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
         }
     }
 }
@@ -304,7 +304,7 @@ impl Server {
                 driver,
                 target: RequestTarget::File(FileEndpoint::open_existing(path).expect("an absolute path")),
                 workspace_settings: WorkspaceSettings::workspace(false),
-                safe_mode: tablepro_core::SafeModeLevel::Off,
+                safe_mode: tablepro_core::SafeModeLevel::Silent,
             },
             scope,
             _fixture: Box::new(dir),

@@ -37,7 +37,11 @@ impl ToolContext {
                 list.connections
                     .iter()
                     .filter(|connection| !connection.external_access.is_blocked())
-                    .cloned()
+                    // As the app shows it, in every list, error and approval a tool makes.
+                    .map(|connection| SavedConnection {
+                        name: tablepro_storage::shown_name(&connection.name),
+                        ..connection.clone()
+                    })
                     .collect(),
                 list,
             )),
