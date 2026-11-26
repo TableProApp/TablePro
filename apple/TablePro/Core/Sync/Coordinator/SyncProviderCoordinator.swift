@@ -349,6 +349,7 @@ final class SyncProviderCoordinator: ObservableObject {
 
     private func refreshStatus() {
         guard syncStatus.isEnabled, let engine = host.openedEngine else { return }
+        host.rememberICloudAccount()
         let info = engine.status()
         syncStatus = SyncEngineRules.status(info)
         lastSyncDate = info.lastPassMs.map { Date(timeIntervalSince1970: Double($0) / 1_000) } ?? metadata.lastSyncDate

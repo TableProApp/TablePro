@@ -28,6 +28,7 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         var hostChangeAttempts = 0
         var refuseHostChanges = false
         var refuseCategories = false
+        var icloudAccount: String?
         var uploadsAgain = 0
         var pass: (@Sendable (PassReasonTag) async -> Void)?
     }
@@ -87,6 +88,10 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
     func uploadAgain() async throws {
         update { $0.uploadsAgain += 1 }
     }
+
+    func icloudAccount() -> String? {
+        read { $0.icloudAccount }
+    }
 }
 
 @MainActor
@@ -101,6 +106,7 @@ private final class Fixture {
     var opening: AsyncGate?
     var enabled = true
     var settings = SyncSettings.default
+    var keptAccounts: [String?] = []
     var policy: DisableReason?
     var opens = true
     var listener: (any SyncListener)?
@@ -112,12 +118,16 @@ private final class Fixture {
         suite = try EphemeralDefaults("SyncProviderCoordinatorTests")
         metadata = SyncMetadataStorage(userDefaults: suite.defaults)
         transport = CloudKitCoreTransport(database: database)
-        let host = SyncEngineHost(transport: transport) { [unowned self] listener in
-            await opening?.wait()
-            guard opens else { throw AccountError.network("the account did not open") }
-            self.listener = listener
-            return engine
-        }
+        let host = SyncEngineHost(
+            transport: transport,
+            keepICloudAccount: { [unowned self] in keptAccounts.append($0) },
+            open: { [unowned self] listener in
+                await opening?.wait()
+                guard opens else { throw AccountError.network("the account did not open") }
+                self.listener = listener
+                return engine
+            }
+        )
         coordinator = SyncProviderCoordinator(
             host: host,
             loadSettings: { [unowned self] in
@@ -497,6 +507,17 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.passes.last == .person)
     }
 
+    @Test("The iCloud account the engine used is kept after each pass, for the next launch's open")
+    func theEnginesICloudAccountIsKept() async throws {
+        let fixture = try Fixture()
+        fixture.engine.update { $0.icloudAccount = "_alice" }
+
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.keptAccounts.last == "_alice")
+    }
+
     @Test("A pass whose categories the engine refused sends nothing, so a category turned off never goes up")
     func refusedCategoriesStopThePass() async throws {
         let fixture = try Fixture()
@@ -608,6 +629,7 @@ struct SyncProviderCoordinatorStatusTests {
     @Test("Each switch that is off names its core kinds, and passwords ride only with connections")
     func categoriesFromTheSwitches() {
         var settings = SyncSettings.default
+    var keptAccounts: [String?] = []
         settings.enabled = true
         settings.syncGroupsAndTags = false
         settings.syncSQLFavorites = false
