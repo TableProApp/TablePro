@@ -101,10 +101,15 @@ impl Staged {
         }
         // A settle after a crash reads them: without them a held record reads as one the store dropped, and the store's
         // value in a member that waits as the device's own edit. Only what holds a value back goes early: a row the
-        // batch removes stays until the store took what lets it go.
+        // batch removes stays until the store took what lets it go. A waiting record's copy from before its pull goes
+        // with its approval rows, so the mirror never takes the pulled copy for it.
         for write in &writes {
             if let Write::Put(row) = write
-                && matches!(row.as_ref(), Row::Approval(_) | Row::Held(_))
+                && match row.as_ref() {
+                    Row::Approval(_) | Row::Held(_) => true,
+                    Row::LegacyMirror(mirror) => mirror.item.starts_with(super::settle::PRIOR),
+                    _ => false,
+                }
             {
                 staged.put(row.as_ref().clone()).await?;
             }

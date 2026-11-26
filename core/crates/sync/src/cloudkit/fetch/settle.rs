@@ -124,12 +124,7 @@ fn local_change(record: Option<&LocalRecord>, merged: Merged) -> Option<Planned>
     }
 }
 
-// The `legacy_mirror` item that holds a waiting record's copy from before the pull that started the wait.
-pub(in crate::cloudkit) fn prior_item(key: &RecordKey) -> String {
-    format!("{PRIOR}{}/{}", key.kind.as_str(), key.record_id)
-}
-
-pub(in crate::cloudkit) const PRIOR: &str = "prior/";
+pub(in crate::cloudkit) use crate::adapters::approval::{PRIOR, prior_item};
 
 // The system fields and the fields, each as a u32 big-endian length and its bytes.
 fn prior_value(tag: &[u8], fields: &Value) -> Vec<u8> {

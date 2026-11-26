@@ -584,7 +584,10 @@ async fn a_move_a_restart_cut_short_keeps_icloud_stopped_and_goes_on_from_its_ba
     assert_eq!(restarted.get(9), Some(carried(9, "Only on the service", 9)));
     assert!(!in_zone(&cloud, 9));
     assert_eq!(restarted.device.sync.mode(), ServiceMode::Personal);
-    assert!(restarted.device.sync.move_row().await.unwrap().is_none());
+    assert_eq!(
+        restarted.device.sync.move_row().await.unwrap().map(|row| row.phase),
+        Some(MovePhase::Done)
+    );
 }
 
 // A move back that a restart cut short keeps personal data resting on TablePro Sync until the person moves it again.

@@ -75,6 +75,12 @@ impl ServiceSync {
         Ok(())
     }
 
+    // Before the opener lets the last account's file go, so the wait outlives a quit before the first pass.
+    pub async fn hold_for_account_choice(&self) -> Result<(), SyncError> {
+        let _session = self.session.lock().await;
+        self.owe_account_choice().await
+    }
+
     // What the push of this person's own scopes waits for.
     pub(super) async fn own_push_wait(&self) -> Result<Option<PushWait>, SyncError> {
         Ok(self.scope_row(ScopeName::Personal).await?.and_then(|row| row.push_wait))

@@ -427,6 +427,7 @@ impl ServiceSync {
                 ..
             })
         );
+        // A move back that went through rests personal data here; a new arrival starts over from it.
         if !open {
             self.let_go_of_personal(matches!(arrival, Arrival::FirstUpload), from)
                 .await?;
@@ -450,7 +451,8 @@ impl ServiceSync {
     }
 
     // The personal scope was pulled to the end and nothing personal is left to send, so no record goes up later without
-    // the rules of the move; the arrival's row then goes in the same commit as nothing else.
+    // the rules of the move. The row then says done until the app keeps TablePro Sync as its provider, so a move that
+    // went through while the app was not watching still tells it.
     async fn arrived(&self, report: PassReport) -> Result<PassReport, SyncError> {
         let personal = ScopeName::Personal;
         let reached = report.reached.contains(&personal)
@@ -461,10 +463,26 @@ impl ServiceSync {
             return Err(SyncError::MoveIncomplete);
         }
         self.check_stop()?;
+        let from = self.move_row().await?.and_then(|row| row.from);
         let mut txn = begin(&self.state).await?;
-        txn.delete(&RowKey::Move).await?;
+        txn.put(Row::Move(MoveRow {
+            from,
+            target: Provider::Service,
+            phase: MovePhase::Done,
+        }))
+        .await?;
         txn.commit().await?;
         Ok(report)
+    }
+
+    // The app keeps the move's target as its provider: the row has told it and goes.
+    pub async fn clear_done_move(&self) -> Result<(), SyncError> {
+        if self.move_row().await?.is_some_and(|row| row.phase == MovePhase::Done) {
+            let mut txn = begin(&self.state).await?;
+            txn.delete(&RowKey::Move).await?;
+            txn.commit().await?;
+        }
+        Ok(())
     }
 
     // The move this file holds open or done, if any.
@@ -489,12 +507,18 @@ impl ServiceSync {
         Ok(())
     }
 
-    // The move back went through: iCloud holds the personal data, so the row goes and personal data stays resting.
+    // The move back went through: iCloud holds the personal data, which stays resting here; the row says done until the
+    // app keeps iCloud as its provider.
     pub(crate) async fn left_for_icloud(&self) -> Result<(), SyncError> {
         self.set_mode(ServiceMode::TeamsOnly).await;
         self.check_stop()?;
         let mut txn = begin(&self.state).await?;
-        txn.delete(&RowKey::Move).await?;
+        txn.put(Row::Move(MoveRow {
+            from: Some(Provider::Service),
+            target: Provider::ICloud,
+            phase: MovePhase::Done,
+        }))
+        .await?;
         txn.commit().await?;
         Ok(())
     }
@@ -625,12 +649,11 @@ impl ServiceSync {
         arrival: Option<Arc<Arrival>>,
     ) -> Result<PassReport, SyncError> {
         tracing::debug!(?why, "sync pass");
-        // A move back to iCloud that stopped short keeps personal data resting until the person moves it again.
+        // A move back to iCloud, open or done, keeps personal data resting here until the person moves it again.
         if matches!(
             self.move_row().await,
             Ok(Some(MoveRow {
                 target: Provider::ICloud,
-                phase: MovePhase::Open,
                 ..
             }))
         ) {

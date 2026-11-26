@@ -42,8 +42,8 @@ struct Shared {
     known: Mutex<Option<LegacyMetadata>>,
     // The owner of each record whose base names one, for the journal's deletions (`export::owners`).
     owners: Mutex<HashMap<(String, String), Uuid>>,
-    // The owners were read from the state file; until then a deletion of an owned record waits for them, so one made
-    // offline before the launch's first pass still gets its tombstone.
+    // The owners were read from the state file; until then the marks wait for them, so a deletion of an owned record
+    // made offline before the launch's first pass still gets its tombstone.
     owners_read: std::sync::atomic::AtomicBool,
     waiting_owners: Mutex<Vec<JournalEntry>>,
     // Signals whose marks the host refused, sent again with the next ones and by a flush.
@@ -141,12 +141,11 @@ async fn send_marks(shared: &Shared, entries: Vec<JournalEntry>) -> Result<(), A
         .into_iter()
         .chain(entries)
         .collect::<Vec<_>>();
+    // Until the owners are read every signal waits, in order, so a later write of a record never lands before the
+    // deletion it follows.
     if !shared.owners_read.load(Ordering::SeqCst) {
-        let (owned, rest): (Vec<JournalEntry>, Vec<JournalEntry>) = entries
-            .into_iter()
-            .partition(|entry| export::owned(entry.kind) && !entry.deleted.is_empty());
-        lock(&shared.waiting_owners).extend(owned);
-        entries = rest;
+        lock(&shared.waiting_owners).append(&mut entries);
+        return Ok(());
     }
     let owners = lock(&shared.owners).clone();
     let (dirty, tombstones) = marks_of(&entries, shared.clock.now_ms(), &owners);
@@ -214,6 +213,11 @@ impl LegacyLink {
             }
         }
         Ok(())
+    }
+
+    // No state file names an owner, before any mark is queued.
+    pub(in crate::cloudkit) fn no_owners(&self) {
+        self.shared.owners_read.store(true, Ordering::SeqCst);
     }
 
     pub(in crate::cloudkit) fn owners_read(&self) -> bool {
@@ -390,6 +394,11 @@ impl LegacyMarks {
     // record belongs to, or none when the device never used one: a deletion of an owned record waits for it.
     pub async fn owners_from(&self, state: Option<&dyn StateStore>) -> Result<(), SyncError> {
         self.link.owners_from(state).await
+    }
+
+    // The device never used iCloud, so no owner is to be read: call before any mark is queued.
+    pub fn no_owners(&self) {
+        self.link.no_owners();
     }
 }
 

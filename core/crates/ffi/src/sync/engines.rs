@@ -276,16 +276,16 @@ impl ServiceEngine {
             device_row: link.device_row.clone(),
         };
         let state = hosts.files.open(identity).await?;
-        let follows = match last {
-            Some(previous) if another_sign_in(&previous, &link.origin, link.account) => {
+        let previous = last.filter(|previous| another_sign_in(previous, &link.origin, link.account));
+        let follows = match &previous {
+            Some(previous) => {
                 let old = hosts.files.open(previous.clone()).await?;
                 let adapters = Adapters::new(hosts.adapters(Provider::TableproSync));
                 let unsent = tablepro_sync::service::unsent_changes(&old, &adapters).await?;
                 drop(old);
-                hosts.files.delete(previous).await?;
                 Some(unsent)
             }
-            _ => None,
+            None => None,
         };
         let wake = Wake::new();
         let journal = Journal::new(wake.clone());
@@ -315,6 +315,12 @@ impl ServiceEngine {
             mode,
             follows,
         }));
+        // The new file holds the wait for the person's choice before the last one goes, so a quit in between asks
+        // again rather than sending the last account's data unasked.
+        if let Some(previous) = previous {
+            sync.hold_for_account_choice().await?;
+            hosts.files.delete(previous).await?;
+        }
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
             wake,

@@ -6,6 +6,10 @@ use std::sync::Arc;
 
 use tablepro_account::SyncProvider;
 use tablepro_sync::SyncError;
+use tablepro_sync::api::cloudkit::{
+    CloudKitAccount, CloudKitChanges, CloudKitFailure, CloudKitFetched, CloudKitOutcome, CloudKitRecord,
+    CloudKitTransport,
+};
 use tablepro_sync::api::state::{MovePhase, Provider};
 use tablepro_sync::moves::{MoveParts, Mover};
 use tablepro_sync::service::ServiceMode;
@@ -73,6 +77,67 @@ pub(crate) fn allowed(account: Option<&AccountService>, platform: SyncPlatformTa
     account.account.policy().sync_choices(offered).contains(provider.into())
 }
 
+// CloudKit as the engines and the moves reach it: a call is refused before it goes, and its answer dropped, once the
+// values forbid iCloud traffic, so a move or a pass in flight commits nothing of it (0055, When a value applies).
+pub(crate) struct PolicyFenced {
+    pub(crate) inner: Arc<dyn CloudKitTransport>,
+    pub(crate) account: Option<Arc<AccountService>>,
+    pub(crate) platform: SyncPlatformTag,
+}
+
+impl PolicyFenced {
+    fn check(&self) -> Result<(), CloudKitFailure> {
+        if allowed(self.account.as_deref(), self.platform, SyncProviderTag::Icloud) {
+            Ok(())
+        } else {
+            Err(CloudKitFailure::Restricted)
+        }
+    }
+
+    async fn fenced<T>(&self, call: impl Future<Output = Result<T, CloudKitFailure>>) -> Result<T, CloudKitFailure> {
+        self.check()?;
+        let answer = call.await;
+        self.check()?;
+        answer
+    }
+}
+
+#[async_trait::async_trait]
+impl CloudKitTransport for PolicyFenced {
+    async fn account_status(&self) -> Result<CloudKitAccount, CloudKitFailure> {
+        self.fenced(self.inner.account_status()).await
+    }
+
+    async fn ensure_zone(&self, account: String) -> Result<(), CloudKitFailure> {
+        self.fenced(self.inner.ensure_zone(account)).await
+    }
+
+    async fn delete_zone(&self, account: String) -> Result<(), CloudKitFailure> {
+        self.fenced(self.inner.delete_zone(account)).await
+    }
+
+    async fn fetch_changes(&self, account: String, token: Option<Vec<u8>>) -> Result<CloudKitChanges, CloudKitFailure> {
+        self.fenced(self.inner.fetch_changes(account, token)).await
+    }
+
+    async fn fetch_records(
+        &self,
+        account: String,
+        names: Vec<String>,
+    ) -> Result<Vec<CloudKitFetched>, CloudKitFailure> {
+        self.fenced(self.inner.fetch_records(account, names)).await
+    }
+
+    async fn modify(
+        &self,
+        account: String,
+        saves: Vec<CloudKitRecord>,
+        deletes: Vec<String>,
+    ) -> Result<Vec<CloudKitOutcome>, CloudKitFailure> {
+        self.fenced(self.inner.modify(account, saves, deletes)).await
+    }
+}
+
 // The provider in use stops at once once the values no longer allow it, with no last pass (0055, Leaving a provider):
 // iCloud's engine stops, and TablePro Sync keeps its teams and key objects while personal data rests, until the person
 // confirms the move the profile leaves.
@@ -137,8 +202,13 @@ pub struct OpenMoveInfo {
 
 impl SyncService {
     async fn open_move_now(&self) -> Result<Option<OpenMoveInfo>, SyncError> {
-        if let Ok(engine) = &self.icloud
-            && let Some(row) = engine.sync.open_move().await?
+        let moved_out = match &self.icloud {
+            Ok(engine) => engine.sync.open_move().await?,
+            // The values forbid iCloud or it is not the provider: the file it used last is read, with no CloudKit call.
+            Err(_) => self.icloud_file_move().await?,
+        };
+        if self.config.provider == SyncProviderTag::Icloud
+            && let Some(row) = moved_out
         {
             return Ok(Some(OpenMoveInfo {
                 target: SyncProviderTag::TableproSync,
@@ -161,6 +231,47 @@ impl SyncService {
                 done: row.phase == MovePhase::Done,
             })
         }))
+    }
+}
+
+impl SyncService {
+    async fn icloud_file_move(&self) -> Result<Option<tablepro_sync::api::state::MoveRow>, SyncError> {
+        let (Some(files), Some(account)) = (&self.files, &self.config.icloud_account) else {
+            return Ok(None);
+        };
+        let state = files
+            .open(tablepro_sync::api::state::StateIdentity::ICloud {
+                user_record_name: account.clone(),
+            })
+            .await?;
+        let row = state
+            .begin()
+            .await?
+            .get(&tablepro_sync::api::state::RowKey::Move)
+            .await?;
+        Ok(match row {
+            Some(tablepro_sync::api::state::Row::Move(row)) if row.target == Provider::Service => Some(row),
+            _ => None,
+        })
+    }
+
+    // The app opened sync with the target of a move that went through: the move has told it.
+    pub(crate) async fn acknowledge_moves(&self) {
+        let Ok(engine) = self.service.now() else {
+            return;
+        };
+        let Ok(Some(row)) = engine.sync.move_row().await else {
+            return;
+        };
+        let kept = match row.target {
+            Provider::Service => self.config.provider == SyncProviderTag::TableproSync,
+            Provider::ICloud => self.config.provider == SyncProviderTag::Icloud,
+        };
+        if kept
+            && let Err(error) = engine.sync.clear_done_move().await
+        {
+            tracing::warn!(code = error.code(), "a finished move's row stayed");
+        }
     }
 }
 
@@ -266,6 +377,7 @@ impl SyncService {
     }
 
     pub async fn plan_move_to_icloud(&self) -> Result<MoveBackPlanInfo, CoreError> {
+        self.allows_target(SyncProviderTag::Icloud)?;
         self.on_mover(move |mover| async move { mover.plan_move_to_icloud().await.map(MoveBackPlanInfo::from) })
             .await
     }

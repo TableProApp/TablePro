@@ -233,6 +233,14 @@ enum StoreCopy {
     Gone,
 }
 
+// The `legacy_mirror` item that holds an iCloud record's copy from before the pull that started its wait, which the
+// downgrade mirror hands the previous stable while the wait lasts.
+pub(crate) fn prior_item(key: &RecordKey) -> String {
+    format!("{PRIOR}{}/{}", key.kind.as_str(), key.record_id)
+}
+
+pub(crate) const PRIOR: &str = "prior/";
+
 // The person's side of the queue, over one state file and its stores.
 pub struct Queue<'a> {
     pub state: &'a Arc<dyn StateStore>,
@@ -360,6 +368,15 @@ impl Queue<'_> {
             }
             // The store no longer holds the record: nothing is left to decide.
             _ => txn.delete(&RowKey::Approval(key.clone(), field.to_owned())).await?,
+        }
+        // The wait ends with its last approved member, and the copy from before it with it, so a later wait keeps its
+        // own.
+        if rows_of(txn.as_mut(), key)
+            .await?
+            .iter()
+            .all(|row| row.decision == ApprovalDecision::Approved)
+        {
+            txn.delete(&RowKey::LegacyMirror(prior_item(key))).await?;
         }
         self.fence.check()?;
         txn.commit().await?;

@@ -22,7 +22,7 @@ use super::engines::{
 use super::events::{Signals, forward};
 use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
 use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
-use super::moves::{allowed, hold_to_policy, resume_open_move};
+use super::moves::{PolicyFenced, allowed, hold_to_policy, resume_open_move};
 use super::service::{SyncConfig, SyncListener, SyncPlatformTag, SyncService};
 use super::service_records::categories_arg;
 use crate::account::{AccountService, SyncProviderTag};
@@ -210,6 +210,13 @@ impl OpenParts {
 impl SyncService {
     // On the runtime. An engine that cannot start keeps why, which its calls answer; the others run.
     pub(crate) async fn open(tasks: Tasks, mut parts: OpenParts) -> Arc<Self> {
+        parts.cloudkit = parts.cloudkit.take().map(|inner| {
+            Arc::new(PolicyFenced {
+                inner,
+                account: parts.account.clone(),
+                platform: parts.config.platform,
+            }) as Arc<dyn sync::CloudKitTransport>
+        });
         let (cloudkit, files) = (parts.cloudkit.clone(), parts.files.clone());
         let signals = Arc::new(Signals::default());
         let forwarding = forward(Arc::clone(&signals), Arc::clone(&parts.listener), &tasks);
@@ -251,22 +258,23 @@ impl SyncService {
             _ => None,
         };
         if let Some(marks) = &legacy_marks {
-            let (marks, files) = (Arc::clone(marks), files.clone());
-            let account = parts.config.icloud_account.clone();
-            drop(tasks.spawn_task(async move {
-                let state = match (files, account) {
-                    (Some(files), Some(account)) => files
-                        .open(tablepro_sync::api::state::StateIdentity::ICloud {
-                            user_record_name: account,
-                        })
-                        .await
-                        .ok(),
-                    _ => None,
-                };
-                if let Err(error) = marks.owners_from(state.as_deref()).await {
-                    tracing::warn!(code = error.code(), "the downgrade marks read no owners");
+            match (files.clone(), parts.config.icloud_account.clone()) {
+                (Some(files), Some(account)) => {
+                    let marks = Arc::clone(marks);
+                    drop(tasks.spawn_task(async move {
+                        let state = files
+                            .open(tablepro_sync::api::state::StateIdentity::ICloud {
+                                user_record_name: account,
+                            })
+                            .await
+                            .ok();
+                        if let Err(error) = marks.owners_from(state.as_deref()).await {
+                            tracing::warn!(code = error.code(), "the downgrade marks read no owners");
+                        }
+                    }));
                 }
-            }));
+                _ => marks.no_owners(),
+            }
         }
         let kept = categories.clone().unwrap_or_default();
         // A provider the values no longer allow carries no personal data from the start (0055, Leaving a provider).
@@ -320,6 +328,7 @@ impl SyncService {
             ._policy
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(watching);
+        service.acknowledge_moves().await;
         drop(service.tasks.spawn_task(resume_open_move(&Arc::downgrade(&service))));
         service
     }

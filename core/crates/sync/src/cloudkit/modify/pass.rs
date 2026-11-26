@@ -176,6 +176,10 @@ impl CloudKitSync {
     #[must_use]
     pub fn with_legacy_mirror(mut self, mirror: Arc<dyn LegacyMirror>) -> Self {
         let (link, marks) = LegacyLink::new(mirror, Arc::clone(&self.clock));
+        // With no account synced before there is no state file whose bases name an owner.
+        if lock(&self.account).is_none() {
+            link.no_owners();
+        }
         self.journal.observe(marks);
         self.legacy = Some(link);
         self
@@ -450,15 +454,15 @@ impl CloudKitSync {
 
     async fn run(&self, session: &mut Session, named: Option<&JournalIds>) -> Result<CloudKitReport, SyncError> {
         self.stop.check()?;
-        if self.moved_out(session).await? {
-            self.stop.stop();
-            return Err(SyncError::NotAllowed { what: MOVED });
-        }
         // Before any CloudKit call, so a deletion of an owned record made offline still names its owner for the
         // previous stable (0054, Downgrade mirror).
         if let Some(legacy) = self.legacy.as_ref().filter(|legacy| !legacy.owners_read()) {
             let state = self.move_file(session).await?;
             legacy.owners_from(state.as_deref()).await?;
+        }
+        if self.moved_out(session).await? {
+            self.stop.stop();
+            return Err(SyncError::NotAllowed { what: MOVED });
         }
         let account = match self.transport.account_status().await {
             Ok(status) => status.user_record_name,
