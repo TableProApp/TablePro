@@ -106,6 +106,7 @@ pub enum AppClientTag {
     Linux,
     Windows,
     Macos,
+    Ios,
 }
 
 // The server the account signs in to. `api_origin` is what a person or an organization names it by.
@@ -169,6 +170,7 @@ impl From<AppClientTag> for AppClient {
             AppClientTag::Linux => Self::LINUX,
             AppClientTag::Windows => Self::WINDOWS,
             AppClientTag::Macos => Self::MACOS,
+            AppClientTag::Ios => Self::IOS,
         }
     }
 }

@@ -39,6 +39,8 @@ allow = [
     "LGPL-2.1-or-later",
     "0BSD",
     "BSL-1.0",
+    # The EFF large word list in tablepro-keys, CC BY 3.0 US (core ADR 0056, Libraries).
+    "CC-BY-3.0",
 ]
 
 [licenses.private]

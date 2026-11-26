@@ -44,17 +44,27 @@ public enum ImportStoreError: Error, Equatable {
     case unreadable
 }
 
+public struct CredentialWriteResult: Sendable, Equatable {
+    public var secretsNotKept: Int
+
+    public init(secretsNotKept: Int) {
+        self.secretsNotKept = secretsNotKept
+    }
+
+    public static let allKept = CredentialWriteResult(secretsNotKept: 0)
+}
+
 @MainActor
 public protocol ImportLibraryStore {
     func snapshot() async throws -> ImportLibrarySnapshot
-    /// Returns only the profiles this call created: a bundle can create a profile, never select one.
+    // Returns only the profiles this call created: a bundle can create a profile, never select one.
     func addImportedProfiles(_ profiles: [PlannedCredentialProfile]) throws -> [BundleRef: UUID]
     func ensureGroupPaths(_ paths: [[PathComponent]]) throws -> [UUID?]
     func ensureTags(_ tags: [PlannedTag]) throws -> [String: UUID]
-    /// Only persisted ids, since credentials and saved queries follow what this returns; nil when nothing saved.
+    // Only persisted ids, since credentials and saved queries follow what this returns; nil when nothing saved.
     func writeConnections(_ connections: [ResolvedConnection]) -> ConnectionImportWrite?
     func existingConnectionIds() -> Set<UUID>
-    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID)
+    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) -> CredentialWriteResult
 }
 
 public protocol SavedQueryImportStore: Sendable {

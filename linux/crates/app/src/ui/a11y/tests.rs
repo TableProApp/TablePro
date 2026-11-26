@@ -9,7 +9,7 @@ use crate::test_support::{
 use crate::ui::{
     PreferencesDialog, SessionWindow, browse_tab, connect_dialog, data_grid, diagram, editor, export, filter_strip,
     history_dialog, import_dialog, import_from_app, preferences_dialog, saved_queries_dialog, session_window,
-    ssh_section, structure_tab, welcome_view, workspace,
+    setup_guide, ssh_section, structure_tab, welcome_view, workspace,
 };
 
 /// Every class the app's templates build. A template whose class is
@@ -45,6 +45,7 @@ fn template_classes() -> Vec<glib::Type> {
         saved_queries_dialog::SavedQueriesDialog::static_type(),
         saved_queries_dialog::SavedQueryRow::static_type(),
         SessionWindow::static_type(),
+        setup_guide::SetupGuide::static_type(),
         ssh_section::SshSection::static_type(),
         structure_tab::StructureTab::static_type(),
         welcome_view::WelcomeView::static_type(),

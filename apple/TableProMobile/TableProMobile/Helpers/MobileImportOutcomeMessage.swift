@@ -14,6 +14,8 @@ nonisolated struct MobileImportOutcomeMessage: Equatable, Sendable {
     private static func text(for outcome: ImportOutcome) -> (title: String, message: String) {
         let connections = outcome.connectionsAdded + outcome.connectionsReplaced
         let failedTitle = String(localized: "Import Failed")
+        let incompleteTitle = String(localized: "Import Incomplete")
+        let passwords = passwordsNotKeptSentence(outcome.passwordsNotKept)
         switch outcome.failure {
         case .libraryUnreadable:
             return (failedTitle, String(localized: "TablePro could not read your connection library, so nothing was imported."))
@@ -24,7 +26,7 @@ nonisolated struct MobileImportOutcomeMessage: Equatable, Sendable {
             guard let imported = connectionSentence(connections) else {
                 return (failedTitle, queriesFailed)
             }
-            return (String(localized: "Import Incomplete"), "\(imported) \(queriesFailed)")
+            return (incompleteTitle, [imported, passwords, queriesFailed].compactMap { $0 }.joined(separator: " "))
         case nil:
             break
         }
@@ -37,8 +39,9 @@ nonisolated struct MobileImportOutcomeMessage: Equatable, Sendable {
                     ?? String(localized: "Everything selected was already in your library.")
             )
         }
-        let sentences = imported + [notImportedSentence(outcome.savedQueriesNotImported)].compactMap { $0 }
-        return (String(localized: "Import Complete"), sentences.joined(separator: " "))
+        let sentences = imported + [passwords, notImportedSentence(outcome.savedQueriesNotImported)].compactMap { $0 }
+        let title = passwords == nil ? String(localized: "Import Complete") : incompleteTitle
+        return (title, sentences.joined(separator: " "))
     }
 
     private static func connectionSentence(_ count: Int) -> String? {
@@ -53,6 +56,13 @@ nonisolated struct MobileImportOutcomeMessage: Equatable, Sendable {
         return count == 1
             ? String(localized: "1 saved query was added.")
             : String(format: String(localized: "%d saved queries were added."), count)
+    }
+
+    private static func passwordsNotKeptSentence(_ count: Int) -> String? {
+        guard count > 0 else { return nil }
+        return count == 1
+            ? String(localized: "1 password could not be kept in the Keychain.")
+            : String(format: String(localized: "%d passwords could not be kept in the Keychain."), count)
     }
 
     private static func notImportedSentence(_ count: Int) -> String? {

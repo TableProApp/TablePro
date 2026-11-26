@@ -18,7 +18,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         var tree = app.Find("ObjectTree");
         app.FindByName("Track", tree);
         app.TypeInto("Query 1", CreateTrigger);
@@ -57,7 +57,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", CountTracks);
         app.Chord(

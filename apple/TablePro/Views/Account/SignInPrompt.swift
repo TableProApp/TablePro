@@ -13,7 +13,7 @@ internal struct SignInPrompt {
     let isUITestSandbox: Bool
     let uiTestRequestsPrompt: Bool
     let isUserSession: () -> Bool
-    let welcomeSheetPending: () -> Bool
+    let setupGuidePending: () -> Bool
     let isSignedIn: () -> Bool
     let hasStoredLicenseKey: () -> Bool
     let present: () -> Void
@@ -25,25 +25,19 @@ internal struct SignInPrompt {
             isUITestSandbox: environment.isIsolated,
             uiTestRequestsPrompt: UITestLaunchEnvironment.requestsSignInPrompt,
             isUserSession: { AppActivationPolicyController.shared.origin == .user },
-            welcomeSheetPending: {
-                WelcomeSheetGate.shouldPresent(
-                    hasSeen: AppSettingsStorage.shared.hasSeenWelcomeSheet(),
-                    isUITestSandbox: environment.isIsolated,
-                    uiTestRequestsSheet: UITestLaunchEnvironment.requestsWelcomeSheet
-                )
-            },
+            setupGuidePending: { SetupGuidePresenter.shared.isPending },
             isSignedIn: { AccountServices.shared.isSignedIn },
             hasStoredLicenseKey: { AccountServices.shared.hasLicenseKeyToExchange },
             present: { SignInWindowController.present(purpose: .firstLaunch) }
         )
     }
 
-    // After launch, and again when the welcome sheet a new install sees first is closed.
+    // After launch, and again once the setup guide closes or the launch decides against it.
     func presentIfNeeded() {
         guard !defaults.bool(forKey: PreferenceKeys.signInPromptShown.name) else { return }
         guard !isUITestSandbox || uiTestRequestsPrompt else { return }
         // A machine-started process (an intent, MCP) waits for the person's own launch.
-        guard isUserSession(), !welcomeSheetPending() else { return }
+        guard isUserSession(), !setupGuidePending() else { return }
         defaults.set(true, forKey: PreferenceKeys.signInPromptShown.name)
         guard !isSignedIn(), !hasStoredLicenseKey() else { return }
         present()

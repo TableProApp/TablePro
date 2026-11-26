@@ -34,6 +34,15 @@ pub struct World {
 
 impl World {
     pub fn start(name: &str, drivers: DriverRegistry, connector: FakeConnector) -> Result<Self, String> {
+        Self::build(name, drivers, connector, true)
+    }
+
+    // No saved connection, so the first window opens the setup guide.
+    pub fn start_empty(name: &str, drivers: DriverRegistry, connector: FakeConnector) -> Result<Self, String> {
+        Self::build(name, drivers, connector, false)
+    }
+
+    fn build(name: &str, drivers: DriverRegistry, connector: FakeConnector, saved: bool) -> Result<Self, String> {
         let dir = tempfile::tempdir().map_err(|error| format!("no temporary directory: {error}"))?;
         let runtime = AppRuntime::build().map_err(|error| format!("no runtime: {error}"))?;
         let settings = Rc::new(settings(dir.path())?);
@@ -47,15 +56,17 @@ impl World {
                 ConnectionColor::Red,
             )
             .map_err(|error| format!("could not save the tag: {error}"))?;
-        let saved = SavedConnection {
+        let connection = SavedConnection {
             tags: vec![tag.id],
             icon: Some(ConnectionIcon::Server),
             ..saved_connection(&dir.path().join("fake.db"))
         };
-        storage
-            .connections()
-            .upsert_blocking(saved.clone())
-            .map_err(|error| format!("could not save the connection: {error}"))?;
+        if saved {
+            storage
+                .connections()
+                .upsert_blocking(connection.clone())
+                .map_err(|error| format!("could not save the connection: {error}"))?;
+        }
         let liveness = LivenessPolicy::DESKTOP;
         let services = AppServices::new(AppServicesParts {
             drivers,
@@ -75,7 +86,7 @@ impl World {
             .map_err(|error| format!("could not register the application: {error}"))?;
         Ok(Self {
             app,
-            saved,
+            saved: connection,
             runtime: Some(runtime),
             _dir: dir,
         })
@@ -146,6 +157,9 @@ fn saved_connection(database: &Path) -> SavedConnection {
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 

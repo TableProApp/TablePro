@@ -1246,9 +1246,7 @@ fn tab_menu() -> gio::Menu {
     let rename = gio::Menu::new();
     let item = gio::MenuItem::new(Some(&gettext("_Rename Tab…")), Some("tab.rename"));
     // F2 is the shell's own key, which GtkPopoverMenu does not show by itself.
-    if let Some(key) = crate::application::triggers_for(&format!("win.{}", super::tab_rename::RENAME_TAB)).first() {
-        item.set_attribute_value("accel", Some(&key.to_variant()));
-    }
+    crate::application::keymap::show_key_of(&item, &format!("win.{}", super::tab_rename::RENAME_TAB));
     rename.append_item(&item);
     let others = gio::Menu::new();
     others.append(Some(&gettext("Close _Other Tabs")), Some("tab.close-others"));
@@ -1259,6 +1257,7 @@ fn tab_menu() -> gio::Menu {
     menu.append_section(None, &rename);
     menu.append_section(None, &others);
     menu.append_section(None, &close);
+    crate::application::keymap::follow_menu(&menu);
     menu
 }
 
