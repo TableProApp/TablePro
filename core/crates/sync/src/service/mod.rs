@@ -16,18 +16,24 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tablepro_keys::encoding::KeyPurpose;
 
+use crate::adapters::approval::Queue;
+use crate::adapters::categories::DeviceCategories;
+use crate::adapters::conflict::Conflicts;
 use crate::api::adapter::StoreStamp;
-use crate::api::control::{HeldRecord, HeldRecordReason, PassReason, SyncControl, SyncPhase, SyncStatus};
+use crate::api::control::{
+    ConflictChoice, HeldRecord, HeldRecordReason, PassReason, PendingApproval, SyncCategories, SyncControl, SyncPhase,
+    SyncStatus, TeamConflict,
+};
 use crate::api::device_store::DeviceStoreError;
 use crate::api::error::SyncError;
-use crate::api::ids::{EpochId, RecordKey, ScopeName};
+use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
     KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow, Table,
 };
 use crate::api::transport::{DpopKey, ServiceTransport, TransportError};
-use crate::engine::{Adapters, Clock, EngineEvents, EngineHooks, Journal, JournalIds, Pass, StopSignal};
+use crate::engine::{Adapters, Clock, EngineEvents, EngineHooks, Journal, JournalEntry, JournalIds, Pass, StopSignal};
 use crate::keys::KeyService;
 
 // This device's signing key, which every personal and history call and every key-object or envelope write carries
@@ -83,6 +89,9 @@ pub struct ServiceSync {
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
+    categories: Mutex<DeviceCategories>,
+    // The history entries this device keeps, its retention, which a snapshot takes newest first; None takes all.
+    history_window: Mutex<Option<u32>>,
 }
 
 #[derive(Debug, Default)]
@@ -135,6 +144,8 @@ struct PassCtx {
     keys_ready: bool,
     // A journal pass diffs only these records.
     named: Option<JournalIds>,
+    // What each history entry sealed this pass was before sealing, so a refusal is remembered by it.
+    sealed_prints: HashMap<RecordKey, [u8; 32]>,
     report: PassReport,
 }
 
@@ -184,6 +195,50 @@ impl ServiceSync {
                 held: 0,
                 queued_changes: 0,
             }),
+            categories: Mutex::new(DeviceCategories::default()),
+            history_window: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn categories(&self) -> DeviceCategories {
+        self.categories.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    pub(crate) fn history_window(&self) -> Option<u32> {
+        *self.history_window.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    // The app's history retention, in entries: a snapshot of the history scope takes that many, newest first, and the
+    // history view pages back for older ones (0051, Pull; F18).
+    pub fn set_history_window(&self, entries: Option<u32>) {
+        *self.history_window.lock().unwrap_or_else(PoisonError::into_inner) = entries;
+    }
+
+    fn queue(&self) -> Queue<'_> {
+        Queue {
+            state: &self.state,
+            adapters: &self.adapters,
+        }
+    }
+
+    fn conflict_table(&self) -> Conflicts<'_> {
+        Conflicts {
+            state: &self.state,
+            adapters: &self.adapters,
+        }
+    }
+
+    // A decision changed the stores and the counts: the app reads them again, and the record goes up soon.
+    fn decided(&self, key: &RecordKey) {
+        if let Some(kind) = key.kind.known() {
+            self.journal.changed(&[JournalEntry {
+                kind,
+                written: vec![key.record_id.clone()],
+                deleted: Vec::new(),
+            }]);
+        }
+        if let Some(events) = &self.events {
+            events.status_changed();
         }
     }
 
@@ -246,6 +301,7 @@ impl ServiceSync {
             approved,
             keys_ready: false,
             named,
+            sealed_prints: HashMap::new(),
             report: PassReport::default(),
         };
         self.read_key_state(&mut ctx).await?;
@@ -538,9 +594,10 @@ impl ServiceSync {
                 };
             }
         }
-        if let Ok((held, conflicts)) = counts {
+        if let Ok((held, conflicts, approvals)) = counts {
             status.held = held;
             status.conflicts = conflicts;
+            status.waiting_approvals = approvals;
         }
         drop(status);
         if let Some(events) = &self.events {
@@ -548,14 +605,26 @@ impl ServiceSync {
         }
     }
 
-    async fn counts(&self) -> Result<(u32, u32), SyncError> {
+    async fn counts(&self) -> Result<(u32, u32, u32), SyncError> {
         let mut txn = begin(&self.state).await?;
         let held = txn.scan(&RowRange::Table(Table::Held)).await?.len();
         let conflicts = txn.scan(&RowRange::Table(Table::Conflicts)).await?.len();
+        drop(txn);
+        let approvals = self.queue().count().await?;
         Ok((
             u32::try_from(held).unwrap_or(u32::MAX),
             u32::try_from(conflicts).unwrap_or(u32::MAX),
+            approvals,
         ))
+    }
+
+    async fn refresh_counts(&self) {
+        if let Ok((held, conflicts, approvals)) = self.counts().await {
+            let mut status = self.status_lock();
+            status.held = held;
+            status.conflicts = conflicts;
+            status.waiting_approvals = approvals;
+        }
     }
 }
 
@@ -589,6 +658,63 @@ impl SyncControl for ServiceSync {
 
     async fn sync_now(&self, why: PassReason) -> Result<(), SyncError> {
         self.run_pass(why).await.map(|_| ())
+    }
+
+    // An off kind sends nothing and takes nothing; turning one on reads it again (0054, Rules for both providers).
+    async fn set_categories(&self, categories: SyncCategories) -> Result<(), SyncError> {
+        let categories = DeviceCategories::from(&categories);
+        let changed = {
+            let mut held = self.categories.lock().unwrap_or_else(PoisonError::into_inner);
+            let changed = *held != categories;
+            *held = categories;
+            changed
+        };
+        if changed {
+            self.journal.pass_soon(PassReason::Person);
+        }
+        Ok(())
+    }
+
+    // A store the app still keeps tells what its write changed, as a core store's journal does (0060).
+    async fn host_changed(&self, kind: KindName, written: Vec<String>, deleted: Vec<String>) -> Result<(), SyncError> {
+        let Some(kind) = kind.known() else {
+            return Err(SyncError::Unknown { what: "kind" });
+        };
+        self.journal.changed(&[JournalEntry { kind, written, deleted }]);
+        Ok(())
+    }
+
+    async fn approvals(&self) -> Result<Vec<PendingApproval>, SyncError> {
+        let _session = self.session.lock().await;
+        self.queue().waiting().await
+    }
+
+    async fn decide_approval(&self, key: RecordKey, field: String, approve: bool) -> Result<(), SyncError> {
+        let session = self.session.lock().await;
+        self.queue().decide(&key, &field, approve).await?;
+        drop(session);
+        self.refresh_counts().await;
+        self.decided(&key);
+        Ok(())
+    }
+
+    async fn conflicts(&self) -> Result<Vec<TeamConflict>, SyncError> {
+        let _session = self.session.lock().await;
+        self.conflict_table().open().await
+    }
+
+    async fn resolve_conflict(&self, key: RecordKey, keep: ConflictChoice) -> Result<(), SyncError> {
+        let session = self.session.lock().await;
+        self.conflict_table().resolve(&key, keep).await?;
+        drop(session);
+        self.refresh_counts().await;
+        self.decided(&key);
+        Ok(())
+    }
+
+    async fn load_older_history(&self) -> Result<bool, SyncError> {
+        let _session = self.session.lock().await;
+        self.load_older().await
     }
 
     async fn held_records(&self) -> Result<Vec<HeldRecord>, SyncError> {

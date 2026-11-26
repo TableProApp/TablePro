@@ -558,6 +558,29 @@ impl AccountFlows for KeyLog {
     ) -> Result<OpenedEnvelope, SyncError> {
         self.open(ScopeName::Personal, &envelope, &fields, in_force)
     }
+
+    // Sealed under history version 1, the plaintext carried as text so a pull reads it back.
+    async fn seal_history_entry(
+        &self,
+        _entry: tablepro_keys::encoding::HistoryId,
+        plaintext: Value,
+    ) -> Result<Value, SyncError> {
+        Ok(json!({"suite": "tp1", "kv": 1, "ct": plaintext.to_string()}))
+    }
+
+    async fn open_history_entry(
+        &self,
+        _entry: tablepro_keys::encoding::HistoryId,
+        fields: Value,
+    ) -> Result<Value, SyncError> {
+        fields
+            .get("ct")
+            .and_then(Value::as_str)
+            .and_then(|text| serde_json::from_str(text).ok())
+            .ok_or(SyncError::Malformed {
+                what: "sealed history entry",
+            })
+    }
 }
 
 #[async_trait]
@@ -874,7 +897,7 @@ pub fn write(kind: &str, id: &str, base: Option<ChangeTag>, fields: Value) -> Ch
 }
 
 pub fn connection(name: &str) -> Value {
-    json!({"name": name, "host": "db.example.com", "sort_order": 1})
+    json!({"name": name, "icon_name": "database", "sort_order": 1})
 }
 
 pub async fn open_on_disk(dir: &Path, row: &str) -> Arc<dyn StateStore> {

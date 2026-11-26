@@ -4,9 +4,10 @@
 
 use std::collections::HashSet;
 
-use tablepro_keys::encoding::{KeyPurpose, Version};
+use tablepro_keys::encoding::{HistoryId, KeyPurpose, Version};
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_records::Kind;
+use tablepro_records::record_id::parse_uuid;
 use uuid::Uuid;
 
 use super::{PassCtx, ServiceSync, begin, scope_refusal};
@@ -24,6 +25,14 @@ use crate::engine::key_base;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Opens {
     Taken,
+    Refused,
+    Waits,
+}
+
+// What the keys made of a pulled history entry: its plaintext, or why the device holds it by id.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum HistoryOpens {
+    Plain(serde_json::Value),
     Refused,
     Waits,
 }
@@ -127,6 +136,28 @@ impl ServiceSync {
             Err(error @ (SyncError::NotAllowed { .. } | SyncError::Locked { .. })) => {
                 tracing::debug!(code = error.code(), "an envelope waits until the keys can judge it");
                 Ok(Opens::Waits)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    // A history entry is sealed under the history key, so the store takes its plaintext (0056, Envelopes and history).
+    // One the keys refuse is held by id; one they cannot open yet waits, as an envelope does.
+    pub(super) async fn history_opens(&self, record: &PulledRecord) -> Result<HistoryOpens, SyncError> {
+        let (Some(fields), Some(id)) = (record.fields.clone(), parse_uuid(&record.record_id)) else {
+            return Ok(HistoryOpens::Refused);
+        };
+        self.stop.check()?;
+        match self.keys.open_history_entry(HistoryId(id), fields).await {
+            Ok(plain) if plain.is_object() => Ok(HistoryOpens::Plain(plain)),
+            Ok(_) => Ok(HistoryOpens::Refused),
+            Err(SyncError::Keys(error)) => {
+                tracing::debug!(code = error.code(), "a history entry was not taken");
+                Ok(HistoryOpens::Refused)
+            }
+            Err(error @ (SyncError::NotAllowed { .. } | SyncError::Locked { .. })) => {
+                tracing::debug!(code = error.code(), "a history entry waits until the keys can open it");
+                Ok(HistoryOpens::Waits)
             }
             Err(error) => Err(error),
         }

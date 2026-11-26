@@ -2,6 +2,7 @@
 // contracts every part builds against: the transports, the state file, the device store, the record adapters, the
 // key flows and the control surface the FFI wraps.
 
+pub mod adapters;
 pub mod api;
 pub mod cloudkit;
 pub mod engine;

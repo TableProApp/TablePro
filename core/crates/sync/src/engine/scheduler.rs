@@ -70,6 +70,11 @@ impl Journal {
         }
     }
 
+    // Something other than a store write asks for a full pass, as the person turning a category on.
+    pub fn pass_soon(&self, why: PassReason) {
+        self.wake.pass_soon(why);
+    }
+
     pub fn take(&self) -> JournalIds {
         std::mem::take(&mut *self.ids())
     }

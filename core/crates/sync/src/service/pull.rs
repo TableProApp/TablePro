@@ -2,23 +2,28 @@
 // the cursor with the key version in force at it, so a crash replays a page with no effect. A snapshot's key objects
 // and envelopes wait until it is caught up; it commits its cursor only then.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use tablepro_keys::encoding::Version;
 use tablepro_records::Kind;
 
-use super::keys::{Family, Opens, family};
+use super::keys::{Family, HistoryOpens, Opens, family};
 use super::refill::Cut;
 use super::scopes::refresh;
 use super::{PassCtx, ServiceSync, begin};
+use crate::adapters::approval::{self, Split};
+use crate::adapters::{conflict, local_view};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
 use crate::api::error::SyncError;
 use crate::api::ids::{Cursor, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{ArrivalOrder, CaughtUp};
 use crate::api::scopes::ScopeInfo;
-use crate::api::state::{BaseRow, ConflictRow, HeldReason, HeldRow, Row, RowKey, RowRange, ScopeRow, Table};
-use crate::api::transport::{Proof, PullRequest, PulledPage, PulledRecord, TransportError};
+use crate::api::state::{
+    ApprovalDecision, ApprovalRow, BaseRow, ConflictRow, DeletedHistoryRow, HeldReason, HeldRow, Row, RowKey, RowRange,
+    ScopeRow, Table,
+};
+use crate::api::transport::{DeletedReason, Proof, PullRequest, PulledPage, PulledRecord, TransportError};
 use crate::engine::{Judgement, base_of, settle};
 
 struct Pull {
@@ -40,6 +45,11 @@ struct Pull {
     buffered: usize,
     // The kinds this build reads in the scope, which the row keeps once a snapshot read them all.
     reading: Vec<KindName>,
+    // History entries a snapshot still takes, newest first, before it follows the changes; None takes them all.
+    window: Option<usize>,
+    // A history snapshot still reads older pages, and has left them, so `older_cursor` is where paging back starts.
+    older: bool,
+    older_read: bool,
 }
 
 // A server that never lets a pull catch up, or a snapshot too large to keep, ends the pass instead of the device.
@@ -88,6 +98,9 @@ pub(super) struct PageWrites {
     held: Vec<HeldRow>,
     unheld: Vec<RecordKey>,
     conflicts: Vec<ConflictRow>,
+    // Open conflicts a pull settled.
+    resolved: Vec<RecordKey>,
+    approvals: Vec<(RecordKey, Split)>,
     // Rows of other tables that settle in the same commit, as a refilled store's identity.
     rows: Vec<Row>,
 }
@@ -100,7 +113,25 @@ impl PageWrites {
             && self.held.is_empty()
             && self.unheld.is_empty()
             && self.conflicts.is_empty()
+            && self.resolved.is_empty()
+            && self.approvals.is_empty()
             && self.rows.is_empty()
+    }
+}
+
+#[derive(Debug, Default)]
+struct SettleInputs {
+    bases: HashMap<RecordKey, BaseRow>,
+    conflicts: HashMap<RecordKey, ConflictRow>,
+    approvals: HashMap<RecordKey, Vec<ApprovalRow>>,
+    deleted_history: HashSet<String>,
+}
+
+// Every row of a record the provider deleted goes.
+fn cleared(rows: &[ApprovalRow]) -> Split {
+    Split {
+        clear: rows.iter().map(|row| row.field.clone()).collect(),
+        ..Split::default()
     }
 }
 
@@ -142,7 +173,14 @@ impl ServiceSync {
         let waiting =
             can_open && self.holds_scope_key(scope).await? && !self.waiting_envelopes(scope).await?.is_empty();
         // A build that reads a kind the last pull did not fetches again what it held for it (0054, Rules).
-        let mut reading: Vec<KindName> = adapters.iter().map(|adapter| KindName::of(adapter.kind())).collect();
+        // A kind this device turned off is not read, so turning it on reads it again the same way.
+        let categories = self.categories();
+        let mut reading: Vec<KindName> = adapters
+            .iter()
+            .map(|adapter| adapter.kind())
+            .filter(|kind| categories.syncs(*kind))
+            .map(KindName::of)
+            .collect();
         reading.sort();
         let reads_more = reading.iter().any(|kind| !row.read_kinds.contains(kind));
         let snapshot = row.cursor.is_none() || row.refill || !pull_wins.is_empty() || waiting || reads_more;
@@ -160,6 +198,11 @@ impl ServiceSync {
             can_open,
             buffered: 0,
             reading,
+            window: (scope == ScopeName::History && snapshot)
+                .then(|| self.history_window().map(|entries| entries as usize))
+                .flatten(),
+            older: scope == ScopeName::History && snapshot,
+            older_read: false,
         };
         refresh(&mut row, info);
         if row.epoch.is_none() {
@@ -223,6 +266,7 @@ impl ServiceSync {
                 row.cursor.clone_from(&pull.cursor);
                 row.key_version = pull.in_force;
                 row.caught_up = caught_up;
+                row.read_kinds.retain(|kind| pull.reading.contains(kind));
                 // An idle pass commits nothing, so it writes no anchor.
                 if !writes.is_empty() || *row != before {
                     self.commit_page(writes, Some(row)).await?;
@@ -248,10 +292,16 @@ impl ServiceSync {
         let mut writes = PageWrites::default();
         let mut run: Option<(Family, Vec<PulledRecord>)> = None;
         let mut to_settle = Vec::new();
-        for record in records {
+        let categories = self.categories();
+        for mut record in records {
             pull.seen
                 .insert((record.kind.as_str().to_owned(), record.record_id.clone()));
             let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
+            // A kind this device turned off takes nothing, not even its base, so the snapshot that follows turning it
+            // on settles what came meanwhile, deletions included (0054, Rules for both providers).
+            if record.kind.known().is_some_and(|kind| !categories.syncs(kind)) {
+                continue;
+            }
             // A live record always carries its fields; one without them is no deletion this device would sign.
             if record.deleted.is_none() && record.fields.is_none() {
                 writes.held.push(held(HeldReason::Unreadable, key, record));
@@ -302,6 +352,22 @@ impl ServiceSync {
                     }
                 }
             }
+            if record.kind.known() == Some(Kind::HistoryEntry) && record.deleted.is_none() {
+                match self.history_opens(&record).await? {
+                    HistoryOpens::Plain(fields) => {
+                        record.fields = Some(fields);
+                        record.fields_json = None;
+                    }
+                    HistoryOpens::Refused => {
+                        writes.held.push(held(HeldReason::Unreadable, key, record));
+                        continue;
+                    }
+                    HistoryOpens::Waits => {
+                        writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
+                        continue;
+                    }
+                }
+            }
             to_settle.push(record);
         }
         self.flush_run(pull, run.take()).await?;
@@ -335,7 +401,7 @@ impl ServiceSync {
             .iter()
             .map(|record| RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone()))
             .collect();
-        let bases = self.bases_of(&keys).await?;
+        let inputs = self.settle_inputs(&keys).await?;
         let locals = local_indexes(pull.scope, adapters, &records).await?;
         for (key, record) in keys.into_iter().zip(records) {
             let adapter = record
@@ -353,11 +419,62 @@ impl ServiceSync {
                 writes.held.push(held(HeldReason::Unreadable, key, record));
                 continue;
             }
-            let base = bases.get(&key);
+            let base = inputs.bases.get(&key);
+            if kind == Kind::HistoryEntry && !self.history_taken(&inputs, base, &record, writes) {
+                continue;
+            }
+            let stored = local.and_then(|local| local.records.get(&key.record_id));
+            let rows = inputs.approvals.get(&key).map_or(&[][..], Vec::as_slice);
+            let open = inputs.conflicts.get(&key);
+            let (base_view, mine) = match open {
+                Some(row) => conflict::sides(row, base, stored),
+                None => (base.cloned(), stored.cloned()),
+            };
+            // The merge reads the device's side as it would go up: with what the store cannot hold, and with what
+            // waits for the person or was refused at the base's value.
+            let held_members: BTreeSet<String> = rows
+                .iter()
+                .filter(|row| row.decision != ApprovalDecision::Approved)
+                .map(|row| row.field.clone())
+                .collect();
+            let base_fields = base_view.as_ref().and_then(|base| base.fields.as_ref());
+            let mine = mine.map(|mine| LocalRecord {
+                fields: local_view(kind, pull.scope, &mine.fields, base_fields, &held_members),
+                ..mine
+            });
             let judgement = pull.judge(kind, base, &record);
-            let mine = local.and_then(|local| local.records.get(&key.record_id));
-            let settled = settle(&key, kind, judgement, base, mine, &record);
-            writes.store.extend(settled.store.map(|change| (index, change)));
+            let settled = settle(&key, kind, judgement, base_view.as_ref(), mine.as_ref(), &record);
+            let stored_fields = stored.map(|stored| &stored.fields);
+            match settled.store {
+                Some(LocalChange::Put { record_id, fields }) => {
+                    let split = approval::split(kind, &key, stored_fields, &fields, rows);
+                    if split.hold {
+                        writes
+                            .held
+                            .push(held(HeldReason::AwaitingApproval, key.clone(), record.clone()));
+                    } else if stored_fields != Some(&split.fields) {
+                        writes.store.push((
+                            index,
+                            LocalChange::Put {
+                                record_id,
+                                fields: split.fields.clone(),
+                            },
+                        ));
+                    }
+                    writes.approvals.push((key.clone(), split));
+                }
+                Some(change @ LocalChange::Delete { .. }) => {
+                    writes.approvals.push((key.clone(), cleared(rows)));
+                    writes.store.push((index, change));
+                }
+                None if record.deleted == Some(DeletedReason::User) => {
+                    writes.approvals.push((key.clone(), cleared(rows)));
+                }
+                None => {}
+            }
+            if open.is_some() && settled.base.is_some() && settled.conflict.is_none() {
+                writes.resolved.push(key.clone());
+            }
             writes.bases.extend(settled.base);
             writes.conflicts.extend(settled.conflict);
             writes.unheld.push(key);
@@ -365,15 +482,62 @@ impl ServiceSync {
         self.write_store(pull.scope, adapters, writes).await
     }
 
-    async fn bases_of(&self, keys: &[RecordKey]) -> Result<HashMap<RecordKey, BaseRow>, SyncError> {
-        let mut txn = begin(&self.state).await?;
-        let mut bases = HashMap::new();
-        for key in keys {
-            if let Some(Row::Base(base)) = txn.get(&RowKey::Base(key.clone())).await? {
-                bases.insert(key.clone(), base);
+    // A `user` tombstone of a history entry is final: a device refuses its id when it comes back, whatever the server
+    // serves (0051, Tombstones), and keeps the ids it saw deleted (0054, `deleted_history`).
+    fn history_taken(
+        &self,
+        inputs: &SettleInputs,
+        base: Option<&BaseRow>,
+        record: &PulledRecord,
+        writes: &mut PageWrites,
+    ) -> bool {
+        match record.deleted {
+            Some(DeletedReason::User) => {
+                writes.rows.push(Row::DeletedHistory(DeletedHistoryRow {
+                    record_id: record.record_id.clone(),
+                }));
+                true
+            }
+            Some(DeletedReason::Policy) => true,
+            None => {
+                let deleted = base.is_some_and(|base| base.deleted == Some(DeletedReason::User))
+                    || inputs.deleted_history.contains(&record.record_id);
+                if deleted {
+                    tracing::debug!("a history entry came back after its deletion; it stays deleted");
+                }
+                !deleted
             }
         }
-        Ok(bases)
+    }
+
+    async fn settle_inputs(&self, keys: &[RecordKey]) -> Result<SettleInputs, SyncError> {
+        let mut txn = begin(&self.state).await?;
+        let mut inputs = SettleInputs::default();
+        let mut scanned: HashSet<(ScopeName, KindName)> = HashSet::new();
+        for key in keys {
+            if let Some(Row::Base(base)) = txn.get(&RowKey::Base(key.clone())).await? {
+                inputs.bases.insert(key.clone(), base);
+            }
+            if let Some(Row::Conflict(row)) = txn.get(&RowKey::Conflict(key.clone())).await? {
+                inputs.conflicts.insert(key.clone(), row);
+            }
+            if key.kind.known() == Some(Kind::HistoryEntry)
+                && txn.get(&RowKey::DeletedHistory(key.record_id.clone())).await?.is_some()
+            {
+                inputs.deleted_history.insert(key.record_id.clone());
+            }
+            if scanned.insert((key.scope, key.kind.clone())) {
+                for row in txn
+                    .scan(&RowRange::ScopeKind(Table::Approvals, key.scope, key.kind.clone()))
+                    .await?
+                {
+                    if let Row::Approval(row) = row {
+                        inputs.approvals.entry(row.key.clone()).or_default().push(row);
+                    }
+                }
+            }
+        }
+        Ok(inputs)
     }
 
     // One store write per adapter, each after a stop check (P1-M4).
@@ -414,8 +578,14 @@ impl ServiceSync {
         for held in writes.held {
             txn.put(Row::Held(held)).await?;
         }
+        for key in writes.resolved {
+            txn.delete(&RowKey::Conflict(key)).await?;
+        }
         for conflict in writes.conflicts {
             txn.put(Row::Conflict(conflict)).await?;
+        }
+        for (key, split) in &writes.approvals {
+            approval::write(txn.as_mut(), key, split).await?;
         }
         for row in writes.rows {
             txn.put(row).await?;
@@ -465,7 +635,7 @@ impl ServiceSync {
         row.key_version = pull.in_force;
         row.caught_up = true;
         row.read_kinds.clone_from(&pull.reading);
-        if pull.older_cursor.is_some() {
+        if pull.older_read {
             row.older_cursor.clone_from(&pull.older_cursor);
         }
         // Before approval a personal pull serves key objects only: it settles no base, store or epoch.
@@ -518,14 +688,66 @@ impl ServiceSync {
         Ok(())
     }
 
+    // The history view asks for entries older than the window: one older page, settled as a snapshot's, and the
+    // cursor it leaves for the next. True while older entries remain (0051, Pull; F18).
+    pub(super) async fn load_older(&self) -> Result<bool, SyncError> {
+        let scope = ScopeName::History;
+        let Some(mut row) = self.scope_row(scope).await? else {
+            return Ok(false);
+        };
+        let Some(cursor) = row.older_cursor.clone() else {
+            return Ok(false);
+        };
+        self.stop.check()?;
+        let request = PullRequest {
+            scope,
+            cursor: Some(cursor),
+            limit: None,
+            proof: self.scope_proof(scope).await?,
+        };
+        let page = match self.transport.pull(request).await {
+            // Another epoch: the next pass refills the history, and paging back starts again from it.
+            Err(TransportError::CursorExpired) => {
+                row.older_cursor = None;
+                self.commit_page(PageWrites::default(), Some(&row)).await?;
+                return Ok(false);
+            }
+            other => other?,
+        };
+        let adapters = self.adapters.in_scope(scope);
+        let mut pull = Pull {
+            scope,
+            snapshot: true,
+            cut: None,
+            pull_wins: HashSet::new(),
+            cursor: None,
+            older_cursor: None,
+            in_force: None,
+            held_keys: Vec::new(),
+            held_envelopes: Vec::new(),
+            seen: HashSet::new(),
+            can_open: false,
+            buffered: 0,
+            reading: Vec::new(),
+            window: None,
+            older: false,
+            older_read: false,
+        };
+        row.older_cursor = page.cursor.clone().filter(|_| !page.records.is_empty());
+        let writes = self.take_page(&mut pull, &adapters, page.records).await?;
+        self.commit_page(writes, Some(&row)).await?;
+        Ok(row.older_cursor.is_some())
+    }
+
+    // Envelopes, and in the history scope entries, kept until the keys could open them.
     async fn waiting_envelopes(&self, scope: ScopeName) -> Result<Vec<RecordKey>, SyncError> {
+        let sealed = match scope {
+            ScopeName::History => Kind::HistoryEntry,
+            ScopeName::Personal | ScopeName::Team(_) => Kind::SecretEnvelope,
+        };
         let rows = begin(&self.state)
             .await?
-            .scan(&RowRange::ScopeKind(
-                Table::Held,
-                scope,
-                KindName::of(Kind::SecretEnvelope),
-            ))
+            .scan(&RowRange::ScopeKind(Table::Held, scope, KindName::of(sealed)))
             .await?;
         Ok(rows
             .into_iter()
@@ -556,11 +778,21 @@ impl ServiceSync {
     }
 }
 
-// The history scope's snapshot pages newest first: its first page's `cursor` pages older entries on demand, and the
-// pull follows `changes_cursor` (0051, Pull).
+// The history scope's snapshot pages newest first: the pull follows each page's `cursor` to older entries until its
+// window holds what the device keeps, then follows `changes_cursor`, and keeps the last `cursor` to page back on
+// demand (0051, Pull; F18).
 fn next_cursor(pull: &mut Pull, page: &PulledPage) -> Option<Cursor> {
-    if pull.scope == ScopeName::History && pull.cursor.is_none() && page.changes_cursor.is_some() {
-        pull.older_cursor.clone_from(&page.cursor);
+    if pull.older && page.changes_cursor.is_some() {
+        if let Some(left) = pull.window.as_mut() {
+            *left = left.saturating_sub(page.records.len());
+        }
+        let older = page.cursor.clone().filter(|_| !page.records.is_empty());
+        if older.is_some() && pull.window != Some(0) {
+            return older;
+        }
+        pull.older = false;
+        pull.older_read = true;
+        pull.older_cursor = older;
         return page.changes_cursor.clone();
     }
     // A page with no records moved nothing: the cursor held resumes at the same place, and keeping it spares a commit.

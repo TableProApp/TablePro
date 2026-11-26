@@ -2,18 +2,22 @@
 // each batch's key kept in the outbox before it is sent so a retry after a lost answer is the same request, and each
 // answer written to the bases in one commit with the outbox cleared.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use sha2::{Digest, Sha256};
+use tablepro_keys::encoding::HistoryId;
 use tablepro_records::Kind;
+use tablepro_records::record_id::parse_uuid;
 use uuid::Uuid;
 
 use super::scopes::kind_off;
 use super::{PassCtx, ServiceSync, Session, begin};
+use crate::adapters::{approval, local_view};
+use crate::api::adapter::LocalRecords;
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, EpochId, IdempotencyKey, KindName, RecordKey, ScopeName};
 use crate::api::scopes::ScopeInfo;
-use crate::api::state::{BaseRow, OutboxRow, Row, RowKey, RowRange, ScopeRow, Table};
+use crate::api::state::{BaseRow, DeletedHistoryRow, OutboxRow, Row, RowKey, RowRange, ScopeRow, Table};
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DeletedReason, Proof, PushBatch, TransportError};
 use crate::engine::{Pending, PendingOp, change_bytes, diff, split};
 
@@ -62,6 +66,29 @@ fn request_digest(epoch: EpochId, changes: &[Change]) -> [u8; 32] {
         hash_change(&mut hasher, change);
     }
     hasher.finalize().into()
+}
+
+// What a store's copy sends: with the members the store cannot hold from the base, and at the base's value each
+// member the device keeps to itself or that waits for the person (0054, Dirty state is a diff).
+fn going_up(
+    kind: Kind,
+    scope: ScopeName,
+    mut local: LocalRecords,
+    bases: &[BaseRow],
+    held: &std::collections::BTreeMap<(KindName, String), BTreeSet<String>>,
+) -> LocalRecords {
+    let by_id: HashMap<&str, &BaseRow> = bases.iter().map(|base| (base.key.record_id.as_str(), base)).collect();
+    let none = BTreeSet::new();
+    let name = KindName::of(kind);
+    for record in &mut local.records {
+        let base = by_id
+            .get(record.record_id.as_str())
+            .filter(|base| base.deleted.is_none())
+            .and_then(|base| base.fields.as_ref());
+        let members = held.get(&(name.clone(), record.record_id.clone())).unwrap_or(&none);
+        record.fields = local_view(kind, scope, &record.fields, base, members);
+    }
+    local
 }
 
 fn fingerprint(change: &Change) -> [u8; 32] {
@@ -122,12 +149,17 @@ impl ServiceSync {
     ) -> Result<Vec<Pending>, SyncError> {
         let scope = row.scope;
         let skip = self.skipped(scope).await?;
+        let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
+        let categories = self.categories();
         let none = HashSet::new();
         let mut out = Vec::new();
         let mut pruned = Vec::new();
         for adapter in self.adapters.in_scope(scope) {
             let kind = adapter.kind();
-            if kind_off(row.policies, scope, kind) || (kind == Kind::SecretEnvelope && !self.seals(ctx, row)) {
+            if kind_off(row.policies, scope, kind)
+                || !categories.syncs(kind)
+                || (kind == Kind::SecretEnvelope && !self.seals(ctx, row))
+            {
                 continue;
             }
             // A journal pass diffs only what the journal named, and a kind it named nothing of not at all (0060).
@@ -138,8 +170,8 @@ impl ServiceSync {
                 },
                 None => None,
             };
-            let local = adapter.records(scope).await?;
             let bases = self.bases_in(scope, kind).await?;
+            let local = going_up(kind, scope, adapter.records(scope).await?, &bases, &held);
             let mut diffed = diff(
                 scope,
                 kind,
@@ -157,10 +189,19 @@ impl ServiceSync {
                 ctx.report.refused.push((key.clone(), code.to_owned()));
                 session.refused.insert(key, ([0; 32], code.to_owned()));
             }
-            out.extend(diffed.pending.into_iter().filter(|pending| {
-                let print = fingerprint(&pending.change());
-                session.refused.get(&pending.key).is_none_or(|(held, _)| *held != print)
-            }));
+            let pending: Vec<Pending> = diffed
+                .pending
+                .into_iter()
+                .filter(|pending| {
+                    let print = fingerprint(&pending.change());
+                    session.refused.get(&pending.key).is_none_or(|(held, _)| *held != print)
+                })
+                .collect();
+            if kind == Kind::HistoryEntry {
+                out.extend(self.sealed(ctx, pending).await?);
+            } else {
+                out.extend(pending);
+            }
             if !diffed.acknowledged.is_empty() {
                 self.stop.check()?;
                 adapter
@@ -178,6 +219,41 @@ impl ServiceSync {
                 txn.delete(&RowKey::Base(key)).await?;
             }
             txn.commit().await?;
+        }
+        Ok(out)
+    }
+
+    // History entries go up sealed under the newest history key, at push time (0056, Envelopes and history). A refusal
+    // is remembered by the plaintext it sealed, so the same entry is not sealed and sent again each pass. Entries wait
+    // for a pass whose keys can seal them; a deletion carries no fields and goes as it is.
+    async fn sealed(&self, ctx: &mut PassCtx, pending: Vec<Pending>) -> Result<Vec<Pending>, SyncError> {
+        let mut out = Vec::with_capacity(pending.len());
+        let mut sealing = true;
+        for mut pending in pending {
+            let PendingOp::Write { fields, .. } = &pending.op else {
+                out.push(pending);
+                continue;
+            };
+            let Some(id) = parse_uuid(&pending.key.record_id).filter(|_| sealing) else {
+                continue;
+            };
+            let print = fingerprint(&pending.change());
+            self.stop.check()?;
+            let sealed = match self.keys.seal_history_entry(HistoryId(id), fields.clone()).await {
+                Ok(sealed) => sealed,
+                Err(error @ (SyncError::Keys(_) | SyncError::NotAllowed { .. } | SyncError::Locked { .. })) => {
+                    tracing::debug!(code = error.code(), "history entries wait for keys that seal them");
+                    sealing = false;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            pending.op = PendingOp::Write {
+                fields: sealed.clone(),
+                patch: sealed,
+            };
+            ctx.sealed_prints.insert(pending.key.clone(), print);
+            out.push(pending);
         }
         Ok(out)
     }
@@ -391,14 +467,18 @@ impl ServiceSync {
                 ChangeOutcome::Rejected { code } => {
                     let code = code.as_str().to_owned();
                     ctx.report.refused.push((pending.key.clone(), code.clone()));
-                    session
-                        .refused
-                        .insert(pending.key.clone(), (fingerprint(&pending.change()), code));
+                    let print = ctx
+                        .sealed_prints
+                        .get(&pending.key)
+                        .copied()
+                        .unwrap_or_else(|| fingerprint(&pending.change()));
+                    session.refused.insert(pending.key.clone(), (print, code));
                 }
                 ChangeOutcome::Gone | ChangeOutcome::Failed { .. } => {}
             }
         }
-        self.commit_answer(scope, puts, drops).await?;
+        let deleted_history = tombstones.get(&Kind::HistoryEntry).cloned().unwrap_or_default();
+        self.commit_answer(scope, puts, drops, deleted_history).await?;
         self.tombstones_pushed(scope, tombstones).await?;
         Ok(Sent::Answered { conflicts })
     }
@@ -408,11 +488,16 @@ impl ServiceSync {
         scope: ScopeName,
         puts: Vec<BaseRow>,
         drops: Vec<RecordKey>,
+        deleted_history: Vec<String>,
     ) -> Result<(), SyncError> {
         self.stop.check()?;
         let mut txn = begin(&self.state).await?;
         for base in puts {
             txn.put(Row::Base(base)).await?;
+        }
+        // The person deleted these entries: their ids never come back (0051, Tombstones).
+        for record_id in deleted_history {
+            txn.put(Row::DeletedHistory(DeletedHistoryRow { record_id })).await?;
         }
         for key in drops {
             txn.delete(&RowKey::Base(key)).await?;
