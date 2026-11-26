@@ -8241,6 +8241,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "sqlx",
+ "tablepro-core",
  "tablepro-keys",
  "tablepro-records",
  "tablepro-storage",

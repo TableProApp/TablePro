@@ -213,7 +213,7 @@ fn unsettled_at_base(
         let Some(stored) = kept.get(id) else {
             continue;
         };
-        let pointers = unsettled::at_base(kind, &stored.fields, base.fields.as_ref());
+        let pointers = unsettled::reading(kind, &stored.fields, base.fields.as_ref());
         if pointers.is_empty() {
             continue;
         }

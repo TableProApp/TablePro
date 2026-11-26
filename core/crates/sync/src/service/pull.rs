@@ -14,7 +14,7 @@ use super::scopes::refresh;
 use super::{PassCtx, ServiceSync, begin};
 use crate::adapters::approval::{self, Split};
 use crate::adapters::categories::DeviceCategories;
-use crate::adapters::{conflict, local_view};
+use crate::adapters::{conflict, local_view, unsettled};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey, ScopeName};
@@ -607,10 +607,15 @@ impl ServiceSync {
                 mine_side
             };
         }
-        let stored_fields = stored.map(|stored| &stored.fields);
+        // The store's copy as the merge read it, so a member it holds as it reads the base's asks the person nothing.
+        let stored_view = stored.map(|stored| unsettled::read(kind, &stored.fields, base_fields));
+        let stored_fields = stored_view.as_ref();
         match (&settled.kept, &settled.store) {
             (Some(fields), _) => {
-                let split = approval::split(kind, &key, stored_fields, fields, rows);
+                let mut split = approval::split(kind, &key, stored_fields, fields, rows);
+                if let Some(server) = record.fields.as_ref() {
+                    unsettled::settle(kind, &mut split.fields, server);
+                }
                 if split.hold {
                     writes
                         .held

@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use tablepro_records::Kind;
 
 use super::fields::{get, set};
+use super::library;
 
 pub const TLS_MODE_UNSETTLED: &str = "tls_mode_unsettled";
 pub const SSH_PROFILE_UNLINKED: &str = "ssh_profile_unlinked";
@@ -80,11 +81,23 @@ pub fn at_base(kind: Kind, local: &Value, base: Option<&Value>) -> Vec<&'static 
     pointers
 }
 
+// Every member of the store's copy that reads as the base's: what such a copy leaves unsaid, and what the store holds at
+// the value this build reads the base's copy as (`library::at_base`).
+pub fn reading(kind: Kind, local: &Value, base: Option<&Value>) -> Vec<String> {
+    let mut pointers: Vec<String> = at_base(kind, local, base).into_iter().map(str::to_owned).collect();
+    for pointer in library::at_base(kind, local, base) {
+        if !pointers.contains(&pointer) {
+            pointers.push(pointer);
+        }
+    }
+    pointers
+}
+
 // The store's copy with those members at the base's value.
 pub fn read(kind: Kind, local: &Value, base: Option<&Value>) -> Value {
     let mut read = local.clone();
-    for pointer in at_base(kind, local, base) {
-        set(&mut read, pointer, get(base, pointer).cloned());
+    for pointer in reading(kind, local, base) {
+        set(&mut read, &pointer, get(base, &pointer).cloned());
     }
     read
 }
