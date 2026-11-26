@@ -409,6 +409,15 @@ class DetectChangedPathsTests(unittest.TestCase):
                 self.assertEqual(self.verdict_after(suite, "apple/scripts/localization.py"), "true")
                 self.assertEqual(self.verdict_after(suite, "apple/scripts/test_localization.py"), "false")
 
+    def test_ios_runs_on_the_simulator_script_its_job_calls(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        self.assertEqual(self.verdict_after("ios", "apple/scripts/ci/boot-ios-simulator.py"), "true")
+        self.assertEqual(self.verdict_after("ios", "apple/scripts/ci/test_boot_ios_simulator.py"), "false")
+        self.assertEqual(self.verdict_after("macos", "apple/scripts/ci/boot-ios-simulator.py"), "false")
+
     def test_ios_and_linux_run_on_the_function_names_both_apps_share(self):
         spec = self.repo / "apple/TableProMobile/project.yml"
         spec.parent.mkdir(parents=True)
