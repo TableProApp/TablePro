@@ -11,8 +11,8 @@ use tablepro_sync::api::{KindName, RecordKey, ScopeName};
 
 use super::service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    PassReasonTag, PendingApprovalInfo, SyncCategoriesArg, SyncPhaseTag, SyncRecordRef, SyncStatusInfo,
-    TeamConflictInfo,
+    PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncPhaseTag, SyncRecordRef,
+    SyncStatusInfo, TeamConflictInfo,
 };
 use crate::account::SyncProviderTag;
 
@@ -26,6 +26,16 @@ pub(crate) fn categories_arg(categories: &SyncCategoriesArg) -> Result<SyncCateg
         off,
         passwords: categories.passwords,
     })
+}
+
+// A digest as `approvals` and `conflicts` give it, 32 bytes in lower-case hex.
+pub(crate) fn digest_arg(text: &str) -> Result<[u8; 32], SyncError> {
+    let malformed = SyncError::Malformed { what: "digest" };
+    if text.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        return Err(malformed);
+    }
+    let bytes = hex::decode(text).map_err(|_| malformed.clone())?;
+    bytes.try_into().map_err(|_| malformed)
 }
 
 pub(crate) fn record_arg(record: &SyncRecordRef) -> Result<RecordKey, SyncError> {
@@ -151,6 +161,7 @@ impl From<PendingApproval> for PendingApprovalInfo {
             record: approval.key.into(),
             field: approval.field,
             pulled: approval.pulled.to_string(),
+            digest: hex::encode(approval.digest),
             current: approval.current.map(|value| value.to_string()),
         }
     }
@@ -163,6 +174,7 @@ impl From<TeamConflict> for TeamConflictInfo {
             fields: conflict.fields,
             mine: conflict.mine.map(|value| value.to_string()),
             theirs: conflict.theirs.map(|value| value.to_string()),
+            digest: hex::encode(conflict.digest),
         }
     }
 }
@@ -184,6 +196,18 @@ impl From<HeldRecord> for HeldRecordInfo {
         Self {
             record: held.key.into(),
             reason: held.reason.into(),
+        }
+    }
+}
+
+impl From<tablepro_sync::api::ScopeInfo> for ScopeStatusInfo {
+    fn from(info: tablepro_sync::api::ScopeInfo) -> Self {
+        Self {
+            scope: info.scope.wire(),
+            writable: info.writable,
+            personal_sync: info.policies.personal_sync,
+            password_sync: info.policies.password_sync,
+            history_sync: info.policies.history_sync,
         }
     }
 }

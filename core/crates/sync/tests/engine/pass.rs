@@ -298,6 +298,27 @@ async fn a_kind_a_policy_turns_off_keeps_its_copies_and_goes_up_when_it_is_back_
 }
 
 #[tokio::test]
+async fn the_scopes_the_last_body_served_are_read_with_their_policies_and_whether_they_take_writes() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let before = mac.sync.scopes_seen();
+    server.set_policies(Policies {
+        password_sync: false,
+        ..Policies::default()
+    });
+    server.set_lapsed(true);
+
+    mac.sync().await;
+    let seen = mac.sync.scopes_seen();
+    let personal = seen.iter().find(|info| info.scope == ScopeName::Personal).unwrap();
+
+    assert!(before.is_empty());
+    assert_eq!(personal.policies.password_sync, Some(false));
+    assert_eq!(personal.policies.personal_sync, Some(true));
+    assert!(!personal.writable);
+}
+
+#[tokio::test]
 async fn past_grace_the_pass_only_pulls() {
     let server = FakeServer::new();
     let mac = Device::new(&server, "dev_mac").await;

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tablepro_keys::encoding::{KeyPurpose, TeamId, Version};
 use tablepro_keys::keys::Ed25519Public;
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 use tablepro_records::Kind;
 use tablepro_sync::api::device_store::{DeviceItem, HostDeviceStore};
 use tablepro_sync::api::error::StateError;
@@ -29,7 +29,7 @@ fn team() -> ScopeName {
     ScopeName::Team(TeamId(Uuid::from_u128(0x7e)))
 }
 
-fn pin(av: u32, alert: bool, replaced: Vec<Ed25519Public>) -> KeyPinRow {
+fn pin(av: u32, alert: bool, replaced: Vec<Replaced>) -> KeyPinRow {
     KeyPinRow {
         account: account(),
         ik: Ed25519Public([u8::try_from(av).unwrap(); 32]),
@@ -71,6 +71,7 @@ fn object(record: &str) -> Row {
         record_id: record.to_owned(),
         fields: "{}".to_owned(),
         applied: true,
+        served: None,
     })
 }
 
@@ -87,7 +88,12 @@ fn keys_at(av: u32, version: KeyVersionRow, kv: u32) -> Vec<Row> {
         Row::KeyPin(pin(
             av,
             av > 1,
-            (1..av).map(|n| Ed25519Public([u8::try_from(n).unwrap(); 32])).collect(),
+            (1..av)
+                .map(|n| Replaced {
+                    ik: Ed25519Public([u8::try_from(n).unwrap(); 32]),
+                    av: v(n + 1),
+                })
+                .collect(),
         )),
         Row::KeyVersion(version),
         Row::KeyEnvelope(envelope(kv)),
@@ -171,7 +177,7 @@ async fn an_older_copy_with_its_anchor_intact_opens_stale_on_the_anchored_checkp
     let opened = state.opened().clone();
     assert_eq!(opened.sync_tables, SyncTrust::Refill);
     let checkpoint = checkpoint_of(&opened);
-    assert_eq!(checkpoint.pins, vec![pin(2, true, vec![Ed25519Public([1; 32])])]);
+    assert_eq!(checkpoint.pins, vec![pin(2, true, vec![Replaced { ik: Ed25519Public([1; 32]), av: v(2) }])]);
     assert_eq!(
         checkpoint.versions,
         vec![team_version(
@@ -191,7 +197,7 @@ async fn an_older_copy_with_its_anchor_intact_opens_stale_on_the_anchored_checkp
     );
     assert_eq!(
         table(&state, Table::KeyPins).await,
-        vec![Row::KeyPin(pin(2, true, vec![Ed25519Public([1; 32])]))]
+        vec![Row::KeyPin(pin(2, true, vec![Replaced { ik: Ed25519Public([1; 32]), av: v(2) }]))]
     );
     assert_eq!(
         table(&state, Table::KeyEnvelopes).await,

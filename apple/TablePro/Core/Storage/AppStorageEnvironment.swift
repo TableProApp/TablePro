@@ -17,6 +17,8 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
     internal let defaults: UserDefaults
     internal let keychain: any KeychainStoring
     internal let deviceOnlyKeychain: any KeychainStoring
+    // The sync engine's keys and anchor, which need Keychain classes `KeychainStoring` does not carry.
+    internal let deviceItems: any DeviceKeychainItems
     internal let isIsolated: Bool
     internal let isUnitTestHost: Bool
     internal let defaultsSuiteName: String?
@@ -43,6 +45,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         defaults: UserDefaults,
         keychain: any KeychainStoring,
         deviceOnlyKeychain: any KeychainStoring,
+        deviceItems: any DeviceKeychainItems,
         isIsolated: Bool,
         isUnitTestHost: Bool,
         defaultsSuiteName: String? = nil
@@ -51,6 +54,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         self.defaults = defaults
         self.keychain = keychain
         self.deviceOnlyKeychain = deviceOnlyKeychain
+        self.deviceItems = deviceItems
         self.isIsolated = isIsolated
         self.isUnitTestHost = isUnitTestHost
         self.defaultsSuiteName = defaultsSuiteName
@@ -106,6 +110,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             defaults: .standard,
             keychain: KeychainHelper.shared,
             deviceOnlyKeychain: KeychainHelper(followsPasswordSync: false),
+            deviceItems: SystemDeviceKeychainItems(),
             isIsolated: false,
             isUnitTestHost: isUnitTestHost
         )
@@ -144,6 +149,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             defaults: defaults,
             keychain: keychain,
             deviceOnlyKeychain: keychain,
+            deviceItems: SandboxDeviceKeychainItems(fileURL: supportDirectory.appendingPathComponent("device-keychain.json")),
             isIsolated: true,
             isUnitTestHost: isUnitTestHost,
             defaultsSuiteName: suiteName

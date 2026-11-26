@@ -716,7 +716,13 @@ pub(super) fn generated_trust(value: &JsonValue) -> TrustPlaintext {
             .array("replaced")
             .unwrap()
             .iter()
-            .map(|item| Ed25519Public(crate::b64::decode_exact(crate::json::as_str(item).unwrap()).unwrap()))
+            .map(|item| {
+                let mut entry = crate::json::Members::of(item).unwrap();
+                crate::trust::Replaced {
+                    ik: Ed25519Public(crate::b64::decode_exact(entry.string("ik").unwrap()).unwrap()),
+                    av: entry.version("av").unwrap(),
+                }
+            })
             .collect(),
     };
     let versions = members
@@ -766,7 +772,10 @@ pub(super) fn trust() -> JsonValue {
                 av: v(2),
                 how: PinHow::Replaced,
                 alert: true,
-                replaced: vec![ik("trust/M old IK")],
+                replaced: vec![crate::trust::Replaced {
+                    ik: ik("trust/M old IK"),
+                    av: v(2),
+                }],
             },
         ],
         versions: vec![
@@ -858,7 +867,11 @@ pub(super) fn trust() -> JsonValue {
         pins: vec![
             droppable("019A6B40-0000-7000-8000-000000000001"),
             TrustPin {
-                replaced: vec![ik("trust/kept old IK")],
+                av: v(2),
+                replaced: vec![crate::trust::Replaced {
+                    ik: ik("trust/kept old IK"),
+                    av: v(2),
+                }],
                 ..droppable("019A6B40-0000-7000-8000-000000000002")
             },
             droppable("019A6B40-0000-7000-8000-000000000003"),

@@ -208,6 +208,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
             // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
             await VaultDatabaseCredentials.shared.revokeAllLeases()
+            // Once the quit is decided, so a Cancel never waits on it.
+            await SyncProviderCoordinator.shared.flushBeforeQuit()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
