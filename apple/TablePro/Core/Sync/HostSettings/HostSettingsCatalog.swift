@@ -68,15 +68,16 @@ final class HostSettingsCatalog {
             try save(kept, ifChangedFrom: before)
             return
         }
-        guard document.count <= Self.maximumDocumentBytes,
-              kept.entries[category] != nil || kept.entries.count < Self.maximumKeptCategories,
-              kept.byteCount + 2 * document.count <= Self.maximumKeptBytes
-        else { throw HostSettingsStoreError.overBudget(category) }
+        guard document.count <= Self.maximumDocumentBytes else { throw HostSettingsStoreError.overBudget(category) }
         let sent = try SettingsJSON.parse(document)
         let kind = HostSettingsCategoryKind(category)
         let written = try stores.write(document, for: category)
         let held = try stores.document(for: category).map(SettingsJSON.parse)
         try kept.record(category, shape: written == .written ? kind.keptShape : .document, sent: sent, held: held)
+        // Measured on what would be kept after this pull, so a replay of a kept category is never refused.
+        guard kept.entries.count <= Self.maximumKeptCategories, kept.byteCount <= Self.maximumKeptBytes else {
+            throw HostSettingsStoreError.overBudget(category)
+        }
         if !kept.entries.isEmpty, before.entries.isEmpty {
             kept.triedBuild = build
         }

@@ -269,10 +269,16 @@ final class AppSettingsStorage: Sendable {
         AppSettingsCategory.valueColors: Keys.valueColors,
     ]
 
-    // A category never saved here reads as its defaults, which this Mac never chose.
-    func holdsValue(forCategory category: String) -> Bool {
-        guard let key = Self.syncedCategoryKeys[category] else { return false }
-        return defaults.data(forKey: key) != nil
+    // What sync reads of a category, as saved: nil for one never saved here, which reads as defaults this Mac never
+    // chose. The caller decodes it, so a saved value that no longer decodes fails instead of reading as the defaults.
+    func storedData(forCategory category: String) -> Data? {
+        Self.syncedCategoryKeys[category].flatMap { defaults.data(forKey: $0) }
+    }
+
+    // A pulled category saved as sent, even when it equals the defaults the manager already holds.
+    func store<Value: Encodable>(_ value: Value, forCategory category: String) {
+        guard let key = Self.syncedCategoryKeys[category] else { return }
+        save(value, key: key)
     }
 
     func hasSeenSetupGuide() -> Bool {
@@ -322,7 +328,7 @@ final class AppSettingsStorage: Sendable {
         }
     }
 
-    private func save<T: Codable>(_ value: T, key: String) {
+    private func save<T: Encodable>(_ value: T, key: String) {
         do {
             let data = try encoder.encode(value)
             defaults.set(data, forKey: key)

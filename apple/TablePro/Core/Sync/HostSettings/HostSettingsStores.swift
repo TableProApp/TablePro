@@ -100,7 +100,7 @@ final class AppHostSettingsStores: HostSettingsStores {
 
     func documents() throws -> [String: Data] {
         var documents: [String: Data] = [:]
-        for category in AppSettingsCategory.synced where storage.holdsValue(forCategory: category) {
+        for category in AppSettingsCategory.synced {
             documents[category] = try preferences(category)
         }
         if let commands = try slashCommands.syncedCommands() {
@@ -116,7 +116,7 @@ final class AppHostSettingsStores: HostSettingsStores {
     func document(for category: String) throws -> Data? {
         switch HostSettingsCategoryKind(category) {
         case .preferences:
-            return storage.holdsValue(forCategory: category) ? try preferences(category) : nil
+            return try preferences(category)
         case .slashCommands:
             return try slashCommands.syncedCommands().map { try encoder.encode($0) }
         case .columnLayout(let storageKey):
@@ -162,49 +162,66 @@ final class AppHostSettingsStores: HostSettingsStores {
         case .columnLayout(let storageKey):
             try columnLayouts.removePulled(storageKey: storageKey)
         case .theme:
-            guard let id = ThemeCatalog.themeId(forSyncCategory: category),
-                  themes.removeWithoutSync(ids: [id])
-            else { throw HostSettingsStoreError.unwritable(category) }
+            guard let id = ThemeCatalog.themeId(forSyncCategory: category) else { return }
+            try themes.removePulled(id: id)
         case .preferences, .slashCommands, .unknown:
             return
         }
     }
 
-    private func preferences(_ category: String) throws -> Data {
+    // Nil for a category never saved here. A saved one that no longer decodes throws: read as the defaults, it would go
+    // up over every other Mac's choice.
+    private func preferences(_ category: String) throws -> Data? {
         switch category {
-        case AppSettingsCategory.general: try encoder.encode(storage.loadGeneral())
-        case AppSettingsCategory.appearance: try encoder.encode(storage.loadAppearance())
-        case AppSettingsCategory.editor: try encoder.encode(storage.loadEditor())
-        case AppSettingsCategory.dataGrid: try encoder.encode(storage.loadDataGrid())
-        case AppSettingsCategory.history: try encoder.encode(storage.loadHistory())
-        case AppSettingsCategory.tabs: try encoder.encode(storage.loadTabs())
-        case AppSettingsCategory.keyboard: try encoder.encode(storage.loadKeyboard())
-        case AppSettingsCategory.ai: try encoder.encode(storage.loadAI())
-        case AppSettingsCategory.notifications: try encoder.encode(storage.loadNotifications())
-        case AppSettingsCategory.formatter: try encoder.encode(storage.loadFormatter())
-        case AppSettingsCategory.valueColors: try encoder.encode(storage.loadValueColors())
+        case AppSettingsCategory.general: try stored(GeneralSettings.self, category)
+        case AppSettingsCategory.appearance: try stored(AppearanceSettings.self, category)
+        case AppSettingsCategory.editor: try stored(EditorSettings.self, category)
+        case AppSettingsCategory.dataGrid: try stored(DataGridSettings.self, category)
+        case AppSettingsCategory.history: try stored(HistorySettings.self, category)
+        case AppSettingsCategory.tabs: try stored(TabSettings.self, category)
+        case AppSettingsCategory.keyboard: try stored(KeyboardSettings.self, category) { $0.sanitized() }
+        case AppSettingsCategory.ai: try stored(AISettings.self, category)
+        case AppSettingsCategory.notifications: try stored(NotificationSettings.self, category)
+        case AppSettingsCategory.formatter: try stored(SQLFormatterSettings.self, category)
+        case AppSettingsCategory.valueColors: try stored(ValueColorSettings.self, category)
         default: throw HostSettingsStoreError.unreadable(category)
         }
     }
 
-    // Through the manager, so a pulled category takes effect as a change made in Settings does.
+    private func stored<Value: Codable>(
+        _: Value.Type,
+        _ category: String,
+        _ normalized: (Value) -> Value = { $0 }
+    ) throws -> Data? {
+        guard let data = storage.storedData(forCategory: category) else { return nil }
+        return try encoder.encode(normalized(try decoder.decode(Value.self, from: data)))
+    }
+
     private func writePreferences(_ data: Data, _ category: String) throws {
         switch category {
-        case AppSettingsCategory.general: manager.general = try decoder.decode(GeneralSettings.self, from: data)
-        case AppSettingsCategory.appearance: manager.appearance = try decoder.decode(AppearanceSettings.self, from: data)
-        case AppSettingsCategory.editor: manager.editor = try decoder.decode(EditorSettings.self, from: data)
-        case AppSettingsCategory.dataGrid: manager.dataGrid = try decoder.decode(DataGridSettings.self, from: data)
-        case AppSettingsCategory.history: manager.history = try decoder.decode(HistorySettings.self, from: data)
-        case AppSettingsCategory.tabs: manager.tabs = try decoder.decode(TabSettings.self, from: data)
-        case AppSettingsCategory.keyboard: manager.keyboard = try decoder.decode(KeyboardSettings.self, from: data)
-        case AppSettingsCategory.ai: manager.ai = try decoder.decode(AISettings.self, from: data)
-        case AppSettingsCategory.notifications:
-            manager.notifications = try decoder.decode(NotificationSettings.self, from: data)
-        case AppSettingsCategory.formatter:
-            manager.formatter = try decoder.decode(SQLFormatterSettings.self, from: data)
-        case AppSettingsCategory.valueColors:
-            manager.valueColors = try decoder.decode(ValueColorSettings.self, from: data)
+        case AppSettingsCategory.general: try take(data, category, \.general)
+        case AppSettingsCategory.appearance: try take(data, category, \.appearance)
+        case AppSettingsCategory.editor: try take(data, category, \.editor)
+        case AppSettingsCategory.dataGrid: try take(data, category, \.dataGrid)
+        case AppSettingsCategory.history: try take(data, category, \.history)
+        case AppSettingsCategory.tabs: try take(data, category, \.tabs)
+        case AppSettingsCategory.keyboard: try take(data, category, \.keyboard)
+        case AppSettingsCategory.ai: try take(data, category, \.ai)
+        case AppSettingsCategory.notifications: try take(data, category, \.notifications)
+        case AppSettingsCategory.formatter: try take(data, category, \.formatter)
+        case AppSettingsCategory.valueColors: try take(data, category, \.valueColors)
         default: throw HostSettingsStoreError.unreadable(category)
         }
+    }
+
+    // Through the manager, so a pulled category takes effect as a change made in Settings does, then saved as the
+    // manager holds it: the manager skips a value equal to what it has, and the category would stay unsaved.
+    private func take<Value: Codable>(
+        _ data: Data,
+        _ category: String,
+        _ setting: ReferenceWritableKeyPath<AppSettingsManager, Value>
+    ) throws {
+        manager[keyPath: setting] = try decoder.decode(Value.self, from: data)
+        storage.store(manager[keyPath: setting], forCategory: category)
     }
 }

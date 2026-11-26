@@ -174,4 +174,17 @@ struct HostSettingsCatalogTests {
 
         #expect(writes == 0)
     }
+
+    @Test("Past the kept budget a new category fails the pull, and a replay of a kept one is still taken")
+    func keptBudget() throws {
+        let catalog = catalog(FakeSettingsStores())
+        let large = { (tag: Int) in data(#"{"v":"\#(String(repeating: "x", count: 900_000))\#(tag)"}"#) }
+        for tag in 1...4 {
+            try catalog.apply("newer\(tag)", document: large(tag))
+        }
+
+        #expect(throws: HostSettingsStoreError.self) { try catalog.apply("newer5", document: large(5)) }
+        try catalog.apply("newer1", document: large(1))
+        #expect(try reported(catalog).count == 4)
+    }
 }

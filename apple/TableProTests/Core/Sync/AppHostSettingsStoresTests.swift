@@ -11,6 +11,7 @@ struct AppHostSettingsStoresTests {
         let pool: EphemeralDefaultsPool
         let root: URL
         let storage: AppSettingsStorage
+        let storageDefaults: UserDefaults
         let manager: AppSettingsManager
         let slashCommands: CustomSlashCommandStorage
         let slashCommandDefaults: UserDefaults
@@ -31,7 +32,8 @@ struct AppHostSettingsStoresTests {
                 fileTrash: .folder(trash),
                 syncJournal: journal
             )
-            let storage = AppSettingsStorage(userDefaults: try pool.make().defaults)
+            let storageDefaults = try pool.make().defaults
+            let storage = AppSettingsStorage(userDefaults: storageDefaults)
             let manager = AppSettingsManager(
                 storage: storage,
                 themeEngine: ThemeEngine(catalog: themes),
@@ -51,6 +53,7 @@ struct AppHostSettingsStoresTests {
             self.pool = pool
             self.root = root
             self.storage = storage
+            self.storageDefaults = storageDefaults
             self.manager = manager
             self.slashCommands = slashCommands
             self.slashCommandDefaults = slashCommandDefaults
@@ -296,5 +299,43 @@ struct AppHostSettingsStoresTests {
         )
 
         #expect(throws: (any Error).self) { try catalog.syncPayloads() }
+    }
+
+    @Test("A saved preferences category that no longer decodes fails the read rather than reading as the defaults")
+    func unreadablePreferencesFailTheRead() throws {
+        let harness = try Harness()
+        harness.storageDefaults.set(Data("not json".utf8), forKey: "com.TablePro.settings.tabs")
+
+        #expect(throws: (any Error).self) { try harness.stores.documents() }
+    }
+
+    @Test("A pulled category equal to the defaults is saved, so an edit of one option keeps the newer one")
+    func pulledDefaultsAreSaved() throws {
+        let harness = try Harness()
+        let catalog = harness.catalog()
+
+        try catalog.apply("tabs", document: Data(#"{"enablePreviewTabs":true,"newerOption":3}"#.utf8))
+        harness.manager.tabs = TabSettings(enablePreviewTabs: false)
+
+        #expect(harness.storage.storedData(forCategory: "tabs") != nil)
+        let reported = try Self.object(try catalog.categories()["tabs"])
+        #expect(reported["newerOption"] as? Int == 3)
+        #expect(reported["enablePreviewTabs"] as? Bool == false)
+    }
+
+    @Test("A pulled deletion of a theme a newer build wrote moves its file to the Trash")
+    func pulledDeletionRemovesANewerThemeFile() throws {
+        let harness = try Harness()
+        let themes = harness.root.appendingPathComponent("Themes", isDirectory: true)
+        try FileManager.default.createDirectory(at: themes, withIntermediateDirectories: true)
+        let file = themes.appendingPathComponent("user.newer.json")
+        try Data(#"{"appearance":"dark","id":"user.newer","name":"Newer","schema":99}"#.utf8).write(to: file)
+        harness.themes.reloadSynchronously()
+        let category = ThemeCatalog.syncCategory(for: "user.newer")
+
+        try harness.catalog().apply(category, document: nil)
+
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(try harness.stores.documents()[category] == nil)
     }
 }

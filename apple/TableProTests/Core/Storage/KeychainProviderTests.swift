@@ -107,6 +107,7 @@ struct KeychainProviderTests {
         store.seed("synced-a", account: "a", synchronizable: true)
         store.seed("synced-b", account: "b", synchronizable: true)
         store.seed("own-b", account: "b", synchronizable: false)
+        onTableProSync(copiesAdded: false)
 
         #expect(helper().addDeviceOnlyCopies())
 
@@ -119,6 +120,7 @@ struct KeychainProviderTests {
     @Test("After the copies, a build that knows no TablePro Sync reads the same secrets, iCloud off as the move left it")
     func previousStableReadsTheCopies() {
         store.seed("synced", account: key, synchronizable: true)
+        onTableProSync(copiesAdded: false)
         #expect(helper().addDeviceOnlyCopies())
         onTableProSync(copiesAdded: true)
         #expect(helper().writeString("edited-on-tablepro-sync", forKey: key))
@@ -129,11 +131,21 @@ struct KeychainProviderTests {
         #expect(store.value(account: key, synchronizable: true) == "synced")
     }
 
+    @Test("Copies still under way after the Mac left TablePro Sync add nothing")
+    func copiesStopOffTableProSync() {
+        store.seed("synced", account: key, synchronizable: true)
+
+        #expect(helper().addDeviceOnlyCopies())
+
+        #expect(store.value(account: key, synchronizable: false) == nil)
+    }
+
     @Test("A locked item or a locked listing leaves the copies unfinished, and the rest still get theirs")
     func lockedItemsLeaveCopiesUnfinished() {
         store.seed("synced-a", account: "a", synchronizable: true)
         store.seed("synced-b", account: "b", synchronizable: true)
         store.lockItems(of: "a")
+        onTableProSync(copiesAdded: false)
 
         #expect(!helper().addDeviceOnlyCopies())
         #expect(store.value(account: "b", synchronizable: false) == "synced-b")

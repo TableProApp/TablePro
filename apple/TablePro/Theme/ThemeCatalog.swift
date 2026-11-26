@@ -519,6 +519,22 @@ internal extension ThemeCatalog {
         return payloads
     }
 
+    // A deletion another device made: the theme the catalog lists, and a file a newer build wrote that sync reports by
+    // the same id, so the deleted theme is not read back on the next pass.
+    func removePulled(id: String) throws {
+        guard removeWithoutSync(ids: [id]) else { throw ThemeSyncReadError.unremovable }
+        var trashed = false
+        for record in rejected {
+            let url = URL(fileURLWithPath: record.path)
+            guard let newer = try Self.newerTheme(at: url), newer.id == id else { continue }
+            _ = try fileTrash.moveToTrash(url)
+            trashed = true
+        }
+        if trashed {
+            reloadSynchronously()
+        }
+    }
+
     private func unknownThemeFiles() throws -> [URL] {
         let files: [URL]
         do {
@@ -693,6 +709,7 @@ internal extension ThemeCatalog {
 internal enum ThemeSyncReadError: Error {
     case unreadable
     case unencodable
+    case unremovable
 }
 
 private enum ThemeSyncRejection: Error {

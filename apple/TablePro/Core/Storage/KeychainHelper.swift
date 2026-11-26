@@ -226,6 +226,10 @@ final class KeychainHelper: KeychainStoring {
     // goes to the one the setting selects. A synced item is never removed here: deleting it reaches every device.
     @discardableResult
     func write(_ data: Data, forKey key: String, deviceOnly: Bool) -> Bool {
+        copyLock.withLock { writeUnlocked(data, forKey: key, deviceOnly: deviceOnly) }
+    }
+
+    private func writeUnlocked(_ data: Data, forKey key: String, deviceOnly: Bool) -> Bool {
         let synchronizable = !deviceOnly && isPasswordSyncEnabled
         let accessible = accessibility(forSync: synchronizable)
         let target = itemQuery(forKey: key, synchronizable: synchronizable)
@@ -326,17 +330,17 @@ final class KeychainHelper: KeychainStoring {
 
     // On TablePro Sync only this Mac's own item goes: the iCloud one belongs to the devices still on iCloud.
     func delete(forKey key: String, deviceOnly: Bool) {
-        guard let state = tableProSync else {
-            var query = baseQuery(forKey: key)
-            if !deviceOnly {
-                query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-            }
-            deleteItems(query, key: key)
-            return
-        }
-        // The removal is noted first: a quit between the two then leaves this Mac's item and a note a save clears, never
-        // a removed item whose iCloud copy reads back.
         copyLock.withLock {
+            guard let state = tableProSync else {
+                var query = baseQuery(forKey: key)
+                if !deviceOnly {
+                    query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+                }
+                deleteItems(query, key: key)
+                return
+            }
+            // The removal is noted first: a quit between the two then leaves this Mac's item and a note a save clears,
+            // never a removed item whose iCloud copy reads back.
             if !state.deviceCopiesAdded {
                 provider.noteRemovedHere(key)
             }
@@ -389,8 +393,9 @@ final class KeychainHelper: KeychainStoring {
         copyLock.withLock { addDeviceOnlyCopyUnlocked(forKey: key) }
     }
 
+    // Off TablePro Sync again, a copy still under way stops: the password sync switch decides from then on.
     private func addDeviceOnlyCopyUnlocked(forKey key: String) -> Bool {
-        if provider.isRemovedHere(key) {
+        if tableProSync == nil || provider.isRemovedHere(key) {
             return true
         }
         let own = items.copyItem(itemQuery(forKey: key, synchronizable: false))
