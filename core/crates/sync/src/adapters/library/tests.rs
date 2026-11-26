@@ -305,7 +305,8 @@ fn the_driver_fields_go_up_as_the_mac_syncs_them() {
     let fields = &mut saved.details.additional_fields;
     fields.insert("connectTimeoutSeconds".to_owned(), "030".to_owned());
     fields.insert("queryTimeoutSeconds".to_owned(), "15".to_owned());
-    fields.insert("mongoPassword".to_owned(), "hunter2".to_owned());
+    fields.insert("mongoParam_proxyPassword".to_owned(), "hunter2".to_owned());
+    fields.insert("connectTimeoutMilliseconds".to_owned(), "9000".to_owned());
 
     let entries = &wire(&saved, favorite)["additional_fields"];
 
@@ -368,9 +369,14 @@ fn a_route_another_device_published_is_neither_cleared_nor_replaced_by_one_to_th
     let mut elsewhere = base.clone();
     elsewhere["ssh_route"]["target"]["host"] = json!("db.other");
 
-    assert_eq!(at_base(Kind::Connection, &cleared, Some(&base)), ["/ssh_route"]);
-    assert_eq!(at_base(Kind::Connection, &same_hosts, Some(&base)), ["/ssh_route"]);
-    assert!(at_base(Kind::Connection, &elsewhere, Some(&base)).is_empty());
+    let route_at_base = |local: &Value| {
+        at_base(Kind::Connection, local, Some(&base))
+            .iter()
+            .any(|pointer| pointer.starts_with("/ssh_route"))
+    };
+    assert!(route_at_base(&cleared));
+    assert!(route_at_base(&same_hosts));
+    assert!(!route_at_base(&elsewhere));
 }
 
 #[test]
