@@ -388,6 +388,43 @@ async fn a_mac_with_the_profile_kinds_off_sends_nothing_of_them() {
     assert!(stored(&server, Kind::SshProfile.as_str(), &id(3)).is_none());
 }
 
+// A refill the store could not take the pulled value in keeps the refill for that record: once the store takes it,
+// the server's copy wins, and the copy the restore left never goes up as the device's edit.
+#[tokio::test]
+async fn a_value_a_refill_could_not_write_takes_the_pull_when_the_store_takes_it() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let file = StoreFile::new();
+    let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .build()
+        .await;
+    mac.connections.put(&id(1), json!({"name": "Old"}));
+    mac.sync().await;
+    mini.sync().await;
+    mac.connections.put(&id(1), json!({"name": "New"}));
+    mac.sync().await;
+    mini.sync().await;
+
+    file.restored();
+    connections.put(&id(1), json!({"name": "Old"}));
+    connections.refuse_value(&id(1), true);
+    mini.sync().await;
+    let held = mini.rows(RowRange::Scope(Table::Held, ScopeName::Personal)).await;
+    connections.refuse_value(&id(1), false);
+    mini.sync().await;
+    mini.sync().await;
+
+    assert!(
+        held.iter()
+            .any(|row| matches!(row, Row::Held(row) if row.reason == HeldReason::RefusedInRefill)),
+        "{held:?}"
+    );
+    assert_eq!(connections.get(&id(1)), Some(json!({"name": "New"})));
+    assert_eq!(stored(&server, Kind::Connection.as_str(), &id(1)), Some(json!({"name": "New"})));
+}
+
 #[tokio::test]
 async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
     let server = FakeServer::new();
