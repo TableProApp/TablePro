@@ -1834,6 +1834,10 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -5515,6 +5519,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_resume_reset(ulong @ptr,RustBuffer @reset
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_rotate_team_key(ulong @ptr,RustBuffer @team,RustBuffer @remove
     );
 
@@ -5604,6 +5619,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_delete_icloud_zone(ulong @ptr
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_flush_legacy_marks(ulong @ptr
     );
 
     #if NET8_0_OR_GREATER
@@ -10113,6 +10139,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_resume_reset(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_rotate_team_key(
     );
 
@@ -10202,6 +10239,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_delete_icloud_zone(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_flush_legacy_marks(
     );
 
     #if NET8_0_OR_GREATER
@@ -12516,8 +12564,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_credentials_to_rotate();
-            if (checksum != 44781) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_credentials_to_rotate` checksum `44781`, library returned `{checksum}`");
+            if (checksum != 38292) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_credentials_to_rotate` checksum `38292`, library returned `{checksum}`");
             }
         }
         {
@@ -12611,6 +12659,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_resume_reset();
+            if (checksum != 15811) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_resume_reset` checksum `15811`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_rotate_team_key();
             if (checksum != 26133) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_rotate_team_key` checksum `26133`, library returned `{checksum}`");
@@ -12662,6 +12716,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_delete_icloud_zone();
             if (checksum != 59450) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_delete_icloud_zone` checksum `59450`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_flush_legacy_marks();
+            if (checksum != 48530) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_flush_legacy_marks` checksum `48530`, library returned `{checksum}`");
             }
         }
         {
@@ -20890,7 +20950,7 @@ internal interface ISyncService {
     /// <exception cref="CoreException"></exception>
     Task CreateTeamKeys(string @team);
     /// <exception cref="CoreException"></exception>
-    Task<string[]> CredentialsToRotate(string @scope);
+    Task<CredentialToRotateInfo[]> CredentialsToRotate(string @scope);
     /// <exception cref="CoreException"></exception>
     void DiscardKeyDraft(string @draft);
     /// <exception cref="CoreException"></exception>
@@ -20922,6 +20982,8 @@ internal interface ISyncService {
     /// <exception cref="CoreException"></exception>
     Task RestartTeamKey(string @team, string[] @confirm);
     /// <exception cref="CoreException"></exception>
+    Task ResumeReset(string @reset);
+    /// <exception cref="CoreException"></exception>
     Task RotateTeamKey(string @team, string[] @remove);
     /// <exception cref="CoreException"></exception>
     Task<SignOutOutcomeTag> SignOutKeys();
@@ -20939,6 +21001,8 @@ internal interface ISyncService {
     Task DecideApproval(SyncRecordRef @record, string @field, string @digest, bool @approve);
     /// <exception cref="CoreException"></exception>
     Task DeleteIcloudZone();
+    /// <exception cref="CoreException"></exception>
+    Task FlushLegacyMarks();
     /// <exception cref="CoreException"></exception>
     Task<HeldRecordInfo[]> HeldRecords();
     string? IcloudAccount();
@@ -21464,7 +21528,7 @@ internal class SyncService : ISyncService, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<string[]> CredentialsToRotate(string @scope) {
+    public async Task<CredentialToRotateInfo[]> CredentialsToRotate(string @scope) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
@@ -21479,7 +21543,7 @@ internal class SyncService : ISyncService, IDisposable {
         // Free
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
         // Lift
-        (result) => FfiConverterSequenceString.INSTANCE.Lift(result),
+        (result) => FfiConverterSequenceTypeCredentialToRotateInfo.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -21780,6 +21844,24 @@ internal class SyncService : ISyncService, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
+    public async Task ResumeReset(string @reset) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_resume_reset(thisPtr, FfiConverterString.INSTANCE.Lower(@reset));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
     public async Task RotateTeamKey(string @team, string[] @remove) {await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
@@ -21944,6 +22026,24 @@ internal class SyncService : ISyncService, IDisposable {
         // Get rust future
         CallWithPointer(thisPtr => {
             return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_delete_icloud_zone(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task FlushLegacyMarks() {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_flush_legacy_marks(thisPtr);
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
@@ -24717,6 +24817,56 @@ class FfiConverterTypeCredentialProfileRecord: FfiConverterRustBuffer<Credential
 
 
 
+internal record CredentialToRotateInfo (
+    string Envelope, 
+    string ParentKind, 
+    string ParentId, 
+    string? Connection, 
+    string? ConnectionName, 
+    string? ConnectionDriver, 
+    string Field
+) {
+}
+
+class FfiConverterTypeCredentialToRotateInfo: FfiConverterRustBuffer<CredentialToRotateInfo> {
+    public static FfiConverterTypeCredentialToRotateInfo INSTANCE = new FfiConverterTypeCredentialToRotateInfo();
+
+    public override CredentialToRotateInfo Read(BigEndianStream stream) {
+        return new CredentialToRotateInfo(
+            Envelope: FfiConverterString.INSTANCE.Read(stream),
+            ParentKind: FfiConverterString.INSTANCE.Read(stream),
+            ParentId: FfiConverterString.INSTANCE.Read(stream),
+            Connection: FfiConverterOptionalString.INSTANCE.Read(stream),
+            ConnectionName: FfiConverterOptionalString.INSTANCE.Read(stream),
+            ConnectionDriver: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Field: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CredentialToRotateInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Envelope)
+            + FfiConverterString.INSTANCE.AllocationSize(value.ParentKind)
+            + FfiConverterString.INSTANCE.AllocationSize(value.ParentId)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Connection)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ConnectionName)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ConnectionDriver)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Field);
+    }
+
+    public override void Write(CredentialToRotateInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Envelope, stream);
+            FfiConverterString.INSTANCE.Write(value.ParentKind, stream);
+            FfiConverterString.INSTANCE.Write(value.ParentId, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Connection, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.ConnectionName, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.ConnectionDriver, stream);
+            FfiConverterString.INSTANCE.Write(value.Field, stream);
+    }
+}
+
+
+
 internal record CsvPreview (
     string[] Headers, 
     string[][] Rows, 
@@ -27302,6 +27452,7 @@ internal record MemberKeysInfo (
     string Account, 
     string? Name, 
     string? Email, 
+    bool IsSelf, 
     TeamRoleTag Role, 
     MemberKeyStatusTag Status
 ) {
@@ -27315,6 +27466,7 @@ class FfiConverterTypeMemberKeysInfo: FfiConverterRustBuffer<MemberKeysInfo> {
             Account: FfiConverterString.INSTANCE.Read(stream),
             Name: FfiConverterOptionalString.INSTANCE.Read(stream),
             Email: FfiConverterOptionalString.INSTANCE.Read(stream),
+            IsSelf: FfiConverterBoolean.INSTANCE.Read(stream),
             Role: FfiConverterTypeTeamRoleTag.INSTANCE.Read(stream),
             Status: FfiConverterTypeMemberKeyStatusTag.INSTANCE.Read(stream)
         );
@@ -27325,6 +27477,7 @@ class FfiConverterTypeMemberKeysInfo: FfiConverterRustBuffer<MemberKeysInfo> {
             + FfiConverterString.INSTANCE.AllocationSize(value.Account)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Name)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Email)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.IsSelf)
             + FfiConverterTypeTeamRoleTag.INSTANCE.AllocationSize(value.Role)
             + FfiConverterTypeMemberKeyStatusTag.INSTANCE.AllocationSize(value.Status);
     }
@@ -27333,6 +27486,7 @@ class FfiConverterTypeMemberKeysInfo: FfiConverterRustBuffer<MemberKeysInfo> {
             FfiConverterString.INSTANCE.Write(value.Account, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Email, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.IsSelf, stream);
             FfiConverterTypeTeamRoleTag.INSTANCE.Write(value.Role, stream);
             FfiConverterTypeMemberKeyStatusTag.INSTANCE.Write(value.Status, stream);
     }
@@ -28012,6 +28166,7 @@ internal record ReviewedMemberInfo (
     string Account, 
     string? Name, 
     string? Email, 
+    bool IsSelf, 
     uint ConfirmedUnderAv
 ) {
 }
@@ -28026,6 +28181,7 @@ class FfiConverterTypeReviewedMemberInfo: FfiConverterRustBuffer<ReviewedMemberI
             Account: FfiConverterString.INSTANCE.Read(stream),
             Name: FfiConverterOptionalString.INSTANCE.Read(stream),
             Email: FfiConverterOptionalString.INSTANCE.Read(stream),
+            IsSelf: FfiConverterBoolean.INSTANCE.Read(stream),
             ConfirmedUnderAv: FfiConverterUInt32.INSTANCE.Read(stream)
         );
     }
@@ -28037,6 +28193,7 @@ class FfiConverterTypeReviewedMemberInfo: FfiConverterRustBuffer<ReviewedMemberI
             + FfiConverterString.INSTANCE.AllocationSize(value.Account)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Name)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Email)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.IsSelf)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.ConfirmedUnderAv);
     }
 
@@ -28046,6 +28203,7 @@ class FfiConverterTypeReviewedMemberInfo: FfiConverterRustBuffer<ReviewedMemberI
             FfiConverterString.INSTANCE.Write(value.Account, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Email, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.IsSelf, stream);
             FfiConverterUInt32.INSTANCE.Write(value.ConfirmedUnderAv, stream);
     }
 }
@@ -29597,6 +29755,7 @@ internal record StoppedDeviceInfo (
     string Account, 
     string? Name, 
     string? Email, 
+    bool IsSelf, 
     string Device, 
     uint Version, 
     bool CanReconfirm
@@ -29611,6 +29770,7 @@ class FfiConverterTypeStoppedDeviceInfo: FfiConverterRustBuffer<StoppedDeviceInf
             Account: FfiConverterString.INSTANCE.Read(stream),
             Name: FfiConverterOptionalString.INSTANCE.Read(stream),
             Email: FfiConverterOptionalString.INSTANCE.Read(stream),
+            IsSelf: FfiConverterBoolean.INSTANCE.Read(stream),
             Device: FfiConverterString.INSTANCE.Read(stream),
             Version: FfiConverterUInt32.INSTANCE.Read(stream),
             CanReconfirm: FfiConverterBoolean.INSTANCE.Read(stream)
@@ -29622,6 +29782,7 @@ class FfiConverterTypeStoppedDeviceInfo: FfiConverterRustBuffer<StoppedDeviceInf
             + FfiConverterString.INSTANCE.AllocationSize(value.Account)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Name)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Email)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.IsSelf)
             + FfiConverterString.INSTANCE.AllocationSize(value.Device)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.Version)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.CanReconfirm);
@@ -29631,6 +29792,7 @@ class FfiConverterTypeStoppedDeviceInfo: FfiConverterRustBuffer<StoppedDeviceInf
             FfiConverterString.INSTANCE.Write(value.Account, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Email, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.IsSelf, stream);
             FfiConverterString.INSTANCE.Write(value.Device, stream);
             FfiConverterUInt32.INSTANCE.Write(value.Version, stream);
             FfiConverterBoolean.INSTANCE.Write(value.CanReconfirm, stream);
@@ -44658,6 +44820,52 @@ class FfiConverterSequenceTypeCredentialProfileRecord: FfiConverterRustBuffer<Cr
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeCredentialProfileRecord.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeCredentialToRotateInfo: FfiConverterRustBuffer<CredentialToRotateInfo[]> {
+    public static FfiConverterSequenceTypeCredentialToRotateInfo INSTANCE = new FfiConverterSequenceTypeCredentialToRotateInfo();
+
+    public override CredentialToRotateInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new CredentialToRotateInfo[length];
+        var readFn = FfiConverterTypeCredentialToRotateInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(CredentialToRotateInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeCredentialToRotateInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(CredentialToRotateInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeCredentialToRotateInfo.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }
