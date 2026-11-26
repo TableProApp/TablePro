@@ -125,7 +125,7 @@ impl ServiceSync {
     // push-back runs again on every pass while one waits (0062).
     pub(super) async fn push_back(&self, ctx: &mut PassCtx) -> Result<(), SyncError> {
         let epoch = ctx.body.epoch;
-        let due = ctx.pushed_back != Some(epoch) && (ctx.new_epoch || self.restore_waits().await?);
+        let due = ctx.pushed_back != Some(epoch) && (ctx.new_epoch || self.restore_waits(ctx).await?);
         if !due {
             return self.adopt_epoch(ctx).await;
         }
@@ -172,14 +172,13 @@ impl ServiceSync {
         self.adopt_epoch(ctx).await
     }
 
-    // A team row stopped as `restore_wait`.
-    async fn restore_waits(&self) -> Result<bool, SyncError> {
+    // A team this sign-in still reaches whose row is stopped as `restore_wait`.
+    async fn restore_waits(&self, ctx: &PassCtx) -> Result<bool, SyncError> {
         let mut txn = begin(&self.state).await?;
-        Ok(txn
-            .scan(&RowRange::Table(Table::KeyVersions))
-            .await?
-            .iter()
-            .any(|row| matches!(row, Row::KeyVersion(row) if row.stopped_cause == Some(StoppedCause::RestoreWait))))
+        Ok(txn.scan(&RowRange::Table(Table::KeyVersions)).await?.iter().any(|row| {
+            matches!(row, Row::KeyVersion(row) if row.stopped_cause == Some(StoppedCause::RestoreWait)
+                && ctx.body.scopes.iter().any(|info| info.scope == row.scope))
+        }))
     }
 
     // What the server took is what it holds now, so a push-back run again does not judge it lost.
