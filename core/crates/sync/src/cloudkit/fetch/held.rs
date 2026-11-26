@@ -97,8 +97,10 @@ impl Fetcher<'_> {
                 // Gone from the zone with no deletion a delta brought: the change no longer stands.
                 CloudKitFetched::Missing { name } => release.extend(copy::key_of_name(&name)),
                 CloudKitFetched::Failed {
-                    name, retry_after_ms, ..
-                } => waited.note(&name, retry_after_ms),
+                    name,
+                    code,
+                    retry_after_ms,
+                } => waited.note(&name, code, retry_after_ms),
             }
         }
         let mut counts = self

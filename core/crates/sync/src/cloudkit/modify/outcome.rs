@@ -9,35 +9,8 @@ use crate::api::cloudkit::{CloudKitFailure, CloudKitOutcome};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, RecordKey};
 use crate::api::state::{BaseRow, Row, RowKey};
+use crate::cloudkit::codes::{Failure, failure};
 use crate::cloudkit::fetch::ServerChanged;
-
-// A per-record `CKError.Code` as Swift hands it over. Swift decides nothing (0054), so the engine reads each code as the
-// Swift engine's `SyncFailure` did.
-enum Failure {
-    // Every record that follows fails the same way: the upload stops, and the pass with it.
-    Stops(CloudKitFailure),
-    // CloudKit asks to be tried again later, or the network dropped: the pass ends as a throttle, so the scheduler tries
-    // again.
-    Later,
-    TooLarge,
-    Retry,
-}
-
-fn failure(code: i64) -> Failure {
-    match code {
-        9 => Failure::Stops(CloudKitFailure::NoAccount),
-        25 => Failure::Stops(CloudKitFailure::QuotaExceeded),
-        26 => Failure::Stops(CloudKitFailure::ZoneNotFound),
-        28 => Failure::Stops(CloudKitFailure::ZoneDeletedByUser),
-        32 => Failure::Stops(CloudKitFailure::Restricted),
-        36 => Failure::Stops(CloudKitFailure::AccountTemporarilyUnavailable),
-        // A container, entitlement, database or permission CloudKit refuses, or an app it finds too old.
-        5 | 8 | 10 | 18 | 24 => Failure::Stops(CloudKitFailure::Other { code }),
-        3 | 4 | 6 | 7 | 23 | 34 => Failure::Later,
-        27 => Failure::TooLarge,
-        _ => Failure::Retry,
-    }
-}
 
 // Which of two stops a pass reports: what explains the others, the app and the account before the zone, the zone
 // before storage, as the Swift engine ranked them.

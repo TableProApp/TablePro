@@ -51,16 +51,22 @@ async fn a_wait_cloudkit_names_for_a_record_holds_the_next_pass_back_as_a_thrott
     );
 
     let throttled = sync.pass(PassReason::Poll).await;
-    let next = sync.pass(PassReason::Person).await;
+    rig.clock.advance(10_000);
+    let early = sync.pass(PassReason::Person).await;
+    let early_zone = rig.zone_fields(Kind::Group, A);
+    rig.clock.advance(20_000);
+    let after = sync.pass(PassReason::Poll).await;
 
-    assert_eq!(
-        throttled.unwrap_err(),
+    let throttle = |ms| {
         SyncError::CloudKit(CloudKitFailure::Throttled {
-            retry_after_ms: Some(30_000)
+            retry_after_ms: Some(ms),
         })
-    );
-    assert!(next.is_ok());
-    assert!(rig.zone_fields(Kind::Group, A).is_none());
+    };
+    assert_eq!(throttled.unwrap_err(), throttle(30_000));
+    assert_eq!(early.unwrap_err(), throttle(20_000));
+    assert!(early_zone.is_none());
+    assert!(after.is_ok());
+    assert!(rig.zone_fields(Kind::Group, A).is_some());
 }
 
 // A delta never sends again what earlier fetches passed over, so a category turned on is read whole.
@@ -211,4 +217,59 @@ async fn a_stop_during_a_fetch_writes_nothing_more() {
     assert_eq!(stopped.unwrap_err(), SyncError::Cancelled);
     assert!(rig.store(Kind::Group).holds(A));
     assert!(!rig.store(Kind::Group).holds(B));
+}
+
+// CloudKit asked to be tried again later for a record and named no wait: the pass ends as a throttle.
+#[tokio::test]
+async fn a_read_cloudkit_asks_to_try_later_without_a_wait_ends_the_fetch_as_a_throttle() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Group, A, &json!({"name": "Work"}));
+    let transport = Unreliable::new(&rig.cloud);
+    transport.leave_unfetched(&name(Kind::Group, A));
+    transport.fail_reads(&name(Kind::Group, A), 2);
+    transport.failed_reads_answer(23);
+
+    let report = rig.fetch_through(&transport).await.unwrap();
+
+    assert!(report.throttled);
+    assert_eq!(report.retry_after_ms, None);
+}
+
+// Another pass runs while a record waits: it ends as a throttle too, so the journal keeps the record for the pass
+// that follows the wait.
+#[tokio::test]
+async fn a_pass_while_a_record_waits_keeps_it_for_the_journal_pass_after_the_wait() {
+    let rig = Rig::new().await;
+    let flaky = Flaky::new(Arc::clone(&rig.cloud));
+    let sync = rig.sync_through(Arc::clone(&flaky) as Arc<dyn CloudKitTransport>, None);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.store(Kind::Group)
+        .put(A, projected(Kind::Group, A, &json!({"name": "Work"})));
+    sync.journal().changed(&[JournalEntry {
+        kind: Kind::Group,
+        written: vec![A.to_owned()],
+        deleted: Vec::new(),
+    }]);
+    flaky.answer_once(
+        &name(Kind::Group, A),
+        CloudKitOutcome::Failed {
+            name: name(Kind::Group, A),
+            code: 7,
+            retry_after_ms: Some(30_000),
+        },
+    );
+
+    sync.run_pass(PassReason::Journal).await.unwrap();
+    rig.clock.advance(5_000);
+    let meanwhile = sync.run_pass(PassReason::CloudKitPush).await.unwrap();
+    rig.clock.advance(25_000);
+    let after = sync.run_pass(PassReason::Journal).await.unwrap();
+
+    assert_eq!(
+        meanwhile.throttle(),
+        Some(CloudKitFailure::Throttled {
+            retry_after_ms: Some(25_000)
+        })
+    );
+    assert_eq!(after.push.saved, 1);
 }

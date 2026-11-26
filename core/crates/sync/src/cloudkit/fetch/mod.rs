@@ -18,6 +18,7 @@ use crate::api::cloudkit::{CloudKitChanges, CloudKitFailure, CloudKitFetched, Cl
 use crate::api::error::{StateError, SyncError};
 use crate::api::ids::{Cursor, RecordKey, ScopeName};
 use crate::api::state::{Row, RowKey, StateIdentity, StateStore};
+use crate::cloudkit::codes;
 use crate::engine::{Backoff, StopSignal};
 
 mod copy;
@@ -102,6 +103,8 @@ pub struct FetchReport {
     pub retry_after_ms: Option<u64>,
     // Each record CloudKit asked to wait for, and how long, which the engine does not ask for before then.
     pub waits: Vec<(RecordKey, u64)>,
+    // CloudKit asked to be tried again later, or the network dropped, for a record it named no wait for.
+    pub throttled: bool,
 }
 
 pub struct Fetcher<'a> {
@@ -120,14 +123,18 @@ pub struct Fetcher<'a> {
 #[derive(Debug, Default)]
 struct Waited {
     keys: BTreeMap<RecordKey, u64>,
+    later: bool,
 }
 
 impl Waited {
-    fn note(&mut self, name: &str, retry_after_ms: Option<u64>) {
-        if let (Some(key), Some(wait)) = (copy::key_of_name(name), retry_after_ms) {
-            let wait = wait.min(Backoff::MAX_RETRY_AFTER_MS);
-            let held = self.keys.entry(key).or_insert(wait);
-            *held = (*held).max(wait);
+    fn note(&mut self, name: &str, code: i64, retry_after_ms: Option<u64>) {
+        match (copy::key_of_name(name), retry_after_ms) {
+            (Some(key), Some(wait)) => {
+                let wait = wait.min(Backoff::MAX_RETRY_AFTER_MS);
+                let held = self.keys.entry(key).or_insert(wait);
+                *held = (*held).max(wait);
+            }
+            _ => self.later |= codes::later(code),
         }
     }
 
@@ -308,6 +315,7 @@ impl<'a> Fetcher<'a> {
         report.counts.add(self.recover(pass.refill(), &mut waited).await?);
         report.retry_after_ms = waited.keys.values().max().copied();
         report.waits = waited.keys.into_iter().collect();
+        report.throttled = waited.later;
         Ok(report)
     }
 
@@ -370,9 +378,11 @@ impl<'a> Fetcher<'a> {
                 CloudKitFetched::Found { record } => items.extend(copy::changed(&record)),
                 CloudKitFetched::Missing { .. } => {}
                 CloudKitFetched::Failed {
-                    name, retry_after_ms, ..
+                    name,
+                    code,
+                    retry_after_ms,
                 } => {
-                    waited.note(&name, retry_after_ms);
+                    waited.note(&name, code, retry_after_ms);
                     items.extend(copy::key_of_name(&name).map(|key| Incoming::Unread { key, tag: None }));
                 }
             }

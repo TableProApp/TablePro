@@ -46,13 +46,21 @@ pub struct CloudKitReport {
     pub zone_made: bool,
     pub fetch: FetchReport,
     pub push: PushReport,
+    // How long until the first record CloudKit asked to wait may go again, while one waits.
+    pub waiting_ms: Option<u64>,
 }
 
 impl CloudKitReport {
-    // CloudKit asked a record to wait: the scheduler waits it out as a throttle (0054, Scheduling).
+    // CloudKit asked a record to wait, or to be tried again later: the scheduler waits it out as a throttle, so the
+    // pass after it sends what waited (0054, Scheduling).
     pub fn throttle(&self) -> Option<CloudKitFailure> {
-        let retry_after_ms = self.fetch.retry_after_ms.max(self.push.retry_after_ms);
-        (retry_after_ms.is_some() || self.push.throttled).then_some(CloudKitFailure::Throttled { retry_after_ms })
+        let retry_after_ms = self
+            .fetch
+            .retry_after_ms
+            .max(self.push.retry_after_ms)
+            .or(self.waiting_ms);
+        (retry_after_ms.is_some() || self.push.throttled || self.fetch.throttled)
+            .then_some(CloudKitFailure::Throttled { retry_after_ms })
     }
 }
 
@@ -286,13 +294,16 @@ impl CloudKitSync {
             zone::saw(state).await?;
             report.zone_made = true;
         }
-        if self.read_again.swap(false, Ordering::SeqCst)
-            && let Err(error) = read_everything_again(state).await
-        {
+        // Taken together under the lock `set_categories` holds as it sets the flag, so a kind turned on is read whole by
+        // the pass that has it on.
+        let (categories, read_again) = {
+            let held = lock(&self.categories);
+            (held.clone(), self.read_again.swap(false, Ordering::SeqCst))
+        };
+        if read_again && let Err(error) = read_everything_again(state).await {
             self.read_again.store(true, Ordering::SeqCst);
             return Err(error);
         }
-        let categories = lock(&self.categories).clone();
         let now_ms = self.clock.now_ms();
         let fetcher = Fetcher::new(self.transport.as_ref(), state, &self.adapters, categories)?
             .stopped_by(self.stop.clone())
@@ -304,6 +315,7 @@ impl CloudKitSync {
         self.stop.check()?;
         let pusher = Pusher::new(&fetcher, &self.stop, self.clock.now_ms()).following(&self.categories);
         report.push = pusher.push(&mut session.waits, named).await?;
+        report.waiting_ms = session.waits.next_in(self.clock.now_ms());
         Ok(())
     }
 

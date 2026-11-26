@@ -23,8 +23,9 @@ type Hook<'a> = Box<dyn FnOnce() + Send + 'a>;
 struct Faults {
     unfetched: BTreeSet<String>,
     failing_reads: BTreeMap<String, u32>,
-    // The wait a failing read names.
+    // The wait a failing read names, and its code when not 15.
     read_wait: Option<u64>,
+    read_code: Option<i64>,
     fetch_calls_before_failure: Option<(usize, CloudKitFailure)>,
     read_call_failure: Option<CloudKitFailure>,
     names_per_call: Option<usize>,
@@ -65,6 +66,10 @@ impl<'a> Unreliable<'a> {
     // A failing read asks to be tried again after this long, as a throttled one does.
     pub fn wait_on_failed_reads(&self, ms: u64) {
         lock(&self.faults).read_wait = Some(ms);
+    }
+
+    pub fn failed_reads_answer(&self, code: i64) {
+        lock(&self.faults).read_code = Some(code);
     }
 
     // After `calls` more change fetches, the next one fails with the network.
@@ -216,7 +221,7 @@ impl<'a> CloudKitTransport for Unreliable<'a> {
                         *times -= 1;
                         CloudKitFetched::Failed {
                             name,
-                            code: 15,
+                            code: faults.read_code.unwrap_or(15),
                             retry_after_ms: faults.read_wait,
                         }
                     }

@@ -2,5 +2,6 @@
 // file, and merges a save CloudKit refused with `serverRecordChanged`; `modify` sends what the stores changed and runs
 // the iCloud pass.
 
+mod codes;
 pub mod fetch;
 pub mod modify;

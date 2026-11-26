@@ -19,6 +19,7 @@ use tablepro_records::record_id::shortened;
 
 pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync};
 
+use super::codes;
 use super::fetch::{Categories, Fetcher, PROFILES, SCOPE, ServerChanged, carried};
 use crate::api::adapter::{LocalRecord, LocalRecords};
 use crate::api::cloudkit::{CloudKitFailure, CloudKitField, CloudKitRecord, CloudKitValue};
@@ -46,6 +47,15 @@ impl Waits {
 
     pub fn holds(&self, key: &RecordKey, now_ms: i64) -> bool {
         self.0.get(key).is_some_and(|until| *until > now_ms)
+    }
+
+    // How long until the first wait still running ends.
+    pub fn next_in(&self, now_ms: i64) -> Option<u64> {
+        self.0
+            .values()
+            .filter(|until| **until > now_ms)
+            .map(|until| u64::try_from(until.saturating_sub(now_ms)).unwrap_or(u64::MAX))
+            .min()
     }
 
     // Every record still waiting.
@@ -187,11 +197,13 @@ impl<'p> Pusher<'p> {
         self
     }
 
+    // The live categories only narrow what the fetch read: a kind turned on mid-pass waits for the full read the next
+    // pass makes, since its bases are stale until then.
     fn syncs(&self, kind: Kind) -> bool {
-        match self.live {
-            Some(live) => live.lock().unwrap_or_else(PoisonError::into_inner).syncs(kind),
-            None => self.fetcher.categories.syncs(kind),
-        }
+        self.fetcher.categories.syncs(kind)
+            && self
+                .live
+                .is_none_or(|live| live.lock().unwrap_or_else(PoisonError::into_inner).syncs(kind))
     }
 
     pub async fn push(&self, waits: &mut Waits, named: Option<&JournalIds>) -> Result<PushReport, SyncError> {
@@ -251,6 +263,8 @@ impl<'p> Pusher<'p> {
                 if let Some(wait) = refusal.retry_after_ms {
                     waits.hold(held.clone(), self.now_ms, wait);
                     report.wait(Some(wait));
+                } else if refusal.code.is_some_and(codes::later) {
+                    report.wait(None);
                 }
                 failed.insert(held.clone());
                 report.failed.push((held, refusal.code));

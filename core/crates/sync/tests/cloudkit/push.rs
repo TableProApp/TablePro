@@ -468,3 +468,24 @@ async fn a_category_turned_off_while_the_push_runs_sends_nothing_more() {
     assert!(rig.zone_fields(Kind::Connection, A).is_some());
     assert!(rig.zone_fields(Kind::Group, B).is_none());
 }
+
+// A kind turned on while the push runs waits for the full read the next pass makes: its bases are stale until then.
+#[tokio::test]
+async fn a_category_turned_on_while_the_push_runs_waits_for_the_next_pass() {
+    let rig = Rig::new().await;
+    rig.turn_off(Kind::Group);
+    rig.store(Kind::Group)
+        .put(B, projected(Kind::Group, B, &json!({"name": "Work"})));
+    let live = Mutex::new(Categories::new(KINDS));
+    let fetcher = rig.fetcher(rig.cloud.as_ref());
+    let stop = StopSignal::new();
+
+    let report = Pusher::new(&fetcher, &stop, rig.clock.now_ms())
+        .following(&live)
+        .push(&mut Waits::default(), None)
+        .await
+        .unwrap();
+
+    assert_eq!(report.queued, 0);
+    assert!(rig.zone_fields(Kind::Group, B).is_none());
+}
