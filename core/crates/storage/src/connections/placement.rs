@@ -58,7 +58,7 @@ impl ConnectionsDocument {
             |connection| (connection.group_id, connection.order),
             |connection, order| connection.order = order,
         );
-        let saved: HashSet<Uuid> = self.connections.iter().map(|connection| connection.id).collect();
+        let saved = self.connection_ids();
         let mut listed = HashSet::with_capacity(self.favorites.len());
         self.favorites.retain(|id| saved.contains(id) && listed.insert(*id));
     }

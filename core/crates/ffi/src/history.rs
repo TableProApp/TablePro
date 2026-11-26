@@ -18,6 +18,7 @@ use crate::library::{optional_id, parse_id};
 use crate::runtime::on_runtime;
 use crate::saved_queries::SavedQueryStore;
 use crate::session::DatabaseSession;
+use crate::table_folders::TableFolderStore;
 
 #[derive(uniffi::Object)]
 pub struct QueryHistoryStore {
@@ -46,7 +47,10 @@ pub enum HistoryOutcomeTag {
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct HistoryEntryInfo {
+    // The rowid pages, pins and deletes name; it never leaves the device.
     pub id: i64,
+    // The id the entry syncs under, UUID text (core ADR 0052).
+    pub record_id: String,
     pub sql: String,
     // None for a run stored without one.
     pub connection_id: Option<String>,
@@ -253,6 +257,10 @@ impl QueryHistoryStore {
     pub fn favourites(&self) -> Arc<FavouriteStore> {
         FavouriteStore::new(self.history.favourites(), self.tasks.clone())
     }
+
+    pub fn table_folders(&self) -> Arc<TableFolderStore> {
+        TableFolderStore::new(self.history.table_folders(), self.tasks.clone())
+    }
 }
 
 // None when no project holds the id, which is every connection.
@@ -279,6 +287,7 @@ fn kept(session: &Session, run: HistoryRun) -> Option<NewEntry> {
     }
     let metadata = session.metadata();
     Some(NewEntry {
+        record_id: Uuid::new_v4(),
         query: run.sql,
         driver_id: metadata.driver_id.clone(),
         connection_id: metadata.id,
@@ -303,6 +312,7 @@ impl HistoryCursorArg {
     fn cursor(&self) -> HistoryCursor {
         HistoryCursor::after(&Entry {
             id: self.id,
+            record_id: Uuid::nil(),
             query: String::new(),
             driver_id: String::new(),
             connection_id: Uuid::nil(),
@@ -329,6 +339,7 @@ impl From<Entry> for HistoryEntryInfo {
         };
         Self {
             id: entry.id,
+            record_id: entry.record_id.to_string(),
             sql: entry.query,
             connection_id: (!entry.connection_id.is_nil()).then(|| entry.connection_id.to_string()),
             connection_name: entry.connection_name,

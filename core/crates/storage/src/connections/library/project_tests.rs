@@ -233,7 +233,7 @@ fn a_top_level_group_decides_for_its_subtree_and_a_stored_project_below_it_is_ig
         ..connection("eu")
     };
     let library = Library::seeded(&ConnectionsDocument {
-        connections: vec![grouped.clone()],
+        connections: vec![grouped.clone()].into(),
         groups: vec![root.clone(), child.clone()],
         projects: vec![acme.clone(), globex.clone()],
         ..ConnectionsDocument::default()
@@ -615,7 +615,7 @@ fn a_read_drops_a_project_no_project_holds_and_numbers_the_projects() {
         ..connection("dangling")
     };
     let library = Library::seeded(&ConnectionsDocument {
-        connections: vec![kept.clone(), dangling.clone()],
+        connections: vec![kept.clone(), dangling.clone()].into(),
         groups: vec![group.clone()],
         projects: vec![acme.clone(), twice, globex],
         ..ConnectionsDocument::default()
@@ -725,7 +725,8 @@ fn an_import_matches_a_project_by_id_then_by_name_and_adds_the_rest() {
                     project_id: Some(new.id),
                     ..connection("new")
                 },
-            ],
+            ]
+            .into(),
             projects: vec![new, by_name, renamed],
             ..ConnectionsDocument::default()
         }
@@ -758,7 +759,8 @@ fn an_imported_project_does_not_take_a_name_another_project_holds() {
         connections: vec![SavedConnection {
             project_id: Some(acme.id),
             ..connection("one")
-        }],
+        }]
+        .into(),
         ..ConnectionsDocument::default()
     };
 
@@ -783,7 +785,8 @@ fn an_import_matches_a_top_level_group_by_name_only_inside_its_project() {
             connections: vec![SavedConnection {
                 group_id: Some(group.id),
                 ..connection("theirs")
-            }],
+            }]
+            .into(),
             groups: vec![group],
             projects: vec![their_project],
             ..ConnectionsDocument::default()
@@ -820,7 +823,8 @@ fn an_import_started_in_a_project_lands_what_the_file_files_under_none_there() {
                     project_id: None,
                     ..library.saved(held)
                 },
-            ],
+            ]
+            .into(),
             groups: vec![group],
             ..ConnectionsDocument::default()
         }
@@ -1064,7 +1068,8 @@ fn a_connection_a_file_updates_stays_in_its_project_with_the_groups_the_file_fil
                     group_id: Some(staging.id),
                     ..connection("fresh")
                 },
-            ],
+            ]
+            .into(),
             groups: vec![work, staging],
             ..ConnectionsDocument::default()
         }

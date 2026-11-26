@@ -50,7 +50,7 @@ impl Harness {
                         .save(NewSavedQuery {
                             name: name.to_owned(),
                             query: sql.to_owned(),
-                            connection_id,
+                            connection_id: Some(connection_id),
                             connection_name: connection_name.to_owned(),
                         })
                         .await
@@ -313,10 +313,10 @@ fn a_row_shows_its_name_and_summary_as_written() {
     init();
     let row = SavedQueryRow::default();
     let saved = SavedQuery {
-        id: 7,
+        id: Uuid::from_u128(7),
         name: "R&D <prod>".to_owned(),
         query: "\n  SELECT 1 & 2\nFROM t".to_owned(),
-        connection_id: Uuid::nil(),
+        connection_id: Some(Uuid::nil()),
         connection_name: "local".to_owned(),
         keyword: None,
         folder_id: None,
@@ -332,7 +332,7 @@ fn a_row_shows_its_name_and_summary_as_written() {
     assert!(!name.uses_markup(), "the name was read as markup");
     assert_eq!(summary.label(), "SELECT 1 & 2");
     assert!(!summary.uses_markup(), "the summary was read as markup");
-    assert_eq!(row.id(), Some(7));
+    assert_eq!(row.id(), Some(Uuid::from_u128(7)));
 }
 
 // No scenario opens the dialog, so its one field is checked here.

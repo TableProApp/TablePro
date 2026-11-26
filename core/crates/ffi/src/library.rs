@@ -237,7 +237,7 @@ pub struct GroupRecord {
     pub project_id: Option<String>,
 }
 
-// All connections is no project and has no record (core ADR 0059).
+// All connections is no project and has no record (core ADR 0067).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ProjectRecord {
     pub id: String,
@@ -569,7 +569,10 @@ impl ConnectionLibrary {
                         return Ok((updated, before, shown));
                     }
                 }
-                let mut created = blank(id.unwrap_or_else(Uuid::new_v4));
+                // An entry this build cannot read keeps its id, and with it the secrets filed under it.
+                let unreadable = store.list_blocking()?.unreadable;
+                let fresh = id.filter(|id| !unreadable.contains(id));
+                let mut created = blank(fresh.unwrap_or_else(Uuid::new_v4));
                 apply(&record, &tls, name, group_id, &mut created);
                 created.project_id = project_id;
                 store.upsert_blocking(created.clone())?;
@@ -1044,6 +1047,9 @@ pub(crate) fn blank(id: Uuid) -> SavedConnection {
         tags: Vec::new(),
         icon: None,
         options: NetworkOptions::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 
@@ -1144,6 +1150,24 @@ pub(crate) fn saved_ssh(settings: &SshSettings) -> SavedSshConfig {
     }
 }
 
+pub(crate) fn ssh_settings(ssh: &SavedSshConfig) -> SshSettings {
+    SshSettings {
+        host: ssh.host.clone(),
+        port: ssh.port,
+        username: ssh.username.clone(),
+        jump_hosts: ssh.jump_hosts.clone(),
+        auth: match &ssh.auth {
+            SavedSshAuth::Agent => SshAuthTag::Agent,
+            SavedSshAuth::PrivateKey { path, has_passphrase } => SshAuthTag::PrivateKey {
+                path: path.as_deref().map(shown),
+                has_passphrase: *has_passphrase,
+            },
+            SavedSshAuth::Password => SshAuthTag::Password,
+            SavedSshAuth::KeyboardInteractive => SshAuthTag::KeyboardInteractive,
+        },
+    }
+}
+
 fn shown(path: &Path) -> String {
     path.display().to_string()
 }
@@ -1170,21 +1194,7 @@ impl From<&SavedConnection> for ConnectionRecord {
                 client_key: saved.tls.client_identity.as_ref().map(|identity| shown(&identity.key)),
                 server_name: saved.tls.server_name.clone(),
             },
-            ssh: saved.ssh.as_ref().map(|ssh| SshSettings {
-                host: ssh.host.clone(),
-                port: ssh.port,
-                username: ssh.username.clone(),
-                jump_hosts: ssh.jump_hosts.clone(),
-                auth: match &ssh.auth {
-                    SavedSshAuth::Agent => SshAuthTag::Agent,
-                    SavedSshAuth::PrivateKey { path, has_passphrase } => SshAuthTag::PrivateKey {
-                        path: path.as_deref().map(shown),
-                        has_passphrase: *has_passphrase,
-                    },
-                    SavedSshAuth::Password => SshAuthTag::Password,
-                    SavedSshAuth::KeyboardInteractive => SshAuthTag::KeyboardInteractive,
-                },
-            }),
+            ssh: saved.ssh.as_ref().map(ssh_settings),
             safe_mode: match saved.safe_mode {
                 SafeModeLevel::Off => SafeModeTag::Off,
                 SafeModeLevel::ConfirmWrites => SafeModeTag::ConfirmWrites,

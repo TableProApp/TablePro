@@ -63,7 +63,7 @@ pub enum StorageError {
     FolderNameTaken,
 
     #[error("the folder {id} cannot move inside itself")]
-    FolderCycle { id: i64 },
+    FolderCycle { id: uuid::Uuid },
 
     #[error("export encoding failed: {0}")]
     Encode(#[from] tablepro_core::export::RenderError),
@@ -115,6 +115,9 @@ pub enum StorageError {
 
     #[error("the group {id} is inside another group, which decides its project")]
     GroupNotTopLevel { id: uuid::Uuid },
+
+    #[error("{} belongs to another account", .path.display())]
+    StoreOwnerMismatch { path: std::path::PathBuf },
 }
 
 impl StorageError {
@@ -156,6 +159,7 @@ impl StorageError {
             Self::ProjectNameTaken { .. } => "storage.project_name_taken",
             Self::ConnectionGrouped { .. } => "storage.connection_grouped",
             Self::GroupNotTopLevel { .. } => "storage.group_not_top_level",
+            Self::StoreOwnerMismatch { .. } => "storage.store_owner_mismatch",
         }
     }
 }

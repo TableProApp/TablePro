@@ -402,6 +402,9 @@ pub(crate) fn saved_connection(database: &std::path::Path) -> SavedConnection {
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 
@@ -430,6 +433,9 @@ fn network_connection() -> SavedConnection {
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 

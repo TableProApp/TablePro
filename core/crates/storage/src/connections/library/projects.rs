@@ -101,7 +101,8 @@ impl ConnectionStore {
     // the list no longer holds is refused rather than widened to the whole list. Gives the bytes and their connections.
     pub fn export_scoped_blocking(&self, project: Option<Uuid>) -> Result<(Vec<u8>, usize), StorageError> {
         let mut state = self.lock();
-        let document = self.ensure_loaded(&mut state)?;
+        // What any export writes: the connections as a file carries them and nothing this build could not read.
+        let document = self.ensure_loaded(&mut state)?.exported();
         let list = document.list();
         let Some(asked) = project else {
             return Ok((crate::document::encode_document(&document)?, list.connections.len()));
@@ -116,7 +117,7 @@ impl ConnectionStore {
             .flat_map(|connection| connection.tags.iter().copied())
             .collect();
         let part = ConnectionsDocument {
-            connections: scoped.connections.to_vec(),
+            connections: scoped.connections.to_vec().into(),
             groups: scoped.groups.to_vec(),
             tags: scoped
                 .tags
@@ -131,6 +132,7 @@ impl ConnectionStore {
                 .filter(|held| held.id == project)
                 .cloned()
                 .collect(),
+            ..ConnectionsDocument::default()
         };
         Ok((crate::document::encode_document(&part)?, part.connections.len()))
     }

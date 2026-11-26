@@ -1748,3 +1748,23 @@ fn a_socket_the_url_names_is_kept_and_no_user_is_the_desktop_user() {
     assert_eq!(imp.username_row.text(), user.to_string_lossy().as_ref());
     assert!(imp.connect_button.is_sensitive());
 }
+
+#[test]
+fn a_saved_form_keeps_what_the_form_does_not_show() {
+    let mut saved = shop();
+    saved.details.startup_sql = Some("SET search_path TO app".to_owned());
+    saved.device.local_only = true;
+    saved.unknown.insert(
+        "project_id".to_owned(),
+        serde_json::json!("CBCAF15E-97D4-4B75-8D5D-01D586CADC97"),
+    );
+    let form = ConnectForm::from_saved(&saved, caps_of("postgres"));
+    let valid = form.validate(caps_of("postgres")).expect("valid");
+
+    let edited = form.saved_connection(caps_of("postgres"), &valid, saved.id, Some(&saved));
+
+    assert_eq!(
+        (edited.details, edited.device, edited.unknown),
+        (saved.details, saved.device, saved.unknown)
+    );
+}

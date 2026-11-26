@@ -264,6 +264,9 @@ mod tests {
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         };
         let (group_id, connection) = (group.id, saved.id);
         let tags: Vec<ConnectionTag> = Vec::new();

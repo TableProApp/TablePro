@@ -3,13 +3,19 @@ mod entry;
 mod export;
 #[cfg(test)]
 mod favourites_migration_tests;
+#[cfg(test)]
+mod fixtures;
 mod history_connection;
 mod history_cursor;
 mod history_page;
 mod history_query;
+#[cfg(test)]
+mod identity_tests;
 mod new_entry;
 mod outcome;
 mod prune_report;
+#[cfg(test)]
+mod record_ids_migration_tests;
 pub mod retention;
 mod schema;
 mod search_fold;
@@ -25,7 +31,9 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
+use crate::journal::{ChangeJournal, JournalSlot, RecordKind, Signals};
 use crate::paths::StoragePaths;
+use crate::store_identity::StoreIdentity;
 use crate::unix_time::{from_unix, to_unix};
 
 pub use entry::Entry;
@@ -53,8 +61,8 @@ const MAX_UNPINNED_ENTRIES: i64 = 100_000;
 /// limit on parameters.
 const IDS_PER_STATEMENT: usize = 500;
 
-const ENTRY_COLUMNS: &str = "h.id, h.query, h.driver_id, h.connection_id, h.connection_name, h.executed_at, \
-     h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error";
+const ENTRY_COLUMNS: &str = "h.id, h.record_id, h.query, h.driver_id, h.connection_id, h.connection_name, \
+     h.executed_at, h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error";
 
 // One bound value however many ids, so a large project stays under SQLite's limit on bound parameters.
 const CONNECTION_IN_SET: &str = "h.connection_id IN (SELECT value FROM json_each(?))";
@@ -87,7 +95,8 @@ pub struct QueryHistory {
     pool: SqlitePool,
     path: PathBuf,
     // Shared by every handle `saved_queries` gives out, so a write through one reaches the others' followers.
-    saved_changes: Arc<watch::Sender<u64>>,
+    signals: Signals,
+    journal: JournalSlot,
 }
 
 impl QueryHistory {
@@ -112,10 +121,19 @@ impl QueryHistory {
             crate::upgrade_copies::keep_database(&pool, &path, version).await?;
         }
         schema::migrate(&pool).await?;
+        // A database made before the stamp, or whose row a hand edit removed, starts a generation.
+        sqlx::query(
+            "INSERT INTO store_identity (id, generation, sequence) VALUES (1, ?, 0) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .execute(&pool)
+        .await?;
+        let journal = JournalSlot::default();
         Ok(Self {
             pool,
             path,
-            saved_changes: Arc::new(watch::channel(0).0),
+            signals: Signals::new(Arc::new(watch::channel(0).0), journal.clone()),
+            journal,
         })
     }
 
@@ -123,18 +141,62 @@ impl QueryHistory {
         &self.path
     }
 
+    #[cfg(test)]
+    pub(crate) fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
+    /// The journal every later write through this database's handles tells, or none.
+    pub fn set_journal(&self, journal: Option<Arc<dyn ChangeJournal>>) {
+        self.journal.set(journal);
+    }
+
+    pub async fn identity(&self) -> Result<StoreIdentity, StorageError> {
+        let row = sqlx::query("SELECT generation, sequence FROM store_identity WHERE id = 1")
+            .fetch_one(&self.pool)
+            .await?;
+        let generation: String = row.try_get("generation")?;
+        let sequence: i64 = row.try_get("sequence")?;
+        Ok(StoreIdentity {
+            generation: Uuid::parse_str(&generation)
+                .map_err(|_| StorageError::Schema("the history's generation is not a UUID".to_owned()))?,
+            sequence: u64::try_from(sequence).unwrap_or(0),
+        })
+    }
+
+    /// For a host that restored the database from a backup of its own: a new generation tells sync
+    /// the database is not the one it last saw.
+    pub async fn start_new_generation(&self) -> Result<StoreIdentity, StorageError> {
+        sqlx::query("UPDATE store_identity SET generation = ?, sequence = sequence + 1 WHERE id = 1")
+            .bind(Uuid::new_v4().to_string())
+            .execute(&self.pool)
+            .await?;
+        self.identity().await
+    }
+
     pub fn saved_queries(&self) -> crate::saved_queries::SavedQueries {
-        crate::saved_queries::SavedQueries::new(self.pool.clone(), self.path.clone(), self.saved_changes.clone())
+        crate::saved_queries::SavedQueries::new(self.pool.clone(), self.path.clone(), self.signals.clone())
     }
 
     /// The folders saved queries are filed in, in the same database.
     pub fn saved_query_folders(&self) -> crate::saved_queries::SavedQueryFolders {
-        crate::saved_queries::SavedQueryFolders::new(self.pool.clone(), self.path.clone(), self.saved_changes.clone())
+        crate::saved_queries::SavedQueryFolders::new(self.pool.clone(), self.path.clone(), self.signals.clone())
     }
 
     /// The favourite tables and databases, in the same database.
     pub fn favourites(&self) -> crate::favourites::Favourites {
-        crate::favourites::Favourites::new(self.pool.clone(), self.path.clone(), self.saved_changes.clone())
+        crate::favourites::Favourites::new(self.pool.clone(), self.path.clone(), self.signals.clone())
+    }
+
+    /// The folders a connection's tables are filed in, in the same database.
+    pub fn table_folders(&self) -> crate::table_folders::TableFolders {
+        crate::table_folders::TableFolders::new(self.pool.clone(), self.path.clone(), self.signals.clone())
+    }
+
+    fn history_changed(&self, changed: bool) {
+        if changed {
+            self.journal.notify(&[RecordKind::HistoryEntry]);
+        }
     }
 
     pub async fn record(&self, entry: NewEntry) -> Result<i64, StorageError> {
@@ -150,16 +212,20 @@ impl QueryHistory {
             Outcome::Error(msg) => (0, 0, Some(msg.clone())),
             Outcome::Cancelled => (0, 1, None),
         };
-        let id = sqlx::query(
+        // An entry is written once: one a pull or an import brings again keeps the row it has.
+        let inserted: Option<i64> = sqlx::query_scalar(
             r#"
             INSERT INTO history (
-                query, query_folded, driver_id, connection_id, connection_name,
+                record_id, query, query_folded, driver_id, connection_id, connection_name,
                 executed_at, duration_ms, rows_affected,
                 success, cancelled, error
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (record_id) DO NOTHING
+            RETURNING id
             "#,
         )
+        .bind(entry.record_id.to_string())
         .bind(&entry.query)
         .bind(fold(&entry.query))
         .bind(&entry.driver_id)
@@ -171,10 +237,18 @@ impl QueryHistory {
         .bind(success)
         .bind(cancelled)
         .bind(error_text)
-        .execute(&self.pool)
-        .await?
-        .last_insert_rowid();
-        Ok(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        match inserted {
+            Some(id) => {
+                self.history_changed(true);
+                Ok(id)
+            }
+            None => Ok(sqlx::query_scalar("SELECT id FROM history WHERE record_id = ?")
+                .bind(entry.record_id.to_string())
+                .fetch_one(&self.pool)
+                .await?),
+        }
     }
 
     /// One page of the entries `query` matches, pinned first, then
@@ -261,6 +335,7 @@ impl QueryHistory {
         let pinned_i: i64 = row.try_get("pinned")?;
         Ok(Entry {
             id: row.try_get("id")?,
+            record_id: crate::stored_id::uuid_column(&row, "record_id")?,
             query: row.try_get("query")?,
             driver_id: row.try_get("driver_id")?,
             connection_id,
@@ -276,11 +351,13 @@ impl QueryHistory {
     }
 
     pub async fn set_pinned(&self, id: i64, pinned: bool) -> Result<(), StorageError> {
-        sqlx::query("UPDATE history SET pinned = ? WHERE id = ?")
+        let changed = sqlx::query("UPDATE history SET pinned = ? WHERE id = ?")
             .bind(if pinned { 1_i64 } else { 0 })
             .bind(id)
             .execute(&self.pool)
-            .await?;
+            .await?
+            .rows_affected();
+        self.history_changed(changed > 0);
         Ok(())
     }
 
@@ -305,8 +382,9 @@ impl QueryHistory {
         for chunk in ids.chunks(IDS_PER_STATEMENT) {
             let placeholders = vec!["?"; chunk.len()].join(",");
             let sql = format!(
-                "DELETE FROM history WHERE id IN ({placeholders}) RETURNING id, query, driver_id, connection_id, \
-                 connection_name, executed_at, duration_ms, rows_affected, success, cancelled, pinned, error"
+                "DELETE FROM history WHERE id IN ({placeholders}) RETURNING id, record_id, query, driver_id, \
+                 connection_id, connection_name, executed_at, duration_ms, rows_affected, success, cancelled, \
+                 pinned, error"
             );
             let mut statement = sqlx::query(AssertSqlSafe(sql));
             for id in chunk {
@@ -317,6 +395,7 @@ impl QueryHistory {
             }
         }
         transaction.commit().await?;
+        self.history_changed(!deleted.is_empty());
         deleted.sort_by_key(|entry| entry.id);
         Ok(deleted)
     }
@@ -328,12 +407,13 @@ impl QueryHistory {
         for entry in entries {
             sqlx::query(
                 "INSERT INTO history (
-                     id, query, query_folded, driver_id, connection_id, connection_name,
+                     id, record_id, query, query_folded, driver_id, connection_id, connection_name,
                      executed_at, duration_ms, rows_affected, success, cancelled, pinned, error
                  )
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(entry.id)
+            .bind(entry.record_id.to_string())
             .bind(&entry.query)
             .bind(fold(&entry.query))
             .bind(&entry.driver_id)
@@ -350,6 +430,7 @@ impl QueryHistory {
             .await?;
         }
         transaction.commit().await?;
+        self.history_changed(!entries.is_empty());
         Ok(())
     }
 
@@ -376,6 +457,7 @@ impl QueryHistory {
                 .await?;
         }
         transaction.commit().await?;
+        self.history_changed(affected > 0);
         Ok(affected as usize)
     }
 
@@ -426,6 +508,7 @@ impl QueryHistory {
         let transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         trim_upgrade_copies(&self.path, &[]).await?;
         transaction.commit().await?;
+        self.history_changed(report.removed_anything());
         Ok(report)
     }
 
@@ -465,6 +548,7 @@ impl QueryHistory {
                 .await?;
         }
         transaction.commit().await?;
+        self.history_changed(removed > 0);
         Ok(removed)
     }
 
@@ -591,6 +675,7 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
         .execute(&mut database)
         .await?;
     let mut transaction = database.begin().await?;
+    let sequence = copy_sequence(&mut transaction).await?;
     let has_folders = backup_folders::reconcile(&mut transaction).await?;
     for delete in first {
         let present: i64 =
@@ -626,6 +711,7 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
         }
     }
     if has_folders {
+        backup_folders::repair_folders(&mut transaction).await?;
         backup_folders::repair_queries(&mut transaction).await?;
     }
     if sqlx::query("PRAGMA main.foreign_key_check")
@@ -636,11 +722,34 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
         return Err(StorageError::Schema("invalid references in an upgrade copy".to_owned()));
     }
     optimize_full_text_indexes(&mut transaction).await?;
+    if let Some(sequence) = sequence {
+        sqlx::query("UPDATE main.store_identity SET sequence = ?")
+            .bind(sequence)
+            .execute(&mut *transaction)
+            .await?;
+    }
     transaction.commit().await?;
     sqlx::query("PRAGMA foreign_keys = ON").execute(&mut database).await?;
     sqlx::query("DETACH DATABASE live").execute(&mut database).await?;
     database.close().await?;
     Ok(())
+}
+
+// The triggers raise a copy's sequence as its rows are trimmed. Put back, a copy restored later still
+// reads as the older file it is.
+async fn copy_sequence(database: &mut sqlx::SqliteConnection) -> Result<Option<i64>, StorageError> {
+    let present: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = 'store_identity'")
+            .fetch_one(&mut *database)
+            .await?;
+    if present == 0 {
+        return Ok(None);
+    }
+    Ok(
+        sqlx::query_scalar("SELECT sequence FROM main.store_identity WHERE id = 1")
+            .fetch_optional(&mut *database)
+            .await?,
+    )
 }
 
 // A copy fresh from VACUUM INTO still holds, in its full-text blocks, the words of entries deleted
@@ -692,6 +801,7 @@ mod tests {
 
     fn entry(query: &str, connection: Uuid) -> NewEntry {
         NewEntry {
+            record_id: Uuid::new_v4(),
             query: query.to_owned(),
             driver_id: "sqlite".to_owned(),
             connection_id: connection,
@@ -790,7 +900,7 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 3);
+        assert_eq!(applied, 6);
     }
 
     /// A database an earlier build wrote, with its saved queries, is kept
@@ -984,7 +1094,7 @@ mod tests {
     /// means a change went into a file that has already run somewhere.
     #[test]
     fn migrator_embeds_every_migration() {
-        assert_eq!(schema::MIGRATOR.iter().count(), 3);
+        assert_eq!(schema::MIGRATOR.iter().count(), 6);
     }
 
     #[tokio::test]
@@ -1491,7 +1601,7 @@ mod tests {
             .save(crate::saved_queries::NewSavedQuery {
                 name: "kept".to_owned(),
                 query: "SELECT 1".to_owned(),
-                connection_id: Uuid::nil(),
+                connection_id: Some(Uuid::nil()),
                 connection_name: "test".to_owned(),
             })
             .await
@@ -1537,7 +1647,7 @@ mod tests {
         let named = |name: &str| crate::saved_queries::NewSavedQuery {
             name: name.to_owned(),
             query: "SELECT 1".to_owned(),
-            connection_id: Uuid::nil(),
+            connection_id: Some(Uuid::nil()),
             connection_name: "test".to_owned(),
         };
         saved.save(named("first")).await.expect("a saved query");
@@ -1609,9 +1719,12 @@ mod tests {
         let connection = Uuid::new_v4();
         let folders = history.saved_query_folders();
         let favourites = history.favourites();
-        let folder = folders.create(connection, "Reports", None).await.expect("a folder");
+        let folder = folders
+            .create(Some(connection), "Reports", None)
+            .await
+            .expect("a folder");
         folders
-            .create(connection, "Monthly", Some(folder))
+            .create(Some(connection), "Monthly", Some(folder))
             .await
             .expect("a subfolder");
         let table = crate::favourites::FavouriteTable {

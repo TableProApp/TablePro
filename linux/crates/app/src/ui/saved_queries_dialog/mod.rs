@@ -45,7 +45,7 @@ pub(crate) struct SavedQueriesDialogInit {
 }
 
 // What the last search matched. None shows every query.
-type Matched = Rc<RefCell<Option<HashSet<i64>>>>;
+type Matched = Rc<RefCell<Option<HashSet<Uuid>>>>;
 
 struct DialogParts {
     store: Option<SavedQueries>,
@@ -245,7 +245,7 @@ impl SavedQueriesDialog {
         &self,
         row: &SavedQueryRow,
         name: &str,
-        act: fn(&Self, i64),
+        act: fn(&Self, Uuid),
     ) -> gio::ActionEntry<gio::SimpleActionGroup> {
         let (dialog, row) = (self.downgrade(), row.downgrade());
         gio::ActionEntry::<gio::SimpleActionGroup>::builder(name)
@@ -257,7 +257,7 @@ impl SavedQueriesDialog {
             .build()
     }
 
-    fn object_by_id(&self, id: i64) -> Option<SavedQueryObject> {
+    fn object_by_id(&self, id: Uuid) -> Option<SavedQueryObject> {
         let parts = self.imp().parts.get()?;
         parts
             .items
@@ -266,7 +266,7 @@ impl SavedQueriesDialog {
             .find(|object| object.id() == Some(id))
     }
 
-    fn send_query(&self, id: i64, destination: QueryDestination) {
+    fn send_query(&self, id: Uuid, destination: QueryDestination) {
         let Some(query) = self
             .object_by_id(id)
             .and_then(|object| object.query().map(str::to_owned))
@@ -277,7 +277,7 @@ impl SavedQueriesDialog {
         self.close();
     }
 
-    fn copy_query(&self, id: i64) {
+    fn copy_query(&self, id: Uuid) {
         if let Some(query) = self
             .object_by_id(id)
             .and_then(|object| object.query().map(str::to_owned))
@@ -286,7 +286,7 @@ impl SavedQueriesDialog {
         }
     }
 
-    fn prompt_rename(&self, id: i64) {
+    fn prompt_rename(&self, id: Uuid) {
         let Some(current) = self
             .object_by_id(id)
             .and_then(|object| object.name().map(str::to_owned))
@@ -325,7 +325,7 @@ impl SavedQueriesDialog {
         alert.present(Some(self));
     }
 
-    fn confirm_delete(&self, id: i64) {
+    fn confirm_delete(&self, id: Uuid) {
         let Some(name) = self
             .object_by_id(id)
             .and_then(|object| object.name().map(str::to_owned))
@@ -355,13 +355,13 @@ impl SavedQueriesDialog {
         alert.present(Some(self));
     }
 
-    fn rename(&self, id: i64, name: String) {
+    fn rename(&self, id: Uuid, name: String) {
         self.change(StoreChange::Rename, move |store| async move {
             store.rename(id, &name).await
         });
     }
 
-    fn delete(&self, id: i64) {
+    fn delete(&self, id: Uuid) {
         self.change(StoreChange::Delete, move |store| async move { store.delete(id).await });
     }
 
@@ -521,7 +521,7 @@ impl SavedQueriesDialog {
         });
     }
 
-    fn search_finished(&self, generation: u64, found: Result<HashSet<i64>, TaskFailure>) {
+    fn search_finished(&self, generation: u64, found: Result<HashSet<Uuid>, TaskFailure>) {
         if self.imp().search_generation.get() != generation {
             return;
         }
@@ -531,7 +531,7 @@ impl SavedQueriesDialog {
         }
     }
 
-    fn apply_matches(&self, found: Option<HashSet<i64>>) {
+    fn apply_matches(&self, found: Option<HashSet<Uuid>>) {
         let Some(parts) = self.imp().parts.get() else {
             return;
         };

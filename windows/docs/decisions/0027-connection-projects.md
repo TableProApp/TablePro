@@ -5,7 +5,7 @@
 
 ## Context
 
-The Connections page listed the whole library: its tree, search, Favorites and Recent showed every connection, and the history pane of a file opened without saving listed every connection's runs ([#4307](https://github.com/TableProApp/TablePro/issues/4307)). The core now keeps projects in `connections.json` and narrows a list to one ([core 0059](../../../core/docs/decisions/0059-connection-projects.md)). [0004](0004-app-shell.md) describes the page this adds to.
+The Connections page listed the whole library: its tree, search, Favorites and Recent showed every connection, and the history pane of a file opened without saving listed every connection's runs ([#4307](https://github.com/TableProApp/TablePro/issues/4307)). The core now keeps projects in `connections.json` and narrows a list to one ([core 0067](../../../core/docs/decisions/0067-connection-projects.md)). [0004](0004-app-shell.md) describes the page this adds to.
 
 ## Decision
 
@@ -25,12 +25,12 @@ The Connections page listed the whole library: its tree, search, Favorites and R
 
 - **A DropDownButton, not a ComboBox.** The Fluent guidance gives a button with a flyout to "more options"; the flyout also carries the two commands, which a ComboBox cannot hold.
 - **The scope in the core.** Recent is capped at 8, so a filter in the app after the cap would leave a project with fewer than it has. History paging has the same problem: `QueryHistory.SearchAsync` takes the project and the core resolves its connections.
-- **Per PC.** The active project is a view preference, as the theme is; core 0059 leaves it to each app.
+- **Per PC.** The active project is a view preference, as the theme is; core 0067 leaves it to each app.
 - **A flyout for Delete.** WinUI opens one ContentDialog per thread, and the manage dialog is open.
 
 ## Consequences
 
 - The MCP server and the `tablepro` command list the active project's connections and refuse a call by id outside it with `out_of_scope`. This is a listing scope the user switches, not an access control.
 - A history run whose connection was deleted shows only under all connections.
-- An older build that writes `connections.json` drops the projects (core 0059, Consequences).
+- An older build that writes `connections.json` drops the projects (core 0067, Consequences).
 - The UI test `TheConnectionsPageShowsOneProjectAndItsSearchStaysInside` makes two projects, moves a connection into each and takes the `185-project-switcher` and `186-project-home` screenshots.

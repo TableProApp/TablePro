@@ -24,6 +24,7 @@ fn paths(root: &Path) -> StoragePaths {
 
 fn entry(query: &str, connection_id: Uuid, connection_name: &str) -> NewEntry {
     NewEntry {
+        record_id: Uuid::new_v4(),
         query: query.to_owned(),
         driver_id: "postgres".to_owned(),
         connection_id,
@@ -59,6 +60,9 @@ fn connection(name: &str) -> SavedConnection {
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 

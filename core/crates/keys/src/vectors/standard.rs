@@ -163,6 +163,7 @@ fn wycheproof_x25519() {
 fn wycheproof_ed25519() {
     let file = load("wycheproof_ed25519.json");
     let mut count = 0;
+    let mut acceptable = 0;
     for group in items(member(&file, "testGroups")) {
         let public = array32(&bytes(member(group, "publicKey"), "pk"));
         for test in items(member(group, "tests")) {
@@ -174,13 +175,27 @@ fn wycheproof_ed25519() {
             match text(test, "result") {
                 "valid" => assert_eq!(verified, Ok(()), "tcId {id}"),
                 "invalid" => assert_eq!(verified, Err(KeysError::Signature), "tcId {id}"),
-                // Acceptable cases are ones ADR 0056's checks may refuse; none is taken that they name.
-                _ => {}
+                // tcIds 152 to 159 are forgeries under a key of small order, which the library takes and
+                // ADR 0056 refuses before it; 160 to 180 hold the cofactorless equation under a key of
+                // mixed order, which no rule refuses.
+                _ => {
+                    let library = <[u8; 64]>::try_from(signature.as_slice()).is_ok_and(|signature| {
+                        crypto::forgery::library_accepts(&public, &bytes(test, "msg"), &signature)
+                    });
+                    assert!(library, "tcId {id}");
+                    match id {
+                        152..=159 => assert_eq!(verified, Err(KeysError::Signature), "tcId {id}"),
+                        160..=180 => assert_eq!(verified, Ok(()), "tcId {id}"),
+                        _ => panic!("tcId {id} is acceptable and has no tp1 outcome"),
+                    }
+                    acceptable += 1;
+                }
             }
             count += 1;
         }
     }
     assert!(count > 100);
+    assert_eq!(acceptable, 29);
 }
 
 #[test]

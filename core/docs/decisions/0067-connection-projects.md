@@ -1,4 +1,4 @@
-# 0059: Connection projects scope the library, stored as optional keys of version 1
+# 0067: Connection projects scope the library, stored as optional keys of version 1
 
 - **Status**: Accepted
 - **Date**: 2026-11-20

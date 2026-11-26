@@ -69,6 +69,9 @@ mod tests {
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         }
     }
 

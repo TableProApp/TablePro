@@ -303,6 +303,9 @@ mod tests {
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         };
         store.upsert_blocking(saved.clone()).expect("saved");
         let uri = format!("file://{}", path.display());

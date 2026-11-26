@@ -45,7 +45,7 @@ public sealed class SavedQueryTests : IDisposable
         Assert.Null(taken);
         Assert.Equal(id, replaced);
         var query = Assert.Single(list.Queries);
-        Assert.Equal(("Orders", "SELECT 2", (long?)monthly, 0L), (query.Name, query.Sql, query.FolderId, query.Order));
+        Assert.Equal(("Orders", "SELECT 2", (Guid?)monthly, 0L), (query.Name, query.Sql, query.FolderId, query.Order));
         Assert.Null(query.Keyword);
         Assert.True(query.UpdatedAt > DateTimeOffset.UnixEpoch);
         Assert.Equal(2, list.Folders.Count);

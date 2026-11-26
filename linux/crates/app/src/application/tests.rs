@@ -1228,6 +1228,9 @@ mod mcp {
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         };
         test.services()
             .storage
@@ -1550,6 +1553,9 @@ mod links {
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         };
         test.services()
             .storage

@@ -54,6 +54,7 @@ impl RanStatements {
             return;
         }
         let entry = NewEntry {
+            record_id: uuid::Uuid::new_v4(),
             query: self.sql,
             driver_id: connection.driver_id,
             connection_id: connection.id,
