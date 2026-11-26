@@ -118,7 +118,7 @@ final class IOSSyncCoordinator {
     // After TablePro's data was removed from iCloud, nothing is uploaded until the person asks.
     func uploadAgain() async {
         await passesFinished()
-        guard status.error == .blocked(.dataDeletedFromICloud), let engine = try? await host.engine() else { return }
+        guard status.error == .blocked(.dataDeletedFromICloud), let engine = try? await host.engine(for: .icloud) else { return }
         pushChannel.forgetSubscription()
         do {
             try await engine.uploadAgain()
@@ -200,7 +200,7 @@ final class IOSSyncCoordinator {
         do {
             try await choose(.icloud) { [weak self] in self?.generation == started }.value.get()
             if started == generation {
-                try await host.engine().syncNow(why: why)
+                try await host.engine(for: .icloud).syncNow(why: why)
             }
         } catch {
             Self.logger.error("A sync pass failed: \(error.localizedDescription, privacy: .private)")
@@ -211,8 +211,8 @@ final class IOSSyncCoordinator {
         }
         if started == generation, status.isEnabled {
             refreshStatus()
-            if host.openedEngine == nil {
-                // The core over the stores did not open, so there is no engine to sync with.
+            if host.openedEngine(for: .icloud) == nil {
+                // The engine did not open for iCloud, so there is none to sync with.
                 status = .error(.unexpected)
             } else if status.error == nil {
                 startActivationCooldown()
@@ -245,7 +245,7 @@ final class IOSSyncCoordinator {
         let choice = Task<Result<Void, any Error>, Never> {
             await previous?.value
             do {
-                let engine = try await host.engine()
+                let engine = try await host.engine(for: provider)
                 guard isCurrent() else { return .success(()) }
                 if engine.status().provider != provider {
                     try await engine.chooseProvider(provider: provider)
@@ -273,7 +273,7 @@ final class IOSSyncCoordinator {
     }
 
     private func refreshStatus() {
-        guard let engine = host.openedEngine else { return }
+        guard let engine = host.openedEngine(for: .icloud) else { return }
         let info = engine.status()
         if info.lastPassMs != lastPassMs {
             lastPassMs = info.lastPassMs

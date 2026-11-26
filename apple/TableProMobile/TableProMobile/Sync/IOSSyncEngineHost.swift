@@ -31,45 +31,63 @@ final class IOSSyncEngineHost {
 
     let transport: CloudKitCoreTransport
     var onSignal: (() -> Void)?
-    private let open: @MainActor (any SyncListener) async throws -> any IOSSyncEngine
+    private let open: @MainActor (SyncProviderTag, any SyncListener) async throws -> any IOSSyncEngine
     private let keepICloudAccount: @MainActor (String?) -> Void
-    private var opening: Task<any IOSSyncEngine, any Error>?
-    private(set) var openedEngine: (any IOSSyncEngine)?
+    private typealias Opening = (provider: SyncProviderTag, task: Task<any IOSSyncEngine, any Error>)
+    private var opening: Opening?
+    private var opened: (provider: SyncProviderTag, engine: any IOSSyncEngine)?
 
     init(
         transport: CloudKitCoreTransport,
         keepICloudAccount: @escaping @MainActor (String?) -> Void = { _ in },
-        open: @escaping @MainActor (any SyncListener) async throws -> any IOSSyncEngine
+        open: @escaping @MainActor (SyncProviderTag, any SyncListener) async throws -> any IOSSyncEngine
     ) {
         self.transport = transport
         self.keepICloudAccount = keepICloudAccount
         self.open = open
     }
 
-    func rememberICloudAccount() {
-        guard let openedEngine else { return }
-        keepICloudAccount(openedEngine.icloudAccount())
+    func openedEngine(for provider: SyncProviderTag) -> (any IOSSyncEngine)? {
+        guard let opened, Self.serves(opened.provider, provider) else { return nil }
+        return opened.engine
     }
 
-    // A failed open is tried again by the next caller.
-    func engine() async throws -> any IOSSyncEngine {
-        if let openedEngine {
-            return openedEngine
-        }
-        let task = opening ?? Task { [open, listener = IOSSyncEngineListener(host: self)] in
-            try await open(listener)
-        }
-        opening = task
-        do {
-            let engine = try await task.value
-            openedEngine = engine
-            return engine
-        } catch {
-            if opening == task {
+    func rememberICloudAccount() {
+        guard let opened else { return }
+        keepICloudAccount(opened.engine.icloudAccount())
+    }
+
+    // The provider is fixed when the service opens, and one opened Off refuses every provider call, so iCloud turned
+    // on after that opens a new service, as on the Mac. One opened for iCloud is kept when iCloud stops, and told Off. A
+    // failed open is tried again by the next caller.
+    func engine(for provider: SyncProviderTag) async throws -> any IOSSyncEngine {
+        while true {
+            if let opened, Self.serves(opened.provider, provider) {
+                return opened.engine
+            }
+            let current = opening ?? startOpening(provider)
+            let result = await current.task.result
+            if opening?.task == current.task {
                 opening = nil
             }
-            throw error
+            if case .failure(let error) = result, Self.serves(current.provider, provider) {
+                throw error
+            }
         }
+    }
+
+    private func startOpening(_ provider: SyncProviderTag) -> Opening {
+        let task = Task { [weak self, open, listener = IOSSyncEngineListener(host: self)] in
+            let engine = try await open(provider, listener)
+            self?.opened = (provider, engine)
+            return engine
+        }
+        opening = (provider, task)
+        return (provider, task)
+    }
+
+    private static func serves(_ opened: SyncProviderTag, _ wanted: SyncProviderTag) -> Bool {
+        opened == wanted || wanted == .off
     }
 
     fileprivate func listenerSignalled() {
@@ -84,8 +102,7 @@ final class IOSSyncEngineHost {
         account: AccountModel,
         metadata: SyncMetadataStorage,
         recordCache: SyncRecordCache,
-        defaults: UserDefaults,
-        isEnabled: @escaping @MainActor () -> Bool
+        defaults: UserDefaults
     ) -> IOSSyncEngineHost {
         let transport = CloudKitCoreTransport()
         let checked = PolicyCheckedCloudKitTransport(base: transport) {
@@ -99,12 +116,12 @@ final class IOSSyncEngineHost {
                 guard defaults.string(forKey: icloudAccountKey) != kept else { return }
                 defaults.set(kept, forKey: icloudAccountKey)
             },
-            open: { listener in
+            open: { provider, listener in
                 let service = await account.syncAccountService()
                 return try await core.core().openSync(
                     config: SyncConfig(
                         platform: .ios,
-                        provider: isEnabled() ? .icloud : .off,
+                        provider: provider,
                         categories: SyncCategoriesArg(offKinds: [], passwords: AppPreferences.syncsPasswords),
                         icloudAccount: defaults.string(forKey: icloudAccountKey)
                     ),

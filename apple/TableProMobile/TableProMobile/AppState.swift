@@ -49,6 +49,8 @@ final class AppState {
     @ObservationIgnored private var pastedSSHKeysAwaitingKeychain: [UUID: String] = [:]
     // A failed save leaves the change in memory only, so sync must not take an equal download as already saved.
     @ObservationIgnored private var unsavedLibraryParts: Set<LibraryPart> = []
+    // Set by a write that went on top of a sync pass, so the part's write ends by taking what the store holds.
+    @ObservationIgnored private var adoptAfterWrite = false
     let libraryPreferences: ConnectionLibraryPreferences
     let sshProvider: IOSSSHProvider
     let secureStore: any SecureStore
@@ -162,8 +164,7 @@ final class AppState {
             account: account,
             metadata: metadata,
             recordCache: SyncRecordCache(directory: IOSSyncEngineHost.recordCacheDirectory, defaults: .standard),
-            defaults: .standard,
-            isEnabled: { AppPreferences.isCloudSyncEnabled }
+            defaults: .standard
         )
         return IOSSyncCoordinator(host: host, metadata: metadata)
     }
@@ -190,10 +191,16 @@ final class AppState {
         }
     }
 
-    private func reloadLibraryIfMoved() {
+    private func adoptWrittenOverPull() {
+        guard adoptAfterWrite else { return }
+        adoptAfterWrite = false
+        reloadLibraryIfMoved(force: true)
+    }
+
+    private func reloadLibraryIfMoved(force: Bool = false) {
         let loaded: CoreLibraryStore.Library
         do {
-            guard try library.changedSinceRead() else { return }
+            guard try force || library.changedSinceRead() else { return }
             loaded = try library.load()
         } catch {
             Self.logger.error("The library did not reload after a sync pass: \(LogRedaction.publicDescription(of: error), privacy: .public)")
@@ -308,7 +315,6 @@ final class AppState {
         connectionsState = .loaded(loaded.connections)
         groupsState = .loaded(loaded.groups)
         tagsState = .loaded(loaded.tags)
-        recordConnectionStanding()
         movePastedSSHKeysToKeychain()
         moveMongoURISecretsToKeychain(from: loaded.connections)
     }
@@ -373,10 +379,8 @@ final class AppState {
         markLibraryPart(.connections, saved: saved)
         connectionsState = .loaded(connections)
         pastedSSHKeysAwaitingKeychain = heldKeys
-        if saved {
-            recordConnectionStanding()
-        }
         pruneLibraryPreferences()
+        adoptWrittenOverPull()
         return saved
     }
 
@@ -386,6 +390,7 @@ final class AppState {
         markLibraryPart(.groups, saved: saved)
         groupsState = .loaded(groups)
         pruneLibraryPreferences()
+        adoptWrittenOverPull()
         return saved
     }
 
@@ -394,6 +399,7 @@ final class AppState {
         let saved = writeLibrary(libraryImage(tags: tags), keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain, part: "tags")
         markLibraryPart(.tags, saved: saved)
         tagsState = .loaded(tags)
+        adoptWrittenOverPull()
         return saved
     }
 
@@ -413,11 +419,14 @@ final class AppState {
         )
         do {
             try library.write(image, keepingPastedSSHKeys: heldKeys, removingUnreadable: removed)
+        } catch CoreLibraryStore.Failure.changedSinceRead {
+            guard writeOverPull(image, keepingPastedSSHKeys: heldKeys, removingUnreadable: removed, part: part) else {
+                return false
+            }
         } catch {
             Self.logger.error("Failed to save \(part, privacy: .public): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return false
         }
-        settleUnreadableRemovals(pending)
         // An earlier write that failed after its copy went still owes that connection's local state its purge.
         let live = Set(image.connections.map(\.id)).union(library.unreadable.connections)
         purgeRemovedUnreadable(pending.connections.subtracting(live))
@@ -434,9 +443,24 @@ final class AppState {
         UnreadableCopies(recordNames: syncCoordinator.metadata.removalsPendingForUnreadableCopies)
     }
 
-    private func settleUnreadableRemovals(_ removed: UnreadableCopies) {
-        guard !removed.isEmpty else { return }
-        syncCoordinator.metadata.removalsPendingForUnreadableCopies.subtract(removed.recordNames)
+    // A pass wrote the store since this device read it: the write goes on top of what the pass wrote, and the device
+    // takes the result once the part's own state is set.
+    private func writeOverPull(
+        _ image: CoreLibraryStore.Library,
+        keepingPastedSSHKeys heldKeys: [UUID: String],
+        removingUnreadable removed: UnreadableCopies,
+        part: String
+    ) -> Bool {
+        do {
+            let stored = try library.load()
+            let rebased = LibraryRebase.rebased(image, from: libraryImage(), onto: stored)
+            try library.write(rebased, keepingPastedSSHKeys: heldKeys, removingUnreadable: removed)
+            adoptAfterWrite = true
+            return true
+        } catch {
+            Self.logger.error("Failed to save \(part, privacy: .public) over a sync pass: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            return false
+        }
     }
 
 
@@ -446,15 +470,6 @@ final class AppState {
         localState.purge(ids)
         sessionModels.purge(ids)
         savedQueries.removeRecords(ofConnections: ids, tombstoning: false)
-    }
-
-    // Kept by id outside the record, so one this build can no longer read keeps the standing it had.
-    private func recordConnectionStanding() {
-        syncCoordinator.metadata.recordConnectionStanding(
-            syncing: Set(connections.filter(\.participatesInSync).map(\.id)),
-            keptOff: Set(connections.filter { !$0.participatesInSync }.map(\.id)),
-            unreadable: library.unreadable.connections
-        )
     }
 
     // One write saves every part, so a part an earlier write left unsaved is saved too.

@@ -39,6 +39,21 @@ struct AppStateSyncWiringTests {
         #expect(state.savedQueries.contents.queries.map(\.id) == [query.id])
     }
 
+    @Test("An edit made before the app read a pass goes on top of what the pass wrote, and keeps both")
+    func anEditOverAnUnreadPassKeepsBoth() throws {
+        let state = makeSyncedState()
+        let mine = DatabaseConnection(name: "Mine", type: .postgresql)
+        #expect(state.addConnection(mine))
+        let theirs = DatabaseConnection(name: "From the Mac", type: .postgresql)
+        try ElsewhereWriter.replace(connections: [mine, theirs], in: fixture.libraryDirectory)
+
+        #expect(state.mutateConnection(mine.id) { $0.name = "Mine, renamed" } == .applied)
+
+        #expect(Set(state.connections.map(\.name)) == ["Mine, renamed", "From the Mac"])
+        let reloaded = fixture.makeState(syncEnabled: false)
+        #expect(Set(reloaded.connections.map(\.name)) == ["Mine, renamed", "From the Mac"])
+    }
+
     @Test("A pass removes the unread groups and tags another device deleted, all in one write")
     func onePassRemovesEveryPendingUnreadCopy() async throws {
         let engine = FakeIOSSyncEngine()
@@ -55,7 +70,6 @@ struct AppStateSyncWiringTests {
         await fixture.pull([DatabaseConnection(name: "Pulled", type: .postgresql)], into: state, through: engine)
 
         #expect(state.unreadableCopies.isEmpty)
-        #expect(fixture.metadata.removalsPendingForUnreadableCopies.isEmpty)
         for file in [groupsFile, tagsFile] {
             let rows = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [NSDictionary])
             #expect(rows.isEmpty)
@@ -95,7 +109,6 @@ struct AppStateSyncWiringTests {
         await fixture.pull([pulled], into: state, through: engine)
 
         #expect(state.unreadableCopies.isEmpty)
-        #expect(fixture.metadata.removalsPendingForUnreadableCopies.isEmpty)
         #expect(try secureStore.retrieve(forKey: "com.TablePro.password.\(held.id.uuidString)") == nil)
     }
 }

@@ -93,6 +93,27 @@ struct SavedQueryLibraryTests {
         #expect(Set(try legacy.load().queries.map(\.name)) == names)
     }
 
+    @Test("A rename made before the app read a pass keeps the SQL the pass wrote to the same query")
+    func aRenameOverAPassKeepsItsOtherFields() throws {
+        let library = makeLibrary()
+        let local = Self.query("Revenue")
+        #expect(library.insert(local))
+        let pulled = SavedQuery(
+            id: local.id,
+            name: local.name,
+            query: "SELECT 2",
+            createdAt: local.createdAt,
+            updatedAt: Date(timeIntervalSince1970: 2_000)
+        )
+        try ElsewhereWriter.write(query: pulled, in: directory)
+
+        #expect(library.update(local.id) { $0.name = "Revenue by month" })
+
+        let stored = try #require(makeLibrary().contents.query(local.id))
+        #expect(stored.name == "Revenue by month")
+        #expect(stored.query == "SELECT 2")
+    }
+
     @Test("An edit of a query deleted meanwhile reports it and writes nothing")
     func anEditOfAQueryDeletedElsewhereWritesNothing() throws {
         let library = makeLibrary()

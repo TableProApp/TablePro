@@ -58,7 +58,7 @@ struct AppStateFixture {
         driverFactory: (any DriverFactory)? = nil
     ) -> AppState {
         let database = HeldCloudKitDatabase()
-        let host = IOSSyncEngineHost(transport: CloudKitCoreTransport(database: database)) { _ in
+        let host = IOSSyncEngineHost(transport: CloudKitCoreTransport(database: database)) { _, _ in
             guard let engine else { throw CocoaError(.featureUnsupported) }
             return engine
         }

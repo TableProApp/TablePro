@@ -22,7 +22,7 @@ private final class Fixture {
         suite = try #require(UserDefaults(suiteName: "com.TablePro.tests.IOSSync.\(UUID().uuidString)"))
         metadata = SyncMetadataStorage(userDefaults: suite)
         transport = CloudKitCoreTransport(database: database)
-        let host = IOSSyncEngineHost(transport: transport) { [engine] _ in engine }
+        let host = IOSSyncEngineHost(transport: transport) { [engine] _, _ in engine }
         coordinator = IOSSyncCoordinator(
             host: host,
             metadata: metadata,
@@ -148,6 +148,24 @@ struct IOSSyncCoordinatorTests {
 
         #expect(fixture.engine.read { $0.uploadsAgain } == 1)
         #expect(fixture.passes.last == .person)
+    }
+
+    @Test("A service opened while iCloud was off is opened again for iCloud, and the iCloud one also serves off")
+    func anOffOpenIsReplacedForICloud() async throws {
+        var opened: [SyncProviderTag] = []
+        let host = IOSSyncEngineHost(transport: CloudKitCoreTransport(database: HeldCloudKitDatabase())) { provider, _ in
+            opened.append(provider)
+            return FakeIOSSyncEngine()
+        }
+
+        let off = try await host.engine(for: .off)
+        let icloud = try await host.engine(for: .icloud)
+        let offAgain = try await host.engine(for: .off)
+
+        #expect(opened == [.off, .icloud])
+        #expect(off !== icloud)
+        #expect(offAgain === icloud)
+        #expect(host.openedEngine(for: .icloud) === icloud)
     }
 
     @Test("Each trigger the app has asks the engine for the pass that reads what it names")

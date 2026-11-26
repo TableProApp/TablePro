@@ -5,8 +5,9 @@ import TableProLogRedaction
 import TableProModels
 
 // The saved queries in the core's store (core ADRs 0010 and 0054), with the previous stable's `saved-queries.json` kept
-// in step after each write. A write names only the records it changes, so a pull the engine wrote between a read and an
-// edit stays, and it reads the store back, since the store settles a contested name or keyword itself.
+// in step after each write. A write names only the records it changes, and when a pass moved the store since the last
+// read, each of those takes the fields the edit changed over the store's copy, so what the pass wrote stays. It reads
+// the store back, since the store settles a contested name or keyword itself.
 @MainActor
 final class CoreSavedQueryStore {
     // What the last write that reached both sides left on each, so a launch can tell which side another build changed.
@@ -83,9 +84,25 @@ final class CoreSavedQueryStore {
         let heldFolders = Dictionary(current.folders.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         let nextIds = Set(next.queries.map(\.id))
         let nextFolderIds = Set(next.folders.map(\.id))
+        var queries = next.queries.filter { held[$0.id] != $0 }
+        var folders = next.folders.filter { heldFolders[$0.id] != $0 }
+        let now = try CoreLibraryStore.blocking { try await store.contents() }
+        if now.digest != digest {
+            let moved = remember(now)
+            let stored = Dictionary(moved.queries.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+            let storedFolders = Dictionary(moved.folders.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+            queries = queries.map { mine in
+                guard let theirs = stored[mine.id], let base = held[mine.id] else { return mine }
+                return Self.rebased(mine, from: base, onto: theirs)
+            }
+            folders = folders.map { mine in
+                guard let theirs = storedFolders[mine.id], let base = heldFolders[mine.id] else { return mine }
+                return Self.rebased(mine, from: base, onto: theirs)
+            }
+        }
         let write = SavedQueryRecordWrite(
-            queries: next.queries.filter { held[$0.id] != $0 }.map(record),
-            folders: next.folders.filter { heldFolders[$0.id] != $0 }.map(Self.record),
+            queries: queries.map(record),
+            folders: folders.map(Self.record),
             removedQueries: current.queries.map(\.id).filter { !nextIds.contains($0) }.map(\.uuidString),
             removedFolders: current.folders.map(\.id).filter { !nextFolderIds.contains($0) }.map(\.uuidString)
         )
@@ -101,6 +118,33 @@ final class CoreSavedQueryStore {
         let image = remember(contents)
         mirror(image, coreDigest: contents.digest)
         return image
+    }
+
+    // Each field the edit changed over the store's copy; the rest stays as the pass wrote it.
+    nonisolated static func rebased(_ mine: SavedQuery, from base: SavedQuery, onto theirs: SavedQuery) -> SavedQuery {
+        var rebased = theirs
+        if mine.name != base.name { rebased.name = mine.name }
+        if mine.query != base.query { rebased.query = mine.query }
+        if mine.keyword != base.keyword { rebased.keyword = mine.keyword }
+        if mine.folderId != base.folderId { rebased.folderId = mine.folderId }
+        if mine.connectionId != base.connectionId { rebased.connectionId = mine.connectionId }
+        if mine.sortOrder != base.sortOrder { rebased.sortOrder = mine.sortOrder }
+        rebased.updatedAt = max(mine.updatedAt, theirs.updatedAt)
+        return rebased
+    }
+
+    nonisolated static func rebased(
+        _ mine: SavedQueryFolder,
+        from base: SavedQueryFolder,
+        onto theirs: SavedQueryFolder
+    ) -> SavedQueryFolder {
+        var rebased = theirs
+        if mine.name != base.name { rebased.name = mine.name }
+        if mine.parentId != base.parentId { rebased.parentId = mine.parentId }
+        if mine.connectionId != base.connectionId { rebased.connectionId = mine.connectionId }
+        if mine.sortOrder != base.sortOrder { rebased.sortOrder = mine.sortOrder }
+        rebased.updatedAt = max(mine.updatedAt, theirs.updatedAt)
+        return rebased
     }
 
     // MARK: - The previous stable's file
