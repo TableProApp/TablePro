@@ -90,11 +90,13 @@ struct SyncPaneLayout: Equatable {
 
         switch inputs.provider {
         case .iCloud:
+            // The coordinator reads both engine phases as an unexpected error; they have states of their own here.
             let presentation = SyncStatusPresentation(status: inputs.iCloudStatus)
-            let live = iCloudLicensed && iCloudAllowed && !newIdentity
+            let pullOnly = inputs.engine?.phase == .pullOnly
+            let live = iCloudLicensed && iCloudAllowed && !newIdentity && !pullOnly
             licenseGate = iCloudLicensed || !iCloudAllowed ? nil : .iCloudSync
             iCloudNotice = live ? presentation.notice : nil
-            serviceNotice = nil
+            serviceNotice = pullOnly ? .pullOnly(selfHosted: inputs.serverLicense != nil) : nil
             showsICloudStatus = live && presentation.notice == nil
             serviceStatus = nil
             showsLastSynced = live

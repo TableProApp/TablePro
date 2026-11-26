@@ -644,6 +644,7 @@ private final class CoordinatedEngine: SyncEngine, SyncMoveEngine, @unchecked Se
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws {}
     func uploadAgain() async throws {}
     func icloudAccount() -> String? { nil }
+    func flushLegacyMarks() async throws {}
     func keyState() async throws -> KeyStateInfo { .approved(av: 1, keyDevice: "DEVICE") }
     func planMoveToService() async throws -> MovePlanInfo { MovePlanInfo(records: 1, stayingBehind: 0, secretsToSeal: 0) }
     func moveToService() async throws { record("move to service") }
@@ -664,7 +665,7 @@ private final class Services {
 
 @MainActor
 struct ProviderMovesCoordinatorTests {
-    @Test("From a running iCloud the coordinator's Off goes to iCloud's service, and TablePro Sync's takes the first pass")
+    @Test("From a running iCloud the move runs on iCloud's service, and TablePro Sync's takes the first pass and no Off")
     func moveFromICloudThroughTheCoordinator() async throws {
         let suite = try EphemeralDefaults("ProviderMovesCoordinatorTests")
         let services = Services()
@@ -725,13 +726,12 @@ struct ProviderMovesCoordinatorTests {
         await coordinator.passesFinished()
 
         #expect(try await moves.moveToService() == .moved)
-        try await waitUntil { services.first(.icloud)?.calls.contains("choose off") == true }
         await coordinator.passesFinished()
 
         let iCloud = try #require(services.first(.icloud))
         let service = try #require(services.first(.tableproSync))
         #expect(iCloud.calls.contains("choose tableproSync"))
-        #expect(iCloud.calls.last == "choose off")
+        // The coordinator's Off as iCloud stops goes to iCloud's service only, never to the one the move opened.
         #expect(service.calls == ["sync"])
         #expect(service.status().provider == .tableproSync)
         #expect(transport.isClosed)

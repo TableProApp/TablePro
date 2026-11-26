@@ -165,6 +165,28 @@ struct SyncPaneLayoutTests {
         #expect(layout.offersSyncNow)
     }
 
+    @Test("The engine's pull-only phase on iCloud says uploads are paused, not that sync failed")
+    func iCloudPullOnly() {
+        let layout = Self.layout(provider: .iCloud, status: .error(.unexpected), engine: Self.engine(.icloud, .pullOnly))
+        #expect(layout.serviceNotice == .pullOnly(selfHosted: false))
+        #expect(layout.iCloudNotice == nil)
+        #expect(!layout.showsICloudStatus)
+        #expect(!layout.offersSyncNow)
+    }
+
+    @Test("Each engine phase maps to the pane's own state on TablePro Sync")
+    func servicePhases() {
+        let phases: [(SyncPhaseTag, SyncServiceStatus?)] = [
+            (.idle, .upToDate), (.syncing, .syncing), (.waiting(retryInMs: 500), .waiting), (.pullOnly, .downloadOnly),
+            (.off, .off), (.unavailable, .unavailable), (.zoneRemoved, .unavailable), (.newIdentity, nil),
+        ]
+        for (phase, status) in phases {
+            let layout = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, phase))
+            #expect(layout.serviceStatus == status, "\(phase)")
+            #expect(layout.asksNewIdentity == (phase == .newIdentity), "\(phase)")
+        }
+    }
+
     @Test("An iCloud account switch asks Move my data or Start empty in place of the status")
     func iCloudNewIdentity() {
         let layout = Self.layout(provider: .iCloud, status: .error(.unexpected), engine: Self.engine(.icloud, .newIdentity))
