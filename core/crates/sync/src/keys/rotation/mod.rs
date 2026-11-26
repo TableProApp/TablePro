@@ -551,7 +551,8 @@ impl KeyService {
         }
         // The account's teams are those a scopes body read with this device approved lists, each judged once the
         // engine's pull of it caught up after such a body and its roster was read. A device that just recovered, or
-        // that was approved, has read none yet, so the steps wait for the engine's next pass (0051, `members`).
+        // that was approved, has read none yet, and a team that refills against a new epoch has none in force, so the
+        // steps wait for the engine's next pass (0051, `members`).
         let (teams, held) = {
             let body = self.scopes_body().await?;
             let approved = body
@@ -566,12 +567,14 @@ impl KeyService {
                     _ => None,
                 })
                 .collect();
-            let unread = teams.iter().any(|team| {
-                !self
-                    .rosters()
-                    .get(*team)
-                    .is_some_and(|roster| roster.caught_up() && roster.epoch() == Some(body.epoch))
-            });
+            // A team's roster counts only in the epoch the device synced it in, and that is the body's.
+            let mut unread = false;
+            let mut txn = self.begin().await?;
+            for team in &teams {
+                let roster = self.current_roster(txn.as_mut(), *team).await?;
+                unread |= !roster.is_some_and(|roster| roster.epoch() == Some(body.epoch));
+            }
+            drop(txn);
             if !approved || unread {
                 self.hooks().pass_soon();
                 return Ok(());

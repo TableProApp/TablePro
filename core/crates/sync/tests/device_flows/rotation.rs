@@ -343,6 +343,50 @@ async fn a_removal_rotates_each_team_this_account_holds() {
     assert!(stored_in_team(&server, team, "key.version", &version.to_wire()));
 }
 
+async fn refilling(device: &Device, team: tablepro_keys::encoding::TeamId, refill: bool) {
+    let key = tablepro_sync::api::state::RowKey::Scope(tablepro_sync::api::ids::ScopeName::Team(team));
+    let mut row = device
+        .get(key)
+        .await
+        .and_then(|row| match row {
+            tablepro_sync::api::state::Row::Scope(row) => Some(row),
+            _ => None,
+        })
+        .unwrap();
+    row.refill = refill;
+    let mut txn = device.txn().await;
+    txn.put(tablepro_sync::api::state::Row::Scope(row)).await.unwrap();
+    txn.commit().await.unwrap();
+}
+
+// While a team refills against a new epoch, no roster decides for it: the removal's team step waits for a later pass
+// instead of failing the removal, and rotates the team once the epoch is adopted.
+#[tokio::test]
+async fn a_team_step_waits_while_its_team_refills_against_a_new_epoch() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let team = owned_team(&a).await;
+    let version = KeyRecordId::Version(KeyRef {
+        owner: team.0,
+        purpose: KeyPurpose::Team,
+        version: tablepro_keys::encoding::Version::new(2).unwrap(),
+    });
+    refilling(&a, team, true).await;
+
+    rotate_keeping_only_self(&a, &r).await;
+    let waited = !stored_in_team(&server, team, "key.version", &version.to_wire());
+    refilling(&a, team, false).await;
+    a.service
+        .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
+        .await
+        .unwrap();
+
+    assert!(waited);
+    assert!(stored_in_team(&server, team, "key.version", &version.to_wire()));
+}
+
 #[tokio::test]
 async fn a_recovery_whose_answer_was_lost_goes_up_again_on_resume() {
     let server = FakeServer::new();
