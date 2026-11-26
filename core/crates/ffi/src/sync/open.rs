@@ -8,16 +8,21 @@ use tablepro_storage::{ChangeJournal, ConnectionStore, QueryHistory, SavedQueryD
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::library::{DriverNames, StoreStanding};
 use tablepro_sync::adapters::settings::ConnectionStanding;
-use tablepro_sync::adapters::store_journal::StoreJournal;
+use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
 use tablepro_sync::api::{self as sync, StateFiles, TransportError};
-use tablepro_sync::http::HttpTransport;
+use tablepro_sync::cloudkit::LegacyMarks;
+use tablepro_sync::engine::{JournalObserver, SystemClock};
+use tablepro_sync::service::ServiceMode;
 use tablepro_sync::state::SqliteStateFiles;
 
 use super::cloudkit::{CloudKitBridge, CloudKitTransport};
-use super::engines::{Hosts, IcloudEngine, ServiceEngine, ServiceLink};
+use super::engines::{
+    Hosts, IcloudEngine, Restart, ServiceEngine, ServiceLink, ServiceSlot, identity_of, service_link,
+};
 use super::events::{Signals, forward};
 use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
 use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
+use super::moves::{PolicyFenced, allowed, hold_to_policy, resume_open_move};
 use super::service::{SyncConfig, SyncListener, SyncPlatformTag, SyncService};
 use super::service_records::categories_arg;
 use crate::account::{AccountService, SyncProviderTag};
@@ -31,6 +36,7 @@ pub(crate) struct OpenParts {
     pub(crate) account: Option<Arc<AccountService>>,
     // This Core's state files; None on a Core opened without storage.
     pub(crate) files: Option<Arc<dyn StateFiles>>,
+    pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
     pub(crate) cloudkit: Option<Arc<dyn sync::CloudKitTransport>>,
     pub(crate) settings: Option<Arc<dyn sync::HostSettings>>,
     pub(crate) device_store: Option<Arc<dyn sync::HostDeviceStore>>,
@@ -43,6 +49,8 @@ pub(crate) struct OpenParts {
     pub(crate) saved_queries: Option<SavedQueryDatabase>,
     // The sign-in's `/v2/sync` link, or why there is none.
     pub(crate) link: Result<ServiceLink, SyncError>,
+    // The sign-in's session as sync opened, read before the link, which a later start must still be.
+    pub(crate) session: Option<String>,
     pub(crate) listener: Arc<dyn SyncListener>,
 }
 
@@ -93,6 +101,7 @@ impl Core {
             config,
             account,
             files,
+            connections: self.store.clone(),
             cloudkit: cloudkit.map(|host| Arc::new(CloudKitBridge(host)) as Arc<dyn sync::CloudKitTransport>),
             settings: settings.map(|host| Arc::new(HostSettingsBridge { host, kind }) as Arc<dyn sync::HostSettings>),
             device_store,
@@ -106,13 +115,13 @@ impl Core {
             history: self.synced_history().await,
             saved_queries: self.synced_saved_queries().await,
             link: Err(TransportError::SignedOut.into()),
+            session: None,
             listener: Arc::from(listener),
         };
         let opener = tasks.clone();
         on_runtime(&opener, async move {
-            if parts.config.provider == SyncProviderTag::TableproSync {
-                parts.link = service_link(parts.account.as_deref()).await;
-            }
+            parts.session = parts.account.as_deref().and_then(Restart::session_of);
+            parts.link = service_link(parts.account.as_deref()).await;
             Ok(SyncService::open(tasks, parts).await)
         })
         .await
@@ -169,71 +178,135 @@ fn own_device_store(_: &Tasks) -> Option<Arc<dyn sync::HostDeviceStore>> {
     None
 }
 
-// The sign-in the account holds now, which the service engine stays bound to for its life.
-async fn service_link(account: Option<&AccountService>) -> Result<ServiceLink, SyncError> {
-    let Some(service) = account else {
-        return Err(TransportError::SignedOut.into());
+impl OpenParts {
+    // The host's services and this Core's stores, which both engines share; the stores' writes reach the engines that
+    // listen from now on.
+    // A provider the values no longer allow carries no personal data from the start (0055, Leaving a provider).
+    fn service_mode(&self) -> ServiceMode {
+        let personal = self.config.provider == SyncProviderTag::TableproSync
+            && allowed(
+                self.account.as_deref(),
+                self.config.platform,
+                SyncProviderTag::TableproSync,
+            );
+        if personal {
+            ServiceMode::Personal
+        } else {
+            ServiceMode::TeamsOnly
+        }
+    }
+
+    fn hosts(&mut self, events: Arc<Signals>) -> Result<Hosts, SyncError> {
+        let Some(files) = self.files.take() else {
+            return Err(SyncError::NotAllowed {
+                what: "sync on a Core opened without storage",
+            });
+        };
+        let Some(device_store) = self.device_store.take() else {
+            return Err(SyncError::NotAllowed {
+                what: "sync without a device store",
+            });
+        };
+        let store_journal = StoreJournal::new();
+        if let Some(history) = &self.history {
+            history.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+        }
+        if let Some(saved) = &self.saved_queries {
+            saved.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+        }
+        if let Some(store) = &self.library {
+            store.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+        }
+        let standing = self
+            .library
+            .clone()
+            .map(|store| Arc::new(StoreStanding(store)) as Arc<dyn ConnectionStanding>);
+        Ok(Hosts {
+            files,
+            device_store,
+            settings: self.settings.take(),
+            events,
+            library: self.library.take(),
+            names: driver_names(self.config.platform),
+            publisher: self
+                .config
+                .route_publisher
+                .as_deref()
+                .and_then(|text| uuid::Uuid::parse_str(text).ok()),
+            history: self.history.take(),
+            saved_queries: self.saved_queries.take(),
+            standing,
+            store_journal,
+        })
+    }
+}
+
+// The previous stable marks every write whatever its provider, so with no iCloud engine to carry the marks they go on
+// their own (0054, Downgrade mirror). The core stores' writes mark it too, as the app's own stores' do, each deletion
+// of an owned record with the connection the last iCloud file's base names.
+fn marks_alone(
+    tasks: &Tasks,
+    mirror: Option<Arc<dyn sync::LegacyMirror>>,
+    hosts: &Result<Hosts, SyncError>,
+    files: Option<Arc<dyn StateFiles>>,
+    icloud_account: Option<String>,
+) -> (Option<Arc<LegacyMarks>>, Option<Listening>) {
+    let Some(mirror) = mirror else {
+        return (None, None);
     };
-    let http = service.account.http_client();
-    let transport = HttpTransport::open(Arc::new(service.account.clone()), http).await?;
-    let binding = transport.binding().clone();
-    Ok(ServiceLink {
-        origin: binding.origin,
-        sign_in: binding.sign_in,
-        account: binding.account,
-        device_row: binding.device_row,
-        transport: Arc::new(transport),
-    })
+    let marks = Arc::new(LegacyMarks::new(mirror, Arc::new(SystemClock)));
+    let hear = hosts
+        .as_ref()
+        .ok()
+        .and_then(|hosts| hosts.listen(Arc::clone(&marks) as Arc<dyn JournalObserver>));
+    match (files, icloud_account) {
+        (Some(files), Some(account)) => {
+            let marks = Arc::clone(&marks);
+            drop(tasks.spawn_task(async move {
+                let state = files
+                    .open(tablepro_sync::api::state::StateIdentity::ICloud {
+                        user_record_name: account,
+                    })
+                    .await
+                    .ok();
+                if let Err(error) = marks.owners_from(state.as_deref()).await {
+                    tracing::warn!(code = error.code(), "the downgrade marks read no owners");
+                }
+            }));
+        }
+        _ => marks.no_owners(),
+    }
+    (Some(marks), hear)
 }
 
 impl SyncService {
     // On the runtime. An engine that cannot start keeps why, which its calls answer; the others run.
-    pub(crate) async fn open(tasks: Tasks, parts: OpenParts) -> Arc<Self> {
+    pub(crate) async fn open(tasks: Tasks, mut parts: OpenParts) -> Arc<Self> {
+        parts.cloudkit = parts.cloudkit.take().map(|inner| {
+            Arc::new(PolicyFenced {
+                inner,
+                account: parts.account.clone(),
+                platform: parts.config.platform,
+            }) as Arc<dyn sync::CloudKitTransport>
+        });
+        let (cloudkit, files) = (parts.cloudkit.clone(), parts.files.clone());
         let signals = Arc::new(Signals::default());
-        let forwarding = forward(Arc::clone(&signals), parts.listener, &tasks);
-        let hosts = match (parts.files, parts.device_store) {
-            (Some(files), Some(device_store)) => {
-                let store_journal = StoreJournal::new();
-                if let Some(history) = &parts.history {
-                    history.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
-                }
-                if let Some(saved) = &parts.saved_queries {
-                    saved.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
-                }
-                if let Some(store) = &parts.library {
-                    store.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
-                }
-                let standing = parts
-                    .library
-                    .clone()
-                    .map(|store| Arc::new(StoreStanding(store)) as Arc<dyn ConnectionStanding>);
-                Ok(Hosts {
-                    files,
-                    device_store,
-                    settings: parts.settings,
-                    events: signals,
-                    library: parts.library,
-                    names: driver_names(parts.config.platform),
-                    history: parts.history,
-                    saved_queries: parts.saved_queries,
-                    standing,
-                    store_journal,
-                })
-            }
-            (None, _) => Err(SyncError::NotAllowed {
-                what: "sync on a Core opened without storage",
-            }),
-            (Some(_), None) => Err(SyncError::NotAllowed {
-                what: "sync without a device store",
-            }),
-        };
+        let forwarding = forward(Arc::clone(&signals), Arc::clone(&parts.listener), &tasks);
+        let hosts = parts.hosts(signals);
+        let mode = parts.service_mode();
         let categories = categories_arg(&parts.config.categories);
+        let mirror = parts.legacy_mirror;
+        let icloud_allowed = allowed(parts.account.as_deref(), parts.config.platform, SyncProviderTag::Icloud);
         let icloud = match (parts.config.provider, parts.cloudkit, &hosts, &categories) {
+            (SyncProviderTag::Icloud, Some(_), Ok(_), Ok(_)) if !icloud_allowed => Err(SyncError::NotAllowed {
+                what: "sync with iCloud while the organization's policy does not allow it",
+            }),
             (SyncProviderTag::Icloud, Some(transport), Ok(hosts), Ok(categories)) => Ok(IcloudEngine::start(
                 hosts,
                 transport,
                 categories,
                 parts.config.icloud_account.clone(),
+                mirror.clone(),
             )),
             (SyncProviderTag::Icloud, None, _, _) => Err(SyncError::NotAllowed {
                 what: "sync with iCloud without a CloudKit transport",
@@ -245,28 +318,58 @@ impl SyncService {
                 what: "sync with iCloud while it is not the chosen provider",
             }),
         };
-        let service = match (parts.config.provider, parts.link, &hosts, categories) {
-            (SyncProviderTag::TableproSync, Ok(link), Ok(hosts), Ok(categories)) => {
-                ServiceEngine::start(hosts, link, categories).await
-            }
-            (SyncProviderTag::TableproSync, Err(error), ..) | (SyncProviderTag::TableproSync, _, _, Err(error)) => {
-                Err(error)
-            }
-            (SyncProviderTag::TableproSync, _, Err(error), _) => Err(error.clone()),
-            // The engine has no pass yet that keeps to the team scopes and the key objects (core ADR 0054,
-            // Providers), so on Off or iCloud it would carry personal data to the service.
-            (SyncProviderTag::Off | SyncProviderTag::Icloud, ..) => {
-                Err(SyncError::unimplemented("sync.service_teams_only"))
-            }
+        let (legacy_marks, marks_hear_stores) = match &icloud {
+            Err(_) => marks_alone(
+                &tasks,
+                mirror,
+                &hosts,
+                files.clone(),
+                parts.config.icloud_account.clone(),
+            ),
+            Ok(_) => (None, None),
         };
-        Arc::new(Self {
+        let kept = categories.clone().unwrap_or_default();
+        let last = parts.config.service_account.as_deref().and_then(identity_of);
+        let restart = match (&parts.account, &hosts) {
+            (Some(account), Ok(hosts)) => Some(Restart {
+                hosts: hosts.clone(),
+                account: Arc::clone(account),
+                mode,
+                session: parts.session.clone(),
+                last: last.clone(),
+            }),
+            _ => None,
+        };
+        let first = match (parts.link, &hosts, categories) {
+            (Ok(link), Ok(hosts), Ok(categories)) => ServiceEngine::start(hosts, link, categories, mode, last).await,
+            (Err(error), ..) | (_, _, Err(error)) => Err(error),
+            (_, Err(error), _) => Err(error.clone()),
+        };
+        let slot = ServiceSlot::new(first, restart, kept);
+        if matches!(mode, ServiceMode::TeamsOnly) {
+            slot.forbid_personal();
+        }
+        let service = Arc::new(Self {
             tasks,
             account: parts.account,
             config: parts.config,
             icloud,
-            service,
-            legacy_mirror: parts.legacy_mirror,
+            service: Arc::new(slot),
+            connections: parts.connections,
+            legacy_marks,
+            _marks_hear_stores: marks_hear_stores,
+            cloudkit,
+            files,
             _forward: forwarding,
-        })
+            _policy: std::sync::Mutex::new(None),
+        });
+        let watching = service.tasks.spawn_owned(hold_to_policy(&Arc::downgrade(&service)));
+        *service
+            ._policy
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(watching);
+        service.acknowledge_moves().await;
+        drop(service.tasks.spawn_task(resume_open_move(&Arc::downgrade(&service))));
+        service
     }
 }

@@ -29,7 +29,7 @@ use tablepro_sync::api::transport::{
     Transport, TransportError,
 };
 use tablepro_sync::engine::{Adapters, Clock, EngineHooks, Journal, StopSignal, Wake};
-use tablepro_sync::service::{PassReport, ServiceParts, ServiceSync};
+use tablepro_sync::service::{PassReport, ServiceMode, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
 use tablepro_sync_testing::{FakeClient, FakeDeviceStore, FakeServer, MemoryStateFiles};
@@ -102,6 +102,8 @@ impl StoreFile {
 struct Held {
     records: BTreeMap<String, (Value, Standing)>,
     unreadable: Vec<String>,
+    // What `hide` took out of `records`, given back by `show`.
+    hidden: BTreeMap<String, (Value, Standing)>,
     tombstones: Vec<String>,
     applies: Vec<Vec<LocalChange>>,
 }
@@ -152,6 +154,8 @@ pub struct MemoryAdapter {
     held: Mutex<Held>,
     elsewhere: Mutex<std::collections::HashMap<ScopeName, Held>>,
     on_apply: Mutex<Option<Box<dyn Fn() + Send>>>,
+    // Ids whose pulled change the store cannot take: a write that touches one fails whole.
+    refused_values: Mutex<std::collections::HashSet<String>>,
 }
 
 impl MemoryAdapter {
@@ -164,6 +168,7 @@ impl MemoryAdapter {
             held: Mutex::default(),
             elsewhere: Mutex::default(),
             on_apply: Mutex::new(None),
+            refused_values: Mutex::default(),
         })
     }
 
@@ -194,6 +199,23 @@ impl MemoryAdapter {
         self.file.advance();
     }
 
+    // The store cannot keep a value for this id, as a build that does not know it would; false takes it again.
+    pub fn refuse_value(&self, id: &str, refused: bool) {
+        let mut values = lock(&self.refused_values);
+        if refused {
+            values.insert(id.to_owned());
+        } else {
+            values.remove(id);
+        }
+    }
+
+    // A copy the store still holds and can no longer read, as one a newer build rewrote.
+    pub fn make_unreadable(&self, id: &str) {
+        let mut held = lock(&self.held);
+        held.records.remove(id);
+        held.unreadable.push(id.to_owned());
+    }
+
     // A create-once entry the person deleted: a tombstone the store keeps until it is pushed.
     pub fn delete_entry(&self, id: &str) {
         let mut held = lock(&self.held);
@@ -205,6 +227,23 @@ impl MemoryAdapter {
 
     pub fn get(&self, id: &str) -> Option<Value> {
         lock(&self.held).records.get(id).map(|(fields, _)| fields.clone())
+    }
+
+    // The store can no longer read the record, as a newer build's, until `show` gives it back unchanged.
+    pub fn hide(&self, id: &str) {
+        let mut held = lock(&self.held);
+        if let Some(record) = held.records.remove(id) {
+            held.hidden.insert(id.to_owned(), record);
+            held.unreadable.push(id.to_owned());
+        }
+    }
+
+    pub fn show(&self, id: &str) {
+        let mut held = lock(&self.held);
+        if let Some(record) = held.hidden.remove(id) {
+            held.unreadable.retain(|unreadable| unreadable != id);
+            held.records.insert(id.to_owned(), record);
+        }
     }
 
     pub fn applies(&self) -> usize {
@@ -246,6 +285,15 @@ impl RecordAdapter for MemoryAdapter {
         if let Some(run) = lock(&self.on_apply).as_ref() {
             run();
         }
+        let refused = lock(&self.refused_values);
+        if changes.iter().any(|change| match change {
+            LocalChange::Put { record_id, .. } | LocalChange::Delete { record_id } => refused.contains(record_id),
+        }) {
+            return Err(AdapterError::Unreadable {
+                detail: "a value this store cannot keep".to_owned(),
+            });
+        }
+        drop(refused);
         if scope == self.home() {
             lock(&self.held).apply(changes);
         } else {
@@ -293,6 +341,14 @@ pub struct Wire {
     keys: Mutex<Vec<IdempotencyKey>>,
     pushed: Mutex<Vec<Vec<String>>>,
     pub pulls: AtomicUsize,
+    held_pull: Mutex<Option<HeldPull>>,
+}
+
+// The next pull of a scope waits here once the server answered it: told when it is reached, then let go.
+struct HeldPull {
+    scope: ScopeName,
+    reached: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
 }
 
 impl Wire {
@@ -307,7 +363,20 @@ impl Wire {
             keys: Mutex::default(),
             pushed: Mutex::default(),
             pulls: AtomicUsize::new(0),
+            held_pull: Mutex::default(),
         })
+    }
+
+    // The next pull of `scope` holds its answer until the second notify; the first says it was reached.
+    pub fn hold_next_pull(&self, scope: ScopeName) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+        let reached = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        *lock(&self.held_pull) = Some(HeldPull {
+            scope,
+            reached: Arc::clone(&reached),
+            release: Arc::clone(&release),
+        });
+        (reached, release)
     }
 
     pub fn drop_next_push(&self) {
@@ -355,7 +424,20 @@ impl Transport for Wire {
         if request.cursor.is_some() && self.expire_next_cursor.swap(false, Ordering::SeqCst) {
             return Err(TransportError::CursorExpired);
         }
-        self.client.pull(request).await
+        let scope = request.scope;
+        let answer = self.client.pull(request).await;
+        let held = {
+            let mut held = lock(&self.held_pull);
+            match held.as_ref() {
+                Some(waits) if waits.scope == scope => held.take(),
+                _ => None,
+            }
+        };
+        if let Some(held) = held {
+            held.reached.notify_one();
+            held.release.notified().await;
+        }
+        answer
     }
 
     async fn push(&self, batch: PushBatch) -> Result<PushAnswer, TransportError> {
@@ -752,7 +834,7 @@ pub struct Device {
     pub hooks: Arc<EngineHooks>,
     pub stop: StopSignal,
     pub clock: Arc<TestClock>,
-    pub sync: ServiceSync,
+    pub sync: Arc<ServiceSync>,
     pub seed: Arc<Ed25519Seed>,
 }
 
@@ -760,6 +842,7 @@ pub struct DeviceBuilder {
     server: Arc<FakeServer>,
     row: String,
     approved: bool,
+    mode: ServiceMode,
     state: Option<Arc<dyn StateStore>>,
     connections: Option<(Arc<MemoryAdapter>, Arc<StoreFile>)>,
     extra: Vec<(ScopeName, Arc<MemoryAdapter>)>,
@@ -767,6 +850,7 @@ pub struct DeviceBuilder {
     memory_connections: bool,
     keys: Option<Arc<KeyLog>>,
     seed: Option<Arc<Ed25519Seed>>,
+    follows: Option<u64>,
 }
 
 impl DeviceBuilder {
@@ -775,6 +859,7 @@ impl DeviceBuilder {
             server: Arc::clone(server),
             row: row.to_owned(),
             approved: true,
+            mode: ServiceMode::Personal,
             state: None,
             connections: None,
             extra: Vec::new(),
@@ -782,6 +867,7 @@ impl DeviceBuilder {
             memory_connections: true,
             keys: None,
             seed: None,
+            follows: None,
         }
     }
 
@@ -792,9 +878,21 @@ impl DeviceBuilder {
         self
     }
 
+    // This account follows another account or server on the device, whose file held `unsent` changes.
+    pub fn follows(mut self, unsent: u64) -> Self {
+        self.follows = Some(unsent);
+        self
+    }
+
     // An adapter of the test's own, over a store that behaves as a core store does.
     pub fn extra_adapter(mut self, adapter: Arc<dyn RecordAdapter>) -> Self {
         self.others.push(adapter);
+        self
+    }
+
+    // A device whose personal provider is iCloud or Off: Team Library and the key objects only.
+    pub fn teams_only(mut self) -> Self {
+        self.mode = ServiceMode::TeamsOnly;
         self
     }
 
@@ -861,7 +959,7 @@ impl DeviceBuilder {
         let hooks = Arc::new(EngineHooks::new(wake.clone(), None));
         let stop = StopSignal::new();
         let clock = Arc::new(TestClock::default());
-        let sync = ServiceSync::new(ServiceParts {
+        let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: Arc::clone(&wire) as Arc<dyn ServiceTransport>,
             state: Arc::clone(&state),
             adapters: Adapters::new(adapters),
@@ -875,7 +973,9 @@ impl DeviceBuilder {
                 off: Vec::new(),
                 passwords: true,
             },
-        });
+            mode: self.mode,
+            follows: self.follows,
+        }));
         Device {
             server: self.server,
             wire,

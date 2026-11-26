@@ -135,6 +135,9 @@ impl KeyService {
                 .refused
                 .iter()
                 .any(|refused| refused.record_id == record.record_id);
+            if kept {
+                self.note_served(&mut *txn, arrival.scope, &object, record).await?;
+            }
             match object.id {
                 KeyRecordId::Member { account, av } => {
                     if kept && account == self.account() {

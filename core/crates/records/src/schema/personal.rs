@@ -244,6 +244,8 @@ pub const CONNECTION: &[Field] = &[
     // The device's marks on a copy an earlier iOS build wrote, which the engine reads against the base.
     field("tls_mode_unsettled", Type::Boolean, DeviceOnly),
     field("ssh_profile_unlinked", Type::Boolean, DeviceOnly),
+    // This device's id, which names the SSH routes it publishes, so the engine knows a route it may clear.
+    field("route_publisher", Type::Text, DeviceOnly),
 ];
 
 pub const GROUP: &[Field] = &[

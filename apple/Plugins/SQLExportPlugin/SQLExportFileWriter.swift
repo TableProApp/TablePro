@@ -6,7 +6,8 @@
 import Foundation
 import TableProPluginKit
 
-/// Writes a dump, starting a new file once the current one passes a size cap.
+/// Writes a dump, starting a new file once the current one passes a size cap. With gzip on, each
+/// part is a gzip file of its own, deflated as it is written, and the cap is the compressed size.
 ///
 /// Rotation happens between writes and never inside one, so a part always ends on a complete
 /// statement: a restore that replays the parts in order gets the same statements in the same order
@@ -34,12 +35,12 @@ nonisolated internal final class SQLExportFileWriter {
 
     private let destination: URL
     private let splitSizeBytes: Int
+    private let compressesWithGzip: Bool
     private let sessionDeclaration: SQLExportSessionDeclaration
     private let publish: (URL, URL) throws -> Void
 
-    private var handle: FileHandle
+    private var output: any SQLExportPartOutput
     private var tempURL: URL
-    private var bytesInCurrentPart = 0
     private var currentPartHasStatements = false
     private var partIndex = 1
     private var pending: [(temp: URL, final: URL)] = []
@@ -60,14 +61,18 @@ nonisolated internal final class SQLExportFileWriter {
         destination: URL,
         splitSizeMegabytes: Int,
         sessionDeclaration: SQLExportSessionDeclaration = .empty,
+        compressesWithGzip: Bool = false,
         publish: @escaping (URL, URL) throws -> Void = SQLExportFileWriter.publishAtomically
     ) throws {
         self.destination = destination
         self.splitSizeBytes = max(0, splitSizeMegabytes) * 1_024 * 1_024
         self.sessionDeclaration = sessionDeclaration
+        self.compressesWithGzip = compressesWithGzip
         self.publish = publish
-        let (handle, tempURL) = try PluginExportUtilities.beginAtomicWrite(for: destination)
-        self.handle = handle
+        let (output, tempURL) = try Self.openPart(
+            for: destination, compressesWithGzip: compressesWithGzip, splitSizeBytes: splitSizeBytes
+        )
+        self.output = output
         self.tempURL = tempURL
         do {
             try beginPart()
@@ -91,16 +96,15 @@ nonisolated internal final class SQLExportFileWriter {
     internal func write(_ text: String, opening scope: SQLExportSessionScope? = nil) throws {
         let data = try text.toUTF8Data()
         let scopeBytes = (scope?.opener.utf8.count ?? 0) + (scope?.closer.utf8.count ?? 0)
-        let partSize = bytesInCurrentPart + data.count + scopeBytes + partTailBytes
-        if splitSizeBytes > 0, currentPartHasStatements, partSize > splitSizeBytes {
+        if splitSizeBytes > 0, currentPartHasStatements,
+           try output.wouldExceed(splitSizeBytes, adding: data.count + scopeBytes + partTailBytes) {
             try rotate()
         }
         if let scope {
             openScopes.append(scope)
             try writeRaw(scope.opener)
         }
-        try handle.write(contentsOf: data)
-        bytesInCurrentPart += data.count
+        try output.write(data)
         currentPartHasStatements = true
     }
 
@@ -115,12 +119,16 @@ nonisolated internal final class SQLExportFileWriter {
     /// user chose; a split one numbers all of its parts, so no part silently claims that name.
     /// Parts go out in order, so a publish that fails partway leaves the dump's first parts rather
     /// than a hole in the middle of it, and the failure names them.
+    ///
+    /// `beforePublish` runs once every part is closed, after a gzip part's queued compression has
+    /// drained, so a Stop that lands during that wait still leaves the destination as it was.
     @discardableResult
-    internal func commit() throws -> [URL] {
+    internal func commit(beforePublish: () throws -> Void = {}) throws -> [URL] {
         try endPart()
-        try handle.close()
+        try output.close()
         let finalURL = didSplit ? Self.partURL(for: destination, part: partIndex) : destination
         pending.append((tempURL, finalURL))
+        try beforePublish()
         didAttemptPublish = true
         for entry in pending {
             do {
@@ -140,7 +148,7 @@ nonisolated internal final class SQLExportFileWriter {
     /// parts it did publish are not ours to take back.
     internal func rollback() {
         guard !didAttemptPublish else { return }
-        try? handle.close()
+        output.abandon()
         PluginExportUtilities.rollbackAtomicWrite(at: tempURL)
         for entry in pending {
             PluginExportUtilities.rollbackAtomicWrite(at: entry.temp)
@@ -156,19 +164,32 @@ nonisolated internal final class SQLExportFileWriter {
         }
     }
 
-    /// The file the caller compresses when gzip is on. Compression runs over a single file, so a
-    /// split export is the one case it cannot apply to.
-    internal var currentFileURL: URL { tempURL }
+    private static func openPart(
+        for destination: URL,
+        compressesWithGzip: Bool,
+        splitSizeBytes: Int
+    ) throws -> (any SQLExportPartOutput, URL) {
+        let (handle, tempURL) = try PluginExportUtilities.beginAtomicWrite(for: destination)
+        guard compressesWithGzip else { return (SQLExportPlainOutput(handle: handle), tempURL) }
+        do {
+            return (try SQLExportGzipOutput(handle: handle, splitSizeBytes: splitSizeBytes), tempURL)
+        } catch {
+            try? handle.close()
+            PluginExportUtilities.rollbackAtomicWrite(at: tempURL)
+            throw error
+        }
+    }
 
     private func rotate() throws {
         try endPart()
-        try handle.close()
+        try output.close()
         pending.append((tempURL, Self.partURL(for: destination, part: partIndex)))
         partIndex += 1
-        let (nextHandle, nextTemp) = try PluginExportUtilities.beginAtomicWrite(for: destination)
-        handle = nextHandle
+        let (nextOutput, nextTemp) = try Self.openPart(
+            for: destination, compressesWithGzip: compressesWithGzip, splitSizeBytes: splitSizeBytes
+        )
+        output = nextOutput
         tempURL = nextTemp
-        bytesInCurrentPart = 0
         currentPartHasStatements = false
         try beginPart()
     }
@@ -201,9 +222,7 @@ nonisolated internal final class SQLExportFileWriter {
 
     private func writeRaw(_ text: String) throws {
         guard !text.isEmpty else { return }
-        let data = try text.toUTF8Data()
-        try handle.write(contentsOf: data)
-        bytesInCurrentPart += data.count
+        try output.write(try text.toUTF8Data())
     }
 }
 

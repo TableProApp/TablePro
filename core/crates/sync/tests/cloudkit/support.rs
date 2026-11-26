@@ -13,6 +13,7 @@ use tablepro_sync::adapters::approval::Queue;
 use tablepro_sync::api::cloudkit::{CloudKitField, CloudKitTransport, CloudKitValue};
 use tablepro_sync::api::control::PendingApproval;
 use tablepro_sync::api::ids::{ChangeTag, KindName};
+use tablepro_sync::api::legacy::LegacyMirror;
 use tablepro_sync::api::state::{
     BaseRow, DeferredRow, HeldRow, Row, RowKey, RowRange, StateFiles, StateIdentity, StateStore, StoreRow, Table,
 };
@@ -25,7 +26,7 @@ use tablepro_sync::api::{
 use tablepro_sync::cloudkit::fetch::{Categories, FetchReport, Fetcher, Rebased, ServerChanged};
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync, PushReport, Pusher, Waits};
 use tablepro_sync::engine::{Adapters, Clock, Journal, StopSignal};
-use tablepro_sync_testing::{FakeCloudKit, MemoryStateFiles};
+use tablepro_sync_testing::{FakeCloudKit, FakeLegacyMirror, MemoryStateFiles};
 use uuid::Uuid;
 
 pub const USER: &str = "_4f1e2d";
@@ -71,6 +72,8 @@ struct Held {
     records: BTreeMap<String, LocalRecord>,
     unreadable: BTreeSet<String>,
     refuse_next: bool,
+    // Ids whose pulled change the store cannot take: a write that touches one fails whole.
+    refused_values: BTreeSet<String>,
     writes: usize,
     // A write the person makes right after the next read, while the pull merges.
     edit_after_read: Option<(String, Value)>,
@@ -98,6 +101,7 @@ impl MemoryStore {
                 records: BTreeMap::new(),
                 unreadable: BTreeSet::new(),
                 refuse_next: false,
+                refused_values: BTreeSet::new(),
                 writes: 0,
                 edit_after_read: None,
             }),
@@ -172,6 +176,16 @@ impl MemoryStore {
 
     pub fn refuse_next_write(&self) {
         lock(&self.held).refuse_next = true;
+    }
+
+    // The store cannot keep a value for this id, as a build that does not know it would; None takes it again.
+    pub fn refuse_value(&self, id: &str, refused: bool) {
+        let mut held = lock(&self.held);
+        if refused {
+            held.refused_values.insert(id.to_owned());
+        } else {
+            held.refused_values.remove(id);
+        }
     }
 
     // Time Machine put the file back: the same generation at an earlier write, holding these records.
@@ -255,6 +269,15 @@ impl RecordAdapter for MemoryStore {
             return Err(AdapterError::Store {
                 store: self.store.clone(),
                 detail: "refused".to_owned(),
+            });
+        }
+        if changes.iter().any(|change| match change {
+            LocalChange::Put { record_id, .. } | LocalChange::Delete { record_id } => {
+                held.refused_values.contains(record_id)
+            }
+        }) {
+            return Err(AdapterError::Unreadable {
+                detail: "a value this store cannot keep".to_owned(),
             });
         }
         for change in changes {
@@ -498,6 +521,12 @@ impl Rig {
         })
     }
 
+    // The Mac's pass with the Swift engine's metadata in `mirror`, as a launch opens it.
+    pub fn sync_mirrored(&self, mirror: &Arc<FakeLegacyMirror>) -> CloudKitSync {
+        self.sync(None)
+            .with_legacy_mirror(Arc::clone(mirror) as Arc<dyn LegacyMirror>)
+    }
+
     // The fields of a record the zone holds, as wire fields.
     pub fn zone_fields(&self, kind: Kind, id: &str) -> Option<Value> {
         self.zone_fields_of(USER, kind, id)
@@ -569,6 +598,7 @@ impl Rig {
         let queue = Queue {
             state: &self.state,
             adapters: &adapters,
+            fence: &StopSignal::new(),
         };
         queue.waiting().await.unwrap()
     }
@@ -579,6 +609,7 @@ impl Rig {
         let queue = Queue {
             state: &self.state,
             adapters: &adapters,
+            fence: &StopSignal::new(),
         };
         for approval in queue.waiting().await.unwrap() {
             queue
@@ -616,8 +647,9 @@ impl Rig {
         }
     }
 
+    // The one row of the file that keeps `kind` (0066, `stores`).
     pub async fn store_row(&self, kind: Kind) -> Option<StoreRow> {
-        let row = format!("{}/{}", self.store(kind).store_name(), kind.as_str());
+        let row = self.store(kind).store_name().to_owned();
         match self.row(RowKey::Store(row)).await {
             Some(Row::Store(row)) => Some(row),
             _ => None,

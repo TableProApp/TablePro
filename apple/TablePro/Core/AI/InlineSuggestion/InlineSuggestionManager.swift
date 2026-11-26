@@ -110,10 +110,7 @@ final class InlineSuggestionManager {
         guard let cursor = controller.cursorPositions.first,
               cursor.range.length == 0 else { return false }
 
-        let text = textView.string
-        guard (text as NSString).length > 0 else { return false }
-
-        return true
+        return textView.textStorage.length > 0
     }
 
     // MARK: - Request

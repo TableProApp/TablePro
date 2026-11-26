@@ -8,6 +8,7 @@ mod host;
 mod key_records;
 mod keys;
 mod legacy;
+mod moves;
 mod names;
 mod open;
 mod service;
@@ -25,17 +26,19 @@ pub use host::{
 #[cfg(windows)]
 pub(crate) use host::{device_item_target, device_store_error};
 pub use keys::{
-    AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, FingerprintInfo, GenesisOutcomeTag, HeldRestartInfo,
-    KeyChangeInfo, KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LockCauseTag, MemberKeyStatusTag,
-    MemberKeysInfo, PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag,
-    ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag,
-    SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, TeamKeysInfo, TeamRoleTag,
+    AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, CredentialToRotateInfo, FingerprintInfo,
+    GenesisOutcomeTag, HeldRestartInfo, KeyChangeInfo, KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo,
+    KeyVersionStateTag, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo, PendingResetInfo, RecoveryKeyDraftInfo,
+    RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo,
+    SessionEndTag, SessionPhaseTag, SessionRoleTag, SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, TeamKeysInfo,
+    TeamRoleTag,
 };
 pub use legacy::{
     HostLegacyMirror, LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg,
 };
 pub use service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    PassReasonTag, PendingApprovalInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag,
-    SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo,
+    NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncConfig,
+    SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo,
+    TeamConflictInfo,
 };

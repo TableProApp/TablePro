@@ -38,9 +38,11 @@ use crate::api::error::SyncError;
 use crate::api::ids::{DeviceRowId, EpochId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId, PendingReset, Roster};
 use crate::api::state::{
-    KeyObjectRow, KeyTrust, KeysSettled, Row, RowKey, RowRange, ScopeRow, StateStore, StateTxn, Table,
+    KeyObjectRow, KeyTrust, KeysSettled, Row, RowKey, RowRange, ScopeRow, Served, StateStore, StateTxn, Table,
 };
-use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PushBatch, ServiceTransport};
+use crate::api::transport::{
+    Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PulledRecord, PushBatch, ServiceTransport,
+};
 use crate::engine::key_base;
 use crate::state::integrity::{Reading, rebuild_shown};
 
@@ -379,6 +381,51 @@ impl KeyService {
         object: &KeyObject,
         applied: bool,
     ) -> Result<(), SyncError> {
+        self.hold(txn, scope, object, applied, None).await
+    }
+
+    // Keeps a key object a pull served, with the server's times, so a restart reads them as they were (0066,
+    // `key_objects.served`).
+    pub async fn hold_served(
+        &self,
+        txn: &mut dyn StateTxn,
+        scope: ScopeName,
+        object: &KeyObject,
+        record: &PulledRecord,
+    ) -> Result<(), SyncError> {
+        self.hold(txn, scope, object, true, served_of(record)).await
+    }
+
+    // The server's times for a key object a pull served, once this device holds it in force (0066,
+    // `key_objects.served`).
+    pub(crate) async fn note_served(
+        &self,
+        txn: &mut dyn StateTxn,
+        scope: ScopeName,
+        object: &KeyObject,
+        record: &PulledRecord,
+    ) -> Result<(), SyncError> {
+        let key = RowKey::KeyObject(scope, KindName::parse(object.id.kind().name())?, object.id.to_wire());
+        if let Some(Row::KeyObject(row)) = txn.get(&key).await?
+            && row.applied
+            && row.fields == object.fields_json()
+        {
+            let times = later_times(row.served, served_of(record));
+            if times != row.served {
+                txn.put(Row::KeyObject(KeyObjectRow { served: times, ..row })).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn hold(
+        &self,
+        txn: &mut dyn StateTxn,
+        scope: ScopeName,
+        object: &KeyObject,
+        applied: bool,
+        served: Option<Served>,
+    ) -> Result<(), SyncError> {
         let kind = KindName::parse(object.id.kind().name())?;
         let record_id = object.id.to_wire();
         let fields = object.fields_json();
@@ -394,7 +441,7 @@ impl KeyService {
                 record_id,
                 fields,
                 applied,
-                served: None,
+                served,
             },
             Some(row) => {
                 let same = check_same_object(
@@ -406,9 +453,15 @@ impl KeyService {
                     fields.as_bytes(),
                 )
                 .is_ok();
+                let times = later_times(row.served, served);
                 match (same, row.applied, applied) {
-                    (true, true, _) | (true, false, false) => return Ok(()),
-                    (true, false, true) => KeyObjectRow { applied: true, ..row },
+                    (true, true, _) if times == row.served => return Ok(()),
+                    (true, false, false) => return Ok(()),
+                    (true, _, _) => KeyObjectRow {
+                        applied: true,
+                        served: times,
+                        ..row
+                    },
                     (false, true, _) => return Err(KeysError::Conflict.into()),
                     (false, false, _) => KeyObjectRow {
                         scope,
@@ -416,7 +469,7 @@ impl KeyService {
                         record_id,
                         fields,
                         applied,
-                        served: None,
+                        served,
                     },
                 }
             }
@@ -493,12 +546,14 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-// A key object as `key_objects` holds it: parsed, with the exact `fields` text and whether it is in force.
+// A key object as `key_objects` holds it: parsed, with the exact `fields` text, whether it is in force and the times
+// the server served it with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeldObject {
     pub object: KeyObject,
     pub fields: String,
     pub applied: bool,
+    pub served: Option<Served>,
 }
 
 impl HeldObject {
@@ -507,7 +562,28 @@ impl HeldObject {
             object: KeyObject::parse(row.kind.as_str(), &row.record_id, row.fields.as_bytes())?,
             fields: row.fields.clone(),
             applied: row.applied,
+            served: row.served,
         })
+    }
+}
+
+// The server's times a pull serves beside a key object, never in its fields (0051, Pull).
+pub(crate) fn served_of(record: &PulledRecord) -> Option<Served> {
+    record.service.as_ref().map(|meta| Served {
+        taken_at_us: meta.taken_at_us,
+        held_until_us: meta.held_until_us,
+    })
+}
+
+// What a key object keeps of the times served for it: the newest `taken_at`, and a `held_until` a server may lengthen
+// but never shorten.
+fn later_times(held: Option<Served>, served: Option<Served>) -> Option<Served> {
+    match (held, served) {
+        (Some(held), Some(served)) => Some(Served {
+            taken_at_us: served.taken_at_us,
+            held_until_us: held.held_until_us.max(served.held_until_us),
+        }),
+        (held, served) => served.or(held),
     }
 }
 
@@ -635,8 +711,8 @@ impl Drafts {
         self.lock().remove(&id);
     }
 
-    // Sign Out drops every draft, and with them any recovery key a flow still held.
-    pub(crate) fn clear(&self) {
+    // Sign Out drops every draft, and with them any recovery key a flow still held; so does a service that closes.
+    pub fn clear(&self) {
         self.lock().clear();
     }
 }

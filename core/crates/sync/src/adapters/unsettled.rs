@@ -15,6 +15,7 @@ use super::library;
 
 pub const TLS_MODE_UNSETTLED: &str = "tls_mode_unsettled";
 pub const SSH_PROFILE_UNLINKED: &str = "ssh_profile_unlinked";
+pub const ROUTE_PUBLISHER: &str = "route_publisher";
 
 const MODE: &str = "/ssl_config/mode";
 const PROFILE: &str = "/ssh_profile_id";

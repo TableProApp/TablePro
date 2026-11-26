@@ -49,6 +49,7 @@ async fn the_query_stores_kinds_sync_their_writes_reach_the_engine_and_history_w
         events: Arc::new(Signals::default()),
         library: None,
         names: tablepro_sync::adapters::library::DriverNames::Mac,
+        publisher: None,
         history: Some(history.clone()),
         saved_queries: Some(saved.clone()),
         standing,
@@ -57,8 +58,9 @@ async fn the_query_stores_kinds_sync_their_writes_reach_the_engine_and_history_w
     let journal = Journal::new(Wake::new());
     let id = Uuid::new_v4();
 
-    let unknown = kinds(&hosts(None).adapters(&journal, Provider::TableproSync));
-    let known = kinds(&hosts(Some(Arc::new(Syncs))).adapters(&journal, Provider::TableproSync));
+    let unknown = kinds(&hosts(None).adapters(Provider::TableproSync));
+    let known = kinds(&hosts(Some(Arc::new(Syncs))).adapters(Provider::TableproSync));
+    let _listening = hosts(None).listen(Arc::new(journal.clone()));
     saved
         .saved_queries()
         .write(&SavedQueryWrite {
@@ -105,6 +107,7 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
         events: Arc::new(Signals::default()),
         library: Some(store.clone()),
         names: tablepro_sync::adapters::library::DriverNames::Core,
+        publisher: None,
         history: Some(history),
         saved_queries: Some(saved),
         standing: Some(Arc::new(tablepro_sync::adapters::library::StoreStanding(store.clone()))),
@@ -112,7 +115,8 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
     };
     let journal = Journal::new(Wake::new());
 
-    let found = kinds(&hosts.adapters(&journal, Provider::ICloud));
+    let found = kinds(&hosts.adapters(Provider::ICloud));
+    let _listening = hosts.listen(Arc::new(journal.clone()));
     let tag = store
         .create_tag_blocking(
             tablepro_storage::ConnectionTagName::new("prod").unwrap(),
@@ -156,17 +160,60 @@ async fn saved_queries_sync_without_the_history() {
         events: Arc::new(Signals::default()),
         library: None,
         names: tablepro_sync::adapters::library::DriverNames::Mac,
+        publisher: None,
         history: None,
         saved_queries: Some(saved),
         standing: Some(Arc::new(Syncs)),
         store_journal: StoreJournal::new(),
     };
 
-    let found = kinds(&hosts.adapters(&Journal::new(Wake::new()), Provider::ICloud));
+    let found = kinds(&hosts.adapters(Provider::ICloud));
 
     assert_eq!(found, [Kind::SavedQuery, Kind::SavedQueryFolder]);
     assert!(
         !paths.history_database().exists(),
         "the saved queries opened the history"
     );
+}
+
+// Each engine's journal hears the stores once and leaves with its engine, so an engine started again, or a provider
+// switched, never leaves the old one listening.
+#[tokio::test]
+async fn an_engine_s_journal_hears_the_stores_once_and_leaves_with_its_engine() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
+    let history = QueryHistory::open(&paths).await.unwrap();
+    let store_journal = StoreJournal::new();
+    history.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let hosts = Hosts {
+        files: Arc::new(SqliteStateFiles::at(
+            dir.path().join("sync"),
+            Arc::clone(&device_store) as Arc<dyn HostDeviceStore>,
+        )) as Arc<dyn StateFiles>,
+        device_store: Arc::clone(&device_store) as Arc<dyn HostDeviceStore>,
+        settings: None,
+        events: Arc::new(Signals::default()),
+        library: None,
+        names: tablepro_sync::adapters::library::DriverNames::Mac,
+        publisher: None,
+        history: Some(history),
+        saved_queries: None,
+        standing: Some(Arc::new(Syncs)),
+        store_journal: Arc::clone(&store_journal),
+    };
+    let transport: Arc<dyn tablepro_sync::api::CloudKitTransport> =
+        Arc::new(tablepro_sync_testing::FakeCloudKit::signed_in("_a"));
+    let categories = tablepro_sync::api::control::SyncCategories::default();
+
+    let first = super::IcloudEngine::start(&hosts, transport.clone(), &categories, None, None);
+    let second = super::IcloudEngine::start(&hosts, transport, &categories, None, None);
+    let both = store_journal.listeners();
+    drop(first);
+    let left = store_journal.listeners();
+    drop(second);
+
+    assert_eq!(both, 2);
+    assert_eq!(left, 1);
+    assert_eq!(store_journal.listeners(), 0);
 }

@@ -110,6 +110,7 @@ jobs:
           set -euo pipefail
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir apple --version 0.0.0
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version 0.0.0
+          "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir windows --version 0.0.0
 
       # pr-title.yml runs the same check on a title edit, which starts no CI run. The title is read now, not from the
       # event, so a re-run after a retitle sees the current one.

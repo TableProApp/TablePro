@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use super::{connection, details, favourites, folders, groups, profiles};
 use crate::adapters::fields::{get, members};
+use crate::adapters::unsettled::ROUTE_PUBLISHER;
 use crate::api::ids::ScopeName;
 
 // What the store would hold of `base` as a wire record, or None for a kind the library does not hold.
@@ -45,14 +46,19 @@ fn read_back(kind: Kind, base: &Value) -> Option<Value> {
 
 // A route another device published stays until a route that dials elsewhere replaces it: this device clears none and
 // one that leads to the same hosts reads as the base's (`keepingForeignRoute`, `rebasedRoute`). Only its publisher
-// clears a route on the Mac; the store does not know which device that is, so here none does.
+// clears a route, as on the Mac: the copy names this device by the mark the adapter sets from the host's device id.
 fn route_at_base(kind: Kind, local: &Value, base: &Value) -> bool {
     let (Kind::Connection, Some(theirs)) = (kind, base.get("ssh_route")) else {
         return false;
     };
-    local
-        .get("ssh_route")
-        .is_none_or(|mine| mine != theirs && details::same_hosts(mine, theirs))
+    let ours = local
+        .get(ROUTE_PUBLISHER)
+        .and_then(Value::as_str)
+        .is_some_and(|publisher| theirs.get("publisher").and_then(Value::as_str) == Some(publisher));
+    match local.get("ssh_route") {
+        None => !ours,
+        Some(mine) => mine != theirs && details::same_hosts(mine, theirs),
+    }
 }
 
 // The members of `local` that read as the base's, by JSON Pointer.

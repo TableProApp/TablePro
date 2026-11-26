@@ -39,6 +39,7 @@ pub(crate) fn held(object: KeyObject) -> HeldObject {
         fields: object.fields_json(),
         object,
         applied: true,
+        served: None,
     }
 }
 
@@ -148,6 +149,7 @@ impl World {
             .unwrap(),
             fields,
             applied: true,
+            served: None,
         }
     }
 

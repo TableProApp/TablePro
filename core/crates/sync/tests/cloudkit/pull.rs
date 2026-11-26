@@ -97,6 +97,105 @@ async fn a_store_that_refuses_the_write_commits_no_base_and_no_token() {
     assert!(rig.store(Kind::Connection).fields(A).is_some());
 }
 
+// The store cannot keep one pulled value: that record is held by id with the zone's copy and keeps no base, the rest
+// of the batch lands with the token, and the held one goes in once the store takes it.
+#[tokio::test]
+async fn a_value_the_store_refuses_is_held_and_the_fetch_goes_on() {
+    use tablepro_sync::api::state::HeldReason;
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    rig.save_elsewhere(Kind::Connection, B, &json!({"name": "stage"}));
+    rig.store(Kind::Connection).refuse_value(A, true);
+
+    let report = rig.fetch().await.unwrap();
+    let held = rig.held(Kind::Connection, A).await.unwrap();
+    let base = rig.base(Kind::Connection, A).await;
+    rig.save_elsewhere(Kind::Connection, B, &json!({"name": "stage 2"}));
+    rig.fetch().await.unwrap();
+    let later = rig.store(Kind::Connection).fields(B);
+    rig.store(Kind::Connection).refuse_value(A, false);
+    rig.fetch().await.unwrap();
+
+    assert_eq!(report.counts.refused, 1, "{report:?}");
+    assert_eq!(report.counts.written, 1, "{report:?}");
+    assert_eq!(held.reason, HeldReason::Unreadable);
+    assert!(held.record.fields.is_some());
+    assert!(base.is_none());
+    assert!(rig.token().await.is_some());
+    assert_eq!(later, Some(projected(Kind::Connection, B, &json!({"name": "stage 2"}))));
+    assert_eq!(
+        rig.store(Kind::Connection).fields(A),
+        Some(projected(Kind::Connection, A, &json!({"name": "prod"})))
+    );
+    assert!(rig.held(Kind::Connection, A).await.is_none());
+}
+
+// What a refill's store refused takes the pull on the next page that brings it, and so does a refused deletion when
+// the store takes it: the copy the restore left is no edit that wins or revives the record (Codex round 4).
+#[tokio::test]
+async fn a_refill_s_refusal_takes_the_pull_on_a_later_page_and_for_a_deletion() {
+    use tablepro_sync::api::state::HeldReason;
+    let rig = Rig::new().await;
+    let connection = |name: &str| json!({"name": name});
+    rig.save_elsewhere(Kind::Connection, A, &connection("v1"));
+    rig.save_elsewhere(Kind::Connection, B, &connection("v1"));
+    rig.fetch().await.unwrap();
+    let store = rig.store(Kind::Connection);
+    store.restore(vec![
+        (A, projected(Kind::Connection, A, &connection("old"))),
+        (B, projected(Kind::Connection, B, &connection("old"))),
+    ]);
+    rig.save_elsewhere(Kind::Connection, A, &connection("v2"));
+    rig.delete_elsewhere(Kind::Connection, B);
+    store.refuse_value(A, true);
+    store.refuse_value(B, true);
+
+    rig.fetch().await.unwrap();
+    let held = (
+        rig.held(Kind::Connection, A).await.map(|row| row.reason),
+        rig.held(Kind::Connection, B).await.map(|row| row.reason),
+    );
+    store.refuse_value(A, false);
+    store.refuse_value(B, false);
+    rig.save_elsewhere(Kind::Connection, A, &connection("v3"));
+    rig.fetch().await.unwrap();
+    rig.push().await.unwrap();
+
+    assert_eq!(
+        held,
+        (Some(HeldReason::RefusedInRefill), Some(HeldReason::RefusedInRefill))
+    );
+    assert_eq!(store.fields(A), Some(projected(Kind::Connection, A, &connection("v3"))));
+    assert!(!store.holds(B));
+    assert!(rig.zone_fields(Kind::Connection, B).is_none());
+    assert!(rig.held(Kind::Connection, A).await.is_none());
+}
+
+// A deletion the store refuses leaves the record as the device held it: its base, and the pulled value it waits on
+// for the person, are what they were, and the deletion is held by id.
+#[tokio::test]
+async fn a_deletion_the_store_refuses_keeps_the_value_that_waits_for_the_person() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "db.a"}));
+    rig.fetch().await.unwrap();
+    rig.approve_everything().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "db.b"}));
+    rig.fetch().await.unwrap();
+    let waiting = rig.waiting().await;
+    let base = rig.base(Kind::Connection, A).await;
+    rig.store(Kind::Connection).refuse_value(A, true);
+    rig.delete_elsewhere(Kind::Connection, A);
+
+    let report = rig.fetch().await.unwrap();
+
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(report.counts.refused, 1, "{report:?}");
+    assert_eq!(rig.waiting().await, waiting);
+    assert_eq!(rig.base(Kind::Connection, A).await, base);
+    assert!(rig.store(Kind::Connection).holds(A));
+    assert!(rig.held(Kind::Connection, A).await.unwrap().record.deleted.is_some());
+}
+
 // The crash window between the store write and the state commit after it, the second of the batch's commits: the
 // replay finds the store already holding the merge and writes nothing new, then commits the base and the token.
 #[tokio::test]

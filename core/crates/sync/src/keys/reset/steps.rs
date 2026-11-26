@@ -239,7 +239,8 @@ impl KeyService {
     }
 
     // Other devices' resets: each `key.reset` `key_objects` holds that this device did not propose, with the times a
-    // pull served beside it this session, and those that ended since. A time no pull served this session reads 0.
+    // pull served beside it, kept in its row so a restart reads them too (0066, `key_objects.served`), and those that
+    // ended since.
     pub(super) async fn others_resets(&self, txn: &mut dyn StateTxn) -> Result<Vec<PendingReset>, SyncError> {
         let now = self.now_us();
         let own: Vec<ResetId> = self
@@ -264,14 +265,23 @@ impl KeyService {
             let Ok((certificate, kind)) = check_proposal(self, self.account(), body) else {
                 continue;
             };
+            // A row no pull served reads 0, which never ends a reset as overdue before its tombstone.
+            let (taken_at_us, held_until_us) = held.served.map_or((0, 0), |times| {
+                (
+                    times.taken_at_us,
+                    times
+                        .held_until_us
+                        .unwrap_or_else(|| times.taken_at_us.saturating_add(HOLD_US)),
+                )
+            });
             let mut view = served.get(reset).cloned().unwrap_or(PendingReset {
                 reset: *reset,
                 kind,
                 state: ResetState::Pending,
                 mine: false,
                 proposed_by: None,
-                taken_at_us: 0,
-                held_until_us: 0,
+                taken_at_us,
+                held_until_us,
             });
             let overdue = view.held_until_us != 0 && now >= view.held_until_us.saturating_add(HOLD_US);
             if overdue || self.av_taken(txn, body.av, &certificate.ik).await? {

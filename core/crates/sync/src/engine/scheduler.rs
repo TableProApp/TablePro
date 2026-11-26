@@ -34,12 +34,28 @@ pub struct JournalEntry {
 
 pub type JournalIds = HashMap<Kind, HashSet<String>>;
 
+// Told of every entry the journal takes, offline too, as the downgrade mirror marks them for the previous stable
+// (0054, Downgrade mirror). It runs on the store's write path, so it only queues.
+pub trait JournalObserver: Send + Sync {
+    fn changed(&self, entries: &[JournalEntry]);
+}
+
+#[derive(Clone, Default)]
+struct Observer(Arc<Mutex<Option<Arc<dyn JournalObserver>>>>);
+
+impl std::fmt::Debug for Observer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Observer").finish_non_exhaustive()
+    }
+}
+
 // The records the journal named since the last pass took them. A pass a journal signal started diffs only those, so
 // no signal diffs a whole store; any other pass diffs every store, so a missed signal only delays a push (0060).
 #[derive(Debug, Clone, Default)]
 pub struct Journal {
     ids: Arc<Mutex<JournalIds>>,
     wake: Wake,
+    observer: Observer,
 }
 
 impl Journal {
@@ -47,6 +63,7 @@ impl Journal {
         Self {
             ids: Arc::default(),
             wake,
+            observer: Observer::default(),
         }
     }
 
@@ -54,8 +71,17 @@ impl Journal {
         self.ids.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    // Every clone of this journal tells `observer` from now on.
+    pub fn observe(&self, observer: Arc<dyn JournalObserver>) {
+        *self.observer.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(observer);
+    }
+
     // From the store's write path, after the write landed: returns at once.
     pub fn changed(&self, entries: &[JournalEntry]) {
+        let observer = self.observer.0.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        if let Some(observer) = observer {
+            observer.changed(entries);
+        }
         let mut named = false;
         let mut ids = self.ids();
         for entry in entries {

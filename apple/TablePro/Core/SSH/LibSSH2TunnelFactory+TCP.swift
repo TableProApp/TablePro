@@ -5,14 +5,8 @@ import os
 import TableProSSHTransport
 
 extension LibSSH2TunnelFactory {
-    private struct ResolvedSocketAddress: @unchecked Sendable {
-        let storage: sockaddr_storage
-        let length: socklen_t
-        let family: Int32
-        let socketType: Int32
-        let socketProtocol: Int32
-    }
-
+    // Resolves off the cooperative pool as before, then races the addresses (RFC 8305) on the attempt's own
+    // queue. The attempt's interrupt wakes the race, and the deadline bounds the whole of it.
     internal static func connectTCP(
         host: String,
         port: Int,
@@ -28,81 +22,39 @@ extension LibSSH2TunnelFactory {
             attempt: attempt,
             endpoint: endpoint
         )
-        var lastError = "No address found"
+        try attempt.prepare(for: endpoint)
 
-        for address in addresses {
-            try attempt.prepare(for: endpoint)
-            let descriptor = socket(address.family, address.socketType, address.socketProtocol)
-            guard descriptor >= 0 else { continue }
+        let interrupt = SSHDialInterrupt()
+        let interruptId = attempt.registerTransportInterrupt { interrupt.fire() }
+        let outcome = try await attempt.runBlocking {
+            SSHTransportDial.connect(addresses, deadline: deadline.instant, interrupt: interrupt)
+        }
+        attempt.unregisterTransportInterrupt(interruptId)
 
-            let interruptId = attempt.registerTransportInterrupt {
-                shutdown(descriptor, SHUT_RDWR)
-            }
-            let flags = fcntl(descriptor, F_GETFL, 0)
-            fcntl(descriptor, F_SETFL, flags | O_NONBLOCK)
-
-            var storage = address.storage
-            let connectResult = withUnsafePointer(to: &storage) { pointer in
-                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    connect(descriptor, $0, address.length)
-                }
-            }
-
-            let connectErrno = errno
-            if connectResult != 0, connectErrno != EINPROGRESS {
-                attempt.unregisterTransportInterrupt(interruptId)
-                Darwin.close(descriptor)
-                lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(connectErrno)))"
-                continue
-            }
-
-            if connectResult != 0 {
-                var pollDescriptor = pollfd(fd: descriptor, events: Int16(POLLOUT), revents: 0)
-                let pollResult = poll(
-                    &pollDescriptor,
-                    1,
-                    Int32(clamping: deadline.remainingMilliseconds)
-                )
-                let pollErrno = errno
-
-                if pollResult <= 0 {
-                    attempt.unregisterTransportInterrupt(interruptId)
-                    Darwin.close(descriptor)
-                    try attempt.check(for: endpoint)
-                    if pollResult == 0 {
-                        throw deadline.timeoutError(for: endpoint)
-                    }
-                    lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(pollErrno)))"
-                    continue
-                }
-
-                var socketError: Int32 = 0
-                var errorLength = socklen_t(MemoryLayout<Int32>.size)
-                getsockopt(descriptor, SOL_SOCKET, SO_ERROR, &socketError, &errorLength)
-
-                if socketError != 0 {
-                    attempt.unregisterTransportInterrupt(interruptId)
-                    Darwin.close(descriptor)
-                    lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(socketError)))"
-                    continue
-                }
-            }
-
-            fcntl(descriptor, F_SETFL, flags)
-            configureKeepAlive(descriptor)
-
+        switch outcome {
+        case .connected(let descriptor):
+            configureTransportSocket(descriptor)
             do {
                 try attempt.check(for: endpoint)
             } catch {
-                attempt.unregisterTransportInterrupt(interruptId)
                 Darwin.close(descriptor)
                 throw error
             }
             logger.debug("TCP connected to \(host):\(port)")
             return descriptor
+        case .interrupted:
+            try attempt.check(for: endpoint)
+            throw CancellationError()
+        case .timedOut:
+            try attempt.check(for: endpoint)
+            throw deadline.timeoutError(for: endpoint)
+        case .failed(let lastErrno):
+            try attempt.check(for: endpoint)
+            let reason = lastErrno.map {
+                "Connection to \(host):\(port) failed: \(String(cString: strerror($0)))"
+            } ?? "No address found"
+            throw SSHTunnelError.tunnelCreationFailed(reason)
         }
-
-        throw SSHTunnelError.tunnelCreationFailed(lastError)
     }
 
     private static func resolveAddresses(
@@ -111,8 +63,8 @@ extension LibSSH2TunnelFactory {
         deadline: ConnectionDeadline,
         attempt: SSHConnectionAttempt,
         endpoint: ConnectionTimeoutEndpoint
-    ) async throws -> [ResolvedSocketAddress] {
-        let gate = ConnectionSingleResumeGate<[ResolvedSocketAddress]>()
+    ) async throws -> [SSHSocketAddress] {
+        let gate = ConnectionSingleResumeGate<[SSHSocketAddress]>()
         let queue = DispatchQueue.global(qos: .utility)
         let remainingMilliseconds = max(1, deadline.remainingMilliseconds)
 
@@ -137,7 +89,7 @@ extension LibSSH2TunnelFactory {
     private static func resolvedAddresses(
         host: String,
         port: Int
-    ) -> Result<[ResolvedSocketAddress], Error> {
+    ) -> Result<[SSHSocketAddress], Error> {
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC
         hints.ai_socktype = SOCK_STREAM
@@ -153,7 +105,7 @@ extension LibSSH2TunnelFactory {
         }
         defer { freeaddrinfo(result) }
 
-        let addresses = copyAddresses(from: firstAddress)
+        let addresses = SSHSocketAddress.list(from: firstAddress)
         guard !addresses.isEmpty else {
             return .failure(
                 SSHTunnelError.tunnelCreationFailed("DNS resolution failed for \(host): No address found")
@@ -162,33 +114,8 @@ extension LibSSH2TunnelFactory {
         return .success(addresses)
     }
 
-    private static func copyAddresses(
-        from firstAddress: UnsafeMutablePointer<addrinfo>
-    ) -> [ResolvedSocketAddress] {
-        var addresses: [ResolvedSocketAddress] = []
-        var currentAddress: UnsafeMutablePointer<addrinfo>? = firstAddress
-        while let address = currentAddress {
-            if let source = address.pointee.ai_addr {
-                var storage = sockaddr_storage()
-                let byteCount = min(Int(address.pointee.ai_addrlen), MemoryLayout<sockaddr_storage>.size)
-                withUnsafeMutableBytes(of: &storage) { destination in
-                    destination.copyBytes(from: UnsafeRawBufferPointer(start: source, count: byteCount))
-                }
-                addresses.append(ResolvedSocketAddress(
-                    storage: storage,
-                    length: address.pointee.ai_addrlen,
-                    family: address.pointee.ai_family,
-                    socketType: address.pointee.ai_socktype,
-                    socketProtocol: address.pointee.ai_protocol
-                ))
-            }
-            currentAddress = address.pointee.ai_next
-        }
-        return addresses
-    }
-
-    private static func configureKeepAlive(_ descriptor: Int32) {
-        for refusal in SSHTransportKeepAlive.enable(on: descriptor) {
+    private static func configureTransportSocket(_ descriptor: Int32) {
+        for refusal in SSHTransportSocketOptions.enable(on: descriptor) {
             logger.warning("Failed to set \(refusal, privacy: .public)")
         }
     }

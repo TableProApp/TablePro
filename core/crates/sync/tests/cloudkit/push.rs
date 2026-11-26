@@ -508,3 +508,65 @@ async fn a_category_turned_on_while_the_push_runs_waits_for_the_next_pass() {
     assert_eq!(report.queued, 0);
     assert!(rig.zone_fields(Kind::Group, B).is_none());
 }
+
+// A saved query of a connection that stays on the device: its deletion waits while the connection is Local only, by
+// the connection its base names, and goes up once the connection syncs again (0054, Rules for both providers).
+#[tokio::test]
+async fn a_saved_query_deletion_waits_while_its_connection_stays_on_the_device() {
+    let rig = Rig::new().await;
+    let connection = json!({"name": "prod"});
+    synced(&rig, Kind::Connection, A, &connection).await;
+    synced(
+        &rig,
+        Kind::SavedQuery,
+        B,
+        &json!({"name": "Revenue", "query": "SELECT 1", "connection_id": A}),
+    )
+    .await;
+    let stored = rig.store(Kind::Connection).fields(A).unwrap();
+    rig.store(Kind::Connection)
+        .put_with(A, stored.clone(), Standing::LocalOnly);
+    rig.store(Kind::SavedQuery).remove(B);
+
+    let held = rig.push().await.unwrap();
+    let kept = rig.cloud.record(USER, &name(Kind::SavedQuery, B)).is_some();
+    rig.store(Kind::Connection).put_with(A, stored, Standing::Syncs);
+    let sent = rig.push().await.unwrap();
+
+    assert_eq!(held.deleted, 0);
+    assert!(kept);
+    assert_eq!(sent.deleted, 1);
+    assert!(rig.cloud.record(USER, &name(Kind::SavedQuery, B)).is_none());
+}
+
+// A connection that synced, then stayed on the device and was deleted there: neither its deletion nor its saved
+// query's goes to the zone, as the Swift engine kept them (0054, Rules for both providers).
+#[tokio::test]
+async fn a_deleted_local_only_connection_and_its_records_stay_in_the_zone() {
+    let rig = Rig::new().await;
+    let connection = json!({"name": "prod"});
+    synced(&rig, Kind::Connection, A, &connection).await;
+    synced(
+        &rig,
+        Kind::SavedQuery,
+        B,
+        &json!({"name": "Revenue", "query": "SELECT 1", "connection_id": A}),
+    )
+    .await;
+    let stored = rig.store(Kind::Connection).fields(A).unwrap();
+    rig.store(Kind::Connection).put_with(A, stored, Standing::LocalOnly);
+    // A push while the store still holds it records that it stays on the device.
+    rig.push().await.unwrap();
+    rig.store(Kind::Connection).remove(A);
+    rig.store(Kind::SavedQuery).remove(B);
+
+    rig.fetch().await.unwrap();
+    let first = rig.push().await.unwrap();
+    rig.fetch().await.unwrap();
+    let second = rig.push().await.unwrap();
+
+    assert_eq!((first.deleted, second.deleted), (0, 0));
+    assert_eq!(second.queued, 0);
+    assert!(rig.cloud.record(USER, &name(Kind::Connection, A)).is_some());
+    assert!(rig.cloud.record(USER, &name(Kind::SavedQuery, B)).is_some());
+}

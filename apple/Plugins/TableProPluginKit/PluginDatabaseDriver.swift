@@ -255,6 +255,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// carrying its own schema. Nil means the host asks each schema in turn.
     func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]?
 
+    /// The side kinds of a catalog load in as few round trips as the engine allows, one answer per kind asked.
+    /// The default asks each kind in turn.
+    func fetchCatalogSideObjects(_ request: PluginCatalogSideRequest) async -> PluginCatalogSideObjects
+
     /// Reads one type again, definition included. The type must be one this driver listed,
     /// because its `identity` is the driver's own key for finding it.
     func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo
@@ -368,6 +372,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]]
     func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]]
     func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]]
+    // `fetchTableDDL` for the tables of the schema it can answer from one snapshot, keyed by table name, each the text
+    // the per-table read gives. A table it leaves out is read alone.
+    func fetchAllTableDDL(schema: String?) async throws -> [String: String]
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata]
     var providesBulkTableMetadataFetch: Bool { get }
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
@@ -938,6 +945,10 @@ public extension PluginDatabaseDriver {
 
     func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]? { nil }
 
+    func fetchCatalogSideObjects(_ request: PluginCatalogSideRequest) async -> PluginCatalogSideObjects {
+        await fetchCatalogSideObjectsOneByOne(request)
+    }
+
     func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo {
         guard let definition = type.definition, !definition.isEmpty else {
             throw PluginObjectSourceError.unsupported(type.name)
@@ -1198,6 +1209,7 @@ public extension PluginDatabaseDriver {
     func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] { [:] }
     func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] { [:] }
     func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]] { [:] }
+    func fetchAllTableDDL(schema: String?) async throws -> [String: String] { [:] }
 
     // One read per table. A driver with a schema-wide query overrides it.
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {

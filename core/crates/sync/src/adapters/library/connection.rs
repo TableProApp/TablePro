@@ -23,7 +23,7 @@ use super::tunnel::{
     shared_from_wire, shared_to_wire,
 };
 use super::values::{Object, boolean, clamped, integer, text, unknown_members, uuid_at, uuid_value};
-use crate::adapters::unsettled::{SSH_PROFILE_UNLINKED, TLS_MODE_UNSETTLED};
+use crate::adapters::unsettled::{ROUTE_PUBLISHER, SSH_PROFILE_UNLINKED, TLS_MODE_UNSETTLED};
 
 // Every member the store's model reads, so the rest are kept as a newer build wrote them: `project_id`, which the
 // model does not hold yet, and the format stamp among them.
@@ -69,6 +69,7 @@ const MEMBERS: &[&str] = &[
     "tunnel_command_mode",
     TLS_MODE_UNSETTLED,
     SSH_PROFILE_UNLINKED,
+    ROUTE_PUBLISHER,
 ];
 
 // How a host's store names a connection's engine: by the Mac's `DatabaseType` on the Apple apps, by the core's driver

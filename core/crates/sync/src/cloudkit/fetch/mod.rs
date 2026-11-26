@@ -16,12 +16,14 @@ use tablepro_records::cloudkit::record_type_of;
 use crate::api::adapter::{RecordAdapter, StoreStamp};
 use crate::api::cloudkit::{CloudKitChanges, CloudKitFailure, CloudKitFetched, CloudKitTransport};
 use crate::api::error::{StateError, SyncError};
-use crate::api::ids::{Cursor, RecordKey, ScopeName};
-use crate::api::state::{Row, RowKey, StateIdentity, StateStore};
+use crate::api::ids::{Cursor, KindName, RecordKey, ScopeName};
+use crate::api::state::{
+    HeldReason, Row, RowKey, RowRange, StateIdentity, StateStore, StateTxn, StoreRow, StoresKindRow, Table,
+};
 use crate::cloudkit::codes;
 use crate::engine::{Backoff, StopSignal};
 
-mod copy;
+pub(in crate::cloudkit) mod copy;
 mod full;
 mod held;
 mod pending;
@@ -29,8 +31,10 @@ mod rebase;
 mod settle;
 mod stores;
 
+pub(crate) use copy::{key_of_name as listed_key, wire_fields};
 pub use rebase::{RebaseFailure, Rebased, ServerChanged};
-pub(in crate::cloudkit) use stores::carried;
+pub(in crate::cloudkit) use settle::{PRIOR, prior_of};
+pub(in crate::cloudkit) use stores::{carried, stored_id};
 
 use copy::Incoming;
 use settle::{Batch, Finish};
@@ -41,11 +45,6 @@ pub const SCOPE: ScopeName = ScopeName::Personal;
 // A profile's deletion unlinks connections and removes Keychain secrets no pull can bring back: it waits for a build
 // that reads the profile, and a deletion found late, deferred or by a full fetch, never removes one.
 pub(in crate::cloudkit) const PROFILES: [Kind; 2] = [Kind::SshProfile, Kind::CredentialProfile];
-
-// The `stores` row of one kind. Kinds that share a store can be in different categories, so each refills on its own.
-fn identity_row(kind: Kind, store: &str) -> String {
-    format!("{store}/{}", kind.as_str())
-}
 
 // The kinds whose category is on. Another kind sends nothing and takes no pulled change, and a deletion pulled for it
 // waits until a full fetch reads its category.
@@ -77,6 +76,8 @@ pub struct Counts {
     pub skipped: u32,
     // Held changes fetched by name once their copy read.
     pub recovered: u32,
+    // Pulled changes the store refused to keep, held by id.
+    pub refused: u32,
 }
 
 impl Counts {
@@ -88,6 +89,7 @@ impl Counts {
         self.inferred = self.inferred.saturating_add(other.inferred);
         self.skipped = self.skipped.saturating_add(other.skipped);
         self.recovered = self.recovered.saturating_add(other.recovered);
+        self.refused = self.refused.saturating_add(other.refused);
     }
 }
 
@@ -116,6 +118,8 @@ pub struct Fetcher<'a> {
     stop: Option<StopSignal>,
     // Records CloudKit asked to wait for that are still waiting: their changes stay held and are not asked for.
     waiting: BTreeSet<RecordKey>,
+    // Records whose store refused their change in this fetch: its recovery does not ask for them again.
+    pub(in crate::cloudkit) refused: std::sync::Mutex<BTreeSet<RecordKey>>,
 }
 
 // Records CloudKit could not return and asked to wait for, which the fetch does not ask for again. A wait past the
@@ -143,17 +147,16 @@ impl Waited {
     }
 }
 
-// Where the fetch starts: the stored token, the kinds whose store went back or was replaced, and each kind's store
-// identity as the fetch found it, by identity row.
+// Where the fetch starts: the stored token, the kinds that refill now, and each store's identity as the fetch found it.
 struct Start {
     token: Option<Vec<u8>>,
     refill: BTreeSet<Kind>,
-    started: BTreeMap<String, StoreStamp>,
-    // The same identities by store.
+    // Kinds that are off while this start marked their store: each keeps the copy its store holds now, the one the
+    // restore left, and a later refill of others never takes it again (0066, `deferred`).
+    keep_copies: BTreeSet<Kind>,
     stores: BTreeMap<String, StoreStamp>,
-    // The state file as a whole refills, and the identity rows of kinds whose category is off meanwhile.
-    scope_refill: bool,
-    refill_later: Vec<String>,
+    // Records a refill's store refused, which take the pull on whatever page brings them, as the refill would have.
+    refill_held: BTreeSet<RecordKey>,
 }
 
 struct Pass {
@@ -170,7 +173,7 @@ struct Pass {
 
 impl Pass {
     fn new(start: Start) -> Self {
-        let full = start.token.is_none() || !start.refill.is_empty();
+        let full = start.token.is_none() || !start.refill.is_empty() || !start.keep_copies.is_empty();
         let stamps = start.stores.clone();
         Self {
             next: start.token.clone().filter(|_| !full),
@@ -213,9 +216,7 @@ impl Pass {
             listed: std::mem::take(&mut self.listed),
             oldest_created_ms: self.oldest_created_ms.take(),
             refill: self.refill(),
-            started: self.start.started.clone(),
-            refill_later: self.start.refill_later.clone(),
-            scope_refilled: self.start.scope_refill,
+            started: self.start.stores.clone(),
         });
         Batch {
             items,
@@ -226,6 +227,8 @@ impl Pass {
             stamps: std::mem::take(&mut self.stamps),
             started: self.start.stores.clone(),
             release: Vec::new(),
+            keep_copies: self.start.keep_copies.clone(),
+            pull_wins_keys: self.start.refill_held.clone(),
         }
     }
 }
@@ -253,6 +256,7 @@ impl<'a> Fetcher<'a> {
             categories,
             stop: None,
             waiting: BTreeSet::new(),
+            refused: std::sync::Mutex::default(),
         })
     }
 
@@ -330,37 +334,103 @@ impl<'a> Fetcher<'a> {
             Some(Cursor::CloudKit(token)) => Some(token),
             _ => None,
         });
+        let refill_held = held_in_refill(txn.as_mut()).await?;
         let mut start = Start {
             token,
             refill: BTreeSet::new(),
-            started: BTreeMap::new(),
+            keep_copies: BTreeSet::new(),
             stores: BTreeMap::new(),
-            scope_refill,
-            refill_later: Vec::new(),
+            refill_held,
         };
+        for adapter in self.adapters.values() {
+            if !start.stores.contains_key(adapter.store()) {
+                start
+                    .stores
+                    .insert(adapter.store().to_owned(), adapter.identity().await?);
+            }
+        }
+        // One row per store file. A new generation or a lower sequence, or the whole file refilling, owes each of the
+        // store's kinds a refill, which a kind takes once its category is on (0066, Per-kind refills). The marks land
+        // before the fetch, so one cut short refills again.
+        let mut wrote = false;
+        let mut marked: BTreeSet<String> = BTreeSet::new();
+        // A file schema 1 wrote holds a `stores` row per kind, `<store>/<kind>`, which a kind whose category was off kept
+        // until it refilled. A kind whose row is behind its store still owes that refill, and the row goes.
         for (kind, adapter) in &self.adapters {
-            let row = identity_row(*kind, adapter.store());
-            let stamp = adapter.identity().await?;
-            let seen = match txn.get(&RowKey::Store(row.clone())).await? {
+            let legacy = RowKey::Store(format!("{}/{}", adapter.store(), kind.as_str()));
+            let Some(Row::Store(seen)) = txn.get(&legacy).await? else {
+                continue;
+            };
+            let behind = start.stores.get(adapter.store()).is_some_and(|stamp| {
+                stamp.needs_refill(StoreStamp {
+                    generation: seen.generation,
+                    sequence: seen.sequence,
+                })
+            });
+            if behind {
+                txn.put(Row::StoresKind(StoresKindRow {
+                    store: adapter.store().to_owned(),
+                    kind: KindName::of(*kind),
+                }))
+                .await?;
+                marked.insert(adapter.store().to_owned());
+            }
+            txn.delete(&legacy).await?;
+            wrote = true;
+        }
+        for (store, stamp) in &start.stores {
+            let seen = match txn.get(&RowKey::Store(store.clone())).await? {
                 Some(Row::Store(seen)) => Some(StoreStamp {
                     generation: seen.generation,
                     sequence: seen.sequence,
                 }),
                 _ => None,
             };
-            // A kind whose category is off keeps the row it had, so it refills once the category is on.
-            let refills = scope_refill || seen.is_some_and(|seen| stamp.needs_refill(seen));
-            match (refills, self.categories.syncs(*kind)) {
-                (true, true) => {
-                    start.refill.insert(*kind);
+            let restored = seen.is_some_and(|seen| stamp.needs_refill(seen));
+            if restored || scope_refill {
+                marked.insert(store.clone());
+                for kind in self.kinds_of(store) {
+                    txn.put(Row::StoresKind(StoresKindRow {
+                        store: store.clone(),
+                        kind: KindName::of(kind),
+                    }))
+                    .await?;
                 }
-                (true, false) if scope_refill => start.refill_later.push(row.clone()),
-                _ => {}
+                wrote = true;
             }
-            start.stores.insert(adapter.store().to_owned(), stamp);
-            start.started.insert(row, stamp);
+            if seen.is_none() || restored {
+                txn.put(Row::Store(StoreRow {
+                    store: store.clone(),
+                    generation: stamp.generation,
+                    sequence: stamp.sequence,
+                }))
+                .await?;
+                wrote = true;
+            }
+        }
+        for (kind, adapter) in &self.adapters {
+            let owed = txn
+                .get(&RowKey::StoresKind(adapter.store().to_owned(), KindName::of(*kind)))
+                .await?
+                .is_some();
+            if owed && self.categories.syncs(*kind) {
+                start.refill.insert(*kind);
+            } else if owed && marked.contains(adapter.store()) {
+                start.keep_copies.insert(*kind);
+            }
+        }
+        if wrote {
+            self.check_stop()?;
+            txn.commit().await?;
         }
         Ok(start)
+    }
+
+    fn kinds_of<'s>(&'s self, store: &'s str) -> impl Iterator<Item = Kind> + 's {
+        self.adapters
+            .iter()
+            .filter(move |(_, adapter)| adapter.store() == store)
+            .map(|(kind, _)| *kind)
     }
 
     // A record the zone reported changed whose fetch failed is fetched by name, and held when it still fails, so the
@@ -402,6 +472,19 @@ impl<'a> Fetcher<'a> {
 // Clears the zone's token, so the next fetch reads the whole zone. Called when a category turns on or the build
 // stores a kind it did not: a delta never sends again what earlier pulls passed over, and the deletions that waited
 // for that category apply once a full fetch read it.
+// Records a refill's store refused, which take the pull on whatever page brings them.
+async fn held_in_refill(txn: &mut dyn StateTxn) -> Result<BTreeSet<RecordKey>, SyncError> {
+    Ok(txn
+        .scan(&RowRange::Scope(Table::Held, SCOPE))
+        .await?
+        .into_iter()
+        .filter_map(|row| match row {
+            Row::Held(held) if held.reason == HeldReason::RefusedInRefill => Some(held.key),
+            _ => None,
+        })
+        .collect())
+}
+
 pub async fn read_everything_again(state: &dyn StateStore) -> Result<(), SyncError> {
     let mut txn = state.begin().await?;
     if let Some(Row::Scope(mut scope)) = txn.get(&RowKey::Scope(SCOPE)).await? {

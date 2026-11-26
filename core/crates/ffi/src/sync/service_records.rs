@@ -3,16 +3,16 @@
 
 use tablepro_sync::SyncError;
 use tablepro_sync::api::control::{
-    ConflictChoice, HeldRecord, HeldRecordReason, MoveBackPlan, MovePlan, NewIdentityChoice, PassReason,
-    PendingApproval, ProviderChoice, SyncCategories, SyncPhase, SyncStatus, TeamConflict,
+    ConflictChoice, HeldRecord, HeldRecordReason, MoveBackPlan, MovePlan, NewIdentityChoice, NewIdentityPlan,
+    PassReason, PendingApproval, ProviderChoice, SyncCategories, SyncPhase, SyncStatus, TeamConflict,
 };
 use tablepro_sync::api::state::{HeldReason, Provider};
 use tablepro_sync::api::{KindName, RecordKey, ScopeName};
 
 use super::service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    PassReasonTag, PendingApprovalInfo, SyncCategoriesArg, SyncPhaseTag, SyncRecordRef, SyncStatusInfo,
-    TeamConflictInfo,
+    NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncPhaseTag,
+    SyncRecordRef, SyncStatusInfo, TeamConflictInfo,
 };
 use crate::account::SyncProviderTag;
 
@@ -155,6 +155,15 @@ impl From<MoveBackPlan> for MoveBackPlanInfo {
     }
 }
 
+impl From<NewIdentityPlan> for NewIdentityPlanInfo {
+    fn from(plan: NewIdentityPlan) -> Self {
+        Self {
+            unsent: plan.unsent,
+            account: plan.account,
+        }
+    }
+}
+
 impl From<PendingApproval> for PendingApprovalInfo {
     fn from(approval: PendingApproval) -> Self {
         Self {
@@ -182,7 +191,7 @@ impl From<TeamConflict> for TeamConflictInfo {
 impl From<HeldRecordReason> for HeldReasonTag {
     fn from(reason: HeldRecordReason) -> Self {
         match reason {
-            HeldRecordReason::Held(HeldReason::Unreadable) => Self::Unreadable,
+            HeldRecordReason::Held(HeldReason::Unreadable | HeldReason::RefusedInRefill) => Self::Unreadable,
             HeldRecordReason::Held(HeldReason::UnknownKind) => Self::UnknownKind,
             HeldRecordReason::Held(HeldReason::AwaitingApproval) => Self::AwaitingApproval,
             HeldRecordReason::Held(HeldReason::AwaitingDeviceApproval) => Self::AwaitingDeviceApproval,
@@ -196,6 +205,18 @@ impl From<HeldRecord> for HeldRecordInfo {
         Self {
             record: held.key.into(),
             reason: held.reason.into(),
+        }
+    }
+}
+
+impl From<tablepro_sync::api::ScopeInfo> for ScopeStatusInfo {
+    fn from(info: tablepro_sync::api::ScopeInfo) -> Self {
+        Self {
+            scope: info.scope.wire(),
+            writable: info.writable,
+            personal_sync: info.policies.personal_sync,
+            password_sync: info.policies.password_sync,
+            history_sync: info.policies.history_sync,
         }
     }
 }

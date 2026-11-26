@@ -8,7 +8,7 @@ fn store(dir: &std::path::Path) -> ConnectionStore {
 }
 
 fn adapter(store: &ConnectionStore, kind: Kind) -> Arc<dyn RecordAdapter> {
-    LibraryAdapter::all(store, DriverNames::Mac)
+    LibraryAdapter::all(store, DriverNames::Mac, None)
         .into_iter()
         .find(|adapter| adapter.kind() == kind)
         .expect("an adapter for the kind")
@@ -122,7 +122,7 @@ async fn groups_and_tags_round_trip_through_the_store_in_one_write_each() {
 async fn a_new_store_starts_its_generation_and_every_kind_names_the_one_file() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
-    let adapters = LibraryAdapter::all(&store, DriverNames::Mac);
+    let adapters = LibraryAdapter::all(&store, DriverNames::Mac, None);
 
     let first = adapters[0].identity().await.unwrap();
     let again = adapters[1].identity().await.unwrap();
@@ -379,6 +379,31 @@ fn a_route_another_device_published_is_neither_cleared_nor_replaced_by_one_to_th
     assert!(!route_at_base(&elsewhere));
 }
 
+// The device that published a route clears it as its own edit, as the Mac does by its publisher id.
+#[test]
+fn the_device_that_published_a_route_clears_it() {
+    let route = json!({
+        "basis": "b1", "hops": [], "publisher": PROFILE, "version": 1,
+        "target": {"alias": "db", "host": "db.internal", "port": 5432, "username": "app"},
+    });
+    let mut base = mac_connection();
+    base["ssh_route"] = route;
+    let (mut saved, favorite) = stored(&base);
+    saved.details.ssh_route = None;
+    let mut ours = wire(&saved, favorite);
+    ours["route_publisher"] = json!(PROFILE);
+    let mut another = ours.clone();
+    another["route_publisher"] = json!(GROUP);
+
+    let route_at_base = |local: &Value| {
+        at_base(Kind::Connection, local, Some(&base))
+            .iter()
+            .any(|pointer| pointer.starts_with("/ssh_route"))
+    };
+    assert!(!route_at_base(&ours));
+    assert!(route_at_base(&another));
+}
+
 #[test]
 fn a_credential_profile_keeps_where_its_password_comes_from_over_a_pull_that_says_prompt() {
     let profile_id = parse_uuid(PROFILE).unwrap();
@@ -539,4 +564,55 @@ fn a_favourite_goes_up_as_the_mac_writes_it_under_the_id_of_what_it_names() {
         favourites::database_id(&database),
         tablepro_records::record_id::favourite_database(id(), "shop")
     );
+}
+
+// Two profiles of one name, as two devices made by hand before they synced: the lowest id keeps it on every device,
+// and the other takes the first free `<name> (2)`, which then goes up as this device's edit (0052, Collisions).
+#[tokio::test]
+async fn a_pulled_credential_profile_of_a_name_this_device_holds_settles_the_name_by_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let profiles = adapter(&store, Kind::CredentialProfile);
+    let low = "11111111-1111-4111-8111-111111111111";
+    let high = "EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE";
+    let other = "77777777-7777-4777-8777-777777777777";
+    let wire = |name: &str| json!({"name": name, "username": "ops", "password_mode": "prompt", "sort_order": 0});
+
+    profiles
+        .apply(
+            ScopeName::Personal,
+            vec![
+                LocalChange::Put {
+                    record_id: high.to_owned(),
+                    fields: wire("Ops"),
+                },
+                LocalChange::Put {
+                    record_id: other.to_owned(),
+                    fields: wire("ops (2)"),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+    profiles.records(ScopeName::Personal).await.unwrap();
+    profiles
+        .apply(
+            ScopeName::Personal,
+            vec![LocalChange::Put {
+                record_id: low.to_owned(),
+                fields: wire("OPS"),
+            }],
+        )
+        .await
+        .unwrap();
+    let held = profiles.records(ScopeName::Personal).await.unwrap().records;
+    let name = |id: &str| {
+        held.iter()
+            .find(|record| record.record_id == id)
+            .and_then(|record| record.fields["name"].as_str().map(str::to_owned))
+    };
+
+    assert_eq!(name(low).as_deref(), Some("OPS"));
+    assert_eq!(name(high).as_deref(), Some("Ops (3)"));
+    assert_eq!(name(other).as_deref(), Some("ops (2)"));
 }
