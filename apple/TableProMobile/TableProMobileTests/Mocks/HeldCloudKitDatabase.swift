@@ -8,6 +8,8 @@ import TableProSyncTransport
 nonisolated final class HeldCloudKitDatabase: CloudKitDatabase, @unchecked Sendable {
     struct State {
         var signedIn = "_alice"
+        // Every operation that reached this database, modifies included.
+        var operations = 0
         var modifyCalls = 0
         var modifiesCancelled = 0
         var holdNextModify = false
@@ -17,6 +19,14 @@ nonisolated final class HeldCloudKitDatabase: CloudKitDatabase, @unchecked Senda
     }
 
     private let state = OSAllocatedUnfairLock(uncheckedState: State())
+
+    var operations: Int {
+        state.withLockUnchecked { $0.operations }
+    }
+
+    private func reached() {
+        state.withLockUnchecked { $0.operations += 1 }
+    }
 
     var modifyStarted: Int {
         state.withLockUnchecked { $0.modifyCalls }
@@ -39,28 +49,43 @@ nonisolated final class HeldCloudKitDatabase: CloudKitDatabase, @unchecked Senda
         release?.resume()
     }
 
-    func accountStatus() async throws -> CKAccountStatus { .available }
-
-    func userRecordName() async throws -> String {
-        state.withLockUnchecked { $0.signedIn }
+    func accountStatus() async throws -> CKAccountStatus {
+        reached()
+        return .available
     }
 
-    func saveZone(_ zone: CKRecordZone.ID) async throws {}
+    func userRecordName() async throws -> String {
+        state.withLockUnchecked { state in
+            state.operations += 1
+            return state.signedIn
+        }
+    }
 
-    func deleteZone(_ zone: CKRecordZone.ID) async throws {}
+    func saveZone(_ zone: CKRecordZone.ID) async throws {
+        reached()
+    }
 
-    func saveSubscription(_ subscription: CKSubscription) async throws {}
+    func deleteZone(_ zone: CKRecordZone.ID) async throws {
+        reached()
+    }
+
+    func saveSubscription(_ subscription: CKSubscription) async throws {
+        reached()
+    }
 
     func fetchChanges(in zone: CKRecordZone.ID, since token: CKServerChangeToken?) async throws -> CloudKitChangesPage {
-        CloudKitChangesPage()
+        reached()
+        return CloudKitChangesPage()
     }
 
     func fetchRecords(_ ids: [CKRecord.ID]) async throws -> [CKRecord.ID: Result<CKRecord, any Error>] {
-        [:]
+        reached()
+        return [:]
     }
 
     func modifyRecords(saving records: [CKRecord], deleting ids: [CKRecord.ID]) async throws -> CloudKitModifyResults {
         let holds = state.withLockUnchecked { state -> Bool in
+            state.operations += 1
             defer { state.holdNextModify = false }
             if !state.holdNextModify {
                 state.modifyCalls += 1

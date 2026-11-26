@@ -53,11 +53,6 @@ final class AccountModel: AccountBackendListener {
         return false
     }
 
-    // The account a sync service opens with: nil until it opened, or when it did not, since iCloud needs none.
-    func syncAccountService() async -> AccountService? {
-        await (backend as? any SyncAccountProviding)?.accountService()
-    }
-
     func openIfNeeded() {
         guard backend == nil, availability != .unavailable else { return }
         do throws(AccountKeychainFailure) {

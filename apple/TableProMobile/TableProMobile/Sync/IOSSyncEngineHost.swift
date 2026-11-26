@@ -95,19 +95,16 @@ final class IOSSyncEngineHost {
     }
 
     // No settings host: the iPhone keeps no synced settings of its own. The device store holds each state file's MAC
-    // key and anchor in the app's own Keychain group, since no extension reads sync state. The account is optional,
-    // since iCloud needs none (core ADR 0054, Providers).
+    // key and anchor in the app's own Keychain group, since no extension reads sync state. No account: iOS runs iCloud
+    // alone, which needs none, and TablePro Sync stays off until the iPhone offers it (core ADR 0054, Providers).
     static func live(
         core: MobileCoreHost,
-        account: AccountModel,
+        database: any CloudKitDatabase,
         metadata: SyncMetadataStorage,
         recordCache: SyncRecordCache,
         defaults: UserDefaults
     ) -> IOSSyncEngineHost {
-        let transport = CloudKitCoreTransport()
-        let checked = PolicyCheckedCloudKitTransport(base: transport) {
-            ManagedAppConfiguration.current().allowsICloudSync
-        }
+        let transport = CloudKitCoreTransport(database: database)
         let mirror = LegacySyncMetadataMirror(metadata: metadata, recordCache: recordCache)
         let deviceStore = KeychainDeviceStore(accessGroup: AccountKeychainItems.appAccessGroup)
         return IOSSyncEngineHost(
@@ -117,16 +114,15 @@ final class IOSSyncEngineHost {
                 defaults.set(kept, forKey: icloudAccountKey)
             },
             open: { provider, listener in
-                let service = await account.syncAccountService()
-                return try await core.core().openSync(
+                try await core.core().openSync(
                     config: SyncConfig(
                         platform: .ios,
                         provider: provider,
                         categories: SyncCategoriesArg(offKinds: [], passwords: AppPreferences.syncsPasswords),
                         icloudAccount: defaults.string(forKey: icloudAccountKey)
                     ),
-                    account: service,
-                    cloudkit: checked,
+                    account: nil,
+                    cloudkit: transport,
                     settings: nil,
                     deviceStore: deviceStore,
                     legacyMirror: mirror,

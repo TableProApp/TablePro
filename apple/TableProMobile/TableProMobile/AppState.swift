@@ -85,7 +85,7 @@ final class AppState {
         self.account = account
         let library = CoreLibraryStore(directory: libraryDirectory, defaults: defaults, secureStore: secureStore)
         self.library = library
-        syncCoordinator = injectedSyncCoordinator ?? Self.liveSyncCoordinator(core: library.host, account: account)
+        syncCoordinator = injectedSyncCoordinator ?? Self.liveSyncCoordinator(core: library.host)
         queryHistory = QueryHistoryStorage(directory: libraryDirectory)
         savedQueries = SavedQueryLibrary(
             directory: libraryDirectory,
@@ -157,16 +157,17 @@ final class AppState {
         syncCoordinator.start()
     }
 
-    private static func liveSyncCoordinator(core: MobileCoreHost, account: AccountModel) -> IOSSyncCoordinator {
+    private static func liveSyncCoordinator(core: MobileCoreHost) -> IOSSyncCoordinator {
         let metadata = SyncMetadataStorage(userDefaults: .standard)
+        let database = PolicyCheckedCloudKitDatabase { ManagedAppConfiguration.current().allowsICloudSync }
         let host = IOSSyncEngineHost.live(
             core: core,
-            account: account,
+            database: database,
             metadata: metadata,
             recordCache: SyncRecordCache(directory: IOSSyncEngineHost.recordCacheDirectory, defaults: .standard),
             defaults: .standard
         )
-        return IOSSyncCoordinator(host: host, metadata: metadata)
+        return IOSSyncCoordinator(host: host, metadata: metadata, database: database)
     }
 
     // A pass the engine finished may have written the stores, so each is read again when it moved. A part this device
