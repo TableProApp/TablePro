@@ -507,3 +507,42 @@ async fn a_looser_level_pulled_over_one_a_newer_build_named_waits_for_the_person
         "{waiting:?}"
     );
 }
+
+fn tunnelled(name: &str, link: Option<&str>) -> Value {
+    let mut fields = json!({"name": name, "type": "PostgreSQL", "host": "db.internal", "port": 5432,
+        "database": "shop", "username": "app",
+        "ssh_config": {"enabled": true, "host": "bastion", "port": 22, "username": "ops", "auth_method": "SSH Agent"}});
+    if let Some(link) = link {
+        fields["ssh_profile_id"] = json!(link);
+    }
+    fields
+}
+
+#[tokio::test]
+async fn a_profile_link_waiting_for_the_person_stays_waiting_through_a_later_edit() {
+    let server = FakeServer::new();
+    let mac_library = Library::new().await;
+    let mac = mac_library.device(&server, "dev_mac").await;
+    let other = Device::new(&server, "dev_other").await;
+    let id = uuid_id(Uuid::from_u128(CONNECTION));
+    let link = uuid_id(Uuid::from_u128(7));
+    other.connections.put(&id, tunnelled("Shop", None));
+    other.sync().await;
+    take_everything(&mac).await;
+
+    other.connections.put(&id, tunnelled("Shop", Some(&link)));
+    other.sync().await;
+    mac.sync().await;
+    other.connections.put(&id, tunnelled("Shop 2", Some(&link)));
+    other.sync().await;
+    mac.sync().await;
+
+    let saved = mac_library.store.list_blocking().unwrap().connections[0].clone();
+    let waiting = mac.sync.approvals().await.unwrap();
+    assert_eq!(saved.name, "Shop 2");
+    assert_eq!(saved.details.ssh_profile_id, None);
+    assert!(
+        waiting.iter().any(|approval| approval.field == "/ssh_profile_id"),
+        "{waiting:?}"
+    );
+}
