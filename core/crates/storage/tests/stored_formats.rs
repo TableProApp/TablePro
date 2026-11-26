@@ -16,8 +16,8 @@ use tablepro_core::{
 };
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionList, ConnectionProject,
-    ConnectionProjectName, ConnectionStore, ConnectionTag, ConnectionTagName, GroupIcon, SavedConnection, SavedSshAuth,
-    SavedSshConfig, StoragePaths, SymbolName,
+    ConnectionProjectName, ConnectionStore, ConnectionTag, ConnectionTagName, LibraryIcon, SavedConnection,
+    SavedSshAuth, SavedSshConfig, SshJumpHost, StoragePaths, SymbolName,
 };
 use uuid::Uuid;
 
@@ -43,7 +43,7 @@ fn production() -> Result<ConnectionGroup, Box<dyn Error>> {
     Ok(ConnectionGroup {
         id: Uuid::parse_str("2a378134-5812-82b4-84aa-ed5c6c3cf409")?,
         color: Some(ConnectionColor::Red),
-        icon: Some(GroupIcon::Named(ConnectionIcon::Shield)),
+        icon: Some(LibraryIcon::Named(ConnectionIcon::Shield)),
         ..ConnectionGroup::new(ConnectionGroupName::new("Production")?, None)
     })
 }
@@ -54,6 +54,7 @@ fn tls(mode: TlsMode) -> TlsConfig {
         ca_file: None,
         client_identity: None,
         server_name: None,
+        unknown: Default::default(),
     }
 }
 
@@ -73,7 +74,7 @@ fn saved(id: &str, name: &str, driver_id: &str, host: &str, port: u16) -> Result
         database: String::new(),
         username: String::new(),
         tls: tls(TlsMode::Disable),
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
         external_access: ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
@@ -100,6 +101,12 @@ fn ssh(host: &str, auth: SavedSshAuth) -> SavedSshConfig {
         username: None,
         jump_hosts: Vec::new(),
         auth,
+        enabled: true,
+        kept_key_path: None,
+        agent_socket: None,
+        totp: Default::default(),
+        remote_file: Default::default(),
+        unknown: Default::default(),
     }
 }
 
@@ -130,6 +137,7 @@ fn production_orders(group_id: Uuid, tag: Uuid) -> Result<SavedConnection, Box<d
                 key: "/home/me/certs/client.key".into(),
             }),
             server_name: Some("mysql.example.com".to_owned()),
+            unknown: Default::default(),
         },
         safe_mode: SafeModeLevel::ReadOnly,
         external_access: ExternalAccess::Blocked,
@@ -138,7 +146,10 @@ fn production_orders(group_id: Uuid, tag: Uuid) -> Result<SavedConnection, Box<d
         ssh: Some(SavedSshConfig {
             port: Some(2222),
             username: Some("deploy".to_owned()),
-            jump_hosts: vec!["jump1.example.com".to_owned(), "ops@jump2.example.com:2200".to_owned()],
+            jump_hosts: vec![
+                SshJumpHost::new("jump1.example.com", None, None),
+                SshJumpHost::new("jump2.example.com", Some(2200), Some("ops".to_owned())),
+            ],
             ..ssh(
                 "bastion",
                 SavedSshAuth::PrivateKey {
@@ -151,7 +162,7 @@ fn production_orders(group_id: Uuid, tag: Uuid) -> Result<SavedConnection, Box<d
         color: Some(ConnectionColor::Red),
         group_id: Some(group_id),
         tags: vec![tag],
-        icon: Some(ConnectionIcon::Shield),
+        icon: Some(LibraryIcon::Named(ConnectionIcon::Shield)),
         ..saved(
             "6f1e2d3c-4b5a-4968-8776-655443322110",
             "Production orders",
@@ -212,7 +223,7 @@ fn staging() -> Result<SavedConnection, Box<dyn Error>> {
         database: "app".to_owned(),
         username: "app".to_owned(),
         tls: tls(TlsMode::Require),
-        safe_mode: SafeModeLevel::ConfirmWrites,
+        safe_mode: SafeModeLevel::Alert,
         external_access: ExternalAccess::ReadWrite,
         ai_policy: AiPolicy::Allow,
         ssh: Some(ssh("staging-bastion", SavedSshAuth::KeyboardInteractive)),
@@ -266,7 +277,8 @@ fn connections_v1_model() -> Result<ConnectionList, Box<dyn Error>> {
     let critical = ConnectionTag {
         id: Uuid::parse_str("b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e")?,
         name: ConnectionTagName::new("critical")?,
-        color: ConnectionColor::Red,
+        color: Some(ConnectionColor::Red),
+        is_preset: false,
     };
     let connections = vec![
         local_postgres()?,
@@ -282,7 +294,7 @@ fn connections_v1_model() -> Result<ConnectionList, Box<dyn Error>> {
         ConnectionGroup {
             id: analytics,
             order: 1,
-            icon: SymbolName::new("chart.bar.xaxis").map(GroupIcon::Symbol),
+            icon: SymbolName::new("chart.bar.xaxis").map(LibraryIcon::Symbol),
             ..ConnectionGroup::new(ConnectionGroupName::new("Analytics")?, None)
         },
         ConnectionGroup {
@@ -363,6 +375,61 @@ fn a_version_1_list_writes_back_as_it_was_read() -> TestResult {
     assert_eq!(imported.favorites.as_ref(), model.favorites.as_ref());
     assert!(String::from_utf8_lossy(&exported).contains("\"version\": 1"));
     Ok(())
+}
+
+// A build that keeps hops as text and knows three Safe Mode levels reads what this one writes back.
+#[test]
+fn a_version_1_list_rewritten_keeps_the_spellings_earlier_builds_read() -> TestResult {
+    let root = tempfile::tempdir()?;
+    let list = list_from(root.path(), CONNECTIONS_V1)?;
+    let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+    let store = ConnectionStore::new(&paths);
+    let first = list.connections.first().ok_or("the fixture has no connections")?.id;
+
+    store.touch_last_opened_blocking(first)?;
+    let written: serde_json::Value = serde_json::from_slice(&std::fs::read(paths.connections_file())?)?;
+    let fixture: serde_json::Value = serde_json::from_slice(CONNECTIONS_V1)?;
+
+    let field = |file: &serde_json::Value, name: &str| -> Vec<serde_json::Value> {
+        file["connections"]
+            .as_array()
+            .map(|connections| {
+                connections
+                    .iter()
+                    .map(|connection| written_form(&connection[name]))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for name in ["name", "safe_mode", "ai_policy", "icon", "tls", "ssh"] {
+        assert_eq!(field(&written, name), field(&fixture, name), "{name}");
+    }
+    assert_eq!(written["groups"], fixture["groups"]);
+    assert_eq!(written["tags"], fixture["tags"]);
+    Ok(())
+}
+
+// A value as both builds read it: an absent key, a null one and a false passphrase flag mean the same.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "two documents' values are compared; their key order means nothing here"
+)]
+fn written_form(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(_) => {
+            let mut kept = value.clone();
+            if let Some(fields) = kept.as_object_mut() {
+                fields.retain(|key, field| {
+                    !field.is_null() && !(key == "has_passphrase" && field.as_bool() == Some(false))
+                });
+                for field in fields.values_mut() {
+                    *field = written_form(field);
+                }
+            }
+            kept
+        }
+        other => other.clone(),
+    }
 }
 
 #[test]
@@ -570,7 +637,7 @@ struct GroupBeforeProjects {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     color: Option<ConnectionColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    icon: Option<GroupIcon>,
+    icon: Option<LibraryIcon>,
 }
 
 #[test]

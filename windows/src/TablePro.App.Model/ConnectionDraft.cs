@@ -113,7 +113,7 @@ public sealed class ConnectionDraft
 
     public bool IsNew => Id is null;
 
-    public bool VerifiesCertificate => TlsMode is TlsMode.VerifyFull or TlsMode.Strict;
+    public bool VerifiesCertificate => TlsMode is TlsMode.VerifyCa or TlsMode.VerifyFull or TlsMode.Strict;
 
     public bool UsesClientIdentity => SupportsClientIdentity && TlsMode != TlsMode.Disable;
 
@@ -225,10 +225,17 @@ public sealed class ConnectionDraft
     public void FollowTlsDefault(DatabaseEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
-        if (!TlsModeChosen || !engine.SupportedTlsModes.Contains(TlsMode))
+        var start = engine.NewConnectionTls(ParsePort(Port));
+        if (!TlsModeChosen)
         {
-            TlsMode = engine.NewConnectionTls(ParsePort(Port));
-            TlsModeChosen = false;
+            TlsMode = start;
+        }
+        else if (!engine.SupportedTlsModes.Contains(TlsMode))
+        {
+            // Verify CA from a Mac, say: never weaker, and still chosen so a port change cannot weaken it.
+            TlsMode = TlsModes.Strictness(start) >= TlsModes.Strictness(TlsMode)
+                ? start
+                : TlsModes.AtLeastIn(TlsMode, engine.SupportedTlsModes);
         }
     }
 

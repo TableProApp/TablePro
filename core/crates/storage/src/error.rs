@@ -118,6 +118,9 @@ pub enum StorageError {
 
     #[error("{} belongs to another account", .path.display())]
     StoreOwnerMismatch { path: std::path::PathBuf },
+
+    #[error("the library names {id} twice")]
+    RepeatedId { id: uuid::Uuid },
 }
 
 impl StorageError {
@@ -160,6 +163,7 @@ impl StorageError {
             Self::ConnectionGrouped { .. } => "storage.connection_grouped",
             Self::GroupNotTopLevel { .. } => "storage.group_not_top_level",
             Self::StoreOwnerMismatch { .. } => "storage.store_owner_mismatch",
+            Self::RepeatedId { .. } => "storage.repeated_id",
         }
     }
 }
@@ -199,6 +203,7 @@ mod tests {
             .code(),
             StorageError::ConnectionGrouped { id }.code(),
             StorageError::GroupNotTopLevel { id }.code(),
+            StorageError::RepeatedId { id }.code(),
         ];
 
         assert_eq!(
@@ -215,6 +220,7 @@ mod tests {
                 "storage.project_name_taken",
                 "storage.connection_grouped",
                 "storage.group_not_top_level",
+                "storage.repeated_id",
             ]
         );
     }

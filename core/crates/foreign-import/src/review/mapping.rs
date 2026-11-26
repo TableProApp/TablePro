@@ -7,7 +7,7 @@ use tablepro_core::{
     AiPolicy, AuthMode, ClientIdentity, DatabaseDriver, DriverCapabilities, ExternalAccess, NetworkOption,
     NetworkOptions, SafeModeLevel, TlsCapabilities, TlsConfig, TlsMode,
 };
-use tablepro_storage::{ConnectionColor, SavedConnection, SavedSshAuth, SavedSshConfig};
+use tablepro_storage::{ConnectionColor, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpHost};
 use uuid::Uuid;
 
 use super::notes::{RowNote, TlsFileReason};
@@ -135,7 +135,7 @@ pub(super) fn map(
         database,
         username,
         tls,
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
         external_access: ExternalAccess::default(),
         ai_policy: AiPolicy::default(),
         query_timeout_secs: None,
@@ -238,8 +238,9 @@ fn strength(mode: TlsMode) -> u8 {
         TlsMode::Disable => 0,
         TlsMode::Prefer => 1,
         TlsMode::Require => 2,
-        TlsMode::VerifyFull => 3,
-        TlsMode::Strict => 4,
+        TlsMode::VerifyCa => 3,
+        TlsMode::VerifyFull => 4,
+        TlsMode::Strict => 5,
     }
 }
 
@@ -382,16 +383,15 @@ fn map_ssh(
         .filter_map(|jump| jump_host(jump, notes))
         .collect();
     SavedSshConfig {
-        host: ssh.host.trim().to_owned(),
         port: ssh.port.filter(|port| *port != 0),
         username: Some(ssh.username.trim().to_owned()).filter(|user| !user.is_empty()),
         jump_hosts,
-        auth,
+        ..SavedSshConfig::new(ssh.host.trim(), auth)
     }
 }
 
-// One `user@host:port` hop of the list ssh -J takes, or None when the hop cannot be written as one.
-fn jump_host(jump: &ForeignJumpHost, notes: &mut Vec<RowNote>) -> Option<String> {
+// One hop of the list ssh -J takes, or None when the hop cannot be written as one.
+fn jump_host(jump: &ForeignJumpHost, notes: &mut Vec<RowNote>) -> Option<SshJumpHost> {
     let host = jump.host.trim();
     let host = host
         .strip_prefix('[')
@@ -418,20 +418,11 @@ fn jump_host(jump: &ForeignJumpHost, notes: &mut Vec<RowNote>) -> Option<String>
         }
         ForeignSshAuth::PrivateKey | ForeignSshAuth::Agent => {}
     }
-    let mut hop = String::new();
-    if !user.is_empty() {
-        hop.push_str(user);
-        hop.push('@');
-    }
-    if host.contains(':') {
-        hop.push_str(&format!("[{host}]"));
-    } else {
-        hop.push_str(host);
-    }
-    if let Some(port) = jump.port.filter(|port| *port != 0) {
-        hop.push_str(&format!(":{port}"));
-    }
-    Some(hop)
+    Some(SshJumpHost::new(
+        host,
+        jump.port.filter(|port| *port != 0),
+        Some(user.to_owned()).filter(|user| !user.is_empty()),
+    ))
 }
 
 fn secrets(

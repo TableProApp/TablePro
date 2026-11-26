@@ -233,7 +233,7 @@ fn tag_menu(target: &glib::Variant, tags: &[ConnectionTag]) -> gio::Menu {
         let existing = gio::Menu::new();
         for tag in tags {
             existing.append_item(&gio::MenuItem::new(
-                Some(&menu_label(tag.name.as_str())),
+                Some(&menu_label(&tag.name.shown())),
                 Some(&format!("{ROW}.{}", tag_action(tag.id))),
             ));
         }

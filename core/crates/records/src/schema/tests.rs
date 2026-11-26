@@ -5,7 +5,7 @@ use tablepro_storage::saved_queries::SavedQuery;
 use tablepro_storage::{
     ConnectionDetails, ConnectionGroup, ConnectionProject, ConnectionTag, CredentialPassword, CredentialProfile,
     DeviceOnly, FavouriteDatabase, FavouriteTable, SavedConnection, SavedQueryFolder, SavedSshAuth, SavedSshConfig,
-    SshProfile, TableFolder, TableFolderItem, TableRef, TableScope,
+    SshJumpHost, SshProfile, SshRemoteFile, SshTotp, TableFolder, TableFolderItem, TableRef, TableScope,
 };
 
 use super::model::{MODELS, Target, model};
@@ -185,6 +185,7 @@ fn exhaustive_connection(connection: SavedConnection) {
         ca_file: _,
         client_identity,
         server_name: _,
+        unknown: _,
     } = tls;
     if let Some(ClientIdentity { certificate: _, key: _ }) = client_identity {}
     let NetworkOptions {
@@ -194,23 +195,50 @@ fn exhaustive_connection(connection: SavedConnection) {
         more_hosts: _,
         channel_binding: _,
     } = options;
-    if let Some(SavedSshConfig {
+    if let Some(ssh) = ssh {
+        exhaustive_ssh(ssh);
+    }
+}
+
+fn exhaustive_ssh(ssh: SavedSshConfig) {
+    let SavedSshConfig {
+        enabled: _,
         host: _,
         port: _,
         username: _,
-        jump_hosts: _,
+        jump_hosts,
         auth,
-    }) = ssh
-    {
-        match auth {
-            SavedSshAuth::PrivateKey {
-                path: _,
-                has_passphrase: _,
-            }
-            | SavedSshAuth::Agent
-            | SavedSshAuth::Password
-            | SavedSshAuth::KeyboardInteractive => {}
+        kept_key_path: _,
+        agent_socket: _,
+        totp:
+            SshTotp {
+                mode: _,
+                algorithm: _,
+                digits: _,
+                period: _,
+            },
+        remote_file: SshRemoteFile { path: _, access: _ },
+        unknown: _,
+    } = ssh;
+    for hop in jump_hosts {
+        let SshJumpHost {
+            id: _,
+            host: _,
+            port: _,
+            username: _,
+            auth: _,
+            key_path: _,
+        } = hop;
+    }
+    match auth {
+        SavedSshAuth::PrivateKey {
+            path: _,
+            has_passphrase: _,
         }
+        | SavedSshAuth::Agent
+        | SavedSshAuth::Password
+        | SavedSshAuth::KeyboardInteractive
+        | SavedSshAuth::None => {}
     }
 }
 
@@ -232,19 +260,35 @@ fn the_connection_table_names_every_member_the_store_holds() {
             "tls.client_identity.certificate",
             "tls.client_identity.key",
             "tls.server_name",
+            "tls.unknown",
             "safe_mode",
             "external_access",
             "ai_policy",
             "query_timeout_secs",
             "auth_mode",
             "ssh",
+            "ssh.enabled",
             "ssh.host",
             "ssh.port",
             "ssh.username",
-            "ssh.jump_hosts",
+            "ssh.jump_hosts.id",
+            "ssh.jump_hosts.host",
+            "ssh.jump_hosts.port",
+            "ssh.jump_hosts.username",
+            "ssh.jump_hosts.auth",
+            "ssh.jump_hosts.key_path",
             "ssh.auth.kind",
             "ssh.auth.path",
             "ssh.auth.has_passphrase",
+            "ssh.kept_key_path",
+            "ssh.agent_socket",
+            "ssh.totp.mode",
+            "ssh.totp.algorithm",
+            "ssh.totp.digits",
+            "ssh.totp.period",
+            "ssh.remote_file.path",
+            "ssh.remote_file.access",
+            "ssh.unknown",
             "last_opened_at",
             "color",
             "group_id",
@@ -280,14 +324,46 @@ fn the_connection_table_names_every_member_the_store_holds() {
 }
 
 #[test]
+fn the_ssh_profile_table_names_every_member_the_store_holds() {
+    let exhaustive = |profile: SshProfile| {
+        let SshProfile { id: _, name: _, ssh } = profile;
+        exhaustive_ssh(ssh);
+    };
+    let _ = exhaustive;
+    assert_eq!(
+        members("SshProfile"),
+        sorted(vec![
+            "id",
+            "name",
+            "ssh.enabled",
+            "ssh.host",
+            "ssh.port",
+            "ssh.username",
+            "ssh.jump_hosts.id",
+            "ssh.jump_hosts.host",
+            "ssh.jump_hosts.port",
+            "ssh.jump_hosts.username",
+            "ssh.jump_hosts.auth",
+            "ssh.jump_hosts.key_path",
+            "ssh.auth.kind",
+            "ssh.auth.path",
+            "ssh.auth.has_passphrase",
+            "ssh.kept_key_path",
+            "ssh.agent_socket",
+            "ssh.totp.mode",
+            "ssh.totp.algorithm",
+            "ssh.totp.digits",
+            "ssh.totp.period",
+            "ssh.remote_file.path",
+            "ssh.remote_file.access",
+            "ssh.unknown",
+        ])
+    );
+}
+
+#[test]
 fn the_profile_and_table_folder_tables_name_every_member_the_store_holds() {
-    let exhaustive = |ssh: SshProfile, credential: CredentialProfile, folder: TableFolder, item: TableFolderItem| {
-        let SshProfile {
-            id: _,
-            name: _,
-            ssh: _,
-            unknown: _,
-        } = ssh;
+    let exhaustive = |credential: CredentialProfile, folder: TableFolder, item: TableFolderItem| {
         let CredentialProfile {
             id: _,
             name: _,
@@ -328,21 +404,6 @@ fn the_profile_and_table_folder_tables_name_every_member_the_store_holds() {
         } = item;
     };
     let _ = exhaustive;
-    assert_eq!(
-        members("SshProfile"),
-        sorted(vec![
-            "id",
-            "name",
-            "ssh.host",
-            "ssh.port",
-            "ssh.username",
-            "ssh.jump_hosts",
-            "ssh.auth.kind",
-            "ssh.auth.path",
-            "ssh.auth.has_passphrase",
-            "unknown",
-        ])
-    );
     assert_eq!(
         members("CredentialProfile"),
         sorted(vec![
@@ -420,10 +481,14 @@ fn the_group_and_tag_tables_name_every_member_the_store_holds() {
             id: _,
             name: _,
             color: _,
+            is_preset: _,
         } = tag;
     };
     let _ = exhaustive_tag;
-    assert_eq!(members("ConnectionTag"), sorted(vec!["id", "name", "color"]));
+    assert_eq!(
+        members("ConnectionTag"),
+        sorted(vec!["id", "name", "color", "is_preset"])
+    );
 }
 
 #[test]

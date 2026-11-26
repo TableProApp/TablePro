@@ -69,10 +69,10 @@ public sealed class ConnectionLibrary : IDisposable
     }
 
     // A rename or a new colour reaches every connection that carries the tag.
-    public Task UpdateTagAsync(Guid id, string name, string color)
+    // A null color leaves the tag with none.
+    public Task UpdateTagAsync(Guid id, string name, string? color)
     {
         ArgumentNullException.ThrowIfNull(name);
-        ArgumentNullException.ThrowIfNull(color);
         return CoreCall.RunAsync(() => _library.UpdateTag(id.ToString(), name, color));
     }
 

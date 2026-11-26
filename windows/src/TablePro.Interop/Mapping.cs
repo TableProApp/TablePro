@@ -410,9 +410,17 @@ internal static partial class Mapping
 
     public static Native.SafeModeTag Level(SafeMode level) => level switch
     {
-        SafeMode.ConfirmWrites => Native.SafeModeTag.ConfirmWrites,
+        SafeMode.ConfirmWrites => Native.SafeModeTag.Alert,
         SafeMode.ReadOnly => Native.SafeModeTag.ReadOnly,
-        _ => Native.SafeModeTag.Off,
+        _ => Native.SafeModeTag.Silent,
+    };
+
+    // The level a session here runs for a stored one, rounded up by the core; a save of it keeps the stored level.
+    public static SafeMode Level(Native.SafeModeTag level) => Native.CoreMethods.SafeModeEnforced(level) switch
+    {
+        Native.SafeModeTag.Silent => SafeMode.Off,
+        Native.SafeModeTag.Alert => SafeMode.ConfirmWrites,
+        _ => SafeMode.ReadOnly,
     };
 
     public static Native.ConnectionRecord Record(SavedConnection connection) => new(
@@ -435,7 +443,7 @@ internal static partial class Mapping
                 ssh.Host,
                 ssh.Port is { } port ? checked((ushort)port) : null,
                 ssh.UserName,
-                [.. ssh.JumpHosts],
+                [.. ssh.JumpHosts.SelectMany(Native.CoreMethods.ParseJumpHosts)],
                 ssh.Auth switch
                 {
                     SshAuthMethod.PrivateKey => new Native.SshAuthTag.PrivateKey(ssh.KeyPath, ssh.KeyHasPassphrase),
@@ -468,19 +476,15 @@ internal static partial class Mapping
             record.Tls.ClientCertificate,
             record.Tls.ClientKey,
             record.Tls.ServerName),
-        record.SafeMode switch
-        {
-            Native.SafeModeTag.ConfirmWrites => SafeMode.ConfirmWrites,
-            Native.SafeModeTag.ReadOnly => SafeMode.ReadOnly,
-            _ => SafeMode.Off,
-        },
+        Level(record.SafeMode),
         record.IntegratedAuth,
-        record.Ssh is { } ssh
+        // A tunnel switched off reads as none; the core keeps its settings, and a save without one keeps them off.
+        record.Ssh is { Enabled: not false } ssh
             ? new SshSettings(
                 ssh.Host,
                 ssh.Port,
                 ssh.Username,
-                [.. ssh.JumpHosts],
+                [.. ssh.JumpHosts.Select(hop => Native.CoreMethods.JumpHostsText([hop]))],
                 ssh.Auth switch
                 {
                     Native.SshAuthTag.PrivateKey => SshAuthMethod.PrivateKey,
@@ -547,6 +551,7 @@ internal static partial class Mapping
         TlsMode.Disable => Native.TlsModeTag.Disable,
         TlsMode.Prefer => Native.TlsModeTag.Prefer,
         TlsMode.Require => Native.TlsModeTag.Require,
+        TlsMode.VerifyCa => Native.TlsModeTag.VerifyCa,
         TlsMode.Strict => Native.TlsModeTag.Strict,
         _ => Native.TlsModeTag.VerifyFull,
     };
@@ -556,6 +561,7 @@ internal static partial class Mapping
         Native.TlsModeTag.Disable => TlsMode.Disable,
         Native.TlsModeTag.Prefer => TlsMode.Prefer,
         Native.TlsModeTag.Require => TlsMode.Require,
+        Native.TlsModeTag.VerifyCa => TlsMode.VerifyCa,
         Native.TlsModeTag.Strict => TlsMode.Strict,
         _ => TlsMode.VerifyFull,
     };

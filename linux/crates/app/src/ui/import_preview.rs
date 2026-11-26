@@ -3,7 +3,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::{AiPolicy, DriverCapabilities, DriverRegistry, ExternalAccess, TlsMode};
-use tablepro_storage::{ImportChange, ImportEntry, ImportPreview, SavedSshConfig};
+use tablepro_storage::{ImportChange, ImportEntry, ImportPreview, SavedSshConfig, SshJumpHost};
 
 use crate::services::saved_connection_object::subtitle_for;
 
@@ -76,7 +76,7 @@ fn entry_text(entry: &ImportEntry, drivers: &DriverRegistry) -> EntryText {
     match &entry.change {
         ImportChange::Added => {
             if !file_based {
-                lines.extend(saved.ssh.as_ref().map(ssh_hop));
+                lines.extend(saved.ssh.as_ref().filter(|ssh| ssh.enabled).map(ssh_hop));
             }
             if let Some(caps) = caps {
                 let new_connection = caps.new_connection_tls(saved.port, &saved.options);
@@ -93,7 +93,7 @@ fn entry_text(entry: &ImportEntry, drivers: &DriverRegistry) -> EntryText {
         }
     }
     EntryText {
-        title: saved.name.clone(),
+        title: tablepro_storage::shown_name(&saved.name),
         subtitle: lines.join("\n"),
     }
 }
@@ -185,7 +185,17 @@ fn ssh_hop(ssh: &SavedSshConfig) -> String {
     } else {
         crate::i18n::gettext_f(
             "Through SSH to {target} via {jumps}",
-            &[("target", &target), ("jumps", &ssh.jump_hosts.join(", "))],
+            &[
+                ("target", &target),
+                (
+                    "jumps",
+                    &ssh.jump_hosts
+                        .iter()
+                        .map(SshJumpHost::destination)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ),
+            ],
         )
     }
 }
@@ -204,6 +214,11 @@ fn looser_tls(mode: TlsMode, new_connection: TlsMode) -> Option<String> {
     if new_connection.verifies_certificate() && !mode.verifies_certificate() {
         return Some(crate::i18n::gettext(
             "Connects over TLS without checking the certificate",
+        ));
+    }
+    if new_connection.verifies_host_name() && !mode.verifies_host_name() {
+        return Some(crate::i18n::gettext(
+            "Connects over TLS without checking the server's name",
         ));
     }
     if new_connection == TlsMode::Strict && mode != TlsMode::Strict {
@@ -301,11 +316,10 @@ mod tests {
 
     fn tunnel(port: Option<u16>, username: Option<&str>, jump_hosts: &[&str]) -> SavedSshConfig {
         SavedSshConfig {
-            host: "bastion.example".to_owned(),
             port,
             username: username.map(str::to_owned),
-            jump_hosts: jump_hosts.iter().copied().map(str::to_owned).collect(),
-            auth: SavedSshAuth::Agent,
+            jump_hosts: jump_hosts.iter().flat_map(|hop| SshJumpHost::parse_list(hop)).collect(),
+            ..SavedSshConfig::new("bastion.example", SavedSshAuth::Agent)
         }
     }
 
@@ -342,7 +356,7 @@ mod tests {
                 database: "orders".to_owned(),
                 username: "app".to_owned(),
                 tls,
-                safe_mode: SafeModeLevel::Off,
+                safe_mode: SafeModeLevel::Silent,
                 external_access: ExternalAccess::ReadOnly,
                 ai_policy: AiPolicy::Ask,
                 query_timeout_secs: None,

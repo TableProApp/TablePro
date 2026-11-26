@@ -132,7 +132,7 @@ fn record(path: &Path, ai_policy: Option<AiPolicyTag>) -> ConnectionRecord {
             server_name: None,
         },
         ssh: None,
-        safe_mode: SafeModeTag::Off,
+        safe_mode: SafeModeTag::Silent,
         query_timeout_secs: None,
         color: None,
         group_id: None,
@@ -141,6 +141,8 @@ fn record(path: &Path, ai_policy: Option<AiPolicyTag>) -> ConnectionRecord {
         ai_policy,
         external_access: None,
         project_id: None,
+        icon: None,
+        order: 0,
     }
 }
 

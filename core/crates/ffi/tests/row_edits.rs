@@ -169,6 +169,8 @@ async fn saved(core: &Core, path: &Path, safe_mode: SafeModeTag) -> Arc<Database
         ai_policy: None,
         external_access: None,
         project_id: None,
+        icon: None,
+        order: 0,
     };
     let saved = core
         .library()
@@ -364,13 +366,13 @@ async fn confirm_writes_shows_a_save_first_and_a_stricter_level_refuses_it() {
     let path = dir.path().join("people.sqlite");
     let core = core(dir.path());
     seeded(&core, &path).await;
-    let session = saved(&core, &path, SafeModeTag::Off).await;
+    let session = saved(&core, &path, SafeModeTag::Silent).await;
     let editor = session.table_editor(people(), false, None).await.unwrap();
     let shown = page(&session).await;
     let delete = vec![RowEdit::Delete { row: 0 }];
 
     let at_off = editor.plan(shown.clone(), delete.clone()).unwrap();
-    assert!(session.set_safe_mode(SafeModeTag::ConfirmWrites));
+    assert!(session.set_safe_mode(SafeModeTag::Alert));
     let refused = at_off.run(false, None).await.err().unwrap();
     let asked = editor.plan(shown, delete).unwrap();
     let unanswered = asked.run(false, None).await.err().unwrap();

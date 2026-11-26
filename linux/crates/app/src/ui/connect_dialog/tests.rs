@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use gtk4::{AccessibleProperty, AccessibleState};
 use tablepro_core::credentials::{CredentialInteraction, SecretKind, SecretVault};
-use tablepro_core::{DriverError, FileOpenMode, TlsFailure, TlsMode};
+use tablepro_core::{AiPolicy, DriverError, FileOpenMode, TlsFailure, TlsMode};
 use tablepro_session::RequestTarget;
 use tablepro_session::fakes::{FakeConnector, FakeEstablish};
 use tablepro_test_support::ConnectionScript;
@@ -566,7 +566,7 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
             .get(driver_id)
             .map(|driver| driver.display_name().to_owned())
             .unwrap_or_default();
-        for (index, level) in SafeModeLevel::ALL.into_iter().enumerate() {
+        for (index, level) in SafeModeLevel::ENFORCED.into_iter().enumerate() {
             imp.safe_mode_row.set_selected(index as u32);
 
             assert_eq!(harness.dialog.form().safe_mode, level, "{driver_id}");
@@ -582,7 +582,7 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
 #[gtk4::test]
 fn an_edit_opens_on_the_saved_level_and_keeps_it() {
     let saved = SavedConnection {
-        safe_mode: SafeModeLevel::ConfirmWrites,
+        safe_mode: SafeModeLevel::Alert,
         ..shop()
     };
     let harness = open(Options {
@@ -594,7 +594,7 @@ fn an_edit_opens_on_the_saved_level_and_keeps_it() {
     let imp = harness.dialog.imp();
 
     assert_eq!(imp.safe_mode_row.selected(), 1);
-    assert_eq!(harness.dialog.form().safe_mode, SafeModeLevel::ConfirmWrites);
+    assert_eq!(harness.dialog.form().safe_mode, SafeModeLevel::Alert);
 }
 
 #[gtk4::test]
@@ -656,7 +656,7 @@ fn each_ai_policy_says_what_it_sends() {
     let imp = harness.dialog.imp();
 
     assert_eq!(harness.dialog.form().ai_policy, AiPolicy::Ask);
-    for (index, policy) in AiPolicy::ALL.into_iter().enumerate() {
+    for (index, policy) in crate::ui::ai_policy::OFFERED.into_iter().enumerate() {
         imp.ai_policy_row.set_selected(index as u32);
 
         assert_eq!(harness.dialog.form().ai_policy, policy);
@@ -939,7 +939,7 @@ fn a_connect_from_new_connection_never_writes_over_a_saved_entry() {
     assert!(submitted.is_new, "the connect replaced the saved entry");
     assert_ne!(submitted.connection.id, saved.id);
     assert_eq!(submitted.connection.name, "Shop RW");
-    assert_eq!(submitted.connection.safe_mode, SafeModeLevel::Off);
+    assert_eq!(submitted.connection.safe_mode, SafeModeLevel::Silent);
 }
 
 #[gtk4::test]
@@ -1449,7 +1449,12 @@ fn the_tags_and_icon_picked_go_with_the_connection_a_connect_saves() {
 
     let saved = submissions.take().remove(0).pending_save.connection;
     assert_eq!(saved.tags, [production.id]);
-    assert_eq!(saved.icon, Some(tablepro_storage::ConnectionIcon::Shield));
+    assert_eq!(
+        saved.icon,
+        Some(tablepro_storage::LibraryIcon::Named(
+            tablepro_storage::ConnectionIcon::Shield
+        ))
+    );
 }
 
 #[gtk4::test]
@@ -1457,7 +1462,9 @@ fn an_edit_opens_on_its_tags_and_icon_and_saves_what_changed() {
     let (acme, production) = (tag("acme"), tag("production"));
     let saved = SavedConnection {
         tags: vec![acme.id],
-        icon: Some(tablepro_storage::ConnectionIcon::Cloud),
+        icon: Some(tablepro_storage::LibraryIcon::Named(
+            tablepro_storage::ConnectionIcon::Cloud,
+        )),
         ..shop()
     };
     let harness = open(Options {

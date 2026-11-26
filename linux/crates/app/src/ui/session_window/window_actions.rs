@@ -174,7 +174,7 @@ fn session_action(
 fn safe_mode(input: InputSender<SessionWindowInput>) -> gio::ActionEntry<adw::ApplicationWindow> {
     gio::ActionEntry::builder(SAFE_MODE)
         .parameter_type(Some(glib::VariantTy::STRING))
-        .state(crate::ui::safe_mode::action_target(SafeModeLevel::Off).to_variant())
+        .state(crate::ui::safe_mode::action_target(SafeModeLevel::Silent).to_variant())
         .change_state(move |window: &adw::ApplicationWindow, _, target| {
             // The session is read now: a tab switched before the input is
             // handled must not move another connection's level.

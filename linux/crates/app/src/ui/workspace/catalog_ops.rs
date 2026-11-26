@@ -800,7 +800,7 @@ pub(super) fn droppable_schema(
 /// The connection's name when its Safe Mode asks before every write, so
 /// the question shows the statements too.
 pub(super) fn asks_first(session: &Session) -> Option<String> {
-    (session.safe_mode() == SafeModeLevel::ConfirmWrites).then(|| session.metadata().name.clone())
+    (session.safe_mode() == SafeModeLevel::Alert).then(|| session.metadata().name.clone())
 }
 
 fn failed(title: String, error: &OperationError) -> WorkspaceInput {

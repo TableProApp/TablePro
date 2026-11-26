@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{ConnectionColor, ConnectionProjectName, GroupIcon};
+use crate::{ConnectionColor, ConnectionProjectName, LibraryIcon};
 
 // All Connections is no project and has no entry (core ADR 0067).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub struct ConnectionProject {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<ConnectionColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<GroupIcon>,
+    pub icon: Option<LibraryIcon>,
 }
 
 #[derive(Deserialize)]
@@ -27,7 +27,7 @@ struct StoredProject {
     #[serde(default)]
     color: Option<ConnectionColor>,
     #[serde(default)]
-    icon: Option<GroupIcon>,
+    icon: Option<LibraryIcon>,
 }
 
 impl TryFrom<StoredProject> for ConnectionProject {
@@ -80,5 +80,11 @@ mod tests {
 
         assert_eq!(cleaned.name.as_str(), "Acme EU");
         assert!(serde_json::from_str::<ConnectionProject>(&stored(" ")).is_err());
+    }
+}
+
+impl crate::lenient::Identified for ConnectionProject {
+    fn id(&self) -> Uuid {
+        self.id
     }
 }

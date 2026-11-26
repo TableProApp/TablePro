@@ -9,7 +9,7 @@ use tablepro_core::{
     TlsMode, TransportClass, is_local_socket_host,
 };
 use tablepro_session::RequestTarget;
-use tablepro_storage::{ConnectionIcon, SavedConnection, SavedSshAuth, SavedSshConfig};
+use tablepro_storage::{ConnectionIcon, LibraryIcon, SavedConnection, SavedSshAuth, SavedSshConfig};
 use uuid::Uuid;
 
 use super::form_errors::FormErrors;
@@ -82,6 +82,7 @@ impl TlsFormState {
             client_identity,
             server_name: Some(self.server_name.trim().to_owned())
                 .filter(|name| !name.is_empty() && shows_server_name(caps, route)),
+            unknown: Default::default(),
         }
     }
 }
@@ -162,7 +163,7 @@ impl ConnectForm {
             password: SecretString::from(String::new()),
             remember_password: true,
             tls: TlsFormState::new(caps.new_connection_tls(port, &NetworkOptions::default())),
-            safe_mode: SafeModeLevel::Off,
+            safe_mode: SafeModeLevel::Silent,
             external_access: ExternalAccess::default(),
             ai_policy: AiPolicy::default(),
             query_timeout_secs: None,
@@ -180,12 +181,13 @@ impl ConnectForm {
     /// following the host and user.
     pub fn from_saved(saved: &SavedConnection, caps: &DriverCapabilities) -> Self {
         let mut form = Self::new(&saved.driver_id, caps);
-        form.safe_mode = saved.safe_mode;
+        // The form offers the levels a session runs and no App Default; a save of what it shows keeps the stored ones.
+        form.safe_mode = saved.safe_mode.enforced();
         form.external_access = saved.external_access;
-        form.ai_policy = saved.ai_policy;
+        form.ai_policy = saved.ai_policy.or_app_default(AiPolicy::Ask);
         form.query_timeout_secs = saved.query_timeout_secs;
         form.tags.clone_from(&saved.tags);
-        form.icon = saved.icon;
+        form.icon = saved.icon.as_ref().and_then(LibraryIcon::named);
         if caps.is_file_based() {
             form.file = FileEndpoint::open_existing(PathBuf::from(&saved.database)).ok();
         } else {
@@ -198,7 +200,11 @@ impl ConnectForm {
                 form.auth = saved.auth_mode;
             }
             form.tls = TlsFormState::from_config(&saved.tls);
-            form.ssh = saved.ssh.as_ref().map(SshFormState::from_saved);
+            form.ssh = saved
+                .ssh
+                .as_ref()
+                .filter(|ssh| ssh.enabled)
+                .map(SshFormState::from_saved);
             form.options = saved.options.clone();
         }
         if saved.name != form.label(caps) {
@@ -228,9 +234,15 @@ impl ConnectForm {
         let Some(tls) = caps.tls.as_ref() else {
             return;
         };
-        if !self.tls.mode_chosen || !tls.modes.contains(&self.tls.mode) {
-            self.tls.mode = caps.new_connection_tls(self.port, &self.options);
-            self.tls.mode_chosen = false;
+        let default = caps.new_connection_tls(self.port, &self.options);
+        if !self.tls.mode_chosen {
+            self.tls.mode = default;
+        } else if !tls.modes.contains(&self.tls.mode) {
+            // Verify CA from a Mac, say: never weaker, and still chosen so a port change cannot weaken it.
+            self.tls.mode = match default.strictness() >= self.tls.mode.strictness() {
+                true => default,
+                false => self.tls.mode.at_least_in(tls.modes),
+            };
         }
     }
 
@@ -463,10 +475,9 @@ impl ConnectForm {
         Ok(form)
     }
 
-    /// How the entry is named in the connection list: the name typed,
-    /// or where it connects.
+    // The name typed, as the list shows it so one that looks like a saved name is that name, or where it connects.
     pub fn display_name(&self, caps: &DriverCapabilities) -> String {
-        match self.name.trim() {
+        match tablepro_storage::shown_name(&self.name).as_str() {
             "" => self.label(caps),
             name => name.to_owned(),
         }
@@ -536,20 +547,37 @@ impl ConnectForm {
             port,
             database,
             username,
-            tls,
-            safe_mode: self.safe_mode,
+            tls: TlsConfig {
+                mode: existing
+                    .filter(|saved| saved.driver_id == self.driver_id)
+                    .map_or(tls.mode, |saved| {
+                        TlsMode::edited(saved.tls.mode, tls.mode, caps.tls.as_ref().map_or(&[], |tls| tls.modes))
+                    }),
+                unknown: existing.map(|saved| saved.tls.unknown.clone()).unwrap_or_default(),
+                ..tls
+            },
+            safe_mode: existing.map_or(self.safe_mode, |saved| {
+                SafeModeLevel::edited(saved.safe_mode, self.safe_mode)
+            }),
             external_access: self.external_access,
-            ai_policy: self.ai_policy,
+            ai_policy: existing.map_or(self.ai_policy, |saved| {
+                AiPolicy::edited(saved.ai_policy, self.ai_policy, AiPolicy::Ask)
+            }),
             query_timeout_secs: self.query_timeout_secs,
             auth_mode,
-            ssh: valid.ssh.as_ref().map(|(saved, _)| saved.clone()),
+            ssh: edited_tunnel(valid, existing.and_then(|saved| saved.ssh.as_ref())),
             last_opened_at: existing.and_then(|saved| saved.last_opened_at),
             color: existing.and_then(|saved| saved.color),
             group_id: existing.and_then(|saved| saved.group_id),
             project_id: existing.and_then(|saved| saved.project_id),
             order: existing.map_or(0, |saved| saved.order),
             tags: self.tags.clone(),
-            icon: self.icon,
+            // A symbol only the Apple apps draw shows here as no icon, and stays until one of them changes it.
+            icon: match (self.icon, existing.and_then(|saved| saved.icon.as_ref())) {
+                (Some(named), _) => Some(LibraryIcon::Named(named)),
+                (None, Some(LibraryIcon::Symbol(symbol))) => Some(LibraryIcon::Symbol(symbol.clone())),
+                (None, _) => None,
+            },
             options,
             // The form shows none of these, so an edit keeps what another device or app set.
             details: existing.map(|saved| saved.details.clone()).unwrap_or_default(),
@@ -664,6 +692,14 @@ impl ConnectForm {
                 password_left_unused(original_ssh),
                 passphrase_left_unused(original, &saved.auth),
             ),
+            // A tunnel the form leaves as stored keeps its secrets.
+            None if original
+                .ssh
+                .as_ref()
+                .is_some_and(|ssh| !ssh.enabled || ssh.opens_remote_file()) =>
+            {
+                (SecretChange::Keep, SecretChange::Keep)
+            }
             None => (
                 password_left_unused(original_ssh),
                 if original.has_stored_passphrase() {
@@ -713,6 +749,28 @@ impl ConnectForm {
                     ..
                 }
             )
+    }
+}
+
+// A tunnel switched off keeps its settings, as macOS keeps them, and an edit keeps what the SSH rows do not show.
+fn edited_tunnel(valid: &ValidatedForm, stored: Option<&SavedSshConfig>) -> Option<SavedSshConfig> {
+    match (valid.ssh.as_ref(), stored) {
+        (Some((saved, _)), stored) => Some(saved.clone().kept_over(stored)),
+        // The form shows no tunnel to a file on the SSH host, nor one already off.
+        (None, Some(stored)) if !stored.enabled || stored.opens_remote_file() => Some(stored.clone()),
+        // The switch takes the passphrase out of the keyring, so the settings no longer say one is kept.
+        (None, Some(stored)) => Some(SavedSshConfig {
+            enabled: false,
+            auth: match &stored.auth {
+                SavedSshAuth::PrivateKey { path, .. } => SavedSshAuth::PrivateKey {
+                    path: path.clone(),
+                    has_passphrase: false,
+                },
+                auth => auth.clone(),
+            },
+            ..stored.clone()
+        }),
+        (None, None) => None,
     }
 }
 
@@ -889,7 +947,22 @@ mod tests {
         form.tls.mode = TlsMode::Prefer;
         form.switch_driver("mssql", mssql());
         assert_eq!(form.tls.mode, TlsMode::VerifyFull, "a mode SQL Server lacks was kept");
-        assert!(!form.tls.mode_chosen);
+        assert!(
+            form.tls.mode_chosen,
+            "the default taken for a chosen mode can be weakened by a port change"
+        );
+    }
+
+    #[test]
+    fn a_mode_the_engine_does_not_offer_rounds_up_rather_than_to_a_weaker_default() {
+        let mut form = ConnectForm::new("postgres", postgres());
+        form.tls.mode = TlsMode::VerifyCa;
+        form.tls.mode_chosen = true;
+
+        form.follow_tls_default(postgres());
+
+        assert_eq!(form.tls.mode, TlsMode::VerifyFull);
+        assert!(form.tls.mode_chosen);
     }
 
     #[test]
@@ -1305,7 +1378,7 @@ mod tests {
     fn connect_form_from_saved_prefills_without_secrets() {
         let mut typed = filled("postgres", postgres());
         typed.name = "Shop".to_owned();
-        typed.safe_mode = SafeModeLevel::ConfirmWrites;
+        typed.safe_mode = SafeModeLevel::Alert;
         let saved = saved_from(&typed, postgres());
 
         let form = ConnectForm::from_saved(&saved, postgres());
@@ -1314,7 +1387,7 @@ mod tests {
         assert_eq!(form.host, "db.example.com");
         assert_eq!(form.database, "sales");
         assert_eq!(form.username, "app");
-        assert_eq!(form.safe_mode, SafeModeLevel::ConfirmWrites);
+        assert_eq!(form.safe_mode, SafeModeLevel::Alert);
         assert_eq!(form.password.expose_secret(), "", "a secret reached the form");
     }
 
@@ -1337,7 +1410,7 @@ mod tests {
         let tag = Uuid::new_v4();
         let saved = SavedConnection {
             tags: vec![tag],
-            icon: Some(ConnectionIcon::Shield),
+            icon: Some(LibraryIcon::Named(ConnectionIcon::Shield)),
             ..saved_from(&filled("postgres", postgres()), postgres())
         };
 
@@ -1354,6 +1427,29 @@ mod tests {
         let written = untagged.saved_connection(postgres(), &valid, saved.id, Some(&saved));
         assert!(written.tags.is_empty(), "the entry's tags came back over the form's");
         assert_eq!(written.icon, None);
+    }
+
+    #[test]
+    fn an_edit_keeps_what_it_shows_rounded_up() {
+        let stored = SavedConnection {
+            safe_mode: SafeModeLevel::SafeModeFull,
+            ai_policy: AiPolicy::AppDefault,
+            tls: TlsConfig {
+                mode: TlsMode::VerifyCa,
+                ..TlsConfig::verify_full()
+            },
+            ..saved_from(&filled("postgres", postgres()), postgres())
+        };
+        let mut form = ConnectForm::from_saved(&stored, postgres());
+        assert_eq!(form.safe_mode, SafeModeLevel::ReadOnly);
+        form.tls.mode = TlsMode::VerifyFull;
+
+        let valid = form.validate(postgres()).expect("valid");
+        let written = form.saved_connection(postgres(), &valid, stored.id, Some(&stored));
+
+        assert_eq!(written.tls.mode, TlsMode::VerifyCa);
+        assert_eq!(written.safe_mode, SafeModeLevel::SafeModeFull);
+        assert_eq!(written.ai_policy, AiPolicy::AppDefault);
     }
 
     #[test]

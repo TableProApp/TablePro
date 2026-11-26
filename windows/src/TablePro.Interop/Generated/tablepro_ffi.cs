@@ -1820,12 +1820,6 @@ static class _UniFFILib {
     
     
     
-    
-    
-    
-    
-    
-    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2889,7 +2883,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_foreignimportreview_apply(ulong @ptr,RustBuffer @projectId
+     ulong uniffi_tablepro_ffi_fn_method_foreignimportreview_apply(ulong @ptr
     );
 
     #if NET8_0_OR_GREATER
@@ -3021,17 +3015,6 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_delete_for_connection(ulong @ptr,RustBuffer @connectionId
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_export(ulong @ptr,RustBuffer @ids,RustBuffer @format,RustBuffer @path
     );
 
@@ -3087,7 +3070,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_search(ulong @ptr,RustBuffer @text,RustBuffer @connectionId,RustBuffer @projectId,RustBuffer @after,uint @limit
+     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_search(ulong @ptr,RustBuffer @text,RustBuffer @connectionId,RustBuffer @after,uint @limit
     );
 
     #if NET8_0_OR_GREATER
@@ -3307,18 +3290,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_create_group(ulong @ptr,RustBuffer @name,RustBuffer @parentId,RustBuffer @projectId
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_create_project(ulong @ptr,RustBuffer @name,RustBuffer @color
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_create_group(ulong @ptr,RustBuffer @name,RustBuffer @parentId
     );
 
     #if NET8_0_OR_GREATER
@@ -3362,17 +3334,6 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_project(ulong @ptr,RustBuffer @id
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_tag(ulong @ptr,RustBuffer @id
     );
 
@@ -3395,7 +3356,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_export_file(ulong @ptr,RustBuffer @path,RustBuffer @projectId
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_export_file(ulong @ptr,RustBuffer @path
     );
 
     #if NET8_0_OR_GREATER
@@ -3406,7 +3367,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_import_file(ulong @ptr,RustBuffer @path,RustBuffer @projectId
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_import_file(ulong @ptr,RustBuffer @path
     );
 
     #if NET8_0_OR_GREATER
@@ -3428,40 +3389,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_move_groups_to_project(ulong @ptr,RustBuffer @ids,RustBuffer @projectId
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_move_projects(ulong @ptr,RustBuffer @ids,RustBuffer @before
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_move_to_group(ulong @ptr,RustBuffer @ids,RustBuffer @groupId,RustBuffer @before
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_move_to_project(ulong @ptr,RustBuffer @ids,RustBuffer @projectId
     );
 
     #if NET8_0_OR_GREATER
@@ -3505,17 +3433,6 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_rename_project(ulong @ptr,RustBuffer @id,RustBuffer @name
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_save(ulong @ptr,RustBuffer @record,RustBuffer @secrets
     );
 
@@ -3549,29 +3466,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_set_project_color(ulong @ptr,RustBuffer @id,RustBuffer @color
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_snapshot(ulong @ptr
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_snapshot_in(ulong @ptr,RustBuffer @projectId
     );
 
     #if NET8_0_OR_GREATER
@@ -3594,6 +3489,28 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_update_tag(ulong @ptr,RustBuffer @id,RustBuffer @name,RustBuffer @color
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_library_contents(ulong @ptr
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_replace_library(ulong @ptr,RustBuffer @library
     );
 
     #if NET8_0_OR_GREATER
@@ -3770,17 +3687,6 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_tablepro_ffi_fn_method_mcpservice_seen_clients(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     void uniffi_tablepro_ffi_fn_method_mcpservice_set_active_project(ulong @ptr,RustBuffer @projectId,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -6178,6 +6084,61 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_jump_hosts_text(RustBuffer @hops,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_parse_jump_hosts(RustBuffer @list,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_safe_mode_enforced(RustBuffer @level,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_library_icon_for_symbol(RustBuffer @symbol,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_library_icon_symbol(RustBuffer @icon,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      RustBuffer uniffi_tablepro_ffi_fn_func_scan_sql_for_personal_data(RustBuffer @sql,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -6960,6 +6921,61 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_func_check_jump_hosts(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_jump_hosts_text(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_parse_jump_hosts(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_safe_mode_enforced(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_library_icon_for_symbol(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_library_icon_symbol(
     );
 
     #if NET8_0_OR_GREATER
@@ -7872,17 +7888,6 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_delete_for_connection(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_export(
     );
 
@@ -8103,17 +8108,6 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_create_project(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_create_tag(
     );
 
@@ -8137,17 +8131,6 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_group(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_project(
     );
 
     #if NET8_0_OR_GREATER
@@ -8213,40 +8196,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_groups_to_project(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_projects(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_to_group(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_to_project(
     );
 
     #if NET8_0_OR_GREATER
@@ -8290,17 +8240,6 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_rename_project(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_save(
     );
 
@@ -8334,29 +8273,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_project_color(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_snapshot(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_snapshot_in(
     );
 
     #if NET8_0_OR_GREATER
@@ -8379,6 +8296,28 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_update_tag(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_library_contents(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_replace_library(
     );
 
     #if NET8_0_OR_GREATER
@@ -8533,17 +8472,6 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_mcpservice_seen_clients(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_mcpservice_set_active_project(
     );
 
     #if NET8_0_OR_GREATER
@@ -10841,6 +10769,36 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_jump_hosts_text();
+            if (checksum != 29420) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_jump_hosts_text` checksum `29420`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_parse_jump_hosts();
+            if (checksum != 12587) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_parse_jump_hosts` checksum `12587`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_safe_mode_enforced();
+            if (checksum != 2231) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_safe_mode_enforced` checksum `2231`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_library_icon_for_symbol();
+            if (checksum != 14170) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_library_icon_for_symbol` checksum `14170`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_library_icon_symbol();
+            if (checksum != 25727) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_library_icon_symbol` checksum `25727`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_scan_sql_for_personal_data();
             if (checksum != 17541) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_scan_sql_for_personal_data` checksum `17541`, library returned `{checksum}`");
@@ -11274,8 +11232,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_foreignimportreview_apply();
-            if (checksum != 34361) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_foreignimportreview_apply` checksum `34361`, library returned `{checksum}`");
+            if (checksum != 47598) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_foreignimportreview_apply` checksum `47598`, library returned `{checksum}`");
             }
         }
         {
@@ -11333,12 +11291,6 @@ static class _UniFFILib {
             }
         }
         {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_delete_for_connection();
-            if (checksum != 23751) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_delete_for_connection` checksum `23751`, library returned `{checksum}`");
-            }
-        }
-        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_export();
             if (checksum != 44920) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_export` checksum `44920`, library returned `{checksum}`");
@@ -11370,8 +11322,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_search();
-            if (checksum != 11726) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_search` checksum `11726`, library returned `{checksum}`");
+            if (checksum != 1588) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_search` checksum `1588`, library returned `{checksum}`");
             }
         }
         {
@@ -11454,14 +11406,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_create_group();
-            if (checksum != 32987) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_create_group` checksum `32987`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_create_project();
-            if (checksum != 60842) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_create_project` checksum `60842`, library returned `{checksum}`");
+            if (checksum != 13875) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_create_group` checksum `13875`, library returned `{checksum}`");
             }
         }
         {
@@ -11483,12 +11429,6 @@ static class _UniFFILib {
             }
         }
         {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_project();
-            if (checksum != 23607) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_project` checksum `23607`, library returned `{checksum}`");
-            }
-        }
-        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_tag();
             if (checksum != 12898) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_tag` checksum `12898`, library returned `{checksum}`");
@@ -11502,14 +11442,14 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_export_file();
-            if (checksum != 56706) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_export_file` checksum `56706`, library returned `{checksum}`");
+            if (checksum != 30567) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_export_file` checksum `30567`, library returned `{checksum}`");
             }
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_import_file();
-            if (checksum != 62898) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_import_file` checksum `62898`, library returned `{checksum}`");
+            if (checksum != 61381) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_import_file` checksum `61381`, library returned `{checksum}`");
             }
         }
         {
@@ -11519,27 +11459,9 @@ static class _UniFFILib {
             }
         }
         {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_groups_to_project();
-            if (checksum != 42880) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_groups_to_project` checksum `42880`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_projects();
-            if (checksum != 52022) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_projects` checksum `52022`, library returned `{checksum}`");
-            }
-        }
-        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_to_group();
             if (checksum != 20093) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_to_group` checksum `20093`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_to_project();
-            if (checksum != 37094) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_move_to_project` checksum `37094`, library returned `{checksum}`");
             }
         }
         {
@@ -11561,12 +11483,6 @@ static class _UniFFILib {
             }
         }
         {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_rename_project();
-            if (checksum != 27495) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_rename_project` checksum `27495`, library returned `{checksum}`");
-            }
-        }
-        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_save();
             if (checksum != 39828) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_save` checksum `39828`, library returned `{checksum}`");
@@ -11585,21 +11501,9 @@ static class _UniFFILib {
             }
         }
         {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_project_color();
-            if (checksum != 55698) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_project_color` checksum `55698`, library returned `{checksum}`");
-            }
-        }
-        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_snapshot();
             if (checksum != 11912) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_snapshot` checksum `11912`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_snapshot_in();
-            if (checksum != 17762) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_snapshot_in` checksum `17762`, library returned `{checksum}`");
             }
         }
         {
@@ -11610,8 +11514,20 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_update_tag();
-            if (checksum != 62856) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_update_tag` checksum `62856`, library returned `{checksum}`");
+            if (checksum != 14485) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_update_tag` checksum `14485`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_library_contents();
+            if (checksum != 59351) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_library_contents` checksum `59351`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_replace_library();
+            if (checksum != 4940) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_replace_library` checksum `4940`, library returned `{checksum}`");
             }
         }
         {
@@ -11696,12 +11612,6 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_mcpservice_seen_clients();
             if (checksum != 57161) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_mcpservice_seen_clients` checksum `57161`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_mcpservice_set_active_project();
-            if (checksum != 17575) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_mcpservice_set_active_project` checksum `17575`, library returned `{checksum}`");
             }
         }
         {
@@ -15364,9 +15274,7 @@ internal interface IConnectionLibrary {
     /// <exception cref="CoreException"></exception>
     Task AddFavorites(string[] @ids, string? @before);
     /// <exception cref="CoreException"></exception>
-    Task<GroupRecord> CreateGroup(string @name, string? @parentId, string? @projectId);
-    /// <exception cref="CoreException"></exception>
-    Task<ProjectRecord> CreateProject(string @name, string? @color);
+    Task<GroupRecord> CreateGroup(string @name, string? @parentId);
     /// <exception cref="CoreException"></exception>
     Task<TagRecord> CreateTag(string @name, string @color);
     /// <exception cref="CoreException"></exception>
@@ -15374,25 +15282,17 @@ internal interface IConnectionLibrary {
     /// <exception cref="CoreException"></exception>
     Task DeleteGroup(string @id);
     /// <exception cref="CoreException"></exception>
-    Task DeleteProject(string @id);
-    /// <exception cref="CoreException"></exception>
     Task DeleteTag(string @id);
     /// <exception cref="CoreException"></exception>
     Task<ConnectionRecord> Duplicate(string @id, string @name);
     /// <exception cref="CoreException"></exception>
-    Task<uint> ExportFile(string @path, string? @projectId);
+    Task<uint> ExportFile(string @path);
     /// <exception cref="CoreException"></exception>
-    Task<ImportSummary> ImportFile(string @path, string? @projectId);
+    Task<ImportSummary> ImportFile(string @path);
     /// <exception cref="CoreException"></exception>
     Task MoveGroups(string[] @ids, string? @parentId, string? @before);
     /// <exception cref="CoreException"></exception>
-    Task MoveGroupsToProject(string[] @ids, string? @projectId);
-    /// <exception cref="CoreException"></exception>
-    Task MoveProjects(string[] @ids, string? @before);
-    /// <exception cref="CoreException"></exception>
     Task MoveToGroup(string[] @ids, string? @groupId, string? @before);
-    /// <exception cref="CoreException"></exception>
-    Task MoveToProject(string[] @ids, string? @projectId);
     /// <exception cref="CoreException"></exception>
     Task RemoveFavorites(string[] @ids);
     /// <exception cref="CoreException"></exception>
@@ -15400,23 +15300,21 @@ internal interface IConnectionLibrary {
     /// <exception cref="CoreException"></exception>
     Task RenameGroup(string @id, string @name);
     /// <exception cref="CoreException"></exception>
-    Task RenameProject(string @id, string @name);
-    /// <exception cref="CoreException"></exception>
     Task<ConnectionRecord> Save(ConnectionRecord @record, ConnectionSecrets @secrets);
     /// <exception cref="CoreException"></exception>
     Task SetFavorite(string @id, bool @favorite);
     /// <exception cref="CoreException"></exception>
     Task SetGroupColor(string @id, string? @color);
     /// <exception cref="CoreException"></exception>
-    Task SetProjectColor(string @id, string? @color);
-    /// <exception cref="CoreException"></exception>
     Task<LibrarySnapshot> Snapshot();
-    /// <exception cref="CoreException"></exception>
-    Task<LibrarySnapshot> SnapshotIn(string? @projectId);
     /// <exception cref="CoreException"></exception>
     Task TagConnections(string[] @ids, string @tagId, bool @tagged);
     /// <exception cref="CoreException"></exception>
-    Task UpdateTag(string @id, string @name, string @color);
+    Task UpdateTag(string @id, string @name, string? @color);
+    /// <exception cref="CoreException"></exception>
+    Task<LibraryContents> LibraryContents();
+    /// <exception cref="CoreException"></exception>
+    Task ReplaceLibrary(LibraryWriteRecord @library);
     /// <exception cref="CoreException"></exception>
     Task<ConnectionDetailsRecord> ConnectionDetails(string @id);
     /// <exception cref="CoreException"></exception>
@@ -15586,11 +15484,11 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<GroupRecord> CreateGroup(string @name, string? @parentId, string? @projectId) {
+    public async Task<GroupRecord> CreateGroup(string @name, string? @parentId) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_create_group(thisPtr, FfiConverterString.INSTANCE.Lower(@name), FfiConverterOptionalString.INSTANCE.Lower(@parentId), FfiConverterOptionalString.INSTANCE.Lower(@projectId));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_create_group(thisPtr, FfiConverterString.INSTANCE.Lower(@name), FfiConverterOptionalString.INSTANCE.Lower(@parentId));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -15602,28 +15500,6 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
         // Lift
         (result) => FfiConverterTypeGroupRecord.INSTANCE.Lift(result),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task<ProjectRecord> CreateProject(string @name, string? @color) {
-    return await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_create_project(thisPtr, FfiConverterString.INSTANCE.Lower(@name), FfiConverterOptionalString.INSTANCE.Lower(@color));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {
-            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
-        // Lift
-        (result) => FfiConverterTypeProjectRecord.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -15688,24 +15564,6 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task DeleteProject(string @id) {await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_project(thisPtr, FfiConverterString.INSTANCE.Lower(@id));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
     public async Task DeleteTag(string @id) {await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
@@ -15746,11 +15604,11 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<uint> ExportFile(string @path, string? @projectId) {
+    public async Task<uint> ExportFile(string @path) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_export_file(thisPtr, FfiConverterString.INSTANCE.Lower(@path), FfiConverterOptionalString.INSTANCE.Lower(@projectId));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_export_file(thisPtr, FfiConverterString.INSTANCE.Lower(@path));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u32(future, continuation, data),
@@ -15768,11 +15626,11 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<ImportSummary> ImportFile(string @path, string? @projectId) {
+    public async Task<ImportSummary> ImportFile(string @path) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_import_file(thisPtr, FfiConverterString.INSTANCE.Lower(@path), FfiConverterOptionalString.INSTANCE.Lower(@projectId));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_import_file(thisPtr, FfiConverterString.INSTANCE.Lower(@path));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -15808,64 +15666,10 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task MoveGroupsToProject(string[] @ids, string? @projectId) {await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_move_groups_to_project(thisPtr, FfiConverterSequenceString.INSTANCE.Lower(@ids), FfiConverterOptionalString.INSTANCE.Lower(@projectId));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task MoveProjects(string[] @ids, string? @before) {await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_move_projects(thisPtr, FfiConverterSequenceString.INSTANCE.Lower(@ids), FfiConverterOptionalString.INSTANCE.Lower(@before));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
     public async Task MoveToGroup(string[] @ids, string? @groupId, string? @before) {await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
             return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_move_to_group(thisPtr, FfiConverterSequenceString.INSTANCE.Lower(@ids), FfiConverterOptionalString.INSTANCE.Lower(@groupId), FfiConverterOptionalString.INSTANCE.Lower(@before));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task MoveToProject(string[] @ids, string? @projectId) {await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_move_to_project(thisPtr, FfiConverterSequenceString.INSTANCE.Lower(@ids), FfiConverterOptionalString.INSTANCE.Lower(@projectId));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
@@ -15920,24 +15724,6 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
         // Get rust future
         CallWithPointer(thisPtr => {
             return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_rename_group(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterString.INSTANCE.Lower(@name));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task RenameProject(string @id, string @name) {await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_rename_project(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterString.INSTANCE.Lower(@name));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
@@ -16010,51 +15796,11 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task SetProjectColor(string @id, string? @color) {await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_set_project_color(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterOptionalString.INSTANCE.Lower(@color));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
     public async Task<LibrarySnapshot> Snapshot() {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
             return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_snapshot(thisPtr);
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {
-            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
-        // Lift
-        (result) => FfiConverterTypeLibrarySnapshot.INSTANCE.Lift(result),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task<LibrarySnapshot> SnapshotIn(string? @projectId) {
-    return await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_snapshot_in(thisPtr, FfiConverterOptionalString.INSTANCE.Lower(@projectId));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -16090,10 +15836,50 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task UpdateTag(string @id, string @name, string @color) {await _UniFFIAsync.UniffiRustCallAsync(
+    public async Task UpdateTag(string @id, string @name, string? @color) {await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_update_tag(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterString.INSTANCE.Lower(@name), FfiConverterString.INSTANCE.Lower(@color));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_update_tag(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterString.INSTANCE.Lower(@name), FfiConverterOptionalString.INSTANCE.Lower(@color));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<LibraryContents> LibraryContents() {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_library_contents(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeLibraryContents.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task ReplaceLibrary(LibraryWriteRecord @library) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_replace_library(thisPtr, FfiConverterTypeLibraryWriteRecord.INSTANCE.Lower(@library));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
@@ -18168,7 +17954,7 @@ class FfiConverterTypeFavouriteStore: FfiConverter<FavouriteStore, ulong> {
 internal interface IForeignImportReview {
     ForeignAppTag App();
     /// <exception cref="CoreException"></exception>
-    Task<ForeignImportOutcome> Apply(string? @projectId);
+    Task<ForeignImportOutcome> Apply();
     ForeignImportChoices Choices();
     ForeignConnectionRow[] Connections();
     PasswordOutcomeTag Passwords();
@@ -18276,11 +18062,11 @@ internal class ForeignImportReview : IForeignImportReview, IDisposable {
     
     
     /// <exception cref="CoreException"></exception>
-    public async Task<ForeignImportOutcome> Apply(string? @projectId) {
+    public async Task<ForeignImportOutcome> Apply() {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_foreignimportreview_apply(thisPtr, FfiConverterOptionalString.INSTANCE.Lower(@projectId));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_foreignimportreview_apply(thisPtr);
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -18556,8 +18342,6 @@ internal interface IMcpService {
     /// <exception cref="CoreException"></exception>
     Task RegenerateToken();
     SeenClientInfo[] SeenClients();
-    /// <exception cref="CoreException"></exception>
-    void SetActiveProject(string? @projectId);
     McpStatusTag Status();
     Task Stop();
 }
@@ -18705,16 +18489,6 @@ internal class McpService : IMcpService, IDisposable {
     _UniFFILib.uniffi_tablepro_ffi_fn_method_mcpservice_seen_clients(thisPtr,  ref _status)
 )));
     }
-    
-    
-    /// <exception cref="CoreException"></exception>
-    public void SetActiveProject(string? @projectId) {
-        CallWithPointer(thisPtr =>
-    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
-    _UniFFILib.uniffi_tablepro_ffi_fn_method_mcpservice_set_active_project(thisPtr, FfiConverterOptionalString.INSTANCE.Lower(@projectId), ref _status)
-));
-    }
-    
     
     
     public McpStatusTag Status() {
@@ -19120,8 +18894,6 @@ internal interface IQueryHistoryStore {
     /// <exception cref="CoreException"></exception>
     Task Delete(long[] @ids);
     /// <exception cref="CoreException"></exception>
-    Task<ulong> DeleteForConnection(string @connectionId);
-    /// <exception cref="CoreException"></exception>
     Task Export(long[] @ids, HistoryExportFormat @format, string @path);
     FavouriteStore Favourites();
     /// <exception cref="CoreException"></exception>
@@ -19130,7 +18902,7 @@ internal interface IQueryHistoryStore {
     Task<long?> Record(DatabaseSession @session, HistoryRun @run);
     SavedQueryStore SavedQueries();
     /// <exception cref="CoreException"></exception>
-    Task<HistoryPageInfo> Search(string @text, string? @connectionId, string? @projectId, HistoryCursorArg? @after, uint @limit);
+    Task<HistoryPageInfo> Search(string @text, string? @connectionId, HistoryCursorArg? @after, uint @limit);
     /// <exception cref="CoreException"></exception>
     Task SetPinned(long @id, bool @pinned);
     TableFolderStore TableFolders();
@@ -19261,28 +19033,6 @@ internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<ulong> DeleteForConnection(string @connectionId) {
-    return await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_delete_for_connection(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u64(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {
-            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_u64(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u64(future),
-        // Lift
-        (result) => FfiConverterUInt64.INSTANCE.Lift(result),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
     public async Task Export(long[] @ids, HistoryExportFormat @format, string @path) {await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
@@ -19361,11 +19111,11 @@ internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
     
     
     /// <exception cref="CoreException"></exception>
-    public async Task<HistoryPageInfo> Search(string @text, string? @connectionId, string? @projectId, HistoryCursorArg? @after, uint @limit) {
+    public async Task<HistoryPageInfo> Search(string @text, string? @connectionId, HistoryCursorArg? @after, uint @limit) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_search(thisPtr, FfiConverterString.INSTANCE.Lower(@text), FfiConverterOptionalString.INSTANCE.Lower(@connectionId), FfiConverterOptionalString.INSTANCE.Lower(@projectId), FfiConverterOptionalTypeHistoryCursorArg.INSTANCE.Lower(@after), FfiConverterUInt32.INSTANCE.Lower(@limit));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_search(thisPtr, FfiConverterString.INSTANCE.Lower(@text), FfiConverterOptionalString.INSTANCE.Lower(@connectionId), FfiConverterOptionalTypeHistoryCursorArg.INSTANCE.Lower(@after), FfiConverterUInt32.INSTANCE.Lower(@limit));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -24131,7 +23881,8 @@ internal record ConnectionRecord (
     string[] Tags, 
     AiPolicyTag? AiPolicy = null, 
     ExternalAccessTag? ExternalAccess = null, 
-    string? ProjectId = null
+    LibraryIconRecord? Icon = null, 
+    uint Order = 0u
 ) {
 }
 
@@ -24158,7 +23909,8 @@ class FfiConverterTypeConnectionRecord: FfiConverterRustBuffer<ConnectionRecord>
             Tags: FfiConverterSequenceString.INSTANCE.Read(stream),
             AiPolicy: FfiConverterOptionalTypeAiPolicyTag.INSTANCE.Read(stream),
             ExternalAccess: FfiConverterOptionalTypeExternalAccessTag.INSTANCE.Read(stream),
-            ProjectId: FfiConverterOptionalString.INSTANCE.Read(stream)
+            Icon: FfiConverterOptionalTypeLibraryIconRecord.INSTANCE.Read(stream),
+            Order: FfiConverterUInt32.INSTANCE.Read(stream)
         );
     }
 
@@ -24182,7 +23934,8 @@ class FfiConverterTypeConnectionRecord: FfiConverterRustBuffer<ConnectionRecord>
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Tags)
             + FfiConverterOptionalTypeAiPolicyTag.INSTANCE.AllocationSize(value.AiPolicy)
             + FfiConverterOptionalTypeExternalAccessTag.INSTANCE.AllocationSize(value.ExternalAccess)
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ProjectId);
+            + FfiConverterOptionalTypeLibraryIconRecord.INSTANCE.AllocationSize(value.Icon)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Order);
     }
 
     public override void Write(ConnectionRecord value, BigEndianStream stream) {
@@ -24204,7 +23957,8 @@ class FfiConverterTypeConnectionRecord: FfiConverterRustBuffer<ConnectionRecord>
             FfiConverterSequenceString.INSTANCE.Write(value.Tags, stream);
             FfiConverterOptionalTypeAiPolicyTag.INSTANCE.Write(value.AiPolicy, stream);
             FfiConverterOptionalTypeExternalAccessTag.INSTANCE.Write(value.ExternalAccess, stream);
-            FfiConverterOptionalString.INSTANCE.Write(value.ProjectId, stream);
+            FfiConverterOptionalTypeLibraryIconRecord.INSTANCE.Write(value.Icon, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.Order, stream);
     }
 }
 
@@ -25686,7 +25440,7 @@ internal record GroupRecord (
     string? ParentId, 
     uint Order, 
     string? Color, 
-    string? ProjectId
+    LibraryIconRecord? Icon = null
 ) {
 }
 
@@ -25700,7 +25454,7 @@ class FfiConverterTypeGroupRecord: FfiConverterRustBuffer<GroupRecord> {
             ParentId: FfiConverterOptionalString.INSTANCE.Read(stream),
             Order: FfiConverterUInt32.INSTANCE.Read(stream),
             Color: FfiConverterOptionalString.INSTANCE.Read(stream),
-            ProjectId: FfiConverterOptionalString.INSTANCE.Read(stream)
+            Icon: FfiConverterOptionalTypeLibraryIconRecord.INSTANCE.Read(stream)
         );
     }
 
@@ -25711,7 +25465,7 @@ class FfiConverterTypeGroupRecord: FfiConverterRustBuffer<GroupRecord> {
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ParentId)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.Order)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Color)
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ProjectId);
+            + FfiConverterOptionalTypeLibraryIconRecord.INSTANCE.AllocationSize(value.Icon);
     }
 
     public override void Write(GroupRecord value, BigEndianStream stream) {
@@ -25720,7 +25474,7 @@ class FfiConverterTypeGroupRecord: FfiConverterRustBuffer<GroupRecord> {
             FfiConverterOptionalString.INSTANCE.Write(value.ParentId, stream);
             FfiConverterUInt32.INSTANCE.Write(value.Order, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Color, stream);
-            FfiConverterOptionalString.INSTANCE.Write(value.ProjectId, stream);
+            FfiConverterOptionalTypeLibraryIconRecord.INSTANCE.Write(value.Icon, stream);
     }
 }
 
@@ -26505,14 +26259,88 @@ class FfiConverterTypeLegacyTombstoneArg: FfiConverterRustBuffer<LegacyTombstone
 
 
 
+internal record LibraryConnectionRecord (
+    ConnectionRecord Connection, 
+    ConnectionDetailsRecord Details, 
+    DeviceSettingsRecord Device
+) {
+}
+
+class FfiConverterTypeLibraryConnectionRecord: FfiConverterRustBuffer<LibraryConnectionRecord> {
+    public static FfiConverterTypeLibraryConnectionRecord INSTANCE = new FfiConverterTypeLibraryConnectionRecord();
+
+    public override LibraryConnectionRecord Read(BigEndianStream stream) {
+        return new LibraryConnectionRecord(
+            Connection: FfiConverterTypeConnectionRecord.INSTANCE.Read(stream),
+            Details: FfiConverterTypeConnectionDetailsRecord.INSTANCE.Read(stream),
+            Device: FfiConverterTypeDeviceSettingsRecord.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(LibraryConnectionRecord value) {
+        return 0
+            + FfiConverterTypeConnectionRecord.INSTANCE.AllocationSize(value.Connection)
+            + FfiConverterTypeConnectionDetailsRecord.INSTANCE.AllocationSize(value.Details)
+            + FfiConverterTypeDeviceSettingsRecord.INSTANCE.AllocationSize(value.Device);
+    }
+
+    public override void Write(LibraryConnectionRecord value, BigEndianStream stream) {
+            FfiConverterTypeConnectionRecord.INSTANCE.Write(value.Connection, stream);
+            FfiConverterTypeConnectionDetailsRecord.INSTANCE.Write(value.Details, stream);
+            FfiConverterTypeDeviceSettingsRecord.INSTANCE.Write(value.Device, stream);
+    }
+}
+
+
+
+internal record LibraryContents (
+    LibraryConnectionRecord[] Connections, 
+    GroupRecord[] Groups, 
+    TagRecord[] Tags, 
+    string[] Favorites, 
+    string[] Unreadable
+) {
+}
+
+class FfiConverterTypeLibraryContents: FfiConverterRustBuffer<LibraryContents> {
+    public static FfiConverterTypeLibraryContents INSTANCE = new FfiConverterTypeLibraryContents();
+
+    public override LibraryContents Read(BigEndianStream stream) {
+        return new LibraryContents(
+            Connections: FfiConverterSequenceTypeLibraryConnectionRecord.INSTANCE.Read(stream),
+            Groups: FfiConverterSequenceTypeGroupRecord.INSTANCE.Read(stream),
+            Tags: FfiConverterSequenceTypeTagRecord.INSTANCE.Read(stream),
+            Favorites: FfiConverterSequenceString.INSTANCE.Read(stream),
+            Unreadable: FfiConverterSequenceString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(LibraryContents value) {
+        return 0
+            + FfiConverterSequenceTypeLibraryConnectionRecord.INSTANCE.AllocationSize(value.Connections)
+            + FfiConverterSequenceTypeGroupRecord.INSTANCE.AllocationSize(value.Groups)
+            + FfiConverterSequenceTypeTagRecord.INSTANCE.AllocationSize(value.Tags)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Favorites)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Unreadable);
+    }
+
+    public override void Write(LibraryContents value, BigEndianStream stream) {
+            FfiConverterSequenceTypeLibraryConnectionRecord.INSTANCE.Write(value.Connections, stream);
+            FfiConverterSequenceTypeGroupRecord.INSTANCE.Write(value.Groups, stream);
+            FfiConverterSequenceTypeTagRecord.INSTANCE.Write(value.Tags, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.Favorites, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.Unreadable, stream);
+    }
+}
+
+
+
 internal record LibrarySnapshot (
     ConnectionRecord[] Connections, 
     GroupRecord[] Groups, 
     string[] Favorites, 
     string[] Recent, 
-    TagRecord[] Tags, 
-    ProjectRecord[] Projects, 
-    string? Scope
+    TagRecord[] Tags
 ) {
 }
 
@@ -26525,9 +26353,7 @@ class FfiConverterTypeLibrarySnapshot: FfiConverterRustBuffer<LibrarySnapshot> {
             Groups: FfiConverterSequenceTypeGroupRecord.INSTANCE.Read(stream),
             Favorites: FfiConverterSequenceString.INSTANCE.Read(stream),
             Recent: FfiConverterSequenceString.INSTANCE.Read(stream),
-            Tags: FfiConverterSequenceTypeTagRecord.INSTANCE.Read(stream),
-            Projects: FfiConverterSequenceTypeProjectRecord.INSTANCE.Read(stream),
-            Scope: FfiConverterOptionalString.INSTANCE.Read(stream)
+            Tags: FfiConverterSequenceTypeTagRecord.INSTANCE.Read(stream)
         );
     }
 
@@ -26537,9 +26363,7 @@ class FfiConverterTypeLibrarySnapshot: FfiConverterRustBuffer<LibrarySnapshot> {
             + FfiConverterSequenceTypeGroupRecord.INSTANCE.AllocationSize(value.Groups)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Favorites)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Recent)
-            + FfiConverterSequenceTypeTagRecord.INSTANCE.AllocationSize(value.Tags)
-            + FfiConverterSequenceTypeProjectRecord.INSTANCE.AllocationSize(value.Projects)
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Scope);
+            + FfiConverterSequenceTypeTagRecord.INSTANCE.AllocationSize(value.Tags);
     }
 
     public override void Write(LibrarySnapshot value, BigEndianStream stream) {
@@ -26548,8 +26372,44 @@ class FfiConverterTypeLibrarySnapshot: FfiConverterRustBuffer<LibrarySnapshot> {
             FfiConverterSequenceString.INSTANCE.Write(value.Favorites, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.Recent, stream);
             FfiConverterSequenceTypeTagRecord.INSTANCE.Write(value.Tags, stream);
-            FfiConverterSequenceTypeProjectRecord.INSTANCE.Write(value.Projects, stream);
-            FfiConverterOptionalString.INSTANCE.Write(value.Scope, stream);
+    }
+}
+
+
+
+internal record LibraryWriteRecord (
+    LibraryConnectionRecord[] Connections, 
+    GroupRecord[] Groups, 
+    TagRecord[] Tags, 
+    string[] Favorites
+) {
+}
+
+class FfiConverterTypeLibraryWriteRecord: FfiConverterRustBuffer<LibraryWriteRecord> {
+    public static FfiConverterTypeLibraryWriteRecord INSTANCE = new FfiConverterTypeLibraryWriteRecord();
+
+    public override LibraryWriteRecord Read(BigEndianStream stream) {
+        return new LibraryWriteRecord(
+            Connections: FfiConverterSequenceTypeLibraryConnectionRecord.INSTANCE.Read(stream),
+            Groups: FfiConverterSequenceTypeGroupRecord.INSTANCE.Read(stream),
+            Tags: FfiConverterSequenceTypeTagRecord.INSTANCE.Read(stream),
+            Favorites: FfiConverterSequenceString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(LibraryWriteRecord value) {
+        return 0
+            + FfiConverterSequenceTypeLibraryConnectionRecord.INSTANCE.AllocationSize(value.Connections)
+            + FfiConverterSequenceTypeGroupRecord.INSTANCE.AllocationSize(value.Groups)
+            + FfiConverterSequenceTypeTagRecord.INSTANCE.AllocationSize(value.Tags)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Favorites);
+    }
+
+    public override void Write(LibraryWriteRecord value, BigEndianStream stream) {
+            FfiConverterSequenceTypeLibraryConnectionRecord.INSTANCE.Write(value.Connections, stream);
+            FfiConverterSequenceTypeGroupRecord.INSTANCE.Write(value.Groups, stream);
+            FfiConverterSequenceTypeTagRecord.INSTANCE.Write(value.Tags, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.Favorites, stream);
     }
 }
 
@@ -27286,44 +27146,6 @@ class FfiConverterTypeProfileInfo: FfiConverterRustBuffer<ProfileInfo> {
             FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
             FfiConverterSequenceTypeLicenseInfo.INSTANCE.Write(value.Licenses, stream);
             FfiConverterSequenceTypeMembershipInfo.INSTANCE.Write(value.Teams, stream);
-    }
-}
-
-
-
-internal record ProjectRecord (
-    string Id, 
-    string Name, 
-    uint Order, 
-    string? Color
-) {
-}
-
-class FfiConverterTypeProjectRecord: FfiConverterRustBuffer<ProjectRecord> {
-    public static FfiConverterTypeProjectRecord INSTANCE = new FfiConverterTypeProjectRecord();
-
-    public override ProjectRecord Read(BigEndianStream stream) {
-        return new ProjectRecord(
-            Id: FfiConverterString.INSTANCE.Read(stream),
-            Name: FfiConverterString.INSTANCE.Read(stream),
-            Order: FfiConverterUInt32.INSTANCE.Read(stream),
-            Color: FfiConverterOptionalString.INSTANCE.Read(stream)
-        );
-    }
-
-    public override int AllocationSize(ProjectRecord value) {
-        return 0
-            + FfiConverterString.INSTANCE.AllocationSize(value.Id)
-            + FfiConverterString.INSTANCE.AllocationSize(value.Name)
-            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Order)
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Color);
-    }
-
-    public override void Write(ProjectRecord value, BigEndianStream stream) {
-            FfiConverterString.INSTANCE.Write(value.Id, stream);
-            FfiConverterString.INSTANCE.Write(value.Name, stream);
-            FfiConverterUInt32.INSTANCE.Write(value.Order, stream);
-            FfiConverterOptionalString.INSTANCE.Write(value.Color, stream);
     }
 }
 
@@ -28670,6 +28492,94 @@ class FfiConverterTypeSocksProxyRecord: FfiConverterRustBuffer<SocksProxyRecord>
 
 
 
+internal record SshJumpHostRecord (
+    string? Id, 
+    string Host, 
+    ushort? Port, 
+    string? Username, 
+    SshJumpAuthTag? Auth, 
+    string? KeyPath
+) {
+}
+
+class FfiConverterTypeSshJumpHostRecord: FfiConverterRustBuffer<SshJumpHostRecord> {
+    public static FfiConverterTypeSshJumpHostRecord INSTANCE = new FfiConverterTypeSshJumpHostRecord();
+
+    public override SshJumpHostRecord Read(BigEndianStream stream) {
+        return new SshJumpHostRecord(
+            Id: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Host: FfiConverterString.INSTANCE.Read(stream),
+            Port: FfiConverterOptionalUInt16.INSTANCE.Read(stream),
+            Username: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Auth: FfiConverterOptionalTypeSshJumpAuthTag.INSTANCE.Read(stream),
+            KeyPath: FfiConverterOptionalString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SshJumpHostRecord value) {
+        return 0
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Host)
+            + FfiConverterOptionalUInt16.INSTANCE.AllocationSize(value.Port)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Username)
+            + FfiConverterOptionalTypeSshJumpAuthTag.INSTANCE.AllocationSize(value.Auth)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.KeyPath);
+    }
+
+    public override void Write(SshJumpHostRecord value, BigEndianStream stream) {
+            FfiConverterOptionalString.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.Host, stream);
+            FfiConverterOptionalUInt16.INSTANCE.Write(value.Port, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Username, stream);
+            FfiConverterOptionalTypeSshJumpAuthTag.INSTANCE.Write(value.Auth, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.KeyPath, stream);
+    }
+}
+
+
+
+internal record SshOptionsRecord (
+    string? KeptKeyPath, 
+    string? AgentSocket, 
+    SshTotpRecord Totp, 
+    string? RemoteFilePath, 
+    RemoteFileAccessTag RemoteFileAccess
+) {
+}
+
+class FfiConverterTypeSshOptionsRecord: FfiConverterRustBuffer<SshOptionsRecord> {
+    public static FfiConverterTypeSshOptionsRecord INSTANCE = new FfiConverterTypeSshOptionsRecord();
+
+    public override SshOptionsRecord Read(BigEndianStream stream) {
+        return new SshOptionsRecord(
+            KeptKeyPath: FfiConverterOptionalString.INSTANCE.Read(stream),
+            AgentSocket: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Totp: FfiConverterTypeSshTotpRecord.INSTANCE.Read(stream),
+            RemoteFilePath: FfiConverterOptionalString.INSTANCE.Read(stream),
+            RemoteFileAccess: FfiConverterTypeRemoteFileAccessTag.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SshOptionsRecord value) {
+        return 0
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.KeptKeyPath)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.AgentSocket)
+            + FfiConverterTypeSshTotpRecord.INSTANCE.AllocationSize(value.Totp)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.RemoteFilePath)
+            + FfiConverterTypeRemoteFileAccessTag.INSTANCE.AllocationSize(value.RemoteFileAccess);
+    }
+
+    public override void Write(SshOptionsRecord value, BigEndianStream stream) {
+            FfiConverterOptionalString.INSTANCE.Write(value.KeptKeyPath, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.AgentSocket, stream);
+            FfiConverterTypeSshTotpRecord.INSTANCE.Write(value.Totp, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.RemoteFilePath, stream);
+            FfiConverterTypeRemoteFileAccessTag.INSTANCE.Write(value.RemoteFileAccess, stream);
+    }
+}
+
+
+
 internal record SshProfileRecord (
     string Id, 
     string Name, 
@@ -28830,8 +28740,10 @@ internal record SshSettings (
     string Host, 
     ushort? Port, 
     string? Username, 
-    string[] JumpHosts, 
-    SshAuthTag Auth
+    SshJumpHostRecord[] JumpHosts, 
+    SshAuthTag Auth, 
+    bool? Enabled = null, 
+    SshOptionsRecord? Options = null
 ) {
 }
 
@@ -28843,8 +28755,10 @@ class FfiConverterTypeSshSettings: FfiConverterRustBuffer<SshSettings> {
             Host: FfiConverterString.INSTANCE.Read(stream),
             Port: FfiConverterOptionalUInt16.INSTANCE.Read(stream),
             Username: FfiConverterOptionalString.INSTANCE.Read(stream),
-            JumpHosts: FfiConverterSequenceString.INSTANCE.Read(stream),
-            Auth: FfiConverterTypeSshAuthTag.INSTANCE.Read(stream)
+            JumpHosts: FfiConverterSequenceTypeSshJumpHostRecord.INSTANCE.Read(stream),
+            Auth: FfiConverterTypeSshAuthTag.INSTANCE.Read(stream),
+            Enabled: FfiConverterOptionalBoolean.INSTANCE.Read(stream),
+            Options: FfiConverterOptionalTypeSshOptionsRecord.INSTANCE.Read(stream)
         );
     }
 
@@ -28853,16 +28767,58 @@ class FfiConverterTypeSshSettings: FfiConverterRustBuffer<SshSettings> {
             + FfiConverterString.INSTANCE.AllocationSize(value.Host)
             + FfiConverterOptionalUInt16.INSTANCE.AllocationSize(value.Port)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Username)
-            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.JumpHosts)
-            + FfiConverterTypeSshAuthTag.INSTANCE.AllocationSize(value.Auth);
+            + FfiConverterSequenceTypeSshJumpHostRecord.INSTANCE.AllocationSize(value.JumpHosts)
+            + FfiConverterTypeSshAuthTag.INSTANCE.AllocationSize(value.Auth)
+            + FfiConverterOptionalBoolean.INSTANCE.AllocationSize(value.Enabled)
+            + FfiConverterOptionalTypeSshOptionsRecord.INSTANCE.AllocationSize(value.Options);
     }
 
     public override void Write(SshSettings value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.Host, stream);
             FfiConverterOptionalUInt16.INSTANCE.Write(value.Port, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Username, stream);
-            FfiConverterSequenceString.INSTANCE.Write(value.JumpHosts, stream);
+            FfiConverterSequenceTypeSshJumpHostRecord.INSTANCE.Write(value.JumpHosts, stream);
             FfiConverterTypeSshAuthTag.INSTANCE.Write(value.Auth, stream);
+            FfiConverterOptionalBoolean.INSTANCE.Write(value.Enabled, stream);
+            FfiConverterOptionalTypeSshOptionsRecord.INSTANCE.Write(value.Options, stream);
+    }
+}
+
+
+
+internal record SshTotpRecord (
+    SshTotpModeTag Mode, 
+    SshTotpAlgorithmTag Algorithm, 
+    uint Digits, 
+    uint Period
+) {
+}
+
+class FfiConverterTypeSshTotpRecord: FfiConverterRustBuffer<SshTotpRecord> {
+    public static FfiConverterTypeSshTotpRecord INSTANCE = new FfiConverterTypeSshTotpRecord();
+
+    public override SshTotpRecord Read(BigEndianStream stream) {
+        return new SshTotpRecord(
+            Mode: FfiConverterTypeSshTotpModeTag.INSTANCE.Read(stream),
+            Algorithm: FfiConverterTypeSshTotpAlgorithmTag.INSTANCE.Read(stream),
+            Digits: FfiConverterUInt32.INSTANCE.Read(stream),
+            Period: FfiConverterUInt32.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SshTotpRecord value) {
+        return 0
+            + FfiConverterTypeSshTotpModeTag.INSTANCE.AllocationSize(value.Mode)
+            + FfiConverterTypeSshTotpAlgorithmTag.INSTANCE.AllocationSize(value.Algorithm)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Digits)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Period);
+    }
+
+    public override void Write(SshTotpRecord value, BigEndianStream stream) {
+            FfiConverterTypeSshTotpModeTag.INSTANCE.Write(value.Mode, stream);
+            FfiConverterTypeSshTotpAlgorithmTag.INSTANCE.Write(value.Algorithm, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.Digits, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.Period, stream);
     }
 }
 
@@ -29495,7 +29451,8 @@ class FfiConverterTypeTableStructure: FfiConverterRustBuffer<TableStructure> {
 internal record TagRecord (
     string Id, 
     string Name, 
-    string Color
+    string? Color, 
+    bool IsPreset = false
 ) {
 }
 
@@ -29506,7 +29463,8 @@ class FfiConverterTypeTagRecord: FfiConverterRustBuffer<TagRecord> {
         return new TagRecord(
             Id: FfiConverterString.INSTANCE.Read(stream),
             Name: FfiConverterString.INSTANCE.Read(stream),
-            Color: FfiConverterString.INSTANCE.Read(stream)
+            Color: FfiConverterOptionalString.INSTANCE.Read(stream),
+            IsPreset: FfiConverterBoolean.INSTANCE.Read(stream)
         );
     }
 
@@ -29514,13 +29472,15 @@ class FfiConverterTypeTagRecord: FfiConverterRustBuffer<TagRecord> {
         return 0
             + FfiConverterString.INSTANCE.AllocationSize(value.Id)
             + FfiConverterString.INSTANCE.AllocationSize(value.Name)
-            + FfiConverterString.INSTANCE.AllocationSize(value.Color);
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Color)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.IsPreset);
     }
 
     public override void Write(TagRecord value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.Id, stream);
             FfiConverterString.INSTANCE.Write(value.Name, stream);
-            FfiConverterString.INSTANCE.Write(value.Color, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Color, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.IsPreset, stream);
     }
 }
 
@@ -29834,7 +29794,8 @@ class FfiConverterTypeAiActionTag: FfiConverterRustBuffer<AiActionTag> {
 internal enum AiPolicyTag: int {
     Ask,
     Allow,
-    Never
+    Never,
+    AppDefault
 }
 
 class FfiConverterTypeAiPolicyTag: FfiConverterRustBuffer<AiPolicyTag> {
@@ -29846,6 +29807,7 @@ class FfiConverterTypeAiPolicyTag: FfiConverterRustBuffer<AiPolicyTag> {
             case 1: return AiPolicyTag.Ask;
             case 2: return AiPolicyTag.Allow;
             case 3: return AiPolicyTag.Never;
+            case 4: return AiPolicyTag.AppDefault;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAiPolicyTag.Read()", value));
         }
     }
@@ -29859,6 +29821,7 @@ class FfiConverterTypeAiPolicyTag: FfiConverterRustBuffer<AiPolicyTag> {
             case AiPolicyTag.Ask: stream.WriteInt(1); break;
             case AiPolicyTag.Allow: stream.WriteInt(2); break;
             case AiPolicyTag.Never: stream.WriteInt(3); break;
+            case AiPolicyTag.AppDefault: stream.WriteInt(4); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAiPolicyTag.Write()", value));
         }
     }
@@ -34131,6 +34094,74 @@ class FfiConverterTypeLegacyStandingTag: FfiConverterRustBuffer<LegacyStandingTa
 
 
 
+internal record LibraryIconRecord {
+    
+    public record Named (
+        string Id
+    ) : LibraryIconRecord {}
+    
+    public record Symbol (
+        string Name
+    ) : LibraryIconRecord {}
+    
+
+    
+}
+
+class FfiConverterTypeLibraryIconRecord : FfiConverterRustBuffer<LibraryIconRecord>{
+    public static FfiConverterRustBuffer<LibraryIconRecord> INSTANCE = new FfiConverterTypeLibraryIconRecord();
+
+    public override LibraryIconRecord Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new LibraryIconRecord.Named(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new LibraryIconRecord.Symbol(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLibraryIconRecord.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(LibraryIconRecord value) {
+        switch (value) {
+            case LibraryIconRecord.Named variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Id);
+            case LibraryIconRecord.Symbol variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Name);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLibraryIconRecord.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(LibraryIconRecord value, BigEndianStream stream) {
+        switch (value) {
+            case LibraryIconRecord.Named variant_value:
+                stream.WriteInt(1);
+                FfiConverterString.INSTANCE.Write(variant_value.Id, stream);
+                break;
+            case LibraryIconRecord.Symbol variant_value:
+                stream.WriteInt(2);
+                FfiConverterString.INSTANCE.Write(variant_value.Name, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLibraryIconRecord.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal enum LicenseStateTag: int {
     Active,
     Grace,
@@ -35405,6 +35436,42 @@ class FfiConverterTypeReferenceRefusal : FfiConverterRustBuffer<ReferenceRefusal
 
 
 
+internal enum RemoteFileAccessTag: int {
+    ReadOnlyCopy,
+    OnServer
+}
+
+class FfiConverterTypeRemoteFileAccessTag: FfiConverterRustBuffer<RemoteFileAccessTag> {
+    public static FfiConverterTypeRemoteFileAccessTag INSTANCE = new FfiConverterTypeRemoteFileAccessTag();
+
+    public override RemoteFileAccessTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return RemoteFileAccessTag.ReadOnlyCopy;
+            case 2: return RemoteFileAccessTag.OnServer;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeRemoteFileAccessTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(RemoteFileAccessTag value) {
+        return 4;
+    }
+
+    public override void Write(RemoteFileAccessTag value, BigEndianStream stream) {
+        switch (value) {
+            case RemoteFileAccessTag.ReadOnlyCopy: stream.WriteInt(1); break;
+            case RemoteFileAccessTag.OnServer: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeRemoteFileAccessTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal record ReplicationArg {
     
     public record Simple (
@@ -36565,8 +36632,11 @@ class FfiConverterTypeRunOutcome : FfiConverterRustBuffer<RunOutcome>{
 
 
 internal enum SafeModeTag: int {
-    Off,
-    ConfirmWrites,
+    Silent,
+    Alert,
+    AlertFull,
+    SafeMode,
+    SafeModeFull,
     ReadOnly
 }
 
@@ -36576,9 +36646,12 @@ class FfiConverterTypeSafeModeTag: FfiConverterRustBuffer<SafeModeTag> {
     public override SafeModeTag Read(BigEndianStream stream) {
         var value = stream.ReadInt();
         switch (value) {
-            case 1: return SafeModeTag.Off;
-            case 2: return SafeModeTag.ConfirmWrites;
-            case 3: return SafeModeTag.ReadOnly;
+            case 1: return SafeModeTag.Silent;
+            case 2: return SafeModeTag.Alert;
+            case 3: return SafeModeTag.AlertFull;
+            case 4: return SafeModeTag.SafeMode;
+            case 5: return SafeModeTag.SafeModeFull;
+            case 6: return SafeModeTag.ReadOnly;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSafeModeTag.Read()", value));
         }
     }
@@ -36589,9 +36662,12 @@ class FfiConverterTypeSafeModeTag: FfiConverterRustBuffer<SafeModeTag> {
 
     public override void Write(SafeModeTag value, BigEndianStream stream) {
         switch (value) {
-            case SafeModeTag.Off: stream.WriteInt(1); break;
-            case SafeModeTag.ConfirmWrites: stream.WriteInt(2); break;
-            case SafeModeTag.ReadOnly: stream.WriteInt(3); break;
+            case SafeModeTag.Silent: stream.WriteInt(1); break;
+            case SafeModeTag.Alert: stream.WriteInt(2); break;
+            case SafeModeTag.AlertFull: stream.WriteInt(3); break;
+            case SafeModeTag.SafeMode: stream.WriteInt(4); break;
+            case SafeModeTag.SafeModeFull: stream.WriteInt(5); break;
+            case SafeModeTag.ReadOnly: stream.WriteInt(6); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSafeModeTag.Write()", value));
         }
     }
@@ -37778,6 +37854,9 @@ internal record SshAuthTag {
     public record KeyboardInteractive: SshAuthTag {}
     
     
+    public record None: SshAuthTag {}
+    
+    
 
     
 }
@@ -37802,6 +37881,9 @@ class FfiConverterTypeSshAuthTag : FfiConverterRustBuffer<SshAuthTag>{
             case 4:
                 return new SshAuthTag.KeyboardInteractive(
                 );
+            case 5:
+                return new SshAuthTag.None(
+                );
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSshAuthTag.Read()", value));
         }
@@ -37818,6 +37900,8 @@ class FfiConverterTypeSshAuthTag : FfiConverterRustBuffer<SshAuthTag>{
             case SshAuthTag.Password variant_value:
                 return 4;
             case SshAuthTag.KeyboardInteractive variant_value:
+                return 4;
+            case SshAuthTag.None variant_value:
                 return 4;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSshAuthTag.AllocationSize()", value));
@@ -37840,8 +37924,125 @@ class FfiConverterTypeSshAuthTag : FfiConverterRustBuffer<SshAuthTag>{
             case SshAuthTag.KeyboardInteractive variant_value:
                 stream.WriteInt(4);
                 break;
+            case SshAuthTag.None variant_value:
+                stream.WriteInt(5);
+                break;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSshAuthTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal enum SshJumpAuthTag: int {
+    Agent,
+    PrivateKey
+}
+
+class FfiConverterTypeSshJumpAuthTag: FfiConverterRustBuffer<SshJumpAuthTag> {
+    public static FfiConverterTypeSshJumpAuthTag INSTANCE = new FfiConverterTypeSshJumpAuthTag();
+
+    public override SshJumpAuthTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return SshJumpAuthTag.Agent;
+            case 2: return SshJumpAuthTag.PrivateKey;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSshJumpAuthTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(SshJumpAuthTag value) {
+        return 4;
+    }
+
+    public override void Write(SshJumpAuthTag value, BigEndianStream stream) {
+        switch (value) {
+            case SshJumpAuthTag.Agent: stream.WriteInt(1); break;
+            case SshJumpAuthTag.PrivateKey: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSshJumpAuthTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal enum SshTotpAlgorithmTag: int {
+    Sha1,
+    Sha256,
+    Sha512
+}
+
+class FfiConverterTypeSshTotpAlgorithmTag: FfiConverterRustBuffer<SshTotpAlgorithmTag> {
+    public static FfiConverterTypeSshTotpAlgorithmTag INSTANCE = new FfiConverterTypeSshTotpAlgorithmTag();
+
+    public override SshTotpAlgorithmTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return SshTotpAlgorithmTag.Sha1;
+            case 2: return SshTotpAlgorithmTag.Sha256;
+            case 3: return SshTotpAlgorithmTag.Sha512;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSshTotpAlgorithmTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(SshTotpAlgorithmTag value) {
+        return 4;
+    }
+
+    public override void Write(SshTotpAlgorithmTag value, BigEndianStream stream) {
+        switch (value) {
+            case SshTotpAlgorithmTag.Sha1: stream.WriteInt(1); break;
+            case SshTotpAlgorithmTag.Sha256: stream.WriteInt(2); break;
+            case SshTotpAlgorithmTag.Sha512: stream.WriteInt(3); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSshTotpAlgorithmTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal enum SshTotpModeTag: int {
+    Off,
+    AutoGenerate,
+    PromptAtConnect
+}
+
+class FfiConverterTypeSshTotpModeTag: FfiConverterRustBuffer<SshTotpModeTag> {
+    public static FfiConverterTypeSshTotpModeTag INSTANCE = new FfiConverterTypeSshTotpModeTag();
+
+    public override SshTotpModeTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return SshTotpModeTag.Off;
+            case 2: return SshTotpModeTag.AutoGenerate;
+            case 3: return SshTotpModeTag.PromptAtConnect;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSshTotpModeTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(SshTotpModeTag value) {
+        return 4;
+    }
+
+    public override void Write(SshTotpModeTag value, BigEndianStream stream) {
+        switch (value) {
+            case SshTotpModeTag.Off: stream.WriteInt(1); break;
+            case SshTotpModeTag.AutoGenerate: stream.WriteInt(2); break;
+            case SshTotpModeTag.PromptAtConnect: stream.WriteInt(3); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSshTotpModeTag.Write()", value));
         }
     }
 }
@@ -38361,6 +38562,7 @@ internal enum TlsModeTag: int {
     Disable,
     Prefer,
     Require,
+    VerifyCa,
     VerifyFull,
     Strict
 }
@@ -38374,8 +38576,9 @@ class FfiConverterTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag> {
             case 1: return TlsModeTag.Disable;
             case 2: return TlsModeTag.Prefer;
             case 3: return TlsModeTag.Require;
-            case 4: return TlsModeTag.VerifyFull;
-            case 5: return TlsModeTag.Strict;
+            case 4: return TlsModeTag.VerifyCa;
+            case 5: return TlsModeTag.VerifyFull;
+            case 6: return TlsModeTag.Strict;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTlsModeTag.Read()", value));
         }
     }
@@ -38389,8 +38592,9 @@ class FfiConverterTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag> {
             case TlsModeTag.Disable: stream.WriteInt(1); break;
             case TlsModeTag.Prefer: stream.WriteInt(2); break;
             case TlsModeTag.Require: stream.WriteInt(3); break;
-            case TlsModeTag.VerifyFull: stream.WriteInt(4); break;
-            case TlsModeTag.Strict: stream.WriteInt(5); break;
+            case TlsModeTag.VerifyCa: stream.WriteInt(4); break;
+            case TlsModeTag.VerifyFull: stream.WriteInt(5); break;
+            case TlsModeTag.Strict: stream.WriteInt(6); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTlsModeTag.Write()", value));
         }
     }
@@ -41731,6 +41935,37 @@ class FfiConverterOptionalTypeSocksProxyRecord: FfiConverterRustBuffer<SocksProx
 
 
 
+class FfiConverterOptionalTypeSshOptionsRecord: FfiConverterRustBuffer<SshOptionsRecord?> {
+    public static FfiConverterOptionalTypeSshOptionsRecord INSTANCE = new FfiConverterOptionalTypeSshOptionsRecord();
+
+    public override SshOptionsRecord? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeSshOptionsRecord.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(SshOptionsRecord? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeSshOptionsRecord.INSTANCE.AllocationSize((SshOptionsRecord)value);
+        }
+    }
+
+    public override void Write(SshOptionsRecord? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeSshOptionsRecord.INSTANCE.Write((SshOptionsRecord)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeSshRouteRecord: FfiConverterRustBuffer<SshRouteRecord?> {
     public static FfiConverterOptionalTypeSshRouteRecord INSTANCE = new FfiConverterOptionalTypeSshRouteRecord();
 
@@ -42196,6 +42431,37 @@ class FfiConverterOptionalTypeFilterValueArg: FfiConverterRustBuffer<FilterValue
 
 
 
+class FfiConverterOptionalTypeLibraryIconRecord: FfiConverterRustBuffer<LibraryIconRecord?> {
+    public static FfiConverterOptionalTypeLibraryIconRecord INSTANCE = new FfiConverterOptionalTypeLibraryIconRecord();
+
+    public override LibraryIconRecord? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeLibraryIconRecord.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(LibraryIconRecord? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeLibraryIconRecord.INSTANCE.AllocationSize((LibraryIconRecord)value);
+        }
+    }
+
+    public override void Write(LibraryIconRecord? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeLibraryIconRecord.INSTANCE.Write((LibraryIconRecord)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeLocalPasswordSourceRecord: FfiConverterRustBuffer<LocalPasswordSourceRecord?> {
     public static FfiConverterOptionalTypeLocalPasswordSourceRecord INSTANCE = new FfiConverterOptionalTypeLocalPasswordSourceRecord();
 
@@ -42375,6 +42641,37 @@ class FfiConverterOptionalTypeShareRefusal: FfiConverterRustBuffer<ShareRefusal?
         } else {
             stream.WriteByte(1);
             FfiConverterTypeShareRefusal.INSTANCE.Write((ShareRefusal)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeSshJumpAuthTag: FfiConverterRustBuffer<SshJumpAuthTag?> {
+    public static FfiConverterOptionalTypeSshJumpAuthTag INSTANCE = new FfiConverterOptionalTypeSshJumpAuthTag();
+
+    public override SshJumpAuthTag? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeSshJumpAuthTag.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(SshJumpAuthTag? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeSshJumpAuthTag.INSTANCE.AllocationSize((SshJumpAuthTag)value);
+        }
+    }
+
+    public override void Write(SshJumpAuthTag? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeSshJumpAuthTag.INSTANCE.Write((SshJumpAuthTag)value, stream);
         }
     }
 }
@@ -44717,6 +45014,52 @@ class FfiConverterSequenceTypeLegacyTombstoneArg: FfiConverterRustBuffer<LegacyT
 
 
 
+class FfiConverterSequenceTypeLibraryConnectionRecord: FfiConverterRustBuffer<LibraryConnectionRecord[]> {
+    public static FfiConverterSequenceTypeLibraryConnectionRecord INSTANCE = new FfiConverterSequenceTypeLibraryConnectionRecord();
+
+    public override LibraryConnectionRecord[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new LibraryConnectionRecord[length];
+        var readFn = FfiConverterTypeLibraryConnectionRecord.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(LibraryConnectionRecord[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeLibraryConnectionRecord.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(LibraryConnectionRecord[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeLibraryConnectionRecord.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeLicenseInfo: FfiConverterRustBuffer<LicenseInfo[]> {
     public static FfiConverterSequenceTypeLicenseInfo INSTANCE = new FfiConverterSequenceTypeLicenseInfo();
 
@@ -45078,52 +45421,6 @@ class FfiConverterSequenceTypePlannedStatement: FfiConverterRustBuffer<PlannedSt
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypePlannedStatement.INSTANCE.Write;
-        value.ForEach(item => writerFn(item, stream));
-    }
-}
-
-
-
-
-class FfiConverterSequenceTypeProjectRecord: FfiConverterRustBuffer<ProjectRecord[]> {
-    public static FfiConverterSequenceTypeProjectRecord INSTANCE = new FfiConverterSequenceTypeProjectRecord();
-
-    public override ProjectRecord[]  Read(BigEndianStream stream) {
-        var length = stream.ReadInt();
-        if (length == 0) {
-            return [];
-        }
-
-        var result = new ProjectRecord[length];
-        var readFn = FfiConverterTypeProjectRecord.INSTANCE.Read;
-        for (int i = 0; i < length; i++) {
-            result[i] = readFn(stream);
-        }
-        return result;
-    }
-
-    public override int AllocationSize(ProjectRecord[]  value) {
-        var sizeForLength = 4;
-
-        // details/1-empty-list-as-default-method-parameter.md
-        if (value == null) {
-            return sizeForLength;
-        }
-
-        var allocationSizeFn = FfiConverterTypeProjectRecord.INSTANCE.AllocationSize;
-        var sizeForItems = value.Sum(item => allocationSizeFn(item));
-        return sizeForLength + sizeForItems;
-    }
-
-    public override void Write(ProjectRecord[] value, BigEndianStream stream) {
-        // details/1-empty-list-as-default-method-parameter.md
-        if (value == null) {
-            stream.WriteInt(0);
-            return;
-        }
-
-        stream.WriteInt(value.Length);
-        var writerFn = FfiConverterTypeProjectRecord.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }
@@ -45768,6 +46065,52 @@ class FfiConverterSequenceTypeShareTeamInfo: FfiConverterRustBuffer<ShareTeamInf
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeShareTeamInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeSshJumpHostRecord: FfiConverterRustBuffer<SshJumpHostRecord[]> {
+    public static FfiConverterSequenceTypeSshJumpHostRecord INSTANCE = new FfiConverterSequenceTypeSshJumpHostRecord();
+
+    public override SshJumpHostRecord[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new SshJumpHostRecord[length];
+        var readFn = FfiConverterTypeSshJumpHostRecord.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(SshJumpHostRecord[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeSshJumpHostRecord.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(SshJumpHostRecord[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeSshJumpHostRecord.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }
@@ -47437,6 +47780,48 @@ internal static class CoreMethods {
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_func_check_jump_hosts(FfiConverterString.INSTANCE.Lower(@list), ref _status)
 );
+    }
+
+
+    public static string JumpHostsText(SshJumpHostRecord[] @hops) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_jump_hosts_text(FfiConverterSequenceTypeSshJumpHostRecord.INSTANCE.Lower(@hops), ref _status)
+));
+    }
+
+
+    /// <exception cref="CoreException"></exception>
+    public static SshJumpHostRecord[] ParseJumpHosts(string @list) {
+        return FfiConverterSequenceTypeSshJumpHostRecord.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_parse_jump_hosts(FfiConverterString.INSTANCE.Lower(@list), ref _status)
+));
+    }
+
+
+    public static SafeModeTag SafeModeEnforced(SafeModeTag @level) {
+        return FfiConverterTypeSafeModeTag.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_safe_mode_enforced(FfiConverterTypeSafeModeTag.INSTANCE.Lower(@level), ref _status)
+));
+    }
+
+
+    public static LibraryIconRecord? LibraryIconForSymbol(string @symbol) {
+        return FfiConverterOptionalTypeLibraryIconRecord.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_library_icon_for_symbol(FfiConverterString.INSTANCE.Lower(@symbol), ref _status)
+));
+    }
+
+
+    /// <exception cref="CoreException"></exception>
+    public static string? LibraryIconSymbol(LibraryIconRecord @icon) {
+        return FfiConverterOptionalString.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_library_icon_symbol(FfiConverterTypeLibraryIconRecord.INSTANCE.Lower(@icon), ref _status)
+));
     }
 
 

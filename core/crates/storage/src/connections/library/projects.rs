@@ -6,7 +6,7 @@ use super::place_of;
 use crate::connections::placement::{placed, unique};
 use crate::connections::{ConnectionStore, ConnectionsDocument, RemoveOutcome};
 use crate::error::StorageError;
-use crate::{ConnectionColor, ConnectionGroupName, ConnectionProject, ConnectionProjectName, GroupIcon};
+use crate::{ConnectionColor, ConnectionGroupName, ConnectionProject, ConnectionProjectName, LibraryIcon};
 
 impl ConnectionStore {
     pub fn create_project_blocking(&self, project: ConnectionProject) -> Result<ConnectionProject, StorageError> {
@@ -44,7 +44,7 @@ impl ConnectionStore {
         })
     }
 
-    pub fn set_project_icon_blocking(&self, id: Uuid, icon: Option<GroupIcon>) -> Result<(), StorageError> {
+    pub fn set_project_icon_blocking(&self, id: Uuid, icon: Option<LibraryIcon>) -> Result<(), StorageError> {
         self.edit(|document| {
             let index = document.project_index(id)?;
             document.projects[index].icon = icon;

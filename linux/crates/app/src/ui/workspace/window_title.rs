@@ -35,7 +35,7 @@ pub(crate) fn resolve_window_title(
         ),
     };
     let subtitle = match safe_mode {
-        SafeModeLevel::Off => subtitle,
+        SafeModeLevel::Silent => subtitle,
         level => crate::i18n::gettext_f(
             "{name} · {level}",
             &[("name", &subtitle), ("level", &crate::ui::safe_mode::label(level))],
@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn window_title_names_tab_and_connection_without_em_dash() {
-        let title = resolve_window_title(Some(&tab("orders")), "Shop", "PostgreSQL", SafeModeLevel::Off);
+        let title = resolve_window_title(Some(&tab("orders")), "Shop", "PostgreSQL", SafeModeLevel::Silent);
 
         assert_eq!(title.window, "orders (Shop) - TablePro");
         assert_eq!(title.heading, "orders");
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn with_no_tab_the_connection_heads_the_window() {
-        let title = resolve_window_title(None, "Shop", "PostgreSQL", SafeModeLevel::Off);
+        let title = resolve_window_title(None, "Shop", "PostgreSQL", SafeModeLevel::Silent);
 
         assert_eq!(title.window, "Shop - TablePro");
         assert_eq!(title.heading, "Shop");
@@ -90,7 +90,7 @@ mod tests {
             "Shop · Read-Only"
         );
         assert_eq!(
-            resolve_window_title(Some(&tab("orders")), "Shop", "PostgreSQL", SafeModeLevel::ConfirmWrites).subtitle,
+            resolve_window_title(Some(&tab("orders")), "Shop", "PostgreSQL", SafeModeLevel::Alert).subtitle,
             "Shop · Confirm Writes"
         );
     }

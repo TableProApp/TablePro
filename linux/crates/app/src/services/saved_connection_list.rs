@@ -448,7 +448,7 @@ mod tests {
             database: "app".to_owned(),
             username: "postgres".to_owned(),
             tls: tablepro_core::TlsConfig::verify_full(),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
@@ -574,8 +574,8 @@ mod tests {
 
         assert_eq!(
             list.get(gamma.id).map(|saved| saved.order),
-            Some(1),
-            "the store kept Gamma's number"
+            Some(2),
+            "a delete renumbered Gamma"
         );
         assert_eq!(
             objects(&list),
@@ -756,7 +756,7 @@ mod tests {
         assert_eq!(objects(&list), before, "an unchanged tag list rebuilt the rows");
 
         let recoloured = ConnectionTag {
-            color: tablepro_storage::ConnectionColor::Green,
+            color: Some(tablepro_storage::ConnectionColor::Green),
             ..zeta
         };
         list.apply(tagged(vec![recoloured, acme]));

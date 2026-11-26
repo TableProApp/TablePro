@@ -31,7 +31,7 @@ private func save(_ name: String, in library: ConnectionLibrary) async throws ->
         integratedAuth: false,
         tls: TlsSettings(mode: .disable, caFile: nil, clientCertificate: nil, clientKey: nil, serverName: nil),
         ssh: nil,
-        safeMode: .off,
+        safeMode: .silent,
         queryTimeoutSecs: nil,
         color: nil,
         groupId: nil,

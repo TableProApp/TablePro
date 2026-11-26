@@ -79,7 +79,7 @@ fn record(name: &str, database: &str) -> ConnectionRecord {
             server_name: None,
         },
         ssh: None,
-        safe_mode: SafeModeTag::Off,
+        safe_mode: SafeModeTag::Silent,
         query_timeout_secs: None,
         color: None,
         group_id: None,
@@ -88,6 +88,8 @@ fn record(name: &str, database: &str) -> ConnectionRecord {
         ai_policy: None,
         external_access: None,
         project_id: None,
+        icon: None,
+        order: 0,
     }
 }
 

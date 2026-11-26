@@ -729,11 +729,10 @@ impl WorkspaceShell {
         let Some(level) = level else {
             return;
         };
-        button.set_icon_name(match level {
-            tablepro_core::SafeModeLevel::Off => crate::ui::icons::CHANGES_ALLOW,
-            tablepro_core::SafeModeLevel::ConfirmWrites | tablepro_core::SafeModeLevel::ReadOnly => {
-                crate::ui::icons::CHANGES_PREVENT
-            }
+        button.set_icon_name(if level == tablepro_core::SafeModeLevel::Silent {
+            crate::ui::icons::CHANGES_ALLOW
+        } else {
+            crate::ui::icons::CHANGES_PREVENT
         });
         let said = gettext_f("Safe Mode: {level}", &[("level", &crate::ui::safe_mode::label(level))]);
         describe_icon_button(&button, &said, None);
@@ -1263,7 +1262,7 @@ fn tab_menu() -> gio::Menu {
 
 fn safe_mode_levels() -> gio::Menu {
     let levels = gio::Menu::new();
-    for level in tablepro_core::SafeModeLevel::ALL {
+    for level in tablepro_core::SafeModeLevel::ENFORCED {
         let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::menu_label(level)), None);
         item.set_action_and_target_value(
             Some("win.safe-mode"),

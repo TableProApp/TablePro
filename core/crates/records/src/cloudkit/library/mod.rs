@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use tablepro_storage::{ConnectionGroup, ConnectionList, SavedConnection};
+use tablepro_storage::{ConnectionGroup, ConnectionList, LibraryIcon, SavedConnection};
 use uuid::Uuid;
 
 use crate::cycles::cyclic;
@@ -21,6 +21,16 @@ pub use merge::merged;
 pub use store::{apply_pull, edits_of};
 
 use values::{color, color_value, favorite, favorite_value, group_name, icon, icon_value, record_id};
+
+// The icon a macOS SF Symbol name stands for: one of the named icons, or the symbol itself when it is well formed.
+pub fn icon_for_symbol(symbol: &str) -> Option<LibraryIcon> {
+    icon(Some(symbol))
+}
+
+// The SF Symbol a Mac draws for the icon.
+pub fn symbol_for_icon(icon: &LibraryIcon) -> Option<String> {
+    icon_value(Some(icon))
+}
 
 // A `ConnectionGroup` record's fields. `None` is a field the record lacks.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

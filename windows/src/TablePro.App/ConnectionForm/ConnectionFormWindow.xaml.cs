@@ -465,6 +465,12 @@ public sealed partial class ConnectionFormWindow : Window
     {
         _fillingTls = true;
         TlsModeBox.Items.Clear();
+        // A stored mode the engine does not offer shows as the one it rounds up to, never the weakest in the list.
+        if (!engine.SupportedTlsModes.Contains(selected))
+        {
+            selected = TlsModes.AtLeastIn(selected, engine.SupportedTlsModes);
+        }
+
         foreach (var mode in engine.SupportedTlsModes)
         {
             var item = new ComboBoxItem { Content = Strings.Get("TlsMode_" + mode), Tag = mode };
@@ -509,7 +515,7 @@ public sealed partial class ConnectionFormWindow : Window
 
     private void UpdateTls()
     {
-        var verifies = SelectedTlsMode is TlsMode.VerifyFull or TlsMode.Strict;
+        var verifies = SelectedTlsMode is TlsMode.VerifyCa or TlsMode.VerifyFull or TlsMode.Strict;
         CaFileCard.Visibility = verifies ? Visibility.Visible : Visibility.Collapsed;
         var serverName = verifies && _engine?.ShowsServerName(SshSwitch.IsOn) == true;
         ServerNameCard.Visibility = serverName ? Visibility.Visible : Visibility.Collapsed;

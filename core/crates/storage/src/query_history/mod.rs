@@ -31,7 +31,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::journal::{ChangeJournal, JournalSlot, RecordKind, Signals};
+use crate::journal::{ChangeJournal, JournalEntry, JournalSlot, RecordKind, RecordRef, Signals};
 use crate::paths::StoragePaths;
 use crate::store_identity::StoreIdentity;
 use crate::unix_time::{from_unix, to_unix};
@@ -193,9 +193,12 @@ impl QueryHistory {
         crate::table_folders::TableFolders::new(self.pool.clone(), self.path.clone(), self.signals.clone())
     }
 
-    fn history_changed(&self, changed: bool) {
-        if changed {
-            self.journal.notify(&[RecordKind::HistoryEntry]);
+    fn history_changed(&self, written: impl IntoIterator<Item = Uuid>, deleted: impl IntoIterator<Item = Uuid>) {
+        let entry = JournalEntry::new(RecordKind::HistoryEntry)
+            .wrote(written.into_iter().map(RecordRef::Id))
+            .deleted(deleted.into_iter().map(RecordRef::Id));
+        if !entry.is_empty() {
+            self.journal.notify(&[entry]);
         }
     }
 
@@ -241,7 +244,7 @@ impl QueryHistory {
         .await?;
         match inserted {
             Some(id) => {
-                self.history_changed(true);
+                self.history_changed([entry.record_id], []);
                 Ok(id)
             }
             None => Ok(sqlx::query_scalar("SELECT id FROM history WHERE record_id = ?")
@@ -351,13 +354,13 @@ impl QueryHistory {
     }
 
     pub async fn set_pinned(&self, id: i64, pinned: bool) -> Result<(), StorageError> {
-        let changed = sqlx::query("UPDATE history SET pinned = ? WHERE id = ?")
-            .bind(if pinned { 1_i64 } else { 0 })
-            .bind(id)
-            .execute(&self.pool)
-            .await?
-            .rows_affected();
-        self.history_changed(changed > 0);
+        let changed: Option<String> =
+            sqlx::query_scalar("UPDATE history SET pinned = ? WHERE id = ? RETURNING record_id")
+                .bind(if pinned { 1_i64 } else { 0 })
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
+        self.history_changed(record_ids(changed), []);
         Ok(())
     }
 
@@ -395,7 +398,7 @@ impl QueryHistory {
             }
         }
         transaction.commit().await?;
-        self.history_changed(!deleted.is_empty());
+        self.history_changed([], deleted.iter().map(|entry| entry.record_id));
         deleted.sort_by_key(|entry| entry.id);
         Ok(deleted)
     }
@@ -430,7 +433,7 @@ impl QueryHistory {
             .await?;
         }
         transaction.commit().await?;
-        self.history_changed(!entries.is_empty());
+        self.history_changed(entries.iter().map(|entry| entry.record_id), []);
         Ok(())
     }
 
@@ -446,10 +449,10 @@ impl QueryHistory {
             }],
         )
         .await?;
-        let affected = sqlx::query("DELETE FROM history")
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
+        let removed: Vec<String> = sqlx::query_scalar("DELETE FROM history RETURNING record_id")
+            .fetch_all(&mut *transaction)
+            .await?;
+        let affected = removed.len() as u64;
         // The delete triggers leave the queries' words in the index until it is optimized.
         if affected > 0 {
             sqlx::query("INSERT INTO history_search(history_search) VALUES('optimize')")
@@ -457,7 +460,7 @@ impl QueryHistory {
                 .await?;
         }
         transaction.commit().await?;
-        self.history_changed(affected > 0);
+        self.history_changed([], record_ids(removed));
         Ok(affected as usize)
     }
 
@@ -477,24 +480,28 @@ impl QueryHistory {
 
     pub(crate) async fn prune_with_cap(&self, retention_days: u32, cap: i64) -> Result<PruneReport, StorageError> {
         let mut report = PruneReport::default();
+        let mut removed: Vec<String> = Vec::new();
 
         if let Some(cutoff) = retention::cutoff(retention_days, SystemTime::now()) {
-            report.expired = sqlx::query("DELETE FROM history WHERE pinned = 0 AND executed_at < ?")
-                .bind(to_unix(cutoff))
-                .execute(&self.pool)
-                .await?
-                .rows_affected();
+            let expired: Vec<String> =
+                sqlx::query_scalar("DELETE FROM history WHERE pinned = 0 AND executed_at < ? RETURNING record_id")
+                    .bind(to_unix(cutoff))
+                    .fetch_all(&self.pool)
+                    .await?;
+            report.expired = expired.len() as u64;
+            removed.extend(expired);
         }
 
-        report.over_cap = sqlx::query(
+        let over_cap: Vec<String> = sqlx::query_scalar(
             "DELETE FROM history WHERE pinned = 0 AND id NOT IN (
                  SELECT id FROM history WHERE pinned = 0 ORDER BY executed_at DESC, id DESC LIMIT ?
-             )",
+             ) RETURNING record_id",
         )
         .bind(cap)
-        .execute(&self.pool)
-        .await?
-        .rows_affected();
+        .fetch_all(&self.pool)
+        .await?;
+        report.over_cap = over_cap.len() as u64;
+        removed.extend(over_cap);
 
         // The delete triggers queue tombstones in the FTS index; without
         // this the index keeps growing even as the table shrinks.
@@ -508,7 +515,7 @@ impl QueryHistory {
         let transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         trim_upgrade_copies(&self.path, &[]).await?;
         transaction.commit().await?;
-        self.history_changed(report.removed_anything());
+        self.history_changed([], record_ids(removed));
         Ok(report)
     }
 
@@ -535,11 +542,11 @@ impl QueryHistory {
             }],
         )
         .await?;
-        let removed = sqlx::query("DELETE FROM history WHERE connection_id = ?")
+        let gone: Vec<String> = sqlx::query_scalar("DELETE FROM history WHERE connection_id = ? RETURNING record_id")
             .bind(connection.to_string())
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
+            .fetch_all(&mut *transaction)
+            .await?;
+        let removed = gone.len() as u64;
         // As after a prune: the delete triggers leave tombstones in the
         // index until it is optimized.
         if removed > 0 {
@@ -548,7 +555,7 @@ impl QueryHistory {
                 .await?;
         }
         transaction.commit().await?;
-        self.history_changed(removed > 0);
+        self.history_changed([], record_ids(gone));
         Ok(removed)
     }
 
@@ -650,6 +657,14 @@ pub(crate) async fn trim_upgrade_copies(path: &Path, first: &[CopyDelete]) -> Re
 }
 
 // SQLITE_BUSY and SQLITE_LOCKED, with their extended codes.
+// After the commit, so an id that does not read is left out of the journal rather than failing a write that landed.
+fn record_ids(texts: impl IntoIterator<Item = String>) -> Vec<Uuid> {
+    texts
+        .into_iter()
+        .filter_map(|text| Uuid::parse_str(&text).ok())
+        .collect()
+}
+
 fn is_busy(error: &StorageError) -> bool {
     let StorageError::Database(error) = error else {
         return false;

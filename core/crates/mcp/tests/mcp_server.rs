@@ -127,7 +127,7 @@ fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConn
         database: file.display().to_string(),
         username: String::new(),
         tls: TlsConfig::disabled(),
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
         external_access: access,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
@@ -178,7 +178,7 @@ async fn open_session(dir: &Path, file: &Path, id: Uuid, read_only: bool, create
         workspace_settings: WorkspaceSettings::workspace(read_only),
         safe_mode: match read_only {
             true => SafeModeLevel::ReadOnly,
-            false => SafeModeLevel::Off,
+            false => SafeModeLevel::Silent,
         },
     };
     let pending = connector

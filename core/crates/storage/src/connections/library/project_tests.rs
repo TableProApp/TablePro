@@ -5,7 +5,7 @@ use uuid::Uuid;
 use super::super::{ConnectionList, ConnectionsDocument, ImportedConnection, RemoveOutcome, SavedConnection};
 use super::tests::{Library, connection, encoded, group_name};
 use crate::error::StorageError;
-use crate::{ConnectionColor, ConnectionGroup, ConnectionIcon, ConnectionProject, ConnectionProjectName, GroupIcon};
+use crate::{ConnectionColor, ConnectionGroup, ConnectionIcon, ConnectionProject, ConnectionProjectName, LibraryIcon};
 
 fn project_name(name: &str) -> ConnectionProjectName {
     ConnectionProjectName::new(name).expect("a project name")
@@ -288,14 +288,14 @@ fn a_project_is_renamed_recoloured_and_given_an_icon() {
         .set_project_color_blocking(acme.id, Some(ConnectionColor::Red))
         .expect("the colour");
     store
-        .set_project_icon_blocking(acme.id, Some(GroupIcon::Named(ConnectionIcon::Star)))
+        .set_project_icon_blocking(acme.id, Some(LibraryIcon::Named(ConnectionIcon::Star)))
         .expect("the icon");
 
     let list = library.list();
     let stored = list.project(acme.id).expect("the project");
     assert_eq!(stored.name.as_str(), "ACME");
     assert_eq!(stored.color, Some(ConnectionColor::Red));
-    assert_eq!(stored.icon, Some(GroupIcon::Named(ConnectionIcon::Star)));
+    assert_eq!(stored.icon, Some(LibraryIcon::Named(ConnectionIcon::Star)));
     assert!(matches!(
         store.rename_project_blocking(globex.id, project_name("acme")),
         Err(StorageError::ProjectNameTaken { name }) if name == "acme"

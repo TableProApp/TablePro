@@ -30,6 +30,7 @@ mod import;
 mod key_read;
 mod keymap;
 mod library;
+mod library_contents;
 mod library_details;
 mod masking;
 mod mcp;
@@ -108,8 +109,12 @@ pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use keymap::{KeymapBindingInfo, KeymapPlatformTag, KeymapPresetInfo, keymap_preset, keymap_presets};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
-    LibrarySnapshot, ProjectRecord, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
-    check_jump_hosts,
+    LibraryIconRecord, LibrarySnapshot, ProjectRecord, RemoteFileAccessTag, SafeModeTag, SshAuthTag, SshJumpAuthTag,
+    SshJumpHostRecord, SshOptionsRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TagRecord,
+    TlsModeTag, TlsSettings, check_jump_hosts, jump_hosts_text, parse_jump_hosts,
+};
+pub use library_contents::{
+    LibraryConnectionRecord, LibraryContents, LibraryWriteRecord, library_icon_for_symbol, library_icon_symbol,
 };
 pub use library_details::{
     CloudSqlAuthTag, CloudSqlProxyRecord, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord,

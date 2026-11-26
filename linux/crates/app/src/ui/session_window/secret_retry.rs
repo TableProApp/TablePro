@@ -47,7 +47,10 @@ pub(super) fn refused_secret(error: &ConnectError, saved: &SavedConnection) -> O
             SavedSshAuth::PrivateKey {
                 has_passphrase: true, ..
             } => Some(SecretKind::SshPassphrase),
-            SavedSshAuth::PrivateKey { .. } | SavedSshAuth::Agent | SavedSshAuth::KeyboardInteractive => None,
+            SavedSshAuth::PrivateKey { .. }
+            | SavedSshAuth::Agent
+            | SavedSshAuth::KeyboardInteractive
+            | SavedSshAuth::None => None,
         },
         _ => None,
     }
@@ -88,7 +91,7 @@ mod tests {
             database: "shop".to_owned(),
             username: "app".to_owned(),
             tls: TlsConfig::verify_full(),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
@@ -99,6 +102,12 @@ mod tests {
                 username: Some("deploy".to_owned()),
                 jump_hosts: Vec::new(),
                 auth,
+                enabled: true,
+                kept_key_path: None,
+                agent_socket: None,
+                totp: Default::default(),
+                remote_file: Default::default(),
+                unknown: Default::default(),
             }),
             last_opened_at: None,
             color: None,

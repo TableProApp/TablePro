@@ -30,7 +30,7 @@ use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::journal::{RecordKind, Signals};
+use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::stored_id::{optional_uuid_column, uuid_column};
 use crate::unix_time::{from_unix_millis, to_unix_millis};
 
@@ -78,8 +78,8 @@ impl SavedQueries {
         self.signals.subscribe()
     }
 
-    fn changed(&self) {
-        self.signals.changed(&[RecordKind::SavedQuery]);
+    fn wrote(&self, written: impl IntoIterator<Item = Uuid>, deleted: impl IntoIterator<Item = Uuid>) {
+        self.signals.changed(&[queries(written, deleted)]);
     }
 
     pub async fn save(&self, query: NewSavedQuery) -> Result<SaveOutcome, StorageError> {
@@ -94,6 +94,7 @@ impl SavedQueries {
             .bind(name)
             .fetch_optional(&mut *transaction)
             .await?;
+        let mut written = Vec::new();
         let outcome = match held {
             Some(row) => {
                 sqlx::query("UPDATE saved_queries SET query = ?, connection_name = ?, updated_at = ? WHERE id = ?")
@@ -108,13 +109,15 @@ impl SavedQueries {
                     replaced: true,
                 }
             }
-            None => SaveOutcome {
-                id: insert(&mut transaction, &query, name, owner.as_deref(), now).await?,
-                replaced: false,
-            },
+            None => {
+                let (id, moved) = insert(&mut transaction, &query, name, owner.as_deref(), now).await?;
+                written = moved;
+                SaveOutcome { id, replaced: false }
+            }
         };
+        written.push(outcome.id);
         transaction.commit().await?;
-        self.changed();
+        self.wrote(written, []);
         Ok(outcome)
     }
 
@@ -131,7 +134,7 @@ impl SavedQueries {
         if taken > 0 {
             return Ok(None);
         }
-        let id = insert(
+        let (id, mut written) = insert(
             &mut transaction,
             &query,
             name,
@@ -139,8 +142,9 @@ impl SavedQueries {
             to_unix_millis(SystemTime::now()),
         )
         .await?;
+        written.push(id);
         transaction.commit().await?;
-        self.changed();
+        self.wrote(written, []);
         Ok(Some(id))
     }
 
@@ -255,7 +259,7 @@ impl SavedQueries {
                 _ => StorageError::Database(error),
             })?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id], []);
         Ok(())
     }
 
@@ -284,7 +288,7 @@ impl SavedQueries {
             .execute(&mut *transaction)
             .await?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id], []);
         Ok(())
     }
 
@@ -331,7 +335,7 @@ impl SavedQueries {
                 _ => StorageError::Database(error),
             })?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id], []);
         Ok(())
     }
 
@@ -417,12 +421,13 @@ impl SavedQueries {
             .bind(rowid)
             .execute(&mut *transaction)
             .await?;
-        ordering::set_query_order(&mut transaction, &place).await?;
+        let mut moved = vec![id];
+        moved.extend(ordering::set_query_order(&mut transaction, &place).await?);
         if old_folder != folder {
-            ordering::compact_queries(&mut transaction, owner.as_deref(), old_folder.as_deref()).await?;
+            moved.extend(ordering::compact_queries(&mut transaction, owner.as_deref(), old_folder.as_deref()).await?);
         }
         transaction.commit().await?;
-        self.changed();
+        self.wrote(moved, []);
         Ok(())
     }
 
@@ -443,19 +448,19 @@ impl SavedQueries {
             .bind(rowid)
             .execute(&mut *transaction)
             .await?;
-        ordering::compact_queries(&mut transaction, owner.as_deref(), folder.as_deref()).await?;
+        let moved = ordering::compact_queries(&mut transaction, owner.as_deref(), folder.as_deref()).await?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote(moved, [id]);
         Ok(())
     }
 
     // The connection's own queries, folders and favourites; those with no connection stay for the others.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
-        let (queries, changed) = deletion::delete_connection(&self.pool, &self.path, connection).await?;
+        let (count, changed) = deletion::delete_connection(&self.pool, &self.path, connection).await?;
         if !changed.is_empty() {
             self.signals.changed(&changed);
         }
-        Ok(queries)
+        Ok(count)
     }
 
     // Queries a pull or another store brings, each under its own id, written over any this store holds
@@ -469,7 +474,7 @@ impl SavedQueries {
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         let settled = put::put_queries(&mut transaction, queries, SystemTime::now()).await?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote(queries.iter().map(|query| query.id).chain(settled.iter().copied()), []);
         Ok(settled)
     }
 }
@@ -494,9 +499,9 @@ async fn insert(
     name: &str,
     owner: Option<&str>,
     now: i64,
-) -> Result<Uuid, StorageError> {
+) -> Result<(Uuid, Vec<Uuid>), StorageError> {
     let id = Uuid::new_v4();
-    let order = ordering::next_query_order(database, owner, None).await?;
+    let (order, moved) = ordering::next_query_order(database, owner, None).await?;
     sqlx::query(
         "INSERT INTO saved_queries \
          (record_id, name, query, connection_id, connection_name, sort_order, created_at, updated_at) \
@@ -512,7 +517,16 @@ async fn insert(
     .bind(now)
     .execute(&mut *database)
     .await?;
-    Ok(id)
+    Ok((id, moved))
+}
+
+pub(super) fn queries(
+    written: impl IntoIterator<Item = Uuid>,
+    deleted: impl IntoIterator<Item = Uuid>,
+) -> JournalEntry {
+    JournalEntry::new(RecordKind::SavedQuery)
+        .wrote(written.into_iter().map(RecordRef::Id))
+        .deleted(deleted.into_iter().map(RecordRef::Id))
 }
 
 // Two keywords are one when they read the same in any case.
