@@ -171,7 +171,7 @@ fn unknown_keys_survive_a_rewrite_at_every_level() {
         "connections": [{
             "id": id, "name": "n", "driver_id": "postgres", "host": "h", "port": 5432, "database": "d",
             "username": "u", "tls": {"mode": "disable"}, "safe_mode": "off", "external_access": "read_only",
-            "ai_policy": "ask", "project_id": "CBCAF15E-97D4-4B75-8D5D-01D586CADC97",
+            "ai_policy": "ask", "workspace_id": "CBCAF15E-97D4-4B75-8D5D-01D586CADC97",
             "ssh_route": {"version": 1, "publisher": id, "basis": "b", "hops": [],
                 "target": {"alias": "a", "host": "h", "port": 22, "username": "u"}, "signed_by": "newer"},
             "origin": "shared_vault"
@@ -188,7 +188,7 @@ fn unknown_keys_survive_a_rewrite_at_every_level() {
 
     let entry = &raw["connections"][0];
     assert_eq!(entry["name"], "renamed");
-    assert_eq!(entry["project_id"], "CBCAF15E-97D4-4B75-8D5D-01D586CADC97");
+    assert_eq!(entry["workspace_id"], "CBCAF15E-97D4-4B75-8D5D-01D586CADC97");
     assert_eq!(entry["ssh_route"]["signed_by"], "newer");
     assert_eq!(entry["origin"], "shared_vault");
     assert_eq!(raw["ssh_profiles"][0]["totp_mode"], "prompt_at_connect");
