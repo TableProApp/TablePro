@@ -7,7 +7,7 @@
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyBody, KeyObject};
 use tablepro_keys::cert::{AccountCertificate, IkChange};
-use tablepro_keys::encoding::{KeyPurpose, Version, WrapPurpose};
+use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, Version, WrapPurpose};
 use tablepro_keys::keys::{AccountPublicKeys, DeviceKeys, Ed25519Public};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::trust::PinHow;
@@ -56,18 +56,20 @@ impl KeyService {
         let mut applied = KeyApplied::default();
         let mut fresh = Vec::new();
         let mut own_genesis = false;
+        let mut own_rotation = None;
         for record in &arrival.records {
             if !ACCOUNT_KINDS.contains(&record.kind.as_str()) || record.deleted.is_some() {
                 continue;
             }
             match self.take_record(txn.as_mut(), record).await {
                 Ok((object, candidate)) => {
-                    own_genesis |= candidate
-                        && object.id
-                            == KeyRecordId::Account {
-                                account: self.account,
-                                av: Version::FIRST,
-                            };
+                    if candidate && let KeyRecordId::Account { av, .. } = object.id {
+                        if av == Version::FIRST {
+                            own_genesis = true;
+                        } else {
+                            own_rotation = Some(av);
+                        }
+                    }
                     fresh.push(object);
                 }
                 Err(SyncError::Keys(error)) => {
@@ -87,8 +89,11 @@ impl KeyService {
         if own_genesis && !self.is_unanchored() && !self.is_rebuilding() {
             self.adopt_own_genesis(txn.as_mut()).await?;
         }
-        self.forget_lost_genesis(txn.as_mut()).await?;
+        self.forget_lost_rotation(txn.as_mut()).await?;
         self.settle_account(txn.as_mut()).await?;
+        if let Some(av) = own_rotation {
+            self.forget_pins_rotation_left_out(txn.as_mut(), av).await?;
+        }
         let mut in_force = match txn.get(&RowKey::Scope(ScopeName::Personal)).await? {
             Some(Row::Scope(row)) => row.key_version,
             _ => None,
@@ -259,6 +264,24 @@ impl KeyService {
             }
         }
         self.adopt_account_change_set(txn, &objects).await
+    }
+
+    // A rotation of this device that applied while its answer was lost, served back: the own-device pins it left out
+    // name devices that join again only by approval (0056, Rotation).
+    async fn forget_pins_rotation_left_out(&self, txn: &mut dyn StateTxn, av: Version) -> Result<(), SyncError> {
+        if self.pin(txn, self.account).await?.is_none_or(|pin| pin.av < av) {
+            return Ok(());
+        }
+        let keep: Vec<KeyDeviceId> = self
+            .applied_objects(txn, ScopeName::Personal, KeyKind::Device)
+            .await?
+            .iter()
+            .filter_map(|object| match object.id {
+                KeyRecordId::Device { key_device, av: at, .. } if at == av => Some(key_device),
+                _ => None,
+            })
+            .collect();
+        self.forget_pins_left_out(txn, &keep).await
     }
 
     fn locked(&self, cause: LockCause) -> Result<(), SyncError> {

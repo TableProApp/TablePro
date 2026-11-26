@@ -583,3 +583,63 @@ async fn a_genesis_a_pull_shows_lost_after_a_restart_discards_its_keys_and_lefto
     drop(txn);
     assert_eq!(restarted.key_state().await, KeyState::NeedsApproval { request: None });
 }
+
+#[tokio::test]
+async fn a_certificate_the_server_alone_serves_never_erases_keys_a_reinstalled_device_still_holds() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    b.genesis().await;
+    let reinstalled = Device::with_store(&server, account, "dev_b", b.store.clone()).await;
+    let forged = tablepro_keys::cert::AccountCertificate::sign(
+        &origin(),
+        account,
+        Version::FIRST,
+        CertKind::GenesisOrRotation,
+        &tablepro_keys::keys::Ed25519Seed::generate().unwrap(),
+        tablepro_keys::keys::AccountKeys::generate().unwrap().public().unwrap(),
+        None,
+    )
+    .unwrap();
+
+    reinstalled
+        .feed(
+            vec![crate::harness::record_of(&KeyObject {
+                id: tablepro_keys::record_id::KeyRecordId::Account {
+                    account,
+                    av: Version::FIRST,
+                },
+                body: KeyBody::Account(tablepro_keys::body::AccountBody::of(&forged)),
+            })],
+            tablepro_sync::api::key_flows::ArrivalOrder::InOrder,
+        )
+        .await;
+
+    assert!(reinstalled.store.holds(&DeviceItem::AccountKeys {
+        origin: origin(),
+        account,
+        av: Version::FIRST,
+    }));
+}
+
+#[tokio::test]
+async fn a_device_with_no_store_takes_an_account_s_key_objects_without_failing() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    b.genesis().await;
+    let keyless = Device::with_store(
+        &server,
+        account,
+        "dev_linux",
+        std::sync::Arc::new(tablepro_sync_testing::FakeDeviceStore::without_store()),
+    )
+    .await;
+
+    let applied = keyless
+        .feed(b.served().await, tablepro_sync::api::key_flows::ArrivalOrder::Snapshot)
+        .await;
+
+    assert!(applied.refused.is_empty());
+    assert_eq!(keyless.key_state().await, KeyState::NoDeviceStore);
+}

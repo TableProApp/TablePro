@@ -10,7 +10,7 @@ use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyBody, KeyObject};
 use tablepro_keys::cert::CertKind;
 use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, Version};
-use tablepro_keys::keys::{AccountKeys, Ed25519Public, ScopeKey};
+use tablepro_keys::keys::{AccountKeys, ScopeKey};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::scope_key::Start;
@@ -22,7 +22,7 @@ use crate::api::ids::ScopeName;
 use crate::api::key_flows::{
     AccountDevice, DraftId, KeyState, RecoveryKeyDraft, ReviewedDevice, RotationDraft, TypedBack,
 };
-use crate::api::state::{KeyPendingRow, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
+use crate::api::state::{KeyPendingRow, PendingFlow, Row, RowKey, RowRange, ScopeRow, StateTxn, Table};
 use crate::api::transport::DpopKey;
 
 struct ReplaceDraft {
@@ -34,7 +34,6 @@ struct ReplaceDraft {
 #[derive(Clone)]
 struct BuiltReplace {
     av: Version,
-    ik: Ed25519Public,
     keep: Vec<KeyDeviceId>,
     objects: Vec<KeyObject>,
     keys: AccountKeys,
@@ -105,10 +104,10 @@ impl KeyService {
             }
         }
         keep_ids.sort();
-        // A retry after an answer that never came, when a pull since showed the replace applied.
+        // A retry after an answer that never came, when a pull since showed the replace applied: its certificate is
+        // the one in force at its `av`, however far the account has moved since.
         if let Some(built) = &held
-            && own.av == built.av
-            && own.ik == built.ik
+            && self.built_in_force(txn.as_mut(), built).await?
         {
             self.forget_pins_left_out(txn.as_mut(), &built.keep).await?;
             txn.commit().await?;
@@ -146,7 +145,6 @@ impl KeyService {
         };
         drop(txn);
         self.store_account_keys(av, &built.keys).await?;
-        let pending = RowKey::KeyPending(PendingFlow::AccountRotation { av });
         let mut txn = self.begin().await?;
         for object in &built.objects {
             self.hold_object(txn.as_mut(), ScopeName::Personal, object, false)
@@ -158,32 +156,62 @@ impl KeyService {
             state: Vec::new(),
         }))
         .await?;
+        // What the push changes is not known until a pull after it catches up.
+        if let Some(Row::Scope(row)) = txn.get(&RowKey::Scope(ScopeName::Personal)).await? {
+            txn.put(Row::Scope(ScopeRow {
+                caught_up: false,
+                ..row
+            }))
+            .await?;
+        }
         txn.commit().await?;
+        let outcome = self.push_replace(&own, &built, candidates.is_some()).await;
+        if !matches!(outcome, Err(SyncError::Transport(_))) {
+            self.drafts().remove(draft);
+        }
+        outcome
+    }
+
+    // Pushes the built replace and settles the answer. A first push refused whole never applied; a push again after a
+    // lost answer may have, so its refusal waits for a pull.
+    async fn push_replace(&self, own: &OwnAccount, built: &BuiltReplace, retry: bool) -> Result<(), SyncError> {
+        let pending = RowKey::KeyPending(PendingFlow::AccountRotation { av: built.av });
         let changes = built.objects.iter().map(create_change).collect::<Result<Vec<_>, _>>()?;
         let outcomes = self
             .push_change_set(ScopeName::Personal, changes, DpopKey(Arc::new(own.device.dsk.clone())))
             .await?;
-        self.drafts().remove(draft);
-        match refusal(&outcomes) {
-            None => {
-                let mut txn = self.begin().await?;
-                self.adopt_account_change_set(txn.as_mut(), &built.objects).await?;
-                self.forget_pins_left_out(txn.as_mut(), &built.keep).await?;
-                txn.commit().await?;
-                self.hooks().pass_soon();
-                Ok(())
-            }
-            Some(code) => {
-                let mut txn = self.begin().await?;
-                self.drop_candidates(txn.as_mut(), ScopeName::Personal, &built.objects)
-                    .await?;
-                txn.delete(&pending).await?;
-                txn.commit().await?;
-                self.erase_account_keys(av).await?;
-                self.hooks().pass_soon();
-                Err(SyncError::Rejected { code })
-            }
+        self.hooks().pass_soon();
+        let Some(code) = refusal(&outcomes) else {
+            let mut txn = self.begin().await?;
+            self.adopt_account_change_set(txn.as_mut(), &built.objects).await?;
+            self.forget_pins_left_out(txn.as_mut(), &built.keep).await?;
+            txn.commit().await?;
+            return Ok(());
+        };
+        if !retry {
+            let mut txn = self.begin().await?;
+            self.drop_candidates(txn.as_mut(), ScopeName::Personal, &built.objects)
+                .await?;
+            txn.delete(&pending).await?;
+            txn.commit().await?;
+            self.erase_account_keys(built.av).await?;
         }
+        Err(SyncError::Rejected { code })
+    }
+
+    // Whether the built replace's certificate is the one in force at its `av`.
+    async fn built_in_force(&self, txn: &mut dyn StateTxn, built: &BuiltReplace) -> Result<bool, SyncError> {
+        let id = KeyRecordId::Account {
+            account: self.account(),
+            av: built.av,
+        };
+        let in_force = self
+            .applied_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
+            .await?;
+        Ok(built
+            .objects
+            .iter()
+            .any(|object| object.id == id && in_force.as_ref() == Some(object)))
     }
 
     // The replace's change set, from the draft's R and R', which go once it is built. Only devices the account still
@@ -219,7 +247,6 @@ impl KeyService {
             let (objects, keys) = self.replace_objects(&current, &next, own, &kept, av, &previous)?;
             let built = BuiltReplace {
                 av,
-                ik: next.key.identity_seed(self.origin(), self.account())?.public()?,
                 keep: keep.to_vec(),
                 objects,
                 keys,
@@ -292,25 +319,28 @@ impl KeyService {
             .push_change_set(ScopeName::Personal, changes, DpopKey(Arc::new(own.device.dsk.clone())))
             .await?;
         let mut txn = self.begin().await?;
-        let applied = refusal(&outcomes).is_none();
-        if applied {
+        self.hooks().pass_soon();
+        let Some(code) = refusal(&outcomes) else {
             self.adopt_account_change_set(txn.as_mut(), objects).await?;
             self.forget_pins_left_out(txn.as_mut(), &keep).await?;
-        } else {
-            self.drop_candidates(txn.as_mut(), ScopeName::Personal, objects).await?;
-            txn.delete(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
-                .await?;
+            txn.commit().await?;
+            return Ok(true);
+        };
+        // The first push's answer was lost, so a refusal now may mean it applied and the server moved on. Only when a
+        // pull that caught up shows nothing at `av` did it never apply; a rotation that won there is a pull's to settle.
+        let caught_up = matches!(
+            txn.get(&RowKey::Scope(ScopeName::Personal)).await?,
+            Some(Row::Scope(row)) if row.caught_up
+        );
+        if !caught_up || self.own_certificate(txn.as_mut(), av).await?.is_some() {
+            return Err(SyncError::Rejected { code });
         }
-        let in_force = self.own_certificate(txn.as_mut(), av).await?;
+        self.drop_candidates(txn.as_mut(), ScopeName::Personal, objects).await?;
+        txn.delete(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
+            .await?;
         txn.commit().await?;
-        if !applied
-            && let Some(keys) = self.account_keys(av).await?
-            && in_force.is_none_or(|certificate| keys.check_against(&certificate.ask, &certificate.aek).is_err())
-        {
-            self.erase_account_keys(av).await?;
-        }
-        self.hooks().pass_soon();
-        Ok(applied)
+        self.erase_account_keys(av).await?;
+        Ok(false)
     }
 
     // A replace runs only on an approved device whose file it can trust, never over a stopped or ended key.
@@ -370,7 +400,11 @@ impl KeyService {
     }
 
     // After the rotation, the own-device pins it left out name devices that join again only by approval.
-    async fn forget_pins_left_out(&self, txn: &mut dyn StateTxn, keep: &[KeyDeviceId]) -> Result<(), SyncError> {
+    pub(crate) async fn forget_pins_left_out(
+        &self,
+        txn: &mut dyn StateTxn,
+        keep: &[KeyDeviceId],
+    ) -> Result<(), SyncError> {
         for row in txn.scan(&RowRange::Table(Table::KeyDevicePins)).await? {
             if let Row::KeyDevicePin(pin) = row
                 && !keep.contains(&pin.key_device)
@@ -463,7 +497,7 @@ fn reviewed(key_device: KeyDeviceId, this_device: bool) -> ReviewedDevice {
 }
 
 // An object of a rotation's change set to `av`.
-fn of_rotation(object: &KeyObject, av: Version) -> bool {
+pub(crate) fn of_rotation(object: &KeyObject, av: Version) -> bool {
     match &object.id {
         KeyRecordId::Account { av: at, .. }
         | KeyRecordId::Recovery { av: at, .. }

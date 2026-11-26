@@ -623,3 +623,41 @@ pub fn stored_blob(server: &FakeServer, account: AccountId, av: Version) -> tabl
     }
     .unwrap()
 }
+
+// The device's store as one session sees it: away entirely, or counting its deletes.
+pub struct Watched {
+    pub store: Arc<FakeDeviceStore>,
+    pub away: bool,
+    pub deletes: Mutex<usize>,
+}
+
+#[async_trait]
+impl HostDeviceStore for Watched {
+    async fn load(&self, item: DeviceItem) -> Result<Option<Zeroizing<Vec<u8>>>, DeviceStoreError> {
+        self.reach()?;
+        self.store.load(item).await
+    }
+
+    async fn store(&self, item: DeviceItem, value: Zeroizing<Vec<u8>>) -> Result<(), DeviceStoreError> {
+        self.reach()?;
+        self.store.store(item, value).await
+    }
+
+    async fn delete(&self, item: DeviceItem) -> Result<(), DeviceStoreError> {
+        self.reach()?;
+        *self.deletes.lock().unwrap() += 1;
+        self.store.delete(item).await
+    }
+}
+
+impl Watched {
+    fn reach(&self) -> Result<(), DeviceStoreError> {
+        if self.away {
+            Err(DeviceStoreError::Unavailable {
+                detail: "no Secret Service this session".to_owned(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+}

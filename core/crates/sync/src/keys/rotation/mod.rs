@@ -176,7 +176,7 @@ impl KeyService {
         self.finish_cut_off_sign_out().await?;
         let recovery = recovery_key(recovery_key_text)?;
         let mut txn = self.begin().await?;
-        self.forget_lost_genesis(txn.as_mut()).await?;
+        self.forget_lost_rotation(txn.as_mut()).await?;
         // Also a device stopped on its personal key or with no anchor, which R clears as an approval would.
         if !self.may_ask_again(txn.as_mut()).await? {
             return Err(SyncError::NotAllowed {

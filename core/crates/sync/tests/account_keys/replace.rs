@@ -803,3 +803,91 @@ async fn a_retry_names_the_kept_devices_in_any_order() {
 
     assert_eq!(b.pin(b.account).await.unwrap().av, av(2));
 }
+
+#[tokio::test]
+async fn a_lost_replace_whose_av_another_rotation_took_leaves_no_rotation_row_behind() {
+    let (server, b, c, text) = approved_pair().await;
+    let b_device = key_device(&b).await;
+    b.pull().await;
+    let draft = b.service.begin_replace(text.clone()).await.unwrap();
+    server.fail_next(tablepro_sync::api::transport::TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    b.service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), Vec::new())
+        .await
+        .unwrap_err();
+    let next = replace(&c, &text, vec![b_device]).await;
+
+    b.pull().await;
+
+    assert!(
+        b.get(RowKey::KeyPending(PendingFlow::AccountRotation { av: av(2) }))
+            .await
+            .is_none()
+    );
+    let pin = b.pin(b.account).await.unwrap();
+    let won = RecoveryKey::parse(next.expose_secret()).unwrap();
+    assert_eq!(
+        pin.ik,
+        won.identity_seed(&origin(), b.account).unwrap().public().unwrap()
+    );
+    assert!(matches!(b.key_state().await, KeyState::Approved { av: at, .. } if at == av(2)));
+}
+
+#[tokio::test]
+async fn a_push_again_the_server_refuses_waits_for_a_pull_and_keeps_the_rotation_row() {
+    let (_server, b, _c, text) = approved_pair().await;
+    b.pull().await;
+    let draft = b.service.begin_replace(text.clone()).await.unwrap();
+    b.transport.lose_next_answer();
+    b.service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), Vec::new())
+        .await
+        .unwrap_err();
+    b.transport.refuse_next_push(RejectedCode::BadStatement);
+
+    let refused = b.service.begin_replace(text).await.unwrap_err();
+
+    assert_eq!(refused.code(), "sync.rejected");
+    assert!(
+        b.get(RowKey::KeyPending(PendingFlow::AccountRotation { av: av(2) }))
+            .await
+            .is_some()
+    );
+    b.pull().await;
+    assert!(matches!(b.key_state().await, KeyState::Approved { av: at, .. } if at == av(2)));
+    assert!(
+        b.get(RowKey::KeyPending(PendingFlow::AccountRotation { av: av(2) }))
+            .await
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn a_replace_that_applied_unseen_is_finished_even_after_the_account_moved_past_it() {
+    let (_server, b, c, text) = approved_pair().await;
+    let d = Device::new(&b.server, b.account, "dev_d").await;
+    d.approved_by(&b).await;
+    let (c_device, d_device) = (key_device(&c).await, key_device(&d).await);
+    b.pull().await;
+    let draft = b.service.begin_replace(text).await.unwrap();
+    b.transport.lose_next_answer();
+    b.service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), vec![d_device])
+        .await
+        .unwrap_err();
+    b.pull().await;
+    // The pull that showed the replace applied already forgot the device it left out.
+    assert!(b.get(RowKey::KeyDevicePin(c_device)).await.is_none());
+    d.pull().await;
+    replace(&d, &draft.recovery.text, vec![key_device(&b).await]).await;
+    b.pull().await;
+
+    b.service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), vec![d_device])
+        .await
+        .unwrap();
+
+    assert!(matches!(b.key_state().await, KeyState::Approved { av: at, .. } if at == av(3)));
+}
