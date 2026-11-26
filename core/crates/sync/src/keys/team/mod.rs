@@ -23,7 +23,9 @@ use serde_json::Value;
 use tablepro_keys::encoding::{AccountId, KeyPurpose, TeamId, Version};
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Public;
-use tablepro_keys::record_id::KeyKind;
+use tablepro_keys::body::KeyObject;
+use tablepro_keys::record_id::{KeyKind, KeyRecordId};
+use tablepro_keys::scope_key::KeyRef;
 
 pub(crate) use self::apply::TeamJudged;
 use self::book::TeamBook;
@@ -149,6 +151,35 @@ impl KeyService {
             cache: &mut cache,
         };
         book.holders_at(version, &mut facts).await
+    }
+
+    // Whether `fields` are a version record at `key` that its signer's certificate in the team verifies. Beside the
+    // record this device holds there, that is a fork a restore ends the team on; bytes no certificate signs are none.
+    pub(crate) async fn signed_team_version(
+        &self,
+        txn: &mut dyn StateTxn,
+        key: KeyRef,
+        fields: &Value,
+    ) -> Result<bool, SyncError> {
+        let id = KeyRecordId::Version(key);
+        let Ok(text) = serde_json::to_vec(fields) else {
+            return Ok(false);
+        };
+        let Some(record) = KeyObject::parse(id.kind().name(), &id.to_wire(), &text)
+            .ok()
+            .and_then(|object| object.version_record())
+            .filter(|record| record.key == key && key.purpose == KeyPurpose::Team)
+        else {
+            return Ok(false);
+        };
+        let mut cache = service_facts::FactsCache::default();
+        let mut facts = service_facts::ServiceFacts {
+            service: self,
+            txn,
+            scope: ScopeName::Team(TeamId(key.owner)),
+            cache: &mut cache,
+        };
+        book::record_signed(self.origin(), &mut facts, &record).await
     }
 
     // Whether the team's version in force is one this account signed at `av` or later: a rotation after the account's

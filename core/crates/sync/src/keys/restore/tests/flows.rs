@@ -585,7 +585,8 @@ async fn the_roster_counts_only_once_the_team_s_pull_is_caught_up() {
 }
 
 // A different record at an id is no copy of this device's: the push-back does not count it as held, and a version the
-// server holds as another record ends the team (0051, What cannot go back).
+// server holds as another record ends the team once the device checked it under its signer's certificate in the team
+// (0051, What cannot go back).
 #[tokio::test]
 async fn another_record_at_an_id_is_not_this_device_s_copy() {
     let world = World::load();
@@ -626,9 +627,82 @@ async fn another_record_at_an_id_is_not_this_device_s_copy() {
     let same_view = crate::keys::restore::server::BaseView::new(&body, &same, &[(team, &ours)]);
     let held_same = (same_view.holds(team, &id), same_view.holds_another(team, &id));
     let other = view(base(&theirs)).await;
-    let other_view = crate::keys::restore::server::BaseView::new(&body, &other, &[(team, &ours)]);
+    let mut other_view = crate::keys::restore::server::BaseView::new(&body, &other, &[(team, &ours)]);
+    let unchecked = other_view.holds_another(team, &id);
+    rig.put([
+        Row::KeyPin(crate::api::state::KeyPinRow {
+            account: world.account("M"),
+            ik: world.ik("M").public().unwrap(),
+            av: v(2),
+            how: tablepro_keys::trust::PinHow::FirstUse,
+            alert: false,
+            replaced: Vec::new(),
+        }),
+        held_row(team, &world.member("M", 2)),
+    ])
+    .await;
+    let mut txn = rig.service.begin().await.unwrap();
+    rig.service
+        .check_other_versions(&mut *txn, &[(team, &ours)], &mut other_view)
+        .await
+        .unwrap();
 
     assert_eq!(held_same, (true, false));
     assert!(!other_view.holds(team, &id));
+    assert!(!unchecked);
     assert!(other_view.holds_another(team, &id));
+}
+
+// The server's base for `at` as it serves `served`.
+fn served_base(scope: ScopeName, at: &HeldObject, served: &HeldObject) -> Row {
+    let Row::Base(base) = base_row(scope, at) else {
+        unreachable!()
+    };
+    Row::Base(crate::api::state::BaseRow {
+        fields: serde_json::from_str(&served.fields).ok(),
+        ..base
+    })
+}
+
+// O's own restart at 7 went missing in the restore, and the server's copy there is a record of M, whose certificate the
+// team does not hold: bytes the device cannot check prove no fork, so O's version goes back and the server's answer
+// decides, rather than the team ending on them (0051, What cannot go back).
+#[tokio::test]
+async fn a_version_the_server_holds_as_bytes_the_device_cannot_check_goes_back_and_ends_nothing() {
+    let world = World::load();
+    let team = ScopeName::Team(world.team);
+    let rig = Rig::new(&world.origin, world.account("O"));
+    let six = world.team_version(6, "A", 2, Start::Next);
+    let ours = world.team_version(7, "O", 2, Start::Over);
+    let theirs = world.team_version(7, "M", 2, Start::Over);
+    rig.put([
+        held_row(team, &six),
+        served_base(team, &six, &six),
+        held_row(team, &ours),
+        served_base(team, &ours, &theirs),
+        row(team, KeyPurpose::Team, 7),
+    ])
+    .await;
+    let body = super::fakes::scopes(epoch(2), vec![info(team)]);
+    let mut txn = rig.service.begin().await.unwrap();
+    let gathered = rig.service.gather(&mut *txn, &body).await.unwrap();
+    let held: Vec<(ScopeName, &HeldObject)> = gathered.teams[0].objects.iter().map(|held| (team, held)).collect();
+    let view = crate::keys::restore::server::BaseView::new(&body, &gathered.bases, &held);
+
+    let plan = crate::keys::restore::plan::plan(&crate::keys::restore::plan::Inputs {
+        account: world.account("O"),
+        key_device: world.device("O"),
+        newest_av: v(2),
+        approved: true,
+        personal: &gathered.personal,
+        teams: vec![crate::keys::restore::plan::TeamInputs {
+            team: world.team,
+            objects: &gathered.teams[0].objects,
+            row: gathered.teams[0].row.as_ref(),
+            roster: None,
+        }],
+        server: &view,
+    });
+
+    assert_eq!(plan.teams, [(world.team, TeamVerdict::Done)]);
 }
