@@ -215,7 +215,9 @@ impl Settle<'_, '_> {
         let (Merged::Record(fields) | Merged::Contested { record: fields, .. }) = &merged else {
             return Ok(holds(record.as_ref(), &merged));
         };
-        // The store took what the approval queue left of the merge. A record it holds whole keeps no base.
+        // The store took what the approval queue left of the merge, and nothing of a new record it holds whole. That
+        // record's held row committed with this base, so its base reads as no deletion here, and it keeps the copy's
+        // creation date a full fetch infers a deletion by.
         let rows = approval::rows_of(&mut self.txn, &pending.key).await?;
         let split = approval::split(
             kind,
@@ -224,7 +226,11 @@ impl Settle<'_, '_> {
             fields,
             &rows,
         );
-        Ok(!split.hold && record.is_some_and(|record| record.fields == split.fields))
+        Ok(if split.hold {
+            record.is_none()
+        } else {
+            record.is_some_and(|record| record.fields == split.fields)
+        })
     }
 }
 
