@@ -3,17 +3,22 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::json;
 use tablepro_keys::encoding::{AccountId, TeamId, Version, random_uuid};
 use tablepro_keys::envelope::{EnvelopeId, ParentKind, SecretKind};
 use tablepro_sync::SyncError;
+use tablepro_sync::api::error::StateError;
 use tablepro_sync::api::ids::ScopeName;
 use tablepro_sync::api::key_flows::{
-    ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, MemberKeyStatus, Roster, TeamFlows,
+    ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, MemberKeyStatus, Roster, StopFlows, TeamFlows,
 };
 use tablepro_sync::api::scopes::{Role, ScopesAnswer};
-use tablepro_sync::api::state::{Row, RowKey, ScopeRow};
+use tablepro_sync::api::state::{
+    Checkpoint, KeyTrust, Opened, Row, RowKey, RowRange, ScopeRow, StateIdentity, StateStore, StateTxn, SyncTrust,
+    Table,
+};
 use tablepro_sync::api::transport::{Proof, PullRequest, RejectedCode, ServiceTransport, Transport};
 use tablepro_sync_testing::FakeServer;
 use tablepro_sync_testing::service::ScopeOwner;
@@ -258,4 +263,82 @@ async fn confirming_and_rotating_need_the_right_role_and_the_key_held() {
     );
     let restart = t.owner.service.restart_team(t.team, Vec::new()).await;
     assert!(matches!(restart, Err(SyncError::NotAllowed { .. })), "{restart:?}");
+}
+
+// The same rows, opened as a stale file's open reports them.
+struct OpenedAs {
+    inner: Arc<dyn StateStore>,
+    opened: Opened,
+}
+
+#[async_trait]
+impl StateStore for OpenedAs {
+    fn identity(&self) -> &StateIdentity {
+        self.inner.identity()
+    }
+
+    fn opened(&self) -> &Opened {
+        &self.opened
+    }
+
+    async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError> {
+        self.inner.begin().await
+    }
+}
+
+// The device after a restart whose open found its state file as `opened` says, its rows as they were.
+fn reopened(device: &Device, opened: Opened) -> Device {
+    let mut again = device.restarted();
+    again.state = Arc::new(OpenedAs {
+        inner: Arc::clone(&device.state),
+        opened,
+    });
+    again.restarted()
+}
+
+// The checkpoint an anchor holds of the device's key tables as they stand.
+async fn checkpoint_of(device: &Device) -> Checkpoint {
+    let mut txn = device.txn().await;
+    let mut checkpoint = Checkpoint::default();
+    for table in [Table::KeyPins, Table::KeyVersions, Table::KeyEnvelopes] {
+        for row in txn.scan(&RowRange::Table(table)).await.unwrap() {
+            match row {
+                Row::KeyPin(pin) => checkpoint.pins.push(pin),
+                Row::KeyVersion(version) => checkpoint.versions.push(version),
+                Row::KeyEnvelope(envelope) => checkpoint.envelopes.push(envelope),
+                _ => {}
+            }
+        }
+    }
+    checkpoint
+}
+
+// A stale file takes no wrap until the server showed every anchored pin and version (0054, A stale file): a rotation
+// that reaches the member while it rebuilds is kept, and taken in the commit that ends the rebuild.
+#[tokio::test]
+async fn a_member_rebuilding_its_key_tables_takes_no_wrap_until_the_rebuild_ends() {
+    let member_id = new_account();
+    let t = created(&[(member_id, Role::Editor)]).await;
+    let member = t.confirmed(member_id, "member-row").await;
+    let checkpoint = checkpoint_of(&member).await;
+    let member = reopened(
+        &member,
+        Opened {
+            sync_tables: SyncTrust::Refill,
+            key_tables: KeyTrust::Rebuild {
+                checkpoint: Box::new(checkpoint),
+            },
+        },
+    );
+    team_pass(&t.owner, t.team).await;
+    t.owner.service.rotate_team(t.team, Vec::new()).await.unwrap();
+
+    team_pass(&member, t.team).await;
+    let during = member.service.team_keys(t.team).await.unwrap().version;
+    member.service.stop_actions().await.unwrap();
+
+    assert_eq!(during, Some(v(1)));
+    assert!(!member.service.is_rebuilding());
+    let after = member.service.team_keys(t.team).await.unwrap();
+    assert_eq!((after.version, after.holder), (Some(v(2)), true));
 }

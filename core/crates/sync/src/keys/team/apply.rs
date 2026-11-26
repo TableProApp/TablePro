@@ -31,6 +31,7 @@ struct Outcome {
 pub(crate) struct TeamJudged {
     team: TeamId,
     events: Vec<TeamEvent>,
+    epoch: Option<EpochId>,
 }
 
 fn parse(record: &PulledRecord) -> Result<KeyObject, KeysError> {
@@ -84,6 +85,10 @@ impl KeyService {
                 what: "apply team objects outside a team",
             });
         };
+        // A stale file keeps what the server serves, so its rebuild sees the anchored versions, but takes no wrap until
+        // the server showed every anchored pin and version (0054, A stale file). The commit that ends the rebuild
+        // judges each team on what it kept meanwhile.
+        let rebuilding = self.is_rebuilding();
         let mut txn = self.begin().await?;
         let mut book = self.load_team(&mut *txn, team).await?;
         let before = book.row().cloned();
@@ -109,7 +114,7 @@ impl KeyService {
                 }
             };
             let boundary = matches!(object.id, KeyRecordId::Member { .. } | KeyRecordId::Version(_));
-            if arrival.order == ArrivalOrder::InOrder && boundary && pending {
+            if arrival.order == ArrivalOrder::InOrder && boundary && pending && !rebuilding {
                 let step = self.advance_team(&mut *txn, &mut book, &mut cache).await?;
                 merge(&mut progress, step);
                 pending = false;
@@ -158,8 +163,10 @@ impl KeyService {
                 .replay(&mut *txn, &mut cache, arrival.scope, in_force, &served)
                 .await?;
         }
-        let step = self.advance_team(&mut *txn, &mut book, &mut cache).await?;
-        merge(&mut progress, step);
+        if !rebuilding {
+            let step = self.advance_team(&mut *txn, &mut book, &mut cache).await?;
+            merge(&mut progress, step);
+        }
         let mut applied = self
             .commit_team(txn, team, before.as_ref(), book, &mut outcome, progress)
             .await?;
@@ -230,12 +237,36 @@ impl KeyService {
         Ok(TeamJudged {
             team,
             events: progress.events,
+            epoch: None,
+        })
+    }
+
+    // A stale file's rebuild ended in `txn`: the team takes the wraps its pulls kept while the rebuild took none, as
+    // an arrival with nothing new would judge them. The events are told once `txn` committed.
+    pub(crate) async fn judge_rebuilt_team(
+        &self,
+        txn: &mut dyn StateTxn,
+        team: TeamId,
+    ) -> Result<TeamJudged, SyncError> {
+        let mut book = self.load_team(txn, team).await?;
+        let before = book.row().cloned();
+        let mut cache = FactsCache::default();
+        let progress = self.advance_team(txn, &mut book, &mut cache).await?;
+        let mut outcome = Outcome::default();
+        let progress = self
+            .settle_team(txn, team, before.as_ref(), book, &mut outcome, progress)
+            .await?;
+        Ok(TeamJudged {
+            team,
+            events: progress.events,
+            epoch: outcome.epoch,
         })
     }
 
     pub(crate) async fn tell_judged(&self, judged: &TeamJudged) -> Result<(), SyncError> {
         let outcome = Outcome {
             events: judged.events.clone(),
+            epoch: judged.epoch,
             ..Outcome::default()
         };
         self.tell(judged.team, &outcome).await
@@ -327,6 +358,29 @@ impl KeyService {
         outcome: &mut Outcome,
         progress: Progress,
     ) -> Result<KeyApplied, SyncError> {
+        let progress = self
+            .settle_team(&mut *txn, team, before, book, outcome, progress)
+            .await?;
+        txn.commit().await?;
+        outcome.events.extend(progress.events);
+        self.tell(team, outcome).await?;
+        Ok(KeyApplied {
+            in_force: None,
+            held: progress.held.into_iter().collect(),
+            refused: progress.refused,
+        })
+    }
+
+    // The team's row as the book left it, in `txn`.
+    async fn settle_team(
+        &self,
+        txn: &mut dyn StateTxn,
+        team: TeamId,
+        before: Option<&crate::api::state::KeyVersionRow>,
+        book: TeamBook,
+        outcome: &mut Outcome,
+        progress: Progress,
+    ) -> Result<Progress, SyncError> {
         let scope = ScopeName::Team(team);
         let mut after = book.into_row();
         let mut progress = progress;
@@ -355,14 +409,7 @@ impl KeyService {
             self.put_team_row(&mut *txn, prior.as_ref(), row).await?;
             outcome.epoch = row.epoch;
         }
-        txn.commit().await?;
-        outcome.events.extend(progress.events);
-        self.tell(team, outcome).await?;
-        Ok(KeyApplied {
-            in_force: None,
-            held: progress.held.into_iter().collect(),
-            refused: progress.refused,
-        })
+        Ok(progress)
     }
 
     // Once the commit landed: the engine's hooks, the notices, and the certificate copied in again after a superseded

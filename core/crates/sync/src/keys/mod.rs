@@ -234,10 +234,18 @@ impl KeyService {
         if !rebuild_shown(txn.as_mut(), &self.origin, self.account, checkpoint, &reading).await? {
             return Ok(());
         }
+        // The teams take the wraps their pulls kept while the rebuild took none, in the commit that ends it.
+        let mut judged = Vec::new();
+        for team in key_teams(txn.as_mut()).await? {
+            judged.push(self.judge_rebuilt_team(txn.as_mut(), team).await?);
+        }
         // The anchor stops owing the rebuild only once this commit lands, so a restart before it rebuilds again.
         txn.settle_keys(KeysSettled::Rebuilt);
         txn.commit().await?;
         self.rebuilt();
+        for judged in &judged {
+            self.tell_judged(judged).await?;
+        }
         Ok(())
     }
 
@@ -504,6 +512,26 @@ impl Rosters {
             .map(|(team, roster)| (*team, roster.clone()))
             .collect()
     }
+}
+
+// Every team the key tables hold a version row or a key object of.
+async fn key_teams(txn: &mut dyn StateTxn) -> Result<Vec<TeamId>, SyncError> {
+    let mut teams = Vec::new();
+    for table in [Table::KeyVersions, Table::KeyObjects] {
+        for row in txn.scan(&RowRange::Table(table)).await? {
+            let scope = match &row {
+                Row::KeyVersion(row) => row.scope,
+                Row::KeyObject(row) => row.scope,
+                _ => continue,
+            };
+            if let ScopeName::Team(team) = scope
+                && !teams.contains(&team)
+            {
+                teams.push(team);
+            }
+        }
+    }
+    Ok(teams)
 }
 
 // A roster speaks for the epoch the device synced the team in: the one its scope row adopted, with no refill against
