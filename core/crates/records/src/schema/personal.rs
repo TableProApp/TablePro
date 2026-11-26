@@ -210,6 +210,9 @@ pub const CONNECTION: &[Field] = &[
     field("cloud_sql_proxy_mode", Type::Text, DeviceOnly),
     field("socks_proxy_mode", Type::Text, DeviceOnly),
     field("tunnel_command_mode", Type::Text, DeviceOnly),
+    // The device's marks on a copy an earlier iOS build wrote, which the engine reads against the base.
+    field("tls_mode_unsettled", Type::Boolean, DeviceOnly),
+    field("ssh_profile_unlinked", Type::Boolean, DeviceOnly),
 ];
 
 pub const GROUP: &[Field] = &[

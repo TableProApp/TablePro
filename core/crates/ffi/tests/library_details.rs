@@ -147,6 +147,8 @@ async fn details_and_device_settings_round_trip_and_a_form_save_keeps_them() {
         cloud_sql_proxy: None,
         socks_proxy: None,
         tunnel_command: None,
+        tls_mode_unsettled: true,
+        ssh_profile_unlinked: true,
     };
 
     library

@@ -12,8 +12,10 @@ pub mod carry;
 pub mod categories;
 pub mod conflict;
 pub mod fields;
+pub mod keywords;
 pub mod settings;
 pub mod team_library;
+pub mod unsettled;
 
 use std::collections::BTreeSet;
 
