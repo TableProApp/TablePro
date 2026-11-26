@@ -35,6 +35,19 @@ internal static class Strings
     // Names or phrases in a run, with the language's separator between them.
     public static string List(IEnumerable<string> items) => string.Join(Get("ListSeparator"), items);
 
+    // Names in a run that ends with "and"; two take a pattern of their own, since English puts no comma between them.
+    public static string ListAnd(IReadOnlyList<string> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        return items.Count switch
+        {
+            0 => string.Empty,
+            1 => items[0],
+            2 => Format("ListAndTwo", items[0], items[1]),
+            _ => Format("ListAndLast", List(items.Take(items.Count - 1)), items[^1]),
+        };
+    }
+
     // A code with no wording here falls back to the server's own message, then a general one.
     public static string Error(CoreError error)
     {

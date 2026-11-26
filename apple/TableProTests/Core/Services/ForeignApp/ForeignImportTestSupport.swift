@@ -4,8 +4,58 @@
 //
 
 import Foundation
+import os
 @testable import TablePro
 import TableProImport
+
+struct RecordingImporter: ForeignAppImporter {
+    final class Calls: Sendable {
+        private let log = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+        func record(_ call: String) {
+            log.withLock { $0.append(call) }
+        }
+
+        func count(of call: String) -> Int {
+            log.withLock { recorded in recorded.count { $0 == call } }
+        }
+    }
+
+    let id: String
+    let calls = Calls()
+
+    // Differs from the id, so a test sees which one a caller shows.
+    var displayName: String { id.capitalized }
+    var symbolName: String { "cylinder" }
+    var appBundleIdentifier: String { "test.\(id)" }
+    var readsPasswordsFromKeychain: Bool { false }
+    var savedQuerySupport: ForeignSavedQuerySupport { .unavailable(reason: "none") }
+
+    func installedAppURL() -> URL? {
+        calls.record("installedAppURL")
+        return URL(fileURLWithPath: "/Applications/\(id).app")
+    }
+
+    func hasDataAtDefaultLocation() -> Bool {
+        calls.record("hasDataAtDefaultLocation")
+        return false
+    }
+
+    func isAvailable() -> Bool {
+        calls.record("isAvailable")
+        return true
+    }
+
+    func inventory() throws -> ForeignAppInventory {
+        calls.record("inventory")
+        return ForeignAppInventory(connections: 2, savedQueries: 0)
+    }
+
+    func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
+        calls.record("collect")
+        throw CocoaError(.featureUnsupported)
+    }
+}
 
 extension ForeignImportRequest {
     static let connectionsOnly = ForeignImportRequest(includePasswords: false, includeSavedQueries: false)

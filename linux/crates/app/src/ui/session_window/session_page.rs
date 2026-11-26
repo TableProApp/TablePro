@@ -86,6 +86,7 @@ pub(crate) fn source_key(source: &ConnectSource) -> SessionKey {
 
 /// What the window shows, worked out from what it holds: its sessions,
 /// else the failed connect, else its first connect, else the picker.
+// The setup guide takes the picker's place while it runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionPage {
     Picker,
@@ -93,6 +94,7 @@ pub(crate) enum SessionPage {
     Connecting(u64),
     Failed,
     Shell,
+    Setup,
 }
 
 impl SessionPage {
@@ -103,6 +105,7 @@ impl SessionPage {
             Self::Connecting(_) => "connecting",
             Self::Failed => "connect-failed",
             Self::Shell => "workspace",
+            Self::Setup => "setup",
         }
     }
 }

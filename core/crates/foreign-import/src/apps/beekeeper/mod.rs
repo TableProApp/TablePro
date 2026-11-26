@@ -55,19 +55,20 @@ impl AppReader for Beekeeper {
         self.app_db().exists()
     }
 
-    fn inventory(&self) -> Inventory {
-        let Ok(db) = self.open() else {
-            return Inventory::default();
+    fn inventory(&self) -> Result<Inventory, ForeignImportError> {
+        let db = match self.open() {
+            Ok(db) => db,
+            Err(ForeignImportError::FileNotFound { .. }) => return Ok(Inventory::default()),
+            Err(error) => return Err(error),
         };
-        Inventory {
+        Ok(Inventory {
             // Only the rows collect imports: one with no connection type is skipped there.
-            connections: read_saved_connections(&db).map_or(0, |rows| {
-                rows.iter()
-                    .filter(|row| map_driver(row.connection_type.as_deref()).is_some())
-                    .count()
-            }),
+            connections: read_saved_connections(&db)?
+                .iter()
+                .filter(|row| map_driver(row.connection_type.as_deref()).is_some())
+                .count(),
             saved_queries: saved_queries::count(&db),
-        }
+        })
     }
 
     fn collect(

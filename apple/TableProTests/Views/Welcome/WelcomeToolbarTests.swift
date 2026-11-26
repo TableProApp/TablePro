@@ -86,8 +86,7 @@ private final class WelcomeLibraryFixture {
             importableAppDetector: { false },
             groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults),
             recentConnections: RecentConnectionsStore(defaults: defaults, appEvents: events),
-            listPreferences: ConnectionListPreferences(defaults: defaults, appEvents: events),
-            isUITestSandbox: false
+            listPreferences: ConnectionListPreferences(defaults: defaults, appEvents: events)
         )
         viewModel.loadConnections()
     }

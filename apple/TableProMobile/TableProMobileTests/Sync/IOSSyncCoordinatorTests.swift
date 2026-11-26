@@ -249,6 +249,22 @@ struct IOSSyncCoordinatorTests {
         #expect(pushed.first { $0.id == local.id }?.name == "New")
     }
 
+    @Test("Sync turned off during the download, as a managed configuration does, uploads nothing")
+    func turnedOffDuringPullUploadsNothing() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.connections = [local]
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+        box.duringPull = { box.syncEnabled = false }
+
+        await coordinator.sync()
+
+        #expect(await transport.pushedRecords.isEmpty)
+        #expect(coordinator.status == .disabled(.userDisabled))
+    }
+
     @Test("A copy stored before this build read it takes the profile link from the cached record")
     func olderCopyTakesProfileFromTheCache() async throws {
         let box = LibraryStateBox()

@@ -689,6 +689,27 @@ struct IOSConnectionImportServiceTests {
         #expect(try store.retrieve(forKey: ConnectionSecretKind.keyPassphrase.account(for: id)) == "key0")
     }
 
+    @Test("Secrets the Keychain refuses are counted, and the connection still imports")
+    func refusedSecretsAreCounted() async throws {
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        builder.addConnection(settings(), ref: "c1", credentials: ExportableCredentials(
+            password: "pw0", sshPassword: "ssh0", keyPassphrase: "key0",
+            sslClientKeyPassphrase: nil, totpSecret: nil, pluginSecureFields: nil
+        ))
+        let sealed = try await ConnectionBundleCodec.encode(try builder.build(), passphrase: "correct horse")
+        let bundle = try await ConnectionBundleCodec.decode(sealed, passphrase: "correct horse")
+        let preview = try await IOSConnectionImportService.preview(of: bundle, fileName: "Tests.tablepro", appState: appState)
+        store.refusesStores = true
+
+        let outcome = await apply(preview)
+
+        let id = try #require(appState.connections.first?.id)
+        #expect(outcome.connectionsAdded == 1)
+        #expect(outcome.passwordsNotKept == 3)
+        #expect(outcome.connectionIds == [id])
+        #expect(outcome.handoff(from: .fileOrLink) == .select([id]))
+    }
+
     @Test("An imported tunnel keeps its TOTP settings and restores the secret")
     func importRestoresTOTP() async throws {
         var builder = ConnectionBundleBuilder(appVersion: "Tests")

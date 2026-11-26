@@ -32,24 +32,26 @@ impl DBeaver {
         Self::new(locations::data_roots(dirs))
     }
 
-    fn project(&self) -> Option<Project> {
-        locations::find_project(&self.data_roots)
+    fn projects(&self) -> Vec<Project> {
+        locations::find_projects(&self.data_roots)
     }
 }
 
 impl AppReader for DBeaver {
     fn has_data(&self) -> bool {
-        self.project().is_some()
+        !self.projects().is_empty()
     }
 
-    fn inventory(&self) -> Inventory {
-        let Some(project) = self.project() else {
-            return Inventory::default();
-        };
-        Inventory {
-            connections: project.configs.iter().map(connection_count).sum(),
-            saved_queries: scripts::count(&project.path),
+    fn inventory(&self) -> Result<Inventory, ForeignImportError> {
+        let projects = self.projects();
+        if projects.is_empty() {
+            return Ok(Inventory::default());
         }
+        let counted = read_projects(&projects, connection_count)?;
+        Ok(Inventory {
+            connections: counted.iter().map(|(_, count)| count).sum(),
+            saved_queries: counted.iter().map(|(project, _)| scripts::count(&project.path)).sum(),
+        })
     }
 
     fn collect(
@@ -57,43 +59,50 @@ impl AppReader for DBeaver {
         request: &ImportRequest,
         cancel: &CancellationToken,
     ) -> Result<CollectedImport, ForeignImportError> {
-        let project = self.project().ok_or(ForeignImportError::FileNotFound {
-            app: ForeignApp::DBeaver,
-        })?;
-        let sources = read_data_sources(&project)?;
-        let folders = folder_descriptions(&sources);
-
+        let projects = self.projects();
+        if projects.is_empty() {
+            return Err(ForeignImportError::FileNotFound {
+                app: ForeignApp::DBeaver,
+            });
+        }
         let mut records = Vec::new();
-        for source in &sources {
-            for (id, connection) in &source.connections {
-                check_cancel(cancel)?;
-                let settings = settings(
-                    id,
-                    connection,
-                    source.credentials.username(id),
-                    source.credentials.tunnel_username(id),
-                );
-                let credentials = request
-                    .include_passwords
-                    .then(|| source.credentials.secrets(id))
-                    .flatten()
-                    .map(|credentials| tunnel_secret_by_auth(credentials, &settings));
-                records.push(ForeignConnectionRecord {
-                    source_id: Some(id.clone()),
-                    settings,
-                    group_path: group_path(connection.get("folder").and_then(Value::as_str), &folders),
-                    credentials,
-                });
+        let mut saved_queries = Vec::new();
+        for (project, sources) in read_projects(&projects, read_data_sources)? {
+            // DBeaver keeps one folder tree per project.
+            let folders = folder_descriptions(&sources);
+            for source in &sources {
+                for (id, connection) in &source.connections {
+                    check_cancel(cancel)?;
+                    let settings = settings(
+                        id,
+                        connection,
+                        source.credentials.username(id),
+                        source.credentials.tunnel_username(id),
+                    );
+                    let credentials = request
+                        .include_passwords
+                        .then(|| source.credentials.secrets(id))
+                        .flatten()
+                        .map(|credentials| tunnel_secret_by_auth(credentials, &settings));
+                    records.push(ForeignConnectionRecord {
+                        source_id: Some(project.scoped_id(id)),
+                        settings,
+                        group_path: group_path(connection.get("folder").and_then(Value::as_str), &folders),
+                        credentials,
+                    });
+                }
+            }
+            if request.include_saved_queries {
+                let queries = scripts::saved_queries(&project.path, request.saved_query_byte_limit, cancel)?;
+                saved_queries.extend(queries.into_iter().map(|mut query| {
+                    query.source_connection_id = query.source_connection_id.map(|id| project.scoped_id(&id));
+                    query
+                }));
             }
         }
         // JSON objects have no order once parsed, so the review list is sorted.
         records.sort_by(|left, right| sort_key(left).cmp(&sort_key(right)));
 
-        let saved_queries = if request.include_saved_queries {
-            scripts::saved_queries(&project.path, request.saved_query_byte_limit, cancel)?
-        } else {
-            Vec::new()
-        };
         let passwords = if request.include_passwords {
             PasswordOutcome::Read
         } else {
@@ -113,11 +122,57 @@ struct DataSources {
     credentials: Credentials,
 }
 
+// A project whose main data file is broken leaves the other projects importable; with none readable, the first
+// project's error is the import's.
+fn read_projects<T>(
+    projects: &[Project],
+    read: impl Fn(&Project) -> Result<T, ForeignImportError>,
+) -> Result<Vec<(&Project, T)>, ForeignImportError> {
+    let mut read_projects = Vec::with_capacity(projects.len());
+    let mut first_error = None;
+    for project in projects {
+        match read(project) {
+            Ok(value) => read_projects.push((project, value)),
+            Err(error) => {
+                tracing::warn!(code = error.code(), "skipped a DBeaver project");
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    match first_error {
+        Some(error) if read_projects.is_empty() => Err(error),
+        _ => Ok(read_projects),
+    }
+}
+
 fn read_data_sources(project: &Project) -> Result<Vec<DataSources>, ForeignImportError> {
-    let mut sources = Vec::with_capacity(project.configs.len());
+    read_configs(project, |config| {
+        let (connections, folders) = read_connections(config)?;
+        Ok(DataSources {
+            connections,
+            folders,
+            credentials: Credentials::load(&config.credentials_path),
+        })
+    })
+}
+
+// Counts what collect reads, without decrypting the credentials file.
+fn connection_count(project: &Project) -> Result<usize, ForeignImportError> {
+    Ok(read_configs(project, |config| {
+        read_connections(config).map(|(connections, _)| connections.len())
+    })?
+    .into_iter()
+    .sum())
+}
+
+fn read_configs<T>(
+    project: &Project,
+    read: impl Fn(&ConfigFile) -> Result<T, ForeignImportError>,
+) -> Result<Vec<T>, ForeignImportError> {
+    let mut read_files = Vec::with_capacity(project.configs.len());
     for config in &project.configs {
-        match read_config(config) {
-            Ok(source) => sources.push(source),
+        match read(config) {
+            Ok(value) => read_files.push(value),
             // A broken extra file leaves the main file's connections importable.
             Err(error) if !config.is_default => {
                 tracing::warn!(code = error.code(), file = %config.name, "skipped a DBeaver data sources file");
@@ -125,33 +180,24 @@ fn read_data_sources(project: &Project) -> Result<Vec<DataSources>, ForeignImpor
             Err(error) => return Err(error),
         }
     }
-    Ok(sources)
+    Ok(read_files)
 }
 
-fn read_config(config: &ConfigFile) -> Result<DataSources, ForeignImportError> {
-    let mut json = crate::files::read_capped(&config.path)
-        .ok()
-        .and_then(|data| json_object(&data))
-        .ok_or_else(|| ForeignImportError::parse(format!("Could not parse {}", config.name)))?;
+type ConnectionsAndFolders = (BTreeMap<String, Value>, BTreeMap<String, Value>);
+
+fn read_connections(config: &ConfigFile) -> Result<ConnectionsAndFolders, ForeignImportError> {
+    let data = crate::files::read_capped(&config.path).map_err(|source| ForeignImportError::Unreadable {
+        path: config.path.clone(),
+        source,
+    })?;
+    let mut json =
+        json_object(&data).ok_or_else(|| ForeignImportError::parse(format!("Could not parse {}", config.name)))?;
     let connections = json
         .remove("connections")
         .and_then(objects)
         .ok_or_else(|| ForeignImportError::unsupported(format!("Missing connections key in {}", config.name)))?;
     let folders = json.remove("folders").and_then(objects).unwrap_or_default();
-    Ok(DataSources {
-        connections,
-        folders,
-        credentials: Credentials::load(&config.credentials_path),
-    })
-}
-
-fn connection_count(config: &ConfigFile) -> usize {
-    crate::files::read_capped(&config.path)
-        .ok()
-        .and_then(|data| json_object(&data))
-        .and_then(|mut json| json.remove("connections"))
-        .and_then(object)
-        .map_or(0, |connections| connections.len())
+    Ok((connections, folders))
 }
 
 fn json_object(data: &[u8]) -> Option<BTreeMap<String, Value>> {
@@ -761,9 +807,18 @@ mod tests {
             is_default: true,
         };
         assert!(matches!(
-            read_config(&config),
+            read_connections(&config),
             Err(ForeignImportError::UnsupportedFormat { .. })
         ));
-        assert_eq!(connection_count(&config), 2);
+        // Counted as collect reads it, so a file collect refuses is not two connections.
+        let project = Project {
+            name: "General".to_owned(),
+            path: directory.path().to_path_buf(),
+            configs: vec![config],
+        };
+        assert!(matches!(
+            connection_count(&project),
+            Err(ForeignImportError::UnsupportedFormat { .. })
+        ));
     }
 }
