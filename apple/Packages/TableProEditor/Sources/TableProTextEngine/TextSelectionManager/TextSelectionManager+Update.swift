@@ -49,6 +49,9 @@ public extension TextSelectionManager {
 
     func notifyAfterEdit(force: Bool = false) {
         updateSelectionViews(force: force)
+        // An edit moves the selections whether or not a caret view moved, and a view that is not first responder has
+        // no caret view at all.
+        setNeedsDisplayForSelections()
         notifySelectionChanged()
     }
 }
