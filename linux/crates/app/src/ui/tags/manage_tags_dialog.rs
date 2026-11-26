@@ -279,6 +279,9 @@ mod tests {
             tags: tags.iter().map(|tag| tag.id).collect(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         }
     }
 

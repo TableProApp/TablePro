@@ -47,14 +47,16 @@ internal sealed class AppSession : IDisposable
 
     public Window Window { get; }
 
-    public static string NewDataFolder(string theme)
+    // Seen by default, so a test that starts with an empty library lands on the Connections page, not the setup guide.
+    public static string NewDataFolder(string theme, bool setupGuideSeen = true)
     {
         var folder = Directory.CreateTempSubdirectory("tablepro-ui-").FullName;
-        WriteSettings(folder, theme);
+        WriteSettings(folder, theme, setupGuideSeen);
         return folder;
     }
 
-    public static AppSession Launch(string theme) => Relaunch(NewDataFolder(theme), theme);
+    public static AppSession Launch(string theme, bool setupGuideSeen = true) =>
+        Relaunch(NewDataFolder(theme, setupGuideSeen), theme);
 
     public static AppSession Relaunch(string dataFolder, string theme, bool maximize = true) =>
         new(dataFolder, theme, () => LaunchBuild(dataFolder, []), maximize);
@@ -81,12 +83,24 @@ internal sealed class AppSession : IDisposable
         var packages = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages");
         var folder = Path.Combine(packages, familyName, "LocalState");
         _packageState.Prepare(folder);
-        WriteSettings(folder, theme);
+        WriteSettings(folder, theme, setupGuideSeen: true);
         return new(folder, theme, () => Application.LaunchStoreApp(familyName + "!App"));
     }
 
-    private static void WriteSettings(string folder, string theme) =>
-        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}" }""");
+    private static void WriteSettings(string folder, string theme, bool setupGuideSeen)
+    {
+        var seen = setupGuideSeen ? "true" : "false";
+        File.WriteAllText(
+            Path.Combine(folder, "settings.json"),
+            $$"""{ "theme": "{{theme}}", "setupGuideSeen": {{seen}} }""");
+    }
+
+    // Help > Open the sample database, which works from any page, the setup guide's included.
+    public void OpenSampleFromHelp()
+    {
+        Click(Find("HelpMenu"), () => TryFind("MenuSample") is { IsEnabled: true });
+        Click(Find("MenuSample"), () => TryFind("Rail_Chinook (Sample)") is not null);
+    }
 
     private static Application LaunchBuild(string dataFolder, IReadOnlyList<string> arguments) =>
         Application.Launch(StartInfo(dataFolder, arguments));

@@ -10,6 +10,7 @@ private final class FakeLibraryStore: ImportLibraryStore {
     var droppedConnectionIds: Set<UUID> = []
     var createdProfileRefs: Set<BundleRef>?
     var existingIds: Set<UUID> = []
+    var secretsRefused: [UUID: Int] = [:]
 
     private(set) var receivedProfiles: [PlannedCredentialProfile] = []
     private(set) var receivedGroupPaths: [[PathComponent]] = []
@@ -62,8 +63,9 @@ private final class FakeLibraryStore: ImportLibraryStore {
         existingIds
     }
 
-    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {
+    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) -> CredentialWriteResult {
         credentialWrites.append((connectionId, credentials.password))
+        return CredentialWriteResult(secretsNotKept: secretsRefused[connectionId] ?? 0)
     }
 
     private func makeId() -> UUID {
@@ -165,7 +167,7 @@ struct ImportApplierTests {
 
         let outcome = await ImportApplier.apply(plan, library: library, savedQueries: nil)
 
-        #expect(outcome == ImportOutcome(connectionsAdded: 3))
+        #expect(outcome == ImportOutcome(connectionIds: [Fixtures.uuid(1), Fixtures.uuid(2), Fixtures.uuid(3)], connectionsAdded: 3))
         #expect(library.receivedGroupPaths == [teamA])
         let written = try #require(library.writtenConnections)
         #expect(written.map(\.groupId) == [Fixtures.uuid(102), Fixtures.uuid(102), nil])
@@ -206,7 +208,12 @@ struct ImportApplierTests {
 
         let outcome = await ImportApplier.apply(plan, library: library, savedQueries: queries)
 
-        #expect(outcome == ImportOutcome(connectionsAdded: 1, savedQueriesAdded: 1, savedQueriesNotImported: 1))
+        #expect(outcome == ImportOutcome(
+            connectionIds: [Fixtures.uuid(1)],
+            connectionsAdded: 1,
+            savedQueriesAdded: 1,
+            savedQueriesNotImported: 1
+        ))
         #expect(library.credentialWrites.map { $0.connectionId } == [Fixtures.uuid(1)])
         #expect(await queries.received.map { $0.map(\.ref) } == [["q1"]])
     }
@@ -223,7 +230,11 @@ struct ImportApplierTests {
 
         let outcome = await ImportApplier.apply(plan, library: library, savedQueries: nil)
 
-        #expect(outcome == ImportOutcome(connectionsAdded: 2, connectionsReplaced: 2))
+        #expect(outcome == ImportOutcome(
+            connectionIds: [Fixtures.uuid(9), Fixtures.uuid(3), Fixtures.uuid(5), Fixtures.uuid(1)],
+            connectionsAdded: 2,
+            connectionsReplaced: 2
+        ))
         #expect(library.credentialWrites.map { $0.password } == ["first", "second", "third"])
     }
 
@@ -256,7 +267,7 @@ struct ImportApplierTests {
 
         let outcome = await ImportApplier.apply(plan, library: library, savedQueries: nil)
 
-        #expect(outcome == ImportOutcome(connectionsAdded: 1, savedQueriesNotImported: 1))
+        #expect(outcome == ImportOutcome(connectionIds: [Fixtures.uuid(1)], connectionsAdded: 1, savedQueriesNotImported: 1))
     }
 
     @Test("A failed query write reports it and keeps the connections")
@@ -269,7 +280,7 @@ struct ImportApplierTests {
 
         let outcome = await ImportApplier.apply(plan, library: library, savedQueries: FakeSavedQueryStore(fails: true))
 
-        #expect(outcome == ImportOutcome(connectionsAdded: 1, failure: .savedQueriesNotSaved))
+        #expect(outcome == ImportOutcome(connectionIds: [Fixtures.uuid(1)], connectionsAdded: 1, failure: .savedQueriesNotSaved))
         #expect(outcome.importedAnything)
     }
 
@@ -287,6 +298,76 @@ struct ImportApplierTests {
         )
 
         #expect(outcome == ImportOutcome(savedQueriesAdded: 1, savedQueriesNotImported: 2))
+    }
+
+    @Test("Secrets the store refuses are counted, and their connections still import")
+    func refusedSecretsAreCounted() async {
+        let library = FakeLibraryStore()
+        library.secretsRefused = [Fixtures.uuid(1): 2, Fixtures.uuid(3): 1]
+        let plan = makePlan(connections: [
+            connection("c1", id: Fixtures.uuid(1), password: "one"),
+            connection("c2", id: Fixtures.uuid(2), password: "two"),
+            connection("c3", id: Fixtures.uuid(3), password: "three")
+        ])
+
+        let outcome = await ImportApplier.apply(plan, library: library, savedQueries: nil)
+
+        #expect(outcome.passwordsNotKept == 3)
+        #expect(outcome.connectionsAdded == 3)
+        #expect(outcome.failure == nil)
+        #expect(library.credentialWrites.count == 3)
+    }
+
+    @Test("Only written rows carry their ids, in plan order: a Keep Existing target and a dropped row do not")
+    func connectionIdsAreTheWrittenRows() async {
+        let library = FakeLibraryStore()
+        library.droppedConnectionIds = [Fixtures.uuid(4)]
+        let kept = UUID()
+        library.existingIds = [kept]
+        let plan = makePlan(
+            connections: [
+                connection("c1", id: Fixtures.uuid(7), write: .replace),
+                connection("c2", id: Fixtures.uuid(4)),
+                connection("c3", id: Fixtures.uuid(2))
+            ],
+            kept: ["c4": kept]
+        )
+
+        let outcome = await ImportApplier.apply(plan, library: library, savedQueries: nil)
+
+        #expect(outcome.connectionIds == [Fixtures.uuid(7), Fixtures.uuid(2)])
+        #expect(outcome.handoff(from: .ownMachineOrAccount) == .select([Fixtures.uuid(7), Fixtures.uuid(2)]))
+    }
+
+    @Test("From the user's own machine or account, one written connection opens, several are selected, none stays")
+    func handoffFollowsTheWrittenIds() {
+        let first = Fixtures.uuid(1)
+        let second = Fixtures.uuid(2)
+        let origin = ImportOrigin.ownMachineOrAccount
+
+        #expect(ImportOutcome().handoff(from: origin) == .stay)
+        #expect(ImportOutcome(savedQueriesAdded: 3).handoff(from: origin) == .stay)
+        #expect(ImportOutcome(connectionIds: [first], connectionsAdded: 1).handoff(from: origin) == .open(first))
+        #expect(ImportOutcome(connectionIds: [first, second], connectionsAdded: 2).handoff(from: origin) == .select([first, second]))
+        #expect(
+            ImportOutcome(connectionIds: [first], connectionsReplaced: 1, failure: .savedQueriesNotSaved).handoff(from: origin)
+                == .open(first)
+        )
+    }
+
+    @Test("A file or a link never opens what it wrote: one connection is selected, like several")
+    func fileOrLinkHandoffNeverOpens() {
+        let first = Fixtures.uuid(1)
+        let second = Fixtures.uuid(2)
+
+        #expect(ImportOutcome().handoff(from: .fileOrLink) == .stay)
+        #expect(ImportOutcome(savedQueriesAdded: 3).handoff(from: .fileOrLink) == .stay)
+        #expect(ImportOutcome(connectionIds: [first], connectionsAdded: 1).handoff(from: .fileOrLink) == .select([first]))
+        #expect(ImportOutcome(connectionIds: [first], connectionsReplaced: 1).handoff(from: .fileOrLink) == .select([first]))
+        #expect(
+            ImportOutcome(connectionIds: [first, second], connectionsAdded: 2).handoff(from: .fileOrLink)
+                == .select([first, second])
+        )
     }
 
     @Test("An unreadable library stops before anything is written")

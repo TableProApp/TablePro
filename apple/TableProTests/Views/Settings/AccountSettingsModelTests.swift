@@ -20,7 +20,7 @@ struct AccountSettingsModelTests {
             AccountMembership(teamID: "team_acme", teamName: "Acme", role: "member", hasSeat: false)
         ])
         #expect(model.devices.value?.map { $0.id } == [FakeAccountServer.deviceID])
-        #expect(model.content.devices?.first?.isThisMac == true)
+        #expect(model.content.devices?.first?.isThisDevice == true)
         #expect(model.content.teams?.first?.hasSeat == false)
     }
 
@@ -90,7 +90,7 @@ struct AccountSettingsModelTests {
         #expect(model.content.devices?.first { $0.id == "dev_air" }?.canRemove == false)
 
         await model.removeDevice(.init(
-            id: row.id, name: row.name, system: "", lastSeenAt: row.lastSeenAt, isThisMac: false, offlineUntil: nil
+            id: row.id, name: row.name, system: "", lastSeenAt: row.lastSeenAt, isThisDevice: false, offlineUntil: nil
         ))
 
         #expect(model.actionFailure?.message == AccountError.server(status: 409, code: "offline_file_active").deviceRemovalDescription)

@@ -49,6 +49,7 @@ tablepro-mcp.workspace = true
 tablepro-net.workspace = true
 tablepro-session = { workspace = true, features = ["in-process-ssh"] }
 tablepro-ssh = { workspace = true, features = ["in-process"] }
+tablepro-records.workspace = true
 tablepro-storage.workspace = true
 async-trait.workspace = true
 chrono.workspace = true

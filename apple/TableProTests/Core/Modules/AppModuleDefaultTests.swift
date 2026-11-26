@@ -41,7 +41,7 @@ struct AppModuleDefaultTests {
     @Test("Finishing onboarding on an older build also marks an existing install")
     func onboardingMarksAnExistingInstall() throws {
         let suite = try EphemeralDefaults()
-        AppSettingsStorage(userDefaults: suite.defaults).markWelcomeSheetSeen()
+        suite.defaults.set(true, forKey: "com.TablePro.settings.hasCompletedOnboarding")
 
         #expect(launch(suite).isEnabled(.compareSync))
     }

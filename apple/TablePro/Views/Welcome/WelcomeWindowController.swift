@@ -28,6 +28,15 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
         controller.window?.makeKeyAndOrderFront(nil)
         AppActivationPolicyController.shared.activate()
         controller.viewModel.focusList()
+        controller.decideSetupGuideAfterFirstFrame()
+    }
+
+    // The guide opens in front of Welcome once Welcome has drawn and taken any routed request.
+    private func decideSetupGuideAfterFirstFrame() {
+        guard SetupGuidePresenter.shared.state == .undecided, let window else { return }
+        window.afterNextFrame { [weak self] in
+            SetupGuidePresenter.shared.welcomeDidAppear(hasRoutedWork: self?.viewModel.hasRoutedPresentation ?? false)
+        }
     }
 
     internal static func makeWelcomeWindow() -> NSWindow {

@@ -39,6 +39,8 @@ mod imp {
         pub system_style_row: TemplateChild<adw::SwitchRow>,
         pub(super) scheme_handler: RefCell<Option<HandlerGuard>>,
         #[template_child]
+        pub shortcuts_row: TemplateChild<adw::ComboRow>,
+        #[template_child]
         pub vim_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub snippets_row: TemplateChild<adw::ActionRow>,
@@ -115,6 +117,7 @@ impl EditorPage {
         gio_settings
             .bind(keys::VIM_KEYBINDINGS, &imp.vim_row.get(), "active")
             .build();
+        crate::application::bind_preset_row(&imp.shortcuts_row.get(), gio_settings, &[]);
 
         // The font row is only reachable when the system font is off, so
         // the switch drives its sensitivity with the value inverted.
@@ -300,6 +303,7 @@ mod tests {
                 "Use the System Monospace Font",
                 "Editor font",
                 "Follow System Style",
+                "Shortcuts",
                 "Vim Keybindings",
                 "Snippets folder",
                 "Query timeout (seconds)"
@@ -443,6 +447,45 @@ mod tests {
         row.set_active(true);
 
         assert!(settings.get().vim_keybindings());
+    }
+
+    #[gtk4::test]
+    fn the_shortcuts_row_lists_tablepro_then_the_presets_and_is_bound() {
+        let settings = MemorySettings::new();
+        let page = bound_page(&settings);
+        let row = page.imp().shortcuts_row.get();
+        let names: Vec<String> = row
+            .model()
+            .map(|model| {
+                (0..model.n_items())
+                    .filter_map(|at| model.item(at).and_downcast::<gtk4::StringObject>())
+                    .map(|name| name.string().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut expected = vec!["TablePro".to_owned()];
+        expected.extend(
+            tablepro_core::keymap::presets()
+                .expect("the presets")
+                .into_iter()
+                .filter(|preset| preset.platforms.contains(&tablepro_core::keymap::Platform::Linux))
+                .map(|preset| preset.name),
+        );
+        assert_eq!(names, expected);
+        assert_eq!(row.selected(), 0);
+
+        let dbeaver = names
+            .iter()
+            .position(|name| name == "DBeaver")
+            .expect("the DBeaver preset");
+        row.set_selected(u32::try_from(dbeaver).expect("a row index"));
+        assert_eq!(settings.get().shortcut_preset(), "dbeaver");
+
+        settings
+            .get()
+            .set_shortcut_preset("tablepro")
+            .expect("store the preset");
+        assert_eq!(row.selected(), 0);
     }
 
     #[gtk4::test]

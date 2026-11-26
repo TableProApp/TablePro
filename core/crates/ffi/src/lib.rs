@@ -28,7 +28,9 @@ mod host;
 mod host_key;
 mod import;
 mod key_read;
+mod keymap;
 mod library;
+mod library_details;
 mod masking;
 mod mcp;
 mod prompter;
@@ -43,6 +45,7 @@ mod session;
 mod statement_at;
 mod structure;
 mod syntax;
+mod table_folders;
 #[cfg(test)]
 mod test_session;
 pub mod window_abi;
@@ -87,8 +90,9 @@ pub use filter::{
 pub use foreign_import::{
     ExistingConnectionInfo, ForeignAppDirsArg, ForeignAppTag, ForeignConnectionChoice, ForeignConnectionRow,
     ForeignImportChoices, ForeignImportOutcome, ForeignImportRequest, ForeignImportReview, ForeignQueryChoice,
-    ForeignQueryRow, ForeignSourceInfo, ForeignSslModeTag, PasswordOutcomeTag, PasswordSourceTag, QueryAvailabilityTag,
-    ResolutionTag, RowNoteInfo, SavedQuerySupportTag, TlsFileReasonTag,
+    ForeignQueryRow, ForeignSourceInfo, ForeignSslModeTag, PasswordOfferTag, PasswordOutcomeTag, PasswordSourceTag,
+    QueryAvailabilityTag, ResolutionTag, RowNoteInfo, SavedQuerySupportTag, ScanDepthTag, SourceAvailabilityTag,
+    TlsFileReasonTag,
 };
 pub use history::{
     HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryOutcomeTag, HistoryPageInfo, HistoryRun,
@@ -100,9 +104,16 @@ pub use import::{
     ImportColumnInfo, LineSpan,
 };
 pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
+pub use keymap::{KeymapBindingInfo, KeymapPlatformTag, KeymapPresetInfo, keymap_preset, keymap_presets};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
     LibrarySnapshot, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
+};
+pub use library_details::{
+    CloudSqlAuthTag, CloudSqlProxyRecord, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord,
+    CredentialPasswordRecord, CredentialProfileRecord, CredentialReferenceRecord, DeviceSettingsRecord,
+    LocalPasswordSourceRecord, SocksProxyRecord, SshProfileRecord, SshRouteHopRecord, SshRouteRecord,
+    SshRouteTargetRecord, TunnelCommandMethodTag, TunnelCommandRecord, VaultAuthRecord,
 };
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,
@@ -128,6 +139,7 @@ pub use session::{
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
 pub use syntax::SqlGrammarTag;
+pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};
 
 use secrecy::{ExposeSecret, SecretString};
 
