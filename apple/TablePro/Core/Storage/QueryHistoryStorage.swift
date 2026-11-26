@@ -30,6 +30,8 @@ actor QueryHistoryStorage {
     private var cachedMaxDays: Int = 90
     private var cachedAutoCleanup: Bool = true
     private var insertsSinceCleanup: Int = 0
+    // Moves on each retention pass, so the core's copy knows the runs it dropped and drops them too.
+    private(set) var cleanupRuns = 0
     private var didBackfillFingerprints = false
 
     var rewindRevision = 0
@@ -1223,6 +1225,7 @@ actor QueryHistoryStorage {
     @discardableResult
     private func performCleanup() -> Bool {
         guard let db else { return false }
+        cleanupRuns += 1
 
         let changesBefore = sqlite3_total_changes(db)
         beginTransaction()
