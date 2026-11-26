@@ -7,43 +7,45 @@ import Foundation
 import os
 import TableProFFI
 
-// The core that holds this Mac's stores under `TablePro/Core` in Application Support, opened once per app. The sync
-// engine runs on it, so its state files sit under that folder (core ADR 0054, The state file). The account's core
-// keeps no files, so sync never opens there. A store that moves into the core opens on this one too, never on a core
-// of its own over the same folder.
+// The one core over `TablePro/Core` in Application Support. Every store the Mac keeps in the core and the sync engine
+// open on it, so no two runtimes ever hold the same files: the library's `connections.json`, `history.db` and the sync
+// state files under its state folder (core ADR 0054, The state file; 0060). Opened on first use; a failed open is tried
+// again by the next caller. The account's core keeps no files and stays apart.
 nonisolated final class CoreStoreHost: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CoreStoreHost")
 
     static let shared = CoreStoreHost(
-        directory: AppStorageEnvironment.shared.applicationSupportRoot
-            .appendingPathComponent("TablePro", isDirectory: true)
-            .appendingPathComponent("Core", isDirectory: true),
+        folder: AppStorageEnvironment.shared.supportDirectory.appendingPathComponent("Core", isDirectory: true),
         makeSecrets: { KeychainHostSecrets(keychain: AccountKeychain(keychain: AppStorageEnvironment.shared.deviceOnlyKeychain)) }
     )
 
-    let directory: URL
+    let folder: URL
     private let makeSecrets: @Sendable () -> any HostSecrets
     private let clientVersion: String
     private let opened = OSAllocatedUnfairLock<Core?>(initialState: nil)
 
     init(
-        directory: URL,
+        folder: URL,
         makeSecrets: @escaping @Sendable () -> any HostSecrets,
         clientVersion: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     ) {
-        self.directory = directory
+        self.folder = folder
         self.makeSecrets = makeSecrets
         self.clientVersion = clientVersion
     }
 
-    // A failed open is tried again by the next caller.
     func core() throws -> Core {
         try opened.withLock { opened in
             if let opened { return opened }
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             do {
+                // Private, since history.db holds the SQL a person ran.
+                try FileManager.default.createDirectory(
+                    at: folder,
+                    withIntermediateDirectories: true,
+                    attributes: [.posixPermissions: 0o700]
+                )
                 let core = try Core(
-                    config: HostConfig(clientVersion: clientVersion, storageDir: directory.path),
+                    config: HostConfig(clientVersion: clientVersion, storageDir: folder.path),
                     secrets: makeSecrets()
                 )
                 opened = core
