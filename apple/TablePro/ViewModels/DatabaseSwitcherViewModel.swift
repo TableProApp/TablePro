@@ -144,9 +144,9 @@ final class DatabaseSwitcherViewModel: ObservableObject {
         await load(refreshing: true)
     }
 
-    /// The lists have one owner each: the database list is the tree's, which the sidebar read on connect, and
-    /// the browsed database's schema list is the one the schema service read with its catalog. Opening the
-    /// switcher reads neither again; Refresh rereads through the owner, so every list it feeds moves together.
+    /// The database list is the tree's, which the sidebar read on connect: opening the switcher does not read it
+    /// again, and Refresh rereads it through the tree, so every list it feeds moves together. The schema list is read
+    /// here, since the tree's refresh does not reach the schema service's copy.
     private func listedNames(refreshing: Bool) async throws -> [String] {
         switch switchTarget {
         case .database:
@@ -156,19 +156,9 @@ final class DatabaseSwitcherViewModel: ObservableObject {
             }
             return try await tree.databaseNames(connectionId: connectionId, databaseType: databaseType)
         case .schema:
-            let database = services.databaseManager.browseScope(for: connectionId)?.database
-            if !refreshing, let database,
-               let held = services.schemaService.currentSchemas(for: connectionId, database: database) {
-                return held
-            }
-            let readAt = services.schemaService.generationToken(for: connectionId)
-            let schemas = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+            return try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
                 try await driver.fetchSchemas()
             }
-            if let database {
-                services.schemaService.noteSchemasRead(schemas, for: connectionId, database: database, readAt: readAt)
-            }
-            return schemas
         }
     }
 

@@ -273,29 +273,6 @@ struct SchemaServiceTests {
         #expect(service.isCatalogCurrent(for: connection.id))
     }
 
-    @Test("A schema list read before a newer catalog load leaves the newer list, and one read after it replaces it")
-    func aLateSchemaListReadKeepsTheNewerList() async {
-        let connection = TestFixtures.makeConnection(type: .postgresql)
-        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: "public")
-        let driver = MockDatabaseDriver(connection: connection)
-        driver.schemasToReturn = ["public"]
-        let service = SchemaService()
-        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
-        let readBefore = service.generationToken(for: connection.id)
-
-        driver.schemasToReturn = ["audit", "public"]
-        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
-        let newer = service.schemas(for: connection.id)
-        #expect(newer.contains("audit"))
-
-        service.noteSchemasRead(["public"], for: connection.id, database: "sales", readAt: readBefore)
-        #expect(service.schemas(for: connection.id) == newer)
-
-        let readAfter = service.generationToken(for: connection.id)
-        service.noteSchemasRead(["audit", "public", "staging"], for: connection.id, database: "sales", readAt: readAfter)
-        #expect(service.schemas(for: connection.id) == ["audit", "public", "staging"])
-    }
-
     @Test("A catalog whose schema list failed to load is read again when shown")
     func aFailedSchemaListMakesTheCatalogStale() async {
         let connection = TestFixtures.makeConnection(type: .postgresql)

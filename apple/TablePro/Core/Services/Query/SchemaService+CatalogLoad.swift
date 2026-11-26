@@ -66,25 +66,6 @@ extension SchemaService {
         generations[connectionId] ?? 0
     }
 
-    func isRefreshing(connectionId: UUID) -> Bool {
-        refreshingConnections.contains(connectionId)
-    }
-
-    /// The schema list read with `database`'s catalog, for a reader that would otherwise read it again; nil when the
-    /// catalog shown is another database's, is not current, or has no schema list.
-    func currentSchemas(for connectionId: UUID, database: String) -> [String]? {
-        guard let scope = loadedScope(for: connectionId), CatalogName.same(scope.database, database),
-              isCatalogCurrent(for: connectionId)
-        else { return nil }
-        let schemas = schemas(for: connectionId)
-        return schemas.isEmpty ? nil : schemas
-    }
-
-    // Refused once the catalog moved after `generation` was taken, so a read that finishes late never replaces a newer list.
-    func acceptsSchemasRead(for connectionId: UUID, database: String, readAt generation: Int) -> Bool {
-        generationToken(for: connectionId) == generation && currentSchemas(for: connectionId, database: database) != nil
-    }
-
     func needsLoad(_ connectionId: UUID, scope: DatabaseScope?) -> Bool {
         guard case .loaded = state(for: connectionId) else { return true }
         return !((scope == nil || loadedScope(for: connectionId) == scope) && isCatalogCurrent(for: connectionId))

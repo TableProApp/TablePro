@@ -364,7 +364,9 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
         if services.pluginManager.supportsSchemaSwitching(for: databaseType) {
             do {
-                let schemas = try await browsedSchemas()
+                let schemas = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                    try await driver.fetchSchemas()
+                }
                 let schemaSubtitle = switchTarget == .schema
                     ? services.pluginManager.containerEntityName(for: databaseType)
                     : String(localized: "Schema")
@@ -392,17 +394,6 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         items += triggerItems(connectionId: connectionId, database: activeDatabase, qualifier: qualifier)
         items += userTypeItems(connectionId: connectionId, database: activeDatabase, qualifier: qualifier)
         return (items, isComplete)
-    }
-
-    /// The schema list the schema service read with the browsed catalog, read here only when it holds none current.
-    private func browsedSchemas() async throws -> [String] {
-        if let database = services.databaseManager.browseScope(for: connectionId)?.database,
-           let held = services.schemaService.currentSchemas(for: connectionId, database: database) {
-            return held
-        }
-        return try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-            try await driver.fetchSchemas()
-        }
     }
 
     /// The local part of the catalog store: saved queries and history.
