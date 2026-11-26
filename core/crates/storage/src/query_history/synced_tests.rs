@@ -117,7 +117,7 @@ async fn an_entry_the_person_deleted_is_not_put_back_until_its_tombstone_goes() 
 }
 
 #[tokio::test]
-async fn past_the_cap_the_oldest_tombstones_go() {
+async fn a_tombstone_stays_however_many_wait_until_sync_drops_it() {
     let root = tempfile::tempdir().expect("tempdir");
     let history = history(&root).await;
     sqlx::query(
@@ -127,17 +127,20 @@ async fn past_the_cap_the_oldest_tombstones_go() {
     .bind(MAX_UNPINNED_ENTRIES)
     .execute(history.pool())
     .await
-    .expect("a full set of tombstones");
+    .expect("as many tombstones as the history keeps entries");
     let ran = entry("SELECT newest", Uuid::new_v4(), 1_000);
     history.put(std::slice::from_ref(&ran)).await.expect("put");
 
     history.clear_all().await.expect("clear");
 
     let tombstones = history.tombstones().await.expect("tombstones");
-    assert_eq!(tombstones.len(), usize::try_from(MAX_UNPINNED_ENTRIES).expect("fits"));
+    assert_eq!(
+        tombstones.len(),
+        usize::try_from(MAX_UNPINNED_ENTRIES).expect("fits") + 1
+    );
     assert_eq!(
         tombstones.first().map(Uuid::to_string).as_deref(),
-        Some("00000000-0000-4000-8000-000000000002")
+        Some("00000000-0000-4000-8000-000000000001")
     );
     assert_eq!(tombstones.last(), Some(&ran.record_id));
 }

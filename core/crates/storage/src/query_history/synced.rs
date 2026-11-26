@@ -5,7 +5,7 @@
 use sqlx::{AssertSqlSafe, SqliteConnection};
 use uuid::Uuid;
 
-use super::{ENTRY_COLUMNS, Entry, IDS_PER_STATEMENT, MAX_UNPINNED_ENTRIES, QueryHistory};
+use super::{ENTRY_COLUMNS, Entry, IDS_PER_STATEMENT, QueryHistory};
 use crate::error::StorageError;
 
 impl QueryHistory {
@@ -41,8 +41,8 @@ impl QueryHistory {
     }
 }
 
-// The entries `filter` names, in the person's deletion, before the rows go. A device that never syncs would keep them
-// for good, so past the cap the oldest go: a deletion that old reaches no other device.
+// The entries `filter` names, in the person's deletion, before the rows go. None is dropped before sync takes it, so a
+// device that syncs again after a long time offline still sends every deletion; each is one entry the person had.
 pub(super) async fn tombstone(
     database: &mut SqliteConnection,
     filter: &str,
@@ -57,10 +57,6 @@ pub(super) async fn tombstone(
         };
     }
     statement.execute(&mut *database).await?;
-    sqlx::query("DELETE FROM history_tombstones WHERE id <= (SELECT MAX(id) FROM history_tombstones) - ?")
-        .bind(MAX_UNPINNED_ENTRIES)
-        .execute(&mut *database)
-        .await?;
     Ok(())
 }
 
