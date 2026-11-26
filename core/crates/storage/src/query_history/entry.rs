@@ -4,7 +4,10 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
+    // The rowid the full-text index joins on, which pages and pins use and which never leaves the device.
     pub id: i64,
+    // The id the entry syncs under, random so it says nothing of when the query ran (core ADR 0052).
+    pub record_id: Uuid,
     pub query: String,
     pub driver_id: String,
     pub connection_id: Uuid,

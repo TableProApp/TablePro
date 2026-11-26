@@ -63,7 +63,7 @@ pub enum StorageError {
     FolderNameTaken,
 
     #[error("the folder {id} cannot move inside itself")]
-    FolderCycle { id: i64 },
+    FolderCycle { id: uuid::Uuid },
 
     #[error("export encoding failed: {0}")]
     Encode(#[from] tablepro_core::export::RenderError),

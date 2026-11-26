@@ -29,12 +29,12 @@ pub(super) fn history(tasks: &Tasks) -> (tempfile::TempDir, HistoryService, Quer
     (root, history, store)
 }
 
-fn save(tasks: &Tasks, history: &QueryHistory, connection: Uuid, name: &str, sql: &str) -> i64 {
+fn save(tasks: &Tasks, history: &QueryHistory, connection: Uuid, name: &str, sql: &str) -> Uuid {
     let saved = history.saved_queries();
     let query = NewSavedQuery {
         name: name.into(),
         query: sql.into(),
-        connection_id: connection,
+        connection_id: Some(connection),
         connection_name: "Test".into(),
     };
     finish_on_main(WAIT, tasks.spawn_task(async move { saved.save(query).await }))
