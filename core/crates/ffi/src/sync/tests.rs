@@ -124,16 +124,41 @@ async fn without_an_account_tablepro_sync_reports_unavailable_and_its_calls_say_
 }
 
 #[tokio::test]
-async fn with_sync_off_the_status_is_off_and_nothing_runs() {
+async fn with_sync_off_and_no_sign_in_the_status_is_off_and_nothing_runs() {
     let tasks = runtime::tasks().unwrap();
     let opened = open(&tasks, |parts| parts).await;
 
     let status = opened.service.status();
-    let pass = opened.service.sync_now(PassReasonTag::Person).await.unwrap_err();
+    let pass = opened.service.sync_now(PassReasonTag::Person).await;
+    let approvals = opened.service.approvals().await.unwrap_err();
+    let conflicts = opened.service.conflicts().await.unwrap();
 
     assert_eq!(status.phase, SyncPhaseTag::Off);
     assert_eq!(status.provider, Some(SyncProviderTag::Off));
-    assert_eq!(code(&pass), "sync.not_allowed");
+    assert!(pass.is_ok(), "{pass:?}");
+    assert_eq!(code(&approvals), "sync.not_allowed");
+    assert!(conflicts.is_empty());
+    assert!(opened.service.scope_statuses().is_empty());
+}
+
+// Team scopes and the key objects use TablePro Sync whatever the personal provider is (core ADR 0054, Providers).
+#[tokio::test]
+async fn with_sync_off_a_sign_in_still_syncs_teams_and_its_keys() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let opened = open(&tasks, |parts| OpenParts {
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        ..parts
+    })
+    .await;
+
+    opened.service.sync_now(PassReasonTag::Launch).await.unwrap();
+    let keys = opened.service.key_state().await.unwrap();
+    let scopes = opened.service.scope_statuses();
+
+    assert_eq!(opened.service.status().phase, SyncPhaseTag::Off);
+    assert_eq!(keys, KeyStateInfo::NoKeys);
+    assert!(scopes.iter().any(|scope| scope.scope == "personal"), "{scopes:?}");
 }
 
 #[tokio::test]
@@ -157,8 +182,8 @@ async fn icloud_runs_without_an_account_and_gives_back_the_account_it_synced() {
     assert_eq!(opened.service.icloud_account().as_deref(), Some("_a"));
     assert_eq!(
         code(&opened.service.key_state().await.unwrap_err()),
-        "sync.unimplemented",
-        "the service engine has no team-only pass on iCloud yet"
+        "sync.signed_out",
+        "with no sign-in the teams and the keys have no engine"
     );
 }
 

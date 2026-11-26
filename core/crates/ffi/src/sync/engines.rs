@@ -1,5 +1,6 @@
 // The engines a `SyncService` runs (core ADR 0054, Providers): iCloud for personal data when the app picked it, and
-// TablePro Sync for one sign-in, each over this Core's state files, with its own journal, scheduler and stop.
+// TablePro Sync for one sign-in, which carries personal data too when it is the personal provider and the team scopes
+// and key objects always, each over this Core's state files, with its own journal, scheduler and stop.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -23,7 +24,7 @@ use tablepro_sync::engine::{
 };
 use tablepro_sync::http::{Binding, HttpTransport};
 use tablepro_sync::keys::{KeyService, KeyServiceParts};
-use tablepro_sync::service::{ServiceParts, ServiceSync};
+use tablepro_sync::service::{ServiceMode, ServiceParts, ServiceSync};
 
 use crate::account::AccountService;
 
@@ -142,7 +143,12 @@ pub(crate) struct ServiceEngine {
 
 impl ServiceEngine {
     // Called on the runtime: it opens the sign-in's state file, and the scheduler's task needs the runtime.
-    pub(crate) async fn start(hosts: &Hosts, link: ServiceLink, categories: SyncCategories) -> Result<Self, SyncError> {
+    pub(crate) async fn start(
+        hosts: &Hosts,
+        link: ServiceLink,
+        categories: SyncCategories,
+        mode: ServiceMode,
+    ) -> Result<Self, SyncError> {
         let binding = link.binding;
         let identity = StateIdentity::Service {
             origin: link.origin.clone(),
@@ -176,6 +182,7 @@ impl ServiceEngine {
             journal: journal.clone(),
             events: Some(Arc::clone(&hosts.events)),
             categories,
+            mode,
         }));
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
@@ -206,6 +213,7 @@ impl Drop for ServiceEngine {
 pub(crate) struct Restart {
     pub(crate) hosts: Hosts,
     pub(crate) account: Arc<AccountService>,
+    pub(crate) mode: ServiceMode,
 }
 
 // The TablePro Sync engine, or why it is not running. A start that failed for a reason that passes, as the network or
@@ -263,7 +271,7 @@ impl ServiceSlot {
         }
         let categories = lock(&self.categories).clone();
         let started = match service_link(Some(&restart.account)).await {
-            Ok(link) => ServiceEngine::start(&restart.hosts, link, categories).await,
+            Ok(link) => ServiceEngine::start(&restart.hosts, link, categories, restart.mode).await,
             Err(error) => Err(error),
         }
         .map(Arc::new);
