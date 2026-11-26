@@ -123,7 +123,7 @@ fn request_digest(epoch: EpochId, changes: &[Change]) -> [u8; 32] {
 
 // What a store's copy sends: with the members the store cannot hold from the base, and at the base's value each
 // member the device keeps to itself or that waits for the person (0054, Dirty state is a diff).
-fn going_up(
+pub(super) fn going_up(
     kind: Kind,
     scope: ScopeName,
     mut local: LocalRecords,
@@ -153,6 +153,15 @@ fn fingerprint(change: &Change) -> [u8; 32] {
 impl ServiceSync {
     pub(super) async fn push_scope(&self, ctx: &mut PassCtx, info: &ScopeInfo) -> Result<AfterPush, SyncError> {
         let scope = info.scope;
+        // Nothing of the person's own goes up before they chose for a new account or server (0054, Another account or
+        // server).
+        if !matches!(scope, ScopeName::Team(_)) {
+            let wait = self.own_push_wait().await?;
+            if wait.is_some() {
+                ctx.report.push_wait = wait;
+                return Ok(AfterPush::Done);
+            }
+        }
         let Some(row) = self.scope_row(scope).await? else {
             return Ok(AfterPush::Done);
         };

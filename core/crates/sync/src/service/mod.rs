@@ -1,12 +1,14 @@
 // The TablePro Sync pass (0051, Protocol; Restore; 0054, The engine): the scopes body, then each scope's pull, the key
 // objects a new epoch needs pushed back, the flows to resume, each scope's push with its outbox, and the stop reports.
 
+mod identity;
 mod keys;
 mod pull;
 mod push;
 mod refill;
 mod scopes;
 
+pub use identity::unsent_changes;
 use push::AfterPush;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -22,8 +24,8 @@ use crate::adapters::categories::DeviceCategories;
 use crate::adapters::conflict::Conflicts;
 use crate::api::adapter::StoreStamp;
 use crate::api::control::{
-    ConflictChoice, HeldRecord, HeldRecordReason, PassReason, PendingApproval, SyncCategories, SyncControl, SyncPhase,
-    SyncStatus, TeamConflict,
+    ConflictChoice, HeldRecord, HeldRecordReason, NewIdentityChoice, NewIdentityPlan, PassReason, PendingApproval,
+    SyncCategories, SyncControl, SyncPhase, SyncStatus, TeamConflict,
 };
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
@@ -48,6 +50,10 @@ pub struct ServiceParts {
     pub events: Option<Arc<dyn EngineEvents>>,
     // The categories the app opened sync with (`SyncConfig.categories`), so no pass runs before they are known.
     pub categories: SyncCategories,
+    // This account follows another account or server on this device: the changes the last one's file held unsent,
+    // which the opener counts with `unsent_changes`. Nothing personal goes up until the person chooses (0054,
+    // Another account or server).
+    pub follows: Option<u64>,
 }
 
 pub struct ServiceSync {
@@ -66,6 +72,7 @@ pub struct ServiceSync {
     categories: Mutex<DeviceCategories>,
     // The history entries this device keeps, its retention, which a snapshot takes newest first; None takes all.
     history_window: Mutex<Option<u32>>,
+    follows: Option<u64>,
 }
 
 #[derive(Debug, Default)]
@@ -87,6 +94,8 @@ pub struct PassReport {
     pub skipped: Vec<(ScopeName, &'static str)>,
     pub pull_only: bool,
     pub queued: usize,
+    // What held the push of the own scopes back.
+    pub push_wait: Option<crate::api::state::PushWait>,
 }
 
 // One store as the pass found it: its identity at the start, and the kinds that still owe a refill.
@@ -178,6 +187,7 @@ impl ServiceSync {
             }),
             categories: Mutex::new(DeviceCategories::from(&parts.categories)),
             history_window: Mutex::new(None),
+            follows: parts.follows,
         }
     }
 
@@ -264,6 +274,7 @@ impl ServiceSync {
     async fn run(&self, session: &mut Session, named: Option<JournalIds>) -> Result<PassReport, SyncError> {
         self.stop.check()?;
         self.refill_stale_file(session).await?;
+        self.owe_account_choice().await?;
         self.queue().finish_decided().await?;
         let body = self.poll_scopes(session).await?;
         let keyed = self.keys.dpop_key().await?.is_some();
@@ -619,7 +630,9 @@ impl ServiceSync {
                 if !journal_only {
                     status.queued_changes = u32::try_from(report.queued).unwrap_or(u32::MAX);
                 }
-                status.phase = if report.pull_only {
+                status.phase = if report.push_wait.is_some() {
+                    SyncPhase::NewIdentity
+                } else if report.pull_only {
                     SyncPhase::PullOnly
                 } else {
                     SyncPhase::Idle
@@ -727,6 +740,15 @@ impl SyncControl for ServiceSync {
     async fn approvals(&self) -> Result<Vec<PendingApproval>, SyncError> {
         let _session = self.session.lock().await;
         self.queue().waiting().await
+    }
+
+    async fn plan_new_identity(&self) -> Result<NewIdentityPlan, SyncError> {
+        let _session = self.session.lock().await;
+        self.plan_choice().await
+    }
+
+    async fn choose_for_new_identity(&self, choice: NewIdentityChoice, account: String) -> Result<(), SyncError> {
+        self.answer_choice(choice, &account).await
     }
 
     async fn decide_approval(

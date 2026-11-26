@@ -117,6 +117,7 @@ impl Device {
                 off: Vec::new(),
                 passwords: true,
             },
+            follows: None,
         });
         Self {
             keys,

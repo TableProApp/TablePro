@@ -9,11 +9,13 @@ use serde_json::{Value, json};
 use tablepro_keys::encoding::TeamId;
 use tablepro_records::Kind;
 use tablepro_sync::api::adapter::{LocalChange, LocalRecords, RecordAdapter, StoreStamp};
-use tablepro_sync::api::control::{ConflictChoice, PassReason, SyncCategories, SyncControl};
+use tablepro_sync::api::control::{
+    ConflictChoice, NewIdentityChoice, PassReason, SyncCategories, SyncControl, SyncPhase,
+};
 use tablepro_sync::api::error::{AdapterError, SyncError};
 use tablepro_sync::api::ids::{KindName, RecordKey, ScopeName};
 use tablepro_sync::api::scopes::Role;
-use tablepro_sync::api::state::{HeldReason, Row, RowKey, RowRange, Table};
+use tablepro_sync::api::state::{HeldReason, PushWait, Row, RowKey, RowRange, Table};
 use tablepro_sync::api::transport::DeletedReason;
 use tablepro_sync_testing::FakeServer;
 use tablepro_sync_testing::service::{Policies, ScopeOwner};
@@ -1044,4 +1046,104 @@ async fn keep_mine_never_sends_a_value_the_device_refused_as_its_own() {
         .stored(ScopeOwner::Team(team()), "library_connection", "c1")
         .unwrap();
     assert_eq!(team_copy.fields, Some(item("P mini", "c")));
+}
+
+// 0054, Another account or server, as the iCloud ruling: a device that signs in to another account pushes nothing of
+// its own until the person picks Move my data, after a restart too; an answer for another account changes nothing.
+#[tokio::test]
+async fn another_account_pushes_nothing_of_its_own_until_move_my_data() {
+    let server = FakeServer::new();
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(tablepro_sync_testing::FakeDeviceStore::new());
+    let file = StoreFile::new();
+    let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
+    connections.put(&id(1), json!({"name": "From the last account"}));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .state(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await)
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .follows(3)
+        .build()
+        .await;
+    let waited = mini.sync().await;
+    let phase = mini.sync.status().phase;
+    let seed = Arc::clone(&mini.seed);
+    drop(mini);
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .state(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await)
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .seed(seed)
+        .follows(3)
+        .build()
+        .await;
+
+    let after_restart = mini.sync().await;
+    let sent_before = stored(&server, "connection", &id(1));
+    let plan = mini.sync.plan_new_identity().await.unwrap();
+    let elsewhere = mini
+        .sync
+        .choose_for_new_identity(NewIdentityChoice::MoveMyData, "https://elsewhere.example/x".to_owned())
+        .await;
+    mini.sync
+        .choose_for_new_identity(NewIdentityChoice::MoveMyData, plan.account.clone())
+        .await
+        .unwrap();
+
+    assert_eq!(waited.push_wait, Some(PushWait::AccountChoice { unsent: 3 }));
+    assert_eq!(phase, SyncPhase::NewIdentity);
+    assert_eq!(after_restart.push_wait, Some(PushWait::AccountChoice { unsent: 3 }));
+    assert_eq!(plan.unsent, 3);
+    assert_eq!(sent_before, None);
+    assert_eq!(elsewhere.unwrap_err().code(), "sync.changed");
+    assert_eq!(
+        stored(&server, "connection", &id(1)),
+        Some(json!({"name": "From the last account"}))
+    );
+    assert_eq!(mini.sync.status().phase, SyncPhase::Idle);
+}
+
+// Start empty on the service: the synced records leave this device, Local only ones stay, and the device fills from
+// the new account.
+#[tokio::test]
+async fn start_empty_on_another_account_fills_from_it_and_keeps_local_only_records() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    mac.connections.put(&id(2), json!({"name": "The new account's"}));
+    mac.sync().await;
+    let mini = DeviceBuilder::new(&server, "dev_mini").follows(1).build().await;
+    mini.connections.put(&id(1), json!({"name": "From the last account"}));
+    mini.connections
+        .put_local_only(&id(3), json!({"name": "This Mac only"}));
+    mini.sync().await;
+
+    let plan = mini.sync.plan_new_identity().await.unwrap();
+    mini.sync
+        .choose_for_new_identity(NewIdentityChoice::StartEmpty, plan.account)
+        .await
+        .unwrap();
+    mini.sync().await;
+
+    assert_eq!(mini.connections.get(&id(1)), None);
+    assert_eq!(mini.connections.get(&id(2)), Some(json!({"name": "The new account's"})));
+    assert_eq!(mini.connections.get(&id(3)), Some(json!({"name": "This Mac only"})));
+    assert_eq!(stored(&server, "connection", &id(1)), None);
+    assert_eq!(stored(&server, "connection", &id(3)), None);
+    assert_eq!(mini.sync.status().phase, SyncPhase::Idle);
+}
+
+// The count the prompt shows: the changes the last account's file holds that never went up, a new record and an edit.
+#[tokio::test]
+async fn unsent_changes_counts_what_the_last_account_never_received() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    mac.connections.put(&id(1), json!({"name": "Sent"}));
+    mac.sync().await;
+    mac.connections.put(&id(1), json!({"name": "Edited"}));
+    mac.connections.put(&id(2), json!({"name": "New"}));
+
+    let adapters = tablepro_sync::engine::Adapters::new(vec![Arc::clone(&mac.connections) as Arc<dyn RecordAdapter>]);
+    let unsent = tablepro_sync::service::unsent_changes(&mac.state, &adapters)
+        .await
+        .unwrap();
+
+    assert_eq!(unsent, 2);
 }

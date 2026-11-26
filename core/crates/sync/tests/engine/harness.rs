@@ -785,6 +785,7 @@ pub struct DeviceBuilder {
     others: Vec<Arc<dyn RecordAdapter>>,
     keys: Option<Arc<KeyLog>>,
     seed: Option<Arc<Ed25519Seed>>,
+    follows: Option<u64>,
 }
 
 impl DeviceBuilder {
@@ -799,7 +800,14 @@ impl DeviceBuilder {
             others: Vec::new(),
             keys: None,
             seed: None,
+            follows: None,
         }
+    }
+
+    // This account follows another account or server on the device, whose file held `unsent` changes.
+    pub fn follows(mut self, unsent: u64) -> Self {
+        self.follows = Some(unsent);
+        self
     }
 
     // An adapter of the test's own, over a store that behaves as a core store does.
@@ -882,6 +890,7 @@ impl DeviceBuilder {
                 off: Vec::new(),
                 passwords: true,
             },
+            follows: self.follows,
         });
         Device {
             server: self.server,
