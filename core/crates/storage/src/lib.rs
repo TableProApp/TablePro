@@ -42,7 +42,7 @@ pub use connections::{
     CredentialProfile, CredentialReference, DeviceOnly, ImportChange, ImportEntry, ImportPreview, ImportReport,
     ImportedConnection, KnownOrigin, LibraryChange, LibraryRead, LibraryWrite, LocalPasswordSource, RemoteFileAccess, RemoveOutcome,
     SavedConnection, SavedSshAuth, SavedSshConfig, SocksProxy, SshJumpAuth, SshJumpHost, SshProfile, SshRemoteFile,
-    SshRoute, SshRouteHop, SshRouteTarget, SshTotp, SshTotpAlgorithm, SshTotpMode, TunnelCommand, TunnelCommandMethod,
+    SshRoute, SshRouteHop, SshRouteTarget, SshTotp, SshTotpAlgorithm, SshTotpMode, SyncedLibrary, TunnelCommand, TunnelCommandMethod,
     VaultAuth, VaultDatabaseRole,
 };
 pub use credentials::{

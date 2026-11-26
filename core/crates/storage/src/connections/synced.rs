@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use super::{ConnectionStore, CredentialProfile, SavedConnection, SshProfile};
+use super::{ConnectionList, ConnectionStore, ConnectionsDocument, CredentialProfile, SavedConnection, SshProfile};
 use crate::error::StorageError;
 use crate::store_identity::StoreIdentity;
 use crate::{ConnectionGroup, ConnectionTag};
@@ -21,59 +21,37 @@ pub enum LibraryChange {
     CredentialProfileGone(Uuid),
 }
 
+// The library as sync reads it: the list, with the ids of each profile kind this build cannot read.
+#[derive(Debug, Clone)]
+pub struct SyncedLibrary {
+    pub list: ConnectionList,
+    pub unreadable_ssh_profiles: Vec<Uuid>,
+    pub unreadable_credential_profiles: Vec<Uuid>,
+}
+
 impl ConnectionStore {
-    // Every change in one write. A connection the list holds keeps what this device alone holds, read under the write
-    // lock, except the two marks sync itself settles. Returns the file's identity after the write.
-    pub fn apply_synced_blocking(&self, changes: Vec<LibraryChange>) -> Result<Option<StoreIdentity>, StorageError> {
+    pub fn synced_library_blocking(&self) -> Result<SyncedLibrary, StorageError> {
+        let mut state = self.lock();
+        let document = self.ensure_loaded(&mut state)?;
+        Ok(SyncedLibrary {
+            list: document.list(),
+            unreadable_ssh_profiles: document.ssh_profiles.held_ids(),
+            unreadable_credential_profiles: document.credential_profiles.held_ids(),
+        })
+    }
+
+    // The changes `settle` makes of the list as it is under the write lock, in one write, so what it keeps of the
+    // stored records is what the write replaces. A connection the list holds keeps what this device alone holds,
+    // except the two marks sync itself settles. Returns the file's identity after the write.
+    pub fn apply_synced_blocking(
+        &self,
+        settle: impl FnOnce(&ConnectionList) -> Vec<LibraryChange>,
+    ) -> Result<Option<StoreIdentity>, StorageError> {
         let mut state = self.lock_to_write();
         let before = self.ensure_current(&mut state)?;
         let mut document = before.clone();
-        for change in changes {
-            match change {
-                LibraryChange::Connection { connection, favorite } => {
-                    let id = connection.id;
-                    let mut connection = connection;
-                    if let Some(stored) = document.connections.iter().find(|saved| saved.id == id) {
-                        let marks = (connection.device.tls_mode_unsettled, connection.device.ssh_profile_unlinked);
-                        connection.device = stored.device.clone();
-                        (connection.device.tls_mode_unsettled, connection.device.ssh_profile_unlinked) = marks;
-                        connection.last_opened_at = stored.last_opened_at;
-                    }
-                    document.connections.release(id);
-                    match document.connections.iter_mut().find(|saved| saved.id == id) {
-                        Some(slot) => *slot = connection,
-                        None => document.connections.push(connection),
-                    }
-                    let listed = document.favorites.contains(&id);
-                    if favorite && !listed {
-                        document.favorites.push(id);
-                    } else if !favorite && listed {
-                        document.favorites.retain(|held| *held != id);
-                    }
-                }
-                LibraryChange::ConnectionGone(id) => {
-                    document.connections.remove_id(id);
-                    document.favorites.retain(|held| *held != id);
-                }
-                LibraryChange::Group(group) => put_by_id(&mut document.groups, group, |group| group.id),
-                LibraryChange::GroupGone(id) => document.groups.retain(|group| group.id != id),
-                LibraryChange::Tag(tag) => put_by_id(&mut document.tags, tag, |tag| tag.id),
-                LibraryChange::TagGone(id) => document.tags.retain(|tag| tag.id != id),
-                LibraryChange::SshProfile(profile) => {
-                    document.ssh_profiles.release(profile.id);
-                    put_by_id(&mut document.ssh_profiles, profile, |profile| profile.id);
-                }
-                LibraryChange::SshProfileGone(id) => {
-                    document.ssh_profiles.remove_id(id);
-                }
-                LibraryChange::CredentialProfile(profile) => {
-                    document.credential_profiles.release(profile.id);
-                    put_by_id(&mut document.credential_profiles, profile, |profile| profile.id);
-                }
-                LibraryChange::CredentialProfileGone(id) => {
-                    document.credential_profiles.remove_id(id);
-                }
-            }
+        for change in settle(&before.list()) {
+            document.apply_synced(change);
         }
         document.tidy();
         if document != before {
@@ -82,6 +60,57 @@ impl ConnectionStore {
         match &*state {
             super::StoreState::Ready(document, _) => Ok(document.store),
             super::StoreState::Unloaded | super::StoreState::Unavailable(..) => Ok(None),
+        }
+    }
+}
+
+impl ConnectionsDocument {
+    fn apply_synced(&mut self, change: LibraryChange) {
+        match change {
+            LibraryChange::Connection { connection, favorite } => self.put_synced(connection, favorite),
+            LibraryChange::ConnectionGone(id) => {
+                self.connections.remove_id(id);
+                self.favorites.retain(|held| *held != id);
+            }
+            LibraryChange::Group(group) => put_by_id(&mut self.groups, group, |group| group.id),
+            LibraryChange::GroupGone(id) => self.groups.retain(|group| group.id != id),
+            LibraryChange::Tag(tag) => put_by_id(&mut self.tags, tag, |tag| tag.id),
+            LibraryChange::TagGone(id) => self.tags.retain(|tag| tag.id != id),
+            LibraryChange::SshProfile(profile) => {
+                self.ssh_profiles.release(profile.id);
+                put_by_id(&mut self.ssh_profiles, profile, |profile| profile.id);
+            }
+            LibraryChange::SshProfileGone(id) => {
+                self.ssh_profiles.remove_id(id);
+            }
+            LibraryChange::CredentialProfile(profile) => {
+                self.credential_profiles.release(profile.id);
+                put_by_id(&mut self.credential_profiles, profile, |profile| profile.id);
+            }
+            LibraryChange::CredentialProfileGone(id) => {
+                self.credential_profiles.remove_id(id);
+            }
+        }
+    }
+
+    fn put_synced(&mut self, mut connection: SavedConnection, favorite: bool) {
+        let id = connection.id;
+        if let Some(stored) = self.connections.iter().find(|saved| saved.id == id) {
+            let marks = (connection.device.tls_mode_unsettled, connection.device.ssh_profile_unlinked);
+            connection.device = stored.device.clone();
+            (connection.device.tls_mode_unsettled, connection.device.ssh_profile_unlinked) = marks;
+            connection.last_opened_at = stored.last_opened_at;
+        }
+        self.connections.release(id);
+        match self.connections.iter_mut().find(|saved| saved.id == id) {
+            Some(slot) => *slot = connection,
+            None => self.connections.push(connection),
+        }
+        let listed = self.favorites.contains(&id);
+        if favorite && !listed {
+            self.favorites.push(id);
+        } else if !favorite && listed {
+            self.favorites.retain(|held| *held != id);
         }
     }
 }
@@ -117,7 +146,7 @@ mod tests {
             port: 5432,
             database: String::new(),
             username: String::new(),
-            tls: TlsConfig::default(),
+            tls: TlsConfig::disabled(),
             safe_mode: SafeModeLevel::Silent,
             external_access: ExternalAccess::default(),
             ai_policy: AiPolicy::default(),
@@ -153,7 +182,7 @@ mod tests {
         pulled.tags = vec![Uuid::from_u128(88)];
 
         let identity = store
-            .apply_synced_blocking(vec![LibraryChange::Connection {
+            .apply_synced_blocking(|_| vec![LibraryChange::Connection {
                 connection: pulled,
                 favorite: true,
             }])
@@ -187,7 +216,7 @@ mod tests {
         .unwrap();
 
         store
-            .apply_synced_blocking(vec![
+            .apply_synced_blocking(|_| vec![
                 LibraryChange::ConnectionGone(Uuid::from_u128(2)),
                 LibraryChange::Group(group.clone()),
                 LibraryChange::Tag(tag.clone()),
@@ -202,7 +231,7 @@ mod tests {
         assert_eq!(list.ssh_profiles.as_ref(), [profile.clone()]);
 
         store
-            .apply_synced_blocking(vec![
+            .apply_synced_blocking(|_| vec![
                 LibraryChange::GroupGone(group.id),
                 LibraryChange::TagGone(tag.id),
                 LibraryChange::SshProfileGone(profile.id),
@@ -227,7 +256,7 @@ mod tests {
         assert_eq!(store.list_blocking().unwrap().unreadable.as_ref(), [Uuid::from_u128(3)]);
 
         store
-            .apply_synced_blocking(vec![LibraryChange::Connection {
+            .apply_synced_blocking(|_| vec![LibraryChange::Connection {
                 connection: saved(3, "future"),
                 favorite: false,
             }])
@@ -247,7 +276,7 @@ mod tests {
         let held = store.list_blocking().unwrap().connections[0].clone();
 
         let after = store
-            .apply_synced_blocking(vec![LibraryChange::Connection {
+            .apply_synced_blocking(|_| vec![LibraryChange::Connection {
                 connection: held,
                 favorite: false,
             }])
