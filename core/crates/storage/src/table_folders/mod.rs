@@ -7,8 +7,11 @@ use crate::error::StorageError;
 use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
 
+mod batch;
 #[cfg(test)]
 mod tests;
+
+pub use batch::{TableFolderContents, TableFolderWrite};
 
 /// A table as a connection's catalog names it. An engine without databases or schemas leaves that
 /// part empty.

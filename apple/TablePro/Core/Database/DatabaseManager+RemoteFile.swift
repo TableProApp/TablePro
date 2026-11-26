@@ -26,7 +26,7 @@ extension DatabaseManager {
             throw ConnectionTunnelError.remoteFileUnsupported(connection.type.displayName)
         }
 
-        let credentials = sshCredentials(for: connection, passwordOverride: sshPasswordOverride)
+        let credentials = await sshCredentials(for: connection, passwordOverride: sshPasswordOverride)
         let identity = RemoteFileIdentity(
             username: sshConfig.username,
             host: sshConfig.host,
@@ -62,9 +62,10 @@ extension DatabaseManager {
         let sshConfig = connection.resolvedSSHConfig
         guard !sshConfig.remoteFilePath.isEmpty else { throw ConnectionTunnelError.remoteFilePathMissing }
 
+        let credentials = await sshCredentials(for: connection, passwordOverride: sshPassword)
         let session = try await LibSSH2SFTPSession.open(
             config: sshConfig,
-            credentials: sshCredentials(for: connection, passwordOverride: sshPassword),
+            credentials: credentials,
             label: "test-\(connection.id.uuidString)",
             deadline: deadline
         )
@@ -87,33 +88,43 @@ extension DatabaseManager {
         await RemoteFileTransportManager.shared.existingFile(for: connectionId)
     }
 
+    // Reads off the main actor, since SecItemCopyMatching blocks its thread, and only the secrets the sign-in
+    // can use, so an agent or key connection never touches the password's Keychain item.
     internal func sshCredentials(
         for connection: DatabaseConnection,
         passwordOverride: String?
-    ) -> SSHTunnelCredentials {
-        let storedPassword: String?
-        let keyPassphrase: String?
-        let totpSecret: String?
+    ) async -> SSHTunnelCredentials {
+        let sshConfig = connection.resolvedSSHConfig
+        let needs = SSHStoredSecretNeeds(
+            authMethod: sshConfig.authMethod,
+            totpMode: sshConfig.totpMode,
+            passwordGiven: passwordOverride != nil
+        )
+        let password: DeferredSecretRead?
+        let keyPassphrase: DeferredSecretRead?
+        let totpSecret: DeferredSecretRead?
 
         switch connection.sshTunnelMode {
         case .disabled:
-            storedPassword = nil
+            password = nil
             keyPassphrase = nil
             totpSecret = nil
         case .profile(let profileId, _):
-            storedPassword = SSHProfileStorage.shared.loadSSHPassword(for: profileId)
-            keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profileId)
-            totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profileId)
+            let profiles = SSHProfileStorage.shared
+            password = needs.password ? profiles.secretRead(.password, for: profileId) : nil
+            keyPassphrase = needs.keyPassphrase ? profiles.secretRead(.keyPassphrase, for: profileId) : nil
+            totpSecret = needs.totpSecret ? profiles.secretRead(.totpSecret, for: profileId) : nil
         case .inline:
-            storedPassword = connectionStorage.loadSSHPassword(for: connection.id)
-            keyPassphrase = connectionStorage.loadKeyPassphrase(for: connection.id)
-            totpSecret = connectionStorage.loadTOTPSecret(for: connection.id)
+            password = needs.password ? connectionStorage.sshPasswordRead(for: connection.id) : nil
+            keyPassphrase = needs.keyPassphrase ? connectionStorage.keyPassphraseRead(for: connection.id) : nil
+            totpSecret = needs.totpSecret ? connectionStorage.totpSecretRead(for: connection.id) : nil
         }
 
+        let found = await DeferredSecretRead.run([password, keyPassphrase, totpSecret].compactMap { $0 })
         return SSHTunnelCredentials(
-            sshPassword: passwordOverride ?? storedPassword,
-            keyPassphrase: keyPassphrase,
-            totpSecret: totpSecret,
+            sshPassword: passwordOverride ?? password.flatMap { found[$0.key] },
+            keyPassphrase: keyPassphrase.flatMap { found[$0.key] },
+            totpSecret: totpSecret.flatMap { found[$0.key] },
             keyboardInteractivePromptProvider: nil
         )
     }

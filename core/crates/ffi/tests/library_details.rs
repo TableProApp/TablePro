@@ -466,6 +466,7 @@ fn mac_library() -> LibraryWriteRecord {
             is_preset: true,
         }],
         favorites: vec!["6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44".to_owned()],
+        removing: Vec::new(),
     }
 }
 
@@ -486,7 +487,7 @@ async fn a_library_read_and_write_give_the_digest_of_the_file() {
     let file = dir.path().join("connections.json");
     assert_eq!(library.library_contents().await.unwrap().digest, None);
 
-    let written = library.replace_library(mac_library()).await.unwrap();
+    let written = library.replace_library(mac_library(), None).await.unwrap();
 
     let on_disk = sha256_hex(&std::fs::read(&file).unwrap());
     assert_eq!(written.digest.as_deref(), Some(on_disk.as_str()));
@@ -525,11 +526,67 @@ async fn a_library_write_keeps_every_path_and_host_as_given() {
         }
     }
 
-    library.replace_library(written.clone()).await.unwrap();
+    library.replace_library(written.clone(), None).await.unwrap();
 
     assert_eq!(
         library.library_contents().await.unwrap().connections,
         written.connections
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_over_a_file_changed_since_it_was_read_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let vouched = library.replace_library(mac_library(), None).await.unwrap();
+    let file = dir.path().join("connections.json");
+    let swapped = std::fs::read_to_string(&file)
+        .unwrap()
+        .replace("db.internal", "attacker.example");
+    std::fs::write(&file, &swapped).unwrap();
+
+    let refused = library.replace_library(mac_library(), vouched.digest).await;
+
+    assert_eq!(
+        refused.err().map(|error| error.code().to_owned()),
+        Some("storage.library_changed".to_owned())
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), swapped);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_refuses_a_blank_hop_id_and_a_time_out_of_range() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let mut blank_hop = mac_library();
+    if let Some(ssh) = blank_hop.connections[0].connection.ssh.as_mut() {
+        ssh.jump_hosts[0].id = Some("  ".to_owned());
+    }
+    let mut far_time = mac_library();
+    far_time.connections[0].connection.last_opened_ms = Some(i64::MAX);
+
+    assert!(library.replace_library(blank_hop, None).await.is_err());
+    assert!(library.replace_library(far_time, None).await.is_err());
+    assert_eq!(library.library_contents().await.unwrap().digest, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rebuild_sets_aside_a_file_this_build_cannot_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("connections.json");
+    std::fs::write(&file, b"{ half an edit").unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+
+    let rebuilt = library.rebuild_library(mac_library()).await.unwrap();
+
+    let aside = rebuilt.set_aside.expect("set aside");
+    assert_eq!(std::fs::read(&aside).unwrap(), b"{ half an edit");
+    assert_eq!(
+        library.library_contents().await.unwrap().connections,
+        mac_library().connections
     );
 }
 
@@ -543,7 +600,7 @@ async fn a_library_write_refuses_a_hop_id_that_does_not_read() {
         ssh.jump_hosts[0].id = Some("not an id".to_owned());
     }
 
-    let refused = library.replace_library(written).await;
+    let refused = library.replace_library(written, None).await;
 
     assert!(refused.is_err(), "{refused:?}");
 }
@@ -554,7 +611,7 @@ async fn a_rebuild_keeps_only_what_the_write_names() {
     let core = started(dir.path());
     let library = core.library().unwrap();
     let written = mac_library();
-    library.replace_library(written.clone()).await.unwrap();
+    library.replace_library(written.clone(), None).await.unwrap();
     library
         .save_ssh_profile(SshProfileRecord {
             id: String::new(),
@@ -597,7 +654,7 @@ async fn a_library_written_whole_reads_back_as_it_was_written() {
     let library = core.library().unwrap();
     let written = mac_library();
 
-    library.replace_library(written.clone()).await.unwrap();
+    library.replace_library(written.clone(), None).await.unwrap();
     let read = library.library_contents().await.unwrap();
 
     assert_eq!(read.connections, written.connections);
@@ -624,7 +681,7 @@ async fn a_form_save_keeps_what_the_form_does_not_show() {
     let core = started(dir.path());
     let library = core.library().unwrap();
     let written = mac_library();
-    library.replace_library(written.clone()).await.unwrap();
+    library.replace_library(written.clone(), None).await.unwrap();
     let mut form = library.snapshot().await.unwrap().connections.remove(0);
     form.safe_mode = SafeModeTag::ReadOnly;
     form.ai_policy = Some(AiPolicyTag::Ask);
@@ -669,7 +726,7 @@ async fn a_form_that_sends_a_tunnel_turns_one_switched_off_back_on() {
     if let Some(ssh) = written.connections[0].connection.ssh.as_mut() {
         ssh.options = None;
     }
-    library.replace_library(written.clone()).await.unwrap();
+    library.replace_library(written.clone(), None).await.unwrap();
     let mut form = library.snapshot().await.unwrap().connections.remove(0);
     let mut ssh = form.ssh.take().unwrap();
     ssh.enabled = None;
