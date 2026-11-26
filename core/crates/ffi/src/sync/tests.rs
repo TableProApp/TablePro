@@ -512,7 +512,7 @@ fn a_credential_to_rotate_names_its_connection_while_the_store_holds_it() {
 
     let kept = Uuid::from_u128(5);
     let gone = Uuid::from_u128(6);
-    let names = std::collections::HashMap::from([(kept, "Prod".to_owned())]);
+    let names = std::collections::HashMap::from([(kept, ("Prod".to_owned(), "postgresql".to_owned()))]);
     let id = |connection: Uuid, kind| {
         EnvelopeId::new(
             ParentKind::Connection,
@@ -533,9 +533,13 @@ fn a_credential_to_rotate_names_its_connection_while_the_store_holds_it() {
     let other = super::keys::credential_info(&profile, &names);
 
     assert_eq!(named.connection_name.as_deref(), Some("Prod"));
+    assert_eq!(named.connection_driver.as_deref(), Some("postgresql"));
     assert_eq!(named.field, "password");
     assert_eq!(named.connection, Some(tablepro_keys::encoding::uuid_to_wire(kept)));
-    assert_eq!(missing.connection_name, None);
+    assert_eq!(
+        (missing.connection_name.clone(), missing.connection_driver.clone()),
+        (None, None)
+    );
     assert_eq!(missing.field, "plugin.token");
     assert_eq!((other.connection.clone(), other.connection_name.clone()), (None, None));
     assert_eq!(other.parent_kind, "ssh_profile");

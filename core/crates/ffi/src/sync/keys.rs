@@ -296,8 +296,9 @@ pub struct StoppedDeviceInfo {
 }
 
 // One envelope a removed party could read (core ADR 0056, Old data). `connection` is the parent's id when the parent is
-// a connection, and `connection_name` its name in this Core's connection store, None once it is gone; `field` is the
-// secret's key, as `password` or `plugin.<field>`, which the app words with the driver's label.
+// a connection, and `connection_name` and `connection_driver` its name and driver id in this Core's connection store,
+// None once it is gone; `field` is the secret's key, as `password` or `plugin.<field>`, which the app words with that
+// driver's label.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct CredentialToRotateInfo {
     pub envelope: String,
@@ -305,6 +306,7 @@ pub struct CredentialToRotateInfo {
     pub parent_id: String,
     pub connection: Option<String>,
     pub connection_name: Option<String>,
+    pub connection_driver: Option<String>,
     pub field: String,
 }
 
@@ -430,13 +432,13 @@ pub(crate) fn reviewed_member_arg(member: &ReviewedMemberInfo) -> Result<Reviewe
     })
 }
 
-// The names of this Core's connections, by id; a store that cannot be read names none.
-async fn connection_names(tasks: &Tasks, store: ConnectionStore) -> HashMap<Uuid, String> {
+// The name and driver id of this Core's connections, by id; a store that cannot be read names none.
+async fn connection_names(tasks: &Tasks, store: ConnectionStore) -> HashMap<Uuid, (String, String)> {
     let loaded = tasks.spawn_blocking_task(move || store.load_blocking()).await;
     match loaded {
         Ok(Ok(connections)) => connections
             .iter()
-            .map(|connection| (connection.id, connection.name.clone()))
+            .map(|connection| (connection.id, (connection.name.clone(), connection.driver_id.clone())))
             .collect(),
         Ok(Err(error)) => {
             tracing::debug!(%error, "the connection store gave no names");
@@ -449,18 +451,23 @@ async fn connection_names(tasks: &Tasks, store: ConnectionStore) -> HashMap<Uuid
     }
 }
 
-pub(crate) fn credential_info(envelope: &EnvelopeId, names: &HashMap<Uuid, String>) -> CredentialToRotateInfo {
+pub(crate) fn credential_info(
+    envelope: &EnvelopeId,
+    names: &HashMap<Uuid, (String, String)>,
+) -> CredentialToRotateInfo {
     let connection = (envelope.parent_kind == ParentKind::Connection).then(|| envelope.parent_id.clone());
-    let connection_name = connection
+    let stored = connection
         .as_deref()
         .and_then(|id| tablepro_keys::encoding::uuid_from_wire(id).ok())
         .and_then(|id| names.get(&id).cloned());
+    let (connection_name, connection_driver) = stored.map_or((None, None), |(name, driver)| (Some(name), Some(driver)));
     CredentialToRotateInfo {
         envelope: envelope.to_wire(),
         parent_kind: envelope.parent_kind.name(),
         parent_id: envelope.parent_id.clone(),
         connection,
         connection_name,
+        connection_driver,
         field: envelope.secret_kind.name(),
     }
 }
