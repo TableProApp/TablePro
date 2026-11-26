@@ -345,7 +345,7 @@ struct TableHealthHistoryStorageTests {
         let otherConnection = UUID()
         _ = try store.record(report([orders]), connectionId: otherConnection, database: "shop", at: Self.day(1))
 
-        store.purgeConnections([connectionId], leavesTombstones: true)
+        store.purgeConnections([connectionId])
 
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
         #expect(!FileManager.default.fileExists(atPath: corruptFileURL(1).path))
@@ -431,7 +431,7 @@ struct TableHealthHistoryStorageTests {
             store.dropContainer(connectionId: connectionId, database: "store", schema: nil)
         }
         let byPurge = databasesMoved(in: store) {
-            store.purgeConnections([connectionId], leavesTombstones: true)
+            store.purgeConnections([connectionId])
         }
 
         #expect(byRuns.isEmpty)

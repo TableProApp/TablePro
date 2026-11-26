@@ -26,7 +26,6 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         var isEmpty: Bool { folders.isEmpty && items.isEmpty }
     }
 
-    // Deletions are marked first, so an id an edit both removed and wrote back ends up saved, not deleted.
     private struct SyncMarks {
         var dirtyFolders: [String] = []
         var deletedFolders: [String] = []
@@ -39,7 +38,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
     }
 
     private let store: KeyValueStore
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let notificationCenter: NotificationCenter
     private var documents: [UUID: Document] = [:]
     // Read as empty and never written, so a damaged or newer document is not replaced by the next edit.
@@ -47,11 +46,11 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
 
     init(
         defaults: KeyValueStore = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         notificationCenter: NotificationCenter = .default
     ) {
         self.store = defaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.notificationCenter = notificationCenter
     }
 
@@ -251,57 +250,6 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         return TableFolderRevision(connectionId: revision.connectionId, folders: current.folders, items: inverseItems)
     }
 
-    // MARK: - Remote changes
-
-    // Marks nothing: a mark would push the change straight back to the Mac that made it.
-    func applyRemote(folders: [TableFolder], items: [TableFolderItem], excluding keptLocal: Set<UUID> = []) {
-        let foldersByConnection = Dictionary(grouping: folders) { $0.scope.connectionId }
-        let itemsByConnection = Dictionary(grouping: items) { $0.scope.connectionId }
-        var touched: [UUID: Document] = [:]
-        for connectionId in Set(foldersByConnection.keys).union(itemsByConnection.keys)
-        where !keptLocal.contains(connectionId) {
-            var document = document(for: connectionId)
-            let incomingFolders = foldersByConnection[connectionId] ?? []
-            let incomingItems = itemsByConnection[connectionId] ?? []
-            let folderIds = Set(incomingFolders.map(\.id))
-            let itemKeys = Set(incomingItems.map(\.key))
-            document.folders.removeAll { folderIds.contains($0.id) }
-            document.folders += incomingFolders
-            document.items.removeAll { itemKeys.contains($0.key) }
-            document.items += incomingItems
-            touched[connectionId] = document
-        }
-        commitRemote(touched)
-    }
-
-    // Placements go with their folder; waiting for their own tombstones would hide the objects meanwhile.
-    func removeRemote(folderIds: Set<UUID>, itemSyncIds: Set<String>, excluding keptLocal: Set<UUID> = []) {
-        guard !folderIds.isEmpty || !itemSyncIds.isEmpty else { return }
-        var touched: [UUID: Document] = [:]
-        var discardedFolders: [String] = []
-        var discardedItems: [String] = []
-        for connectionId in storedConnectionIds() where !keptLocal.contains(connectionId) {
-            var document = document(for: connectionId)
-            let removedFolders = document.folders.extract { folderIds.contains($0.id) }
-            let removedItems = document.items.extract {
-                folderIds.contains($0.folderId) || itemSyncIds.contains($0.syncId)
-            }
-            guard !removedFolders.isEmpty || !removedItems.isEmpty else { continue }
-            touched[connectionId] = document
-            discardedFolders += removedFolders.map(\.id.uuidString)
-            discardedItems += removedItems.map(\.syncId)
-        }
-        commitRemote(touched)
-        syncTracker.discardDirty(.tableFolder, ids: discardedFolders)
-        syncTracker.discardDirty(.tableFolderItem, ids: discardedItems)
-    }
-
-    private func commitRemote(_ touched: [UUID: Document]) {
-        let written = touched.filter { $0.value != document(for: $0.key) && persist($0.value, for: $0.key) }
-        guard !written.isEmpty else { return }
-        postChange(for: Set(written.keys))
-    }
-
     // MARK: - TableScopedSettingsStore
 
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {
@@ -371,7 +319,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         ))
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
+    func purgeConnections(_ connectionIds: Set<UUID>) {
         var purged: Set<UUID> = []
         for connectionId in connectionIds {
             let document = document(for: connectionId)
@@ -381,13 +329,8 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
             store.removeValue(for: Self.key(for: connectionId))
             let folderIds = document.folders.map(\.id.uuidString)
             let itemIds = document.items.map(\.syncId)
-            if leavesTombstones {
-                syncTracker.markDeleted(.tableFolder, ids: folderIds, owner: connectionId)
-                syncTracker.markDeleted(.tableFolderItem, ids: itemIds, owner: connectionId)
-            } else {
-                syncTracker.discardDirty(.tableFolder, ids: folderIds)
-                syncTracker.discardDirty(.tableFolderItem, ids: itemIds)
-            }
+            syncJournal.recorded(.tableFolder, deleted: folderIds)
+            syncJournal.recorded(.tableFolderItem, deleted: itemIds)
             purged.insert(connectionId)
         }
         postChange(for: purged)
@@ -400,14 +343,12 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
 
     // MARK: - Persistence
 
-    // Persists before marking, because a sync mark can start a push that reads this store.
+    // The journal hears of a write only once it is on disk.
     @discardableResult
     private func commit(_ document: Document, for connectionId: UUID, marks: SyncMarks) -> Bool {
         guard persist(document, for: connectionId) else { return false }
-        syncTracker.markDeleted(.tableFolder, ids: marks.deletedFolders, owner: connectionId)
-        syncTracker.markDeleted(.tableFolderItem, ids: marks.deletedItems, owner: connectionId)
-        syncTracker.markDirty(.tableFolder, ids: marks.dirtyFolders)
-        syncTracker.markDirty(.tableFolderItem, ids: marks.dirtyItems)
+        syncJournal.recorded(.tableFolder, written: marks.dirtyFolders, deleted: marks.deletedFolders)
+        syncJournal.recorded(.tableFolderItem, written: marks.dirtyItems, deleted: marks.deletedItems)
         postChange(for: [connectionId])
         return true
     }

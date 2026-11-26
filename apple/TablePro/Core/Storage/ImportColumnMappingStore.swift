@@ -69,7 +69,7 @@ internal final class ImportColumnMappingStore: TableScopedSettingsStore {
         )
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
+    func purgeConnections(_ connectionIds: Set<UUID>) {
         for connectionId in connectionIds {
             store.removeValues(withPrefix: Self.keyPrefix + TableScope.storagePrefix(connectionId: connectionId))
         }

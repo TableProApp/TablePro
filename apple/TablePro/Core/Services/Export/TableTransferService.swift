@@ -75,7 +75,7 @@ final class TableTransferService: ObservableObject {
     /// the server's packet limit. Sized as a statement instead, a row carrying a wide column the
     /// mapping discards would close the batch on bytes the sink never sends, turning one round trip
     /// into one per row.
-    static let batchBudget = SQLWriteBatchBudget(maxRows: 500, maxBytes: 64 * 1_048_576)
+    nonisolated static let batchBudget = SQLWriteBatchBudget(maxRows: 500, maxBytes: 64 * 1_048_576)
 
     @Published var state = TableTransferState()
 
@@ -278,7 +278,7 @@ final class TableTransferService: ObservableObject {
             try checkCancellation()
             try await transferOne(
                 object: object, from: source, into: sink, request: request,
-                coercerFor: { header in
+                coercerFor: { @MainActor header in
                     Self.crossEngineCoercer(for: header, mapping: mapping, request: request, kinds: columnKinds)
                 }
             )
@@ -411,7 +411,7 @@ final class TableTransferService: ObservableObject {
         from source: ExportDataSourceAdapter,
         into sink: ImportDataSinkAdapter,
         request: Request,
-        coercerFor: (PluginStreamHeader) -> CrossEngineValueCoercer?
+        coercerFor: @escaping @MainActor @Sendable (PluginStreamHeader) -> CrossEngineValueCoercer?
     ) async throws {
         let exportTable = PluginExportTable(
             name: object.name,
@@ -425,14 +425,26 @@ final class TableTransferService: ObservableObject {
             rowScope: object.rowScope
         )
 
-        var columns: [String] = []
-        var coercer: CrossEngineValueCoercer?
-        var filler = SQLWriteBatchFiller<[String: PluginCellValue]>(budget: Self.batchBudget)
-        var wroteAnything = false
-
         if request.wrapInTransaction {
             try await sink.beginTransaction()
         }
+        let written = TransferRowCount()
+        let startingCount = state.transferredRows
+        let progressTask = Task { @MainActor [weak self] in
+            // The stream keeps only the newest count, so after each pause the sheet gets the latest one. A count that
+            // arrives after the final one is set is older than it, so it never moves the count back.
+            for await count in written.updates {
+                guard let self else { return }
+                self.state.transferredRows = max(self.state.transferredRows, startingCount + count)
+                do { try await Task.sleep(for: TransferRowCount.interval) } catch { return }
+            }
+        }
+        defer {
+            written.finish()
+            progressTask.cancel()
+            state.transferredRows = startingCount + written.total
+        }
+        var wroteAnything = false
         do {
             if request.deleteExistingRows {
                 try await sink.deleteAllRowsFromTargetTable()
@@ -441,28 +453,12 @@ final class TableTransferService: ObservableObject {
                 /// iteration and make the deletion permanent.
                 try checkCancellation()
             }
-            for try await element in source.streamRows(for: exportTable) {
-                try checkCancellation()
-                switch element {
-                case .header(let header):
-                    columns = header.columns
-                    coercer = coercerFor(header)
-                case .rows(let rows):
-                    for row in rows {
-                        let keyed = Self.dictionary(columns: columns, row: coercer?.coerce(row) ?? row)
-                        let bytes = Self.batchBudget.byteCount(of: keyed.values)
-                        guard let batch = filler.append(keyed, bytes: bytes) else { continue }
-                        try await sink.insertRows(batch)
-                        state.transferredRows += batch.count
-                        wroteAnything = true
-                    }
-                }
-            }
-            if let batch = filler.take() {
-                try await sink.insertRows(batch)
-                state.transferredRows += batch.count
-                wroteAnything = true
-            }
+            wroteAnything = try await Self.copyRows(
+                of: exportTable, from: source, into: sink,
+                coercerFor: coercerFor, cancellation: cancellationFlag, written: written
+            )
+            // The throttle can hold back the last batches, and the commit below can take a while.
+            state.transferredRows = startingCount + written.total
             /// The last awaited write is not followed by a loop check, so without this a Stop during
             /// it committed anyway and reported success.
             try checkCancellation()
@@ -491,6 +487,46 @@ final class TableTransferService: ObservableObject {
         }
     }
 
+    // Off the main actor: building each row's dictionary, coercing it, mapping it and writing the INSERT text took main
+    // actor time for every row, in every window. Only the count goes back, through `written`, on a throttle.
+    @concurrent
+    nonisolated private static func copyRows(
+        of exportTable: PluginExportTable,
+        from source: ExportDataSourceAdapter,
+        into sink: ImportDataSinkAdapter,
+        coercerFor: @escaping @MainActor @Sendable (PluginStreamHeader) -> CrossEngineValueCoercer?,
+        cancellation: TransferCancellationFlag,
+        written: TransferRowCount
+    ) async throws -> Bool {
+        var columns: [String] = []
+        var coercer: CrossEngineValueCoercer?
+        var filler = SQLWriteBatchFiller<[String: PluginCellValue]>(budget: batchBudget)
+        var wroteAnything = false
+        for try await element in source.streamRows(for: exportTable) {
+            if cancellation.isCancelled { throw PluginImportCancellationError() }
+            switch element {
+            case .header(let header):
+                columns = header.columns
+                coercer = await coercerFor(header)
+            case .rows(let rows):
+                for row in rows {
+                    let keyed = dictionary(columns: columns, row: coercer?.coerce(row) ?? row)
+                    let bytes = batchBudget.byteCount(of: keyed.values)
+                    guard let batch = filler.append(keyed, bytes: bytes) else { continue }
+                    try await sink.insertRows(batch)
+                    written.add(batch.count)
+                    wroteAnything = true
+                }
+            }
+        }
+        if let batch = filler.take() {
+            try await sink.insertRows(batch)
+            written.add(batch.count)
+            wroteAnything = true
+        }
+        return wroteAnything
+    }
+
     /// A row arrives as positional values and the sink writes by column name, so the two are
     /// zipped here. A row shorter than its header is padded with nulls rather than dropped: a
     /// driver that omits trailing nulls would otherwise lose whole rows silently.
@@ -506,6 +542,36 @@ final class TableTransferService: ObservableObject {
     private func checkCancellation() throws {
         guard isCancelled else { return }
         throw PluginImportCancellationError()
+    }
+}
+
+/// The rows a transfer wrote, counted off the main actor. Every batch yields its count, the stream keeps only the
+/// newest, and the sheet takes one at most every `interval`; the final total is read once the copy ends.
+internal final class TransferRowCount: @unchecked Sendable {
+    internal static let interval = Duration.milliseconds(100)
+
+    private let lock = NSLock()
+    private var count = 0
+    private let continuation: AsyncStream<Int>.Continuation
+    internal let updates: AsyncStream<Int>
+
+    internal init() {
+        (updates, continuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+    }
+
+    internal var total: Int {
+        lock.withLock { count }
+    }
+
+    internal func add(_ rows: Int) {
+        lock.withLock {
+            count += rows
+            continuation.yield(count)
+        }
+    }
+
+    internal func finish() {
+        continuation.finish()
     }
 }
 

@@ -61,7 +61,7 @@ impl AccountStatus {
         }
     }
 
-    // The codes that work now: a company server's license cuts them to its own, and past its grace to the Team Library.
+    // The codes that work now: a company server's license cuts them to its own, and past its grace to the sync features.
     pub fn features(&self, now: DateTime<Utc>) -> Vec<String> {
         self.entitlement()
             .map(|entitlement| entitlement.features_at(now))

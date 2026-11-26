@@ -11,7 +11,7 @@ final class ThemeLibraryTestFixture {
     let root: URL
     let center = NotificationCenter()
     let suite: EphemeralDefaults
-    let tracker: SyncChangeTracker
+    let tracker: SyncJournalRecorder
     let selection = InMemoryThemeSelection()
     let preview = RecordingThemePreview()
     let editors = StubThemeEditors()
@@ -26,7 +26,7 @@ final class ThemeLibraryTestFixture {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ThemeLibraryTests-\(UUID().uuidString)", isDirectory: true)
         suite = try EphemeralDefaults()
-        tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults))
+        tracker = SyncJournalRecorder()
         let folders = [
             root.appendingPathComponent("Themes", isDirectory: true),
             root.appendingPathComponent("Trash", isDirectory: true),
@@ -39,7 +39,7 @@ final class ThemeLibraryTestFixture {
             userDirectory: folders[0],
             bundleDirectory: nil,
             fileTrash: .folder(folders[1]),
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
     }
 

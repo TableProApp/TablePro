@@ -5,7 +5,7 @@ use gtk4::gio;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use tablepro_storage::{ConnectionColor, ConnectionGroup, ConnectionIcon, ConnectionTag, GroupIcon, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroup, ConnectionIcon, ConnectionTag, LibraryIcon, SavedConnection};
 use uuid::Uuid;
 
 use crate::services::connection_search::ConnectionSearch;
@@ -204,9 +204,10 @@ pub(crate) fn connection_look(saved: &SavedConnection, section: LibrarySection, 
         None => subtitle.clone(),
     };
     NodeLook {
-        title: saved.name.clone(),
+        // A stored name another app wrote shows as a typed one would, so none passes for another.
+        title: tablepro_storage::shown_name(&saved.name),
         subtitle,
-        icon_name: connection_icon(saved.icon, seen.file_based).to_owned(),
+        icon_name: connection_icon(saved.icon.as_ref().and_then(LibraryIcon::named), seen.file_based).to_owned(),
         color: saved.color,
         description,
         favourite: seen.favourite,
@@ -218,12 +219,12 @@ pub(crate) fn connection_look(saved: &SavedConnection, section: LibrarySection, 
 pub(crate) fn group_look(group: &ConnectionGroup, count: u32) -> NodeLook {
     let shown = count.to_string();
     let icon = match &group.icon {
-        Some(GroupIcon::Named(icon)) => icons::connection_icon(*icon),
+        Some(LibraryIcon::Named(icon)) => icons::connection_icon(*icon),
         // A macOS symbol has no Linux icon.
-        Some(GroupIcon::Symbol(_)) | None => icons::FOLDER,
+        Some(LibraryIcon::Symbol(_)) | None => icons::FOLDER,
     };
     NodeLook {
-        title: group.name.as_str().to_owned(),
+        title: group.name.shown(),
         subtitle: String::new(),
         icon_name: icon.to_owned(),
         color: group.color,
@@ -307,7 +308,7 @@ mod tests {
     #[test]
     fn a_connection_shows_its_icon_or_its_engines() {
         let picked = SavedConnection {
-            icon: Some(ConnectionIcon::Cloud),
+            icon: Some(tablepro_storage::LibraryIcon::Named(ConnectionIcon::Cloud)),
             ..saved_connection("cloud")
         };
         let plain = saved_connection("plain");
@@ -338,7 +339,7 @@ mod tests {
         assert_eq!(group_look(&group, 3).description, "Group, 3 connections");
         assert_eq!(group_look(&group, 0).icon_name, icons::FOLDER);
         let named = ConnectionGroup {
-            icon: Some(GroupIcon::Named(ConnectionIcon::Star)),
+            icon: Some(LibraryIcon::Named(ConnectionIcon::Star)),
             ..group
         };
         assert_eq!(

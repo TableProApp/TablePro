@@ -93,7 +93,7 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
         commit(entries, for: connectionId)
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
+    func purgeConnections(_ connectionIds: Set<UUID>) {
         guard !connectionIds.isEmpty else { return }
         for connectionId in connectionIds {
             cache[connectionId] = [:]

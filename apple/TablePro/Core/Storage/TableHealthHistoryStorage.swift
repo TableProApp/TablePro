@@ -165,7 +165,7 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
     }
 
     // Device-local, so there is never a tombstone to leave.
-    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
+    func purgeConnections(_ connectionIds: Set<UUID>) {
         for connectionId in connectionIds {
             connectionGenerations[connectionId, default: 0] += 1
             let databases = (try? load(connectionId))?.databases.keys.sorted() ?? []

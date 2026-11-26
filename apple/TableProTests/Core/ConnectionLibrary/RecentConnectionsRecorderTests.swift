@@ -32,7 +32,7 @@ struct RecentConnectionsRecorderTests {
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: defaults))
+            syncJournal: SyncHostJournal()
         )
         store = RecentConnectionsStore(defaults: defaults, appEvents: appEvents)
         recorder = RecentConnectionsRecorder(store: store, connectionStorage: storage, appEvents: appEvents)

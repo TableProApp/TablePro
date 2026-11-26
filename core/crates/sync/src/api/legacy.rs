@@ -22,6 +22,24 @@ pub trait LegacyMirror: Send + Sync {
     async fn mark(&self, dirty: Vec<LegacyRecordRef>, tombstones: Vec<LegacyTombstone>) -> Result<(), AdapterError>;
 }
 
+impl LegacyMetadata {
+    // What the import takes for the iCloud account the engine runs for, as Swift's `adoptAccount` does: metadata of
+    // another account, or of none, keeps only the dirty keys and the standing; the server position, tombstones, held
+    // sets and cache are that other account's.
+    #[must_use]
+    pub fn for_account(self, account: &str) -> Self {
+        if self.account.as_deref() == Some(account) {
+            return self;
+        }
+        Self {
+            dirty: self.dirty,
+            standing: self.standing,
+            account: Some(account.to_owned()),
+            ..Self::default()
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LegacyMetadata {
     // The archived `CKServerChangeToken`.
@@ -29,6 +47,12 @@ pub struct LegacyMetadata {
     pub dirty: Vec<LegacyRecordRef>,
     pub tombstones: Vec<LegacyTombstone>,
     pub deferred_deletions: Vec<String>,
+    // Record names a pull changed while this device's copy could not be read, fetched by id once it reads.
+    pub changes_held_for_unreadable: Vec<String>,
+    // Unread copies a pull deleted, removed by the next save of their file.
+    pub removals_pending_for_unreadable: Vec<String>,
+    // Deletions pulled while this device could not tell whether its unreadable copy syncs.
+    pub deletions_held_for_unreadable: Vec<String>,
     pub owners_kept_off_sync: Vec<Uuid>,
     pub standing: Vec<LegacyStanding>,
     pub readable_record_types: Vec<String>,
@@ -36,6 +60,51 @@ pub struct LegacyMetadata {
     pub zone_state: Option<String>,
     // `SyncRecordCache`: each record as last agreed, with its system fields.
     pub cache: Vec<CloudKitRecord>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn metadata(account: Option<&str>) -> LegacyMetadata {
+        let record = LegacyRecordRef {
+            record_type: "Connection".to_owned(),
+            id: "A".to_owned(),
+        };
+        LegacyMetadata {
+            token: Some(vec![1]),
+            dirty: vec![record.clone()],
+            tombstones: vec![LegacyTombstone {
+                record,
+                deleted_at_ms: 1,
+                owner: None,
+            }],
+            deferred_deletions: vec!["Group_B".to_owned()],
+            changes_held_for_unreadable: vec!["Connection_C".to_owned()],
+            standing: vec![LegacyStanding {
+                connection: Uuid::nil(),
+                standing: Standing::LocalOnly,
+            }],
+            account: account.map(str::to_owned),
+            ..LegacyMetadata::default()
+        }
+    }
+
+    #[test]
+    fn another_account_s_metadata_imports_only_the_dirty_keys_and_the_standing() {
+        let same = metadata(Some("_a")).for_account("_a");
+        let other = metadata(Some("_b")).for_account("_a");
+        let none = metadata(None).for_account("_a");
+
+        assert_eq!(same, metadata(Some("_a")));
+        for imported in [other, none] {
+            assert_eq!(imported.dirty, metadata(None).dirty);
+            assert_eq!(imported.standing, metadata(None).standing);
+            assert_eq!(imported.token, None);
+            assert!(imported.tombstones.is_empty() && imported.deferred_deletions.is_empty());
+            assert!(imported.changes_held_for_unreadable.is_empty());
+        }
+    }
 }
 
 // A record by its Swift record type and id.
@@ -48,6 +117,8 @@ pub struct LegacyRecordRef {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LegacyTombstone {
     pub record: LegacyRecordRef,
+    // Milliseconds since the Unix epoch, which the Swift engine prunes tombstones by.
+    pub deleted_at_ms: i64,
     pub owner: Option<Uuid>,
 }
 

@@ -70,7 +70,7 @@ struct RowGenerationSettingsStoreTests {
         #expect(store.settings(for: scope(connectionId)) == nil)
 
         store.save(settings(rowCount: 1), for: scope(connectionId))
-        store.purgeConnections([connectionId], leavesTombstones: true)
+        store.purgeConnections([connectionId])
         #expect(store.settings(for: scope(connectionId)) == nil)
     }
 }

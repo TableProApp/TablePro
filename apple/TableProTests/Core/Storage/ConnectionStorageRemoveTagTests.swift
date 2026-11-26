@@ -23,13 +23,11 @@ struct ConnectionStorageRemoveTagTests {
             withIntermediateDirectories: true
         )
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let tracker = SyncJournalRecorder()
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
     }
 

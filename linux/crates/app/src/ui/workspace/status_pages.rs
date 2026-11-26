@@ -207,7 +207,7 @@ impl WorkspaceModel {
         let new_query = tablepro_storage::saved_queries::NewSavedQuery {
             name,
             query,
-            connection_id: metadata.id,
+            connection_id: Some(metadata.id),
             connection_name: metadata.name,
         };
         self.save_named_query(new_query, false);
@@ -482,7 +482,7 @@ mod tests {
         let work = test
             .services
             .tasks
-            .spawn_task(async move { store.create(owner, "Monthly", Some(folder)).await });
+            .spawn_task(async move { store.create(Some(owner), "Monthly", Some(folder)).await });
         let child = finish_on_main(WAIT, work)
             .expect("created")
             .expect("task")

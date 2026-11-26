@@ -16,7 +16,8 @@ final package class Atomic<T> {
         self.wrappedValue = wrappedValue
     }
 
-    func mutate(_ handler: (inout T) -> Void) {
+    @discardableResult
+    func mutate<R>(_ handler: (inout T) -> R) -> R {
         lock.withLock {
             handler(&wrappedValue)
         }

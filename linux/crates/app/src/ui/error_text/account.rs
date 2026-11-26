@@ -41,6 +41,12 @@ pub fn account_error_message(error: &AccountError) -> String {
         AccountError::OtherAccount => gettext(
             "This file was made for another account. Make one with the account signed in here, or sign out first.",
         ),
+        AccountError::StepUpRequired(_) => {
+            gettext("This change needs you to confirm it is you. Confirm in the browser, then try again.")
+        }
+        AccountError::StepUpOtherAccount => gettext(
+            "The browser confirmed another account. Sign in there with the account signed in here, then try again.",
+        ),
         AccountError::Refused { status, code, .. } => {
             share_refusal(error.code()).unwrap_or_else(|| refused_message(*status, code))
         }
@@ -226,6 +232,11 @@ mod tests {
             AccountError::DeviceRevoked,
             AccountError::DeviceLimitReached { devices: Vec::new() },
             AccountError::OtherAccount,
+            AccountError::StepUpRequired(tablepro_account::StepUpChallenge {
+                acr_values: vec!["urn:tablepro:acr:passkey".to_owned()],
+                max_age_secs: Some(300),
+            }),
+            AccountError::StepUpOtherAccount,
             refused(409, "offline_file_active"),
             AccountError::RateLimited {
                 retry_after: Some(std::time::Duration::from_secs(30)),

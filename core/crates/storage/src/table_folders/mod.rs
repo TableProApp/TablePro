@@ -4,7 +4,7 @@ use sqlx::{AssertSqlSafe, Connection, Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::journal::{RecordKind, Signals};
+use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
 
 #[cfg(test)]
@@ -130,7 +130,10 @@ impl TableFolders {
         .bind(folder.updated_at_ms)
         .execute(&self.pool)
         .await?;
-        self.signals.changed(&[RecordKind::TableFolder]);
+        self.tell(
+            JournalEntry::new(RecordKind::TableFolder).wrote([RecordRef::Id(folder.id)]),
+            None,
+        );
         Ok(())
     }
 
@@ -145,7 +148,10 @@ impl TableFolders {
             .await?
             .rows_affected();
         if changed > 0 {
-            self.signals.changed(&[RecordKind::TableFolder]);
+            self.tell(
+                JournalEntry::new(RecordKind::TableFolder).wrote([RecordRef::Id(id)]),
+                None,
+            );
             return Ok(());
         }
         let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM table_folders WHERE id = ?")
@@ -181,18 +187,23 @@ impl TableFolders {
             ],
         )
         .await?;
-        let items = sqlx::query("DELETE FROM table_folder_items WHERE folder_id = ?")
-            .bind(id.to_string())
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
+        let items: Vec<(String, String, String, String)> = sqlx::query_as(
+            "DELETE FROM table_folder_items WHERE folder_id = ? RETURNING connection_id, database, schema, name",
+        )
+        .bind(id.to_string())
+        .fetch_all(&mut *transaction)
+        .await?;
         let folders = sqlx::query("DELETE FROM table_folders WHERE id = ?")
             .bind(id.to_string())
             .execute(&mut *transaction)
             .await?
             .rows_affected();
         transaction.commit().await?;
-        self.tell(folders > 0, items > 0);
+        let folder = JournalEntry::new(RecordKind::TableFolder).deleted((folders > 0).then_some(RecordRef::Id(id)));
+        self.tell(
+            folder,
+            Some(JournalEntry::new(RecordKind::TableFolderItem).deleted(items.into_iter().filter_map(item_record))),
+        );
         Ok(folders > 0)
     }
 
@@ -203,9 +214,9 @@ impl TableFolders {
         }
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        let mut changed = 0;
+        let mut filed = Vec::new();
         for table in tables {
-            changed += sqlx::query(
+            let changed = sqlx::query(
                 "INSERT INTO table_folder_items (connection_id, database, schema, name, folder_id) \
                  VALUES (?, ?, ?, ?, ?) ON CONFLICT (connection_id, database, schema, name) \
                  DO UPDATE SET folder_id = excluded.folder_id WHERE folder_id IS NOT excluded.folder_id",
@@ -218,9 +229,12 @@ impl TableFolders {
             .execute(&mut *transaction)
             .await?
             .rows_affected();
+            if changed > 0 {
+                filed.push(RecordRef::Table(table.clone()));
+            }
         }
         transaction.commit().await?;
-        self.tell(false, changed > 0);
+        self.tell(JournalEntry::new(RecordKind::TableFolderItem).wrote(filed), None);
         Ok(())
     }
 
@@ -247,9 +261,9 @@ impl TableFolders {
             })
             .collect();
         trim_upgrade_copies(&self.path, &copies).await?;
-        let mut changed = 0;
+        let mut unfiled = Vec::new();
         for table in tables {
-            changed += sqlx::query(
+            let changed = sqlx::query(
                 "DELETE FROM table_folder_items WHERE connection_id = ? AND database = ? AND schema = ? AND name = ?",
             )
             .bind(table.connection_id.to_string())
@@ -259,21 +273,33 @@ impl TableFolders {
             .execute(&mut *transaction)
             .await?
             .rows_affected();
+            if changed > 0 {
+                unfiled.push(RecordRef::Table(table.clone()));
+            }
         }
         transaction.commit().await?;
-        self.tell(false, changed > 0);
+        self.tell(JournalEntry::new(RecordKind::TableFolderItem).deleted(unfiled), None);
         Ok(())
     }
 
-    fn tell(&self, folders: bool, items: bool) {
-        let kinds: Vec<RecordKind> = [(folders, RecordKind::TableFolder), (items, RecordKind::TableFolderItem)]
-            .into_iter()
-            .filter_map(|(changed, kind)| changed.then_some(kind))
+    fn tell(&self, first: JournalEntry, second: Option<JournalEntry>) {
+        let entries: Vec<JournalEntry> = std::iter::once(first)
+            .chain(second)
+            .filter(|entry| !entry.is_empty())
             .collect();
-        if !kinds.is_empty() {
-            self.signals.changed(&kinds);
+        if !entries.is_empty() {
+            self.signals.changed(&entries);
         }
     }
+}
+
+fn item_record((connection_id, database, schema, name): (String, String, String, String)) -> Option<RecordRef> {
+    Some(RecordRef::Table(TableRef {
+        connection_id: Uuid::parse_str(&connection_id).ok()?,
+        database,
+        schema,
+        name,
+    }))
 }
 
 fn checked_name(name: &str) -> Result<&str, StorageError> {
