@@ -456,7 +456,6 @@ impl KeyService {
         self.put_reset(txn.as_mut(), record).await?;
         txn.commit().await?;
         self.erase_reset_keys(record.reset).await?;
-        self.clear_unanchored();
         self.hooks().pass_soon();
         Ok(())
     }

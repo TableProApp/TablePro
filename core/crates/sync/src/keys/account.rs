@@ -532,7 +532,6 @@ impl KeyService {
             }))
             .await?;
         }
-        self.clear_unanchored();
         Ok(())
     }
 }

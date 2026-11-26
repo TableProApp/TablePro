@@ -7,7 +7,7 @@ use tablepro_sync::api::device_store::{DeviceItem, HostDeviceStore};
 use tablepro_sync::api::error::StateError;
 use tablepro_sync::api::ids::{Cursor, ScopeName};
 use tablepro_sync::api::state::{
-    KeyEnvelopeRow, KeyTrust, Opened, Row, RowKey, ScopeRow, StateFiles, StoreRow, SyncTrust, Table,
+    KeyEnvelopeRow, KeyTrust, KeysSettled, Opened, Row, RowKey, ScopeRow, StateFiles, StoreRow, SyncTrust, Table,
 };
 use tablepro_sync::state::state_name;
 use uuid::Uuid;
@@ -255,4 +255,90 @@ async fn a_stale_icloud_file_owes_nothing_of_key_tables() {
         }
     );
     assert_eq!(again.opened(), &Opened::FRESH);
+}
+
+// A settle whose commit landed takes effect even when the anchor's second step was lost with the process: the root
+// keeps it with the pending entry, and the next open finishes that step.
+#[tokio::test]
+async fn a_settle_whose_commit_landed_survives_a_lost_second_step() {
+    let disk = Disk::new();
+    let state = disk.open().await;
+    put(&state, vec![store_row(1)]).await;
+    drop(state);
+    disk.store.remove_passcode();
+    drop(disk.open().await);
+    let state = disk.open().await;
+
+    disk.store.fail_root_write(2);
+    let mut txn = state.begin().await.unwrap();
+    txn.settle_keys(KeysSettled::Reapproved);
+    txn.put(store_row(2)).await.unwrap();
+    txn.commit().await.unwrap();
+    drop(state);
+    let reopened = disk.open().await;
+
+    assert_eq!(reopened.opened(), &Opened::FRESH);
+    assert_eq!(
+        get(&reopened, RowKey::Store("connections".to_owned())).await,
+        Some(store_row(2))
+    );
+}
+
+// A copy sealed under a MAC key since deleted, put back after the identity started a new file: the key the device holds
+// does not verify it and the anchor does not name it, so it starts over on the anchor rather than being refused for
+// good.
+#[tokio::test]
+async fn a_copy_sealed_under_a_key_since_made_again_starts_over_on_the_anchor() {
+    let disk = Disk::new();
+    let state = disk.open().await;
+    put(&state, vec![store_row(1), envelope(1)]).await;
+    drop(state);
+    let copy = disk.copy(&identity()).await;
+    disk.files.delete(identity()).await.unwrap();
+    let state = disk.open().await;
+    put(&state, vec![envelope(2)]).await;
+    drop(state);
+
+    disk.restore(&identity(), &copy).await;
+    let state = disk.open().await;
+
+    assert_eq!(state.opened().sync_tables, SyncTrust::Refill);
+    assert!(matches!(state.opened().key_tables, KeyTrust::Rebuild { .. }));
+    assert_eq!(table(&state, Table::KeyEnvelopes).await, vec![envelope(2)]);
+    assert_eq!(get(&state, RowKey::Store("connections".to_owned())).await, None);
+}
+
+// The file the anchor names, with its MAC written over, is refused: only a file the anchor does not know starts over.
+#[tokio::test]
+async fn the_anchored_file_with_its_mac_zeroed_is_refused() {
+    let disk = Disk::new();
+    let state = disk.open().await;
+    put(&state, vec![store_row(1)]).await;
+    drop(state);
+    let binding = disk.raw(&identity(), Table::Binding, &RowKey::Binding).await;
+    let zeroed = [&binding[..binding.len() - 32], &[0; 32]].concat();
+
+    disk.tamper(&identity(), "UPDATE binding SET columns = ?", vec![zeroed])
+        .await;
+
+    assert_eq!(disk.files.open(identity()).await.err(), Some(StateError::Integrity));
+}
+
+// A key stored as text sorts and hashes as the blob it was, so the MAC still verifies, yet no lookup finds it: a file
+// with one is refused.
+#[tokio::test]
+async fn a_row_whose_key_a_writer_stored_as_text_is_refused() {
+    let disk = Disk::new();
+    let state = disk.open().await;
+    put(&state, vec![envelope(1)]).await;
+    drop(state);
+
+    disk.tamper(
+        &identity(),
+        "UPDATE key_envelopes SET key = CAST(key AS TEXT)",
+        Vec::new(),
+    )
+    .await;
+
+    assert_eq!(disk.files.open(identity()).await.err(), Some(StateError::Integrity));
 }

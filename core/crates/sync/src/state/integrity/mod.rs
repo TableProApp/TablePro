@@ -22,6 +22,7 @@ use tablepro_keys::state_mac::{StateSnapshot, state_mac};
 use tokio::sync::Mutex as AsyncMutex;
 use zeroize::Zeroizing;
 
+pub(crate) use self::anchor::Settles;
 use self::anchor::{
     CHECKPOINT_TABLES, CheckpointRef, Entry, Items, Owed, PART_BYTES, Root, RootItem, checkpoint_bytes,
     checkpoint_ref_of, unsettled,
@@ -33,8 +34,7 @@ use crate::api::device_store::{DeviceStoreError, HostDeviceStore};
 use crate::api::error::StateError;
 use crate::api::ids::{FileId, ScopeName, StateName};
 use crate::api::state::{
-    BindingRow, Checkpoint, Committed, KeyTrust, KeysSettled, Opened, Provider, Row, RowKey, StateIdentity, SyncTrust,
-    Table,
+    BindingRow, Checkpoint, Committed, KeyTrust, Opened, Provider, Row, RowKey, StateIdentity, SyncTrust, Table,
 };
 
 // Whom the MAC binds the file to.
@@ -115,45 +115,12 @@ fn lp(out: &mut Vec<u8>, bytes: &[u8]) {
 // The MAC column of a file no device store ever sealed. A real MAC is all zeros with probability 2^-256.
 const UNSEALED: [u8; 32] = [0; 32];
 
-// What one commit settles of the distrust an open found (0054, A stale file). It takes effect only with that commit's
-// second step, so a commit that never lands settles nothing.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Settles {
-    rebuilt: bool,
-    reapproved: bool,
-    // Sign Out cleared the key tables: the device joins again as a new device would.
-    cleared: bool,
-}
-
-impl Settles {
-    pub(crate) fn add(&mut self, settled: KeysSettled) {
-        match settled {
-            KeysSettled::Rebuilt => self.rebuilt = true,
-            KeysSettled::Reapproved => self.reapproved = true,
-        }
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.cleared = true;
-    }
-
-    fn apply(self, owed: Owed) -> Owed {
-        match owed {
-            _ if self.cleared => Owed::Trusted,
-            Owed::Rebuild(_) if self.rebuilt => Owed::Trusted,
-            Owed::Unanchored if self.reapproved => Owed::Trusted,
-            owed => owed,
-        }
-    }
-}
-
 // What the last settled commit left: its key digest and checkpoint, which a commit that leaves the key tables alone
-// keeps, the anchor's root as this process last stored it, and what the pending entry's commit settles.
+// keeps, and the anchor's root as this process last stored it.
 struct Anchor {
     root: Option<Root>,
     key_digest: [u8; 32],
     checkpoint: CheckpointRef,
-    pending_settles: Settles,
 }
 
 // One open file's seal. Without a device store nothing can be sealed or anchored: the file then holds no key it could
@@ -212,6 +179,9 @@ enum Found {
     Fresh { pending: bool },
     // Restored, replaced or uncertain: its sync tables refill, and its key tables are owed as this says.
     Restored { keys: Owed },
+    // Not sealed under the key the device holds, and not the file the anchor names: a copy from before the key was
+    // made again, or a file made while the store was away. None of it is proven, so it starts over.
+    Foreign,
 }
 
 fn found(binding: &BindingRow, root: &RootItem) -> Found {
@@ -329,9 +299,9 @@ async fn install(tx: &mut Transaction<'static, Sqlite>, checkpoint: &Checkpoint)
     Ok(())
 }
 
-// A file no device store sealed, met by a device that holds its MAC key: nothing proves any of it, so none of it is
-// kept and the file starts again as a new one would, with a new file id. A local writer gets no further than by
-// deleting the file.
+// A file the MAC key the device holds does not verify, and that the anchor does not name: nothing proves any of it, so
+// none of it is kept and the file starts again as a new one would, with a new file id. A local writer gets no further
+// than by deleting the file.
 async fn start_over(tx: &mut Transaction<'static, Sqlite>, binding: &BindingRow) -> Result<BindingRow, StateError> {
     for table in Table::SYNC.into_iter().chain(Table::KEY) {
         let statement = format!("DELETE FROM {}", table.name());
@@ -382,19 +352,27 @@ pub(crate) async fn open(
         mut binding,
         mut new_file,
     } = bound;
-    if !new_file && key.is_some() && binding.state_mac == UNSEALED {
-        binding = start_over(&mut tx, &binding).await?;
-        new_file = true;
-    }
-    let key_digest = digest::key_digest_in(&mut tx, party.provider()).await?;
-    let checkpoint = checkpoint_ref_of(&checkpoint_bytes(&checkpoint_in(&mut tx).await?), PART_BYTES);
+    let mut key_digest = digest::key_digest_in(&mut tx, party.provider()).await?;
     let checked = Checked {
         party: &party,
         binding: &binding,
         new_file,
         key_digest,
     };
-    let found = checked.find(&mut tx, key.as_ref(), &root).await?;
+    let mut found = checked.find(&mut tx, key.as_ref(), &root).await?;
+    if matches!(found, Found::Foreign) {
+        binding = start_over(&mut tx, &binding).await?;
+        new_file = true;
+        key_digest = digest::key_digest_in(&mut tx, party.provider()).await?;
+        let checked = Checked {
+            party: &party,
+            binding: &binding,
+            new_file,
+            key_digest,
+        };
+        found = checked.find(&mut tx, key.as_ref(), &root).await?;
+    }
+    let checkpoint = checkpoint_ref_of(&checkpoint_bytes(&checkpoint_in(&mut tx).await?), PART_BYTES);
     // A new file writes its MAC key before its anchor (0054, A new file writes its anchor first): the file exists only
     // once that commit lands. An existing file whose key is gone gets its new key once the commit sealing it landed.
     let (key, key_unstored) = match key {
@@ -422,7 +400,6 @@ pub(crate) async fn open(
             root,
             key_digest,
             checkpoint,
-            pending_settles: Settles::default(),
         }),
     });
     let opened = finish_open(&seal, tx, &binding, new_file, found).await?;
@@ -438,6 +415,7 @@ async fn finish_open(
     found: Found,
 ) -> Result<Opened, StateError> {
     Ok(match found {
+        Found::Foreign => return Err(StateError::Integrity),
         Found::Fresh { pending } => {
             if new_file {
                 commit(
@@ -505,7 +483,11 @@ impl Checked<'_> {
                     self.party
                         .mac(key, &binding.file_id, binding.counter, &self.key_digest, &sync_digest)?;
                 if constant_time::verify_slices_are_equal(&expected, &binding.state_mac).is_err() {
-                    return Err(StateError::Integrity);
+                    // The file the anchor names failed its MAC: refused (0054, Integrity).
+                    if matches!(root, RootItem::Held(root) if root.file_id == binding.file_id) {
+                        return Err(StateError::Integrity);
+                    }
+                    return Ok(Found::Foreign);
                 }
                 found(binding, root)
             }
@@ -554,6 +536,7 @@ async fn repair(
     if let Some(left) = root.pending.take() {
         root.retire(left.checkpoint);
     }
+    root.pending_settles = Settles::default();
     anchor.root = Some(root);
     drop(anchor);
     let written = Written {
@@ -616,7 +599,6 @@ async fn unsealed(
                 digest: [0; 32],
                 parts: 0,
             },
-            pending_settles: Settles::default(),
         }),
     });
     // Nothing here proves the key tables are the device's latest.
@@ -692,12 +674,12 @@ pub(crate) async fn commit(
     if let Some(replaced) = root.pending.replace(entry) {
         root.retire(replaced.checkpoint);
     }
+    root.pending_settles = written.settles;
     if let Err(error) = seal.items().put_root(&root).await {
         retire_unstored(&mut anchor, checkpoint);
         return Err(unsettled(&error));
     }
     anchor.root = Some(root);
-    anchor.pending_settles = written.settles;
 
     // Whether a failed commit landed is read at the next commit, which settles the pending entry either way first.
     tx.commit().await.map_err(sql)?;
@@ -757,9 +739,10 @@ async fn settle_forward(seal: &Seal, anchor: &mut Anchor) {
         return;
     };
     let mut next = Root {
-        owed: anchor.pending_settles.apply(root.owed),
+        owed: root.pending_settles.apply(root.owed),
         current: Some(pending),
         pending: None,
+        pending_settles: Settles::default(),
         ..root.clone()
     };
     for dropped in root.named() {
@@ -773,7 +756,6 @@ async fn settle_forward(seal: &Seal, anchor: &mut Anchor) {
         return;
     }
     anchor.root = Some(next);
-    anchor.pending_settles = Settles::default();
     forget_retired(seal, anchor).await;
 }
 
@@ -784,6 +766,7 @@ async fn settle_back(seal: &Seal, anchor: &mut Anchor) {
     };
     let mut next = Root {
         pending: None,
+        pending_settles: Settles::default(),
         ..root.clone()
     };
     for dropped in root.named() {
@@ -797,7 +780,6 @@ async fn settle_back(seal: &Seal, anchor: &mut Anchor) {
         return;
     }
     anchor.root = Some(next);
-    anchor.pending_settles = Settles::default();
     forget_retired(seal, anchor).await;
 }
 
@@ -817,7 +799,7 @@ async fn forget_retired(seal: &Seal, anchor: &mut Anchor) {
 }
 
 // A file deleted whole takes its anchor with it, so a later file of the same identity starts as a new one. A failure
-// leaves an anchor with no file, which rebuilds: the safe side.
+// leaves part of the anchor, which a new file of that identity opens with no anchor or rebuilds from: the safe side.
 pub(crate) async fn forget(store: &dyn HostDeviceStore, identity: &StateIdentity) -> Result<(), StateError> {
     let name = state_name(identity);
     let items = Items { store, name: &name };

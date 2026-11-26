@@ -21,7 +21,7 @@ use tablepro_sync::api::key_flows::{
 };
 use tablepro_sync::api::scopes::ScopesAnswer;
 use tablepro_sync::api::state::{
-    Committed, Opened, Row, RowKey, RowRange, Standing, StateFiles, StateIdentity, StateStore, StateTxn,
+    Committed, KeysSettled, Opened, Row, RowKey, RowRange, Standing, StateFiles, StateIdentity, StateStore, StateTxn,
 };
 use tablepro_sync::api::transport::{
     Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PullRequest, PulledPage, PushAnswer, PushBatch, ServiceTransport,
@@ -684,6 +684,10 @@ impl StateTxn for CrashingTxn {
 
     async fn clear_key_tables(&mut self) -> Result<(), StateError> {
         self.inner.clear_key_tables().await
+    }
+
+    fn settle_keys(&mut self, settled: KeysSettled) {
+        self.inner.settle_keys(settled);
     }
 
     async fn commit(self: Box<Self>) -> Result<Committed, StateError> {

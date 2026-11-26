@@ -192,7 +192,35 @@ async fn connect(path: &Path) -> Result<SqlitePool, StateError> {
     check_schema(&pool).await?;
     MIGRATOR.run(&pool).await.map_err(io)?;
     check_schema(&pool).await?;
+    check_rows(&pool).await?;
     Ok(pool)
+}
+
+// The digests read every row in key order, and the store finds rows by their keys: a key stored as text sorts and
+// hashes the same yet is never found, and a damaged b-tree can show a scan rows a lookup misses. Either would hide
+// rows the MAC still covers.
+async fn check_rows(pool: &SqlitePool) -> Result<(), StateError> {
+    for table in Table::SYNC.into_iter().chain(Table::KEY) {
+        let statement = format!(
+            "SELECT EXISTS (SELECT 1 FROM {} WHERE typeof(key) != 'blob' OR typeof(columns) != 'blob')",
+            table.name()
+        );
+        let mistyped: bool = sqlx::query_scalar(AssertSqlSafe(statement))
+            .fetch_one(pool)
+            .await
+            .map_err(sql)?;
+        if mistyped {
+            return Err(StateError::Integrity);
+        }
+    }
+    let checked: Vec<String> = sqlx::query_scalar("PRAGMA quick_check")
+        .fetch_all(pool)
+        .await
+        .map_err(sql)?;
+    if checked != ["ok"] {
+        return Err(StateError::Integrity);
+    }
+    Ok(())
 }
 
 // The MAC covers rows, not the schema: a trigger or a view a local writer added could change what a commit then seals.

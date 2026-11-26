@@ -482,7 +482,7 @@ async fn an_unanchored_file_stays_unanchored_across_restarts_until_a_commit_reap
 }
 
 #[tokio::test]
-async fn a_rebuild_stays_owed_across_restarts_until_its_commit_lands() {
+async fn a_rebuild_stays_owed_across_restarts_until_a_commit_settles_it() {
     let disk = Disk::new();
     let copy = moved_on(&disk).await;
     disk.restore(&identity(), &copy).await;

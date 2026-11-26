@@ -13,7 +13,7 @@ use tablepro_records::Kind;
 
 use crate::api::error::SyncError;
 use crate::api::ids::{KindName, ScopeName};
-use crate::api::state::{Checkpoint, KeyVersionState, Row, RowKey, RowRange, StateTxn, Table};
+use crate::api::state::{Checkpoint, KeyVersionState, Row, RowKey, RowRange, StateTxn, StoppedCause, Table};
 
 // The IK of each certificate the key tables hold in force, by account and `av`: `key.account` in the personal scope,
 // `key.member` in a team.
@@ -62,7 +62,9 @@ impl Reading {
 // the certificate at that `av` under that IK is in force. Each anchored version is shown when the version record at it
 // with the anchored digest is in force. Only what the device still reads is waited for: a team it left, or an account
 // it no longer shares a team with, can never be shown, and its anchored rows stay in the key tables as the floor any
-// later copy is held to. A row that ended waits for nothing, since nothing clears it.
+// later copy is held to. A row that ended waits for nothing, since nothing clears it, and nor does a team stopped until
+// a version the server lost comes back (0062): its signer's device decides when, and the stop already keeps the team
+// from writing.
 pub async fn rebuild_shown(
     txn: &mut dyn StateTxn,
     origin: &Origin,
@@ -83,7 +85,8 @@ pub async fn rebuild_shown(
         }
     }
     for anchored in &checkpoint.versions {
-        if anchored.state == KeyVersionState::Ended || !reading.reads(anchored.scope) {
+        let waits_on_signer = anchored.stopped_cause == Some(StoppedCause::RestoreWait);
+        if anchored.state == KeyVersionState::Ended || waits_on_signer || !reading.reads(anchored.scope) {
             continue;
         }
         let owner = match anchored.scope {

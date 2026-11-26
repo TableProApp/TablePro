@@ -256,10 +256,24 @@ impl KeyService {
         match refusal(&outcomes) {
             None => {
                 let mut txn = self.begin().await?;
+                // A new account starts from its own keys alone: nothing a file with no anchor held stands beside them
+                // (0054, A stale file).
+                if self.is_unanchored() {
+                    for table in [
+                        Table::KeyPins,
+                        Table::KeyVersions,
+                        Table::KeyDevicePins,
+                        Table::KeyEnvelopes,
+                    ] {
+                        for row in txn.scan(&RowRange::Table(table)).await? {
+                            txn.delete(&row.key()).await?;
+                        }
+                    }
+                }
                 self.adopt_account_change_set(txn.as_mut(), objects).await?;
-                // A new account's own keys and tables: nothing a file with no anchor held stands in them.
                 txn.settle_keys(KeysSettled::Reapproved);
                 txn.commit().await?;
+                self.clear_unanchored();
                 self.hooks().pass_soon();
                 Ok(GenesisOutcome::Created)
             }

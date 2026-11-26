@@ -9,7 +9,7 @@ use super::super::codec;
 use crate::api::device_store::{DeviceItem, DeviceStoreError, HostDeviceStore};
 use crate::api::error::StateError;
 use crate::api::ids::{FileId, StateName};
-use crate::api::state::{Checkpoint, Row, Table};
+use crate::api::state::{Checkpoint, KeysSettled, Row, Table};
 
 const ROOT_FORMAT: u8 = 1;
 const CHECKPOINT_FORMAT: u8 = 1;
@@ -32,6 +32,54 @@ pub(crate) struct Entry {
     pub(crate) mac: [u8; 32],
     pub(crate) key_digest: [u8; 32],
     pub(crate) checkpoint: CheckpointRef,
+}
+
+// What one commit settles of the distrust an open found (0054, A stale file). The root keeps it with the commit's
+// pending entry, so it takes effect exactly when that entry becomes the current one, in this process or at the next
+// open, and a commit that never lands settles nothing.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Settles {
+    rebuilt: bool,
+    reapproved: bool,
+    // Sign Out cleared the key tables: the device joins again as a new device would.
+    cleared: bool,
+}
+
+impl Settles {
+    pub(crate) fn add(&mut self, settled: KeysSettled) {
+        match settled {
+            KeysSettled::Rebuilt => self.rebuilt = true,
+            KeysSettled::Reapproved => self.reapproved = true,
+        }
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.cleared = true;
+    }
+
+    pub(crate) fn apply(self, owed: Owed) -> Owed {
+        match owed {
+            _ if self.cleared => Owed::Trusted,
+            Owed::Rebuild(_) if self.rebuilt => Owed::Trusted,
+            Owed::Unanchored if self.reapproved => Owed::Trusted,
+            owed => owed,
+        }
+    }
+
+    fn byte(self) -> u8 {
+        u8::from(self.rebuilt) | (u8::from(self.reapproved) << 1) | (u8::from(self.cleared) << 2)
+    }
+
+    const fn of_byte(byte: u8) -> Option<Self> {
+        if byte > 0b111 {
+            return None;
+        }
+        Some(Self {
+            rebuilt: byte & 1 != 0,
+            reapproved: byte & 2 != 0,
+            cleared: byte & 4 != 0,
+        })
+    }
 }
 
 // What an open found of the key tables and no key flow has settled, strictest last.
@@ -73,6 +121,8 @@ pub(crate) struct Root {
     pub(crate) owed: Owed,
     pub(crate) current: Option<Entry>,
     pub(crate) pending: Option<Entry>,
+    // What the pending entry's commit settles once it is the current one.
+    pub(crate) pending_settles: Settles,
     // Checkpoints no entry names any more, whose items go once the root that drops them is stored.
     pub(crate) retired: Vec<CheckpointRef>,
 }
@@ -84,6 +134,11 @@ impl Root {
             owed: Owed::Trusted,
             current: None,
             pending: None,
+            pending_settles: Settles {
+                rebuilt: false,
+                reapproved: false,
+                cleared: false,
+            },
             retired: Vec::new(),
         }
     }
@@ -143,6 +198,7 @@ impl Root {
                 }
             }
         }
+        out.push(self.pending_settles.byte());
         out.extend_from_slice(&u32::try_from(self.retired.len()).unwrap_or(u32::MAX).to_be_bytes());
         for retired in &self.retired {
             checkpoint_ref(&mut out, *retired);
@@ -175,6 +231,8 @@ impl Root {
                 _ => return None,
             };
         }
+        let [settles] = read.take::<1>()?;
+        let pending_settles = Settles::of_byte(settles)?;
         let count = u32::from_be_bytes(read.take()?);
         let retired = (0..count).map(|_| read.checkpoint_ref()).collect::<Option<Vec<_>>>()?;
         if !read.0.is_empty() {
@@ -186,6 +244,7 @@ impl Root {
             owed,
             current,
             pending,
+            pending_settles,
             retired,
         })
     }
@@ -414,11 +473,15 @@ mod tests {
 
     #[test]
     fn a_root_reads_back_as_it_was_written() {
+        let mut pending_settles = Settles::default();
+        pending_settles.add(KeysSettled::Reapproved);
+        pending_settles.clear();
         let root = Root {
             file_id: FileId([5; 16]),
             owed: Owed::Rebuild(checkpoint(1)),
             current: Some(entry(4)),
             pending: Some(entry(5)),
+            pending_settles,
             retired: vec![checkpoint(3), checkpoint(4)],
         };
         let bare = Root::new(FileId([6; 16]));

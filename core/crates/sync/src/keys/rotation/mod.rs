@@ -216,7 +216,12 @@ impl KeyService {
         // A file with no anchor trusts nothing it holds: a device recovered with R starts with no pins and no team
         // key (0054, A stale file; 0056, Pins).
         if self.is_unanchored() {
-            for table in [Table::KeyPins, Table::KeyVersions, Table::KeyDevicePins] {
+            for table in [
+                Table::KeyPins,
+                Table::KeyVersions,
+                Table::KeyDevicePins,
+                Table::KeyEnvelopes,
+            ] {
                 for row in txn.scan(&RowRange::Table(table)).await? {
                     txn.delete(&row.key()).await?;
                 }
