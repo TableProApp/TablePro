@@ -108,8 +108,10 @@ pub(super) struct PageWrites {
     approvals: Vec<(RecordKey, Split)>,
     deferred: Vec<DeferredRow>,
     undeferred: Vec<RecordKey>,
-    // Rows of other tables that settle in the same commit, as a refilled store's identity.
+    // Rows of other tables that settle in the same commit.
     rows: Vec<Row>,
+    // The refills this commit ends, as their `stores_kinds` marks.
+    refilled: Vec<RowKey>,
 }
 
 impl PageWrites {
@@ -125,6 +127,7 @@ impl PageWrites {
             && self.deferred.is_empty()
             && self.undeferred.is_empty()
             && self.rows.is_empty()
+            && self.refilled.is_empty()
     }
 }
 
@@ -180,11 +183,21 @@ impl ServiceSync {
             row.refill = true;
         }
         ctx.new_epoch |= row.refill;
-        let pull_wins: HashSet<Kind> = adapters
+        // The kinds whose category is on take the refill they owe. One that is off is read beside them, or by the pass
+        // that found its store restored, only for the copies its store holds, which it merges against once it is on.
+        // It keeps its mark, and reads nothing more while it stays off (0066, Per-kind refills; `deferred`).
+        let owed: Vec<&Arc<dyn RecordAdapter>> = adapters
             .iter()
-            .filter(|adapter| ctx.refills(adapter.store()))
-            .map(|adapter| adapter.kind())
+            .filter(|adapter| ctx.owes(adapter.store(), adapter.kind()))
             .collect();
+        let refills_now = owed
+            .iter()
+            .any(|adapter| ctx.categories.syncs(adapter.kind()) || ctx.marked(adapter.store()));
+        let pull_wins: HashSet<Kind> = if refills_now {
+            owed.iter().map(|adapter| adapter.kind()).collect()
+        } else {
+            HashSet::new()
+        };
         let can_open = ctx.keys_ready;
         let rebuilding = self.keys.rebuilding();
         // Envelopes kept while the device could not check them are read again in a snapshot once it can, which
@@ -470,7 +483,16 @@ impl ServiceSync {
                 continue;
             }
             let base = inputs.bases.get(&key);
-            let judgement = pull.judge(kind, base, &record);
+            let mut judgement = pull.judge(kind, base, &record);
+            // A copy a refill kept while the kind was off stands for the store the restore left: once the kind is on,
+            // its refill merges against that copy, so what was edited since goes up (0066, `deferred`).
+            let kept_copy = inputs
+                .deferred
+                .get(&key)
+                .is_some_and(|deferred| deferred.fields.is_some());
+            if judgement == Judgement::PullWins && kept_copy && pull.categories.syncs(kind) {
+                judgement = Judgement::Merge;
+            }
             let stored = local.and_then(|local| local.records.get(&key.record_id));
             if !pull.categories.syncs(kind) {
                 Self::while_off(&key, kind, judgement, base, stored, &record, writes);
@@ -767,6 +789,9 @@ impl ServiceSync {
         for row in writes.rows {
             txn.put(row).await?;
         }
+        for key in writes.refilled {
+            txn.delete(&key).await?;
+        }
         if let Some(row) = row {
             txn.put(Row::Scope(row.clone())).await?;
         }
@@ -837,7 +862,7 @@ impl ServiceSync {
                 .find(|adapter| adapter.kind() == Kind::SecretEnvelope)
                 .map(|adapter| adapter.store().to_owned());
             let except = envelopes.filter(|_| unchecked);
-            writes.rows = self.settled_stores(ctx, pull.scope, except.as_deref()).await?;
+            writes.refilled = self.settled_refills(ctx, pull.scope, except.as_deref()).await?;
             // In a history snapshot that stopped at its window this also lets go of older entries kept for the keys;
             // paging back serves them again and opens them then.
             if pull.can_open {

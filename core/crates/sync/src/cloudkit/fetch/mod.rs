@@ -16,8 +16,8 @@ use tablepro_records::cloudkit::record_type_of;
 use crate::api::adapter::{RecordAdapter, StoreStamp};
 use crate::api::cloudkit::{CloudKitChanges, CloudKitFailure, CloudKitFetched, CloudKitTransport};
 use crate::api::error::{StateError, SyncError};
-use crate::api::ids::{Cursor, RecordKey, ScopeName};
-use crate::api::state::{Row, RowKey, StateIdentity, StateStore};
+use crate::api::ids::{Cursor, KindName, RecordKey, ScopeName};
+use crate::api::state::{Row, RowKey, StateIdentity, StateStore, StoreRow, StoresKindRow};
 use crate::cloudkit::codes;
 use crate::engine::{Backoff, StopSignal};
 
@@ -41,11 +41,6 @@ pub const SCOPE: ScopeName = ScopeName::Personal;
 // A profile's deletion unlinks connections and removes Keychain secrets no pull can bring back: it waits for a build
 // that reads the profile, and a deletion found late, deferred or by a full fetch, never removes one.
 pub(in crate::cloudkit) const PROFILES: [Kind; 2] = [Kind::SshProfile, Kind::CredentialProfile];
-
-// The `stores` row of one kind. Kinds that share a store can be in different categories, so each refills on its own.
-fn identity_row(kind: Kind, store: &str) -> String {
-    format!("{store}/{}", kind.as_str())
-}
 
 // The kinds whose category is on. Another kind sends nothing and takes no pulled change, and a deletion pulled for it
 // waits until a full fetch reads its category.
@@ -143,17 +138,13 @@ impl Waited {
     }
 }
 
-// Where the fetch starts: the stored token, the kinds whose store went back or was replaced, and each kind's store
-// identity as the fetch found it, by identity row.
+// Where the fetch starts: the stored token, the kinds that refill now, and each store's identity as the fetch found it.
 struct Start {
     token: Option<Vec<u8>>,
     refill: BTreeSet<Kind>,
-    started: BTreeMap<String, StoreStamp>,
-    // The same identities by store.
+    // Kinds that owe a refill while their category is off.
+    owed_off: BTreeSet<Kind>,
     stores: BTreeMap<String, StoreStamp>,
-    // The state file as a whole refills, and the identity rows of kinds whose category is off meanwhile.
-    scope_refill: bool,
-    refill_later: Vec<String>,
 }
 
 struct Pass {
@@ -213,9 +204,7 @@ impl Pass {
             listed: std::mem::take(&mut self.listed),
             oldest_created_ms: self.oldest_created_ms.take(),
             refill: self.refill(),
-            started: self.start.started.clone(),
-            refill_later: self.start.refill_later.clone(),
-            scope_refilled: self.start.scope_refill,
+            started: self.start.stores.clone(),
         });
         Batch {
             items,
@@ -226,6 +215,11 @@ impl Pass {
             stamps: std::mem::take(&mut self.stamps),
             started: self.start.stores.clone(),
             release: Vec::new(),
+            keep_copies: if self.start.refill.is_empty() {
+                BTreeSet::new()
+            } else {
+                self.start.owed_off.clone()
+            },
         }
     }
 }
@@ -333,34 +327,76 @@ impl<'a> Fetcher<'a> {
         let mut start = Start {
             token,
             refill: BTreeSet::new(),
-            started: BTreeMap::new(),
+            owed_off: BTreeSet::new(),
             stores: BTreeMap::new(),
-            scope_refill,
-            refill_later: Vec::new(),
         };
-        for (kind, adapter) in &self.adapters {
-            let row = identity_row(*kind, adapter.store());
-            let stamp = adapter.identity().await?;
-            let seen = match txn.get(&RowKey::Store(row.clone())).await? {
+        for adapter in self.adapters.values() {
+            if !start.stores.contains_key(adapter.store()) {
+                start
+                    .stores
+                    .insert(adapter.store().to_owned(), adapter.identity().await?);
+            }
+        }
+        // One row per store file. A new generation or a lower sequence, or the whole file refilling, owes each of the
+        // store's kinds a refill, which a kind takes once its category is on (0066, Per-kind refills). The marks land
+        // before the fetch, so one cut short refills again.
+        let mut wrote = false;
+        for (store, stamp) in &start.stores {
+            let seen = match txn.get(&RowKey::Store(store.clone())).await? {
                 Some(Row::Store(seen)) => Some(StoreStamp {
                     generation: seen.generation,
                     sequence: seen.sequence,
                 }),
                 _ => None,
             };
-            // A kind whose category is off keeps the row it had, so it refills once the category is on.
-            let refills = scope_refill || seen.is_some_and(|seen| stamp.needs_refill(seen));
-            match (refills, self.categories.syncs(*kind)) {
+            let restored = seen.is_some_and(|seen| stamp.needs_refill(seen));
+            if restored || scope_refill {
+                for kind in self.kinds_of(store) {
+                    txn.put(Row::StoresKind(StoresKindRow {
+                        store: store.clone(),
+                        kind: KindName::of(kind),
+                    }))
+                    .await?;
+                }
+                wrote = true;
+            }
+            if seen.is_none() || restored {
+                txn.put(Row::Store(StoreRow {
+                    store: store.clone(),
+                    generation: stamp.generation,
+                    sequence: stamp.sequence,
+                }))
+                .await?;
+                wrote = true;
+            }
+        }
+        for (kind, adapter) in &self.adapters {
+            let owed = txn
+                .get(&RowKey::StoresKind(adapter.store().to_owned(), KindName::of(*kind)))
+                .await?
+                .is_some();
+            match (owed, self.categories.syncs(*kind)) {
                 (true, true) => {
                     start.refill.insert(*kind);
                 }
-                (true, false) if scope_refill => start.refill_later.push(row.clone()),
-                _ => {}
+                (true, false) => {
+                    start.owed_off.insert(*kind);
+                }
+                (false, _) => {}
             }
-            start.stores.insert(adapter.store().to_owned(), stamp);
-            start.started.insert(row, stamp);
+        }
+        if wrote {
+            self.check_stop()?;
+            txn.commit().await?;
         }
         Ok(start)
+    }
+
+    fn kinds_of<'s>(&'s self, store: &'s str) -> impl Iterator<Item = Kind> + 's {
+        self.adapters
+            .iter()
+            .filter(move |(_, adapter)| adapter.store() == store)
+            .map(|(kind, _)| *kind)
     }
 
     // A record the zone reported changed whose fetch failed is fetched by name, and held when it still fails, so the

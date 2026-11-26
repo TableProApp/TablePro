@@ -140,12 +140,16 @@ impl Conflicts<'_> {
 
     // The store takes the side the person kept; the diff then sends Keep Mine on the stored tag, and Keep Theirs
     // leaves nothing to send. What the server holds still goes through the approval queue.
+    // `seen` names the conflict the person was shown. A pull that replaced it since resolves nothing, and the person
+    // sees it as it is now.
     pub async fn resolve(&self, key: &RecordKey, seen: [u8; 32], keep: ConflictChoice) -> Result<(), SyncError> {
-        let _ = seen;
         let mut txn = self.state.begin().await?;
         let Some(Row::Conflict(row)) = txn.get(&RowKey::Conflict(key.clone())).await? else {
             return Err(SyncError::Unknown { what: "conflict" });
         };
+        if conflict_digest(row.base.as_ref(), row.mine.as_ref(), row.theirs.as_ref()) != seen {
+            return Err(SyncError::Changed { what: "conflict" });
+        }
         let rows = approval::rows_of(txn.as_mut(), key).await?;
         drop(txn);
         let (Some(adapter), Some(kind)) = (self.adapter(key), key.kind.known()) else {

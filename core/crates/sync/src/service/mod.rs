@@ -9,12 +9,13 @@ mod scopes;
 
 use push::AfterPush;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_keys::encoding::KeyPurpose;
+use tablepro_records::Kind;
 
 use crate::adapters::approval::Queue;
 use crate::adapters::categories::DeviceCategories;
@@ -29,7 +30,8 @@ use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow, Table,
+    KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow, StoresKindRow,
+    Table,
 };
 use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{Adapters, Clock, EngineEvents, EngineHooks, Journal, JournalEntry, JournalIds, Pass, StopSignal};
@@ -70,8 +72,6 @@ pub struct ServiceSync {
 struct Session {
     etag: Option<String>,
     body: Option<ScopesBody>,
-    // Changes the server refused, by what they would send, so a pass does not send them again until they change.
-    refused: HashMap<RecordKey, ([u8; 32], String)>,
     stale_handled: bool,
     // What each scope's waiting envelopes were last judged against in a snapshot.
     waited: HashMap<ScopeName, keys::KeyMark>,
@@ -89,12 +89,14 @@ pub struct PassReport {
     pub queued: usize,
 }
 
-// One store as the pass found it: its identity at the start, and whether its kinds refill.
+// One store as the pass found it: its identity at the start, and the kinds that still owe a refill.
 #[derive(Debug, Clone)]
 struct StoreSeen {
     start: StoreStamp,
     stored: Option<StoreStamp>,
-    refill: bool,
+    owed: BTreeSet<Kind>,
+    // This pass found the store restored, replaced or new and marked its kinds.
+    marked: bool,
     scopes: HashSet<ScopeName>,
 }
 
@@ -126,8 +128,12 @@ struct PassCtx {
 }
 
 impl PassCtx {
-    fn refills(&self, store: &str) -> bool {
-        self.stores.get(store).is_some_and(|seen| seen.refill)
+    fn owes(&self, store: &str, kind: Kind) -> bool {
+        self.stores.get(store).is_some_and(|seen| seen.owed.contains(&kind))
+    }
+
+    fn marked(&self, store: &str) -> bool {
+        self.stores.get(store).is_some_and(|seen| seen.marked)
     }
 }
 
@@ -368,7 +374,7 @@ impl ServiceSync {
         }
         let mut info = info.clone();
         for _ in 0..ROUNDS {
-            let after = match self.push_scope(ctx, session, &info).await {
+            let after = match self.push_scope(ctx, &info).await {
                 Err(error) => match scope_refusal(&error) {
                     Some(code) => {
                         ctx.report.skipped.push((info.scope, code));
@@ -411,9 +417,20 @@ impl ServiceSync {
             .collect()
     }
 
-    // Each store's identity against what the state saw (0054, Store identity; 0060). One the state never saw, as on
-    // the first pass or after a stale file, refills too.
+    // Each store's identity against what the state saw (0054, Store identity; 0060). A new generation or a lower
+    // sequence, or a store the state never saw, as on the first pass or after a stale file, owes each of its kinds a
+    // refill in `stores_kinds`, in the commit that moves its row (0066, Per-kind refills). A kind takes it once its
+    // category is on, so a pass cut short, or a kind that is off, refills later.
     async fn read_stores(&self, ctx: &mut PassCtx, scopes: &[ScopeInfo]) -> Result<(), SyncError> {
+        let mut kinds: HashMap<String, BTreeSet<Kind>> = HashMap::new();
+        for info in scopes {
+            for adapter in self.adapters.in_scope(info.scope) {
+                kinds
+                    .entry(adapter.store().to_owned())
+                    .or_default()
+                    .insert(adapter.kind());
+            }
+        }
         for info in scopes {
             for adapter in self.adapters.in_scope(info.scope) {
                 let store = adapter.store().to_owned();
@@ -422,26 +439,48 @@ impl ServiceSync {
                     continue;
                 }
                 let start = adapter.identity().await?;
-                let stored = match begin(&self.state).await?.get(&RowKey::Store(store.clone())).await? {
+                let mut txn = begin(&self.state).await?;
+                let stored = match txn.get(&RowKey::Store(store.clone())).await? {
                     Some(Row::Store(row)) => Some(StoreStamp {
                         generation: row.generation,
                         sequence: row.sequence,
                     }),
                     _ => None,
                 };
-                let refill = stored.is_none_or(|stored| start.needs_refill(stored));
-                // Kept as a missing row until the refill is done, so a pass cut short refills again and the writes
-                // of a half-done refill never read as the store going on.
-                if refill && stored.is_some() {
+                let marked = stored.is_none_or(|stored| start.needs_refill(stored));
+                if marked {
+                    for kind in kinds.get(&store).into_iter().flatten() {
+                        txn.put(Row::StoresKind(StoresKindRow {
+                            store: store.clone(),
+                            kind: KindName::of(*kind),
+                        }))
+                        .await?;
+                    }
+                    txn.put(Row::Store(StoreRow {
+                        store: store.clone(),
+                        generation: start.generation,
+                        sequence: start.sequence,
+                    }))
+                    .await?;
                     self.stop.check()?;
-                    let mut txn = begin(&self.state).await?;
-                    txn.delete(&RowKey::Store(store.clone())).await?;
                     txn.commit().await?;
+                    txn = begin(&self.state).await?;
                 }
+                let owed = txn
+                    .scan(&RowRange::Table(Table::StoresKinds))
+                    .await?
+                    .into_iter()
+                    .filter_map(|row| match row {
+                        Row::StoresKind(row) if row.store == store => row.kind.known(),
+                        _ => None,
+                    })
+                    .collect();
+                drop(txn);
                 let seen = StoreSeen {
                     start,
-                    stored: stored.filter(|_| !refill),
-                    refill,
+                    stored: Some(start),
+                    owed,
+                    marked,
                     scopes: HashSet::from([info.scope]),
                 };
                 ctx.stores.insert(store, seen);
@@ -450,13 +489,10 @@ impl ServiceSync {
         Ok(())
     }
 
-    // A store that went on has its newer sequence kept. A refilling store's row goes in with its last snapshot.
+    // A store that went on has its newer sequence kept; the kinds it still owes a refill keep their marks.
     async fn write_stores(&self, ctx: &PassCtx) -> Result<(), SyncError> {
         let mut rows = Vec::new();
         for (store, seen) in &ctx.stores {
-            if seen.refill {
-                continue;
-            }
             if let Some(row) = self.store_row(store, seen).await? {
                 rows.push(row);
             }
@@ -494,37 +530,63 @@ impl ServiceSync {
         }))
     }
 
-    // The refilling stores whose every scope has its snapshot once `scope`'s is done, which settle in that commit;
-    // `except` waits.
-    async fn settled_stores(
+    // The refills `scope`'s snapshot ends: each owed kind whose category is on and whose every scope has its snapshot
+    // once `scope`'s is done, of a store not replaced during the pass, clears its mark in that commit. `except` waits,
+    // and a kind that is off keeps its mark until it is on (0066, Per-kind refills).
+    async fn settled_refills(
         &self,
         ctx: &mut PassCtx,
         scope: ScopeName,
         except: Option<&str>,
-    ) -> Result<Vec<Row>, SyncError> {
-        let mut rows = Vec::new();
+    ) -> Result<Vec<RowKey>, SyncError> {
         let done = |held: &ScopeName| *held == scope || ctx.snapshots_done.contains(held);
-        let settling: Vec<String> = ctx
-            .stores
-            .iter()
-            .filter(|(store, _)| except != Some(store.as_str()))
-            .filter(|(_, seen)| seen.refill && seen.scopes.contains(&scope) && seen.scopes.iter().all(done))
-            .map(|(store, _)| store.clone())
-            .collect();
-        for store in settling {
-            let Some(seen) = ctx.stores.get_mut(&store) else {
-                continue;
-            };
-            if let Some(Row::Store(row)) = self.store_row(&store, seen).await? {
-                seen.refill = false;
-                seen.stored = Some(StoreStamp {
-                    generation: row.generation,
-                    sequence: row.sequence,
-                });
-                rows.push(Row::Store(row));
+        let mut settling: Vec<(String, Kind)> = Vec::new();
+        for (store, seen) in ctx.stores.iter().filter(|(store, _)| except != Some(store.as_str())) {
+            for kind in seen.owed.iter().filter(|kind| ctx.categories.syncs(**kind)) {
+                let scopes: Vec<ScopeName> = seen
+                    .scopes
+                    .iter()
+                    .copied()
+                    .filter(|held| {
+                        self.adapters
+                            .in_scope(*held)
+                            .iter()
+                            .any(|adapter| adapter.store() == store && adapter.kind() == *kind)
+                    })
+                    .collect();
+                if scopes.contains(&scope) && scopes.iter().all(done) {
+                    settling.push((store.clone(), *kind));
+                }
             }
         }
-        Ok(rows)
+        let mut cleared = Vec::new();
+        for (store, kind) in settling {
+            let Some(seen) = ctx.stores.get(&store) else {
+                continue;
+            };
+            if !self.went_on(&store, seen).await? {
+                continue;
+            }
+            if let Some(seen) = ctx.stores.get_mut(&store) {
+                seen.owed.remove(&kind);
+            }
+            cleared.push(RowKey::StoresKind(store, KindName::of(kind)));
+        }
+        Ok(cleared)
+    }
+
+    // The store kept its generation and moved only forward since the pass began.
+    async fn went_on(&self, store: &str, seen: &StoreSeen) -> Result<bool, SyncError> {
+        let adapter = seen
+            .scopes
+            .iter()
+            .flat_map(|scope| self.adapters.in_scope(*scope))
+            .find(|adapter| adapter.store() == store);
+        let Some(adapter) = adapter else {
+            return Ok(false);
+        };
+        let now = adapter.identity().await?;
+        Ok(now.generation == seen.start.generation && now.sequence >= seen.start.sequence)
     }
 
     // A restored, replaced or uncertain state file trusts none of its sync tables: every store refills, so the pull
@@ -714,12 +776,18 @@ impl SyncControl for ServiceSync {
                 _ => None,
             })
             .collect();
-        drop(txn);
-        let session = self.session.lock().await;
-        held.extend(session.refused.iter().map(|(key, (_, code))| HeldRecord {
-            key: key.clone(),
-            reason: HeldRecordReason::Refused { code: code.clone() },
-        }));
+        held.extend(
+            txn.scan(&RowRange::Table(Table::Refused))
+                .await?
+                .into_iter()
+                .filter_map(|row| match row {
+                    Row::Refused(row) => Some(HeldRecord {
+                        key: row.key,
+                        reason: HeldRecordReason::Refused { code: row.code },
+                    }),
+                    _ => None,
+                }),
+        );
         Ok(held)
     }
 }
