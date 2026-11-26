@@ -16,19 +16,32 @@ internal struct AccountActionFailure: Equatable, Identifiable {
 }
 
 internal struct AccountSignOutConfirmation: Equatable {
-    // The Team Library edits the team has not taken yet, read just before the question.
-    let teamChanges: [String]
+    // The Team Library edits the team has not taken yet, read just before the question; nil when they could not be
+    // read, so the question still offers Upload.
+    let teamChanges: [String]?
     var uploadFailure: TeamLibraryFailure?
     let removesOfflineFile: Bool
 
+    var asksAboutTeamChanges: Bool {
+        teamChanges.map { !$0.isEmpty } ?? true
+    }
+
     var discardsSomething: Bool {
-        !teamChanges.isEmpty || removesOfflineFile
+        asksAboutTeamChanges || removesOfflineFile
     }
 
     var message: String {
         var sentences = [String(localized: "Paid features stop on this Mac until you sign in again.")]
-        if !teamChanges.isEmpty {
+        if let teamChanges, !teamChanges.isEmpty {
             sentences.append(TeamLibraryUnsentChanges.message(teamChanges, failure: uploadFailure))
+        } else if teamChanges == nil {
+            if let uploadFailure {
+                sentences.append(String(
+                    format: String(localized: "The upload did not finish. %@"),
+                    TeamLibraryPublishing.failureText(uploadFailure)
+                ))
+            }
+            sentences.append(String(localized: "TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are."))
         }
         if removesOfflineFile {
             sentences.append(String(localized: "The imported offline file is removed."))
@@ -256,7 +269,7 @@ internal final class AccountSettingsModel: ObservableObject {
                 return
             case .upload:
                 (changes, failure) = await teamLibrary.upload()
-                if changes.isEmpty, services.isSignedIn {
+                if changes?.isEmpty == true, services.isSignedIn {
                     await finishSignOut(teamLibrary)
                     return
                 }

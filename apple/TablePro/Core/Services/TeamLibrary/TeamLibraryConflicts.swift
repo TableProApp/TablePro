@@ -110,7 +110,10 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
         defer { resolving = nil }
         let epoch = epoch
         do {
-            try await engine().resolveConflict(record: conflict.record, digest: conflict.digest, keep: keep)
+            // The service the next sign-in opens is never told a choice made under this one.
+            let engine = try await engine()
+            guard epoch == self.epoch else { return }
+            try await engine.resolveConflict(record: conflict.record, digest: conflict.digest, keep: keep)
         } catch let error as CoreError where Self.code(of: error) == "sync.unknown" {
             Self.logger.notice("A team conflict was settled before the choice reached it")
         } catch let error as CoreError where Self.code(of: error) == "sync.changed" {

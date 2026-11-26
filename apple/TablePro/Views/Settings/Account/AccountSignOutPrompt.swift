@@ -21,7 +21,7 @@ internal enum AccountSignOutPrompt {
         alert.messageText = String(localized: "Sign out of TablePro on this Mac?")
         alert.informativeText = confirmation.message
         let answers: [AccountSignOutAnswer]
-        if confirmation.teamChanges.isEmpty {
+        if !confirmation.asksAboutTeamChanges {
             alert.addButton(withTitle: String(localized: "Sign Out")).hasDestructiveAction = confirmation.discardsSomething
             answers = [.discard]
         } else {

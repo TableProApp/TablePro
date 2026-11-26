@@ -38,19 +38,24 @@ internal struct TeamLibraryLegacyImport {
         )
     }
 
-    // What to import for this owner's sign-in; nothing when there is nothing, or nothing it may read.
-    func take(for owner: TeamLibraryOwnerArg, restoredAtLaunch: Bool, isProduction: Bool) -> [TeamLibraryImportArg] {
+    // What to import for this owner's sign-in; empty when there is nothing, or nothing it may read. Nil when a file
+    // could not be read, which keeps every file for the owner's next launch: a store is deleted only once the core holds
+    // all of it.
+    func take(for owner: TeamLibraryOwnerArg, restoredAtLaunch: Bool, isProduction: Bool) -> [TeamLibraryImportArg]? {
+        removeOtherCaches(keeping: owner)
+        try? FileManager.default.removeItem(at: legacyFile)
         var teams: [String: TeamLibraryImportArg] = [:]
         if hasFlat, claimFlat(for: owner, restoredAtLaunch: restoredAtLaunch, isProduction: isProduction) {
-            for team in readFlat(for: owner) {
+            guard let flat = Self.read(flatDirectory, withEdits: true, owner: owner) else { return nil }
+            for team in flat {
                 teams[team.teamId] = team
             }
         }
-        for team in readCache(for: owner) {
+        let cache = cacheFolder(for: owner).appendingPathComponent("Teams", isDirectory: true)
+        guard let cached = Self.read(cache, withEdits: false, owner: owner) else { return nil }
+        for team in cached {
             teams[team.teamId] = Self.merged(teams[team.teamId], team)
         }
-        removeOtherCaches(keeping: owner)
-        try? FileManager.default.removeItem(at: legacyFile)
         return teams.values.sorted { $0.teamId < $1.teamId }
     }
 
@@ -108,16 +113,34 @@ internal struct TeamLibraryLegacyImport {
         try? FileManager.default.removeItem(at: flatDirectory)
     }
 
-    // A file that names an owner, as development builds of the account move wrote, is read only for that owner.
-    private func readFlat(for owner: TeamLibraryOwnerArg) -> [TeamLibraryImportArg] {
-        let files = (try? FileManager.default.contentsOfDirectory(at: flatDirectory, includingPropertiesForKeys: nil)) ?? []
-        return files.filter { $0.pathExtension == "json" }.compactMap { file in
-            guard let data = try? Data(contentsOf: file),
-                  let team = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                  Self.belongs(team, to: owner)
-            else { return nil }
-            return Self.team(from: team, withEdits: true)
+    // Every team file in `directory`. A file that names an owner, as development builds of the account move wrote, is
+    // read only for that owner. One that is not JSON never will be and is skipped; one that cannot be read is nil.
+    private static func read(_ directory: URL, withEdits: Bool, owner: TeamLibraryOwnerArg) -> [TeamLibraryImportArg]? {
+        guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        } catch {
+            logger.error("The earlier Team Library folder is unreadable: \(error.publicLogShape, privacy: .public)")
+            return nil
         }
+        var teams: [TeamLibraryImportArg] = []
+        for file in files where file.pathExtension == "json" {
+            let data: Data
+            do {
+                data = try Data(contentsOf: file)
+            } catch {
+                logger.error("An earlier Team Library file is unreadable: \(error.publicLogShape, privacy: .public)")
+                return nil
+            }
+            guard let team = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                logger.error("Skipping an earlier Team Library file that is not JSON")
+                continue
+            }
+            guard belongs(team, to: owner), let read = Self.team(from: team, withEdits: withEdits) else { continue }
+            teams.append(read)
+        }
+        return teams
     }
 
     private static func belongs(_ team: [String: Any], to owner: TeamLibraryOwnerArg) -> Bool {
@@ -134,17 +157,6 @@ internal struct TeamLibraryLegacyImport {
     private func cacheFolder(for owner: TeamLibraryOwnerArg) -> URL {
         let digest = SHA256.hash(data: Data("\(owner.apiOrigin)\n\(owner.accountId)".utf8))
         return cacheRoot.appendingPathComponent(digest.map { String(format: "%02x", $0) }.joined(), isDirectory: true)
-    }
-
-    private func readCache(for owner: TeamLibraryOwnerArg) -> [TeamLibraryImportArg] {
-        let teams = cacheFolder(for: owner).appendingPathComponent("Teams", isDirectory: true)
-        let files = (try? FileManager.default.contentsOfDirectory(at: teams, includingPropertiesForKeys: nil)) ?? []
-        return files.filter { $0.pathExtension == "json" }.compactMap { file in
-            guard let data = try? Data(contentsOf: file),
-                  let team = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            else { return nil }
-            return Self.team(from: team, withEdits: false)
-        }
     }
 
     private func removeOtherCaches(keeping owner: TeamLibraryOwnerArg) {

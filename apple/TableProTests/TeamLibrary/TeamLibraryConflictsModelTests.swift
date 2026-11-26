@@ -56,6 +56,28 @@ struct TeamLibraryConflictsModelTests {
         #expect(model.teamName(of: TeamConflictFixture.team) == nil)
     }
 
+    @Test("A sign-in that ends while the engine opens sends the choice nowhere")
+    func endWhileTheEngineOpensSendsNothing() async {
+        let conflict = TeamConflictFixture.conflict()
+        let engine = FakeTeamConflictEngine([conflict])
+        let opening = AsyncGate()
+        var holds = false
+        let model = TeamLibraryConflictsModel(engine: {
+            if holds { await opening.wait() }
+            return engine
+        })
+        await model.refresh()
+        holds = true
+
+        let choosing = Task { await model.resolve(conflict, keep: .keepTheirs) }
+        await opening.arrived(1)
+        model.end()
+        await opening.open()
+        await choosing.value
+
+        #expect(Self.choices(engine).isEmpty)
+    }
+
     @Test("A failed read keeps the conflicts already shown")
     func failedReadKeepsConflicts() async {
         let conflict = TeamConflictFixture.conflict()

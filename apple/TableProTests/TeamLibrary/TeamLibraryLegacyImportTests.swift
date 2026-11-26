@@ -145,6 +145,41 @@ struct TeamLibraryLegacyImportTests {
         #expect(fixture.engine.imports.isEmpty)
     }
 
+    @Test("A file that cannot be read keeps the whole store for the next launch, and nothing goes to the core")
+    func unreadableFileKeepsTheStore() async throws {
+        let fixture = try await TeamLibraryFixture()
+        try Self.writeFlat(Self.flatTeam(), in: fixture)
+        let file = fixture.legacy.flatDirectory.appendingPathComponent("acme.json")
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path) }
+
+        try await fixture.start()
+        try await waitUntil { fixture.defaults.defaults.string(forKey: TeamLibraryLegacyImport.ownerKey) != nil }
+        await fixture.library.refresh()
+
+        #expect(fixture.engine.imports.isEmpty)
+        #expect(Self.exists(file))
+    }
+
+    @Test("Another account's sign-in while the store is being taken imports nothing of it into that account")
+    func switchDuringAdoptionImportsNothing() async throws {
+        let fixture = try await TeamLibraryFixture()
+        try Self.writeFlat(Self.flatTeam(), in: fixture)
+        let gate = AsyncGate()
+        fixture.source.deleteOthersGate = gate
+
+        fixture.library.start()
+        await gate.arrived(1)
+        try await fixture.refuseRefresh()
+        await fixture.account.server.set { $0.accountID = "acct_other" }
+        try await fixture.account.signIn()
+        await gate.open()
+
+        try await waitUntil { fixture.source.keptOwners.count == 2 }
+        try await waitUntil { !Self.exists(fixture.legacy.flatDirectory) }
+        #expect(fixture.engine.imports.isEmpty)
+    }
+
     @Test("Once 0.89 read the store, it is never read again")
     func consideredStoreIsNeverRead() async throws {
         let fixture = try await TeamLibraryFixture()

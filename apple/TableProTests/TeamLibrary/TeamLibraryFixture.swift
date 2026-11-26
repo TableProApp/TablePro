@@ -20,6 +20,7 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
     private var syncAnswer: CoreError?
     private var deleteFailure: CoreError?
     private var importFailure: CoreError?
+    private var unsentFailure: CoreError?
     private var ended = false
     private var teamReadGate: AsyncGate?
     private var passGate: AsyncGate?
@@ -57,6 +58,10 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
 
     func failImports(with error: CoreError?) {
         state.withLock { importFailure = error }
+    }
+
+    func failUnsentReads(with error: CoreError?) {
+        state.withLock { unsentFailure = error }
     }
 
     // The next pass waits at the gate before it answers.
@@ -108,7 +113,10 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
     }
 
     func unsentTeamEdits() async throws -> [UnsentTeamEditInfo] {
-        state.withLock { unsentEdits }
+        try state.withLock {
+            if let unsentFailure { throw unsentFailure }
+            return unsentEdits
+        }
     }
 
     func discardTeamEdits(teamId: String?) async throws {
@@ -164,6 +172,8 @@ final class FakeTeamLibrarySource: TeamLibraryEngineSource {
     let signals = PassthroughSubject<Void, Never>()
     private(set) var keptOwners: [TeamLibraryOwnerArg?] = []
     var deleteOthersFailure: CoreError?
+    // The next delete of other owners' data waits at the gate.
+    var deleteOthersGate: AsyncGate?
 
     init(_ engine: FakeTeamLibraryEngine) {
         current = engine
@@ -179,6 +189,10 @@ final class FakeTeamLibrarySource: TeamLibraryEngineSource {
 
     func deleteOtherOwners(keep: TeamLibraryOwnerArg?) async throws {
         keptOwners.append(keep)
+        if let gate = deleteOthersGate {
+            deleteOthersGate = nil
+            await gate.wait()
+        }
         if let deleteOthersFailure { throw deleteOthersFailure }
     }
 }

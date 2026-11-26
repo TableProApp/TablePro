@@ -322,6 +322,24 @@ struct AccountSettingsModelTests {
         #expect(fixture.discarded.isEmpty)
     }
 
+    @Test("Edits the engine could not list still get Upload or Discard, never a plain Sign Out")
+    func unreadableEditsStillAsk() async throws {
+        let engine = FakeTeamLibraryEngine()
+        engine.failUnsentReads(with: TeamConflictFixture.failure("sync.state.io"))
+        let fixture = try await TeamLibraryFixture(engine: engine)
+        try await fixture.start()
+        let prompt = ScriptedSignOutPrompt([.cancel])
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { fixture.library }, askSignOut: prompt.ask)
+
+        await model.signOut()
+
+        let asked = try #require(prompt.asked.first)
+        #expect(asked.teamChanges == nil)
+        #expect(asked.asksAboutTeamChanges)
+        #expect(asked.message.contains(String(localized: "TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are.")))
+        #expect(fixture.account.services.isSignedIn)
+    }
+
     @Test("A delete that fails after Sign Out says the data is still on this Mac")
     func failedDeleteIsReported() async throws {
         let engine = FakeTeamLibraryEngine()

@@ -206697,6 +206697,9 @@
     "TablePro couldn't delete the Team Library data of the account you signed out of. Team Library stays off until it can." : {
 
     },
+    "TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are." : {
+
+    },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
       "localizations" : {
         "fr" : {

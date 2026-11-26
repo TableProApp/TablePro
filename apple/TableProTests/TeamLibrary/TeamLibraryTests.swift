@@ -319,6 +319,22 @@ struct TeamLibraryTests {
         #expect(answer.failure != nil)
     }
 
+    @Test("Sign Out lists the edits the engine holds even when a lost team_library hides the library")
+    func signOutListsHiddenEdits() async throws {
+        let engine = FakeTeamLibraryEngine()
+        engine.hold(unsent: [TeamLibraryFixture.unsent("Orders")])
+        let fixture = try await TeamLibraryFixture(engine: engine)
+        try await fixture.start()
+        await fixture.account.server.set { $0.features = [] }
+        _ = await fixture.account.services.refreshEntitlement()
+        try await waitUntil { fixture.library.writableTeams.isEmpty }
+
+        #expect(await fixture.library.unsentChanges() == ["Orders"])
+
+        engine.failUnsentReads(with: TeamConflictFixture.failure("sync.state.io"))
+        #expect(await fixture.library.unsentChanges() == nil)
+    }
+
     @Test("Sign Out deletes the account's Team Library data once signed out, through the service of that sign-in")
     func signOutDeletesTheData() async throws {
         let engine = FakeTeamLibraryEngine()

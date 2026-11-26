@@ -69,6 +69,10 @@ internal final class TeamLibrary: ObservableObject {
     private var ownerUnsent: [String] = []
     private var publishing = 0
     private var hasRestored = false
+    // Each change of the sign-in or of the owner takes the next one. The account publishes its state before the host
+    // opens the next sign-in's service, so work that sees the same value after an await still holds that sign-in's
+    // service.
+    private var signIn = 0
 
     init(
         source: any TeamLibraryEngineSource,
@@ -255,25 +259,30 @@ internal final class TeamLibrary: ObservableObject {
 
     // MARK: - Sign Out
 
-    // The edits Sign Out lists, read again so the question names what the engine holds now.
-    func unsentChanges() async -> [String] {
-        await refresh()
-        return unsent.map(Self.name(of:))
+    // The edits Sign Out lists, read from the engine whatever shows, since a lost team_library hides the library but
+    // keeps its edits. Nil when they could not be read.
+    func unsentChanges() async -> [String]? {
+        do {
+            return try await source.engine().unsentTeamEdits().map(Self.name(of:))
+        } catch {
+            Self.logger.error("Listing the unsent Team Library edits failed: \(error.publicLogShape, privacy: .public)")
+            return nil
+        }
     }
 
-    // Upload: one pass now. What the team has still not taken comes back, with why.
-    func upload() async -> (unsent: [String], failure: TeamLibraryFailure?) {
+    // Upload: one pass now. What the team has still not taken comes back, with why; nil when it could not be read.
+    func upload() async -> (unsent: [String]?, failure: TeamLibraryFailure?) {
         var failure: TeamLibraryFailure?
         do {
             try await source.engine().syncNow(why: .person)
         } catch {
             failure = TeamLibraryFailure(error)
         }
-        let left = await unsentChanges()
-        if failure == nil, !left.isEmpty {
-            failure = lastStatuses.lazy.compactMap(\.problem).first.map(TeamLibraryFailure.init(code:)) ?? .offline
-        }
-        return (left, left.isEmpty ? nil : failure)
+        await refresh()
+        guard let left = await unsentChanges() else { return (nil, failure ?? .unavailable) }
+        guard !left.isEmpty else { return ([], nil) }
+        let problem = lastStatuses.lazy.compactMap(\.problem).first.map(TeamLibraryFailure.init(code:))
+        return (left, failure ?? problem ?? .offline)
     }
 
     // The sign-out, then the account's Team Library data, unsent edits included, verified gone, through the service of
@@ -318,6 +327,7 @@ internal final class TeamLibrary: ObservableObject {
             : nil
         if session != shownSession {
             generation += 1
+            signIn += 1
             if shownSession != nil {
                 ownerUnsent = unsent.map(Self.name(of:))
             }
@@ -333,15 +343,23 @@ internal final class TeamLibrary: ObservableObject {
         let discarded = owner == nil ? [] : ownerUnsent
         owner = next
         ownerUnsent = []
+        signIn += 1
+        let adopted = signIn
         let isProduction = state.server.isProduction
         Task {
-            await adopt(next, discarding: discarded, restoredAtLaunch: isLaunch, isProduction: isProduction)
+            await adopt(next, discarding: discarded, restoredAtLaunch: isLaunch, isProduction: isProduction, signIn: adopted)
             await refresh()
         }
     }
 
     // A sign-in by another owner deletes what the last one left on this Mac, so it never reaches this account.
-    private func adopt(_ next: TeamLibraryOwnerArg, discarding discarded: [String], restoredAtLaunch: Bool, isProduction: Bool) async {
+    private func adopt(
+        _ next: TeamLibraryOwnerArg,
+        discarding discarded: [String],
+        restoredAtLaunch: Bool,
+        isProduction: Bool,
+        signIn adopted: Int
+    ) async {
         do {
             try await source.deleteOtherOwners(keep: next)
             if !discarded.isEmpty {
@@ -351,19 +369,29 @@ internal final class TeamLibrary: ObservableObject {
         } catch {
             Self.logger.error("Deleting another account's Team Library data failed: \(error.publicLogShape, privacy: .public)")
         }
-        await importEarlierLibraries(for: next, restoredAtLaunch: restoredAtLaunch, isProduction: isProduction)
+        // Another sign-in meanwhile adopts its own owner; this one's earlier library waits for its next launch.
+        guard adopted == signIn else { return }
+        await importEarlierLibraries(for: next, restoredAtLaunch: restoredAtLaunch, isProduction: isProduction, signIn: adopted)
     }
 
     // The library 0.88 kept, once and only for the sign-in the core restores at launch, and what 0.89 knew of the
     // items this Mac published: handed to the core, which pushes them against the versions they were made on.
-    private func importEarlierLibraries(for owner: TeamLibraryOwnerArg, restoredAtLaunch: Bool, isProduction: Bool) async {
-        let teams = legacy.take(for: owner, restoredAtLaunch: restoredAtLaunch, isProduction: isProduction)
+    private func importEarlierLibraries(
+        for owner: TeamLibraryOwnerArg,
+        restoredAtLaunch: Bool,
+        isProduction: Bool,
+        signIn adopted: Int
+    ) async {
+        // Nil when a file could not be read: everything stays for this owner's next launch.
+        guard let teams = legacy.take(for: owner, restoredAtLaunch: restoredAtLaunch, isProduction: isProduction) else { return }
         guard !teams.isEmpty else {
             legacy.imported(for: owner)
             return
         }
         do {
-            try await source.engine().importTeamLibrary(teams: teams)
+            let engine = try await source.engine()
+            guard adopted == signIn else { return }
+            try await engine.importTeamLibrary(teams: teams)
             legacy.imported(for: owner)
         } catch {
             Self.logger.error("Importing the earlier Team Library failed: \(error.publicLogShape, privacy: .public)")
