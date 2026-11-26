@@ -108,6 +108,9 @@ final class SyncProviderCoordinator: ObservableObject {
         host.statusChanges
             .sink { [weak self] in self?.refreshStatus() }
             .store(in: &observers)
+        host.reopened
+            .sink { [weak self] in self?.serviceReopened() }
+            .store(in: &observers)
         journal.listen { [weak self] change in self?.journalRecorded(change) }
             .store(in: &observers)
         licenseChanges
@@ -273,7 +276,6 @@ final class SyncProviderCoordinator: ObservableObject {
     ) -> Task<Result<Void, any Error>, Never> {
         let previous = providerChoice
         let host = host
-        host.providerChosen(provider)
         let choice = Task<Result<Void, any Error>, Never> {
             await previous?.value
             do {
@@ -381,6 +383,7 @@ final class SyncProviderCoordinator: ObservableObject {
     }
 
     private func flushLegacyMarks() async {
+        host.stopReopening()
         if !undelivered.isEmpty {
             deliverJournal()
         }
@@ -459,6 +462,18 @@ final class SyncProviderCoordinator: ObservableObject {
         }
         arm()
         refreshStatus()
+    }
+
+    // A service opened after a sign-in change is told the provider again, in turn with every other choice.
+    private func serviceReopened() {
+        let provider: SyncProviderTag = syncStatus.isEnabled ? .icloud : .off
+        let started = generation
+        let choice = choose(provider) { [weak self] in self?.generation == started }
+        Task {
+            if case .failure(let error) = await choice.value {
+                Self.logger.error("The reopened engine did not take the provider: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            }
+        }
     }
 
     // What is in flight stops, and nothing more reaches CloudKit until iCloud runs again (P1-I3 under a profile).

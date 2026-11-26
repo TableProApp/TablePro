@@ -36,6 +36,8 @@ final class SyncEngineHost {
     let transport: CloudKitCoreTransport
     let statusChanges = PassthroughSubject<Void, Never>()
     let keyChanges = PassthroughSubject<Void, Never>()
+    // A sign-in change opened the service again, which takes no choice the old one was told.
+    let reopened = PassthroughSubject<Void, Never>()
     private let open: @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
     private let keepICloudAccount: @MainActor (String?) -> Void
     private typealias Opening = (provider: SyncProviderTag, signIn: Int, task: Task<any SyncEngine, any Error>)
@@ -44,8 +46,6 @@ final class SyncEngineHost {
     // Each sign-in, sign-out or switch, so an open that began under the one before is never kept.
     private var signIn = 0
     private var signInObserver: AnyCancellable?
-    // The provider the coordinator chose last, which a service opened again takes.
-    private var chosen: SyncProviderTag?
     // Each closed service's flush of the marks it still held, which a quit waits for.
     private var retiring: [UUID: Task<Void, Never>] = [:]
 
@@ -67,30 +67,32 @@ final class SyncEngineHost {
     }
 
     // TablePro Sync and the key flows stay bound to the sign-in the service opened with, and refuse once it ends, so
-    // the service closes and opens again for the provider chosen last. The old one goes once its calls in flight and
-    // its flush end; the iCloud engine of the new one waits for its state file meanwhile.
+    // the service closes and opens again for the same provider: one opened for iCloud keeps the downgrade mirror's
+    // writer, Off included. The old one goes once its calls in flight and its flush end; the iCloud engine of the new
+    // one waits for its state file meanwhile.
     private func signInChanged() {
         signIn += 1
-        guard let openFor = opened?.provider ?? opening?.provider else { return }
-        let provider = chosen ?? openFor
+        guard let provider = opened?.provider ?? opening?.provider else { return }
         if let old = opened?.engine {
             retire(old)
         }
         opened = nil
         Task { [weak self] in
-            _ = try? await self?.engine(for: provider)
+            guard (try? await self?.engine(for: provider)) != nil else { return }
+            self?.reopened.send()
         }
     }
 
-    // Called as the coordinator makes each choice, in the order it makes them.
-    func providerChosen(_ provider: SyncProviderTag) {
-        chosen = provider
+    // Once the quit is decided: a service opened now would hold writes no flush waits for.
+    func stopReopening() {
+        signInObserver = nil
     }
 
-    // The previous stable's marks for every write the closed services were told.
+    // The previous stable's marks for every write the closed services were told, one closed meanwhile included.
     func flushRetired() async {
-        for task in Array(retiring.values) {
-            await task.value
+        while let entry = retiring.first {
+            await entry.value.value
+            retiring[entry.key] = nil
         }
     }
 

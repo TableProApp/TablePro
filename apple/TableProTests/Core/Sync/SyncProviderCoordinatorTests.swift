@@ -469,9 +469,11 @@ struct SyncProviderCoordinatorTests {
         #expect(off.read { $0.flushes } == [1])
     }
 
-    @Test("After iCloud stopped, a sign-in change opens the service again Off, as the coordinator chose")
-    func reopenKeepsTheOffChoice() async throws {
+    @Test("After iCloud stopped, a sign-in change opens iCloud's service again, which keeps the mirror, and tells it Off")
+    func reopenIsToldTheOffChoice() async throws {
         let fixture = try Fixture()
+        let replacement = FakeSyncEngine()
+        fixture.reopened = replacement
         fixture.coordinator.start()
         await fixture.coordinator.passesFinished()
         fixture.enabled = false
@@ -480,7 +482,23 @@ struct SyncProviderCoordinatorTests {
 
         fixture.signInChanges.send()
 
-        try await waitUntil { fixture.opened == [.icloud, .off] }
+        try await waitUntil { replacement.read { $0.providers } == [.off] }
+        #expect(fixture.opened == [.icloud, .icloud])
+        #expect(fixture.transport.isClosed)
+    }
+
+    @Test("While iCloud runs, a sign-in change opens its service again and tells it iCloud")
+    func reopenIsToldICloud() async throws {
+        let fixture = try Fixture()
+        let replacement = FakeSyncEngine()
+        fixture.reopened = replacement
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.signInChanges.send()
+
+        try await waitUntil { replacement.read { $0.providers } == [.icloud] }
+        #expect(fixture.opened == [.icloud, .icloud])
     }
 
     @Test("A quit waits for the marks of a service a sign-in change closed")
@@ -890,6 +908,20 @@ struct SyncEngineHostTests {
         #expect(opened.withLock { $0.map { $0.0 } } == [.off, .off])
         #expect(engine === opened.withLock { $0[1].1 })
         #expect(host.openedEngine(for: .off) === engine)
+    }
+
+    @Test("Once the quit stops reopening, a sign-in change closes nothing and opens nothing")
+    func noReopenOnceQuitting() async throws {
+        let changes = PassthroughSubject<Void, Never>()
+        let opened = OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>(initialState: [])
+        let host = Self.reopeningHost(signInChanges: changes, opened: opened)
+        let first = try await host.engine(for: .icloud)
+
+        host.stopReopening()
+        changes.send()
+
+        #expect(host.openedEngine(for: .icloud) === first)
+        #expect(opened.withLock { $0.count } == 1)
     }
 
     @Test("With no service open, a sign-in change opens none")
