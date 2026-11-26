@@ -12,6 +12,8 @@ nonisolated final class HeldCloudKitDatabase: CloudKitDatabase, @unchecked Senda
         var modifiesCancelled = 0
         var holdNextModify = false
         var release: CheckedContinuation<Void, any Error>?
+        // A cancel that came before the hold was in place, which the hold then answers at once.
+        var cancelledBeforeHold = false
     }
 
     private let state = OSAllocatedUnfairLock(uncheckedState: State())
@@ -59,27 +61,14 @@ nonisolated final class HeldCloudKitDatabase: CloudKitDatabase, @unchecked Senda
 
     func modifyRecords(saving records: [CKRecord], deleting ids: [CKRecord.ID]) async throws -> CloudKitModifyResults {
         let holds = state.withLockUnchecked { state -> Bool in
-            state.modifyCalls += 1
             defer { state.holdNextModify = false }
+            if !state.holdNextModify {
+                state.modifyCalls += 1
+            }
             return state.holdNextModify
         }
         if holds {
-            do {
-                try await withTaskCancellationHandler {
-                    try await withCheckedThrowingContinuation { continuation in
-                        state.withLockUnchecked { $0.release = continuation }
-                    }
-                } onCancel: { [state] in
-                    let release = state.withLockUnchecked { state -> CheckedContinuation<Void, any Error>? in
-                        defer { state.release = nil }
-                        return state.release
-                    }
-                    release?.resume(throwing: CancellationError())
-                }
-            } catch {
-                state.withLockUnchecked { $0.modifiesCancelled += 1 }
-                throw CKError(.operationCancelled)
-            }
+            try await hold()
         }
         var results = CloudKitModifyResults()
         for record in records {
@@ -89,5 +78,40 @@ nonisolated final class HeldCloudKitDatabase: CloudKitDatabase, @unchecked Senda
             results.deleted[id] = .success(())
         }
         return results
+    }
+
+    // Counted as started once the hold is in place, so a test that waits for the start cancels a held call.
+    private func hold() async throws {
+        do {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                    let cancelled = state.withLockUnchecked { state -> Bool in
+                        state.modifyCalls += 1
+                        guard !state.cancelledBeforeHold else { return true }
+                        state.release = continuation
+                        return false
+                    }
+                    if cancelled {
+                        continuation.resume(throwing: CancellationError())
+                    }
+                }
+            } onCancel: { [state] in
+                let release = state.withLockUnchecked { state -> CheckedContinuation<Void, any Error>? in
+                    guard let release = state.release else {
+                        state.cancelledBeforeHold = true
+                        return nil
+                    }
+                    state.release = nil
+                    return release
+                }
+                release?.resume(throwing: CancellationError())
+            }
+        } catch {
+            state.withLockUnchecked { state in
+                state.modifiesCancelled += 1
+                state.cancelledBeforeHold = false
+            }
+            throw CKError(.operationCancelled)
+        }
     }
 }
