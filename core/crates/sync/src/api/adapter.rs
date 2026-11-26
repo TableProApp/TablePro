@@ -4,6 +4,7 @@ use tablepro_records::Kind;
 use uuid::Uuid;
 
 use super::error::AdapterError;
+use super::ids::ScopeName;
 use super::state::Standing;
 
 // One kind's bridge to its core store (0054, Adapters). Dirty state is the diff of `records` against the bases, so a
@@ -17,15 +18,15 @@ pub trait RecordAdapter: Send + Sync {
 
     async fn identity(&self) -> Result<StoreStamp, AdapterError>;
 
-    // Every record the store holds of this kind as wire fields, the ids it holds but cannot read, and for a
-    // create-once kind the tombstones it keeps until they are pushed.
-    async fn records(&self) -> Result<LocalRecords, AdapterError>;
+    // Every record the store holds of this kind in `scope` as wire fields, the ids it holds but cannot read, and for a
+    // create-once kind the tombstones it keeps until they are pushed. A team library kind has one set per team.
+    async fn records(&self, scope: ScopeName) -> Result<LocalRecords, AdapterError>;
 
-    // Writes what a pull settled, in one store write, and answers the identity after it.
-    async fn apply(&self, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError>;
+    // Writes what a pull of `scope` settled, in one store write, and answers the identity after it.
+    async fn apply(&self, scope: ScopeName, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError>;
 
     // A create-once kind's tombstones the provider took, which the store drops.
-    async fn tombstones_pushed(&self, record_ids: Vec<String>) -> Result<(), AdapterError>;
+    async fn tombstones_pushed(&self, scope: ScopeName, record_ids: Vec<String>) -> Result<(), AdapterError>;
 }
 
 // A store's generation id and write sequence. A new generation is a restored, replaced or copied file; a lower

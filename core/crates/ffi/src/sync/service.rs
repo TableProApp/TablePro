@@ -77,6 +77,14 @@ pub enum SyncPlatformTag {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SyncConfig {
     pub platform: SyncPlatformTag,
+    pub categories: SyncCategoriesArg,
+}
+
+// The kinds turned off on this device, by their wire names, and the password switch.
+#[derive(Debug, Clone, PartialEq, Eq, Default, uniffi::Record)]
+pub struct SyncCategoriesArg {
+    pub off_kinds: Vec<String>,
+    pub passwords: bool,
 }
 
 // Told that something changed, on a runtime thread. It only schedules a read on the app's own thread: no work, and
@@ -198,6 +206,10 @@ pub struct SyncStatusInfo {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum PassReasonTag {
+    // A store the app keeps wrote, after the write landed.
+    Journal,
+    // `CKAccountChanged`, after the operations in flight were cancelled.
+    AccountChanged,
     Launch,
     Foreground,
     NetworkBack,
@@ -288,6 +300,22 @@ impl SyncService {
     pub async fn sync_now(&self, why: PassReasonTag) -> Result<(), CoreError> {
         let _ = why;
         unfilled("sync.sync_now")
+    }
+
+    pub async fn set_categories(&self, categories: SyncCategoriesArg) -> Result<(), CoreError> {
+        let _ = categories;
+        unfilled("sync.set_categories")
+    }
+
+    // A store the app still keeps wrote these records of `kind`, after its write landed (core ADR 0060).
+    pub async fn record_host_changes(
+        &self,
+        kind: String,
+        written: Vec<String>,
+        deleted: Vec<String>,
+    ) -> Result<(), CoreError> {
+        let _ = (kind, written, deleted);
+        unfilled("sync.host_changed")
     }
 
     // Among what the managed policy allows (core ADR 0055).

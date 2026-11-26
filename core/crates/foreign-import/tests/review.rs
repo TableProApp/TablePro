@@ -1838,7 +1838,7 @@ fn queries_land_on_their_connections_and_a_name_the_connection_holds_is_left_alo
     let applied = apply_blocking(&review, &plan(&review, &selection), &store).expect("the write");
     assert_eq!(applied.connections.len(), 1);
     let fresh = applied.connections[0].connection.id;
-    let targets: Vec<(&str, &str, Uuid, &str)> = applied
+    let targets: Vec<(&str, &str, Option<Uuid>, &str)> = applied
         .queries
         .iter()
         .map(|imported| {
@@ -1859,9 +1859,9 @@ fn queries_land_on_their_connections_and_a_name_the_connection_holds_is_left_alo
     assert_eq!(
         targets,
         [
-            ("q1", "Report", fresh, "Fresh"),
-            ("q2", "Locks", held.id, "Kept"),
-            ("q3", "Sizes", held.id, "Kept")
+            ("q1", "Report", Some(fresh), "Fresh"),
+            ("q2", "Locks", Some(held.id), "Kept"),
+            ("q3", "Sizes", Some(held.id), "Kept")
         ]
     );
 
@@ -1876,7 +1876,7 @@ fn queries_land_on_their_connections_and_a_name_the_connection_holds_is_left_alo
             .save(NewSavedQuery {
                 name: "Locks".to_owned(),
                 query: "select 'mine'".to_owned(),
-                connection_id: held.id,
+                connection_id: Some(held.id),
                 connection_name: "Kept".to_owned(),
             })
             .await

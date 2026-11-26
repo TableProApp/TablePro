@@ -9,16 +9,16 @@ fn query(connection: Uuid, name: &str) -> NewSavedQuery {
     NewSavedQuery {
         name: name.to_owned(),
         query: format!("SELECT '{name}'"),
-        connection_id: connection,
+        connection_id: Some(connection),
         connection_name: "local".to_owned(),
     }
 }
 
-async fn save(store: &SavedQueries, connection: Uuid, name: &str) -> i64 {
+async fn save(store: &SavedQueries, connection: Uuid, name: &str) -> Uuid {
     store.save(query(connection, name)).await.expect("save").id
 }
 
-async fn order(store: &SavedQueries, connection: Uuid, folder: Option<i64>) -> Vec<i64> {
+async fn order(store: &SavedQueries, connection: Uuid, folder: Option<Uuid>) -> Vec<Uuid> {
     let mut rows = store.list(Some(connection)).await.expect("list");
     rows.retain(|row| row.folder_id == folder);
     rows.sort_by_key(|row| row.order);
@@ -49,7 +49,7 @@ async fn new_saves_append_and_replacement_keeps_identity_and_filing() {
     );
     let folder = history
         .saved_query_folders()
-        .create(connection, "Reports", None)
+        .create(Some(connection), "Reports", None)
         .await
         .expect("folder");
     store.move_to_folder(a, Some(folder), None).await.expect("file");
@@ -92,7 +92,7 @@ async fn moving_and_deleting_queries_compacts_only_their_connection_and_place() 
     let c = save(&store, connection, "c").await;
     let folder = history
         .saved_query_folders()
-        .create(connection, "Reports", None)
+        .create(Some(connection), "Reports", None)
         .await
         .expect("folder");
     store.move_to_folder(b, Some(folder), None).await.expect("file b");
@@ -122,14 +122,14 @@ async fn invalid_destinations_and_self_before_leave_rows_and_revisions_alone() {
     let other = save(&store, Uuid::new_v4(), "other").await;
     let folder = history
         .saved_query_folders()
-        .create(connection, "Reports", None)
+        .create(Some(connection), "Reports", None)
         .await
         .expect("folder");
     let before = store.snapshot(connection).await.expect("snapshot");
     let changes = store.changes();
     store.move_to_folder(a, None, Some(a)).await.expect("self-before no-op");
     store.move_to_folder(b, None, None).await.expect("already last");
-    for (destination, before) in [(None, other), (Some(folder), a), (None, i64::MAX)] {
+    for (destination, before) in [(None, other), (Some(folder), a), (None, Uuid::new_v4())] {
         assert!(matches!(
             store.move_to_folder(a, destination, Some(before)).await,
             Err(StorageError::NotFound)
@@ -185,7 +185,7 @@ async fn snapshots_never_return_a_query_whose_folder_was_read_from_another_gener
         for index in 0..40 {
             let folder = writer
                 .saved_query_folders()
-                .create(connection, &format!("Folder {index}"), None)
+                .create(Some(connection), &format!("Folder {index}"), None)
                 .await
                 .expect("create");
             writer
@@ -256,7 +256,7 @@ async fn a_failed_connection_purge_preserves_every_kind_of_favorite_and_its_revi
     let favourites = history.favourites();
     let connection = Uuid::new_v4();
     let id = save(&store, connection, "report").await;
-    let folder = folders.create(connection, "Reports", None).await.expect("folder");
+    let folder = folders.create(Some(connection), "Reports", None).await.expect("folder");
     store.move_to_folder(id, Some(folder), None).await.expect("file");
     let table = FavouriteTable {
         connection_id: connection,
@@ -305,7 +305,7 @@ async fn assigning_the_same_folder_preserves_position_and_revision() {
     let b = save(&store, connection, "b").await;
     let folder = history
         .saved_query_folders()
-        .create(connection, "Reports", None)
+        .create(Some(connection), "Reports", None)
         .await
         .expect("folder");
     store.set_folder(a, Some(folder)).await.expect("file a");

@@ -494,6 +494,7 @@ fn the_history_table_names_every_member_the_store_holds() {
     let exhaustive_entry = |entry: Entry| {
         let Entry {
             id: _,
+            record_id: _,
             query: _,
             driver_id: _,
             connection_id: _,
@@ -512,6 +513,7 @@ fn the_history_table_names_every_member_the_store_holds() {
         members("query_history::Entry"),
         sorted(vec![
             "id",
+            "record_id",
             "query",
             "driver_id",
             "connection_id",

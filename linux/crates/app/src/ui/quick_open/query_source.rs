@@ -127,7 +127,9 @@ impl QuickOpen {
                 let store = history.ready_store().await.ok_or_else(|| unavailable(&history))?;
                 match query {
                     QueryId::Saved(id) => match store.saved_queries().get(id).await {
-                        Ok(Some(saved)) if saved.connection_id == connection => Ok(saved.query),
+                        Ok(Some(saved)) if saved.connection_id.is_none_or(|owner| owner == connection) => {
+                            Ok(saved.query)
+                        }
                         Ok(_) => Err(gettext("This saved query is no longer available.")),
                         Err(error) => {
                             tracing::warn!(%error, "could not open saved query");

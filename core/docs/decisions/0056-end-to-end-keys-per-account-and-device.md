@@ -1,6 +1,6 @@
 # 0056: End-to-end keys: an account key pair, device key pairs, scope keys wrapped per member, the recovery key and pinned keys
 
-- **Status**: Accepted; supersedes 0053; amends 0044 (Secrets, and its Consequences line that teammates confirm a person again after a device removal or recovery); amended by 0059 (Errors, Ed25519 validity, the HPKE buffers and one vector row)
+- **Status**: Accepted; supersedes 0053; amends 0044 (Secrets, and its Consequences line that teammates confirm a person again after a device removal or recovery); amended by 0059 (Errors, Ed25519 validity, the HPKE buffers and one vector row); the first envelope row's destination amended by 0061; a team stop's cause and how each clears amended by 0062; team restarts and the lanes' readings amended by 0064; team envelope deletes while `rotation due` and a restart with no ring amended by 0065; replace points in pins and the trust plaintext amended by 0066
 - **Date**: 2026-11-25
 
 ## Context

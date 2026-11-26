@@ -248,6 +248,7 @@ mod tests {
 
     fn ran(query: &str, connection: Uuid) -> NewEntry {
         NewEntry {
+            record_id: uuid::Uuid::new_v4(),
             query: query.to_owned(),
             driver_id: "postgres".to_owned(),
             connection_id: connection,
@@ -323,7 +324,7 @@ mod tests {
                 .save(NewSavedQuery {
                     name: "users".to_owned(),
                     query: "SELECT * FROM users".to_owned(),
-                    connection_id,
+                    connection_id: Some(connection_id),
                     connection_name: "Prod".to_owned(),
                 })
                 .await
