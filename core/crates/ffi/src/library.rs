@@ -1230,13 +1230,26 @@ pub(crate) fn edited_ssh(settings: &SshSettings, stored: Option<&SavedSshConfig>
 }
 
 // As a library holds them, nothing trimmed; a key a newer build wrote stays from `unknown`.
-pub(crate) fn stored_ssh(settings: &SshSettings, unknown: BTreeMap<String, Value>) -> SavedSshConfig {
+pub(crate) fn stored_ssh(
+    settings: &SshSettings,
+    unknown: BTreeMap<String, Value>,
+) -> Result<SavedSshConfig, CoreError> {
     let mut ssh = SavedSshConfig {
         enabled: settings.enabled.unwrap_or(true),
         host: settings.host.clone(),
         port: settings.port,
         username: settings.username.clone(),
-        jump_hosts: settings.jump_hosts.iter().map(jump_host).collect(),
+        // A hop id that does not read is refused, not dropped: the store would write the hop back without it.
+        jump_hosts: settings
+            .jump_hosts
+            .iter()
+            .map(|hop| {
+                Ok(SshJumpHost {
+                    id: optional_id(hop.id.as_deref())?,
+                    ..jump_host(hop)
+                })
+            })
+            .collect::<Result<_, CoreError>>()?,
         auth: saved_auth(&settings.auth, true),
         unknown,
         ..SavedSshConfig::new("", SavedSshAuth::Agent)
@@ -1244,7 +1257,7 @@ pub(crate) fn stored_ssh(settings: &SshSettings, unknown: BTreeMap<String, Value
     if let Some(options) = &settings.options {
         apply_options(options, &mut ssh);
     }
-    ssh
+    Ok(ssh)
 }
 
 // A save of a profile is an edit; a profile keeps the keys a newer build stored in it.
