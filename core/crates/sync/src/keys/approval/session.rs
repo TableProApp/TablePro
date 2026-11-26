@@ -295,9 +295,15 @@ impl SessionRecord {
         }
     }
 
+    // A: its approval change set applied.
     pub fn approved(&mut self) {
         self.end = Some(Ended::Approved);
         self.sent.approval = true;
+    }
+
+    // N: the merge committed; `sent.approval` marks its device keys switched to the approved ones.
+    pub fn merged(&mut self) {
+        self.end = Some(Ended::Approved);
     }
 
     // The server's `expires_at`, 600 seconds after it took the request. Once approved a session never expires, and

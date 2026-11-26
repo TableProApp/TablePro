@@ -2,21 +2,25 @@
 // the engine's part of a pull done here, and the checks the fake leaves to the real server stood in for by a refusal
 // the test sets.
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_keys::body::KeyObject;
 use tablepro_keys::encoding::{AccountId, Origin, RequestId, TeamId, Version};
+use tablepro_sync::api::device_store::{DeviceItem, DeviceStoreError, HostDeviceStore};
+use tablepro_sync::api::error::StateError;
 use tablepro_sync::api::ids::{DeviceRowId, ScopeName};
 use tablepro_sync::api::key_flows::{
-    AccountFlows, ApprovalFlows, ArrivalOrder, KeyApplied, KeyArrival, KeyState, RecoveryKeyDraft, ResetFlows,
-    SessionPhase, TypedBack,
+    AccountFlows, ApprovalFlows, ArrivalOrder, KeyApplied, KeyArrival, KeyState, RecoveryKeyDraft, ResetFlows, Roster,
+    SessionPhase, TeamFlows, TypedBack,
 };
 use tablepro_sync::api::scopes::ScopesAnswer;
+use tablepro_sync::api::scopes::{Role, TeamMember};
 use tablepro_sync::api::state::{
-    KeyDevicePinRow, KeyPinRow, Row, RowKey, RowRange, ScopeRow, StateFiles, StateIdentity, StateStore, StateTxn, Table,
+    Committed, KeyDevicePinRow, KeyPinRow, Opened, Row, RowKey, RowRange, ScopeRow, StateFiles, StateIdentity,
+    StateStore, StateTxn, Table,
 };
 use tablepro_sync::api::transport::{
     Change, ChangeOutcome, DpopKey, Proof, PullRequest, PulledPage, PushAnswer, PushBatch, RejectedCode,
@@ -25,8 +29,96 @@ use tablepro_sync::api::transport::{
 use tablepro_sync::keys::{Clock, KeyService, KeyServiceParts};
 use tablepro_sync_testing::service::ScopeOwner;
 use tablepro_sync_testing::{FakeClient, FakeDeviceStore, FakeServer, MemoryStateFiles, RecordingHooks};
+use zeroize::Zeroizing;
 
 pub const ORIGIN: &str = "https://sync.example.com";
+
+// A state file whose next commit can be made to fail, as a crash between two writes would leave it.
+pub struct Flaky {
+    inner: Arc<dyn StateStore>,
+    fail_commit: Arc<AtomicBool>,
+}
+
+#[async_trait]
+impl StateStore for Flaky {
+    fn identity(&self) -> &StateIdentity {
+        self.inner.identity()
+    }
+
+    fn opened(&self) -> &Opened {
+        self.inner.opened()
+    }
+
+    async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError> {
+        Ok(Box::new(FlakyTxn {
+            inner: self.inner.begin().await?,
+            fail_commit: Arc::clone(&self.fail_commit),
+        }))
+    }
+}
+
+struct FlakyTxn {
+    inner: Box<dyn StateTxn>,
+    fail_commit: Arc<AtomicBool>,
+}
+
+#[async_trait]
+impl StateTxn for FlakyTxn {
+    async fn get(&mut self, key: &RowKey) -> Result<Option<Row>, StateError> {
+        self.inner.get(key).await
+    }
+
+    async fn scan(&mut self, range: &RowRange) -> Result<Vec<Row>, StateError> {
+        self.inner.scan(range).await
+    }
+
+    async fn put(&mut self, row: Row) -> Result<(), StateError> {
+        self.inner.put(row).await
+    }
+
+    async fn delete(&mut self, key: &RowKey) -> Result<(), StateError> {
+        self.inner.delete(key).await
+    }
+
+    async fn clear_key_tables(&mut self) -> Result<(), StateError> {
+        self.inner.clear_key_tables().await
+    }
+
+    async fn commit(self: Box<Self>) -> Result<Committed, StateError> {
+        if self.fail_commit.swap(false, Ordering::SeqCst) {
+            return Err(StateError::Io {
+                detail: "the commit did not land".to_owned(),
+            });
+        }
+        self.inner.commit().await
+    }
+}
+
+// The device store, whose next write of the device keys can be made to fail.
+pub struct Store {
+    pub inner: Arc<FakeDeviceStore>,
+    fail_device_keys: AtomicBool,
+}
+
+#[async_trait]
+impl HostDeviceStore for Store {
+    async fn load(&self, item: DeviceItem) -> Result<Option<Zeroizing<Vec<u8>>>, DeviceStoreError> {
+        self.inner.load(item).await
+    }
+
+    async fn store(&self, item: DeviceItem, value: Zeroizing<Vec<u8>>) -> Result<(), DeviceStoreError> {
+        if matches!(item, DeviceItem::DeviceKeys { .. }) && self.fail_device_keys.swap(false, Ordering::SeqCst) {
+            return Err(DeviceStoreError::Failed {
+                detail: "the write did not land".to_owned(),
+            });
+        }
+        self.inner.store(item, value).await
+    }
+
+    async fn delete(&self, item: DeviceItem) -> Result<(), DeviceStoreError> {
+        self.inner.delete(item).await
+    }
+}
 
 pub fn origin() -> Origin {
     Origin::parse(ORIGIN).unwrap()
@@ -47,9 +139,15 @@ pub struct Wire {
     pub pushed: Mutex<Vec<Vec<Change>>>,
     refuse: Mutex<Option<RejectedCode>>,
     fail: Mutex<Option<TransportError>>,
+    lose: AtomicBool,
 }
 
 impl Wire {
+    // The server applies the next push and its answer never arrives.
+    pub fn lose_next_answer(&self) {
+        self.lose.store(true, Ordering::SeqCst);
+    }
+
     pub fn refuse_next_push(&self, code: RejectedCode) {
         *self.refuse.lock().unwrap() = Some(code);
     }
@@ -101,7 +199,13 @@ impl Transport for Wire {
             );
             return Ok(PushAnswer { outcomes });
         }
-        self.client.push(batch).await
+        let answer = self.client.push(batch).await;
+        if self.lose.swap(false, Ordering::SeqCst) {
+            return Err(TransportError::Network {
+                detail: "the answer was lost".to_owned(),
+            });
+        }
+        answer
     }
 }
 
@@ -134,31 +238,69 @@ pub struct Device {
     pub wire: Arc<Wire>,
     pub hooks: Arc<RecordingHooks>,
     pub state: Arc<dyn StateStore>,
+    pub store: Arc<Store>,
     pub row: DeviceRowId,
+    pub account: AccountId,
+    files: Arc<MemoryStateFiles>,
+    fail_commit: Arc<AtomicBool>,
     skew: Arc<ServerClock>,
 }
 
 impl Device {
     pub async fn new(server: &Arc<FakeServer>, account: AccountId, row: &str) -> Self {
         let row = DeviceRowId(row.to_owned());
-        let state = MemoryStateFiles::new()
-            .open(StateIdentity::Service {
-                origin: origin(),
-                sign_in: "sign-in".to_owned(),
-                account,
-                device_row: row.clone(),
-            })
-            .await
-            .unwrap();
         let wire = Arc::new(Wire {
             client: server.client(account, row.clone()),
             pushed: Mutex::new(Vec::new()),
             refuse: Mutex::new(None),
             fail: Mutex::new(None),
+            lose: AtomicBool::new(false),
+        });
+        let store = Arc::new(Store {
+            inner: Arc::new(FakeDeviceStore::new()),
+            fail_device_keys: AtomicBool::new(false),
+        });
+        let clock = Arc::new(ServerClock(Arc::clone(server), AtomicI64::new(0)));
+        Self::open(
+            server,
+            account,
+            row,
+            wire,
+            store,
+            Arc::new(MemoryStateFiles::new()),
+            clock,
+            Opened::FRESH,
+        )
+        .await
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "every part a device is built from, kept across a reopen"
+    )]
+    async fn open(
+        server: &Arc<FakeServer>,
+        account: AccountId,
+        row: DeviceRowId,
+        wire: Arc<Wire>,
+        store: Arc<Store>,
+        files: Arc<MemoryStateFiles>,
+        clock: Arc<ServerClock>,
+        opened: Opened,
+    ) -> Self {
+        let identity = StateIdentity::Service {
+            origin: origin(),
+            sign_in: "sign-in".to_owned(),
+            account,
+            device_row: row.clone(),
+        };
+        files.set_opened(identity.clone(), opened);
+        let fail_commit = Arc::new(AtomicBool::new(false));
+        let state: Arc<dyn StateStore> = Arc::new(Flaky {
+            inner: files.open(identity).await.unwrap(),
+            fail_commit: Arc::clone(&fail_commit),
         });
         let hooks = Arc::new(RecordingHooks::default());
-        let store = Arc::new(FakeDeviceStore::new());
-        let clock = Arc::new(ServerClock(Arc::clone(server), AtomicI64::new(0)));
         let service = KeyService::new(KeyServiceParts {
             origin: origin(),
             account,
@@ -175,9 +317,70 @@ impl Device {
             wire,
             hooks,
             state,
+            store,
             row,
+            account,
+            files,
+            fail_commit,
             skew: clock,
         }
+    }
+
+    // The same device after a restart whose state file opened as `opened` says, its device store as it was.
+    pub async fn reopen(self, opened: Opened) -> Self {
+        Self::open(
+            &self.server,
+            self.account,
+            self.row,
+            self.wire,
+            self.store,
+            self.files,
+            self.skew,
+            opened,
+        )
+        .await
+    }
+
+    pub fn fail_next_commit(&self) {
+        self.fail_commit.store(true, Ordering::SeqCst);
+    }
+
+    pub fn fail_next_device_keys_write(&self) {
+        self.store.fail_device_keys.store(true, Ordering::SeqCst);
+    }
+
+    // The team as the engine meets it: its scope row from the scopes body and the roster read once caught up.
+    pub async fn join_team(&self, team: TeamId, members: &[(AccountId, Role)]) {
+        let role = members
+            .iter()
+            .find(|(account, _)| *account == self.account)
+            .map(|(_, role)| *role);
+        let mut row = ScopeRow::new(ScopeName::Team(team));
+        row.role = role;
+        row.epoch = Some(self.server.epoch());
+        row.caught_up = true;
+        let mut txn = self.txn().await;
+        txn.put(Row::Scope(row)).await.unwrap();
+        txn.commit().await.unwrap();
+        self.service
+            .roster_read(
+                team,
+                Roster {
+                    members: members
+                        .iter()
+                        .map(|(account, role)| TeamMember {
+                            account: *account,
+                            role: *role,
+                        })
+                        .collect(),
+                    role,
+                    rotation_due: false,
+                    stopped: Vec::new(),
+                    caught_up: true,
+                },
+            )
+            .await
+            .unwrap();
     }
 
     pub async fn txn(&self) -> Box<dyn StateTxn> {
@@ -381,4 +584,41 @@ pub async fn propose_reset(
         .finish_reset_proposal(draft.draft, typed_back(&draft))
         .await
         .unwrap()
+}
+
+pub fn stored_in_team(server: &FakeServer, team: TeamId, kind: &str, id: &str) -> bool {
+    server
+        .stored(ScopeOwner::Team(team), kind, id)
+        .is_some_and(|record| record.deleted.is_none())
+}
+
+// The personal key at `version`, as this device reads it through its wraps and rings.
+pub async fn personal_key(device: &Device, version: u32) -> [u8; 32] {
+    let mut txn = device.txn().await;
+    *device
+        .service
+        .personal_key(
+            txn.as_mut(),
+            tablepro_keys::encoding::KeyPurpose::Personal,
+            Version::new(version).unwrap(),
+        )
+        .await
+        .unwrap()
+        .expose()
+}
+
+pub fn opened_with(key_tables: tablepro_sync::api::state::KeyTrust) -> Opened {
+    Opened {
+        sync_tables: tablepro_sync::api::state::SyncTrust::Trusted,
+        key_tables,
+    }
+}
+
+// A team this account owns alone, its keys created from `owner`.
+pub async fn owned_team(owner: &Device) -> TeamId {
+    let team = TeamId(tablepro_keys::encoding::random_uuid().unwrap());
+    owner.server.add_team(team, &[(owner.account, Role::Owner)]);
+    owner.join_team(team, &[(owner.account, Role::Owner)]).await;
+    owner.service.create_team_keys(team).await.unwrap();
+    team
 }

@@ -500,3 +500,233 @@ async fn a_device_locked_by_its_own_account_s_reset_is_approved_by_the_resetting
     assert_eq!(b.av().await, 2);
     assert_eq!(b.pin(account).await.unwrap().ik, a.pin(account).await.unwrap().ik);
 }
+
+async fn stop_personal(device: &Device) {
+    let key = tablepro_sync::api::state::RowKey::KeyVersion(
+        ScopeName::Personal,
+        tablepro_keys::encoding::KeyPurpose::Personal,
+    );
+    let Some(tablepro_sync::api::state::Row::KeyVersion(mut row)) = device.get(key).await else {
+        unreachable!("no personal key row")
+    };
+    row.stop(tablepro_sync::api::state::StoppedCause::CatchUp);
+    let mut txn = device.txn().await;
+    txn.put(tablepro_sync::api::state::Row::KeyVersion(row)).await.unwrap();
+    txn.commit().await.unwrap();
+}
+
+// A personal stop clears only through an approval that brings the version signed under the current `av` (0056,
+// Approving a device, step 7), so a stopped device must be able to ask.
+#[tokio::test]
+async fn a_device_stopped_on_its_personal_key_asks_again_and_the_approval_clears_the_stop() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    stop_personal(&b).await;
+    let stopped = b.key_state().await;
+
+    approve(&b, &a).await;
+
+    assert_eq!(
+        stopped,
+        KeyState::Locked {
+            cause: tablepro_sync::api::key_flows::LockCause::PersonalStopped
+        }
+    );
+    assert_eq!(b.av().await, 1);
+}
+
+// A file with no anchor handles no secret until another device approves it again (0054, A stale file).
+#[tokio::test]
+async fn an_unanchored_device_asks_again_and_the_approval_clears_the_lock() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let b = b
+        .reopen(crate::harness::opened_with(
+            tablepro_sync::api::state::KeyTrust::Unanchored,
+        ))
+        .await;
+    let unanchored = b.key_state().await;
+
+    approve(&b, &a).await;
+
+    assert_eq!(
+        unanchored,
+        KeyState::Locked {
+            cause: tablepro_sync::api::key_flows::LockCause::Unanchored
+        }
+    );
+    assert_eq!(b.av().await, 1);
+}
+
+#[tokio::test]
+async fn an_approver_with_no_anchor_or_still_rebuilding_does_not_approve() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    let a = a
+        .reopen(crate::harness::opened_with(
+            tablepro_sync::api::state::KeyTrust::Unanchored,
+        ))
+        .await;
+    a.pull().await;
+
+    let unanchored = a.service.choose_request(request).await.unwrap_err();
+    let listed = a.service.approval_requests().await.unwrap_err();
+    let a = a
+        .reopen(crate::harness::opened_with(
+            tablepro_sync::api::state::KeyTrust::Rebuild {
+                checkpoint: Box::default(),
+            },
+        ))
+        .await;
+    let rebuilding = a.service.choose_request(request).await.unwrap_err();
+
+    assert_eq!(unanchored.code(), "sync.locked");
+    assert_eq!(listed.code(), "sync.locked");
+    assert_eq!(rebuilding.code(), "sync.not_allowed");
+}
+
+// The server applied the approval and its answer was lost: the retry sends the same objects, sealed once, and A
+// keeps N as an own-device pin.
+#[tokio::test]
+async fn an_approval_whose_answer_was_lost_goes_up_again_unchanged_and_pins_the_new_device() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    a.wire.lose_next_answer();
+
+    let lost = a.service.confirm_session(request).await.unwrap();
+    let first = a.wire.last_push_by_id();
+    a.service.resume_approval(request).await.unwrap();
+    let second = a.wire.last_push_by_id();
+    n.pull().await;
+    let merged = n.service.confirm_session(request).await.unwrap();
+
+    assert_eq!(lost.phase, SessionPhase::Confirmed);
+    assert_eq!(first, second);
+    assert_eq!(
+        a.service.approval_session(request).await.unwrap().phase,
+        SessionPhase::Approved
+    );
+    let pending = n.service.device_keys().await.unwrap().current.unwrap();
+    assert!(
+        a.device_pins()
+            .await
+            .iter()
+            .any(|pin| pin.key_device == pending.key_device)
+    );
+    assert_eq!(merged.phase, SessionPhase::Approved);
+}
+
+async fn compared_session(n: &Device, a: &Device) -> tablepro_keys::encoding::RequestId {
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    a.service.confirm_session(request).await.unwrap();
+    n.pull().await;
+    request
+}
+
+// N's tables and its device keys cannot change in one write: whichever lands first, the merge finishes on resume.
+#[tokio::test]
+async fn a_merge_whose_commit_did_not_land_resumes() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    n.service.confirm_session(request).await.unwrap();
+    a.service.confirm_session(request).await.unwrap();
+    n.pull().await;
+    n.fail_next_commit();
+
+    let failed = n.service.resume_approval(request).await;
+    n.service.resume_approval(request).await.unwrap();
+    n.server_approves().await;
+
+    assert!(failed.is_err());
+    assert_eq!(
+        n.service.approval_session(request).await.unwrap().phase,
+        SessionPhase::Approved
+    );
+    assert_eq!(n.av().await, 1);
+}
+
+#[tokio::test]
+async fn a_merge_whose_device_key_switch_did_not_land_resumes() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    let request = compared_session(&n, &a).await;
+    n.fail_next_device_keys_write();
+
+    let failed = n.service.confirm_session(request).await;
+    n.service.resume_approval(request).await.unwrap();
+    n.server_approves().await;
+
+    assert!(failed.is_err());
+    assert_eq!(n.av().await, 1);
+}
+
+// An approval replaces the device keys and the account keys a device held (0056, Keys, Erasing).
+#[tokio::test]
+async fn an_approval_erases_the_account_keys_the_device_held_before() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    crate::rotation::rotate_keeping_only_self(&a, &r).await;
+    a.server_approves().await;
+    b.pull().await;
+    let old = tablepro_sync::api::device_store::DeviceItem::AccountKeys {
+        origin: crate::harness::origin(),
+        account,
+        av: tablepro_keys::encoding::Version::FIRST,
+    };
+    let held_before = b.store.inner.holds(&old);
+
+    approve(&b, &a).await;
+
+    assert!(held_before);
+    assert!(!b.store.inner.holds(&old));
+    assert_eq!(b.av().await, 2);
+}

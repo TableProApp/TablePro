@@ -4,10 +4,10 @@
 
 use serde_json::Value;
 use tablepro_keys::KeysError;
-use tablepro_keys::body::{KeyBody, KeyObject};
+use tablepro_keys::body::{AccountBody, KeyBody, KeyObject, VersionBody};
 use tablepro_keys::cert::{AccountCertificate, CertKind};
 use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, Origin, TeamId, Version};
-use tablepro_keys::keys::{AccountKeys, DeviceKeys, Ed25519Public, Ed25519Seed, X25519Secret};
+use tablepro_keys::keys::{AccountKeys, DeviceKeys, Ed25519Seed, X25519Secret};
 use tablepro_keys::record_id::KeyRecordId;
 use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::sas::SasDevice;
@@ -15,9 +15,11 @@ use tablepro_keys::scope_key::VersionRecord;
 use tablepro_keys::trust::PinHow;
 
 use super::change_set::{Arrived, open};
-use super::merge::{Approver, HeldTables, Merge, MergeFacts, Merged, merge};
+use super::confirm::HeldFacts;
+use super::merge::{Approver, HeldTables, Merge, Merged, merge};
 use crate::api::ids::ScopeName;
 use crate::api::state::{Holder, KeyPinRow, KeyVersionRow, KeyVersionState, StoppedCause};
+use crate::keys::HeldObject;
 
 // `tablepro-keys`' flows.json at 8a90c920c0 (#4568, blob 5a977fb3ea), which adds the flow device keys these rows open
 // wraps with. It goes once that PR's vectors are on this branch.
@@ -181,37 +183,29 @@ fn approval(world: &World, step: &Value) -> Approval {
     }
 }
 
-// What N holds in `key_objects`: its own version records, then the server's at every id it does not hold.
-struct VectorFacts<'a> {
-    world: &'a World,
-    versions: Vec<VersionRecord>,
+fn held(object: KeyObject) -> HeldObject {
+    HeldObject {
+        fields: object.fields_json(),
+        object,
+        applied: true,
+    }
 }
 
-impl MergeFacts for VectorFacts<'_> {
-    fn version_signer(
-        &self,
-        purpose: KeyPurpose,
-        version: Version,
-        record: &[u8; 32],
-    ) -> Result<Option<Version>, KeysError> {
-        let Some(held) = self
-            .versions
-            .iter()
-            .find(|held| held.key.purpose == purpose && held.key.version == version)
-        else {
-            return Ok(None);
-        };
-        if held.digest(&self.world.origin)? != *record {
-            return Err(KeysError::Conflict);
-        }
-        let signer = self.world.certificate("P", held.signer_av.get());
-        held.verify(&self.world.origin, &signer.ask)?;
-        Ok(Some(held.signer_av))
-    }
+fn version_object(record: &VersionRecord) -> HeldObject {
+    held(KeyObject {
+        id: KeyRecordId::Version(record.key),
+        body: KeyBody::Version(VersionBody::of(record)),
+    })
+}
 
-    fn endorsed_by(&self, _account: AccountId, _ik: &Ed25519Public) -> Option<(Ed25519Public, Version)> {
-        None
-    }
+fn certificate_object(certificate: &AccountCertificate) -> HeldObject {
+    held(KeyObject {
+        id: KeyRecordId::Account {
+            account: certificate.account,
+            av: certificate.av,
+        },
+        body: KeyBody::Account(AccountBody::of(certificate)),
+    })
 }
 
 fn records(list: &Value) -> Vec<VersionRecord> {
@@ -307,13 +301,19 @@ fn run(
             trust_wrap: &approval.trust_wrap,
         },
     )?;
+    // N's own records, then the server's at every id N does not hold, all checked as the production merge checks them.
     let mut versions = n_holds.to_vec();
     for record in server_holds {
         if !versions.iter().any(|held| held.key == record.key) {
             versions.push(record.clone());
         }
     }
-    let facts = VectorFacts { world, versions };
+    let held_versions: Vec<HeldObject> = versions.iter().map(version_object).collect();
+    let certificates: Vec<HeldObject> = [1, 2]
+        .into_iter()
+        .map(|av| certificate_object(&world.certificate("P", av)))
+        .collect();
+    let facts = HeldFacts::from_objects(&world.origin, world.account_id("P"), &held_versions, &certificates, &[]);
     merge(
         held,
         &Approver {

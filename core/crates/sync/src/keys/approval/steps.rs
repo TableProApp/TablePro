@@ -14,10 +14,10 @@ use tablepro_keys::sas::{Role, SasDevice};
 use super::session::SessionRecord;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
-use crate::api::key_flows::{ApprovalSession, SessionEnd, SessionPhase, SessionRole};
+use crate::api::key_flows::{ApprovalSession, KeyState, LockCause, SessionEnd, SessionPhase, SessionRole};
 use crate::api::state::{KeyPendingRow, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
 use crate::api::transport::{ChangeOutcome, DpopKey, RejectedCode};
-use crate::keys::{KeyService, create_change};
+use crate::keys::{KeyService, OwnAccount, create_change};
 
 // 600 seconds after the server took the request (0056, Approving a device, step 1).
 pub(super) const SESSION_US: i64 = 600 * 1_000_000;
@@ -123,6 +123,34 @@ pub(crate) fn pushed(outcomes: &[ChangeOutcome]) -> Result<Pushed, SyncError> {
 }
 
 impl KeyService {
+    // The account as an approved device holds it: approved by its own key tables, with an anchor and no rebuild in
+    // progress, since a stale file writes no secret (0054, A stale file). A locked device answers its lock.
+    pub(crate) async fn approved_device_account(
+        &self,
+        txn: &mut dyn StateTxn,
+        what: &'static str,
+    ) -> Result<OwnAccount, SyncError> {
+        match self.state_of_keys(txn).await? {
+            KeyState::Approved { .. } => {}
+            KeyState::Locked { cause } => return Err(SyncError::Locked { cause }),
+            _ => return Err(SyncError::NotAllowed { what }),
+        }
+        if self.is_rebuilding() {
+            return Err(SyncError::NotAllowed { what });
+        }
+        self.own_account(txn).await?.ok_or(SyncError::NotAllowed { what })
+    }
+
+    // A device that is not approved, or locked for a cause another device's approval or R clears. An account that
+    // ended signs out first (0051, What cannot go back).
+    pub(crate) async fn may_ask_again(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
+        Ok(match self.state_of_keys(txn).await? {
+            KeyState::NeedsApproval { .. } => true,
+            KeyState::Locked { cause } => cause != LockCause::AccountEnded,
+            KeyState::NoDeviceStore | KeyState::Unknown | KeyState::NoKeys | KeyState::Approved { .. } => false,
+        })
+    }
+
     pub(super) async fn session_record(
         &self,
         txn: &mut dyn StateTxn,
@@ -151,7 +179,10 @@ impl KeyService {
         let flow = PendingFlow::Approval {
             request: record.request,
         };
-        if record.live() || (record.end.is_some() && !record.sent.cancel && cancels(record)) {
+        let switching = record.role == Role::NewDevice
+            && record.end == Some(super::session::Ended::Approved)
+            && !record.sent.approval;
+        if record.live() || switching || (record.end.is_some() && !record.sent.cancel && cancels(record)) {
             if txn.get(&RowKey::KeyPending(flow)).await?.is_none() {
                 txn.put(Row::KeyPending(KeyPendingRow {
                     flow,

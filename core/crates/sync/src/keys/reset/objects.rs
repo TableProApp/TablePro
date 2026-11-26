@@ -30,9 +30,11 @@ impl KeyService {
             return Ok(applied);
         }
         let mut txn = self.begin().await?;
+        let mut adopt = Vec::new();
         for pulled in &arrival.records {
             match self.apply_reset_record(txn.as_mut(), pulled).await {
-                Ok(()) => {}
+                Ok(Some(reset)) => adopt.push(reset),
+                Ok(None) => {}
                 Err(SyncError::Keys(error)) => applied.refused.push(RefusedObject {
                     record_id: pulled.record_id.clone(),
                     error,
@@ -41,18 +43,26 @@ impl KeyService {
             }
         }
         txn.commit().await?;
+        for reset in adopt {
+            self.adopt_own_activation(reset).await?;
+        }
         Ok(applied)
     }
 
-    async fn apply_reset_record(&self, txn: &mut dyn StateTxn, pulled: &PulledRecord) -> Result<(), SyncError> {
+    // Some reset when it is this device's own and its activation applied, which it then adopts.
+    async fn apply_reset_record(
+        &self,
+        txn: &mut dyn StateTxn,
+        pulled: &PulledRecord,
+    ) -> Result<Option<ResetId>, SyncError> {
         let Some((kind, reset)) = reset_of(pulled) else {
-            return Ok(());
+            return Ok(None);
         };
         let Some(fields) = pulled.fields_json.as_deref().filter(|_| pulled.deleted.is_none()) else {
             if kind == KeyKind::Reset {
-                self.reset_tombstoned(txn, reset, pulled).await?;
+                return self.reset_tombstoned(txn, reset, pulled).await;
             }
-            return Ok(());
+            return Ok(None);
         };
         let object = KeyObject::parse(pulled.kind.as_str(), &pulled.record_id, fields.as_bytes())?;
         match &object.body {
@@ -92,7 +102,8 @@ impl KeyService {
                         }
                     }
                 };
-                self.put_reset(txn, &record).await
+                self.put_reset(txn, &record).await?;
+                Ok(None)
             }
             KeyBody::Cancel { .. } => {
                 self.hold_object(txn, ScopeName::Personal, &object, true).await?;
@@ -100,7 +111,7 @@ impl KeyService {
                     self.end_reset(&mut record, ResetState::Cancelled).await?;
                     self.put_reset(txn, &record).await?;
                 }
-                Ok(())
+                Ok(None)
             }
             _ => Err(KeysError::Encoding {
                 what: "not a reset or cancel body",
@@ -116,7 +127,7 @@ impl KeyService {
         txn: &mut dyn StateTxn,
         reset: ResetId,
         pulled: &PulledRecord,
-    ) -> Result<(), SyncError> {
+    ) -> Result<Option<ResetId>, SyncError> {
         let account = self.account();
         let reset_id = KeyRecordId::Reset { account, reset }.to_wire();
         let proposal = self
@@ -129,7 +140,7 @@ impl KeyService {
         ))
         .await?;
         let Some(mut record) = self.reset_record(txn, reset).await? else {
-            return Ok(());
+            return Ok(None);
         };
         let cancel_id = KeyRecordId::Cancel { account, reset }.to_wire();
         let cancelled = self
@@ -159,6 +170,9 @@ impl KeyService {
             },
             _ => false,
         };
+        if activated && record.mine && record.pending() {
+            return Ok(Some(reset));
+        }
         let state = if cancelled {
             ResetState::Cancelled
         } else if activated {
@@ -167,6 +181,7 @@ impl KeyService {
             ResetState::Superseded
         };
         self.end_reset(&mut record, state).await?;
-        self.put_reset(txn, &record).await
+        self.put_reset(txn, &record).await?;
+        Ok(None)
     }
 }

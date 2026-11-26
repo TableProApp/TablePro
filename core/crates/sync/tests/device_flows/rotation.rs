@@ -11,7 +11,7 @@ use tablepro_sync::api::key_flows::{DeviceFlows, KeyState, LockCause, ResetKind}
 use tablepro_sync::api::transport::TransportError;
 use tablepro_sync_testing::FakeServer;
 
-use crate::harness::{Device, approve, new_account, propose_reset, stored};
+use crate::harness::{Device, approve, new_account, owned_team, personal_key, propose_reset, stored, stored_in_team};
 
 // A rotation from `device` that keeps no other device, as a removal of every other device would.
 pub async fn rotate_keeping_only_self(device: &Device, recovery: &SecretString) {
@@ -185,6 +185,7 @@ async fn recovery_from_zero_devices_carries_the_old_keys_into_the_new_rings() {
     let account = new_account();
     let a = Device::new(&server, account, "dev_a").await;
     let r = a.genesis().await;
+    let a_v1 = personal_key(&a, 1).await;
     let d = Device::new(&server, account, "dev_d").await;
     d.pull().await;
 
@@ -205,6 +206,7 @@ async fn recovery_from_zero_devices_carries_the_old_keys_into_the_new_rings() {
         assert!(stored(&server, account, "key.ring", &KeyRecordId::Ring(key).to_wire()).is_some());
     }
     assert!(d.device_pins().await.is_empty());
+    assert_eq!(personal_key(&d, 1).await, a_v1, "v1 opens down the new ring");
     assert_eq!(
         a.key_state().await,
         KeyState::Locked {
@@ -249,15 +251,24 @@ async fn a_rotation_ends_a_pending_reset_that_proposed_the_same_av() {
     let r = a.genesis().await;
     let b = Device::new(&server, account, "dev_b").await;
     approve(&b, &a).await;
-    propose_reset(&b, ResetKind::KeepScopeKeys).await;
+    let proposed = propose_reset(&b, ResetKind::KeepScopeKeys).await;
     a.pull().await;
 
     rotate_keeping_only_self(&a, &r).await;
+    b.pull().await;
+    server.advance_clock(7 * 24 * 3600 * 1_000_000);
+    let activation = tablepro_sync::api::key_flows::ResetFlows::activate_reset(&b.service, proposed.reset).await;
 
+    let superseded = Some(tablepro_sync::api::key_flows::ResetState::Superseded);
+    assert_eq!(a.pending_reset_state().await, superseded);
+    assert_eq!(b.pending_reset_state().await, superseded);
     assert_eq!(
-        a.pending_reset_state().await,
-        Some(tablepro_sync::api::key_flows::ResetState::Superseded)
+        activation.unwrap_err(),
+        SyncError::Rejected {
+            code: tablepro_sync::api::transport::RejectedCode::BadStatement
+        }
     );
+    assert!(b.service.reset_keys(proposed.reset).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -284,4 +295,112 @@ async fn a_rotation_the_server_did_not_answer_goes_up_again_on_resume() {
 
     assert!(matches!(error, SyncError::Transport(TransportError::Network { .. })));
     assert_eq!(a.av().await, 2);
+}
+
+// A recovery copies the new certificate into every team of the account, whether or not this device holds the team's
+// key yet (0056, Rotation step 3; Teams, Certificates in the team).
+#[tokio::test]
+async fn a_recovery_copies_the_new_certificate_into_each_team() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let team = owned_team(&a).await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    d.join_team(team, &[(account, tablepro_sync::api::scopes::Role::Owner)])
+        .await;
+
+    d.service.recover(r).await.unwrap();
+    d.server_approves().await;
+    d.service
+        .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
+        .await
+        .unwrap();
+
+    let member = KeyRecordId::Member {
+        account,
+        av: tablepro_keys::encoding::Version::new(2).unwrap(),
+    };
+    assert!(stored_in_team(&server, team, "key.member", &member.to_wire()));
+}
+
+#[tokio::test]
+async fn a_removal_rotates_each_team_this_account_holds() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let team = owned_team(&a).await;
+
+    rotate_keeping_only_self(&a, &r).await;
+
+    let version = KeyRecordId::Version(KeyRef {
+        owner: team.0,
+        purpose: KeyPurpose::Team,
+        version: tablepro_keys::encoding::Version::new(2).unwrap(),
+    });
+    assert!(stored_in_team(&server, team, "key.version", &version.to_wire()));
+}
+
+#[tokio::test]
+async fn a_recovery_whose_answer_was_lost_goes_up_again_on_resume() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    d.wire.lose_next_answer();
+
+    let lost = d.service.recover(r).await.unwrap_err();
+    d.service
+        .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
+        .await
+        .unwrap();
+    d.server_approves().await;
+
+    assert!(matches!(lost, SyncError::Transport(TransportError::Network { .. })));
+    assert_eq!(d.av().await, 2);
+}
+
+// A's own rotation never went up and B's won the `av`: A follows B's and writes none of its own team steps.
+#[tokio::test]
+async fn a_rotation_another_device_won_runs_no_team_step_of_this_one() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let team = owned_team(&a).await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let (a_device, b_device) = (key_device(&a).await, key_device(&b).await);
+    a.wire.fail_next_push(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    let review = a.service.begin_removal(r.clone(), Vec::new()).await.unwrap();
+    a.service
+        .finish_removal(review.review, vec![b_device], Vec::new())
+        .await
+        .unwrap_err();
+
+    let review = b.service.begin_removal(r, Vec::new()).await.unwrap();
+    b.service
+        .finish_removal(review.review, vec![a_device], Vec::new())
+        .await
+        .unwrap();
+    b.server_approves().await;
+    a.pull().await;
+    a.service
+        .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(a.av().await, 2);
+    let version = KeyRecordId::Version(KeyRef {
+        owner: team.0,
+        purpose: KeyPurpose::Team,
+        version: tablepro_keys::encoding::Version::new(2).unwrap(),
+    });
+    assert!(!stored_in_team(&server, team, "key.version", &version.to_wire()));
 }

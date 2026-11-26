@@ -32,7 +32,8 @@ impl ApprovalFlows for KeyService {
     async fn request_approval(&self) -> Result<RequestId, SyncError> {
         let _serial = self.serialized().await;
         let mut txn = self.begin().await?;
-        if self.own_account(txn.as_mut()).await?.is_some() {
+        // A locked device asks again: left out, stopped on its personal key, its own account reset or its anchor lost.
+        if !self.may_ask_again(txn.as_mut()).await? {
             return Err(SyncError::NotAllowed {
                 what: "ask for approval",
             });
@@ -75,11 +76,7 @@ impl ApprovalFlows for KeyService {
     async fn approval_requests(&self) -> Result<Vec<ApprovalRequest>, SyncError> {
         let _serial = self.serialized().await;
         let mut txn = self.begin().await?;
-        if self.own_account(txn.as_mut()).await?.is_none() {
-            return Err(SyncError::NotAllowed {
-                what: "approve a device",
-            });
-        }
+        self.approved_device_account(txn.as_mut(), "approve a device").await?;
         let now = self.now_us();
         let mut requests: Vec<ApprovalRequest> = self
             .session_records(txn.as_mut())
@@ -107,9 +104,7 @@ impl ApprovalFlows for KeyService {
         let _serial = self.serialized().await;
         let own = {
             let mut txn = self.begin().await?;
-            self.own_account(txn.as_mut()).await?.ok_or(SyncError::NotAllowed {
-                what: "approve a device",
-            })?
+            self.approved_device_account(txn.as_mut(), "approve a device").await?
         };
         let mut record = self.require_session(request).await?;
         if record.role != Role::Approver {
@@ -185,7 +180,7 @@ impl ApprovalFlows for KeyService {
 }
 
 // A failure the next pass retries: the step stays held as it was built.
-const fn transient(error: &TransportError) -> bool {
+pub(crate) const fn transient(error: &TransportError) -> bool {
     matches!(
         error,
         TransportError::Network { .. }
@@ -205,6 +200,10 @@ impl KeyService {
                 self.send_cancel(record, end).await?;
             }
             return Ok(());
+        }
+        if record.role == Role::NewDevice && record.end == Some(self::session::Ended::Approved) && !record.sent.approval
+        {
+            return self.finish_switch(record).await;
         }
         if !record.live() {
             return self.save_session(record).await;
