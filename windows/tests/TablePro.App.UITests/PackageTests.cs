@@ -21,7 +21,7 @@ public sealed partial class ShellTests
         using (var app = AppSession.LaunchPackage(family, theme))
         {
             folder = app.DataFolder;
-            foreach (var card in new[] { "NewConnectionCard", "OpenFileCard", "ImportCard", "SampleCard" })
+            foreach (var card in new[] { "NewConnectionCard", "SetupGuideCard" })
             {
                 Assert.True(app.Find(card).IsEnabled, card);
             }

@@ -37,6 +37,7 @@ struct ConnectionListView: View {
     /// that is on screen dismisses, and only one that is on screen can be waited on.
     @State private var isConnectionCoverOnScreen = false
     @State private var importResult: MobileImportOutcomeMessage?
+    @State private var scrollTarget: LibraryRowID?
     @State private var actionErrorMessage: String?
     @State private var iCloudAccountAvailable = false
     @State private var tips = ConnectionListTips.makeGroup()
@@ -94,8 +95,8 @@ struct ConnectionListView: View {
         )
     }
 
-    private var outline: LibraryOutline {
-        LibraryOutlineBuilder.build(LibraryOutlineRequest(
+    private var outlineRequest: LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag> {
+        LibraryOutlineRequest(
             connections: appState.connections,
             groups: appState.groups,
             tags: appState.tags,
@@ -103,7 +104,11 @@ struct ConnectionListView: View {
             query: query,
             favoritesOrder: appState.libraryPreferences.favoritesOrder,
             lastConnected: appState.libraryPreferences.lastConnected
-        ))
+        )
+    }
+
+    private var outline: LibraryOutline {
+        LibraryOutlineBuilder.build(outlineRequest)
     }
 
     private var suggestedTokens: [ConnectionTagToken] {
@@ -125,7 +130,7 @@ struct ConnectionListView: View {
 
     private var tipInputs: [Int] {
         [
-            appState.onboarding.hasSeenWelcome && presenter.sheet == nil ? 1 : 0,
+            appState.onboarding.hasSeenOrigin && presenter.sheet == nil ? 1 : 0,
             appState.connections.count,
             appState.connections.contains(where: \.isFavorite) ? 1 : 0,
             appState.connections.contains { !$0.tagIds.isEmpty } ? 1 : 0
@@ -247,10 +252,8 @@ struct ConnectionListView: View {
 
     private var emptyActions: ConnectionListEmptyActions {
         ConnectionListEmptyActions(
-            addConnection: { presenter.present(.addConnection) },
-            openSample: openSampleDatabase,
-            turnOnICloud: !isSyncEnabled && iCloudAccountAvailable ? { appState.setCloudSyncEnabled(true) } : nil,
-            importConnections: { showingFileImporter = true },
+            start: perform,
+            offersICloud: !isSyncEnabled && iCloudAccountAvailable,
             performSyncAction: { appState.performSyncAction($0) },
             retryLoad: { appState.retryLoadIfFailed() }
         )
@@ -305,6 +308,7 @@ struct ConnectionListView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .modifier(ScrollToRow(target: $scrollTarget))
         .overlay {
             if outline.isEmpty && outline.isQueryActive {
                 ContentUnavailableView.search(text: searchText)
@@ -396,6 +400,7 @@ struct ConnectionListView: View {
                 onCommitRename: { commitRename(rowId, connectionId: connection.id, name: $0) },
                 onCancelRename: { renamingRow = nil }
             )
+            .id(rowId)
             .tag(rowId)
             .draggable(connection.id.uuidString)
             .swipeActions(edge: .leading) {
@@ -665,13 +670,13 @@ struct ConnectionListView: View {
             .disabled(!appState.isLibraryWritable)
 
             Section {
-                Button(action: openSampleDatabase) {
-                    Label("Open Sample Database", systemImage: "music.note.list")
-                }
+                startMenuItem(.openSample)
+                startMenuItem(.importConnections)
+                    .disabled(!appState.isLibraryWritable)
                 Button {
-                    showingFileImporter = true
+                    presenter.presentSetupGuide()
                 } label: {
-                    Label("Import Connections", systemImage: "square.and.arrow.down")
+                    Label("Setup Guide", systemImage: "signpost.right")
                 }
                 .disabled(!appState.isLibraryWritable)
                 Button {
@@ -686,17 +691,30 @@ struct ConnectionListView: View {
         }
     }
 
+    private func startMenuItem(_ action: LibraryStartAction) -> some View {
+        Button {
+            perform(action)
+        } label: {
+            Label {
+                Text(action.title)
+            } icon: {
+                Image(systemName: action.systemImage)
+            }
+        }
+    }
+
     // MARK: - Sheets
 
     @ViewBuilder
     private func sheetContent(_ sheet: SceneSheet) -> some View {
         switch sheet {
         case .firstRun(let pages):
-            FirstRunSheet(pages: pages)
+            FirstRunSheet(pages: pages) { presenter.recordStartAction($0) }
         case .whatsNew(let version):
             WhatsNewSheet(version: version)
         case .addConnection:
-            ConnectionFormSheet(connection: nil, objects: sceneObjects) { _ in
+            ConnectionFormSheet(connection: nil, objects: sceneObjects) { savedId in
+                presenter.openAfterSheet(savedId)
                 presenter.sheet = nil
             }
         case .editConnection(let connection):
@@ -724,7 +742,9 @@ struct ConnectionListView: View {
             }
         case .importFile(let url):
             MobileConnectionImportSheet(fileURL: url) { outcome in
-                importResult = MobileImportOutcomeMessage(outcome)
+                if let message = presenter.finishImport(outcome, from: .fileOrLink) {
+                    importResult = message
+                }
             }
             .environment(appState)
         case .export:
@@ -836,6 +856,40 @@ struct ConnectionListView: View {
         return MacOnlyConnection.isMacOnly(connection)
     }
 
+    private func perform(_ action: LibraryStartAction) {
+        switch action {
+        case .turnOnICloud:
+            guard !isSyncEnabled else { return }
+            appState.setCloudSyncEnabled(true)
+        case .importConnections:
+            showingFileImporter = true
+        case .addConnection:
+            presenter.present(.addConnection)
+        case .openSample:
+            openSampleDatabase()
+        }
+    }
+
+    private func reveal(_ connectionIds: [UUID]) {
+        guard let plan = ConnectionListReveal.plan(
+            revealing: connectionIds,
+            in: outlineRequest,
+            collapsedGroupIds: appState.libraryPreferences.collapsedGroupIds,
+            isEditing: isEditing
+        ) else { return }
+        if plan.clearsQuery {
+            searchText = ""
+            searchTokens = []
+        }
+        for groupId in plan.groupIdsToExpand {
+            appState.libraryPreferences.setGroup(groupId, expanded: true)
+        }
+        if let marked = plan.selection {
+            selection = marked
+        }
+        scrollTarget = plan.scrollTarget
+    }
+
     private func openSampleDatabase() {
         do {
             let sampleId = try appState.openSampleDatabase()
@@ -893,9 +947,21 @@ struct ConnectionListView: View {
     }
 
     private func sheetDidDismiss() {
-        presenter.sheetDidDismiss(appState: appState)
+        let startAction = presenter.sheetDidDismiss(appState: appState)
+        let handoff = presenter.takeHandoffAfterSheet()
         deliverPendingIntent()
         openConnectionForDataImport()
+        switch handoff {
+        case .open(let connectionId):
+            open(connectionId)
+        case .reveal(let connectionIds):
+            reveal(connectionIds)
+        case nil:
+            break
+        }
+        if let startAction {
+            perform(startAction)
+        }
     }
 
     // The chooser has gone, so the cover the chosen connection needs can come up.
@@ -944,6 +1010,23 @@ struct ConnectionListView: View {
         coordinatorStore.discardRemovedRecords()
         presenter.presentHeldImport()
         presenter.presentHeldRefusal()
+    }
+}
+
+private struct ScrollToRow: ViewModifier {
+    @Binding var target: LibraryRowID?
+
+    // Driven by state rather than called from the reveal: rows of a group the same reveal opens exist only after that update.
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content.onChange(of: target, initial: true) { _, row in
+                guard let row else { return }
+                target = nil
+                withMotion {
+                    proxy.scrollTo(row, anchor: .top)
+                }
+            }
+        }
     }
 }
 

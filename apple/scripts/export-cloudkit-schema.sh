@@ -17,6 +17,8 @@ ENVIRONMENT="production"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SNAPSHOT_FILE="${REPO_ROOT}/CloudKit/production-schema.ckdb"
+# The core's schema registry tests against its own copy, since a Linux source archive holds no apple/.
+CORE_COPY="${REPO_ROOT}/../core/crates/records/fixtures/production-schema.ckdb"
 
 MODE="export"
 case "${1:-}" in
@@ -71,8 +73,9 @@ mkdir -p "$(dirname "${SNAPSHOT_FILE}")"
 
 echo "Exporting ${ENVIRONMENT} schema for ${CONTAINER_ID}..."
 export_schema "${SNAPSHOT_FILE}"
+cp "${SNAPSHOT_FILE}" "${CORE_COPY}"
 
-echo "Wrote ${SNAPSHOT_FILE}"
+echo "Wrote ${SNAPSHOT_FILE} and the core's copy"
 echo
-echo "Review the diff, then commit it:"
-echo "  git diff -- CloudKit/production-schema.ckdb"
+echo "Review the diff, then commit both:"
+echo "  git diff -- CloudKit/production-schema.ckdb ../core/crates/records/fixtures/production-schema.ckdb"

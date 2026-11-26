@@ -1,0 +1,120 @@
+[
+  {
+    "connection" : "00000000-0000-0000-0000-000000000001",
+    "database" : "shop",
+    "id" : "d9ddf33921f51e2b0938b408b83e7de6f54d5338d28daba48a562f6ac74ba9d2",
+    "kind" : "favourite_table",
+    "name" : "users",
+    "schema" : "public"
+  },
+  {
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "shop",
+    "id" : "689915518ef07ed442508df9d8938612b7835aaef1759e217a9a1f0ec1527bfd",
+    "kind" : "favourite_table",
+    "name" : "orders",
+    "schema" : "public"
+  },
+  {
+    "alias" : "14528d9753758a53d821e91074850e8944b2ffb58c31fb7bb145a98038f1df1d",
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "shop",
+    "id" : "29fdd9a09689bcc75f08b364f5c921e2552ad3aa817a962716ad07112ca11f1e",
+    "kind" : "favourite_table",
+    "name" : "a|b",
+    "schema" : "public"
+  },
+  {
+    "alias" : "a6f407c04da3927756bce1e2e2e970846781c07bc0ab6a0edec61caa288ed86a",
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "a\\b",
+    "id" : "57b320655874df6057a7573e78619868ab012e563fa7c082abcb7d1a44b039c7",
+    "kind" : "favourite_table",
+    "name" : "t"
+  },
+  {
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "id" : "cdb8edd1e402f82d265cb5892f3c580daf527d420fa9e2b2ca5b8123cbc18cb2",
+    "kind" : "favourite_table",
+    "name" : "Ünïcode tâble"
+  },
+  {
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "shop",
+    "id" : "cdf7849ae0e1748faad83bd8417480daac3b3b322224f4aeefd1977345b7f979",
+    "kind" : "favourite_database"
+  },
+  {
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "",
+    "id" : "dd5e94826d049ef4ce3c7c84d59a03e1de9ae33ab46a6448d477ca6fbc1883c2",
+    "kind" : "favourite_database"
+  },
+  {
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "数据库",
+    "id" : "d2880d88ac0d1cf1c5e9c67bb3b11b227ce1e7bcc1891c513b1ad1871d078423",
+    "kind" : "favourite_database"
+  },
+  {
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "shop",
+    "id" : "689915518ef07ed442508df9d8938612b7835aaef1759e217a9a1f0ec1527bfd",
+    "kind" : "table_folder_item",
+    "name" : "orders",
+    "schema" : "public"
+  },
+  {
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "a|b",
+    "id" : "3fd73f0d8d7786ab464580ae4c6e88e98837784f28dd41e160c142a113bac438",
+    "kind" : "table_folder_item",
+    "name" : "t",
+    "schema" : "c"
+  },
+  {
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "a",
+    "id" : "455afe147b2d780ded4132af326049a15dc4107c9c9f8fe2a13082ebeb2b199d",
+    "kind" : "table_folder_item",
+    "name" : "t",
+    "schema" : "b|c"
+  },
+  {
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "x",
+    "id" : "e56d9463c4cf5e4b8121d9d8aa8ed0333a54519ce1685f378693e70d165d8768",
+    "kind" : "table_folder_item",
+    "name" : "y",
+    "schema" : ""
+  },
+  {
+    "category" : "columnLayout.6F1C2A9E%2D0B4D%2D4C8E%2D9A51%2D3D7E2B1F0C44.shop.public.orders",
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "shop",
+    "kind" : "column_layout",
+    "schema" : "public",
+    "table" : "orders"
+  },
+  {
+    "category" : "columnLayout.6F1C2A9E%2D0B4D%2D4C8E%2D9A51%2D3D7E2B1F0C44...t",
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "kind" : "column_layout",
+    "table" : "t"
+  },
+  {
+    "category" : "columnLayout.6F1C2A9E%2D0B4D%2D4C8E%2D9A51%2D3D7E2B1F0C44.%C3%9Cn%C3%AF%20c%C3%B8de.s%2Ex.a%2Fb%25c",
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "Ünï cøde",
+    "kind" : "column_layout",
+    "schema" : "s.x",
+    "table" : "a/b%c"
+  },
+  {
+    "category" : "columnLayout.6F1C2A9E%2D0B4D%2D4C8E%2D9A51%2D3D7E2B1F0C44.%2FUsers%2Fme%2Fdata%2Fapp%2Esqlite..main",
+    "connection" : "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+    "database" : "/Users/me/data/app.sqlite",
+    "kind" : "column_layout",
+    "table" : "main"
+  }
+]

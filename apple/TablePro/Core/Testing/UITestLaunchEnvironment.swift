@@ -3,7 +3,7 @@ import os
 
 // Read only under the storage sandbox, so a shipped build ignores every variable here.
 internal enum UITestLaunchEnvironment {
-    internal static let welcomeSheetVariable = "TABLEPRO_UI_TEST_SHOW_WELCOME_SHEET"
+    internal static let setupGuideVariable = "TABLEPRO_UI_TEST_SHOW_SETUP_GUIDE"
     internal static let signInPromptVariable = "TABLEPRO_UI_TEST_SHOW_SIGN_IN_PROMPT"
     internal static let dataFileVariable = "TABLEPRO_UI_TEST_OPEN_FILE"
     internal static let connectionShareVariable = "TABLEPRO_UI_TEST_OPEN_CONNECTION_SHARE"
@@ -11,8 +11,8 @@ internal enum UITestLaunchEnvironment {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "UITestLaunchEnvironment")
 
-    internal static var requestsWelcomeSheet: Bool {
-        isSet(welcomeSheetVariable)
+    internal static var requestsSetupGuide: Bool {
+        isSet(setupGuideVariable)
     }
 
     internal static var requestsSignInPrompt: Bool {

@@ -1,4 +1,4 @@
-mod a11y;
+pub(crate) mod a11y;
 mod ai_policy;
 pub(crate) mod assistant;
 mod browse_tab;
@@ -47,6 +47,7 @@ pub(crate) mod safe_mode;
 mod saved_queries_dialog;
 mod session_target;
 mod session_window;
+mod setup_guide;
 mod share_dialog;
 mod shell;
 mod source_dialog;
