@@ -125,7 +125,9 @@ impl KeyService {
         let mut records = self.reset_records(txn.as_mut()).await?;
         let mut changed = false;
         for record in &mut records {
-            if record.overdue(now) {
+            // An activation of this device's own that applied is adopted, never ended for its age.
+            let ended = record.overdue(now) || self.av_taken(txn.as_mut(), record).await?;
+            if ended && !self.own_activation_applied(record).await? {
                 self.end_reset(record, ResetState::Superseded).await?;
                 self.put_reset(txn.as_mut(), record).await?;
                 changed = true;
@@ -135,6 +137,28 @@ impl KeyService {
             txn.commit().await?;
         }
         Ok(records)
+    }
+
+    // Another certificate applied at the `av` a pending reset proposed: a rotation or a replace by someone holding R,
+    // which ends it (0056, Reset).
+    async fn av_taken(&self, txn: &mut dyn StateTxn, record: &ResetRecord) -> Result<bool, SyncError> {
+        if !record.pending() {
+            return Ok(false);
+        }
+        let id = KeyRecordId::Account {
+            account: self.account(),
+            av: record.av,
+        };
+        Ok(
+            match self
+                .applied_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
+                .await?
+                .map(|object| object.body)
+            {
+                Some(KeyBody::Account(body)) => body.ik != record.ik,
+                _ => false,
+            },
+        )
     }
 
     // A rotation that applies at `av` ends a pending reset that proposed the same `av`: whoever rotated holds R.

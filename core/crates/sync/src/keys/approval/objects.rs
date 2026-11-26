@@ -196,8 +196,10 @@ impl KeyService {
         .await?;
         let is_request = KeyKind::parse(pulled.kind.as_str()) == Ok(KeyKind::Request);
         if is_request && let Some(mut record) = self.session_record(txn, request).await? {
-            let pending_merge =
-                record.role == Role::NewDevice && record.live() && record.state == SessionState::Confirmed;
+            // N waiting for its approval, or with its device key switch still owed, keeps its row.
+            let pending_merge = record.role == Role::NewDevice
+                && ((record.live() && record.state == SessionState::Confirmed)
+                    || (record.end == Some(super::session::Ended::Approved) && !record.sent.approval));
             if pending_merge {
                 record.sent.purged = true;
                 self.put_session(txn, &record).await?;
