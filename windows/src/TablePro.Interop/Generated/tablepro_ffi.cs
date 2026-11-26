@@ -1870,6 +1870,12 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -5782,6 +5788,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_open_move(ulong @ptr
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_plan_move_to_icloud(ulong @ptr
     );
 
@@ -5815,7 +5832,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_syncservice_choose_for_new_identity(ulong @ptr,RustBuffer @choice
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_choose_for_new_identity(ulong @ptr,RustBuffer @choice,RustBuffer @account
     );
 
     #if NET8_0_OR_GREATER
@@ -5892,6 +5909,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_plan_new_identity(ulong @ptr
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_record_host_changes(ulong @ptr,RustBuffer @kind,RustBuffer @written,RustBuffer @deleted
     );
 
@@ -5915,6 +5943,17 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_tablepro_ffi_fn_method_syncservice_scope_statuses(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_syncservice_service_account(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -10578,6 +10617,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_open_move(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_plan_move_to_icloud(
     );
 
@@ -10688,6 +10738,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_plan_new_identity(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_record_host_changes(
     );
 
@@ -10711,6 +10772,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_scope_statuses(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_service_account(
     );
 
     #if NET8_0_OR_GREATER
@@ -13169,6 +13241,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_open_move();
+            if (checksum != 43098) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_open_move` checksum `43098`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_plan_move_to_icloud();
             if (checksum != 48827) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_plan_move_to_icloud` checksum `48827`, library returned `{checksum}`");
@@ -13188,8 +13266,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_choose_for_new_identity();
-            if (checksum != 20416) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_choose_for_new_identity` checksum `20416`, library returned `{checksum}`");
+            if (checksum != 28611) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_choose_for_new_identity` checksum `28611`, library returned `{checksum}`");
             }
         }
         {
@@ -13229,6 +13307,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_plan_new_identity();
+            if (checksum != 46264) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_plan_new_identity` checksum `46264`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_record_host_changes();
             if (checksum != 20554) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_record_host_changes` checksum `20554`, library returned `{checksum}`");
@@ -13244,6 +13328,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_scope_statuses();
             if (checksum != 43573) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_scope_statuses` checksum `43573`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_service_account();
+            if (checksum != 47617) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_service_account` checksum `47617`, library returned `{checksum}`");
             }
         }
         {
@@ -21772,13 +21862,15 @@ internal interface ISyncService {
     /// <exception cref="CoreException"></exception>
     Task MoveToService();
     /// <exception cref="CoreException"></exception>
+    Task<OpenMoveInfo?> OpenMove();
+    /// <exception cref="CoreException"></exception>
     Task<MoveBackPlanInfo> PlanMoveToIcloud();
     /// <exception cref="CoreException"></exception>
     Task<MovePlanInfo> PlanMoveToService();
     /// <exception cref="CoreException"></exception>
     Task<PendingApprovalInfo[]> Approvals();
     /// <exception cref="CoreException"></exception>
-    Task ChooseForNewIdentity(NewIdentityChoiceTag @choice);
+    Task ChooseForNewIdentity(NewIdentityChoiceTag @choice, string @account);
     /// <exception cref="CoreException"></exception>
     Task<TeamConflictInfo[]> Conflicts();
     /// <exception cref="CoreException"></exception>
@@ -21791,10 +21883,13 @@ internal interface ISyncService {
     /// <exception cref="CoreException"></exception>
     Task<bool> LoadOlderHistory();
     /// <exception cref="CoreException"></exception>
+    Task<NewIdentityPlanInfo> PlanNewIdentity();
+    /// <exception cref="CoreException"></exception>
     Task RecordHostChanges(string @kind, string[] @written, string[] @deleted);
     /// <exception cref="CoreException"></exception>
     Task ResolveConflict(SyncRecordRef @record, string @digest, ConflictChoiceTag @keep);
     ScopeStatusInfo[] ScopeStatuses();
+    string? ServiceAccount();
     /// <exception cref="CoreException"></exception>
     Task SetCategories(SyncCategoriesArg @categories);
     void SetHistoryWindow(uint? @entries);
@@ -22788,6 +22883,28 @@ internal class SyncService : ISyncService, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
+    public async Task<OpenMoveInfo?> OpenMove() {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_open_move(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterOptionalTypeOpenMoveInfo.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
     public async Task<MoveBackPlanInfo> PlanMoveToIcloud() {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
@@ -22854,10 +22971,10 @@ internal class SyncService : ISyncService, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task ChooseForNewIdentity(NewIdentityChoiceTag @choice) {await _UniFFIAsync.UniffiRustCallAsync(
+    public async Task ChooseForNewIdentity(NewIdentityChoiceTag @choice, string @account) {await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_choose_for_new_identity(thisPtr, FfiConverterTypeNewIdentityChoiceTag.INSTANCE.Lower(@choice));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_choose_for_new_identity(thisPtr, FfiConverterTypeNewIdentityChoiceTag.INSTANCE.Lower(@choice), FfiConverterString.INSTANCE.Lower(@account));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
@@ -22982,6 +23099,28 @@ internal class SyncService : ISyncService, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
+    public async Task<NewIdentityPlanInfo> PlanNewIdentity() {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_plan_new_identity(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeNewIdentityPlanInfo.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
     public async Task RecordHostChanges(string @kind, string[] @written, string[] @deleted) {await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
@@ -23021,6 +23160,14 @@ internal class SyncService : ISyncService, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterSequenceTypeScopeStatusInfo.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_scope_statuses(thisPtr,  ref _status)
+)));
+    }
+    
+    
+    public string? ServiceAccount() {
+        return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_service_account(thisPtr,  ref _status)
 )));
     }
     
@@ -26135,7 +26282,9 @@ internal record DeviceSettingsRecord (
     CloudflareTunnelRecord? CloudflareTunnel, 
     CloudSqlProxyRecord? CloudSqlProxy, 
     SocksProxyRecord? SocksProxy, 
-    TunnelCommandRecord? TunnelCommand
+    TunnelCommandRecord? TunnelCommand, 
+    bool TlsModeUnsettled = false, 
+    bool SshProfileUnlinked = false
 ) {
 }
 
@@ -26151,7 +26300,9 @@ class FfiConverterTypeDeviceSettingsRecord: FfiConverterRustBuffer<DeviceSetting
             CloudflareTunnel: FfiConverterOptionalTypeCloudflareTunnelRecord.INSTANCE.Read(stream),
             CloudSqlProxy: FfiConverterOptionalTypeCloudSqlProxyRecord.INSTANCE.Read(stream),
             SocksProxy: FfiConverterOptionalTypeSocksProxyRecord.INSTANCE.Read(stream),
-            TunnelCommand: FfiConverterOptionalTypeTunnelCommandRecord.INSTANCE.Read(stream)
+            TunnelCommand: FfiConverterOptionalTypeTunnelCommandRecord.INSTANCE.Read(stream),
+            TlsModeUnsettled: FfiConverterBoolean.INSTANCE.Read(stream),
+            SshProfileUnlinked: FfiConverterBoolean.INSTANCE.Read(stream)
         );
     }
 
@@ -26164,7 +26315,9 @@ class FfiConverterTypeDeviceSettingsRecord: FfiConverterRustBuffer<DeviceSetting
             + FfiConverterOptionalTypeCloudflareTunnelRecord.INSTANCE.AllocationSize(value.CloudflareTunnel)
             + FfiConverterOptionalTypeCloudSqlProxyRecord.INSTANCE.AllocationSize(value.CloudSqlProxy)
             + FfiConverterOptionalTypeSocksProxyRecord.INSTANCE.AllocationSize(value.SocksProxy)
-            + FfiConverterOptionalTypeTunnelCommandRecord.INSTANCE.AllocationSize(value.TunnelCommand);
+            + FfiConverterOptionalTypeTunnelCommandRecord.INSTANCE.AllocationSize(value.TunnelCommand)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.TlsModeUnsettled)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.SshProfileUnlinked);
     }
 
     public override void Write(DeviceSettingsRecord value, BigEndianStream stream) {
@@ -26176,6 +26329,8 @@ class FfiConverterTypeDeviceSettingsRecord: FfiConverterRustBuffer<DeviceSetting
             FfiConverterOptionalTypeCloudSqlProxyRecord.INSTANCE.Write(value.CloudSqlProxy, stream);
             FfiConverterOptionalTypeSocksProxyRecord.INSTANCE.Write(value.SocksProxy, stream);
             FfiConverterOptionalTypeTunnelCommandRecord.INSTANCE.Write(value.TunnelCommand, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.TlsModeUnsettled, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.SshProfileUnlinked, stream);
     }
 }
 
@@ -28744,6 +28899,36 @@ class FfiConverterTypeMovePlanInfo: FfiConverterRustBuffer<MovePlanInfo> {
 
 
 
+internal record NewIdentityPlanInfo (
+    ulong Unsent, 
+    string Account
+) {
+}
+
+class FfiConverterTypeNewIdentityPlanInfo: FfiConverterRustBuffer<NewIdentityPlanInfo> {
+    public static FfiConverterTypeNewIdentityPlanInfo INSTANCE = new FfiConverterTypeNewIdentityPlanInfo();
+
+    public override NewIdentityPlanInfo Read(BigEndianStream stream) {
+        return new NewIdentityPlanInfo(
+            Unsent: FfiConverterUInt64.INSTANCE.Read(stream),
+            Account: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(NewIdentityPlanInfo value) {
+        return 0
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Unsent)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Account);
+    }
+
+    public override void Write(NewIdentityPlanInfo value, BigEndianStream stream) {
+            FfiConverterUInt64.INSTANCE.Write(value.Unsent, stream);
+            FfiConverterString.INSTANCE.Write(value.Account, stream);
+    }
+}
+
+
+
 /// <param name="ParentTable">
 /// The table a trigger fires on.
 /// </param>
@@ -28817,6 +29002,36 @@ class FfiConverterTypeObjectSource: FfiConverterRustBuffer<ObjectSource> {
             FfiConverterString.INSTANCE.Write(value.Sql, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Database, stream);
             FfiConverterBoolean.INSTANCE.Write(value.OpensInEditor, stream);
+    }
+}
+
+
+
+internal record OpenMoveInfo (
+    SyncProviderTag Target, 
+    bool Done
+) {
+}
+
+class FfiConverterTypeOpenMoveInfo: FfiConverterRustBuffer<OpenMoveInfo> {
+    public static FfiConverterTypeOpenMoveInfo INSTANCE = new FfiConverterTypeOpenMoveInfo();
+
+    public override OpenMoveInfo Read(BigEndianStream stream) {
+        return new OpenMoveInfo(
+            Target: FfiConverterTypeSyncProviderTag.INSTANCE.Read(stream),
+            Done: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(OpenMoveInfo value) {
+        return 0
+            + FfiConverterTypeSyncProviderTag.INSTANCE.AllocationSize(value.Target)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Done);
+    }
+
+    public override void Write(OpenMoveInfo value, BigEndianStream stream) {
+            FfiConverterTypeSyncProviderTag.INSTANCE.Write(value.Target, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Done, stream);
     }
 }
 
@@ -31355,7 +31570,9 @@ internal record SyncConfig (
     SyncPlatformTag Platform, 
     SyncProviderTag Provider, 
     SyncCategoriesArg Categories, 
-    string? IcloudAccount = null
+    string? IcloudAccount = null, 
+    string? ServiceAccount = null, 
+    string? RoutePublisher = null
 ) {
 }
 
@@ -31367,7 +31584,9 @@ class FfiConverterTypeSyncConfig: FfiConverterRustBuffer<SyncConfig> {
             Platform: FfiConverterTypeSyncPlatformTag.INSTANCE.Read(stream),
             Provider: FfiConverterTypeSyncProviderTag.INSTANCE.Read(stream),
             Categories: FfiConverterTypeSyncCategoriesArg.INSTANCE.Read(stream),
-            IcloudAccount: FfiConverterOptionalString.INSTANCE.Read(stream)
+            IcloudAccount: FfiConverterOptionalString.INSTANCE.Read(stream),
+            ServiceAccount: FfiConverterOptionalString.INSTANCE.Read(stream),
+            RoutePublisher: FfiConverterOptionalString.INSTANCE.Read(stream)
         );
     }
 
@@ -31376,7 +31595,9 @@ class FfiConverterTypeSyncConfig: FfiConverterRustBuffer<SyncConfig> {
             + FfiConverterTypeSyncPlatformTag.INSTANCE.AllocationSize(value.Platform)
             + FfiConverterTypeSyncProviderTag.INSTANCE.AllocationSize(value.Provider)
             + FfiConverterTypeSyncCategoriesArg.INSTANCE.AllocationSize(value.Categories)
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.IcloudAccount);
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.IcloudAccount)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ServiceAccount)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.RoutePublisher);
     }
 
     public override void Write(SyncConfig value, BigEndianStream stream) {
@@ -31384,6 +31605,8 @@ class FfiConverterTypeSyncConfig: FfiConverterRustBuffer<SyncConfig> {
             FfiConverterTypeSyncProviderTag.INSTANCE.Write(value.Provider, stream);
             FfiConverterTypeSyncCategoriesArg.INSTANCE.Write(value.Categories, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.IcloudAccount, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.ServiceAccount, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.RoutePublisher, stream);
     }
 }
 
@@ -44185,6 +44408,37 @@ class FfiConverterOptionalTypeObjectSource: FfiConverterRustBuffer<ObjectSource?
         } else {
             stream.WriteByte(1);
             FfiConverterTypeObjectSource.INSTANCE.Write((ObjectSource)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeOpenMoveInfo: FfiConverterRustBuffer<OpenMoveInfo?> {
+    public static FfiConverterOptionalTypeOpenMoveInfo INSTANCE = new FfiConverterOptionalTypeOpenMoveInfo();
+
+    public override OpenMoveInfo? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeOpenMoveInfo.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(OpenMoveInfo? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeOpenMoveInfo.INSTANCE.AllocationSize((OpenMoveInfo)value);
+        }
+    }
+
+    public override void Write(OpenMoveInfo? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeOpenMoveInfo.INSTANCE.Write((OpenMoveInfo)value, stream);
         }
     }
 }
