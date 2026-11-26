@@ -113,8 +113,6 @@ pub struct SyncService {
     pub(crate) service: Arc<ServiceSlot>,
     // This Core's connections, which name what a removed party could read.
     pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
-    #[expect(dead_code, reason = "no engine pass writes the downgrade mirror yet")]
-    pub(crate) legacy_mirror: Option<Arc<dyn tablepro_sync::api::LegacyMirror>>,
     pub(crate) _forward: AbortOnDropHandle<()>,
 }
 
@@ -580,6 +578,16 @@ impl SyncService {
                     .collect()
             },
         )
+    }
+
+    // The app awaits it as it quits: it returns once every write the app reported so far has marked the Swift sync
+    // metadata the previous stable reads, and fails while the app refuses a mark (core ADR 0054, Downgrade mirror).
+    pub async fn flush_legacy_marks(&self) -> Result<(), CoreError> {
+        let Ok(engine) = &self.icloud else {
+            return Ok(());
+        };
+        let sync = Arc::clone(&engine.sync);
+        on_runtime(&self.tasks, async move { Ok(sync.flush_legacy_marks().await?) }).await
     }
 
     // The iCloud account whose state file the device uses now, for the app to keep and pass back as

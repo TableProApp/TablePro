@@ -13,8 +13,8 @@ use tablepro_sync::api::control::{SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
 use tablepro_sync::api::{
-    CloudKitTransport, DeviceRowId, DeviceStoreError, HostDeviceStore, HostSettings, RecordAdapter, ServiceTransport,
-    StateError, StateFiles, TransportError,
+    CloudKitTransport, DeviceRowId, DeviceStoreError, HostDeviceStore, HostSettings, LegacyMirror, RecordAdapter,
+    ServiceTransport, StateError, StateFiles, TransportError,
 };
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync};
@@ -101,11 +101,12 @@ impl IcloudEngine {
         transport: Arc<dyn CloudKitTransport>,
         categories: &SyncCategories,
         last_account: Option<String>,
+        legacy_mirror: Option<Arc<dyn LegacyMirror>>,
     ) -> Self {
         let wake = Wake::new();
         let journal = Journal::new(wake.clone());
         let stop = StopSignal::new();
-        let sync = Arc::new(CloudKitSync::new(CloudKitParts {
+        let sync = CloudKitSync::new(CloudKitParts {
             transport,
             files: Arc::clone(&hosts.files),
             adapters: hosts.adapters(),
@@ -115,7 +116,13 @@ impl IcloudEngine {
             journal: journal.clone(),
             events: Some(Arc::clone(&hosts.events)),
             last_account,
-        }));
+        });
+        // While the previous stable still runs the Swift engine, the Mac writes what that build reads (0054,
+        // Downgrade mirror).
+        let sync = Arc::new(match legacy_mirror {
+            Some(mirror) => sync.with_legacy_mirror(mirror),
+            None => sync,
+        });
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
             wake,

@@ -544,3 +544,37 @@ fn a_credential_to_rotate_names_its_connection_while_the_store_holds_it() {
     assert_eq!((other.connection.clone(), other.connection_name.clone()), (None, None));
     assert_eq!(other.parent_kind, "ssh_profile");
 }
+
+// An edit the app reported just before it quits reaches the Swift metadata before the quit goes on, and a mark the app
+// refused is the quit call's failure.
+#[tokio::test]
+async fn the_quit_call_waits_for_the_downgrade_marks_and_says_when_one_failed() {
+    let tasks = runtime::tasks().unwrap();
+    let mirror = Arc::new(tablepro_sync_testing::FakeLegacyMirror::new());
+    let opened = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::Icloud),
+        cloudkit: Some(Arc::new(FakeCloudKit::signed_in("_a")) as Arc<dyn tablepro_sync::api::CloudKitTransport>),
+        legacy_mirror: Some(mirror.clone() as Arc<dyn tablepro_sync::api::LegacyMirror>),
+        ..parts
+    })
+    .await;
+    let id = "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_owned();
+
+    opened
+        .service
+        .record_host_changes("connection".to_owned(), vec![id.clone()], Vec::new())
+        .await
+        .unwrap();
+    opened.service.flush_legacy_marks().await.unwrap();
+    let marked = mirror.marks();
+    mirror.fail_marks(1);
+    opened
+        .service
+        .record_host_changes("connection".to_owned(), Vec::new(), vec![id])
+        .await
+        .unwrap();
+    let refused = opened.service.flush_legacy_marks().await;
+
+    assert!(marked >= 1, "no mark reached the Swift metadata");
+    assert!(refused.is_err(), "{refused:?}");
+}

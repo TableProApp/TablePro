@@ -148,6 +148,7 @@ impl SyncService {
                 transport,
                 categories,
                 parts.config.icloud_account.clone(),
+                parts.legacy_mirror,
             )),
             (SyncProviderTag::Icloud, None, _, _) => Err(SyncError::NotAllowed {
                 what: "sync with iCloud without a CloudKit transport",
@@ -185,7 +186,6 @@ impl SyncService {
             icloud,
             service: Arc::new(ServiceSlot::new(first, restart, kept)),
             connections: parts.connections,
-            legacy_mirror: parts.legacy_mirror,
             _forward: forwarding,
         })
     }
