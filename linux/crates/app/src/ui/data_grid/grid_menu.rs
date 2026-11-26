@@ -182,9 +182,7 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -
     menu.append_section(None, &column_section(sorts, wraps));
     let export = item(&gettext("E_xport…"), "grid.export");
     // The window's Export Results key reaches the grid of the tab in front.
-    if let Some(key) = crate::application::triggers_for("win.export-results").first() {
-        export.set_attribute_value("accel", Some(&key.to_variant()));
-    }
+    crate::application::keymap::show_key_of(&export, "win.export-results");
     let rows = section([export]);
     if config.as_ref().is_some_and(|config| config.share) {
         rows.append_item(&item(&gettext("_Share Result…"), "grid.share"));
@@ -272,6 +270,7 @@ pub fn header_menu(column: &GridColumn, sorting: GridSorting, wraps: bool) -> gi
     if wraps {
         menu.append_section(None, &wrap_section());
     }
+    crate::application::keymap::follow_menu(&menu);
     menu
 }
 
@@ -280,15 +279,14 @@ pub fn header_menu(column: &GridColumn, sorting: GridSorting, wraps: bool) -> gi
 /// GtkListBase's `list.select-all`, out of a header menu's reach.
 pub fn row_numbers_header_menu(wraps: bool) -> gio::Menu {
     let select_all = item(&gettext("Select _All Rows"), "grid.select-all");
-    if let Some(key) = crate::application::triggers_for("list.select-all").first() {
-        select_all.set_attribute_value("accel", Some(&key.to_variant()));
-    }
+    crate::application::keymap::show_key_of(&select_all, "list.select-all");
     let menu = gio::Menu::new();
     menu.append_section(None, &section([select_all]));
     menu.append_section(None, &section([item(&gettext("Col_umns…"), "grid.columns")]));
     if wraps {
         menu.append_section(None, &wrap_section());
     }
+    crate::application::keymap::follow_menu(&menu);
     menu
 }
 

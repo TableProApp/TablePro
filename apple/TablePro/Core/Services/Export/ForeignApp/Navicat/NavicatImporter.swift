@@ -26,6 +26,9 @@ struct NavicatImporter: ForeignAppImporter {
 
     func isAvailable() -> Bool { true }
 
+    // Navicat's own store is never read; the user picks an export file.
+    func hasDataAtDefaultLocation() -> Bool { false }
+
     mutating func setSelectedFile(_ url: URL) {
         ncxFileURL = url
     }
@@ -34,8 +37,13 @@ struct NavicatImporter: ForeignAppImporter {
         .unavailable(reason: String(localized: "Navicat's export file has no saved queries."))
     }
 
-    func inventory() -> ForeignAppInventory {
-        ForeignAppInventory(connections: (try? loadConnectionElements())?.count ?? 0, savedQueries: 0)
+    func inventory() throws -> ForeignAppInventory {
+        guard let ncxFileURL else { return .empty }
+        do {
+            return ForeignAppInventory(connections: try loadConnectionElements().count, savedQueries: 0)
+        } catch {
+            throw ForeignAppImportError.unreadableFile(ncxFileURL)
+        }
     }
 
     func collect(_ request: ForeignImportRequest) throws -> CollectedImport {

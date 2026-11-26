@@ -24,7 +24,7 @@ impl ConnectionGroupName {
     }
 
     // A blank name means no group.
-    pub(crate) fn from_stored(value: &str) -> Option<Self> {
+    pub fn from_stored(value: &str) -> Option<Self> {
         Self::new(&name_rules::cleaned(value)).ok()
     }
 

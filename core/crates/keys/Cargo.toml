@@ -1,0 +1,28 @@
+[package]
+name = "tablepro-keys"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Every primitive but HPKE (ADR 0056, Libraries).
+aws-lc-rs.workspace = true
+base64.workspace = true
+# HPKE only: crypto::aws_lc_rs::hpke, on the same provider.
+rustls.workspace = true
+secrecy.workspace = true
+thiserror.workspace = true
+url.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+hex.workspace = true
+proptest.workspace = true
+# The strict JSON reader is checked against it.
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

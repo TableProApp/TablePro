@@ -69,7 +69,7 @@ public sealed partial class ShellTests
         int widened;
         using (var app = AppSession.Relaunch(folder, theme))
         {
-            app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+            app.OpenSampleFromHelp();
             var tree = app.Find("ObjectTree");
             app.FindByName("Track", tree);
             var before = tree.BoundingRectangle.Width;
@@ -203,7 +203,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         var tabs = app.Find("Tabs");
         bool Open() => tabs.FindFirstDescendant(condition => condition.ByName("Query 2")) is not null;
@@ -226,7 +226,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "BEGIN");
         app.Chord(() => app.TryFind("CommitButton") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
@@ -257,7 +257,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         var track = app.FindByName("Track", app.Find("ObjectTree"));
         app.Click(track, () => app.TryFind("NextPageButton") is { IsOffscreen: false });
         var status = app.Find("TableStatus");
@@ -295,7 +295,7 @@ public sealed partial class ShellTests
         var folder = AppSession.NewDataFolder(theme);
         using (var app = AppSession.Relaunch(folder, theme))
         {
-            app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+            app.OpenSampleFromHelp();
             var track = app.FindByName("Track", app.Find("ObjectTree"));
             app.Click(track, () => app.TryFind("NextPageButton") is { IsOffscreen: false });
             var status = app.Find("TableStatus");
@@ -348,7 +348,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.Find("HomeItem").AsListBoxItem().Select();
         var tree = app.Find("ConnectionTree");

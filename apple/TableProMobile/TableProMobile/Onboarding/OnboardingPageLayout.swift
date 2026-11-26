@@ -43,6 +43,38 @@ struct OnboardingPageLayout<Header: View, Content: View, Actions: View>: View {
     }
 }
 
+extension View {
+    func onboardingProminentButton() -> some View {
+        modifier(OnboardingProminentButton())
+    }
+}
+
+private struct OnboardingProminentButton: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .buttonStyle(.glassProminent)
+                .buttonSizing(.flexible)
+                .controlSize(.extraLarge)
+        } else {
+            content
+                .buttonStyle(FullWidthProminentButtonStyle())
+                .controlSize(.large)
+        }
+    }
+}
+
+// The bordered bezel sizes to its label, so the full width has to go on the label, not the button.
+private struct FullWidthProminentButtonStyle: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button(role: configuration.role, action: configuration.trigger) {
+            configuration.label
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+    }
+}
+
 struct OnboardingHeader: View {
     let title: LocalizedStringResource
     let message: LocalizedStringResource?

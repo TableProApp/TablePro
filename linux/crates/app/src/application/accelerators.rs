@@ -52,6 +52,16 @@ const fn local(
     }
 }
 
+// The dialog lists such a command only while a preset gives it a key, so the static file holds none.
+const fn keyless(scope: AcceleratorScope, action: &'static str) -> Accelerator {
+    Accelerator {
+        action,
+        triggers: &[],
+        scope,
+        listing: Unlisted,
+    }
+}
+
 const fn component(
     owner: ShortcutOwner,
     action: &'static str,
@@ -71,6 +81,8 @@ const fn component(
 /// Ctrl+H is find and replace in a text editor.
 pub const ACCELERATORS: &[Accelerator] = &[
     application("app.new-window", &["<Primary><Shift>n"], General),
+    // No key of its own; a shortcut preset may give it one.
+    keyless(Application, "win.new-connection"),
     application("app.preferences", &["<Primary>comma"], General),
     application("win.show-history", &["<Primary><Shift>h"], General),
     // Matches Open Quickly in the macOS app.
@@ -84,9 +96,8 @@ pub const ACCELERATORS: &[Accelerator] = &[
     application("win.show-sidebar", &["F9"], General),
     application("win.show-assistant", &["<Primary><Alt>a"], General),
     application("app.quit", &["<Primary>q"], General),
-    // AdwApplication adds the action and its accelerator once it finds
-    // shortcuts-dialog.ui under the resource base path.
-    stock("app.shortcuts", &["<Primary>question"], Listed(General)),
+    // The app's own, so the dialog shows the keys a preset moved.
+    application("app.shortcuts", &["<Primary>question"], General),
     stock("dialog.close", &["Escape"], Listed(General)),
     application("win.new-editor-tab", &["<Primary>t"], Tabs),
     application("win.close-current", &["<Primary>w"], Tabs),
@@ -234,6 +245,13 @@ pub const ACCELERATORS: &[Accelerator] = &[
         Listed(DataGrid),
     ),
     local(Grid, BUBBLE, "grid.insert-row", &["<Primary>n"], Listed(DataGrid)),
+    keyless(
+        Local {
+            owner: Grid,
+            phase: BUBBLE,
+        },
+        "grid.duplicate-rows",
+    ),
     local(Grid, BUBBLE, "grid.delete-rows", &["Delete"], Listed(DataGrid)),
     local(Grid, BUBBLE, "grid.copy", &["<Primary>c"], Listed(DataGrid)),
     local(Grid, BUBBLE, "grid.paste", &["<Primary>v"], Listed(DataGrid)),
@@ -286,6 +304,13 @@ pub const ACCELERATORS: &[Accelerator] = &[
         "editor.cancel",
         &["Escape"],
         Listed(ShortcutSection::SqlEditor),
+    ),
+    keyless(
+        Local {
+            owner: SqlEditor,
+            phase: CAPTURE,
+        },
+        "editor.commit",
     ),
     // GtkPaned's own binding, a signal rather than an action. Tab indents
     // in the editor and Ctrl+Tab switches tabs, so this is its way out.
@@ -535,33 +560,21 @@ pub const ACCELERATORS: &[Accelerator] = &[
 ];
 
 pub fn install_application_accelerators(app: &impl IsA<gtk::Application>) {
-    for entry in ACCELERATORS.iter().filter(|entry| entry.scope == Application) {
-        app.set_accels_for_action(entry.action, entry.triggers);
-    }
+    super::keymap::install_application_keys(app, &super::keymap::current());
 }
 
 /// The owner's Local entries, each through the action it names, so a
 /// disabled action lets its key go on.
 pub fn local_shortcut_controller(owner: ShortcutOwner) -> gtk::ShortcutController {
-    let controller = gtk::ShortcutController::new();
+    // Every controller of an owner reads one store, which a preset change splices.
+    let controller = gtk::ShortcutController::for_model(&super::keymap::owner_store(owner));
     controller.set_scope(gtk::ShortcutScope::Local);
     controller.set_name(Some(controller_name(owner)));
-    for entry in ACCELERATORS {
-        let Local { owner: of, phase } = entry.scope else {
-            continue;
-        };
-        if of != owner {
-            continue;
-        }
+    if let Some(phase) = ACCELERATORS.iter().find_map(|entry| match entry.scope {
+        Local { owner: of, phase } if of == owner => Some(phase),
+        _ => None,
+    }) {
         controller.set_propagation_phase(phase);
-        for trigger in entry.triggers {
-            if let Some(trigger) = shortcut_trigger(&[trigger]) {
-                controller.add_shortcut(gtk::Shortcut::new(
-                    Some(trigger),
-                    Some(gtk::NamedAction::new(entry.action)),
-                ));
-            }
-        }
     }
     controller
 }
@@ -592,17 +605,17 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
     }
 }
 
-pub fn triggers_for(action: &str) -> &'static [&'static str] {
-    ACCELERATORS
-        .iter()
-        .find(|entry| entry.action == action)
-        .map_or(&[], |entry| entry.triggers)
+// The keys in force: the default, or what the shortcut preset made of it.
+pub fn triggers_for(action: &str) -> Vec<String> {
+    super::keymap::current().triggers_for(action).to_vec()
 }
 
 /// The keys for a component's own controller, so what it binds is what
 /// the table lists.
 pub fn component_trigger(action: &str) -> Option<gtk::ShortcutTrigger> {
-    shortcut_trigger(triggers_for(action))
+    let triggers = triggers_for(action);
+    let accels: Vec<&str> = triggers.iter().map(String::as_str).collect();
+    shortcut_trigger(&accels)
 }
 
 /// For a component that reads its keys from an event controller.
@@ -620,18 +633,20 @@ pub fn component_matches(action: &str, keyval: gdk::Key, state: gdk::ModifierTyp
 /// controllers match it, layout and consumed Shift included. Escape and
 /// the other plain keys are Vim's.
 pub fn editor_kept_keys() -> Option<gtk::ShortcutTrigger> {
-    let accels: Vec<&str> = ACCELERATORS
+    let table = super::keymap::current();
+    let accels: Vec<&str> = table
+        .entries()
         .iter()
-        .filter(|entry| is_editors(entry))
-        .flat_map(|entry| entry.triggers.iter().copied())
+        .filter(|entry| is_editors(entry.scope))
+        .flat_map(|entry| entry.triggers.iter().map(String::as_str))
         .filter(|accel| parse(accel).is_some_and(|(_, mods)| mods.contains(gdk::ModifierType::CONTROL_MASK)))
         .collect();
     shortcut_trigger(&accels)
 }
 
-fn is_editors(entry: &Accelerator) -> bool {
+fn is_editors(scope: AcceleratorScope) -> bool {
     matches!(
-        entry.scope,
+        scope,
         Local {
             owner: SqlEditor | SqlEditorTab,
             ..
@@ -639,23 +654,16 @@ fn is_editors(entry: &Accelerator) -> bool {
     )
 }
 
-/// GtkPopoverMenu shows an application accelerator by itself; a Local or
-/// Component one has to be put on the item.
+// A menu holding the item shows the keys in force only through `keymap::follow_menu`, since GMenu copies the item in.
 pub fn menu_item(label: &str, detailed_action: &str) -> gio::MenuItem {
     let item = gio::MenuItem::new(Some(label), Some(detailed_action));
-    let shown = ACCELERATORS
-        .iter()
-        .find(|entry| entry.action == detailed_action && matches!(entry.scope, Local { .. } | Component(_)))
-        .and_then(|entry| entry.triggers.first());
-    if let Some(accel) = shown {
-        item.set_attribute_value("accel", Some(&accel.to_variant()));
-    }
+    super::keymap::show_own_key(&item, detailed_action);
     item
 }
 
 /// One trigger for all of `accels`, with the keypad twin of each key, as
 /// GTK's own classes bind them.
-fn shortcut_trigger(accels: &[&str]) -> Option<gtk::ShortcutTrigger> {
+pub(super) fn shortcut_trigger(accels: &[&str]) -> Option<gtk::ShortcutTrigger> {
     accels
         .iter()
         .filter_map(|accel| parse(accel))
@@ -720,10 +728,18 @@ mod tests {
         entry.scope == Application || entry.action == "app.shortcuts"
     }
 
+    // The commands a preset may give a key that TablePro gives none.
+    const KEYLESS: [&str; 3] = ["win.new-connection", "grid.duplicate-rows", "editor.commit"];
+
     #[gtk4::test]
     fn every_trigger_parses() {
         for entry in ACCELERATORS {
-            assert!(!entry.triggers.is_empty(), "{} has no keys", entry.action);
+            assert_eq!(
+                entry.triggers.is_empty(),
+                KEYLESS.contains(&entry.action),
+                "{} has no keys",
+                entry.action
+            );
             for accel in entry.triggers {
                 assert!(gtk::accelerator_parse(*accel).is_some(), "{accel} of {}", entry.action);
                 assert!(
@@ -956,7 +972,7 @@ mod tests {
             .collect();
         let owned: HashSet<Keystroke> = ACCELERATORS
             .iter()
-            .filter(|entry| is_editors(entry))
+            .filter(|entry| is_editors(entry.scope))
             .flat_map(|entry| entry.triggers.iter())
             .flat_map(|accel| keystrokes_with_twins(accel))
             .filter(|(_, mods)| mods.contains(gdk::ModifierType::CONTROL_MASK))
@@ -969,8 +985,10 @@ mod tests {
     fn shortcuts_dialog_matches_accelerator_table() {
         adw::init().expect("libadwaita initialises under the test backend");
         crate::register_test_resources();
-        let builder =
-            gtk::Builder::from_resource(&format!("{}/shortcuts-dialog.ui", crate::config::RESOURCE_BASE_PATH));
+        let builder = gtk::Builder::from_resource(&format!(
+            "{}/builder/shortcuts-dialog.ui",
+            crate::config::RESOURCE_BASE_PATH
+        ));
         let sections = [
             (ShortcutSection::General, "section-general"),
             (ShortcutSection::Tabs, "section-tabs"),

@@ -195,7 +195,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 By hand, on a Mac with the team's signing identity.
 
 1. A PR raises `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `Configs/Version-iOS.xcconfig`. The build goes up on every upload.
-2. `apple/scripts/download-libs.sh && apple/scripts/generate-project.sh ios`, then archive the `TableProMobile` scheme for Any iOS Device in Xcode. `Configs/Secrets.xcconfig` sets `POSTHOG_PROJECT_KEY` to the repository secret of that name; without it the build sends no usage data.
+2. `apple/scripts/download-libs.sh && apple/scripts/build-core.sh ios && apple/scripts/generate-project.sh ios`, then archive the `TableProMobile` scheme for Any iOS Device in Xcode. `Configs/Secrets.xcconfig` sets `POSTHOG_PROJECT_KEY` to the repository secret of that name; without it the build sends no usage data.
 3. Organizer: Distribute App to App Store Connect. App Privacy in App Store Connect lists the data types `TableProMobile/TableProMobile/PrivacyInfo.xcprivacy` declares.
 4. TestFlight: test with internal testers.
 5. Submit for App Store review, and release once approved.

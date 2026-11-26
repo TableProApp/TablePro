@@ -133,6 +133,13 @@ impl PickerPage {
         self.imp().search_entry.get()
     }
 
+    // The text goes with the bar, so the list shows every connection again.
+    pub fn end_search(&self) {
+        let imp = self.imp();
+        imp.search_bar.set_search_mode(false);
+        imp.search_entry.set_text("");
+    }
+
     #[cfg(test)]
     pub fn search_bar(&self) -> gtk::SearchBar {
         self.imp().search_bar.get()

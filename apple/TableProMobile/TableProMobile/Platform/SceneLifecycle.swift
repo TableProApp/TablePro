@@ -106,6 +106,13 @@ final class TableProSceneDelegate: NSObject, UIWindowSceneDelegate, ObservableOb
         onDisconnect = nil
     }
 
+    // The window a sheet UIKit presents, such as the sign-in page, goes over: this scene's, never the lock cover. On an
+    // iPad two scenes can both be in front.
+    var presentationWindow: UIWindow? {
+        let windows = windowScene?.windows.filter { $0 !== coverWindow && !$0.isHidden } ?? []
+        return windows.first { $0.isKeyWindow } ?? windows.first
+    }
+
     func showCover(_ mode: LockCoverMode?, lockState: AppLockState) {
         guard let mode else {
             hideCover()

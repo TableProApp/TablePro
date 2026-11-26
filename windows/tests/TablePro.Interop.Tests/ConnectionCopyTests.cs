@@ -61,4 +61,29 @@ public sealed class ConnectionCopyTests : IDisposable
         var unnamed = await Assert.ThrowsAsync<TableProException>(() => library.DuplicateAsync(Guid.NewGuid(), " "));
         Assert.Equal("library.name_required", unnamed.Error.Code);
     }
+
+    [Fact]
+    public async Task AnImportedFileGivesTheIdsItWroteInFileOrder()
+    {
+        var library = _core.Library;
+        var shop = await library.SaveAsync(Network("Shop"), ConnectionSecrets.None);
+        var warehouse = await library.SaveAsync(Network("Warehouse"), ConnectionSecrets.None);
+        var file = Path.Combine(_directory, "connections.json");
+        await library.ExportAsync(file);
+        var empty = Path.Combine(_directory, "empty.json");
+        await File.WriteAllTextAsync(empty, """{"version": 1, "connections": []}""", TestContext.Current.CancellationToken);
+        using var elsewhere = TableProCore.Create(new HostConfiguration("test", Path.Combine(_directory, "two")), new MemorySecretStore());
+        var mine = await elsewhere.Library.SaveAsync(Network("Mine"), ConnectionSecrets.None);
+
+        var first = await elsewhere.Library.ImportAsync(file);
+        var again = await elsewhere.Library.ImportAsync(file);
+        var none = await elsewhere.Library.ImportAsync(empty);
+
+        Assert.Equal((2, 0), (first.Added, first.Updated));
+        Assert.Equal([shop.Id!.Value, warehouse.Id!.Value], first.ConnectionIds);
+        Assert.Equal((0, 2), (again.Added, again.Updated));
+        Assert.Equal(first.ConnectionIds, again.ConnectionIds);
+        Assert.DoesNotContain(mine.Id!.Value, first.ConnectionIds);
+        Assert.Empty(none.ConnectionIds);
+    }
 }

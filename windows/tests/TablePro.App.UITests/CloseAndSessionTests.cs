@@ -16,7 +16,7 @@ public sealed partial class ShellTests
         var session = Path.Combine(folder, "session.json");
         using (var app = AppSession.Relaunch(folder, theme))
         {
-            app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+            app.OpenSampleFromHelp();
             app.FindByName("Track", app.Find("ObjectTree"));
             app.TypeInto("Query 1", Text);
 
@@ -42,7 +42,7 @@ public sealed partial class ShellTests
         var session = Path.Combine(folder, "session.json");
         using (var app = AppSession.Relaunch(folder, theme))
         {
-            app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+            app.OpenSampleFromHelp();
             app.Click(app.FindByName("Artist", app.Find("ObjectTree")), () => app.TryFind("TableStatus") is not null);
             AppSession.WaitForText(
                 app.Find("TableStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal));
@@ -61,7 +61,7 @@ public sealed partial class ShellTests
 
         File.WriteAllText(
             Path.Combine(folder, "settings.json"),
-            $$"""{ "theme": "{{theme}}", "reopenSession": false }""");
+            $$"""{ "theme": "{{theme}}", "setupGuideSeen": true, "reopenSession": false }""");
         using var again = AppSession.Relaunch(folder, theme);
         var table = again.Find("ResultsGrid");
         Assert.Equal(Renamed, again.WaitForCell(table, 0, 1, value => value == Renamed));
@@ -78,7 +78,7 @@ public sealed partial class ShellTests
     {
         const string Text = "SELECT 7 AS from_the_closed_window";
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         var tabs = app.Find("Tabs");
         bool Open() => tabs.FindFirstDescendant(condition => condition.ByName("Query 2")) is not null;
@@ -128,7 +128,7 @@ public sealed partial class ShellTests
     public void ClosingWhileAQueryRunsAsksFirstThenStopsIt(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", Endless);
         app.Chord(() => app.Find("StopButton").IsEnabled, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);

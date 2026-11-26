@@ -183,3 +183,35 @@ async fn favorites_schema_upgrade_preserves_filing_and_metadata_and_normalizes_p
     assert_eq!(original_order, 8);
     copy.close().await.expect("close copy");
 }
+
+#[tokio::test]
+async fn store_identity_and_table_folders_upgrade_keeps_every_row_and_starts_counting() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let (paths, pool) = old_database(&root, 3).await;
+    let connection = Uuid::new_v4();
+    let other = Uuid::new_v4();
+    insert_queries(&pool, connection, other).await;
+    insert_favorites(&pool, connection, other).await;
+    pool.close().await;
+
+    let history = QueryHistory::open(&paths).await.expect("upgrade");
+    let stamped = history.identity().await.expect("identity");
+    history
+        .favourites()
+        .set_database(connection, "shop", crate::favourites::DatabaseEnvironment::Testing)
+        .await
+        .expect("a write");
+
+    assert_eq!(stamped.sequence, 0);
+    assert_eq!(history.identity().await.expect("identity").sequence, 1);
+    assert_eq!(history.saved_queries().list(None).await.expect("queries").len(), 3);
+    assert!(
+        history
+            .table_folders()
+            .folders(connection)
+            .await
+            .expect("folders")
+            .is_empty()
+    );
+    assert_copy_kept(&paths, 3).await.close().await.expect("close copy");
+}

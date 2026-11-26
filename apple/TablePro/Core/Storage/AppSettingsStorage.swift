@@ -25,7 +25,9 @@ final class AppSettingsStorage: Sendable {
         static let mcp = "com.TablePro.settings.mcp"
         static let notifications = "com.TablePro.settings.notifications"
         static let typography = "com.TablePro.settings.typography"
+        // Builds before the setup guide wrote it when their welcome sheet closed; read only as proof of an earlier launch.
         static let hasSeenWelcomeSheet = "com.TablePro.settings.hasCompletedOnboarding"
+        static let setupGuideSeen = "com.TablePro.settings.setupGuideSeen"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
         // One height per editor kind, before a height belonged to its column.
         static let retiredFieldHeights = [
@@ -253,12 +255,12 @@ final class AppSettingsStorage: Sendable {
         defaults.string(forKey: "com.TablePro.lastSelectedSchema.\(connectionId)")
     }
 
-    func hasSeenWelcomeSheet() -> Bool {
-        defaults.bool(forKey: Keys.hasSeenWelcomeSheet)
+    func hasSeenSetupGuide() -> Bool {
+        defaults.bool(forKey: Keys.setupGuideSeen)
     }
 
-    func markWelcomeSheetSeen() {
-        defaults.set(true, forKey: Keys.hasSeenWelcomeSheet)
+    func markSetupGuideSeen() {
+        defaults.set(true, forKey: Keys.setupGuideSeen)
     }
 
     func resetToDefaults() {

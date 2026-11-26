@@ -13,7 +13,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", TwoSelects);
         app.Chord(
@@ -34,7 +34,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", TwoSelects);
         app.Chord(
@@ -59,10 +59,10 @@ public sealed partial class ShellTests
         var folder = AppSession.NewDataFolder(theme);
         File.WriteAllText(
             Path.Combine(folder, "settings.json"),
-            $$"""{ "theme": "{{theme}}", "resultSetsKeptPerRun": 2 }""");
+            $$"""{ "theme": "{{theme}}", "setupGuideSeen": true, "resultSetsKeptPerRun": 2 }""");
         using var app = AppSession.Relaunch(folder, theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "SELECT 1 AS a; SELECT 2 AS b; SELECT 3 AS c; SELECT 4 AS d");
         app.Chord(
