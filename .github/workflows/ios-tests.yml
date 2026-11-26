@@ -18,7 +18,8 @@ jobs:
   ios:
     name: iOS and Package Tests
     runs-on: xcode-27
-    timeout-minutes: 50
+    # The core's release build takes part of it when its cache is cold.
+    timeout-minutes: 70
     env:
       DESTINATION: platform=iOS Simulator,name=iPhone 18 Pro
     defaults:
@@ -37,6 +38,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+          targets: aarch64-apple-ios-sim
+
+      # Saved from main only, like core.yml's: a pull request's cache serves that pull request alone.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: apple-core-ios-simulator
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The app links the core for the TablePro account, and SwiftPM resolves nothing until its binary target exists.
+      - name: Build the shared core
+        run: scripts/build-core.sh ios-simulator
 
       - name: Generate the Xcode project
         run: scripts/generate-project.sh ios

@@ -771,9 +771,9 @@
   textFile: texts/tablepro-core-crates.txt
   source: manual
   patched: false
-  platforms: [macos]
-  notes: The crates the core library links (scripts/build-core.sh, no engines). scripts/update-core-licenses.sh writes
-    the text from Cargo.lock with cargo-about, and core.yml fails while it is out of date.
+  platforms: [macos, ios]
+  notes: The crates the core library links in both apps (scripts/build-core.sh, no engines). scripts/update-core-licenses.sh
+    writes the text from Cargo.lock with cargo-about, and core.yml fails while it is out of date.
 - id: swift-argument-parser
   name: swift-argument-parser
   version: 1.8.2

@@ -68,7 +68,7 @@ node "$PROBE/seed-library.cjs" "$WORK/library.json" "$DOMAIN" || cannot_run "see
 
 mkdir -p "$WORK/Sources/Probe"
 SOURCES="$WORK/Sources/Probe"
-for source in "$ROOT"/TablePro/Core/Services/Account/*.swift; do
+for source in "$ROOT"/TablePro/Core/Services/Account/*.swift "$ROOT"/TablePro/Core/Services/Account/Shared/*.swift; do
     case "$(basename "$source")" in
         AccountServices+Live.swift) continue ;;
     esac
