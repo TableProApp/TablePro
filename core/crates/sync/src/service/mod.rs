@@ -96,6 +96,8 @@ pub struct ServiceSync {
     policy_forbids: std::sync::atomic::AtomicBool,
     // A restored or replaced file's move row was dropped, so the rows this engine writes since are its own.
     stale_move_dropped: std::sync::atomic::AtomicBool,
+    // The person chose for the account this engine follows another one with.
+    chosen: std::sync::atomic::AtomicBool,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -234,6 +236,7 @@ impl ServiceSync {
             queued: Mutex::default(),
             policy_forbids: std::sync::atomic::AtomicBool::new(false),
             stale_move_dropped: std::sync::atomic::AtomicBool::new(false),
+            chosen: std::sync::atomic::AtomicBool::new(false),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),

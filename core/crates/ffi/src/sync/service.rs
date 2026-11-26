@@ -482,11 +482,17 @@ impl SyncService {
         account: String,
     ) -> Result<(), CoreError> {
         let (slot, personal) = (Arc::clone(&self.service), self.control_now());
+        let last = (self.files.clone(), self.config.service_account.as_deref().and_then(super::engines::identity_of));
         on_runtime(&self.tasks, async move {
             if let Ok(engine) = slot.engine().await
                 && engine.sync.plan_new_identity().await.is_ok()
             {
-                return Ok(engine.sync.choose_for_new_identity(choice.into(), account).await?);
+                engine.sync.choose_for_new_identity(choice.into(), account).await?;
+                // Chosen: the last sign-in's file has told what it held and goes, as iCloud's does.
+                if let (Some(files), Some(previous)) = last {
+                    files.delete(previous).await.map_err(SyncError::from)?;
+                }
+                return Ok(());
             }
             Ok(personal?.choose_for_new_identity(choice.into(), account).await?)
         })
@@ -628,8 +634,9 @@ impl SyncService {
     // `SyncConfig::service_account` at the next launch.
     pub fn service_account(&self) -> Option<String> {
         match self.service.now() {
-            Ok(engine) => super::engines::identity_text(engine.sync.identity()),
-            Err(_) => self.config.service_account.clone(),
+            // Until the person chooses, the app keeps the sign-in this one follows, so the next open asks again.
+            Ok(engine) if !engine.sync.awaits_account_choice() => super::engines::identity_text(engine.sync.identity()),
+            Ok(_) | Err(_) => self.config.service_account.clone(),
         }
     }
 }

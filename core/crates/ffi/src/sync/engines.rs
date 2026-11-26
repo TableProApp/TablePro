@@ -315,11 +315,10 @@ impl ServiceEngine {
             mode,
             follows,
         }));
-        // The new file holds the wait for the person's choice before the last one goes, so a quit in between asks
-        // again rather than sending the last account's data unasked.
-        if let Some(previous) = previous {
+        // The wait comes from the sign-in the app kept, outside the file, on every open until the person chooses, so a
+        // file put back from a backup cannot lose it. The last file stays until then, for the count.
+        if previous.is_some() {
             sync.hold_for_account_choice().await?;
-            hosts.files.delete(previous).await?;
         }
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,

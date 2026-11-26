@@ -155,8 +155,15 @@ impl ServiceSync {
                 txn.put(Row::Scope(ScopeRow { push_wait: None, ..row })).await?;
             }
             txn.commit().await?;
+            self.chosen.store(true, std::sync::atomic::Ordering::SeqCst);
         }
         self.run_pass(PassReason::Person).await.map(|_| ())
+    }
+
+    // This engine follows another account or server and the person has not chosen yet: the app keeps the last
+    // sign-in, so the next open asks again.
+    pub fn awaits_account_choice(&self) -> bool {
+        self.follows.is_some() && !self.chosen.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     async fn forget_own_scopes(&self) -> Result<(), SyncError> {

@@ -780,6 +780,17 @@ async fn another_account_on_tablepro_sync_waits_for_move_my_data_or_start_empty(
     let _ = same.service.sync_now(PassReasonTag::Person).await;
     let none = same.service.plan_new_identity().await.unwrap_err();
 
+    let kept_while_waiting = other.service.service_account();
+    other
+        .service
+        .choose_for_new_identity(super::service::NewIdentityChoiceTag::MoveMyData, plan.account.clone())
+        .await
+        .unwrap();
+    let kept_after = other.service.service_account();
+
     assert!(plan.account.ends_with(&other_account.to_wire()), "{plan:?}");
     assert_eq!(code(&none), "sync.not_allowed");
+    // Until the person chooses, the app keeps the sign-in the new one follows, so every open asks again.
+    assert_eq!(kept_while_waiting, Some(kept.clone()));
+    assert_ne!(kept_after, Some(kept));
 }
