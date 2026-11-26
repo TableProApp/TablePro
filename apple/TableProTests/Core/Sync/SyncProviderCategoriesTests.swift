@@ -31,4 +31,19 @@ struct SyncProviderCategoriesTests {
 
         #expect(SyncProviderCoordinator.categories(settings).offKinds == ["macos_settings"])
     }
+
+    @Test("Sync opened for TablePro Sync, iCloud off and passwords on, tells the engine envelopes sync, as a later change does")
+    func openOnTableProSyncCarriesPasswords() {
+        var settings = SyncSettings.default
+        settings.enabled = false
+        settings.syncPasswords = true
+        settings.syncTableFavorites = false
+
+        let config = SyncEngineHost.openConfig(provider: .tableproSync, settings: settings, icloudAccount: nil)
+
+        #expect(config.provider == .tableproSync)
+        #expect(config.categories.passwords)
+        #expect(config.categories == SyncProviderCoordinator.categories(settings))
+        #expect(config.categories.offKinds == ["favourite_table"])
+    }
 }

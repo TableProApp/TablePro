@@ -100,6 +100,20 @@ final class SyncEngineHost {
         }
     }
 
+    // The categories through the coordinator's one rule, so an open and a later change tell the engine the same.
+    nonisolated static func openConfig(
+        provider: SyncProviderTag,
+        settings: SyncSettings,
+        icloudAccount: String?
+    ) -> SyncConfig {
+        SyncConfig(
+            platform: .macos,
+            provider: provider,
+            categories: SyncProviderCoordinator.categories(settings),
+            icloudAccount: icloudAccount
+        )
+    }
+
     // No device store yet, which holds the state file's MAC key and anchor (core ADR 0054, Integrity and freshness):
     // until one lands, the core starts no iCloud engine and answers each call as unavailable.
     // The account is optional, since iCloud needs none (Providers).
@@ -121,10 +135,9 @@ final class SyncEngineHost {
                 let settings = AppSettingsStorage.shared.loadSync()
                 let account = await AccountServices.shared.syncAccount?.accountService()
                 return try await CoreStoreHost.shared.core().openSync(
-                    config: SyncConfig(
-                        platform: .macos,
+                    config: openConfig(
                         provider: provider,
-                        categories: SyncProviderCoordinator.categories(settings),
+                        settings: settings,
                         icloudAccount: defaults.string(forKey: icloudAccountKey)
                     ),
                     account: account,
