@@ -1,5 +1,7 @@
 use testcontainers::GenericImage;
 
+const DOCKER_HUB_MIRROR: &str = "TABLEPRO_TEST_DOCKER_HUB_MIRROR";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FixtureImage {
     pub name: &'static str,
@@ -7,6 +9,10 @@ pub struct FixtureImage {
 }
 
 impl FixtureImage {
+    pub const ALPINE: Self = Self {
+        name: "alpine",
+        tag: "3.22",
+    };
     pub const POSTGRES: Self = Self {
         name: "postgres",
         tag: "17-alpine",
@@ -121,6 +127,54 @@ impl FixtureImage {
     };
 
     pub fn generic(self) -> GenericImage {
-        GenericImage::new(self.name, self.tag)
+        GenericImage::new(self.pull_name(), self.tag.to_owned())
+    }
+
+    // Docker Hub's anonymous pull limit fails CI runs (linux/docs/testing.md, Docker or Podman).
+    pub fn pull_name(self) -> String {
+        self.name_through(&std::env::var(DOCKER_HUB_MIRROR).unwrap_or_default())
+    }
+
+    fn name_through(self, mirror: &str) -> String {
+        let mirror = mirror.trim_end_matches('/');
+        let first = self.name.split_once('/').map(|(first, _)| first);
+        // Docker's own rule for a first component that names a registry.
+        let own_registry = first.is_some_and(|first| first.contains(['.', ':']) || first == "localhost");
+        if mirror.is_empty() || own_registry {
+            self.name.to_owned()
+        } else if first.is_some() {
+            format!("{mirror}/{}", self.name)
+        } else {
+            format!("{mirror}/library/{}", self.name)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_mirror_stands_in_for_docker_hub_and_no_other_registry() {
+        let local = FixtureImage {
+            name: "localhost/tablepro",
+            tag: "dev",
+        };
+        let gcr = "mirror.gcr.io";
+        let cases = [
+            (FixtureImage::POSTGRES, "", "postgres"),
+            (FixtureImage::POSTGRES, gcr, "mirror.gcr.io/library/postgres"),
+            (
+                FixtureImage::POSTGRES,
+                "mirror.gcr.io/",
+                "mirror.gcr.io/library/postgres",
+            ),
+            (FixtureImage::OPENSSH, gcr, "mirror.gcr.io/linuxserver/openssh-server"),
+            (FixtureImage::MSSQL, gcr, "mcr.microsoft.com/mssql/server"),
+            (local, gcr, "localhost/tablepro"),
+        ];
+        for (image, mirror, expected) in cases {
+            assert_eq!(image.name_through(mirror), expected, "{image:?} through {mirror:?}");
+        }
     }
 }

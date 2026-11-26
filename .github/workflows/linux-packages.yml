@@ -107,7 +107,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
     steps:
       # Before the checkout: without git, actions/checkout downloads a
       # tarball, which leaves no .git for make-dist.sh to archive.
@@ -141,7 +141,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
     env:
       # Every Ubuntu series the PPA builds for.
       UBUNTU_SERIES: ${{ needs.matrix.outputs.ubuntu-series }}
@@ -227,7 +227,7 @@ jobs:
           if [ -z "$RELEASE_TAG" ]; then
             set -- "$@" linux/po/LINGUAS
           fi
-          docker run --rm -v "$PWD:$PWD" -w "$PWD" "ubuntu:$SERIES" \
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" "mirror.gcr.io/library/ubuntu:$SERIES" \
             linux/build-aux/packaging/smoke-test.sh "$@"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -266,7 +266,7 @@ jobs:
         run: |
           dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
           vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
-          docker run --rm --privileged -v "$PWD:$PWD" -w "$PWD" "fedora:$FEDORA" \
+          docker run --rm --privileged -v "$PWD:$PWD" -w "$PWD" "mirror.gcr.io/library/fedora:$FEDORA" \
             linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
       - name: Keep the RPM failure logs
         if: failure()
@@ -299,7 +299,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     container:
-      image: fedora:${{ matrix.fedora }}
+      image: mirror.gcr.io/library/fedora:${{ matrix.fedora }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -367,7 +367,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -405,7 +405,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     container:
-      image: ubuntu:${{ matrix.ubuntu }}
+      image: mirror.gcr.io/library/ubuntu:${{ matrix.ubuntu }}
       options: --privileged
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

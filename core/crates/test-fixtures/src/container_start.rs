@@ -9,10 +9,8 @@ use crate::FixtureError;
 const START_ATTEMPTS: u32 = 3;
 const PULL_RETRY_DELAY: Duration = Duration::from_secs(5);
 
-/// Starts the container `request` builds, building and starting it again
-/// when pulling its image failed. testcontainers pulls once, so a pull the
-/// registry cut short ("bytes remaining on stream") failed every test that
-/// needed the image. A request is consumed by its start, hence the builder.
+// testcontainers pulls once, so a pull the registry cut short ("bytes remaining on stream") failed every test that
+// needed the image. A request is consumed by its start, hence the builder.
 pub async fn start_container<I: Image>(
     request: impl Fn() -> ContainerRequest<I>,
 ) -> Result<ContainerAsync<I>, FixtureError> {
@@ -32,25 +30,25 @@ pub async fn start_container<I: Image>(
 mod tests {
     use std::time::Instant;
 
-    use testcontainers::GenericImage;
-
     use super::*;
+    use crate::FixtureImage;
 
     #[tokio::test]
     #[ignore = "requires docker"]
     async fn a_pull_that_keeps_failing_is_tried_three_times_and_reported() {
+        let image = FixtureImage {
+            name: "alpine",
+            tag: "tablepro-no-such-tag",
+        };
         let started = Instant::now();
 
-        let error = start_container(|| GenericImage::new("alpine", "tablepro-no-such-tag").into())
-            .await
-            .err()
-            .unwrap();
+        let error = start_container(|| image.generic().into()).await.err().unwrap();
 
         let FixtureError::Container(TestcontainersError::Client(ClientError::PullImage { descriptor, .. })) = &error
         else {
             panic!("unexpected error: {error}");
         };
-        assert_eq!(descriptor, "alpine:tablepro-no-such-tag");
+        assert_eq!(descriptor, &format!("{}:{}", image.pull_name(), image.tag));
         assert!(
             started.elapsed() >= PULL_RETRY_DELAY * (START_ATTEMPTS - 1),
             "took {:?}",
