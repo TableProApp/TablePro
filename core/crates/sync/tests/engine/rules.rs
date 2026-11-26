@@ -355,6 +355,48 @@ async fn a_deleted_local_only_connection_and_its_records_stay_on_the_server() {
     assert_eq!(mac.sync.status().queued_changes, 0);
 }
 
+// The Mac keeps its SSH and credential profiles in its own stores until they move into the core, so it opens the
+// engine with both kinds off: a profile its core store does not hold rests, and no deletion of one goes up.
+#[tokio::test]
+async fn a_mac_with_the_profile_kinds_off_sends_nothing_of_them() {
+    let server = FakeServer::new();
+    let web_ssh = MemoryAdapter::new(Kind::SshProfile, "web-library", StoreFile::new());
+    let web_credentials = MemoryAdapter::new(Kind::CredentialProfile, "web-library", StoreFile::new());
+    let web = DeviceBuilder::new(&server, "dev_web")
+        .adapter(ScopeName::Personal, Arc::clone(&web_ssh))
+        .adapter(ScopeName::Personal, Arc::clone(&web_credentials))
+        .build()
+        .await;
+    let mac_ssh = MemoryAdapter::new(Kind::SshProfile, "library", StoreFile::new());
+    let mac_credentials = MemoryAdapter::new(Kind::CredentialProfile, "library", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&mac_ssh))
+        .adapter(ScopeName::Personal, Arc::clone(&mac_credentials))
+        .build()
+        .await;
+    web_ssh.put(&id(1), json!({"name": "Bastion"}));
+    web_credentials.put(&id(2), json!({"name": "Ops", "username": "ops"}));
+    web.sync().await;
+    mac.sync().await;
+    mac.sync
+        .set_categories(SyncCategories {
+            off: vec![KindName::of(Kind::SshProfile), KindName::of(Kind::CredentialProfile)],
+            passwords: true,
+        })
+        .await
+        .unwrap();
+
+    mac_ssh.remove(&id(1));
+    mac_credentials.remove(&id(2));
+    mac_ssh.put(&id(3), json!({"name": "Only on the Mac"}));
+    let report = mac.sync().await;
+
+    assert_eq!(report.pushed, 0);
+    assert!(stored(&server, Kind::SshProfile.as_str(), &id(1)).is_some());
+    assert!(stored(&server, Kind::CredentialProfile.as_str(), &id(2)).is_some());
+    assert!(stored(&server, Kind::SshProfile.as_str(), &id(3)).is_none());
+}
+
 #[tokio::test]
 async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
     let server = FakeServer::new();
