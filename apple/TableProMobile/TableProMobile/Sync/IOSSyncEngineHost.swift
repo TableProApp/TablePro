@@ -76,8 +76,9 @@ final class IOSSyncEngineHost {
         onSignal?()
     }
 
-    // No device store and no settings host: iCloud on iOS carries no key state, and the iPhone keeps no synced
-    // settings of its own. The account is optional, since iCloud needs none (core ADR 0054, Providers).
+    // No settings host: the iPhone keeps no synced settings of its own. The device store holds each state file's MAC
+    // key and anchor in the app's own Keychain group, since no extension reads sync state. The account is optional,
+    // since iCloud needs none (core ADR 0054, Providers).
     static func live(
         core: MobileCoreHost,
         account: AccountModel,
@@ -91,6 +92,7 @@ final class IOSSyncEngineHost {
             ManagedAppConfiguration.current().allowsICloudSync
         }
         let mirror = LegacySyncMetadataMirror(metadata: metadata, recordCache: recordCache)
+        let deviceStore = KeychainDeviceStore(accessGroup: AccountKeychainItems.appAccessGroup)
         return IOSSyncEngineHost(
             transport: transport,
             keepICloudAccount: { kept in
@@ -109,7 +111,7 @@ final class IOSSyncEngineHost {
                     account: service,
                     cloudkit: checked,
                     settings: nil,
-                    deviceStore: nil,
+                    deviceStore: deviceStore,
                     legacyMirror: mirror,
                     listener: listener
                 )
