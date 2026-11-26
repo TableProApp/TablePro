@@ -103,6 +103,19 @@ fn held_deletion(key: &RecordKey) -> PulledRecord {
     }
 }
 
+fn base_fields(base: Option<&BaseRow>) -> Option<&Value> {
+    base.and_then(|base| base.fields.as_ref())
+}
+
+fn merged_fields(merged: &Merged) -> Option<&Value> {
+    match merged {
+        Merged::Record(fields)
+        | Merged::Contested { record: fields, .. }
+        | Merged::DeletionContested { kept: fields, .. } => Some(fields),
+        Merged::Deleted | Merged::Reseal => None,
+    }
+}
+
 // What the pulled copy settles of the device's marks on a copy an earlier build wrote.
 fn settled(kind: Kind, merged: Merged, server: &Value) -> Merged {
     match merged {
@@ -214,8 +227,16 @@ impl<'s, 'f> Settle<'s, 'f> {
         let merged = self
             .merged(copy.kind, &key, read.as_ref(), Some(&copy.fields), pull_wins)
             .await?;
-        let stored = read.as_ref().map(|record| &record.fields);
-        match approval::gate(&mut self.txn, &key, copy.kind, stored, merged).await? {
+        let base = self.base(&key).await?;
+        let held = record.as_ref().map(|record| {
+            unsettled::approval_view(
+                copy.kind,
+                &record.fields,
+                base_fields(base.as_ref()),
+                merged_fields(&merged),
+            )
+        });
+        match approval::gate(&mut self.txn, &key, copy.kind, held.as_ref(), merged).await? {
             Gated::Apply(merged) => {
                 let merged = settled(copy.kind, merged, &copy.fields);
                 self.settle_local(copy.kind, &key, record.as_ref(), merged);

@@ -442,3 +442,36 @@ async fn a_folder_no_store_can_hold_is_held_by_id_and_never_deleted() {
             .is_none()
     );
 }
+
+fn other_connection(safe_mode: &str) -> Value {
+    json!({"name": "Shop", "type": "PostgreSQL", "host": "db.internal", "port": 5432, "database": "shop",
+        "username": "app", "safe_mode_level": safe_mode})
+}
+
+#[tokio::test]
+async fn a_looser_level_pulled_over_one_a_newer_build_named_waits_for_the_person() {
+    let server = FakeServer::new();
+    let mac_library = Library::new().await;
+    let mac = mac_library.device(&server, "dev_mac").await;
+    let newer = Device::new(&server, "dev_newer").await;
+    let id = uuid_id(Uuid::from_u128(CONNECTION));
+    newer.connections.put(&id, other_connection("approveEach"));
+    newer.sync().await;
+    take_everything(&mac).await;
+    let enforced = mac_library.store.list_blocking().unwrap().connections[0].safe_mode;
+
+    newer.connections.put(&id, other_connection("silent"));
+    newer.sync().await;
+    mac.sync().await;
+
+    let waiting = mac.sync.approvals().await.unwrap();
+    assert_eq!(enforced, tablepro_core::SafeModeLevel::Alert);
+    assert_eq!(
+        mac_library.store.list_blocking().unwrap().connections[0].safe_mode,
+        tablepro_core::SafeModeLevel::Alert
+    );
+    assert!(
+        waiting.iter().any(|approval| approval.field == "/safe_mode_level"),
+        "{waiting:?}"
+    );
+}

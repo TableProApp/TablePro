@@ -102,6 +102,20 @@ pub fn read(kind: Kind, local: &Value, base: Option<&Value>) -> Value {
     read
 }
 
+// The store's copy the approval queue judges a merge against: a member that reads as the base's counts as the base's
+// value only where the merge kept the base's value, so nothing waits for a change nobody made. Where the server
+// changed it, the store's own value stands, so a value this build reads its own way, such as a level a newer build
+// added, never makes a looser pulled value look stricter than what the device enforces.
+pub fn approval_view(kind: Kind, stored: &Value, base: Option<&Value>, merged: Option<&Value>) -> Value {
+    let mut view = stored.clone();
+    for pointer in reading(kind, stored, base) {
+        if get(merged, &pointer) == get(base, &pointer) {
+            set(&mut view, &pointer, get(base, &pointer).cloned());
+        }
+    }
+    view
+}
+
 // What a pulled copy settles in the record the pull writes: the mode once the store holds the server's, and a removed
 // link once the server's copy has none.
 pub fn settle(kind: Kind, written: &mut Value, server: &Value) {

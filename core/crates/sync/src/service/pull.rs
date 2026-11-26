@@ -624,8 +624,8 @@ impl ServiceSync {
                 mine_side
             };
         }
-        // The store's copy as the merge read it, so a member it holds as it reads the base's asks the person nothing.
-        let stored_view = stored.map(|stored| unsettled::read(kind, &stored.fields, base_fields));
+        let stored_view =
+            stored.map(|stored| unsettled::approval_view(kind, &stored.fields, base_fields, settled.kept.as_ref()));
         let stored_fields = stored_view.as_ref();
         match (&settled.kept, &settled.store) {
             (Some(fields), _) => {
