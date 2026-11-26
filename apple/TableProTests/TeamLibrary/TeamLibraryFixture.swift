@@ -254,8 +254,13 @@ final class TeamLibraryFixture {
         TeamLibraryTeamInfo(teamId: team, name: "Acme", role: role, canWrite: canWrite, items: items)
     }
 
-    nonisolated static func item(_ kind: TeamLibraryKindTag, _ id: String, _ fields: [String: Any]) -> TeamLibraryItemInfo {
-        TeamLibraryItemInfo(kind: kind, id: id, fieldsJson: json(fields))
+    nonisolated static func item(
+        _ kind: TeamLibraryKindTag,
+        _ id: String,
+        _ fields: [String: Any],
+        updatedBy: String? = nil
+    ) -> TeamLibraryItemInfo {
+        TeamLibraryItemInfo(kind: kind, id: id, fieldsJson: json(fields), updatedBy: updatedBy, updatedAtMs: nil)
     }
 
     nonisolated static func connection(_ id: String, name: String, extra: [String: Any] = [:]) -> TeamLibraryItemInfo {

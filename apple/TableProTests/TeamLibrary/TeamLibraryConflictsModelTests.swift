@@ -26,20 +26,23 @@ struct TeamLibraryConflictsModelTests {
         let model = Self.model(engine)
 
         await model.refresh()
-        model.name([TeamConflictFixture.team: "Acme"])
+        let writerKey = TeamLibraryConflictsModel.writerKey(scope: TeamConflictFixture.team, kind: "library_query", id: "Q1")
+        model.name([TeamConflictFixture.team: "Acme"], writers: [writerKey: "Grace Hopper"])
 
         #expect(model.conflicts == [conflict])
         #expect(model.teamName(of: TeamConflictFixture.team) == "Acme")
+        #expect(model.writer(of: conflict.record) == "Grace Hopper")
     }
 
-    @Test("The end of a sign-in clears the conflicts, and a choice still out then changes nothing")
+    @Test("The end of a sign-in clears the conflicts, and a choice still out then changes nothing on screen")
     func endClearsAndFencesChoices() async {
         let conflict = TeamConflictFixture.conflict()
         let engine = FakeTeamConflictEngine([conflict])
         let model = Self.model(engine)
         await model.refresh()
+        let reads = engine.reads
         let gate = AsyncGate()
-        engine.holdNextRead(at: gate)
+        engine.holdNextResolve(at: gate)
 
         let choosing = Task { await model.resolve(conflict, keep: .keepMine) }
         await gate.arrived(1)
@@ -48,7 +51,8 @@ struct TeamLibraryConflictsModelTests {
         await choosing.value
 
         #expect(model.conflicts.isEmpty)
-        #expect(Self.choices(engine).isEmpty)
+        #expect(model.failure(for: conflict.record) == nil)
+        #expect(engine.reads == reads, "Nothing is read for a sign-in that ended")
         #expect(model.teamName(of: TeamConflictFixture.team) == nil)
     }
 

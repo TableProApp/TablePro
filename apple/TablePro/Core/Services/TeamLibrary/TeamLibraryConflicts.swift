@@ -11,7 +11,7 @@ import TableProFFI
 // run over a fake engine.
 nonisolated protocol TeamConflictEngine: AnyObject, Sendable {
     func conflicts() async throws -> [TeamConflictInfo]
-    func resolveConflict(record: SyncRecordRef, keep: ConflictChoiceTag) async throws
+    func resolveConflict(record: SyncRecordRef, digest: String, keep: ConflictChoiceTag) async throws
 }
 
 extension SyncService: TeamConflictEngine {}
@@ -30,6 +30,8 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
 
     @Published private(set) var conflicts: [TeamConflictInfo] = []
     @Published private(set) var teamNames: [String: String] = [:]
+    // Who last changed the team's copy of each record, by `writerKey`.
+    @Published private(set) var writers: [String: String] = [:]
     @Published private(set) var resolving: SyncRecordRef?
     @Published private(set) var failure: TeamLibraryConflictFailure?
 
@@ -44,11 +46,22 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
         self.engine = engine
     }
 
-    // The names the team library holds for each team scope.
-    func name(_ teams: [String: String]) {
+    // The names the team library holds for each team scope, and the writers of its items.
+    func name(_ teams: [String: String], writers: [String: String]) {
         if teams != teamNames {
             teamNames = teams
         }
+        if writers != self.writers {
+            self.writers = writers
+        }
+    }
+
+    nonisolated static func writerKey(scope: String, kind: String, id: String) -> String {
+        "\(scope)\n\(kind)\n\(id.lowercased())"
+    }
+
+    func writer(of record: SyncRecordRef) -> String? {
+        writers[Self.writerKey(scope: record.scope, kind: record.kind, id: record.recordId)]
     }
 
     // The sign-in ended: nothing of it shows from here on.
@@ -57,6 +70,7 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
         epoch += 1
         conflicts = []
         teamNames = [:]
+        writers = [:]
         failure = nil
     }
 
@@ -88,34 +102,25 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
         }
     }
 
+    // The choice carries the digest of the conflict shown: one a pull has replaced since is refused, and the
+    // replacement is shown instead, so a choice never keeps a version the person did not see.
     func resolve(_ conflict: TeamConflictInfo, keep: ConflictChoiceTag) async {
         guard resolving == nil else { return }
         resolving = conflict.record
         defer { resolving = nil }
         let epoch = epoch
         do {
-            let engine = try await engine()
-            // The engine takes a choice by record alone, so one made over a conflict a pull has since replaced would
-            // keep a version the person never saw: the replacement is shown instead.
-            let current = try await engine.conflicts()
-            guard epoch == self.epoch else { return }
-            guard let now = current.first(where: { $0.record == conflict.record }) else {
-                generation += 1
-                conflicts = current
-                return
-            }
-            guard now == conflict else {
-                generation += 1
-                conflicts = current
-                failure = TeamLibraryConflictFailure(
-                    record: conflict.record,
-                    message: String(localized: "This item changed again. Review the new version, then choose.")
-                )
-                return
-            }
-            try await engine.resolveConflict(record: conflict.record, keep: keep)
-        } catch let error as CoreError where Self.isGone(error) {
+            try await engine().resolveConflict(record: conflict.record, digest: conflict.digest, keep: keep)
+        } catch let error as CoreError where Self.code(of: error) == "sync.unknown" {
             Self.logger.notice("A team conflict was settled before the choice reached it")
+        } catch let error as CoreError where Self.code(of: error) == "sync.changed" {
+            guard epoch == self.epoch else { return }
+            await refresh()
+            failure = TeamLibraryConflictFailure(
+                record: conflict.record,
+                message: String(localized: "This item changed again. Review the new version, then choose.")
+            )
+            return
         } catch {
             Self.logger.error("Resolving a team conflict failed: \(error.publicLogShape, privacy: .public)")
             guard epoch == self.epoch else { return }
@@ -134,11 +139,10 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
         await refresh()
     }
 
-    // Another pass took the record off the list between the read and the choice.
-    private static func isGone(_ error: CoreError) -> Bool {
+    private static func code(of error: CoreError) -> String? {
         if case .Failed(let info) = error {
-            return info.code == "sync.unknown"
+            return info.code
         }
-        return false
+        return nil
     }
 }

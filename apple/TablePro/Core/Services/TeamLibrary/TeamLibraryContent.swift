@@ -121,7 +121,7 @@ internal struct TeamLibraryContent: Equatable, Sendable {
                         query: query.query,
                         keyword: query.keyword,
                         folderName: folder?.name,
-                        lastWriter: nil
+                        lastWriter: Self.writer(of: item)
                     ), query.sortOrder)
                 case .folder:
                     continue
@@ -137,6 +137,20 @@ internal struct TeamLibraryContent: Equatable, Sendable {
                 return left < right
             }
             .map(\.query)
+    }
+
+    // The server leaves the writer out when it names no one to this account.
+    static func writer(of item: TeamLibraryItemInfo) -> String? {
+        let name = item.updatedBy?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    static func wireKind(_ kind: TeamLibraryKindTag) -> String {
+        switch kind {
+        case .connection: "library_connection"
+        case .folder: "library_folder"
+        case .query: "library_query"
+        }
     }
 
     private static func decode<Value: Decodable>(_ type: Value.Type, _ item: TeamLibraryItemInfo) -> Value? {

@@ -45,8 +45,9 @@ internal struct LiveTeamLibraryEngineSource: TeamLibraryEngineSource {
     let host: SyncEngineHost
     let core: @MainActor () async throws -> Core
 
+    // A sign-in change opens the service again, whose teams are read anew.
     var changes: AnyPublisher<Void, Never> {
-        host.statusChanges.eraseToAnyPublisher()
+        host.statusChanges.merge(with: host.reopened).eraseToAnyPublisher()
     }
 
     func engine() async throws -> any TeamLibraryEngine {

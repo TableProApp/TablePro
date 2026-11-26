@@ -35,6 +35,25 @@ struct TeamLibraryTests {
         #expect(fixture.library.teamName(of: TeamLibraryFixture.team) == "Acme")
     }
 
+    @Test("A team query shows who last changed it, and its folder when the pull names no one; a conflict names that writer")
+    func lastWriterShows() async throws {
+        let engine = FakeTeamLibraryEngine(teams: [TeamLibraryFixture.acme(items: [
+            TeamLibraryFixture.item(.folder, "f1", ["name": "Reports", "sort_order": 0]),
+            TeamLibraryFixture.item(.query, "q1", ["name": "Orders", "query": "select 1", "sort_order": 0], updatedBy: "Grace Hopper"),
+            TeamLibraryFixture.item(.query, "q2", ["name": "Signups", "query": "select 2", "folder_client_id": "f1", "sort_order": 1], updatedBy: "  ")
+        ])])
+        engine.set([TeamConflictFixture.conflict("q1")])
+        let fixture = try await TeamLibraryFixture(engine: engine)
+
+        try await fixture.start()
+        try await waitUntil { fixture.library.content.queries.count == 2 && fixture.library.conflicts.conflicts.count == 1 }
+
+        let details = fixture.library.content.queries.map { "\($0.name): \($0.detail ?? "-")" }
+        #expect(details.sorted() == ["Orders: Grace Hopper", "Signups: Reports"])
+        let conflict = try #require(fixture.library.conflicts.conflicts.first)
+        #expect(fixture.library.conflicts.writer(of: conflict.record) == "Grace Hopper")
+    }
+
     @Test("A connection whose SSH host ssh would refuse is dropped, and one that shows runs nothing by itself")
     func pulledConnectionsRunNothing() async throws {
         let engine = FakeTeamLibraryEngine(teams: [TeamLibraryFixture.acme(items: [

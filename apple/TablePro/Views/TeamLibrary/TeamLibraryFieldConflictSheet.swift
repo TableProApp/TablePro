@@ -235,7 +235,8 @@ internal struct TeamLibraryFieldConflictSheet: View {
                 TeamLibraryFieldConflictContent(
                     presentation: TeamLibraryFieldConflictPresentation(
                         conflict: conflict,
-                        teamName: model.teamName(of: conflict.record.scope)
+                        teamName: model.teamName(of: conflict.record.scope),
+                        writer: model.writer(of: conflict.record)
                     ),
                     remaining: model.conflicts.count,
                     isResolving: model.resolving != nil,

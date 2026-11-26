@@ -3,18 +3,21 @@
 //  TableProTests
 //
 
+import CryptoKit
 import Foundation
 @testable import TablePro
 import TableProFFI
 import TableProTestSupport
 
-// The engine's conflicts table: a choice drops the conflict, as the core does once the store takes the kept side.
+// The engine's conflicts table: a choice on the digest listed drops the conflict, as the core does once the store takes
+// the kept side; one on a conflict gone answers `sync.unknown`, one on a conflict replaced since `sync.changed`.
 class FakeTeamConflictEngine: TeamConflictEngine, @unchecked Sendable {
     private let lock = NSLock()
     private var held: [TeamConflictInfo]
     private var resolveFailure: CoreError?
     private var readFailure: CoreError?
     private var readGate: AsyncGate?
+    private var resolveGate: AsyncGate?
     private(set) var choices: [(record: SyncRecordRef, keep: ConflictChoiceTag)] = []
     private(set) var reads = 0
 
@@ -39,6 +42,11 @@ class FakeTeamConflictEngine: TeamConflictEngine, @unchecked Sendable {
         lock.withLock { readGate = gate }
     }
 
+    // The next choice waits at the gate before it reaches the conflicts.
+    func holdNextResolve(at gate: AsyncGate) {
+        lock.withLock { resolveGate = gate }
+    }
+
     func conflicts() async throws -> [TeamConflictInfo] {
         let (answer, failure, gate) = lock.withLock { () -> ([TeamConflictInfo], CoreError?, AsyncGate?) in
             reads += 1
@@ -53,10 +61,22 @@ class FakeTeamConflictEngine: TeamConflictEngine, @unchecked Sendable {
         return answer
     }
 
-    func resolveConflict(record: SyncRecordRef, keep: ConflictChoiceTag) async throws {
+    func resolveConflict(record: SyncRecordRef, digest: String, keep: ConflictChoiceTag) async throws {
+        let gate = lock.withLock { () -> AsyncGate? in
+            let gate = resolveGate
+            resolveGate = nil
+            return gate
+        }
+        await gate?.wait()
         try lock.withLock {
             if let resolveFailure {
                 throw resolveFailure
+            }
+            guard let current = held.first(where: { $0.record == record }) else {
+                throw TeamConflictFixture.failure("sync.unknown")
+            }
+            guard current.digest == digest else {
+                throw TeamConflictFixture.failure("sync.changed")
             }
             choices.append((record, keep))
             held.removeAll { $0.record == record }
@@ -78,11 +98,15 @@ enum TeamConflictFixture {
         mine: [String: Any]? = ["name": "Orders", "query": "select mine"],
         theirs: [String: Any]? = ["name": "Orders", "query": "select theirs"]
     ) -> TeamConflictInfo {
-        TeamConflictInfo(
+        let mine = mine.map(json)
+        let theirs = theirs.map(json)
+        let listed = [id, kind, fields.joined(separator: ","), mine ?? "-", theirs ?? "-"].joined(separator: "\n")
+        return TeamConflictInfo(
             record: record(id, kind: kind),
             fields: fields,
-            mine: mine.map(json),
-            theirs: theirs.map(json)
+            mine: mine,
+            theirs: theirs,
+            digest: SHA256.hash(data: Data(listed.utf8)).map { String(format: "%02x", $0) }.joined()
         )
     }
 

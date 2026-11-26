@@ -393,7 +393,17 @@ internal final class TeamLibrary: ObservableObject {
             teams.compactMap { team in team.name.map { (team.teamId, $0) } },
             uniquingKeysWith: { first, _ in first }
         )
-        conflicts.name(teamNames)
+        var writers: [String: String] = [:]
+        for team in teams {
+            for item in team.items {
+                guard let writer = TeamLibraryContent.writer(of: item) else { continue }
+                let key = TeamLibraryConflictsModel.writerKey(
+                    scope: team.teamId, kind: TeamLibraryContent.wireKind(item.kind), id: item.id
+                )
+                writers[key] = writer
+            }
+        }
+        conflicts.name(teamNames, writers: writers)
         let writable = teams.filter(\.canWrite)
             .map { TeamLibraryTeam(id: $0.teamId, name: $0.name ?? String(localized: "Team Library")) }
             .sorted { ($0.name, $0.id) < ($1.name, $1.id) }
