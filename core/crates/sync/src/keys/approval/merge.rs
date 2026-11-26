@@ -8,10 +8,11 @@ use tablepro_keys::KeysError;
 use tablepro_keys::encoding::{AccountId, KeyPurpose, TeamId, Version};
 use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::sas::SasDevice;
-use tablepro_keys::trust::{TrustPin, TrustPlaintext, TrustVersion};
+use tablepro_keys::trust::{Replaced, TrustPin, TrustPlaintext, TrustVersion, merge_replaced};
 
 use crate::api::ids::ScopeName;
 use crate::api::state::{KeyDevicePinRow, KeyPinRow, KeyVersionRow, KeyVersionState};
+use crate::keys::pins::seen_replaced;
 
 // What the device holds when the approval change set arrives.
 #[derive(Debug, Clone, Default)]
@@ -128,17 +129,6 @@ fn pin_row(pin: &TrustPin) -> KeyPinRow {
     }
 }
 
-// Each IK once, in the order it was replaced: the device's list, then what only the approver saw.
-fn union(first: &[Ed25519Public], second: &[Ed25519Public]) -> Vec<Ed25519Public> {
-    let mut out = first.to_vec();
-    for ik in second {
-        if !out.contains(ik) {
-            out.push(*ik);
-        }
-    }
-    out
-}
-
 fn merge_pins(
     held: &HeldTables,
     approver: &Approver<'_>,
@@ -163,7 +153,7 @@ fn merge_pins(
         let new = offered.account != approver.account && !held.pins.iter().any(|pin| pin.account == offered.account);
         if new {
             let mut row = pin_row(offered);
-            if row.replaced.contains(&row.ik) && !row.alert {
+            if seen_replaced(&row.replaced, &row.ik) && !row.alert {
                 row.alert = true;
                 merged.alerts_opened.push(row.account);
             }
@@ -194,9 +184,9 @@ fn merge_own_pin(own: Option<&KeyPinRow>, approver: &Approver<'_>) -> Result<Key
                 offered: approver.av.get(),
             });
         }
-        row.replaced = union(&own.replaced, &offered.replaced);
+        row.replaced = merge_replaced(&own.replaced, &offered.replaced);
     }
-    if row.replaced.contains(&approver.ik) {
+    if seen_replaced(&row.replaced, &approver.ik) {
         return Err(KeysError::RetiredIk);
     }
     Ok(row)
@@ -207,7 +197,7 @@ fn merge_own_pin(own: Option<&KeyPinRow>, approver: &Approver<'_>) -> Result<Key
 // that replaced it only through an endorsement it holds, and otherwise opens the key-change alert. So does a pin under
 // another IK that no endorsement the device holds explains.
 fn merge_other_pin(pin: &KeyPinRow, offered: &TrustPin, facts: &dyn MergeFacts, merged: &mut Merged) -> KeyPinRow {
-    let replaced = union(&pin.replaced, &offered.replaced);
+    let replaced = merge_replaced(&pin.replaced, &offered.replaced);
     let mut row = KeyPinRow {
         account: pin.account,
         ik: pin.ik,
@@ -216,16 +206,16 @@ fn merge_other_pin(pin: &KeyPinRow, offered: &TrustPin, facts: &dyn MergeFacts, 
         alert: pin.alert || offered.alert,
         replaced,
     };
-    let retired = row.replaced.contains(&pin.ik);
+    let retired = seen_replaced(&row.replaced, &pin.ik);
     if offered.ik == pin.ik && !retired {
         row.av = row.av.max(offered.av);
-    } else if !retired && pin.replaced.contains(&offered.ik) {
+    } else if !retired && seen_replaced(&pin.replaced, &offered.ik) {
         // The approver is behind on a replace this device already followed.
     } else {
-        let target = (!row.replaced.contains(&offered.ik)).then_some(offered.ik);
+        let target = (!seen_replaced(&row.replaced, &offered.ik)).then_some(offered.ik);
         match follow(pin.account, pin.ik, &row.replaced, target, facts) {
             Some((ik, av, passed)) => {
-                row.replaced = union(&row.replaced, &passed);
+                row.replaced = merge_replaced(&row.replaced, &passed);
                 row.ik = ik;
                 row.how = tablepro_keys::trust::PinHow::Replaced;
                 row.av = if Some(ik) == target { av.max(offered.av) } else { av };
@@ -235,7 +225,7 @@ fn merge_other_pin(pin: &KeyPinRow, offered: &TrustPin, facts: &dyn MergeFacts, 
         }
     }
     // The approver pinned an IK that neither is current here nor was replaced on the way to it.
-    if row.ik != offered.ik && !row.replaced.contains(&offered.ik) {
+    if row.ik != offered.ik && !seen_replaced(&row.replaced, &offered.ik) {
         row.alert = true;
     }
     if row.alert && !pin.alert {
@@ -245,33 +235,34 @@ fn merge_other_pin(pin: &KeyPinRow, offered: &TrustPin, facts: &dyn MergeFacts, 
 }
 
 // Walks the replace endorsements the device holds from `from`, past every IK the merged list retired, to the first
-// one it did not. Stops at `target` when the walk meets it. None when no endorsement leaves `from`.
+// one it did not. Stops at `target` when the walk meets it. None when no endorsement leaves `from`. Each IK it
+// passes is replaced at the `av` of the endorsement that left it.
 fn follow(
     account: AccountId,
     from: Ed25519Public,
-    retired: &[Ed25519Public],
+    retired: &[Replaced],
     target: Option<Ed25519Public>,
     facts: &dyn MergeFacts,
-) -> Option<(Ed25519Public, Version, Vec<Ed25519Public>)> {
-    let mut passed = vec![from];
+) -> Option<(Ed25519Public, Version, Vec<Replaced>)> {
+    let mut passed: Vec<Replaced> = Vec::new();
     let mut current = from;
     let mut reached = None;
     for _ in 0..=retired.len() + 1 {
         let Some((next, av)) = facts.endorsed_by(account, &current) else {
             break;
         };
-        if passed.contains(&next) {
+        if next == from || seen_replaced(&passed, &next) {
             break;
         }
+        passed.push(Replaced { ik: current, av });
         reached = Some((next, av));
-        if Some(next) == target || !retired.contains(&next) {
+        if Some(next) == target || !seen_replaced(retired, &next) {
             break;
         }
-        passed.push(next);
         current = next;
     }
     let (ik, av) = reached?;
-    if retired.contains(&ik) {
+    if seen_replaced(retired, &ik) {
         return None;
     }
     Some((ik, av, passed))

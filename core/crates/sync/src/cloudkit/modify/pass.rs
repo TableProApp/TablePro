@@ -431,11 +431,17 @@ impl SyncControl for CloudKitSync {
         self.queue(state, &adapters).waiting().await
     }
 
-    async fn decide_approval(&self, key: RecordKey, field: String, approve: bool) -> Result<(), SyncError> {
+    async fn decide_approval(
+        &self,
+        key: RecordKey,
+        field: String,
+        seen: [u8; 32],
+        approve: bool,
+    ) -> Result<(), SyncError> {
         let session = self.session.lock().await;
         let state = session.state.as_ref().ok_or(SyncError::Unknown { what: "approval" })?;
         let adapters = Adapters::new(self.adapters.clone());
-        self.queue(state, &adapters).decide(&key, &field, approve).await?;
+        self.queue(state, &adapters).decide(&key, &field, seen, approve).await?;
         if let Some((_, waiting)) = self.counts(&session).await {
             lock(&self.status).waiting_approvals = waiting;
         }

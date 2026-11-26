@@ -97,6 +97,8 @@ pub enum KeyNoticeKindTag {
     TeamKeyRestarted { team: String },
     RestartHeld { team: String, signer: String },
     ResetPending { reset: String },
+    // A kind 3 reset a restore lost, proposed again only after a fresh step-up (core ADR 0065).
+    ResetWaitsForStepUp { reset: String },
     ResetEnded { reset: String, state: ResetStateTag },
     DeviceRemoved { device: String },
     SupersededWrap { team: String },

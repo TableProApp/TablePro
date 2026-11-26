@@ -249,22 +249,25 @@ pub struct MoveBackPlanInfo {
     pub icloud_deletions: u64,
 }
 
-// Values are JSON text.
+// Values are JSON text. `digest` names the pulled value the person is shown, as lower-case hex, and goes back with the
+// decision: a value a pull changed since is not decided (core ADR 0066).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct PendingApprovalInfo {
     pub record: SyncRecordRef,
     pub field: String,
     pub pulled: String,
+    pub digest: String,
     pub current: Option<String>,
 }
 
-// None is a deletion.
+// None is a deletion. `digest` names the conflict as listed, as lower-case hex, and goes back with the choice.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct TeamConflictInfo {
     pub record: SyncRecordRef,
     pub fields: Vec<String>,
     pub mine: Option<String>,
     pub theirs: Option<String>,
+    pub digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -359,8 +362,15 @@ impl SyncService {
         unfilled("sync.approvals")
     }
 
-    pub async fn decide_approval(&self, record: SyncRecordRef, field: String, approve: bool) -> Result<(), CoreError> {
-        let _ = (record, field, approve);
+    // `digest` is the approval's, as `approvals` gave it; a pull that changed the value since answers `sync.changed`.
+    pub async fn decide_approval(
+        &self,
+        record: SyncRecordRef,
+        field: String,
+        digest: String,
+        approve: bool,
+    ) -> Result<(), CoreError> {
+        let _ = (record, field, digest, approve);
         unfilled("sync.decide_approval")
     }
 
@@ -368,8 +378,14 @@ impl SyncService {
         unfilled("sync.conflicts")
     }
 
-    pub async fn resolve_conflict(&self, record: SyncRecordRef, keep: ConflictChoiceTag) -> Result<(), CoreError> {
-        let _ = (record, keep);
+    // `digest` is the conflict's, as `conflicts` gave it; a pull that replaced the conflict since answers `sync.changed`.
+    pub async fn resolve_conflict(
+        &self,
+        record: SyncRecordRef,
+        digest: String,
+        keep: ConflictChoiceTag,
+    ) -> Result<(), CoreError> {
+        let _ = (record, digest, keep);
         unfilled("sync.resolve_conflict")
     }
 

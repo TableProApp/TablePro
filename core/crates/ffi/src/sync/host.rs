@@ -14,7 +14,8 @@ use crate::host::HostSecretError;
 
 #[uniffi::export(callback_interface)]
 pub trait HostSettings: Send + Sync {
-    // Every category of the platform's registry that holds a value, each as one JSON document.
+    // Every category that holds a value, each as one JSON document. A category the platform's registry does not name,
+    // such as one a newer build wrote, comes back as it was applied, unchanged (core ADR 0066).
     fn categories(&self) -> Result<Vec<SettingsCategoryArg>, HostSecretError>;
 
     // None removes the category, as a deleted theme.

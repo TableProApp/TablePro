@@ -394,6 +394,7 @@ impl KeyService {
                 record_id,
                 fields,
                 applied,
+                served: None,
             },
             Some(row) => {
                 let same = check_same_object(
@@ -415,6 +416,7 @@ impl KeyService {
                         record_id,
                         fields,
                         applied,
+                        served: None,
                     },
                 }
             }
