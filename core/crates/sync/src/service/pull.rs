@@ -22,7 +22,7 @@ use crate::api::key_flows::{ArrivalOrder, CaughtUp};
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{
     ApprovalDecision, ApprovalRow, BaseRow, ConflictRow, DeferredRow, DeletedHistoryRow, HeldReason, HeldRow, Row,
-    RowKey, RowRange, ScopeRow, Table,
+    RowKey, RowRange, ScopeRow, Standing, Table,
 };
 use crate::api::transport::{DeletedReason, Proof, PullRequest, PulledPage, PulledRecord, TransportError};
 use crate::engine::{Judgement, base_of, settle};
@@ -474,6 +474,11 @@ impl ServiceSync {
             let stored = local.and_then(|local| local.records.get(&key.record_id));
             if !pull.categories.syncs(kind) {
                 Self::while_off(&key, kind, judgement, base, stored, &record, writes);
+                continue;
+            }
+            // A copy this device keeps to itself takes nothing a pull brings, a deletion included, as on iCloud (0054,
+            // Rules for both providers).
+            if stored.is_some_and(|stored| stored.standing == Standing::LocalOnly) {
                 continue;
             }
             if kind == Kind::HistoryEntry && !self.history_taken(&inputs, base, &record, writes) {

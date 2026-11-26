@@ -261,3 +261,33 @@ async fn a_required_an_earlier_ios_build_wrote_sends_nothing_over_the_preferred_
     assert_eq!(pushed, 0);
     assert_eq!(stored["ssl_config"]["mode"], json!("Preferred"));
 }
+
+#[tokio::test]
+async fn a_copy_kept_local_only_takes_neither_a_pulled_edit_nor_a_pulled_deletion() {
+    let server = FakeServer::new();
+    let (mac_library, mini_library) = (Library::new().await, Library::new().await);
+    let mac = mac_library.device(&server, "dev_mac").await;
+    let mini = mini_library.device(&server, "dev_mini").await;
+    mac_library.store.upsert_blocking(connection(CONNECTION, "Shop")).unwrap();
+    mac.sync().await;
+    take_everything(&mini).await;
+    let id = Uuid::from_u128(CONNECTION);
+    mini_library
+        .store
+        .update_blocking(id, |saved| saved.device.local_only = true)
+        .unwrap();
+
+    mac_library
+        .store
+        .update_blocking(id, |saved| saved.name = "Shop 2".to_owned())
+        .unwrap();
+    mac.sync().await;
+    take_everything(&mini).await;
+    let after_edit = mini_library.store.list_blocking().unwrap().connections[0].name.clone();
+    mac_library.store.remove_blocking(id).unwrap();
+    mac.sync().await;
+    take_everything(&mini).await;
+
+    assert_eq!(after_edit, "Shop");
+    assert_eq!(mini_library.store.list_blocking().unwrap().connections.len(), 1);
+}
