@@ -1019,10 +1019,13 @@ final class IOSSyncCoordinator {
         if case .held(let types) = applied { heldTypes = Set(types.map(\.rawValue)) }
         // A record whose copy here this device cannot read was not taken, so it stays out until a build that reads it.
         let unreadable = unreadableCopies().recordNames
+        // A project the pull skipped while project sync is off stays out until the full fetch that applies it.
+        let readsProjects = isProjectSyncWritable()
         recordCache.store(records.filter { record in
             !keptEdits.contains(record.recordID.recordName)
                 && !unreadable.contains(record.recordID.recordName)
                 && !heldTypes.contains(record.recordType)
+                && (readsProjects || record.recordType != SyncRecordType.project.rawValue)
         })
     }
 
