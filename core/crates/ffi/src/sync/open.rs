@@ -51,7 +51,7 @@ impl Core {
         config: SyncConfig,
         account: Option<Arc<AccountService>>,
         cloudkit: Option<Arc<dyn CloudKitTransport>>,
-        settings: Option<Box<dyn HostSettings>>,
+        settings: Option<Arc<dyn HostSettings>>,
         device_store: Option<Box<dyn HostDeviceStore>>,
         legacy_mirror: Option<Box<dyn HostLegacyMirror>>,
         listener: Box<dyn SyncListener>,
@@ -81,13 +81,7 @@ impl Core {
             account,
             files,
             cloudkit: cloudkit.map(|host| Arc::new(CloudKitBridge(host)) as Arc<dyn sync::CloudKitTransport>),
-            settings: settings.map(|host| {
-                Arc::new(HostSettingsBridge {
-                    host: Arc::from(host),
-                    kind,
-                    tasks: tasks.clone(),
-                }) as Arc<dyn sync::HostSettings>
-            }),
+            settings: settings.map(|host| Arc::new(HostSettingsBridge { host, kind }) as Arc<dyn sync::HostSettings>),
             device_store,
             legacy_mirror: legacy_mirror.map(|host| {
                 Arc::new(LegacyMirrorBridge {
