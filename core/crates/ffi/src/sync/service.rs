@@ -249,10 +249,12 @@ pub struct MoveBackPlanInfo {
     pub icloud_deletions: u64,
 }
 
-// The changes the last account's file held unsent, for the Move my data or Start empty prompt.
+// The changes the last account's file held unsent, for the Move my data or Start empty prompt, and the account the
+// prompt is for, which the answer names back.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct NewIdentityPlanInfo {
     pub unsent: u64,
+    pub account: String,
 }
 
 // Values are JSON text. `digest` names the pulled value the person is shown, as lower-case hex, and goes back with the
@@ -355,8 +357,13 @@ impl SyncService {
         unfilled("sync.plan_new_identity")
     }
 
-    pub async fn choose_for_new_identity(&self, choice: NewIdentityChoiceTag) -> Result<(), CoreError> {
-        let _ = choice;
+    // `account` is the plan's; an answer for another account than the one signed in now answers `sync.changed`.
+    pub async fn choose_for_new_identity(
+        &self,
+        choice: NewIdentityChoiceTag,
+        account: String,
+    ) -> Result<(), CoreError> {
+        let _ = (choice, account);
         unfilled("sync.choose_for_new_identity")
     }
 

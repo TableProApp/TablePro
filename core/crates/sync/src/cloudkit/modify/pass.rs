@@ -383,12 +383,12 @@ impl CloudKitSync {
         Pusher::new(&fetcher, &self.stop, self.clock.now_ms()).unsent().await
     }
 
-    // What the push waits for on the zone of the account signed in now.
-    async fn account_choice(&self, session: &Session) -> Result<(Arc<dyn StateStore>, u64), SyncError> {
-        if let Some(state) = &session.state
+    // The account choice the session's file waits for: its file, the count and the account it is for.
+    async fn account_choice(&self, session: &Session) -> Result<(Arc<dyn StateStore>, u64, String), SyncError> {
+        if let (Some(state), Some(account)) = (&session.state, &session.account)
             && let Some(PushWait::AccountChoice { unsent }) = zone::push_wait(state.as_ref()).await?
         {
-            return Ok((Arc::clone(state), unsent));
+            return Ok((Arc::clone(state), unsent, account.clone()));
         }
         Err(SyncError::NotAllowed {
             what: "choose for a new account",
@@ -398,10 +398,23 @@ impl CloudKitSync {
     // Move my data clears the wait an account switch left, and the next pass sends what this device holds. Start empty
     // first takes the synced records off this device, where the last account's zone keeps them, keeps the Local only
     // ones, and forgets what the new account's file knew of its zone, so the pass fills the device from a full fetch.
-    // The wait clears last, so a crash before asks again. Refused unless the zone's push waits for that choice.
-    pub async fn run_new_identity_choice(&self, choice: NewIdentityChoice) -> Result<CloudKitReport, SyncError> {
+    // The wait clears last, so a crash before asks again. Refused unless the zone's push waits for that choice, and
+    // an answer shown for another account than the one signed in now changes nothing.
+    pub async fn run_new_identity_choice(
+        &self,
+        choice: NewIdentityChoice,
+        shown_for: &str,
+    ) -> Result<CloudKitReport, SyncError> {
         let mut session = self.session.lock().await;
-        let (state, _) = self.account_choice(&session).await?;
+        let (state, _, waiting_for) = self.account_choice(&session).await?;
+        self.stop.check()?;
+        let signed_in = match self.transport.account_status().await {
+            Ok(status) => status.user_record_name,
+            Err(failure) => return Err(self.ended(&mut session, failure)),
+        };
+        if shown_for != waiting_for || signed_in != waiting_for {
+            return Err(SyncError::Changed { what: "account" });
+        }
         if choice == NewIdentityChoice::StartEmpty {
             self.stop.check()?;
             zone::forget(state.as_ref()).await?;
@@ -550,12 +563,12 @@ impl SyncControl for CloudKitSync {
 
     async fn plan_new_identity(&self) -> Result<NewIdentityPlan, SyncError> {
         let session = self.session.lock().await;
-        let (_, unsent) = self.account_choice(&session).await?;
-        Ok(NewIdentityPlan { unsent })
+        let (_, unsent, account) = self.account_choice(&session).await?;
+        Ok(NewIdentityPlan { unsent, account })
     }
 
-    async fn choose_for_new_identity(&self, choice: NewIdentityChoice) -> Result<(), SyncError> {
-        self.run_new_identity_choice(choice).await.map(|_| ())
+    async fn choose_for_new_identity(&self, choice: NewIdentityChoice, account: String) -> Result<(), SyncError> {
+        self.run_new_identity_choice(choice, &account).await.map(|_| ())
     }
 
     async fn approvals(&self) -> Result<Vec<PendingApproval>, SyncError> {

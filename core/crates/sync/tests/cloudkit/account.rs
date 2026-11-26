@@ -37,14 +37,14 @@ async fn another_account_deletes_the_last_account_s_state_file_and_starts_from_a
     let phase = sync.status().phase;
     let plan = sync.plan_new_identity().await.unwrap();
     let sent_unasked = rig.zone_fields_of(OTHER, Kind::Connection, A).is_some();
-    sync.choose_for_new_identity(NewIdentityChoice::MoveMyData)
+    sync.choose_for_new_identity(NewIdentityChoice::MoveMyData, plan.account.clone())
         .await
         .unwrap();
 
     assert_eq!(switched.switched_from.as_deref(), Some(USER));
     assert!(switched.zone_made && switched.fetch.full);
     assert_eq!(switched.push_wait, Some(PushWait::AccountChoice { unsent: 1 }));
-    assert_eq!(plan.unsent, 1);
+    assert_eq!((plan.unsent, plan.account.as_str()), (1, OTHER));
     assert_eq!(phase, SyncPhase::NewIdentity);
     assert!(!sent_unasked);
     assert!(!rig.files.exists(&icloud(USER)));
@@ -83,7 +83,7 @@ async fn start_empty_leaves_the_synced_records_behind_keeps_local_only_ones_and_
     let after_restart = relaunched.run_pass(PassReason::Launch).await.unwrap();
     let plan = relaunched.plan_new_identity().await.unwrap();
     relaunched
-        .choose_for_new_identity(NewIdentityChoice::StartEmpty)
+        .choose_for_new_identity(NewIdentityChoice::StartEmpty, plan.account.clone())
         .await
         .unwrap();
     let next = relaunched.run_pass(PassReason::Poll).await.unwrap();
@@ -102,13 +102,44 @@ async fn start_empty_leaves_the_synced_records_behind_keeps_local_only_ones_and_
     assert_eq!(relaunched.status().phase, SyncPhase::Idle);
 }
 
+// An answer to a prompt shown for one account changes nothing once another account is signed in: a stale Move my data
+// never sends the library to the account after it (Codex security round 1).
+#[tokio::test]
+async fn an_answer_shown_for_another_account_changes_nothing() {
+    const THIRD: &str = "_3c2d1e";
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    let sync = rig.sync(None);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.cloud.switch_account(Some(OTHER));
+    sync.run_pass(PassReason::AccountChanged).await.unwrap();
+    let shown = sync.plan_new_identity().await.unwrap();
+    rig.cloud.switch_account(Some(THIRD));
+
+    let before_the_pass = sync
+        .choose_for_new_identity(NewIdentityChoice::MoveMyData, shown.account.clone())
+        .await;
+    sync.run_pass(PassReason::AccountChanged).await.unwrap();
+    let after_the_pass = sync
+        .choose_for_new_identity(NewIdentityChoice::MoveMyData, shown.account.clone())
+        .await;
+
+    assert_eq!(before_the_pass.unwrap_err().code(), "sync.changed");
+    assert_eq!(after_the_pass.unwrap_err().code(), "sync.changed");
+    assert!(rig.zone_fields_of(THIRD, Kind::Connection, A).is_none());
+    assert!(rig.zone_fields_of(OTHER, Kind::Connection, A).is_none());
+    assert_eq!(sync.status().phase, SyncPhase::NewIdentity);
+}
+
 #[tokio::test]
 async fn move_my_data_is_refused_while_no_account_switch_waits() {
     let rig = Rig::new().await;
     let sync = rig.sync(None);
     sync.run_pass(PassReason::Launch).await.unwrap();
 
-    let refused = sync.choose_for_new_identity(NewIdentityChoice::MoveMyData).await;
+    let refused = sync
+        .choose_for_new_identity(NewIdentityChoice::MoveMyData, USER.to_owned())
+        .await;
 
     assert_eq!(refused.unwrap_err().code(), "sync.not_allowed");
 }
