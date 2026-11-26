@@ -172,7 +172,7 @@ async fn a_decision_on_a_record_the_store_cannot_read_keeps_the_approval_waiting
 // can: approving it writes nothing over that copy, and a decision a crash left unapplied is not replayed over it.
 #[tokio::test]
 async fn a_held_record_never_goes_in_over_a_copy_the_store_cannot_read() {
-    use tablepro_sync::api::state::{ApprovalDecision, StateStore as _, StateTxn as _};
+    use tablepro_sync::api::state::ApprovalDecision;
     let server = FakeServer::new();
     let mac = Device::new(&server, "dev_mac").await;
     let mini = Device::new(&server, "dev_mini").await;
