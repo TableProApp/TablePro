@@ -57,6 +57,7 @@ impl AccountFlows for KeyService {
 
     async fn key_change(&self, account: AccountId) -> Result<Option<KeyChange>, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         self.open_key_change(txn.as_mut(), account).await
     }

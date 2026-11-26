@@ -78,6 +78,7 @@ impl KeyService {
         dest: &Value,
     ) -> Result<Value, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         let kv = self.writing_version(txn.as_mut(), KeyPurpose::Personal).await?;
         let key = self.personal_key(txn.as_mut(), KeyPurpose::Personal, kv).await?;
@@ -112,6 +113,7 @@ impl KeyService {
         in_force: Option<Version>,
     ) -> Result<OpenedEnvelope, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         self.check_trusted()?;
         let mut txn = self.begin().await?;
         let sealed = parse_fields(fields)?;
@@ -178,6 +180,7 @@ impl KeyService {
 
     pub(crate) async fn seal_history(&self, entry: HistoryId, plaintext: &Value) -> Result<Value, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         let kv = self.writing_version(txn.as_mut(), KeyPurpose::History).await?;
         let key = self.personal_key(txn.as_mut(), KeyPurpose::History, kv).await?;
@@ -188,6 +191,7 @@ impl KeyService {
     // History has no order against its key's versions, so an entry under any version up to the newest is taken.
     pub(crate) async fn open_history(&self, entry: HistoryId, fields: &Value) -> Result<Value, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         self.check_trusted()?;
         let mut txn = self.begin().await?;
         let sealed = parse_fields(fields)?;

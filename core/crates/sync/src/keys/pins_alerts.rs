@@ -17,6 +17,7 @@ use crate::api::state::{KeyPinRow, Row, RowRange, StateTxn, Table};
 impl KeyService {
     pub(crate) async fn fingerprint_of_account(&self, account: AccountId) -> Result<Fingerprint, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         let pin = self
             .pin(txn.as_mut(), account)
@@ -29,6 +30,7 @@ impl KeyService {
     // the person to compare the IK offered instead.
     pub(crate) async fn compare_scanned(&self, account: AccountId, text: &str) -> Result<bool, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         let pin = self
             .pin(txn.as_mut(), account)
@@ -83,6 +85,7 @@ impl KeyService {
             });
         }
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         let pin = self
             .pin(txn.as_mut(), account)

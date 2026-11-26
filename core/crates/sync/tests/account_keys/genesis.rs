@@ -511,3 +511,75 @@ async fn a_restarted_genesis_adopts_only_first_versions_its_certificate_s_key_si
             .is_some()
     );
 }
+
+#[tokio::test]
+async fn a_genesis_that_lost_answers_another_device_won_even_once_this_device_is_approved() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    let c = Device::new(&server, account, "dev_c").await;
+    b.pull().await;
+    let draft = b.service.begin_genesis().await.unwrap();
+    server.fail_next(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    b.service
+        .finish_genesis(draft.draft, typed_back(&draft))
+        .await
+        .unwrap_err();
+    c.genesis().await;
+    b.pull().await;
+    b.approved_by(&c).await;
+
+    let outcome = b.service.finish_genesis(draft.draft, typed_back(&draft)).await.unwrap();
+
+    assert_eq!(outcome, GenesisOutcome::AnotherDeviceWon);
+    assert!(matches!(b.key_state().await, KeyState::Approved { .. }));
+    let mut txn = b.txn().await;
+    let leftovers = txn
+        .scan(&RowRange::Table(Table::KeyObjects))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|row| matches!(row, Row::KeyObject(row) if !row.applied))
+        .count();
+    assert_eq!(leftovers, 0);
+}
+
+#[tokio::test]
+async fn a_genesis_a_pull_shows_lost_after_a_restart_discards_its_keys_and_leftovers() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    let c = Device::new(&server, account, "dev_c").await;
+    b.pull().await;
+    let draft = b.service.begin_genesis().await.unwrap();
+    server.fail_next(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    b.service
+        .finish_genesis(draft.draft, typed_back(&draft))
+        .await
+        .unwrap_err();
+    c.genesis().await;
+
+    let restarted = b.restarted();
+    restarted.pull().await;
+
+    assert!(!restarted.store.holds(&DeviceItem::AccountKeys {
+        origin: origin(),
+        account,
+        av: Version::FIRST,
+    }));
+    let mut txn = restarted.txn().await;
+    let leftovers = txn
+        .scan(&RowRange::Table(Table::KeyObjects))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|row| matches!(row, Row::KeyObject(row) if !row.applied))
+        .count();
+    assert_eq!(leftovers, 0);
+    drop(txn);
+    assert_eq!(restarted.key_state().await, KeyState::NeedsApproval { request: None });
+}
