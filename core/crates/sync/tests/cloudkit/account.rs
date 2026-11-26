@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use serde_json::json;
 use tablepro_records::Kind;
+use tablepro_records::cloudkit::record_type_of;
 use tablepro_sync::api::SyncError;
 use tablepro_sync::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use tablepro_sync::api::control::{NewIdentityChoice, PassReason, SyncControl, SyncPhase};
-use tablepro_records::cloudkit::record_type_of;
 use tablepro_sync::api::state::{PushWait, Standing, StateFiles, StateIdentity};
 
 use crate::faults::Flaky;
@@ -37,7 +37,9 @@ async fn another_account_deletes_the_last_account_s_state_file_and_starts_from_a
     let phase = sync.status().phase;
     let plan = sync.plan_new_identity().await.unwrap();
     let sent_unasked = rig.zone_fields_of(OTHER, Kind::Connection, A).is_some();
-    sync.choose_for_new_identity(NewIdentityChoice::MoveMyData).await.unwrap();
+    sync.choose_for_new_identity(NewIdentityChoice::MoveMyData)
+        .await
+        .unwrap();
 
     assert_eq!(switched.switched_from.as_deref(), Some(USER));
     assert!(switched.zone_made && switched.fetch.full);

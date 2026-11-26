@@ -275,7 +275,14 @@ fn key_digest_vectors() {
             "holders after one endorsed replacement",
             vec![
                 team_row(vec![Holder { account: a, ik: ik(1) }], KeyVersionState::Ok, None),
-                pin(a, ik(2), 2, PinHow::FirstUse, false, vec![Replaced { ik: ik(1), av: v(2) }]),
+                pin(
+                    a,
+                    ik(2),
+                    2,
+                    PinHow::FirstUse,
+                    false,
+                    vec![Replaced { ik: ik(1), av: v(2) }],
+                ),
             ],
             "20f6b84a3c15de74ec2ba13caef84083dc3a86382e4b2f36ec3a42a1cb8dd242",
         ),
