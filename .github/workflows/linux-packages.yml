@@ -205,6 +205,7 @@ jobs:
       - name: Build offline, test and lint the package
         env:
           SERIES: ${{ matrix.series }}
+          UBUNTU_IMAGE: mirror.gcr.io/library/ubuntu
         run: |
           changes="$(grep -l -x "Distribution: $SERIES" _packages/source/*_source.changes)"
           linux/build-aux/packaging/build-deb.sh "${changes%_source.changes}.dsc" _packages/deb
