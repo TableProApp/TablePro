@@ -202,7 +202,7 @@ final class SyncProviderCoordinator: ObservableObject {
     private func requestPass(_ why: PassReasonTag) {
         guard syncStatus.isEnabled else { return }
         guard currentPass == nil else {
-            pendingPass = Self.stronger(pendingPass, why)
+            pendingPass = SyncEngineRules.stronger(pendingPass, why)
             return
         }
         currentPass = Task { [weak self] in
@@ -350,7 +350,7 @@ final class SyncProviderCoordinator: ObservableObject {
     private func refreshStatus() {
         guard syncStatus.isEnabled, let engine = host.openedEngine else { return }
         let info = engine.status()
-        syncStatus = Self.status(info)
+        syncStatus = SyncEngineRules.status(info)
         lastSyncDate = info.lastPassMs.map { Date(timeIntervalSince1970: Double($0) / 1_000) } ?? metadata.lastSyncDate
     }
 
@@ -463,7 +463,7 @@ final class SyncProviderCoordinator: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if currentPass != nil {
-                    pendingPass = Self.stronger(pendingPass, .networkBack)
+                    pendingPass = SyncEngineRules.stronger(pendingPass, .networkBack)
                 } else if syncStatus.error == .offline {
                     requestPass(.networkBack)
                 }

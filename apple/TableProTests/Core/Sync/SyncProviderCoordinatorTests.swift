@@ -561,17 +561,17 @@ struct SyncProviderCoordinatorStatusTests {
 
     @Test("Each phase of the engine reads as the status the app already shows")
     func phases() {
-        #expect(SyncProviderCoordinator.status(Self.info(.idle)) == .idle)
-        #expect(SyncProviderCoordinator.status(Self.info(.syncing)) == .syncing)
-        #expect(SyncProviderCoordinator.status(Self.info(.zoneRemoved)) == .error(.blocked(.dataDeletedFromICloud)))
-        #expect(SyncProviderCoordinator.status(Self.info(.waiting(retryInMs: 500))) == .error(.busy))
-        #expect(SyncProviderCoordinator.status(Self.info(.off)) == .idle)
-        #expect(SyncProviderCoordinator.status(Self.info(.unavailable)) == .error(.blocked(.unavailable)))
-        #expect(SyncProviderCoordinator.status(Self.info(.pullOnly)) == .error(.unexpected))
-        #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.network")) == .error(.offline))
-        #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.account_changed")) == .idle)
+        #expect(SyncEngineRules.status(Self.info(.idle)) == .idle)
+        #expect(SyncEngineRules.status(Self.info(.syncing)) == .syncing)
+        #expect(SyncEngineRules.status(Self.info(.zoneRemoved)) == .error(.blocked(.dataDeletedFromICloud)))
+        #expect(SyncEngineRules.status(Self.info(.waiting(retryInMs: 500))) == .error(.busy))
+        #expect(SyncEngineRules.status(Self.info(.off)) == .idle)
+        #expect(SyncEngineRules.status(Self.info(.unavailable)) == .error(.blocked(.unavailable)))
+        #expect(SyncEngineRules.status(Self.info(.pullOnly)) == .error(.unexpected))
+        #expect(SyncEngineRules.status(Self.info(.idle, problem: "sync.icloud.network")) == .error(.offline))
+        #expect(SyncEngineRules.status(Self.info(.idle, problem: "sync.icloud.account_changed")) == .idle)
         // Only the engine's phase offers Upload Again.
-        #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.zone_deleted_by_user")) == .error(.unexpected))
+        #expect(SyncEngineRules.status(Self.info(.idle, problem: "sync.icloud.zone_deleted_by_user")) == .error(.unexpected))
     }
 
     @Test("Each iCloud problem code is the condition the person can act on")
@@ -590,19 +590,19 @@ struct SyncProviderCoordinatorStatusTests {
             "sync.icloud.other": .unexpected
         ]
         for (code, error) in expected {
-            #expect(SyncProviderCoordinator.error(forProblem: code) == error, "\(code)")
+            #expect(SyncEngineRules.error(forProblem: code) == error, "\(code)")
         }
     }
 
     @Test("The person's pass stands in for any other, and a journal pass for none")
     func strongestPass() {
-        #expect(SyncProviderCoordinator.stronger(nil, .foreground) == .foreground)
-        #expect(SyncProviderCoordinator.stronger(.foreground, .person) == .person)
-        #expect(SyncProviderCoordinator.stronger(.person, .cloudKitPush) == .person)
-        #expect(SyncProviderCoordinator.stronger(.journal, .foreground) == .foreground)
-        #expect(SyncProviderCoordinator.stronger(.cloudKitPush, .journal) == .cloudKitPush)
-        #expect(SyncProviderCoordinator.stronger(.cloudKitPush, .accountChanged) == .accountChanged)
-        #expect(SyncProviderCoordinator.stronger(.accountChanged, .person) == .person)
+        #expect(SyncEngineRules.stronger(nil, .foreground) == .foreground)
+        #expect(SyncEngineRules.stronger(.foreground, .person) == .person)
+        #expect(SyncEngineRules.stronger(.person, .cloudKitPush) == .person)
+        #expect(SyncEngineRules.stronger(.journal, .foreground) == .foreground)
+        #expect(SyncEngineRules.stronger(.cloudKitPush, .journal) == .cloudKitPush)
+        #expect(SyncEngineRules.stronger(.cloudKitPush, .accountChanged) == .accountChanged)
+        #expect(SyncEngineRules.stronger(.accountChanged, .person) == .person)
     }
 
     @Test("Each switch that is off names its core kinds, and passwords ride only with connections")

@@ -71,7 +71,7 @@ final class SyncEngineHost {
     }
 
     // No settings host yet, and no device store: the state file's MAC key and anchor need one (core ADR 0054, Integrity
-    // and freshness).
+    // and freshness). The engine runs on the core that holds the stores, with the account's service.
     private static func live() -> SyncEngineHost {
         let transport = CloudKitCoreTransport()
         let mirror = LegacySyncMetadataMirror(
@@ -79,14 +79,15 @@ final class SyncEngineHost {
             recordCache: SyncProviderCoordinator.makeRecordCache()
         )
         return SyncEngineHost(transport: transport) { listener in
-            guard let opener = AccountServices.shared.syncOpener else {
+            guard let account = await AccountServices.shared.syncAccount?.accountService() else {
                 throw AccountError.network("the account did not open")
             }
-            return try await opener.openSync(
+            return try CoreStoreHost.shared.core().openSync(
                 config: SyncConfig(
                     platform: .macos,
                     categories: SyncProviderCoordinator.categories(AppSettingsStorage.shared.loadSync())
                 ),
+                account: account,
                 cloudkit: transport,
                 settings: nil,
                 deviceStore: nil,
