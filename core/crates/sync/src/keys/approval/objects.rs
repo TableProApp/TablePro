@@ -107,7 +107,7 @@ impl KeyService {
             return Ok((false, None));
         };
         let object = KeyObject::parse(pulled.kind.as_str(), &pulled.record_id, fields.as_bytes())?;
-        self.hold_object(txn, ScopeName::Personal, &object, true).await?;
+        self.hold_served(txn, ScopeName::Personal, &object, pulled).await?;
         let mut record = self.session_record(txn, request).await?;
         let moved = match (&object.body, record.as_mut()) {
             (KeyBody::Request(body), None) => {
@@ -219,8 +219,10 @@ impl KeyService {
         }
     }
 
-    // The server purges a request and its steps once the session ends. Its row goes with it; one still live ended
-    // without this side seeing why, so it ends as expired. True when the row went.
+    // The server purges a request and its steps once the session ends. Its row goes with it, unless this side took a
+    // step in it: then it stays, ended, so a server serving the same request again never opens a second comparison
+    // (0056, One comparison per session). One still live ended without this side seeing why, so it ends as expired.
+    // True when the comparison it held in memory is done with.
     async fn purge(
         &self,
         txn: &mut dyn StateTxn,
@@ -243,6 +245,12 @@ impl KeyService {
                 record.sent.purged = true;
                 self.put_session(txn, &record).await?;
                 self.hooks().pass_soon();
+            } else if record.role == Role::Approver && record.a.is_some() {
+                record.purged_unapproved();
+                self.put_session(txn, &record).await?;
+                txn.delete(&RowKey::KeyPending(PendingFlow::Approval { request }))
+                    .await?;
+                return Ok(true);
             } else {
                 txn.delete(&RowKey::KeyComparison(request)).await?;
                 txn.delete(&RowKey::KeyPending(PendingFlow::Approval { request }))

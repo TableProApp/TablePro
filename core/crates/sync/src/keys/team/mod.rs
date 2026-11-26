@@ -153,6 +153,39 @@ impl KeyService {
         book.holders_at(version, &mut facts).await
     }
 
+    // The accounts that held a team's `version`, and whether a holder wrapped it to this account at `av` or later, by
+    // a wrap that verifies and opens to the key the version's record names; None while the holders cannot be decided.
+    pub(crate) async fn team_holders_since(
+        &self,
+        txn: &mut dyn StateTxn,
+        team: TeamId,
+        version: Version,
+        av: Version,
+    ) -> Result<Option<(std::collections::BTreeSet<AccountId>, bool)>, SyncError> {
+        let book = self.load_team(txn, team).await?;
+        let mut cache = service_facts::FactsCache::default();
+        let mut facts = service_facts::ServiceFacts {
+            service: self,
+            txn,
+            scope: ScopeName::Team(team),
+            cache: &mut cache,
+        };
+        let Some((holders, signed)) = book
+            .holders_with_wraps_since(version, self.account(), av, &mut facts)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let mut wrapped = false;
+        for wrap in &signed {
+            if secrets::own_wrap_opens(self, &book, &mut facts, version, wrap).await? {
+                wrapped = true;
+                break;
+            }
+        }
+        Ok(Some((holders, wrapped)))
+    }
+
     // Whether `fields` are a version record at `key` that its signer's certificate in the team verifies. Beside the
     // record this device holds there, that is a fork a restore ends the team on; bytes no certificate signs are none.
     pub(crate) async fn signed_team_version(
@@ -186,6 +219,25 @@ impl KeyService {
     // own rotation to `av` is written already, so a resumed flow does not rotate the team a second time.
     pub(crate) async fn team_rotated_since(&self, team: TeamId, av: Version) -> Result<bool, SyncError> {
         let _serial = self.serialized().await;
+        self.rotated_since(team, av).await
+    }
+
+    // The team rotation an account rotation to `av` owes, unless one is written already. The check and the write
+    // share one hold of the serial lock, so two resumes of one flow that both found the team owed rotate it once.
+    pub(crate) async fn rotate_team_owed(
+        &self,
+        team: TeamId,
+        av: Version,
+        remove: &[AccountId],
+    ) -> Result<(), SyncError> {
+        let _serial = self.serialized().await;
+        if self.rotated_since(team, av).await? {
+            return Ok(());
+        }
+        self.rotate(team, remove).await
+    }
+
+    async fn rotated_since(&self, team: TeamId, av: Version) -> Result<bool, SyncError> {
         let mut txn = self.begin().await?;
         let book = self.load_team(&mut *txn, team).await?;
         Ok(book

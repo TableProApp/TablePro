@@ -9,11 +9,13 @@ use serde_json::{Value, json};
 use tablepro_keys::encoding::TeamId;
 use tablepro_records::Kind;
 use tablepro_sync::api::adapter::{LocalChange, LocalRecords, RecordAdapter, StoreStamp};
-use tablepro_sync::api::control::{ConflictChoice, PassReason, SyncCategories, SyncControl};
+use tablepro_sync::api::control::{
+    ConflictChoice, NewIdentityChoice, PassReason, SyncCategories, SyncControl, SyncPhase,
+};
 use tablepro_sync::api::error::{AdapterError, SyncError};
 use tablepro_sync::api::ids::{KindName, RecordKey, ScopeName};
 use tablepro_sync::api::scopes::Role;
-use tablepro_sync::api::state::{HeldReason, Row, RowKey, RowRange, Table};
+use tablepro_sync::api::state::{HeldReason, PushWait, Row, RowKey, RowRange, Table};
 use tablepro_sync::api::transport::DeletedReason;
 use tablepro_sync_testing::FakeServer;
 use tablepro_sync_testing::service::{Policies, ScopeOwner};
@@ -42,9 +44,7 @@ async fn a_connection_new_to_a_device_waits_whole_until_its_destination_is_appro
     let held = mini.connections.get(&id(1));
     let waiting = mini.sync.approvals().await.unwrap();
     let status = mini.sync.status();
-    mini.decide(key(&id(1)), "/host", true)
-        .await
-        .unwrap();
+    mini.decide(key(&id(1)), "/host", true).await.unwrap();
     mini.sync().await;
 
     assert_eq!(held, None);
@@ -59,6 +59,72 @@ async fn a_connection_new_to_a_device_waits_whole_until_its_destination_is_appro
     assert_eq!(stored(&server, "connection", &id(1)), Some(prod));
 }
 
+// Round 2: a pull between the prompt and the answer swaps the value the answer would apply (0066, Rules).
+#[tokio::test]
+async fn an_answer_to_a_value_a_pull_changed_since_applies_nothing_and_asks_again() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mini.connections
+        .put(&id(1), json!({"name": "Prod", "host": "db.internal"}));
+    mini.sync().await;
+    mac.sync().await;
+    mac.decide(key(&id(1)), "/host", true).await.unwrap();
+    mini.connections
+        .put(&id(1), json!({"name": "Prod", "host": "db.example.com"}));
+    mini.sync().await;
+    mac.sync().await;
+    let shown = mac.sync.approvals().await.unwrap();
+    mini.connections
+        .put(&id(1), json!({"name": "Prod", "host": "attacker.example.com"}));
+    mini.sync().await;
+    mac.sync().await;
+
+    let answered = mac
+        .sync
+        .decide_approval(key(&id(1)), "/host".to_owned(), shown[0].digest, true)
+        .await;
+    let asked = mac.sync.approvals().await.unwrap();
+
+    assert_eq!(shown[0].pulled, json!("db.example.com"));
+    assert_eq!(answered.unwrap_err().code(), "sync.changed");
+    assert_eq!(
+        mac.connections.get(&id(1)),
+        Some(json!({"name": "Prod", "host": "db.internal"}))
+    );
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].pulled, json!("attacker.example.com"));
+    assert_ne!(asked[0].digest, shown[0].digest);
+}
+
+#[tokio::test]
+async fn a_connection_new_to_a_device_is_not_taken_on_an_answer_to_a_host_a_pull_replaced() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "host": "db.example.com"}));
+    mac.sync().await;
+    mini.sync().await;
+    let shown = mini.sync.approvals().await.unwrap();
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "host": "attacker.example.com"}));
+    mac.sync().await;
+    mini.sync().await;
+
+    let answered = mini
+        .sync
+        .decide_approval(key(&id(1)), "/host".to_owned(), shown[0].digest, true)
+        .await;
+    mini.sync().await;
+
+    assert_eq!(answered.unwrap_err().code(), "sync.changed");
+    assert_eq!(mini.connections.get(&id(1)), None);
+    let asked = mini.sync.approvals().await.unwrap();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].pulled, json!("attacker.example.com"));
+}
+
 #[tokio::test]
 async fn a_pulled_host_change_waits_and_the_device_never_pushes_its_own_back_over_it() {
     let server = FakeServer::new();
@@ -68,9 +134,7 @@ async fn a_pulled_host_change_waits_and_the_device_never_pushes_its_own_back_ove
         .put(&id(1), json!({"name": "Prod", "host": "db.internal"}));
     mini.sync().await;
     mac.sync().await;
-    mac.decide(key(&id(1)), "/host", true)
-        .await
-        .unwrap();
+    mac.decide(key(&id(1)), "/host", true).await.unwrap();
 
     mac.connections
         .put(&id(1), json!({"name": "Prod 2", "host": "elsewhere.example.com"}));
@@ -100,17 +164,13 @@ async fn a_rejection_keeps_the_device_s_value_and_a_newer_pulled_value_asks_agai
         .put(&id(1), json!({"name": "Prod", "startup_commands": "SET a = 1"}));
     mini.sync().await;
     mac.sync().await;
-    mac.decide(key(&id(1)), "/startup_commands", true)
-        .await
-        .unwrap();
+    mac.decide(key(&id(1)), "/startup_commands", true).await.unwrap();
     mac.connections
         .put(&id(1), json!({"name": "Prod", "startup_commands": "DROP TABLE users"}));
     mac.sync().await;
     mini.sync().await;
 
-    mini.decide(key(&id(1)), "/startup_commands", false)
-        .await
-        .unwrap();
+    mini.decide(key(&id(1)), "/startup_commands", false).await.unwrap();
     mini.sync().await;
     let kept = mini.connections.get(&id(1));
     let asked_after_rejecting = mini.sync.approvals().await.unwrap().len();
@@ -128,6 +188,282 @@ async fn a_rejection_keeps_the_device_s_value_and_a_newer_pulled_value_asks_agai
     let waiting = mini.sync.approvals().await.unwrap();
     assert_eq!(waiting.len(), 1);
     assert_eq!(waiting[0].pulled, json!("SET b = 2"));
+}
+
+// The device's copy turns unreadable while a pulled value waits: no decision lands, and the row waits for the person.
+#[tokio::test]
+async fn a_decision_on_a_record_the_store_cannot_read_keeps_the_approval_waiting() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mini.connections
+        .put(&id(1), json!({"name": "Prod", "startup_commands": "SET a = 1"}));
+    mini.sync().await;
+    mac.sync().await;
+    mac.decide(key(&id(1)), "/startup_commands", true).await.unwrap();
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "startup_commands": "DROP TABLE users"}));
+    mac.sync().await;
+    mini.sync().await;
+    mini.connections.make_unreadable(&id(1));
+
+    let rejected = mini.decide(key(&id(1)), "/startup_commands", false).await;
+    let approved = mini.decide(key(&id(1)), "/startup_commands", true).await;
+
+    assert_eq!(rejected.unwrap_err().code(), "sync.adapter.unreadable");
+    assert_eq!(approved.unwrap_err().code(), "sync.adapter.unreadable");
+    assert_eq!(mini.sync.approvals().await.unwrap().len(), 1);
+}
+
+// A connection new to the device waits whole while a copy the store cannot read takes its id, as a restored file
+// can: approving it writes nothing over that copy, and a decision a crash left unapplied is not replayed over it.
+#[tokio::test]
+async fn a_held_record_never_goes_in_over_a_copy_the_store_cannot_read() {
+    use tablepro_sync::api::state::ApprovalDecision;
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "host": "db.example.com"}));
+    mac.sync().await;
+    mini.sync().await;
+    mini.connections.make_unreadable(&id(1));
+
+    let approved = mini.decide(key(&id(1)), "/host", true).await;
+    let Some(Row::Approval(mut row)) = mini.row(RowKey::Approval(key(&id(1)), "/host".to_owned())).await else {
+        panic!("the approval row went");
+    };
+    row.decision = ApprovalDecision::Approved;
+    let mut txn = mini.state.begin().await.unwrap();
+    txn.put(Row::Approval(row)).await.unwrap();
+    txn.commit().await.unwrap();
+    mini.sync().await;
+
+    assert_eq!(approved.unwrap_err().code(), "sync.adapter.unreadable");
+    assert_eq!(mini.connections.get(&id(1)), None);
+    assert!(mini.row(RowKey::Held(key(&id(1)))).await.is_some());
+    assert!(
+        mini.row(RowKey::Approval(key(&id(1)), "/host".to_owned()))
+            .await
+            .is_some()
+    );
+}
+
+// The store cannot keep one pulled value: that record is held by id with the server's copy, the pass goes on and says
+// so on every pass it stays held, a later change of another record still lands, and the held one goes in once the
+// store takes it, with no change on the server. A new device's first pull refills every kind, so the hold keeps that.
+#[tokio::test]
+async fn a_value_the_store_refuses_is_held_and_the_pass_goes_on() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mini.connections.refuse_value(&id(1), true);
+    mac.connections.put(&id(1), json!({"name": "Prod"}));
+    mac.connections.put(&id(2), json!({"name": "Stage"}));
+    mac.sync().await;
+
+    let report = mini.pass().await.unwrap();
+    let problem = mini.sync.status().problem;
+    let held = mini.row(RowKey::Held(key(&id(1)))).await;
+    mac.connections.put(&id(2), json!({"name": "Stage 2"}));
+    mac.sync().await;
+    mini.sync().await;
+    let later = mini.connections.get(&id(2));
+    let still = mini.sync.status().problem;
+    mini.connections.refuse_value(&id(1), false);
+    mini.sync().await;
+
+    assert_eq!(report.store_refused, vec![key(&id(1))]);
+    assert_eq!(problem, Some("sync.adapter.unreadable"));
+    let Some(Row::Held(held)) = held else {
+        panic!("the refused record is not held");
+    };
+    assert_eq!(held.reason, HeldReason::RefusedInRefill);
+    assert_eq!(held.record.fields, Some(json!({"name": "Prod"})));
+    assert_eq!(later, Some(json!({"name": "Stage 2"})));
+    assert_eq!(still, Some("sync.adapter.unreadable"));
+    assert_eq!(mini.connections.get(&id(1)), Some(json!({"name": "Prod"})));
+    assert!(mini.row(RowKey::Held(key(&id(1)))).await.is_none());
+    assert_eq!(mini.sync.status().problem, None);
+}
+
+// A saved query of a connection that stays on the device: its deletion waits while the connection is Local only, and
+// goes up once the connection syncs again (0054, Rules for both providers).
+#[tokio::test]
+async fn a_saved_query_deletion_waits_while_its_connection_stays_on_the_device() {
+    let server = FakeServer::new();
+    let queries = MemoryAdapter::new(Kind::SavedQuery, "queries", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&queries))
+        .build()
+        .await;
+    let connection = id(9);
+    mac.connections.put(&connection, json!({"name": "Prod"}));
+    queries.put(
+        &id(1),
+        json!({"name": "Revenue", "query": "SELECT 1", "connection_id": connection}),
+    );
+    mac.sync().await;
+    let pushed = stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_some();
+    mac.connections.put_local_only(&connection, json!({"name": "Prod"}));
+    queries.remove(&id(1));
+    mac.sync().await;
+    let held = stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_some();
+    mac.connections.put(&connection, json!({"name": "Prod"}));
+    mac.sync().await;
+
+    assert!(pushed);
+    assert!(held);
+    assert!(stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_none());
+}
+
+// A connection that synced, then stayed on the device and was deleted there: neither its deletion nor its saved
+// query's goes up, as the Swift engine kept them, and nothing waits to go (0054, Rules for both providers).
+#[tokio::test]
+async fn a_deleted_local_only_connection_and_its_records_stay_on_the_server() {
+    let server = FakeServer::new();
+    let queries = MemoryAdapter::new(Kind::SavedQuery, "queries", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&queries))
+        .build()
+        .await;
+    let connection = id(9);
+    mac.connections.put(&connection, json!({"name": "Prod"}));
+    queries.put(
+        &id(1),
+        json!({"name": "Revenue", "query": "SELECT 1", "connection_id": connection}),
+    );
+    mac.sync().await;
+    mac.connections.put_local_only(&connection, json!({"name": "Prod"}));
+    mac.sync().await;
+    mac.connections.remove(&connection);
+    queries.remove(&id(1));
+    mac.sync().await;
+    mac.sync().await;
+
+    assert!(stored(&server, Kind::Connection.as_str(), &connection).is_some());
+    assert!(stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_some());
+    assert_eq!(mac.sync.status().queued_changes, 0);
+}
+
+// The Mac keeps its SSH and credential profiles in its own stores until they move into the core, so it opens the
+// engine with both kinds off: a profile its core store does not hold rests, and no deletion of one goes up.
+#[tokio::test]
+async fn a_mac_with_the_profile_kinds_off_sends_nothing_of_them() {
+    let server = FakeServer::new();
+    let web_ssh = MemoryAdapter::new(Kind::SshProfile, "web-library", StoreFile::new());
+    let web_credentials = MemoryAdapter::new(Kind::CredentialProfile, "web-library", StoreFile::new());
+    let web = DeviceBuilder::new(&server, "dev_web")
+        .adapter(ScopeName::Personal, Arc::clone(&web_ssh))
+        .adapter(ScopeName::Personal, Arc::clone(&web_credentials))
+        .build()
+        .await;
+    let mac_ssh = MemoryAdapter::new(Kind::SshProfile, "library", StoreFile::new());
+    let mac_credentials = MemoryAdapter::new(Kind::CredentialProfile, "library", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&mac_ssh))
+        .adapter(ScopeName::Personal, Arc::clone(&mac_credentials))
+        .build()
+        .await;
+    web_ssh.put(&id(1), json!({"name": "Bastion"}));
+    web_credentials.put(&id(2), json!({"name": "Ops", "username": "ops"}));
+    web.sync().await;
+    mac.sync().await;
+    mac.sync
+        .set_categories(SyncCategories {
+            off: vec![KindName::of(Kind::SshProfile), KindName::of(Kind::CredentialProfile)],
+            passwords: true,
+        })
+        .await
+        .unwrap();
+
+    mac_ssh.remove(&id(1));
+    mac_credentials.remove(&id(2));
+    mac_ssh.put(&id(3), json!({"name": "Only on the Mac"}));
+    let report = mac.sync().await;
+
+    assert_eq!(report.pushed, 0);
+    assert!(stored(&server, Kind::SshProfile.as_str(), &id(1)).is_some());
+    assert!(stored(&server, Kind::CredentialProfile.as_str(), &id(2)).is_some());
+    assert!(stored(&server, Kind::SshProfile.as_str(), &id(3)).is_none());
+}
+
+// A refill the store could not take the pulled value in keeps the refill for that record: once the store takes it,
+// the server's copy wins, and the copy the restore left never goes up as the device's edit.
+#[tokio::test]
+async fn a_value_a_refill_could_not_write_takes_the_pull_when_the_store_takes_it() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let file = StoreFile::new();
+    let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .build()
+        .await;
+    mac.connections.put(&id(1), json!({"name": "Old"}));
+    mac.sync().await;
+    mini.sync().await;
+    mac.connections.put(&id(1), json!({"name": "New"}));
+    mac.sync().await;
+    mini.sync().await;
+
+    file.restored();
+    connections.put(&id(1), json!({"name": "Old"}));
+    connections.refuse_value(&id(1), true);
+    mini.sync().await;
+    let held = mini.rows(RowRange::Scope(Table::Held, ScopeName::Personal)).await;
+    connections.refuse_value(&id(1), false);
+    mini.sync().await;
+    mini.sync().await;
+
+    assert!(
+        held.iter()
+            .any(|row| matches!(row, Row::Held(row) if row.reason == HeldReason::RefusedInRefill)),
+        "{held:?}"
+    );
+    assert_eq!(connections.get(&id(1)), Some(json!({"name": "New"})));
+    assert_eq!(
+        stored(&server, Kind::Connection.as_str(), &id(1)),
+        Some(json!({"name": "New"}))
+    );
+}
+
+// A refused refill value takes the pull in a snapshot too: another store's refill reads the scope again before the
+// held record is retried, and the copy the restore left still never goes up (Codex round 4).
+#[tokio::test]
+async fn a_refill_s_refused_value_takes_the_pull_in_a_later_snapshot() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let file = StoreFile::new();
+    let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
+    let settings_file = StoreFile::new();
+    let settings = MemoryAdapter::new(Kind::MacosSettings, "settings", Arc::clone(&settings_file));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .adapter(ScopeName::Personal, Arc::clone(&settings))
+        .build()
+        .await;
+    mac.connections.put(&id(1), json!({"name": "Old"}));
+    mac.sync().await;
+    mini.sync().await;
+    mac.connections.put(&id(1), json!({"name": "New"}));
+    mac.sync().await;
+    mini.sync().await;
+
+    file.restored();
+    connections.put(&id(1), json!({"name": "Old"}));
+    connections.refuse_value(&id(1), true);
+    mini.sync().await;
+    connections.refuse_value(&id(1), false);
+    settings_file.restored();
+    mini.sync().await;
+    mini.sync().await;
+
+    assert_eq!(connections.get(&id(1)), Some(json!({"name": "New"})));
+    assert_eq!(
+        stored(&server, Kind::Connection.as_str(), &id(1)),
+        Some(json!({"name": "New"}))
+    );
 }
 
 #[tokio::test]
@@ -266,6 +602,44 @@ async fn a_team_member_both_sides_changed_waits_for_keep_mine_and_decide_later_k
     assert!(mini.sync.conflicts().await.unwrap().is_empty());
 }
 
+// A pull that replaces the conflict between the sheet and the choice resolves nothing: Keep Mine on the old sheet
+// would send the device's side over a copy the person never saw.
+#[tokio::test]
+async fn a_choice_on_a_conflict_a_pull_replaced_since_resolves_nothing() {
+    let server = FakeServer::new();
+    let (mac, mac_queries, mini, mini_queries) = team_devices(&server).await;
+    mac_queries.put("q1", query("Report", "select 1"));
+    mac.sync().await;
+    mini.sync().await;
+    mac_queries.put("q1", query("Report mac", "select 1"));
+    mini_queries.put("q1", query("Report mini", "select 2"));
+    mac.sync().await;
+    mini.sync().await;
+    let shown = mini.sync.conflicts().await.unwrap();
+    mac_queries.put("q1", query("Report mac 2", "select 1"));
+    mac.sync().await;
+    mini.sync().await;
+
+    let chosen = mini
+        .sync
+        .resolve_conflict(shown[0].key.clone(), shown[0].digest, ConflictChoice::KeepMine)
+        .await;
+    mini.sync().await;
+
+    assert_eq!(chosen.unwrap_err().code(), "sync.changed");
+    let open = mini.sync.conflicts().await.unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].theirs, Some(query("Report mac 2", "select 1")));
+    assert_ne!(open[0].digest, shown[0].digest);
+    assert_eq!(
+        server
+            .stored(ScopeOwner::Team(team()), "library_query", "q1")
+            .unwrap()
+            .fields,
+        Some(query("Report mac 2", "select 1"))
+    );
+}
+
 #[tokio::test]
 async fn keep_theirs_takes_the_server_s_copy_and_sends_nothing() {
     let server = FakeServer::new();
@@ -279,9 +653,7 @@ async fn keep_theirs_takes_the_server_s_copy_and_sends_nothing() {
     mini.sync().await;
     let key = RecordKey::new(ScopeName::Team(team()), Kind::LibraryQuery, "q1");
 
-    mini.resolve(key, ConflictChoice::KeepTheirs)
-        .await
-        .unwrap();
+    mini.resolve(key, ConflictChoice::KeepTheirs).await.unwrap();
     let report = mini.sync().await;
 
     assert_eq!(report.pushed, 0);
@@ -602,9 +974,7 @@ async fn a_record_the_person_deletes_here_leaves_nothing_to_approve() {
     mini.connections.put(&id(1), json!({"name": "Prod", "host": "a"}));
     mini.sync().await;
     mac.sync().await;
-    mac.decide(key(&id(1)), "/host", true)
-        .await
-        .unwrap();
+    mac.decide(key(&id(1)), "/host", true).await.unwrap();
     mac.connections.put(&id(1), json!({"name": "Prod", "host": "b"}));
     mac.sync().await;
     mini.sync().await;
@@ -654,9 +1024,7 @@ async fn a_record_waiting_whole_stays_held_through_a_placement_edit_and_a_refusa
         .put(&id(1), json!({"name": "Prod", "host": "db", "sort_order": 7}));
     mac.sync().await;
     mini.sync().await;
-    mini.decide(key(&id(1)), "/host", false)
-        .await
-        .unwrap();
+    mini.decide(key(&id(1)), "/host", false).await.unwrap();
     mini.sync().await;
 
     let stored = server.stored(personal(), "connection", &id(1)).unwrap();
@@ -764,9 +1132,7 @@ async fn keep_mine_against_a_deletion_sends_the_device_s_own_host_never_the_one_
     mac_items.put("c1", item("Prod", "a"));
     mac.sync().await;
     mini.sync().await;
-    mini.decide(lib_key.clone(), "/host", true)
-        .await
-        .unwrap();
+    mini.decide(lib_key.clone(), "/host", true).await.unwrap();
     mac_items.put("c1", item("Prod", "evil"));
     mac.sync().await;
     mini.sync().await;
@@ -776,9 +1142,7 @@ async fn keep_mine_against_a_deletion_sends_the_device_s_own_host_never_the_one_
     mac.sync().await;
     mini.sync().await;
     let open = mini.sync.conflicts().await.unwrap();
-    mini.resolve(lib_key, ConflictChoice::KeepMine)
-        .await
-        .unwrap();
+    mini.resolve(lib_key, ConflictChoice::KeepMine).await.unwrap();
     mini.sync().await;
 
     assert_eq!(open.len(), 1);
@@ -799,9 +1163,7 @@ async fn a_policy_revival_sends_the_device_s_own_value_of_a_member_still_waiting
     mini.connections.put(&id(1), json!({"name": "Prod", "host": "a"}));
     mini.sync().await;
     mac.sync().await;
-    mac.decide(key(&id(1)), "/host", true)
-        .await
-        .unwrap();
+    mac.decide(key(&id(1)), "/host", true).await.unwrap();
     mac.connections.put(&id(1), json!({"name": "Prod", "host": "b"}));
     mac.sync().await;
     mini.sync().await;
@@ -818,6 +1180,53 @@ async fn a_policy_revival_sends_the_device_s_own_value_of_a_member_still_waiting
         stored(&server, "connection", &id(1)),
         Some(json!({"name": "Prod", "host": "a"}))
     );
+}
+
+// 0066, Per-kind refills: a restore marks each kind of the file in `stores_kinds`. One that is off keeps its mark
+// across passes and takes its refill once it is on; the file keeps its one `stores` row throughout.
+#[tokio::test]
+async fn a_kind_off_when_its_file_is_restored_keeps_its_refill_mark_until_it_is_on() {
+    let server = FakeServer::new();
+    let file = StoreFile::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(
+            MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file)),
+            Arc::clone(&file),
+        )
+        .build()
+        .await;
+    mac.connections.put(&id(1), json!({"name": "New", "sort_order": 1}));
+    mac.sync().await;
+    mini.sync().await;
+    let off = |off: bool| SyncCategories {
+        off: if off {
+            vec![KindName::of(Kind::Connection)]
+        } else {
+            Vec::new()
+        },
+        passwords: true,
+    };
+    mini.sync.set_categories(off(true)).await.unwrap();
+    file.restored();
+    mini.sync().await;
+    mini.sync().await;
+    let marked = mini.rows(RowRange::Table(Table::StoresKinds)).await;
+    let stores_while_off = mini.rows(RowRange::Table(Table::Stores)).await.len();
+
+    mini.sync.set_categories(off(false)).await.unwrap();
+    mini.sync().await;
+
+    assert_eq!(
+        marked,
+        [Row::StoresKind(tablepro_sync::api::state::StoresKindRow {
+            store: "connections".to_owned(),
+            kind: KindName::of(Kind::Connection),
+        })]
+    );
+    assert_eq!(stores_while_off, 1);
+    assert!(mini.rows(RowRange::Table(Table::StoresKinds)).await.is_empty());
+    assert_eq!(mini.rows(RowRange::Table(Table::Stores)).await.len(), 1);
 }
 
 #[tokio::test]
@@ -894,24 +1303,18 @@ async fn keep_mine_never_sends_a_value_the_device_refused_as_its_own() {
     mac_items.put("c1", item("P", "a"));
     mac.sync().await;
     mini.sync().await;
-    mini.decide(lib_key.clone(), "/host", true)
-        .await
-        .unwrap();
+    mini.decide(lib_key.clone(), "/host", true).await.unwrap();
     mac_items.put("c1", item("P", "b"));
     mac.sync().await;
     mini.sync().await;
-    mini.decide(lib_key.clone(), "/host", false)
-        .await
-        .unwrap();
+    mini.decide(lib_key.clone(), "/host", false).await.unwrap();
 
     mini_items.put("c1", item("P mini", "a"));
     mac_items.put("c1", item("P mac", "c"));
     mac.sync().await;
     mini.sync().await;
     let open = mini.sync.conflicts().await.unwrap();
-    mini.resolve(lib_key, ConflictChoice::KeepMine)
-        .await
-        .unwrap();
+    mini.resolve(lib_key, ConflictChoice::KeepMine).await.unwrap();
     mini.sync().await;
 
     assert_eq!(open[0].fields, ["name"]);
@@ -919,4 +1322,200 @@ async fn keep_mine_never_sends_a_value_the_device_refused_as_its_own() {
         .stored(ScopeOwner::Team(team()), "library_connection", "c1")
         .unwrap();
     assert_eq!(team_copy.fields, Some(item("P mini", "c")));
+}
+
+// 0054, Another account or server, as the iCloud ruling: a device that signs in to another account pushes nothing of
+// its own until the person picks Move my data, after a restart too; an answer for another account changes nothing.
+#[tokio::test]
+async fn another_account_pushes_nothing_of_its_own_until_move_my_data() {
+    let server = FakeServer::new();
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(tablepro_sync_testing::FakeDeviceStore::new());
+    let file = StoreFile::new();
+    let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
+    connections.put(&id(1), json!({"name": "From the last account"}));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .state(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await)
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .follows(3)
+        .build()
+        .await;
+    let waited = mini.sync().await;
+    let phase = mini.sync.status().phase;
+    let seed = Arc::clone(&mini.seed);
+    drop(mini);
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .state(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await)
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .seed(seed)
+        .follows(3)
+        .build()
+        .await;
+
+    let after_restart = mini.sync().await;
+    let sent_before = stored(&server, "connection", &id(1));
+    let plan = mini.sync.plan_new_identity().await.unwrap();
+    let elsewhere = mini
+        .sync
+        .choose_for_new_identity(NewIdentityChoice::MoveMyData, "https://elsewhere.example/x".to_owned())
+        .await;
+    mini.sync
+        .choose_for_new_identity(NewIdentityChoice::MoveMyData, plan.account.clone())
+        .await
+        .unwrap();
+
+    assert_eq!(waited.push_wait, Some(PushWait::AccountChoice { unsent: 3 }));
+    assert_eq!(phase, SyncPhase::NewIdentity);
+    assert_eq!(after_restart.push_wait, Some(PushWait::AccountChoice { unsent: 3 }));
+    assert_eq!(plan.unsent, 3);
+    assert_eq!(sent_before, None);
+    assert_eq!(elsewhere.unwrap_err().code(), "sync.changed");
+    assert_eq!(
+        stored(&server, "connection", &id(1)),
+        Some(json!({"name": "From the last account"}))
+    );
+    assert_eq!(mini.sync.status().phase, SyncPhase::Idle);
+}
+
+// Start empty on the service: the synced records leave this device, Local only ones stay, and the device fills from
+// the new account.
+#[tokio::test]
+async fn start_empty_on_another_account_fills_from_it_and_keeps_local_only_records() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    mac.connections.put(&id(2), json!({"name": "The new account's"}));
+    mac.sync().await;
+    let mini = DeviceBuilder::new(&server, "dev_mini").follows(1).build().await;
+    mini.connections.put(&id(1), json!({"name": "From the last account"}));
+    mini.connections
+        .put_local_only(&id(3), json!({"name": "This Mac only"}));
+    mini.sync().await;
+
+    let plan = mini.sync.plan_new_identity().await.unwrap();
+    mini.sync
+        .choose_for_new_identity(NewIdentityChoice::StartEmpty, plan.account)
+        .await
+        .unwrap();
+    mini.sync().await;
+
+    assert_eq!(mini.connections.get(&id(1)), None);
+    assert_eq!(mini.connections.get(&id(2)), Some(json!({"name": "The new account's"})));
+    assert_eq!(mini.connections.get(&id(3)), Some(json!({"name": "This Mac only"})));
+    assert_eq!(stored(&server, "connection", &id(1)), None);
+    assert_eq!(stored(&server, "connection", &id(3)), None);
+    assert_eq!(mini.sync.status().phase, SyncPhase::Idle);
+}
+
+// Start empty keeps the device's settings: the new account's copy wins where it has one, and a category only this
+// device holds goes up once the person edits it here (orchestrator ruling).
+#[tokio::test]
+async fn start_empty_keeps_settings_the_new_account_s_copy_wins_and_an_edit_sends_the_rest() {
+    let server = FakeServer::new();
+    let mac_settings = MemoryAdapter::new(Kind::MacosSettings, "settings", StoreFile::new());
+    let mini_settings = MemoryAdapter::new(Kind::MacosSettings, "settings", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&mac_settings))
+        .build()
+        .await;
+    let editor = |width: i64| json!({"category": "editor", "options": {"tabWidth": width}});
+    let keyboard =
+        |key: &str| json!({"category": "keyboard", "options": {"shortcuts": [{"id": key, "value": {"keyCode": 1}}]}});
+    mac_settings.put("editor", editor(8));
+    mac.sync().await;
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .adapter(ScopeName::Personal, Arc::clone(&mini_settings))
+        .follows(2)
+        .build()
+        .await;
+    mini_settings.put("editor", editor(2));
+    mini_settings.put("keyboard", keyboard("b"));
+    mini.sync().await;
+
+    let plan = mini.sync.plan_new_identity().await.unwrap();
+    mini.sync
+        .choose_for_new_identity(NewIdentityChoice::StartEmpty, plan.account)
+        .await
+        .unwrap();
+    mini.sync().await;
+    let kept = mini_settings.get("keyboard");
+    let sent_unedited = stored(&server, "macos_settings", "keyboard");
+    mini_settings.put("keyboard", keyboard("c"));
+    mini.sync().await;
+
+    assert_eq!(mini_settings.get("editor"), Some(editor(8)));
+    assert_eq!(stored(&server, "macos_settings", "editor"), Some(editor(8)));
+    assert_eq!(kept, Some(keyboard("b")));
+    assert_eq!(sent_unedited, None);
+    assert_eq!(stored(&server, "macos_settings", "keyboard"), Some(keyboard("c")));
+    assert_eq!(mini.sync.status().phase, SyncPhase::Idle);
+}
+
+// A state file lost under its anchor opens fresh for its account: nothing personal goes up until the person chooses
+// Move my data or Start empty again, whatever the app names, since what an earlier choice kept off the account may be
+// gone with it (orchestrator ruling on 0054).
+#[tokio::test]
+async fn a_recovered_state_file_asks_again_before_anything_personal_goes_up() {
+    let server = FakeServer::new();
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(tablepro_sync_testing::FakeDeviceStore::new());
+    let file = StoreFile::new();
+    let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .state(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await)
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .build()
+        .await;
+    mini.sync().await;
+    let seed = Arc::clone(&mini.seed);
+    drop(mini);
+    let path = super::harness::files_at(dir.path(), &device_store).path(&super::harness::identity("dev_mini"));
+    for suffix in ["", "-wal", "-shm"] {
+        let mut name = path.clone().into_os_string();
+        name.push(suffix);
+        let _ = std::fs::remove_file(name);
+    }
+    connections.put(&id(1), json!({"name": "Made while the file was gone"}));
+    // The recovery's open, then a quit before any pass: the next open trusts the file and still asks, with the count.
+    drop(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await);
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .state(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await)
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .seed(seed)
+        .build()
+        .await;
+
+    let before_any_pass = mini.sync.plan_new_identity().await.unwrap();
+    let waited = mini.sync().await;
+    let sent_unasked = stored(&server, "connection", &id(1));
+    let plan = mini.sync.plan_new_identity().await.unwrap();
+    mini.sync
+        .choose_for_new_identity(NewIdentityChoice::MoveMyData, plan.account)
+        .await
+        .unwrap();
+
+    assert_eq!(before_any_pass.unsent, 1);
+    assert_eq!(waited.push_wait, Some(PushWait::AccountChoice { unsent: 1 }));
+    assert_eq!(sent_unasked, None);
+    assert_eq!(
+        stored(&server, "connection", &id(1)),
+        Some(json!({"name": "Made while the file was gone"}))
+    );
+}
+
+// The count the prompt shows: the changes the last account's file holds that never went up, a new record and an edit.
+#[tokio::test]
+async fn unsent_changes_counts_what_the_last_account_never_received() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    mac.connections.put(&id(1), json!({"name": "Sent"}));
+    mac.sync().await;
+    mac.connections.put(&id(1), json!({"name": "Edited"}));
+    mac.connections.put(&id(2), json!({"name": "New"}));
+
+    let adapters = tablepro_sync::engine::Adapters::new(vec![Arc::clone(&mac.connections) as Arc<dyn RecordAdapter>]);
+    let unsent = tablepro_sync::service::unsent_changes(&mac.state, &adapters)
+        .await
+        .unwrap();
+
+    assert_eq!(unsent, 2);
 }

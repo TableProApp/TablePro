@@ -253,8 +253,9 @@ impl FakeClient {
             return Err(RejectedCode::KindNotInScope);
         }
         self.authorize(state, owner, change, bind)?;
+        // A null in a patch removes its member (RFC 7396); the fields it leaves are checked again in `write`.
         if let ChangeOp::Write { patch, .. } = &change.op
-            && let Err(refusal) = limits::check(patch)
+            && let Err(refusal) = limits::check(&merge_patch::without_nulls(patch))
         {
             return Err(RejectedCode::parse(refusal.code()));
         }

@@ -14,8 +14,8 @@ use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
-    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
-    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
+    ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError,
+    parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
@@ -179,7 +179,7 @@ impl SqlDialect for PgDialect {
     }
 
     fn history_recording(&self, sql: &str) -> HistoryRecording {
-        classify_for_history(SqlGrammar::PostgreSql, &CREDENTIAL_RULES, sql)
+        SqlGrammar::PostgreSql.history_recording(sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -428,45 +428,6 @@ fn array_element(text: &str) -> String {
 pub(crate) fn quoted(text: &str) -> String {
     escape_literal(text).trim_start().to_owned()
 }
-
-/// Statements whose text can hold a password or a connection string.
-/// `CREATE USER` also covers `CREATE USER MAPPING`, whose options carry
-/// the remote login, and pgcrypto's `crypt` and passphrase functions take
-/// the password itself.
-const CREDENTIAL_RULES: CredentialRules = CredentialRules {
-    statement_prefixes: &[
-        &["CREATE", "ROLE"],
-        &["ALTER", "ROLE"],
-        &["CREATE", "USER"],
-        &["ALTER", "USER"],
-        &["CREATE", "GROUP"],
-        &["ALTER", "GROUP"],
-        &["CREATE", "SERVER"],
-        &["ALTER", "SERVER"],
-        &["CREATE", "SUBSCRIPTION"],
-        &["ALTER", "SUBSCRIPTION"],
-    ],
-    conditional_prefixes: &[(&["ALTER", "SYSTEM"], &["PRIMARY_CONNINFO"])],
-    carriers: &[
-        "dblink",
-        "dblink_connect",
-        "dblink_connect_u",
-        "dblink_exec",
-        "crypt",
-        "pgp_sym_encrypt",
-        "pgp_sym_encrypt_bytea",
-        "pgp_sym_decrypt",
-        "pgp_sym_decrypt_bytea",
-        "pgp_pub_decrypt",
-        "pgp_pub_decrypt_bytea",
-        "encrypt",
-        "decrypt",
-        "encrypt_iv",
-        "decrypt_iv",
-        "hmac",
-    ],
-    secret_parameters: &[],
-};
 
 #[cfg(test)]
 mod tests {

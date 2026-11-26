@@ -16,7 +16,7 @@ use crate::api::control::PassReason;
 use crate::api::error::SyncError;
 use crate::api::ids::{RecordKey, ScopeName};
 use crate::api::state::{Row, RowKey, RowRange, StateStore, Table};
-use crate::cloudkit::fetch::{read_everything_again, wire_fields};
+use crate::cloudkit::fetch::{SCOPE, wire_fields};
 use tablepro_records::cloudkit::record_name;
 
 pub(super) struct MoveBack {
@@ -36,7 +36,7 @@ impl MoveBack {
 
     // CloudKit deletes without a change tag, so an edit saved between the fetch and this call is lost, as for any
     // iCloud deletion; the fetch keeps that window to one round trip.
-    pub(super) async fn delete(&self) -> Result<(), SyncError> {
+    pub(super) async fn delete(&self, fence: &super::MoveFence<'_>) -> Result<(), SyncError> {
         let (Some(transport), Some(state)) = (&self.transport, &self.state) else {
             return Ok(());
         };
@@ -44,6 +44,7 @@ impl MoveBack {
             return Ok(());
         }
         let names: Vec<String> = self.deletions.iter().map(|(name, _)| name.clone()).collect();
+        fence.check().await?;
         let outcomes = transport.modify(self.account.clone(), Vec::new(), names).await?;
         let keys: HashMap<&str, &RecordKey> = self.deletions.iter().map(|(name, key)| (name.as_str(), key)).collect();
         let mut txn = state.begin().await?;
@@ -59,6 +60,7 @@ impl MoveBack {
                 CloudKitOutcome::Saved { .. } | CloudKitOutcome::ServerChanged { .. } => {}
             }
         }
+        let _held = fence.hold().await?;
         txn.commit().await?;
         // What did go is settled above; the rest is the person's to try again.
         match failed {
@@ -67,10 +69,25 @@ impl MoveBack {
         }
     }
 
+    // The ids the personal stores hold once personal sync rests, so a pass that ran between the plan and the fence
+    // leaves no base behind for a record it took off this device.
+    pub(super) async fn held_now(&mut self, service: &crate::service::ServiceSync) -> Result<(), SyncError> {
+        self.held = service
+            .personal_ids()
+            .await?
+            .into_iter()
+            .flat_map(|(kind, ids)| {
+                ids.into_iter()
+                    .map(move |id| RecordKey::new(ScopeName::Personal, kind, shortened(kind, id)))
+            })
+            .collect();
+        Ok(())
+    }
+
     // Nothing but what the person confirmed may go from the zone: any other CloudKit base the device's stores lack,
     // whatever the service did meanwhile, loses its base, so the iCloud engine sends no deletion for it, and the next
     // fetch reads the zone whole and brings the record back.
-    pub(super) async fn keep_the_rest(&self) -> Result<(), SyncError> {
+    pub(super) async fn keep_the_rest(&self, fence: &super::MoveFence<'_>) -> Result<(), SyncError> {
         let Some(state) = &self.state else {
             return Ok(());
         };
@@ -82,8 +99,15 @@ impl MoveBack {
                 txn.delete(&RowKey::Base(base.key)).await?;
             }
         }
+        // The file syncs on iCloud again once its move back ends, from a fetch that reads the zone whole.
+        txn.delete(&RowKey::Move).await?;
+        if let Some(Row::Scope(mut scope)) = txn.get(&RowKey::Scope(SCOPE)).await? {
+            scope.cursor = None;
+            txn.put(Row::Scope(scope)).await?;
+        }
+        let _held = fence.hold().await?;
         txn.commit().await?;
-        read_everything_again(state.as_ref()).await
+        Ok(())
     }
 }
 

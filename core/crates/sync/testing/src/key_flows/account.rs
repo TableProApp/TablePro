@@ -12,12 +12,12 @@ use tablepro_keys::sas::SAS_WORDS;
 use tablepro_keys::words::words;
 use tablepro_sync::api::error::SyncError;
 use tablepro_sync::api::ids::ScopeName;
-use tablepro_sync::api::transport::DpopKey;
 use tablepro_sync::api::key_flows::{
     Acceptance, AccountFlows, DraftId, Fingerprint, GenesisOutcome, KeyApplied, KeyArrival, KeyChange, KeyNotice,
     KeyNoticeKind, KeyState, MemberKeyStatus, NoticeId, OpenedEnvelope, RecoveryKeyDraft, ReviewedDevice,
     RotationDraft, SignOutOutcome, TypedBack,
 };
+use tablepro_sync::api::transport::DpopKey;
 use uuid::Uuid;
 
 use super::{

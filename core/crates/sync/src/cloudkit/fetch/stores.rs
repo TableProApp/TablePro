@@ -7,14 +7,14 @@ use serde_json::Value;
 use tablepro_records::Kind;
 use tablepro_records::cloudkit::{CloudFields, from_wire, record_name, record_type_of, to_wire};
 use tablepro_records::record_id::{DIGEST_PREFIX, shortened};
-use uuid::Uuid;
 
+use super::SCOPE;
 use super::settle::{Settle, View};
-use super::{SCOPE, identity_row};
+use crate::adapters::{apply_keeping, approval};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{KindName, RecordKey};
-use crate::api::state::{Row, RowKey, RowRange, Standing, StandingRow, StoreRow, Table};
+use crate::api::state::{HeldReason, Row, RowKey, RowRange, Standing, StandingRow, StoreRow, Table};
 
 // Keyed by the id the zone names a record with, so a long id meets its `sha256-` form (0052, Long ids).
 #[derive(Debug)]
@@ -165,7 +165,9 @@ impl Settle<'_, '_> {
     }
 
     // Standing is written by id whenever the store reads a record, so a copy it can no longer read keeps the standing
-    // it last had, and one no longer stored loses it.
+    // it last had, and one no longer stored loses it, except a connection kept off sync: its deletion, and its records'
+    // whenever their kinds are read again, stay on the device (0054, Rules for both providers), so its row outlives
+    // its own base.
     async fn keep_standing(&mut self, kind: Kind, local: &Local) -> Result<(), SyncError> {
         let range = RowRange::ScopeKind(Table::Standing, SCOPE, KindName::of(kind));
         let mut known: BTreeMap<String, Standing> = BTreeMap::new();
@@ -184,7 +186,10 @@ impl Settle<'_, '_> {
                     .await?;
             }
         }
-        for id in known.into_keys().filter(|id| !local.unreadable.contains_key(id)) {
+        for (id, standing) in known.into_iter().filter(|(id, _)| !local.unreadable.contains_key(id)) {
+            if kind == Kind::Connection && standing != Standing::Syncs {
+                continue;
+            }
             self.txn
                 .delete(&RowKey::Standing(RecordKey::new(SCOPE, kind, id)))
                 .await?;
@@ -265,29 +270,69 @@ impl Settle<'_, '_> {
             let Some(adapter) = fetcher.adapters.get(&kind) else {
                 continue;
             };
-            fetcher.check_stop()?;
-            let changes: Vec<LocalChange> = changes.into_values().collect();
-            for change in &changes {
+            let changes: Vec<(String, LocalChange)> = changes.into_iter().collect();
+            for (_, change) in &changes {
                 match change {
                     LocalChange::Put { .. } => self.counts.written += 1,
                     LocalChange::Delete { .. } => self.counts.removed += 1,
                 }
             }
-            let stamp = adapter.apply(SCOPE, changes).await?;
-            self.note_store(adapter.store(), stamp).await?;
+            let applied = apply_keeping(adapter.as_ref(), SCOPE, changes, || fetcher.check_stop()).await?;
+            for wire in applied.refused {
+                self.refused(kind, wire).await?;
+            }
+            if let Some(stamp) = applied.stamp {
+                self.note_store(adapter.store(), stamp).await?;
+            }
         }
         Ok(Some(()))
     }
 
-    // Each identity of a store this fetch sees moves the rows of the kinds it keeps, so a later rollback of the file
-    // below it shows for every kind, written by this pull or not. A kind in refill moves its row only once the refill
-    // ends, so a fetch stopped midway refills again.
+    // The store refused the record's value: it is held by id with the pulled copy and keeps the base and the approval
+    // rows the batch found, so the store's copy stays what the device holds against them (0054, Rules for both
+    // providers). The pending base the batch staged for it no longer matches the store, so a restart before the commit
+    // drops it too.
+    async fn refused(&mut self, kind: Kind, wire: String) -> Result<(), SyncError> {
+        let key = RecordKey::new(SCOPE, KindName::of(kind), wire);
+        let Some(undo) = self.undo.remove(&key) else {
+            return Ok(());
+        };
+        if undo.record.deleted.is_some() {
+            self.counts.removed = self.counts.removed.saturating_sub(1);
+        } else {
+            self.counts.written = self.counts.written.saturating_sub(1);
+        }
+        self.counts.refused = self.counts.refused.saturating_add(1);
+        self.fetcher
+            .refused
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(key.clone());
+        match undo.base {
+            Some(base) => self.txn.put(Row::Base(base)).await?,
+            None => self.txn.delete(&RowKey::Base(key.clone())).await?,
+        }
+        // The approval queue's rows go back to what the record waited on before the change the store refused.
+        for row in approval::rows_of(&mut self.txn, &key).await? {
+            self.txn.delete(&RowKey::Approval(row.key, row.field)).await?;
+        }
+        for row in undo.approvals {
+            self.txn.put(Row::Approval(row)).await?;
+        }
+        let reason = if self.pull_wins.contains(&kind) || self.pull_wins_keys.contains(&key) {
+            HeldReason::RefusedInRefill
+        } else {
+            HeldReason::Unreadable
+        };
+        self.hold(&key, reason, undo.record).await
+    }
+
+    // Each identity of a store this fetch sees moves its row, so a later rollback of the file below it shows for every
+    // kind it keeps, written by this pull or not. A kind in refill keeps its mark until the refill ends, so a fetch
+    // stopped midway refills it again.
     pub(super) async fn note_store(&mut self, store: &str, stamp: StoreStamp) -> Result<(), SyncError> {
-        let fetcher = self.fetcher;
-        for (kind, adapter) in &fetcher.adapters {
-            if adapter.store() == store && !self.pull_wins.contains(kind) {
-                self.note_stamp(&identity_row(*kind, store), stamp, false).await?;
-            }
+        if self.fetcher.adapters.values().any(|adapter| adapter.store() == store) {
+            self.note_stamp(store, stamp, false).await?;
         }
         Ok(())
     }
@@ -314,18 +359,5 @@ impl Settle<'_, '_> {
             }))
             .await?;
         Ok(())
-    }
-
-    // A kind whose category was off while its state file refilled is left with a generation no store has, so it
-    // refills once the category is on.
-    pub(super) async fn refill_later(&mut self, row: &str) -> Result<(), SyncError> {
-        self.put_stamp(
-            row,
-            StoreStamp {
-                generation: Uuid::nil(),
-                sequence: 0,
-            },
-        )
-        .await
     }
 }

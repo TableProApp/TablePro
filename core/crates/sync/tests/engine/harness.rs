@@ -102,6 +102,8 @@ impl StoreFile {
 struct Held {
     records: BTreeMap<String, (Value, Standing)>,
     unreadable: Vec<String>,
+    // What `hide` took out of `records`, given back by `show`.
+    hidden: BTreeMap<String, (Value, Standing)>,
     tombstones: Vec<String>,
     applies: Vec<Vec<LocalChange>>,
 }
@@ -152,6 +154,8 @@ pub struct MemoryAdapter {
     held: Mutex<Held>,
     elsewhere: Mutex<std::collections::HashMap<ScopeName, Held>>,
     on_apply: Mutex<Option<Box<dyn Fn() + Send>>>,
+    // Ids whose pulled change the store cannot take: a write that touches one fails whole.
+    refused_values: Mutex<std::collections::HashSet<String>>,
 }
 
 impl MemoryAdapter {
@@ -164,6 +168,7 @@ impl MemoryAdapter {
             held: Mutex::default(),
             elsewhere: Mutex::default(),
             on_apply: Mutex::new(None),
+            refused_values: Mutex::default(),
         })
     }
 
@@ -194,6 +199,23 @@ impl MemoryAdapter {
         self.file.advance();
     }
 
+    // The store cannot keep a value for this id, as a build that does not know it would; false takes it again.
+    pub fn refuse_value(&self, id: &str, refused: bool) {
+        let mut values = lock(&self.refused_values);
+        if refused {
+            values.insert(id.to_owned());
+        } else {
+            values.remove(id);
+        }
+    }
+
+    // A copy the store still holds and can no longer read, as one a newer build rewrote.
+    pub fn make_unreadable(&self, id: &str) {
+        let mut held = lock(&self.held);
+        held.records.remove(id);
+        held.unreadable.push(id.to_owned());
+    }
+
     // A create-once entry the person deleted: a tombstone the store keeps until it is pushed.
     pub fn delete_entry(&self, id: &str) {
         let mut held = lock(&self.held);
@@ -205,6 +227,23 @@ impl MemoryAdapter {
 
     pub fn get(&self, id: &str) -> Option<Value> {
         lock(&self.held).records.get(id).map(|(fields, _)| fields.clone())
+    }
+
+    // The store can no longer read the record, as a newer build's, until `show` gives it back unchanged.
+    pub fn hide(&self, id: &str) {
+        let mut held = lock(&self.held);
+        if let Some(record) = held.records.remove(id) {
+            held.hidden.insert(id.to_owned(), record);
+            held.unreadable.push(id.to_owned());
+        }
+    }
+
+    pub fn show(&self, id: &str) {
+        let mut held = lock(&self.held);
+        if let Some(record) = held.hidden.remove(id) {
+            held.unreadable.retain(|unreadable| unreadable != id);
+            held.records.insert(id.to_owned(), record);
+        }
     }
 
     pub fn applies(&self) -> usize {
@@ -246,6 +285,15 @@ impl RecordAdapter for MemoryAdapter {
         if let Some(run) = lock(&self.on_apply).as_ref() {
             run();
         }
+        let refused = lock(&self.refused_values);
+        if changes.iter().any(|change| match change {
+            LocalChange::Put { record_id, .. } | LocalChange::Delete { record_id } => refused.contains(record_id),
+        }) {
+            return Err(AdapterError::Unreadable {
+                detail: "a value this store cannot keep".to_owned(),
+            });
+        }
+        drop(refused);
         if scope == self.home() {
             lock(&self.held).apply(changes);
         } else {
@@ -799,8 +847,10 @@ pub struct DeviceBuilder {
     connections: Option<(Arc<MemoryAdapter>, Arc<StoreFile>)>,
     extra: Vec<(ScopeName, Arc<MemoryAdapter>)>,
     others: Vec<Arc<dyn RecordAdapter>>,
+    memory_connections: bool,
     keys: Option<Arc<KeyLog>>,
     seed: Option<Arc<Ed25519Seed>>,
+    follows: Option<u64>,
 }
 
 impl DeviceBuilder {
@@ -814,9 +864,24 @@ impl DeviceBuilder {
             connections: None,
             extra: Vec::new(),
             others: Vec::new(),
+            memory_connections: true,
             keys: None,
             seed: None,
+            follows: None,
         }
+    }
+
+    // The core's own stores in place of the in-memory connections, as an app opens the engine over them.
+    pub fn core_stores(mut self, adapters: Vec<Arc<dyn RecordAdapter>>) -> Self {
+        self.memory_connections = false;
+        self.others.extend(adapters);
+        self
+    }
+
+    // This account follows another account or server on the device, whose file held `unsent` changes.
+    pub fn follows(mut self, unsent: u64) -> Self {
+        self.follows = Some(unsent);
+        self
     }
 
     // An adapter of the test's own, over a store that behaves as a core store does.
@@ -879,7 +944,10 @@ impl DeviceBuilder {
                 file,
             )
         });
-        let mut adapters: Vec<Arc<dyn RecordAdapter>> = vec![Arc::clone(&connections) as Arc<dyn RecordAdapter>];
+        let mut adapters: Vec<Arc<dyn RecordAdapter>> = Vec::new();
+        if self.memory_connections {
+            adapters.push(Arc::clone(&connections) as Arc<dyn RecordAdapter>);
+        }
         for (scope, adapter) in &self.extra {
             adapter.register(*scope);
             adapters.push(Arc::clone(adapter) as Arc<dyn RecordAdapter>);
@@ -906,6 +974,7 @@ impl DeviceBuilder {
                 passwords: true,
             },
             mode: self.mode,
+            follows: self.follows,
         }));
         Device {
             server: self.server,

@@ -10,8 +10,12 @@ struct TagPersistence {
 
     var unreadableIds: Set<UUID> { file.unreadableIds }
 
-    func save(_ tags: [ConnectionTag], removingUnreadable removedIds: Set<UUID> = []) throws {
-        try file.save(tags, removingUnreadable: removedIds)
+    func save(
+        _ tags: [ConnectionTag],
+        removingUnreadable removedIds: Set<UUID> = [],
+        willWrite: (Data) -> Void = { _ in }
+    ) throws {
+        try file.save(tags, removingUnreadable: removedIds, willWrite: willWrite)
     }
 
     func load() throws -> [ConnectionTag] {

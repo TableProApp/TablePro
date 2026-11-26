@@ -1,5 +1,5 @@
 // A removed zone and Upload Again (0054, Rules for both providers): the state is cleared, nothing goes up and the zone
-// is not made again until the person asks, after a restart too.
+// is not made again until the person asks, after a restart too, and while another device made it again (0066, Rules).
 
 use std::sync::Arc;
 
@@ -8,6 +8,7 @@ use tablepro_records::Kind;
 use tablepro_sync::api::SyncError;
 use tablepro_sync::api::cloudkit::{CloudKitFailure, CloudKitOutcome, CloudKitTransport};
 use tablepro_sync::api::control::{PassReason, SyncControl, SyncPhase};
+use tablepro_sync::api::state::PushWait;
 use tablepro_sync::cloudkit::modify::CloudKitSync;
 
 use crate::faults::Flaky;
@@ -93,21 +94,37 @@ async fn a_zone_another_device_deleted_counts_as_removed() {
     assert!(rig.cloud.record_names(USER).is_empty());
 }
 
-// Another device's Upload Again made the zone again: this one finds it and syncs as before.
+// Another device's Upload Again made the zone again: this one downloads it and sends nothing until its own person
+// asks, after a restart too.
 #[tokio::test]
-async fn a_zone_made_again_elsewhere_is_found_and_synced() {
+async fn a_zone_made_again_elsewhere_is_downloaded_and_waits_for_this_device_s_upload_again() {
     let rig = Rig::new().await;
     let sync = synced(&rig).await;
     rig.cloud.remove_zone_by_user(USER);
     sync.run_pass(PassReason::Poll).await.unwrap_err();
     rig.cloud.ensure_zone(USER.to_owned()).await.unwrap();
     rig.save_elsewhere(Kind::Group, C, &json!({"name": "Home"}));
+    rig.store(Kind::Group)
+        .put(B, projected(Kind::Group, B, &json!({"name": "Work"})));
 
     let found = sync.run_pass(PassReason::CloudKitPush).await.unwrap();
+    let phase = sync.status().phase;
+    drop(sync);
+    let relaunched = rig.sync(Some(USER));
+    let after_restart = relaunched.run_pass(PassReason::Launch).await.unwrap();
+    let held_back = rig.zone_fields(Kind::Group, B).is_none();
+    let uploaded = relaunched.run_upload_again().await.unwrap();
 
     assert!(!found.zone_made);
+    assert_eq!(found.push_wait, Some(PushWait::UploadAgain));
     assert!(rig.store(Kind::Group).holds(C));
-    assert_eq!(sync.status().phase, SyncPhase::Idle);
+    assert_eq!(phase, SyncPhase::ZoneRemoved);
+    assert_eq!(after_restart.push_wait, Some(PushWait::UploadAgain));
+    assert!(held_back);
+    assert_eq!(uploaded.push_wait, None);
+    assert!(rig.zone_fields(Kind::Group, B).is_some());
+    assert!(rig.zone_fields(Kind::Connection, A).is_some());
+    assert_eq!(relaunched.status().phase, SyncPhase::Idle);
 }
 
 #[tokio::test]

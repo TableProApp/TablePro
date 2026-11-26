@@ -60,6 +60,9 @@ nonisolated final class PromptKeyboardInteractiveProvider: KeyboardInteractivePr
 nonisolated extension LibSSH2Tunnel: HarnessTunnel {}
 
 nonisolated enum MacTunnelOpener {
+    // One registry for the process, as SSHTunnelManager keeps one, so tunnels on one route share a session.
+    static let sessions = SSHSessions()
+
     // What SSHTunnelManager.createTunnel does, with its default port candidates.
     static func open(_ options: HarnessOptions) async throws -> LibSSH2Tunnel {
         let config = try configuration(options)
@@ -71,20 +74,17 @@ nonisolated enum MacTunnelOpener {
             totpSecret: options.totpSecret,
             keyboardInteractivePromptProvider: nil
         )
-        let deadline = ConnectionDeadline(configuredSeconds: nil)
-        let listener = try LibSSH2TunnelFactory.bindLocalListener(candidates: Array(60_000...65_000).shuffled())
-        let tunnel = try await Task.detached {
-            try await LibSSH2TunnelFactory.createTunnel(
-                connectionId: UUID(),
-                config: config,
-                credentials: credentials,
-                destination: destination,
-                listener: listener,
-                deadline: deadline
-            )
-        }.value
+        let tunnel = try await SSHTunnelOpener.open(
+            connectionId: UUID(),
+            config: config,
+            credentials: credentials,
+            destination: destination,
+            sessions: sessions,
+            localPortCandidates: { Array(60_000...65_000).shuffled() },
+            deadline: ConnectionDeadline(configuredSeconds: nil),
+            onDeath: { _ in }
+        )
         tunnel.startForwarding(destination: destination)
-        tunnel.startKeepAlive()
         return tunnel
     }
 

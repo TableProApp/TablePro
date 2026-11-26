@@ -25,6 +25,8 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]]
     func fetchAllDependentSequences(databaseName: String) async throws -> [String: [PluginSequenceInfo]]
     func fetchAllDependentTypes(databaseName: String) async throws -> [String: [PluginEnumTypeInfo]]
+    // `fetchTableDDL` for the tables of the schema the driver answers from one snapshot; a table left out is read alone.
+    func fetchAllTableDDL(databaseName: String) async throws -> [String: String]
 
     /// Mirrors `PluginDatabaseDriver.fetchIndexDDL` for the export side: the `CREATE INDEX`
     /// statements this table needs that `fetchTableDDL` does not already declare.
@@ -116,6 +118,7 @@ public extension PluginExportDataSource {
     func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]] { [:] }
     func fetchAllDependentSequences(databaseName: String) async throws -> [String: [PluginSequenceInfo]] { [:] }
     func fetchAllDependentTypes(databaseName: String) async throws -> [String: [PluginEnumTypeInfo]] { [:] }
+    func fetchAllTableDDL(databaseName: String) async throws -> [String: String] { [:] }
 
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] { [] }
 

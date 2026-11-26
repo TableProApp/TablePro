@@ -12,9 +12,10 @@ pub(crate) use arrival::Arrival;
 use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{MoveBackPlan, MovePlan};
 use crate::api::error::SyncError;
-use crate::api::state::{StateFiles, StateIdentity};
-use crate::cloudkit::modify::CloudKitSync;
+use crate::api::state::{MovePhase, MoveRow, Provider, Row, RowKey, StateFiles, StateIdentity};
+use crate::cloudkit::modify::{CloudKitSync, IcloudCopy, copy_rows};
 use crate::service::ServiceSync;
+use tablepro_account::{PolicyGate, PolicyRead};
 
 pub struct MoveParts {
     pub service: Arc<ServiceSync>,
@@ -25,6 +26,47 @@ pub struct MoveParts {
     pub files: Arc<dyn StateFiles>,
     // The iCloud account whose state file this device used last (`SyncConfig::icloud_account`).
     pub icloud_account: Option<String>,
+    // Whether the managed values allow the provider now (0055); checked right before each commit a move makes, so a
+    // revocation between two steps commits nothing more.
+    pub allowed: Allowed,
+    // The account's, which a policy change takes (`MoveFence`).
+    pub gate: Arc<PolicyGate>,
+}
+
+pub type Allowed = Arc<dyn Fn(Provider) -> bool + Send + Sync>;
+
+fn fence(allowed: &Allowed, provider: Provider) -> Result<(), SyncError> {
+    if allowed(provider) {
+        Ok(())
+    } else {
+        Err(SyncError::NotAllowed {
+            what: "a move to a provider the managed policy no longer allows",
+        })
+    }
+}
+
+// The policy's word on the move's target. A commit holds a read of the account's gate from its check until it lands,
+// and a policy change waits for it, so the change lands before the commit (which is refused) or after it (and the
+// next step is) (orchestrator ruling on 0055).
+pub(crate) struct MoveFence<'a> {
+    allowed: &'a Allowed,
+    gate: &'a Arc<PolicyGate>,
+    provider: Provider,
+}
+
+impl MoveFence<'_> {
+    // A step that commits nothing, which a change under way holds back.
+    pub(crate) async fn check(&self) -> Result<(), SyncError> {
+        let _read = self.gate.read().await;
+        fence(self.allowed, self.provider)
+    }
+
+    // Held until the commit after it lands.
+    pub(crate) async fn hold(&self) -> Result<PolicyRead, SyncError> {
+        let read = self.gate.read().await;
+        fence(self.allowed, self.provider)?;
+        Ok(read)
+    }
 }
 
 pub struct Mover {
@@ -42,6 +84,14 @@ impl Mover {
         Self { parts }
     }
 
+    fn policy(&self, provider: Provider) -> MoveFence<'_> {
+        MoveFence {
+            allowed: &self.parts.allowed,
+            gate: &self.parts.gate,
+            provider,
+        }
+    }
+
     // What the move sheet shows: what goes up, what stays on the device, and the secrets sealed into envelopes.
     pub async fn plan_move_to_service(&self) -> Result<MovePlan, SyncError> {
         self.parts.service.personal_plan().await
@@ -52,13 +102,93 @@ impl Mover {
     // zone no longer lists since another device moved it is deleted on the service unless its content changed there.
     // A move that stops short (`sync.move_incomplete` or any other error once iCloud stopped) leaves iCloud stopped,
     // since the stores may already hold what the service brought; calling it again goes on from there.
+    // One that went through already is done, so calling it again moves nothing twice.
     pub async fn move_to_service(&self) -> Result<(), SyncError> {
         let icloud = self.parts.icloud.as_ref().ok_or(SyncError::NotAllowed {
             what: "move to TablePro Sync while iCloud is not the provider",
         })?;
-        icloud.stop_for_move().await?;
+        if icloud
+            .open_move()
+            .await?
+            .is_some_and(|row| row.phase == MovePhase::Done)
+        {
+            return Ok(());
+        }
+        let policy = self.policy(Provider::Service);
+        policy.check().await?;
+        icloud.stop_for_move(&policy).await?;
         let copy = icloud.copy_for_move().await?;
-        self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
+        self.parts
+            .service
+            .run_arrival(Arrival::from_icloud(copy), &policy)
+            .await?;
+        icloud.finish_move(&policy).await
+    }
+
+    // The forward move while iCloud traffic is forbidden (0055: TablePro Sync forced, `ICloudSyncAllowed` off): iCloud
+    // stops at once with no last pass and no zone fetch, and each record meets the service against this device's
+    // CloudKit base, so its unsent iCloud edits merge rather than losing to the server. Deletions come only from what
+    // those bases record.
+    // The engine may never have started, as when the values forbade iCloud at launch: the state file it used last
+    // holds the bases then.
+    pub async fn move_to_service_without_icloud(&self) -> Result<(), SyncError> {
+        if let Some(icloud) = &self.parts.icloud {
+            if icloud
+                .open_move()
+                .await?
+                .is_some_and(|row| row.phase == MovePhase::Done)
+            {
+                return Ok(());
+            }
+            let policy = self.policy(Provider::Service);
+            policy.check().await?;
+            let copy = icloud.copy_without_icloud(&policy).await?;
+            self.parts
+                .service
+                .run_arrival(Arrival::from_icloud(copy), &policy)
+                .await?;
+            return icloud.finish_move(&policy).await;
+        }
+        let account = self.parts.icloud_account.as_ref().ok_or(SyncError::NotAllowed {
+            what: "move from an iCloud state file this device never used",
+        })?;
+        let state = self.parts.files.open(icloud_file(account)).await?;
+        let held = match state.begin().await?.get(&RowKey::Move).await? {
+            Some(Row::Move(row)) => Some(row.phase),
+            _ => None,
+        };
+        if held == Some(MovePhase::Done) {
+            return Ok(());
+        }
+        let moving = |phase| {
+            Row::Move(MoveRow {
+                from: Some(Provider::ICloud),
+                target: Provider::Service,
+                phase,
+            })
+        };
+        let policy = self.policy(Provider::Service);
+        if held.is_none() {
+            let mut txn = state.begin().await?;
+            txn.put(moving(MovePhase::Open)).await?;
+            let _held = policy.hold().await?;
+            txn.commit().await?;
+        }
+        let (bases, kept_off) = copy_rows(state.as_ref()).await?;
+        let copy = IcloudCopy {
+            account: Some(account.clone()),
+            bases,
+            listed: None,
+            kept_off,
+        };
+        self.parts
+            .service
+            .run_arrival(Arrival::from_icloud(copy), &policy)
+            .await?;
+        let mut txn = state.begin().await?;
+        txn.put(moving(MovePhase::Done)).await?;
+        let _held = policy.hold().await?;
+        txn.commit().await?;
         Ok(())
     }
 
@@ -71,10 +201,18 @@ impl Mover {
                 what: "first upload while iCloud is the provider",
             });
         }
+        let policy = self.policy(Provider::Service);
+        // The old file goes only under the values that let the upload start.
+        let held = policy.hold().await?;
         if let Some(account) = &self.parts.icloud_account {
             self.parts.files.delete(icloud_file(account)).await?;
         }
-        self.parts.service.run_arrival(Arrival::FirstUpload).await.map(|_| ())
+        drop(held);
+        self.parts
+            .service
+            .run_arrival(Arrival::FirstUpload, &policy)
+            .await
+            .map(|_| ())
     }
 
     // How many iCloud records the move back deletes, which the person confirms first.
@@ -87,21 +225,27 @@ impl Mover {
 
     // Refused unless `confirmed_deletions` is the count the plan gives now. Personal data then rests on the service, and
     // the app turns iCloud on as it does today.
+    // Personal service sync rests from the moment the count is checked, so no pass changes the stores between what the
+    // move keeps and what iCloud then reads; the `moves` row keeps it resting after a restart until the move ends.
     pub async fn move_to_icloud(&self, confirmed_deletions: u64) -> Result<(), SyncError> {
-        let back = self.move_back().await?;
+        let mut back = self.move_back().await?;
         if u64::try_from(back.len()).unwrap_or(u64::MAX) != confirmed_deletions {
             return Err(SyncError::NotAllowed {
                 what: "move back with another count of iCloud deletions than the person confirmed",
             });
         }
-        back.delete().await?;
-        back.keep_the_rest().await?;
-        drop(back);
+        let policy = self.policy(Provider::ICloud);
+        policy.check().await?;
+        self.parts.service.leave_for_icloud(&policy).await?;
         self.parts
             .service
             .set_mode(crate::service::ServiceMode::TeamsOnly)
             .await;
-        Ok(())
+        back.held_now(&self.parts.service).await?;
+        back.delete(&policy).await?;
+        back.keep_the_rest(&policy).await?;
+        drop(back);
+        self.parts.service.left_for_icloud(&policy).await
     }
 
     // The zone a move left stays until the person deletes it, with this device's iCloud state file.
@@ -115,10 +259,13 @@ impl Mover {
             what: "delete an iCloud zone this device never used",
         })?;
         let transport = self.transport()?;
+        let policy = self.policy(Provider::ICloud);
+        policy.check().await?;
         match transport.delete_zone(account.clone()).await {
             Ok(()) | Err(CloudKitFailure::ZoneNotFound | CloudKitFailure::ZoneDeletedByUser) => {}
             Err(failure) => return Err(failure.into()),
         }
+        let _held = policy.hold().await?;
         self.parts.files.delete(icloud_file(account)).await?;
         Ok(())
     }

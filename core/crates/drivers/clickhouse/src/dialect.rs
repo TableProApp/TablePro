@@ -12,8 +12,8 @@ use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
-    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
-    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
+    ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError,
+    parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
@@ -171,7 +171,7 @@ impl SqlDialect for ClickHouseDialect {
     }
 
     fn history_recording(&self, sql: &str) -> HistoryRecording {
-        classify_for_history(SqlGrammar::ClickHouse, &CREDENTIAL_RULES, sql)
+        SqlGrammar::ClickHouse.history_recording(sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -389,70 +389,6 @@ fn float_literal(value: f64) -> Option<String> {
     }
     None
 }
-
-/// Statements whose text can hold a password or an access key. The
-/// carriers are table functions and engines (`ENGINE = MySQL(...)`)
-/// whose arguments include the remote login; the Kafka, RabbitMQ and
-/// NATS engines and a password-protected backup take theirs as settings.
-const CREDENTIAL_RULES: CredentialRules = CredentialRules {
-    statement_prefixes: &[
-        &["CREATE", "USER"],
-        &["ALTER", "USER"],
-        &["CREATE", "NAMED", "COLLECTION"],
-        &["ALTER", "NAMED", "COLLECTION"],
-    ],
-    conditional_prefixes: &[
-        (&["CREATE", "DICTIONARY"], &["PASSWORD"]),
-        (&["BACKUP"], &["PASSWORD"]),
-        (&["RESTORE"], &["PASSWORD"]),
-        (
-            &["CREATE"],
-            &["KAFKA_SASL_PASSWORD", "RABBITMQ_PASSWORD", "NATS_PASSWORD"],
-        ),
-        (
-            &["ALTER"],
-            &["KAFKA_SASL_PASSWORD", "RABBITMQ_PASSWORD", "NATS_PASSWORD"],
-        ),
-    ],
-    carriers: &[
-        "mysql",
-        "postgresql",
-        "mongodb",
-        "redis",
-        "s3",
-        "s3Cluster",
-        "S3Queue",
-        "azureBlobStorage",
-        "azureBlobStorageCluster",
-        "AzureQueue",
-        "gcs",
-        "remote",
-        "remoteSecure",
-        "MaterializedPostgreSQL",
-        "MaterializedMySQL",
-        "ExternalDistributed",
-        "deltaLake",
-        "deltaLakeCluster",
-        "iceberg",
-        "icebergS3",
-        "icebergS3Cluster",
-        "icebergAzure",
-        "icebergAzureCluster",
-        "hudi",
-        "hudiCluster",
-        "url",
-        "urlCluster",
-        "ytsaurus",
-        "odbc",
-        "jdbc",
-        "encrypt",
-        "decrypt",
-        "tryDecrypt",
-        "aes_encrypt_mysql",
-        "aes_decrypt_mysql",
-    ],
-    secret_parameters: &[],
-};
 
 #[cfg(test)]
 mod tests {

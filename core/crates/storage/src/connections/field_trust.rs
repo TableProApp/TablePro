@@ -74,6 +74,34 @@ pub fn syncable_fields(fields: &BTreeMap<String, String>) -> BTreeMap<String, St
         .collect()
 }
 
+/// A field list sync brought, with each field sync never carries kept as this device holds it: a credential, a
+/// value the host sets, and the session token in the mechanism properties, after the properties sync carries.
+pub fn with_device_fields(
+    synced: BTreeMap<String, String>,
+    stored: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut fields = synced;
+    for (key, value) in stored {
+        let excluded = matches!(field_trust(key), Some(FieldTrust::Secret | FieldTrust::HostInternal));
+        if !excluded && !is_secret_field(key, value) {
+            continue;
+        }
+        if !excluded && mongo_option(key).as_deref() == Some(MECHANISM_PROPERTIES) {
+            if let (_, Some(token)) = split_session_token(value) {
+                let pair = format!("{SESSION_TOKEN_PROPERTY}:{token}");
+                let joined = match fields.get(key).filter(|synced| !synced.is_empty()) {
+                    Some(synced) => format!("{synced},{pair}"),
+                    None => pair,
+                };
+                fields.insert(key.clone(), joined);
+            }
+            continue;
+        }
+        fields.insert(key.clone(), value.clone());
+    }
+    fields
+}
+
 /// Whether a field holds a credential: a MongoDB option named for one, or the session token in its
 /// mechanism properties.
 pub fn is_secret_field(key: &str, value: &str) -> bool {
@@ -464,5 +492,39 @@ mod tests {
             "mongoParam_authMechanismProperties",
             "SERVICE_NAME:mongodb"
         ));
+    }
+
+    #[test]
+    fn a_pulled_field_list_keeps_what_sync_never_carries_as_this_device_holds_it() {
+        let stored = fields(&[
+            ("connectTimeoutSeconds", "30"),
+            ("connectTimeoutMilliseconds", "9000"),
+            ("mongoParam_proxyPassword", "hunter2"),
+            (
+                "mongoParam_authMechanismProperties",
+                "SERVICE_NAME:mongodb,AWS_SESSION_TOKEN:abc",
+            ),
+        ]);
+        let pulled = fields(&[
+            ("connectTimeoutSeconds", "60"),
+            ("mongoParam_authMechanismProperties", "SERVICE_NAME:other"),
+        ]);
+
+        assert_eq!(
+            with_device_fields(pulled, &stored),
+            fields(&[
+                ("connectTimeoutSeconds", "60"),
+                ("connectTimeoutMilliseconds", "9000"),
+                ("mongoParam_proxyPassword", "hunter2"),
+                (
+                    "mongoParam_authMechanismProperties",
+                    "SERVICE_NAME:other,AWS_SESSION_TOKEN:abc"
+                ),
+            ])
+        );
+        assert_eq!(
+            with_device_fields(BTreeMap::new(), &stored)["mongoParam_authMechanismProperties"],
+            "AWS_SESSION_TOKEN:abc"
+        );
     }
 }

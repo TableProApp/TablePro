@@ -21,7 +21,8 @@ use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
 use crate::api::legacy::{LegacyMetadata, LegacyTombstone};
 use crate::api::state::{
-    BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, RowRange, ScopeRow, Standing, StandingRow, StateTxn, Table,
+    BaseRow, DeferredRow, HeldReason, HeldRow, PushWait, Row, RowKey, RowRange, ScopeRow, Standing, StandingRow,
+    StateTxn, Table,
 };
 use crate::api::transport::{DeletedReason, PulledRecord};
 
@@ -210,9 +211,20 @@ async fn scope(txn: &mut dyn StateTxn, metadata: &LegacyMetadata, reads: &BTreeS
         Some(state) => matches!(state, "confirmed" | "removed"),
         None => metadata.token.is_some(),
     };
+    // What the zone's push waits for is this device's person's to lift, whatever the Swift metadata says.
+    let held = existing.as_ref().and_then(|row| row.push_wait);
     if !seen {
-        if existing.is_some() {
-            txn.delete(&RowKey::Scope(SCOPE)).await?;
+        match (existing, held) {
+            (Some(row), Some(_)) => {
+                txn.put(Row::Scope(ScopeRow {
+                    cursor: None,
+                    caught_up: false,
+                    ..row
+                }))
+                .await?;
+            }
+            (Some(_), None) => txn.delete(&RowKey::Scope(SCOPE)).await?,
+            (None, _) => {}
         }
         return Ok(());
     }
@@ -228,6 +240,12 @@ async fn scope(txn: &mut dyn StateTxn, metadata: &LegacyMetadata, reads: &BTreeS
     let mut row = existing.unwrap_or_else(|| ScopeRow::new(SCOPE));
     row.cursor = metadata.token.clone().filter(|_| read_all).map(Cursor::CloudKit);
     row.caught_up = false;
+    // The Swift engine saw the zone removed: nothing goes up until this device's person asks to upload again, even if
+    // another device made the zone again before this build's first pass (0066, Rules).
+    if metadata.zone_state.as_deref() == Some("removed") {
+        row.push_wait = Some(PushWait::UploadAgain);
+        row.cursor = None;
+    }
     txn.put(Row::Scope(row)).await?;
     Ok(())
 }

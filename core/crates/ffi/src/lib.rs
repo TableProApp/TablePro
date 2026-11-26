@@ -26,6 +26,7 @@ mod foreign_import;
 mod history;
 mod host;
 mod host_key;
+mod host_stores;
 mod import;
 mod key_read;
 mod keymap;
@@ -101,6 +102,12 @@ pub use history::{
     QueryHistoryStore,
 };
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
+pub use host_stores::{
+    FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,
+    FavouriteStoreContents, FavouriteTableRecord, HistoryEntryRecord, SavedQueryFolderRecord, SavedQueryRecord,
+    SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome, TableFolderRecordWrite,
+    TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
+};
 pub use import::{
     CsvDelimiterTag, CsvImport, CsvImportCheck, CsvImportOutcome, CsvPreview, CsvReadOptions, CsvRowFault,
     ImportColumnInfo, LineSpan,
@@ -152,12 +159,12 @@ pub use sync::{
     HeldReasonTag, HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings, KeyChangeInfo,
     KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg, LegacyRecordArg,
     LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo,
-    MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, PassReasonTag, PendingApprovalInfo, PendingResetInfo,
-    RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo,
-    RotationDraftInfo, ScopeStatusInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag, SettingsCategoryArg,
-    SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener,
-    SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo,
-    TeamRoleTag, device_item_class,
+    MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo,
+    PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo,
+    ReviewedMemberInfo, RotationDraftInfo, ScopeStatusInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag,
+    SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, SyncCategoriesArg, SyncConfig,
+    SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo,
+    TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
 };
 pub use sync::{
     TeamConnectionArg, TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo,

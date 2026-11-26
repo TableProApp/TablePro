@@ -1,6 +1,6 @@
 // How personal data arriving on the service meets the device's records in its first snapshot (0054, Moving between
 // providers): from iCloud, against the copy both providers last shared, with the move marker written by the first
-// mover; from no provider, as a refill, where the server's copy wins.
+// mover; from no provider, as a refill of the kinds only the personal scope holds, where the server's copy wins.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
@@ -10,7 +10,7 @@ use tablepro_records::move_marker::{MEMBER, MoveMarker};
 use tablepro_records::record_id::shortened;
 
 use crate::api::ids::{ChangeTag, RecordKey, ScopeName};
-use crate::api::state::BaseRow;
+use crate::api::state::{BaseRow, Provider};
 use crate::cloudkit::modify::IcloudCopy;
 use crate::engine::{Pending, PendingOp};
 
@@ -24,6 +24,8 @@ pub(crate) struct FromIcloud {
     bases: HashMap<RecordKey, BaseRow>,
     // Every record a full fetch found in the zone; None when the zone could not be read, so no deletion is inferred.
     listed: Option<HashSet<RecordKey>>,
+    // The connections this device kept off sync, by the file's standing rows.
+    kept_off: std::collections::BTreeSet<uuid::Uuid>,
     // The markers the service's copies carried, by the service's ids, as the snapshot found them.
     markers: Mutex<HashMap<RecordKey, MoveMarker>>,
 }
@@ -48,8 +50,17 @@ impl Arrival {
                 .map(|base| (base.key.clone(), base))
                 .collect(),
             listed: copy.listed.map(|listed| listed.into_iter().collect()),
+            kept_off: copy.kept_off,
             markers: Mutex::default(),
         })
+    }
+
+    // The provider the personal data comes from; None for a first upload.
+    pub(crate) const fn from(&self) -> Option<Provider> {
+        match self {
+            Self::FromIcloud(_) => Some(Provider::ICloud),
+            Self::FirstUpload => None,
+        }
     }
 
     fn icloud(&self) -> Option<&FromIcloud> {
@@ -59,8 +70,10 @@ impl Arrival {
         }
     }
 
-    pub(crate) const fn pull_wins(&self) -> bool {
-        matches!(self, Self::FirstUpload)
+    // A move from iCloud merges against the copy both providers last shared, whatever refills the stores owe. A first
+    // upload refills by the per-kind marks it wrote.
+    pub(crate) const fn meets_its_own_bases(&self) -> bool {
+        matches!(self, Self::FromIcloud(_))
     }
 
     // This device's CloudKit base of a service record, as the merge's base. Its tag is CloudKit's, which no service
@@ -101,6 +114,31 @@ impl Arrival {
             (Some(listed), Some(named)) => !listed.contains(&named),
             _ => false,
         }
+    }
+
+    // This device's CloudKit base names the record: its store held it, so its absence there is this device's deletion,
+    // unless the record, or the connection it belongs to, stays on the device (0054, Rules for both providers).
+    pub(crate) fn deleted_here(&self, key: &RecordKey) -> bool {
+        self.icloud()
+            .zip(in_zone(key))
+            .is_some_and(|(icloud, named)| icloud.bases.contains_key(&named))
+    }
+
+    // The record, or the connection it belongs to, stays on the device, by the iCloud file's standing: no deletion of
+    // it is inferred, from the zone or from the bases (0054, Rules for both providers).
+    pub(crate) fn kept_here(&self, key: &RecordKey) -> bool {
+        let (Some(icloud), Some(kind)) = (self.icloud(), key.kind.known()) else {
+            return false;
+        };
+        let connection = if kind == tablepro_records::Kind::Connection {
+            uuid::Uuid::parse_str(&key.record_id).ok()
+        } else {
+            in_zone(key)
+                .and_then(|named| icloud.bases.get(&named))
+                .and_then(|base| base.fields.as_ref())
+                .and_then(|fields| crate::engine::owner(kind, fields))
+        };
+        connection.is_some_and(|connection| icloud.kept_off.contains(&connection))
     }
 
     // The first device that moves a record creates it on the service with the marker of the CloudKit base it moved

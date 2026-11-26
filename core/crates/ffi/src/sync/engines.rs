@@ -6,9 +6,14 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tablepro_keys::encoding::{AccountId, Origin};
 use tablepro_records::Kind;
+use tablepro_storage::{ConnectionStore, QueryHistory};
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
-use tablepro_sync::adapters::settings::SettingsAdapter;
+use tablepro_sync::adapters::history::HistoryAdapter;
+use tablepro_sync::adapters::library::{self, DriverNames, Provider};
+use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
+use tablepro_sync::adapters::settings::{ConnectionStanding, SettingsAdapter};
+use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
 use tablepro_sync::adapters::team_library::TeamLibraryAdapter;
 use tablepro_sync::api::control::{SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
@@ -21,8 +26,8 @@ use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync};
 use tablepro_sync::engine::{
-    Adapters, Backoff, EngineEvents, EngineHooks, Journal, JournalEntry, Pass, SchedulerHandle, StopSignal,
-    SystemClock, Wake, retryable, spawn,
+    Adapters, Backoff, EngineEvents, EngineHooks, Journal, JournalEntry, JournalObserver, Pass, SchedulerHandle,
+    StopSignal, SystemClock, Wake, retryable, spawn,
 };
 use tablepro_sync::http::{Binding, HttpTransport};
 use tablepro_sync::keys::{KeyService, KeyServiceParts};
@@ -73,16 +78,56 @@ pub(crate) struct Hosts {
     pub(crate) device_store: Arc<dyn HostDeviceStore>,
     pub(crate) settings: Option<Arc<dyn HostSettings>>,
     pub(crate) events: Arc<dyn EngineEvents>,
+    // This Core's connection library: connections, groups, tags and profiles, named by `names`.
+    pub(crate) library: Option<ConnectionStore>,
+    pub(crate) names: DriverNames,
+    // This device's id as the host keeps it, which names the SSH routes it publishes.
+    pub(crate) publisher: Option<uuid::Uuid>,
+    // This Core's history database: its saved queries, their folders and the query history.
+    pub(crate) history: Option<QueryHistory>,
+    // Which connections stay on this device. Until it is known, no history syncs and nothing of a connection does
+    // (0051, What syncs).
+    pub(crate) standing: Option<Arc<dyn ConnectionStanding>>,
+    // What the history database's writes tell each engine that syncs it.
+    pub(crate) store_journal: Arc<StoreJournal>,
     // Team Library's store and sign-in, which only the service engine syncs.
     pub(crate) team_library: Option<TeamLibraryHost>,
 }
 
 impl Hosts {
-    fn adapters(&self) -> Vec<Arc<dyn RecordAdapter>> {
-        self.settings
+    // The adapters over this Core's stores and the app's settings.
+    fn adapters(&self, provider: Provider) -> Vec<Arc<dyn RecordAdapter>> {
+        let mut adapters: Vec<Arc<dyn RecordAdapter>> = self
+            .settings
             .iter()
-            .map(|host| Arc::new(SettingsAdapter::new(Arc::clone(host), None)) as Arc<dyn RecordAdapter>)
-            .collect()
+            .map(|host| {
+                Arc::new(SettingsAdapter::new(Arc::clone(host), self.standing.clone())) as Arc<dyn RecordAdapter>
+            })
+            .collect();
+        // The table folders and favourites the history database holds come with the library, which says which of
+        // their connections sync.
+        if let Some(store) = &self.library {
+            adapters.extend(library::adapters(
+                store,
+                self.history.as_ref(),
+                self.names,
+                provider,
+                self.publisher,
+            ));
+        }
+        if let Some(history) = &self.history {
+            adapters.extend(SavedQueryAdapter::all(history, self.standing.clone()));
+            if let Some(standing) = &self.standing {
+                adapters.push(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(standing))));
+            }
+        }
+        adapters
+    }
+
+    // The stores' writes tell `listener` until the handle drops with what holds it.
+    pub(crate) fn listen(&self, listener: Arc<dyn JournalObserver>) -> Option<Listening> {
+        (self.library.is_some() || self.history.is_some() || self.team_library.is_some())
+            .then(|| self.store_journal.listen(listener))
     }
 }
 
@@ -97,6 +142,7 @@ pub(crate) struct IcloudEngine {
     pub(crate) journal: Journal,
     stop: StopSignal,
     _scheduler: SchedulerHandle,
+    _stores: Option<Listening>,
 }
 
 impl IcloudEngine {
@@ -114,7 +160,7 @@ impl IcloudEngine {
         let sync = CloudKitSync::new(CloudKitParts {
             transport,
             files: Arc::clone(&hosts.files),
-            adapters: hosts.adapters(),
+            adapters: hosts.adapters(Provider::ICloud),
             categories: icloud_categories(categories),
             clock: Arc::new(SystemClock),
             stop: stop.clone(),
@@ -134,11 +180,13 @@ impl IcloudEngine {
             stop.clone(),
             Backoff::STANDARD,
         );
+        let stores = hosts.listen(Arc::new(journal.clone()));
         Self {
             sync,
             journal,
             stop,
             _scheduler: scheduler,
+            _stores: stores,
         }
     }
 }
@@ -164,15 +212,63 @@ pub(crate) struct ServiceEngine {
     pub(crate) binding: Option<Binding>,
     stop: StopSignal,
     _scheduler: SchedulerHandle,
+    _stores: Option<Listening>,
+}
+
+// The state file a sign-in names, as text the app keeps between launches (`SyncConfig::service_account`).
+pub(crate) fn identity_text(identity: &StateIdentity) -> Option<String> {
+    let StateIdentity::Service {
+        origin,
+        sign_in,
+        account,
+        device_row,
+    } = identity
+    else {
+        return None;
+    };
+    serde_json::to_string(&[
+        origin.as_str(),
+        sign_in.as_str(),
+        account.to_wire().as_str(),
+        device_row.0.as_str(),
+    ])
+    .ok()
+}
+
+// Text the app kept that names no sign-in reads as no previous one.
+pub(crate) fn identity_of(text: &str) -> Option<StateIdentity> {
+    let [origin, sign_in, account, device_row]: [String; 4] = serde_json::from_str(text).ok()?;
+    Some(StateIdentity::Service {
+        origin: Origin::parse(&origin).ok()?,
+        sign_in,
+        account: AccountId::from_wire(&account).ok()?,
+        device_row: DeviceRowId(device_row),
+    })
+}
+
+// Another account, or the same account on another server; a new sign-in of the same account is not one.
+fn another_sign_in(previous: &StateIdentity, origin: &Origin, account: AccountId) -> bool {
+    match previous {
+        StateIdentity::Service {
+            origin: last_origin,
+            account: last_account,
+            ..
+        } => last_origin != origin || *last_account != account,
+        StateIdentity::ICloud { .. } => false,
+    }
 }
 
 impl ServiceEngine {
-    // Called on the runtime: it opens the sign-in's state file, and the scheduler's task needs the runtime.
+    // Called on the runtime: it opens the sign-in's state file, and the scheduler's task needs the runtime. A sign-in
+    // to another account or server than `last` named counts what that file held unsent, for the Move my data or Start
+    // empty prompt, and lets the file go, as iCloud does with the last account's file (0054, Another account or
+    // server).
     pub(crate) async fn start(
         hosts: &Hosts,
         link: ServiceLink,
         categories: SyncCategories,
         mode: ServiceMode,
+        last: Option<StateIdentity>,
     ) -> Result<Self, SyncError> {
         let binding = link.binding;
         let identity = StateIdentity::Service {
@@ -182,6 +278,17 @@ impl ServiceEngine {
             device_row: link.device_row.clone(),
         };
         let state = hosts.files.open(identity).await?;
+        let previous = last.filter(|previous| another_sign_in(previous, &link.origin, link.account));
+        let follows = match &previous {
+            Some(previous) => {
+                let old = hosts.files.open(previous.clone()).await?;
+                let adapters = Adapters::new(hosts.adapters(Provider::TableproSync));
+                let unsent = tablepro_sync::service::unsent_changes(&old, &adapters).await?;
+                drop(old);
+                Some(unsent)
+            }
+            None => None,
+        };
         let wake = Wake::new();
         let journal = Journal::new(wake.clone());
         let stop = StopSignal::new();
@@ -199,8 +306,8 @@ impl ServiceEngine {
         let team_library = hosts
             .team_library
             .as_ref()
-            .map(|host| host.store(&link.origin, link.account, &journal));
-        let mut adapters = hosts.adapters();
+            .map(|host| host.store(&link.origin, link.account, &hosts.store_journal));
+        let mut adapters = hosts.adapters(Provider::TableproSync);
         adapters.extend(team_library.iter().flat_map(TeamLibraryAdapter::all));
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
@@ -214,10 +321,16 @@ impl ServiceEngine {
             events: Some(Arc::clone(&hosts.events)),
             categories,
             mode,
+            follows,
         }));
         if let (Some(host), Some(store)) = (&hosts.team_library, team_library) {
             host.attach(&sync, store, binding.as_ref().and_then(|binding| binding.session_id().map(str::to_owned)))
                 .await;
+        }
+        // The wait comes from the sign-in the app kept, outside the file, on every open until the person chooses, so a
+        // file put back from a backup cannot lose it. The last file stays until then, for the count.
+        if previous.is_some() {
+            sync.hold_for_account_choice().await?;
         }
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
@@ -225,6 +338,7 @@ impl ServiceEngine {
             stop.clone(),
             Backoff::STANDARD,
         );
+        let stores = hosts.listen(Arc::new(journal.clone()));
         Ok(Self {
             sync,
             keys,
@@ -232,7 +346,15 @@ impl ServiceEngine {
             binding,
             stop,
             _scheduler: scheduler,
+            _stores: stores,
         })
+    }
+}
+
+impl ServiceEngine {
+    // The values no longer allow the server it is bound to: no pass runs and none in flight commits more (0055).
+    pub(crate) fn stop(&self) {
+        self.stop.stop();
     }
 }
 
@@ -251,6 +373,8 @@ pub(crate) struct Restart {
     pub(crate) mode: ServiceMode,
     // The sign-in the account held when sync opened, which a later start must still be: another one opens sync again.
     pub(crate) session: Option<String>,
+    // The sign-in whose state file this device used last (`SyncConfig::service_account`).
+    pub(crate) last: Option<StateIdentity>,
 }
 
 impl Restart {
@@ -273,6 +397,10 @@ pub(crate) struct ServiceSlot {
     // What the person set while no engine ran, which the next start takes.
     categories: Mutex<SyncCategories>,
     history_window: Mutex<Option<u32>>,
+    // The values no longer allow personal data on TablePro Sync: a later start runs teams-only (0055).
+    personal_forbidden: std::sync::atomic::AtomicBool,
+    // And no move on a later engine brings it back while they say so.
+    policy_forbids: std::sync::atomic::AtomicBool,
 }
 
 // An anchor the device store could not settle, as while it is locked, is no pass's to retry (0066) but a start's.
@@ -300,7 +428,17 @@ impl ServiceSlot {
             restart,
             categories: Mutex::new(categories),
             history_window: Mutex::new(None),
+            personal_forbidden: std::sync::atomic::AtomicBool::new(false),
+            policy_forbids: std::sync::atomic::AtomicBool::new(false),
         }
+    }
+
+    pub(crate) fn forbid_by_policy(&self) {
+        self.policy_forbids.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub(crate) fn forbid_personal(&self) {
+        self.personal_forbidden.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     // The engine as it stands, with no start: for the calls that answer at once.
@@ -324,7 +462,12 @@ impl ServiceSlot {
         let categories = lock(&self.categories).clone();
         let started = match service_link(Some(&restart.account)).await {
             Ok(link) if restart.session.is_some() && link.session() == restart.session.as_deref() => {
-                ServiceEngine::start(&restart.hosts, link, categories, restart.mode).await
+                let mode = if self.personal_forbidden.load(std::sync::atomic::Ordering::SeqCst) {
+                    ServiceMode::TeamsOnly
+                } else {
+                    restart.mode
+                };
+                ServiceEngine::start(&restart.hosts, link, categories, mode, restart.last.clone()).await
             }
             Ok(_) => Err(TransportError::SignedOut.into()),
             Err(error) => Err(error),
@@ -332,6 +475,9 @@ impl ServiceSlot {
         .map(Arc::new);
         if let Ok(engine) = &started {
             engine.sync.set_history_window(*lock(&self.history_window));
+            if self.policy_forbids.load(std::sync::atomic::Ordering::SeqCst) {
+                engine.sync.forbid_personal();
+            }
         }
         *lock(&self.held) = started.clone();
         started
@@ -372,3 +518,7 @@ pub(crate) fn journal(
         marks.changed(std::slice::from_ref(&entry));
     }
 }
+
+#[cfg(test)]
+#[path = "engines_tests.rs"]
+mod tests;

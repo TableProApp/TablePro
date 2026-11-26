@@ -56,6 +56,8 @@ fn config(provider: SyncProviderTag) -> SyncConfig {
         provider,
         categories: SyncCategoriesArg::default(),
         icloud_account: None,
+        service_account: None,
+        route_publisher: None,
     }
 }
 
@@ -77,6 +79,8 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         settings: None,
         device_store: Some(device_store as Arc<dyn tablepro_sync::api::HostDeviceStore>),
         legacy_mirror: None,
+        library: None,
+        history: None,
         link: Err(tablepro_sync::api::TransportError::SignedOut.into()),
         session: None,
         listener: Arc::new(Listener::default()),
@@ -104,6 +108,35 @@ fn link(server: &Arc<FakeServer>, account: AccountId) -> ServiceLink {
 
 fn code(error: &CoreError) -> &str {
     error.code()
+}
+
+// A sync step-up carries its challenge where an account step-up does, so a host reads it from one place; the sync
+// field keeps it too (#4616).
+#[test]
+fn a_sync_step_up_carries_its_challenge_where_an_account_step_up_does() {
+    use tablepro_sync::api::transport::{StepUpChallenge, TransportError};
+
+    let error = CoreError::from(SyncError::Transport(TransportError::StepUpRequired(StepUpChallenge {
+        acr_values: vec!["urn:tablepro:acr:passkey".to_owned()],
+        max_age_secs: 300,
+    })));
+    let other = CoreError::from(SyncError::Transport(TransportError::SignedOut));
+
+    let CoreError::Failed { info } = error else {
+        panic!("a step-up is a failure");
+    };
+    let CoreError::Failed { info: other } = other else {
+        panic!("a sign-out is a failure");
+    };
+    assert_eq!(info.code, "sync.step_up_required");
+    let carried = info.step_up.expect("the challenge");
+    assert_eq!(carried.acr_values, ["urn:tablepro:acr:passkey"]);
+    assert_eq!(carried.max_age_secs, Some(300));
+    assert!(matches!(
+        info.sync,
+        Some(super::service::SyncFailureInfo::StepUp { .. })
+    ));
+    assert_eq!(other.step_up, None);
 }
 
 #[tokio::test]
@@ -638,4 +671,209 @@ async fn with_icloud_off_a_deletion_still_marks_the_swift_metadata_by_the_quit()
         tombstones.iter().any(|tombstone| tombstone.record.id == id),
         "{tombstones:?}"
     );
+}
+
+// The previous stable marks every write, and the core's own stores are written by the app too, so a saved query
+// written there with iCloud off reaches the Swift metadata by the time the quit returns.
+#[tokio::test]
+async fn with_icloud_off_a_core_store_write_marks_the_swift_metadata_by_the_quit() {
+    let tasks = runtime::tasks().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let paths = tablepro_storage::StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
+    let history = tablepro_storage::QueryHistory::open(&paths).await.unwrap();
+    let mirror = Arc::new(tablepro_sync_testing::FakeLegacyMirror::new());
+    let opened = open(&tasks, |parts| OpenParts {
+        legacy_mirror: Some(mirror.clone() as Arc<dyn tablepro_sync::api::LegacyMirror>),
+        history: Some(history.clone()),
+        ..parts
+    })
+    .await;
+    let id = Uuid::new_v4();
+
+    history
+        .saved_queries()
+        .write(&tablepro_storage::SavedQueryWrite {
+            queries: vec![tablepro_storage::saved_queries::SavedQuery {
+                id,
+                name: "Daily".to_owned(),
+                query: "SELECT 1".to_owned(),
+                connection_id: None,
+                connection_name: String::new(),
+                keyword: None,
+                folder_id: None,
+                order: 0,
+                created_at: std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1),
+                updated_at: std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1),
+            }],
+            ..tablepro_storage::SavedQueryWrite::default()
+        })
+        .await
+        .unwrap();
+    opened.service.flush_legacy_marks().await.unwrap();
+
+    let dirty = mirror.metadata().dirty;
+    let wire = id.hyphenated().to_string().to_uppercase();
+    assert!(
+        dirty
+            .iter()
+            .any(|record| record.record_type == "SQLFavorite" && record.id == wire),
+        "{dirty:?}"
+    );
+}
+
+// A profile that forces iCloud on a device already on TablePro Sync stops its personal sync there at once, at open and
+// when the values change while the app runs, while its teams and key objects go on, until the person confirms the move
+// back (core ADR 0055, Leaving a provider).
+#[tokio::test]
+async fn a_profile_that_forces_icloud_rests_personal_data_on_tablepro_sync_at_once() {
+    use crate::account::AccountService;
+    use crate::account::{ManagedPolicyArg, ManagedPolicyValues};
+    use tablepro_sync::service::ServiceMode;
+
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let (held_dir, free_dir) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let forced = ManagedPolicyValues {
+        personal_sync_provider: Some(vec!["icloud".to_owned()]),
+        ..ManagedPolicyValues::default()
+    };
+    let held = AccountService::holding(forced.clone(), tasks.clone(), held_dir.path());
+    let free = AccountService::holding(ManagedPolicyValues::default(), tasks.clone(), free_dir.path());
+    let at_open = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        account: Some(held),
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        ..parts
+    })
+    .await;
+    let running = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        account: Some(Arc::clone(&free)),
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        ..parts
+    })
+    .await;
+    let before = running.service.service.now().unwrap().sync.mode();
+
+    free.apply_policy(ManagedPolicyArg::Read { values: forced });
+    let mut after = running.service.service.now().unwrap().sync.mode();
+    for _ in 0..100 {
+        if after == ServiceMode::TeamsOnly {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        after = running.service.service.now().unwrap().sync.mode();
+    }
+
+    assert_eq!(
+        at_open.service.service.now().unwrap().sync.mode(),
+        ServiceMode::TeamsOnly
+    );
+    assert_eq!(before, ServiceMode::Personal);
+    assert_eq!(after, ServiceMode::TeamsOnly);
+}
+
+// A restored file can hold an account-choice wait under the sign-in the app already keeps: the choice then answers
+// and the engine's own file stays (Codex round 4).
+#[tokio::test]
+async fn a_choice_on_a_restored_wait_keeps_the_engine_s_own_file() {
+    use tablepro_sync::api::state::{PushWait, Row, ScopeRow, StateIdentity};
+
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let files: Arc<dyn StateFiles> = Arc::new(SqliteStateFiles::at(dir.path().join("sync"), device_store.clone()));
+    let signed_in = link(&server, account);
+    let own = StateIdentity::Service {
+        origin: signed_in.origin.clone(),
+        sign_in: signed_in.sign_in.clone(),
+        account,
+        device_row: signed_in.device_row.clone(),
+    };
+    {
+        let state = files.open(own.clone()).await.unwrap();
+        let mut txn = state.begin().await.unwrap();
+        txn.put(Row::Scope(ScopeRow {
+            push_wait: Some(PushWait::AccountChoice { unsent: 0 }),
+            ..ScopeRow::new(ScopeName::Personal)
+        }))
+        .await
+        .unwrap();
+        txn.commit().await.unwrap();
+    }
+    let kept = super::engines::identity_text(&own);
+    let restored = open(&tasks, |parts| OpenParts {
+        config: SyncConfig {
+            service_account: kept.clone(),
+            ..config(SyncProviderTag::TableproSync)
+        },
+        files: Some(Arc::clone(&files)),
+        device_store: Some(device_store as Arc<dyn tablepro_sync::api::HostDeviceStore>),
+        link: Ok(signed_in),
+        ..parts
+    })
+    .await;
+
+    let plan = restored.service.plan_new_identity().await.unwrap();
+    let chosen = restored
+        .service
+        .choose_for_new_identity(super::service::NewIdentityChoiceTag::MoveMyData, plan.account)
+        .await;
+
+    assert!(chosen.is_ok(), "{chosen:?}");
+    assert_eq!(restored.service.service_account(), kept);
+}
+
+// A sign-in to another account than the one whose file this device used last pushes nothing personal until the person
+// picks Move my data or Start empty; a new sign-in of the same account is no switch (core ADR 0054, Another account or
+// server).
+#[tokio::test]
+async fn another_account_on_tablepro_sync_waits_for_move_my_data_or_start_empty() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let (first_account, other_account) = (AccountId(Uuid::new_v4()), AccountId(Uuid::new_v4()));
+    let first = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        link: Ok(link(&server, first_account)),
+        ..parts
+    })
+    .await;
+    let kept = first.service.service_account().unwrap();
+    let following = || SyncConfig {
+        service_account: Some(kept.clone()),
+        ..config(SyncProviderTag::TableproSync)
+    };
+    let other = open(&tasks, |parts| OpenParts {
+        config: following(),
+        link: Ok(link(&server, other_account)),
+        ..parts
+    })
+    .await;
+    let same = open(&tasks, |parts| OpenParts {
+        config: following(),
+        link: Ok(link(&server, first_account)),
+        ..parts
+    })
+    .await;
+
+    // The wait is in the new file before any pass, so a quit right after the open asks again.
+    let plan = other.service.plan_new_identity().await.unwrap();
+    let _ = same.service.sync_now(PassReasonTag::Person).await;
+    let none = same.service.plan_new_identity().await.unwrap_err();
+
+    let kept_while_waiting = other.service.service_account();
+    other
+        .service
+        .choose_for_new_identity(super::service::NewIdentityChoiceTag::MoveMyData, plan.account.clone())
+        .await
+        .unwrap();
+    let kept_after = other.service.service_account();
+
+    assert!(plan.account.ends_with(&other_account.to_wire()), "{plan:?}");
+    assert_eq!(code(&none), "sync.not_allowed");
+    // Until the person chooses, the app keeps the sign-in the new one follows, so every open asks again.
+    assert_eq!(kept_while_waiting, Some(kept.clone()));
+    assert_ne!(kept_after, Some(kept));
 }

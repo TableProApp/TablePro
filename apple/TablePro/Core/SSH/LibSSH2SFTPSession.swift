@@ -215,10 +215,13 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
             )
 
             let queue = DispatchQueue(label: "com.TablePro.sftp.\(label)", qos: .utility)
-            let sftp: OpaquePointer? = queue.sync {
-                libssh2_session_set_blocking(chain.session, 1)
-                libssh2_session_set_timeout(chain.session, max(1, deadline.remainingMilliseconds))
-                return libssh2_sftp_init(chain.session)
+            // The subsystem start waits on the server, so it runs off the cooperative pool like the sign-in.
+            let sftp: OpaquePointer? = try await attempt.runBlocking {
+                queue.sync {
+                    libssh2_session_set_blocking(chain.session, 1)
+                    libssh2_session_set_timeout(chain.session, max(1, deadline.remainingMilliseconds))
+                    return libssh2_sftp_init(chain.session)
+                }
             }
 
             do {
