@@ -1077,7 +1077,8 @@ async fn a_resume_settling_a_cut_off_recovery_never_erases_a_retry_at_the_same_a
 }
 
 // The server refuses a recovery, and the device store fails to drop the device keys it drew: the row that names them
-// stays, so the flow settles them again, and no drawn keys are left that nothing names.
+// stays with no candidate left to push, so the resume ends the flow with them, and no drawn keys are left that nothing
+// names.
 #[tokio::test]
 async fn a_refused_recovery_never_leaves_drawn_device_keys_no_flow_names() {
     let server = FakeServer::new();
@@ -1095,9 +1096,13 @@ async fn a_refused_recovery_never_leaves_drawn_device_keys_no_flow_names() {
     let pending = d.service.device_keys().await.unwrap().pending.is_some();
     let named = d.get(rotation_row(2)).await.is_some();
 
+    d.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
     assert!(refused.is_err());
     assert!(pending);
     assert!(named, "drawn device keys outlived the row that names them");
+    assert!(d.service.device_keys().await.unwrap().pending.is_none());
+    assert!(d.get(rotation_row(2)).await.is_none());
 }
 
 // The same window on a device that held the account keys R opens, so the flow had nothing else to name before it drew.

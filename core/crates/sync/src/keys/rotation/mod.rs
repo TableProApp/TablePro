@@ -492,8 +492,9 @@ impl KeyService {
         Ok(())
     }
 
-    // A recovery that never applied leaves no copy of the account keys R opened, nor the device keys it drew. The device
-    // store goes before the row that names what it held, so a failed write leaves the flow to settle it again.
+    // A recovery that never applied leaves no copy of the account keys R opened, nor the device keys it drew. The
+    // candidates go first and the row that names what the flow drew last, so a cut-off between them leaves a flow with
+    // nothing to push, which a resume ends as gone with what it names.
     async fn rotation_refused(
         &self,
         av: Version,
@@ -501,6 +502,9 @@ impl KeyService {
         recovering: bool,
         opened: Option<Version>,
     ) -> Result<(), SyncError> {
+        let mut txn = self.begin().await?;
+        self.drop_candidates(txn.as_mut(), ScopeName::Personal, objects).await?;
+        txn.commit().await?;
         self.erase_account_keys(av).await?;
         if let Some(opened) = opened {
             self.erase_account_keys(opened).await?;
@@ -514,7 +518,6 @@ impl KeyService {
             .await?;
         }
         let mut txn = self.begin().await?;
-        self.drop_candidates(txn.as_mut(), ScopeName::Personal, objects).await?;
         txn.delete(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
             .await?;
         txn.commit().await?;
