@@ -57,6 +57,11 @@ fn arrival_order(arrival: &KeyArrival) -> Vec<(&PulledRecord, Result<KeyObject, 
 }
 
 fn merge(into: &mut Progress, from: Progress) {
+    let offset = into.events.len();
+    into.cleared.extend(from.cleared.into_iter().map(|mut clearing| {
+        clearing.event += offset;
+        clearing
+    }));
     into.events.extend(from.events);
     for refused in from.refused {
         if !into.refused.iter().any(|held| held.record_id == refused.record_id) {
@@ -287,11 +292,30 @@ impl KeyService {
     ) -> Result<KeyApplied, SyncError> {
         let scope = ScopeName::Team(team);
         let mut after = book.into_row();
+        let mut progress = progress;
+        let mut prior = before.cloned();
+        // A cleared catch-up stop moves only through the stop flow's check and write, which queues the withdrawal of
+        // its report in this commit. One it does not take leaves the team where it stopped, with nothing after it.
+        for clearing in std::mem::take(&mut progress.cleared) {
+            match self
+                .clear_catch_up_stop(&mut *txn, &clearing.stopped, clearing.cleared.clone(), &clearing.wrap)
+                .await
+            {
+                Ok(()) => prior = Some(clearing.cleared),
+                Err(SyncError::Keys(_) | SyncError::NotAllowed { .. }) => {
+                    tracing::debug!(%scope, "a re-confirmation the stop check did not take");
+                    progress.events.truncate(clearing.event);
+                    after = Some(clearing.stopped);
+                    break;
+                }
+                Err(other) => return Err(other),
+            }
+        }
         if let Some(row) = &mut after {
             if row.state == KeyVersionState::Ended && row.epoch.is_none() {
                 row.epoch = self.scope_row(&mut *txn, scope).await?.epoch;
             }
-            self.put_team_row(&mut *txn, before, row).await?;
+            self.put_team_row(&mut *txn, prior.as_ref(), row).await?;
             outcome.epoch = row.epoch;
         }
         txn.commit().await?;
@@ -364,7 +388,7 @@ impl KeyService {
 
     // A stopped team whose version no owner or admin on the roster held ends on the device, which withdraws its report
     // (0056, Teams, A stopped device).
-    async fn end_unconfirmable_stop(&self, team: TeamId, roster: &Roster) -> Result<(), SyncError> {
+    pub(crate) async fn end_unconfirmable_stop(&self, team: TeamId, roster: &Roster) -> Result<(), SyncError> {
         let mut txn = self.begin().await?;
         let book = self.load_team(&mut *txn, team).await?;
         let Some(row) = book.row().cloned() else { return Ok(()) };

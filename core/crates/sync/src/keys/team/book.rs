@@ -49,6 +49,18 @@ pub(crate) struct Progress {
     pub(crate) events: Vec<TeamEvent>,
     pub(crate) refused: Vec<RefusedObject>,
     pub(crate) held: BTreeSet<String>,
+    // Each catch-up stop this call cleared, which the commit hands to the stop flow, the one writer of a cleared stop.
+    pub(crate) cleared: Vec<Clearing>,
+}
+
+// A re-confirmation the book took: the row it stopped at, the row it moved to and the wrap to this account that did
+// it, with the index of its `Cleared` event.
+#[derive(Debug, Clone)]
+pub(crate) struct Clearing {
+    pub(crate) stopped: KeyVersionRow,
+    pub(crate) cleared: KeyVersionRow,
+    pub(crate) wrap: Wrap,
+    pub(crate) event: usize,
 }
 
 impl Progress {
@@ -561,6 +573,14 @@ impl TeamBook {
                         let version = record.key.version;
                         let digest = record.digest(&self.origin)?;
                         self.take(version, digest, holders);
+                        if let Some(cleared) = self.row.clone() {
+                            progress.cleared.push(Clearing {
+                                stopped: row.clone(),
+                                cleared,
+                                wrap: wrap.value.clone(),
+                                event: progress.events.len(),
+                            });
+                        }
                         progress.events.push(TeamEvent::Cleared { version });
                         return Ok(true);
                     }

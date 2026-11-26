@@ -24,7 +24,6 @@ use super::KeyService;
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, ScopeName};
 use crate::api::key_flows::{StopAction, StopFlows};
-use crate::api::scopes::TeamMember;
 use crate::api::state::{
     Holder, KeyPendingRow, KeyPinRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn,
     StoppedCause, Table,
@@ -121,23 +120,26 @@ pub enum Reconfirmation {
 impl StopFlows for KeyService {
     async fn stop_actions(&self) -> Result<Vec<StopAction>, SyncError> {
         let _serial = self.serialized().await;
-        let mut txn = self.begin().await?;
-        let mut ends = Vec::new();
-        for row in team_rows(&mut *txn).await? {
-            let ScopeName::Team(team) = row.scope else { continue };
-            if kind(&row) != Some(StoppedCause::CatchUp) {
-                continue;
-            }
-            let Some(roster) = self.rosters().get(team).filter(|roster| roster.caught_up) else {
-                continue;
-            };
-            if !self.a_manager_held(&mut *txn, team, &row, &roster.members).await? {
-                let epoch = self.scope_epoch(&mut *txn, row.scope).await.ok();
-                txn.put(Row::KeyVersion(ended(row, epoch))).await?;
-                withdraw_pending(&mut *txn, team).await?;
-                ends.push((team, epoch));
+        // A catch-up stop no owner or admin on the roster can clear ends first, by the rule a roster read applies, so
+        // its report goes as a withdrawal rather than a report.
+        let stopped: Vec<TeamId> = {
+            let mut txn = self.begin().await?;
+            team_rows(&mut *txn)
+                .await?
+                .into_iter()
+                .filter(|row| kind(row) == Some(StoppedCause::CatchUp))
+                .filter_map(|row| match row.scope {
+                    ScopeName::Team(team) => Some(team),
+                    _ => None,
+                })
+                .collect()
+        };
+        for team in stopped {
+            if let Some(roster) = self.rosters().get(team).filter(|roster| roster.caught_up) {
+                self.end_unconfirmable_stop(team, &roster).await?;
             }
         }
+        let mut txn = self.begin().await?;
         let pending = pending_withdrawals(&mut *txn).await?;
         let mut actions: Vec<StopAction> = pending
             .iter()
@@ -152,12 +154,6 @@ impl StopFlows for KeyService {
                     team,
                     version: row.version,
                 });
-            }
-        }
-        if !ends.is_empty() {
-            txn.commit().await?;
-            for (team, epoch) in ends {
-                self.team_ended(team, epoch)?;
             }
         }
         Ok(actions)
@@ -228,12 +224,31 @@ impl KeyService {
         version: Version,
         wrapper: &Wrapper,
     ) -> Result<Reconfirmation, SyncError> {
-        let row = team_row(txn, team)
-            .await?
-            .filter(|row| kind(row) == Some(StoppedCause::CatchUp))
-            .ok_or(SyncError::NotAllowed {
+        let row = team_row(txn, team).await?.ok_or(SyncError::NotAllowed {
+            what: "re-confirm a team that is not stopped by a catch-up",
+        })?;
+        self.reconfirmation_of(txn, &row, version, wrapper).await
+    }
+
+    // The same check against the row the team stopped at, which a pull that stops and clears the team in one call has
+    // not written yet.
+    async fn reconfirmation_of(
+        &self,
+        txn: &mut dyn StateTxn,
+        row: &KeyVersionRow,
+        version: Version,
+        wrapper: &Wrapper,
+    ) -> Result<Reconfirmation, SyncError> {
+        let ScopeName::Team(team) = row.scope else {
+            return Err(SyncError::NotAllowed {
                 what: "re-confirm a team that is not stopped by a catch-up",
-            })?;
+            });
+        };
+        if kind(row) != Some(StoppedCause::CatchUp) {
+            return Err(SyncError::NotAllowed {
+                what: "re-confirm a team that is not stopped by a catch-up",
+            });
+        }
         if version <= row.version {
             return Err(KeysError::Stale {
                 held: row.version.get(),
@@ -282,12 +297,14 @@ impl KeyService {
         }
     }
 
-    // A re-confirmation applied: the team moves to the new version in the caller's commit, and the report it sent is
-    // withdrawn from the same commit on (0054, `key_pending`). `wrap` is the wrap of that version to this account that
-    // the caller verified and opened; its signer is checked again here, so a catch-up stop clears no other way.
+    // A re-confirmation applied: the team moves from `stopped` to the new version in the caller's commit, and the
+    // report it sent is withdrawn from the same commit on (0054, `key_pending`). `wrap` is the wrap of that version to
+    // this account that the team flow verified; its signer is checked again here, so a catch-up stop clears no other
+    // way.
     pub async fn clear_catch_up_stop(
         &self,
         txn: &mut dyn StateTxn,
+        stopped: &KeyVersionRow,
         row: KeyVersionRow,
         wrap: &Wrap,
     ) -> Result<(), SyncError> {
@@ -305,7 +322,9 @@ impl KeyService {
                 what: "clear a catch-up stop with a wrap of another version or to another account",
             });
         }
-        if self.reconfirmation(txn, team, row.version, &wrap.wrapper).await? != Reconfirmation::Taken {
+        if stopped.scope != row.scope
+            || self.reconfirmation_of(txn, stopped, row.version, &wrap.wrapper).await? != Reconfirmation::Taken
+        {
             return Err(SyncError::NotAllowed {
                 what: "clear a catch-up stop before its re-confirmation is taken",
             });
@@ -343,53 +362,5 @@ impl KeyService {
             // A certificate its own IK did not sign is no evidence of anything: it is left out, as if not arrived.
             .filter(|(_, certificate)| certificate.verify(self.origin()).is_ok())
             .collect())
-    }
-
-    // Whether an owner or admin on the roster held the version the team stopped at: an account among its holders,
-    // by any of its pairs, whose newest certificate the team holds is still that holder (0056, Teams, Holders). An
-    // account under an open alert, or a chain whose certificates have not arrived, counts as held, so the team waits
-    // rather than ends on what it cannot judge yet.
-    async fn a_manager_held(
-        &self,
-        txn: &mut dyn StateTxn,
-        team: TeamId,
-        row: &KeyVersionRow,
-        members: &[TeamMember],
-    ) -> Result<bool, SyncError> {
-        for member in members.iter().filter(|member| member.role.manages_keys()) {
-            let pairs: Vec<&Holder> = row
-                .holders
-                .iter()
-                .filter(|pair| pair.account == member.account)
-                .collect();
-            if pairs.is_empty() {
-                continue;
-            }
-            let Some(pin) = pin_of(txn, member.account).await?.filter(|pin| !pin.alert) else {
-                return Ok(true);
-            };
-            let certificates = self.member_certificates(txn, team, member.account).await?;
-            let Some(newest) = holders::newest_current(&certificates, &pin) else {
-                return Ok(true);
-            };
-            if pairs
-                .iter()
-                .any(|pair| same_holder(self.origin(), &pair.ik, &certificates, newest) != Chain::Breaks)
-            {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
-
-    pub(crate) async fn scope_epoch(&self, txn: &mut dyn StateTxn, scope: ScopeName) -> Result<EpochId, SyncError> {
-        match txn.get(&RowKey::Scope(scope)).await? {
-            Some(Row::Scope(row)) => row.epoch.ok_or(SyncError::NotAllowed {
-                what: "end a scope before its epoch is read",
-            }),
-            _ => Err(SyncError::NotAllowed {
-                what: "end a scope this device does not sync",
-            }),
-        }
     }
 }

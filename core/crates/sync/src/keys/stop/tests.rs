@@ -314,6 +314,7 @@ async fn a_cleared_stop_withdraws_in_the_same_commit_and_the_withdrawal_survives
     rig.service
         .clear_catch_up_stop(
             &mut *txn,
+            &team_row(&world, 6, &[("A", 2), ("P", 2)], Some(StoppedCause::CatchUp)),
             team_row(&world, 7, &[("A", 2), ("P", 2)], None),
             &wrap_to_p(&world, 7, "A", 2),
         )
@@ -341,9 +342,10 @@ async fn a_catch_up_stop_clears_only_with_a_re_confirmation_that_is_taken() {
     let world = World::load();
     let rig = stopped_at_6(&world).await;
     let mut txn = rig.service.begin().await.unwrap();
+    let stopped = team_row(&world, 6, &[("A", 2), ("P", 2)], Some(StoppedCause::CatchUp));
     let mut clear = async |version: u32, wrap: tablepro_keys::wrap::Wrap| {
         rig.service
-            .clear_catch_up_stop(&mut *txn, team_row(&world, version, &[("A", 2)], None), &wrap)
+            .clear_catch_up_stop(&mut *txn, &stopped, team_row(&world, version, &[("A", 2)], None), &wrap)
             .await
             .unwrap_err()
             .code()
@@ -481,7 +483,28 @@ async fn a_roster_not_read_after_catch_up_or_with_a_holding_admin_ends_nothing()
 async fn an_admin_who_reset_since_holding_the_version_is_no_holder_and_the_team_ends() {
     let world = World::load();
     let rig = stopped_at_6(&world).await;
-    let reset = world.certificate("A", 3, CertKind::ResetEmpty);
+    // A reset makes a new R and so a new IK; the person accepted the change, so the pin follows it and keeps the old
+    // IK as replaced (0056, Pins; Reset).
+    let new_ik = tablepro_keys::keys::Ed25519Seed::from_bytes([0x5a; 32]);
+    let reset = tablepro_keys::cert::AccountCertificate::sign(
+        &world.origin,
+        world.account("A"),
+        v(3),
+        CertKind::ResetEmpty,
+        &new_ik,
+        world.public("A", 3),
+        None,
+    )
+    .unwrap();
+    rig.put([Row::KeyPin(KeyPinRow {
+        account: world.account("A"),
+        ik: new_ik.public().unwrap(),
+        av: v(3),
+        how: PinHow::FirstUse,
+        alert: false,
+        replaced: vec![world.ik("A").public().unwrap()],
+    })])
+    .await;
     let body = tablepro_keys::body::AccountBody::of(&reset);
     let object = tablepro_keys::body::KeyObject {
         id: tablepro_keys::record_id::KeyRecordId::Member {

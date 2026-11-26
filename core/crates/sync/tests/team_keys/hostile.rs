@@ -225,3 +225,37 @@ async fn the_version_in_force_follows_what_the_server_served_and_an_envelope_und
             .await;
     assert_eq!(opened.unwrap_err().code(), "keys.stale");
 }
+
+// A catch-up stop clears only through the stop flow: the owner, who held version 1, re-confirms the stopped member with
+// version 3 and its wrap, and the member takes it and queues the withdrawal of its report in the same commit.
+#[tokio::test]
+async fn a_stopped_member_takes_a_holding_owners_re_confirmation_and_withdraws_its_report() {
+    let s = staged().await;
+    let p_signer = signer(&s.p).await;
+    let owner = signer(&s.t.owner).await;
+    let stale = ScopeKey::generate().unwrap();
+    served(&s.p, s.t.team, &[version_object(s.t.team, 2, &stale, &s.a_before)]).await;
+    let stopped = s.p.service.team_keys(s.t.team).await.unwrap();
+    let three = ScopeKey::generate().unwrap();
+
+    let applied = served(
+        &s.p,
+        s.t.team,
+        &[
+            version_object(s.t.team, 3, &three, &owner),
+            wrap_object(s.t.team, 3, &three, &owner, &p_signer),
+        ],
+    )
+    .await;
+
+    assert_eq!(stopped.stopped_cause, Some(StoppedCause::CatchUp));
+    assert!(refused_codes(&applied).is_empty(), "{applied:?}");
+    let keys = s.p.service.team_keys(s.t.team).await.unwrap();
+    assert_eq!((keys.version, keys.state), (Some(v(3)), KeyVersionState::Ok));
+    assert_eq!(keys.stopped_cause, None);
+    let withdrawal =
+        tablepro_sync::api::state::RowKey::KeyPending(tablepro_sync::api::state::PendingFlow::StopWithdrawal {
+            team: s.t.team,
+        });
+    assert!(s.p.txn().await.get(&withdrawal).await.unwrap().is_some());
+}

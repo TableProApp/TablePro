@@ -50,8 +50,10 @@ pub(crate) fn check_fits(recipients: usize) -> Result<(), SyncError> {
     }
 }
 
-// A stopped team ends on the device only when no owner or admin on the roster held its version. An account under an
-// open alert may still be the one that held it, and an end is final, so it keeps the team waiting.
+// A stopped team ends on the device only when no owner or admin on the roster held its version. An end is final, so
+// what the device cannot judge yet keeps the team waiting: an account under an open alert, which may still be the one
+// that held it, and one whose certificate at the `av` it is pinned at has not reached this team, as when the pin moved
+// in another team first.
 pub(crate) async fn someone_can_reconfirm(
     origin: &Origin,
     facts: &mut dyn TeamFacts,
@@ -65,8 +67,10 @@ pub(crate) async fn someone_can_reconfirm(
         match known_pin(facts, member.account).await? {
             None => return Ok(true),
             Some(pin) if pin.alert => return Ok(true),
-            Some(_) => {
-                if account_holds(origin, facts, holders, member.account).await? {
+            Some(pin) => {
+                if facts.certificate(member.account, pin.av).await?.is_none()
+                    || account_holds(origin, facts, holders, member.account).await?
+                {
                     return Ok(true);
                 }
             }
