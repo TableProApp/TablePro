@@ -1,0 +1,425 @@
+use tablepro_keys::encoding::{ResetId, Version, random_uuid};
+use tablepro_keys::keys::{AccountKeys, DeviceKeys};
+use tablepro_sync::api::device_store::DeviceItem;
+use tablepro_sync::api::ids::ScopeName;
+use tablepro_sync::api::key_flows::{AccountFlows, KeyState, SignOutOutcome};
+use tablepro_sync::api::state::{KeyPendingRow, PendingFlow, Row, RowKey, RowRange, Table};
+use tablepro_sync::api::transport::TransportError;
+use tablepro_sync::keys::ResetKeys;
+use tablepro_sync_testing::FakeServer;
+
+use crate::harness::{Device, new_account, origin};
+
+async fn key_rows(device: &Device) -> usize {
+    let mut txn = device.txn().await;
+    let mut count = 0;
+    for table in Table::KEY {
+        count += txn.scan(&RowRange::Table(table)).await.unwrap().len();
+    }
+    count
+}
+
+#[tokio::test]
+async fn sign_out_revokes_under_this_device_s_key_then_erases_every_key_and_rotates_nothing() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let dsk = device
+        .service
+        .device_keys()
+        .await
+        .unwrap()
+        .current
+        .unwrap()
+        .dsk
+        .public()
+        .unwrap();
+    let horizon = server.horizon(tablepro_sync_testing::service::ScopeOwner::Personal(account));
+    assert!(server.is_approved(&device.row));
+
+    let outcome = device.service.sign_out().await.unwrap();
+
+    assert_eq!(outcome, SignOutOutcome::Revoked);
+    assert_eq!(*device.transport.revokes.lock().unwrap(), vec![dsk]);
+    assert!(!server.is_approved(&device.row));
+    assert_eq!(
+        horizon,
+        server.horizon(tablepro_sync_testing::service::ScopeOwner::Personal(account))
+    );
+    assert_eq!(key_rows(&device).await, 0);
+    assert!(device.store.is_empty());
+    let Some(Row::Scope(row)) = device.get(RowKey::Scope(ScopeName::Personal)).await else {
+        panic!("the scope row stays");
+    };
+    assert!(row.cursor.is_none() && row.key_version.is_none() && !row.caught_up);
+    // Signing in again on the row is a new device: new keys, a new key device id, and an approval.
+    device.pull().await;
+    assert_eq!(device.key_state().await, KeyState::NeedsApproval { request: None });
+    let again = device.service.device_keys().await.unwrap().current.unwrap();
+    assert_ne!(again.dsk.public().unwrap(), dsk);
+}
+
+#[tokio::test]
+async fn sign_out_offline_erases_anyway_and_the_row_keeps_its_certificate() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    server.fail_next(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+
+    let outcome = device.service.sign_out().await.unwrap();
+
+    assert_eq!(outcome, SignOutOutcome::ErasedOffline);
+    assert!(server.is_approved(&device.row));
+    assert_eq!(key_rows(&device).await, 0);
+    assert!(device.store.is_empty());
+}
+
+#[tokio::test]
+async fn sign_out_on_a_removed_row_erases_and_counts_as_revoked() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    server.remove_row(&device.row);
+
+    let outcome = device.service.sign_out().await.unwrap();
+
+    assert_eq!(outcome, SignOutOutcome::Revoked);
+    assert!(device.store.is_empty());
+}
+
+#[tokio::test]
+async fn sign_out_also_proves_with_the_dsk_of_a_reset_it_proposed_so_the_reset_ends() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let reset = ResetId(random_uuid().unwrap());
+    let proposal = ResetKeys {
+        account: AccountKeys::generate().unwrap(),
+        device: DeviceKeys::generate().unwrap(),
+    };
+    let reset_dsk = proposal.device.dsk.public().unwrap();
+    device.service.store_reset_keys(reset, &proposal).await.unwrap();
+    device
+        .put(vec![Row::KeyPending(KeyPendingRow {
+            flow: PendingFlow::ResetProposal { reset },
+            state: Vec::new(),
+        })])
+        .await;
+    let own_dsk = device
+        .service
+        .device_keys()
+        .await
+        .unwrap()
+        .current
+        .unwrap()
+        .dsk
+        .public()
+        .unwrap();
+
+    device.service.sign_out().await.unwrap();
+
+    assert_eq!(*device.transport.revokes.lock().unwrap(), vec![own_dsk, reset_dsk]);
+    assert!(!device.store.holds(&DeviceItem::ResetKeys {
+        origin: origin(),
+        account,
+        reset,
+    }));
+    assert!(device.store.is_empty());
+}
+
+#[tokio::test]
+async fn a_reset_proposed_under_this_device_s_own_dsk_is_revoked_once() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let reset = ResetId(random_uuid().unwrap());
+    let own = device.service.device_keys().await.unwrap().current.unwrap();
+    device
+        .service
+        .store_reset_keys(
+            reset,
+            &ResetKeys {
+                account: AccountKeys::generate().unwrap(),
+                device: own.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    device
+        .put(vec![Row::KeyPending(KeyPendingRow {
+            flow: PendingFlow::ResetProposal { reset },
+            state: Vec::new(),
+        })])
+        .await;
+
+    device.service.sign_out().await.unwrap();
+
+    assert_eq!(
+        *device.transport.revokes.lock().unwrap(),
+        vec![own.dsk.public().unwrap()]
+    );
+}
+
+#[tokio::test]
+async fn sign_out_erases_the_account_keys_of_every_version_it_held() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let older = AccountKeys::generate().unwrap();
+    device
+        .service
+        .store_account_keys(Version::new(2).unwrap(), &older)
+        .await
+        .unwrap();
+    device
+        .put(vec![Row::KeyPin(tablepro_sync::api::state::KeyPinRow {
+            av: Version::new(2).unwrap(),
+            ..device.pin(account).await.unwrap()
+        })])
+        .await;
+
+    device.service.sign_out().await.unwrap();
+
+    assert!(device.store.is_empty());
+}
+
+#[tokio::test]
+async fn sign_out_also_proves_with_the_dsk_an_approval_in_flight_brings() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let current = device.service.device_keys().await.unwrap().current.unwrap();
+    let pending = DeviceKeys::generate().unwrap();
+    device
+        .service
+        .store_device_keys(&tablepro_sync::keys::HeldDeviceKeys {
+            current: Some(current.clone()),
+            pending: Some(pending.clone()),
+        })
+        .await
+        .unwrap();
+
+    device.service.sign_out().await.unwrap();
+
+    assert_eq!(
+        *device.transport.revokes.lock().unwrap(),
+        vec![current.dsk.public().unwrap(), pending.dsk.public().unwrap()]
+    );
+}
+
+#[tokio::test]
+async fn a_sign_out_cut_off_partway_finishes_at_the_next_call() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let cut_off = device.restarted_over(std::sync::Arc::new(crate::harness::CutOff {
+        store: device.store.clone(),
+        armed: std::sync::Mutex::new(true),
+    }));
+
+    let stopped = cut_off.service.sign_out().await.unwrap_err();
+
+    assert_eq!(stopped.code(), "sync.device_store.failed");
+    let restarted = device.restarted();
+    // Finished, the device holds no keys and reads the key kinds again before it offers anything.
+    assert_eq!(restarted.key_state().await, KeyState::Unknown);
+    assert_eq!(key_rows(&restarted).await, 0);
+    assert!(restarted.store.is_empty());
+}
+
+#[tokio::test]
+async fn a_device_with_no_store_reports_it_and_signs_out_with_nothing_to_erase() {
+    let server = FakeServer::new();
+    let device = Device::with_store(
+        &server,
+        new_account(),
+        "dev_linux",
+        std::sync::Arc::new(tablepro_sync_testing::FakeDeviceStore::without_store()),
+    )
+    .await;
+
+    assert_eq!(device.key_state().await, KeyState::NoDeviceStore);
+    assert_eq!(device.service.sign_out().await.unwrap(), SignOutOutcome::Revoked);
+    assert_eq!(key_rows(&device).await, 0);
+}
+
+#[tokio::test]
+async fn a_sign_out_cut_off_partway_leaves_no_secret_readable_before_it_finishes() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let id = tablepro_keys::envelope::EnvelopeId::new(
+        tablepro_keys::envelope::ParentKind::Connection,
+        &tablepro_keys::encoding::uuid_to_wire(random_uuid().unwrap()),
+        tablepro_keys::envelope::SecretKind::Password,
+    )
+    .unwrap();
+    let sealed = device
+        .service
+        .seal_personal_envelope(id.clone(), secrecy::SecretString::from("x"), serde_json::json!({}))
+        .await
+        .unwrap();
+    let cut_off = device.restarted_over(std::sync::Arc::new(crate::harness::CutOff {
+        store: device.store.clone(),
+        armed: std::sync::Mutex::new(true),
+    }));
+    cut_off.service.sign_out().await.unwrap_err();
+
+    let restarted = device.restarted();
+    let refused = restarted
+        .service
+        .open_personal_envelope(id, sealed, None)
+        .await
+        .unwrap_err();
+
+    assert_eq!(refused.code(), "sync.not_allowed");
+    assert!(restarted.store.is_empty());
+    assert_eq!(key_rows(&restarted).await, 0);
+}
+
+#[tokio::test]
+async fn a_store_away_this_session_is_not_told_its_device_signed_out() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let away = device.restarted_over(std::sync::Arc::new(crate::harness::Watched {
+        store: device.store.clone(),
+        away: true,
+        deletes: std::sync::Mutex::new(0),
+    }));
+
+    let refused = away.service.sign_out().await.unwrap_err();
+
+    assert_eq!(refused.code(), "sync.device_store.unavailable");
+    assert!(key_rows(&device).await > 0);
+    assert!(!device.store.is_empty());
+}
+
+#[tokio::test]
+async fn a_certificate_the_server_made_up_at_a_far_av_does_not_stretch_sign_out() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let far = tablepro_keys::cert::AccountCertificate::sign(
+        &origin(),
+        account,
+        Version::new(100_000).unwrap(),
+        tablepro_keys::cert::CertKind::GenesisOrRotation,
+        &tablepro_keys::keys::Ed25519Seed::generate().unwrap(),
+        AccountKeys::generate().unwrap().public().unwrap(),
+        None,
+    )
+    .unwrap();
+    device
+        .feed(
+            vec![crate::harness::record_of(&tablepro_keys::body::KeyObject {
+                id: tablepro_keys::record_id::KeyRecordId::Account { account, av: far.av },
+                body: tablepro_keys::body::KeyBody::Account(tablepro_keys::body::AccountBody::of(&far)),
+            })],
+            tablepro_sync::api::key_flows::ArrivalOrder::InOrder,
+        )
+        .await;
+    let watched = std::sync::Arc::new(crate::harness::Watched {
+        store: device.store.clone(),
+        away: false,
+        deletes: std::sync::Mutex::new(0),
+    });
+    let counting = device.restarted_over(watched.clone());
+
+    counting.service.sign_out().await.unwrap();
+
+    assert!(*watched.deletes.lock().unwrap() < 10);
+    assert!(device.store.is_empty());
+}
+
+// A stolen recovery key and the server together can plant a certificate under the account's own IK at a far `av`,
+// which verifies under the device's pin. Sign Out erases the account keys at the `av`s the key tables name, never by
+// counting up to the highest, so it still ends.
+#[tokio::test]
+async fn a_certificate_under_the_account_s_own_ik_at_a_far_av_does_not_stretch_sign_out() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    let recovery = device.genesis().await;
+    let ik = tablepro_keys::recovery::RecoveryKey::parse(secrecy::ExposeSecret::expose_secret(&recovery))
+        .unwrap()
+        .identity_seed(&origin(), account)
+        .unwrap();
+    let far = tablepro_keys::cert::AccountCertificate::sign(
+        &origin(),
+        account,
+        Version::new(100_000).unwrap(),
+        tablepro_keys::cert::CertKind::GenesisOrRotation,
+        &ik,
+        AccountKeys::generate().unwrap().public().unwrap(),
+        None,
+    )
+    .unwrap();
+    device
+        .feed(
+            vec![crate::harness::record_of(&tablepro_keys::body::KeyObject {
+                id: tablepro_keys::record_id::KeyRecordId::Account { account, av: far.av },
+                body: tablepro_keys::body::KeyBody::Account(tablepro_keys::body::AccountBody::of(&far)),
+            })],
+            tablepro_sync::api::key_flows::ArrivalOrder::InOrder,
+        )
+        .await;
+    let watched = std::sync::Arc::new(crate::harness::Watched {
+        store: device.store.clone(),
+        away: false,
+        deletes: std::sync::Mutex::new(0),
+    });
+    let counting = device.restarted_over(watched.clone());
+
+    counting.service.sign_out().await.unwrap();
+
+    assert!(*watched.deletes.lock().unwrap() < 10);
+    assert!(device.store.is_empty());
+}
+
+#[tokio::test]
+async fn no_reset_key_is_readable_while_a_sign_out_is_under_way() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let reset = ResetId(random_uuid().unwrap());
+    device
+        .service
+        .store_reset_keys(
+            reset,
+            &ResetKeys {
+                account: AccountKeys::generate().unwrap(),
+                device: DeviceKeys::generate().unwrap(),
+            },
+        )
+        .await
+        .unwrap();
+    device
+        .put(vec![Row::KeyPending(KeyPendingRow {
+            flow: PendingFlow::ResetProposal { reset },
+            state: Vec::new(),
+        })])
+        .await;
+    let cut_off = device.restarted_over(std::sync::Arc::new(crate::harness::CutOff {
+        store: device.store.clone(),
+        armed: std::sync::Mutex::new(true),
+    }));
+    cut_off.service.sign_out().await.unwrap_err();
+
+    assert!(cut_off.service.reset_keys(reset).await.unwrap().is_none());
+    assert!(cut_off.service.account_keys(Version::FIRST).await.unwrap().is_none());
+}

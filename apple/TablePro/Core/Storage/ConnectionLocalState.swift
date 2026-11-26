@@ -12,20 +12,20 @@ import TableProUtilities
 internal enum ConnectionLocalState {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionLocalState")
 
-    // Only a local delete leaves tombstones; a remote one would push back the sender's own deletion.
+    // Who deleted the connection: this Mac, this Mac for a Local only one, or another device. Only the first is a
+    // delete every device follows.
     internal enum Origin {
         case local
         case localOnly
         case remote
 
-        var leavesTombstones: Bool {
+        var isFollowedEverywhere: Bool {
             self == .local
         }
     }
 
     internal static func purge(
         connectionIds: Set<UUID>,
-        origin: Origin,
         appSettings: AppSettingsStorage = .shared,
         tableScopedStores: [any TableScopedSettingsStore] = TableScopedSettingsRegistry.stores,
         favoriteTables: FavoriteTablesStorage = .shared,
@@ -33,62 +33,35 @@ internal enum ConnectionLocalState {
         sqlFavorites: SQLFavoriteManager = .shared,
         queryHistory: QueryHistoryManager = .shared,
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared,
         agentSessions: AgentSessionRegistry = .shared
     ) {
         guard !connectionIds.isEmpty else { return }
 
         for connectionId in connectionIds {
             purgeLiveState(connectionId)
-            purgeFavorites(
-                connectionId,
-                leavesTombstones: origin.leavesTombstones,
-                tables: favoriteTables,
-                databases: favoriteDatabases
-            )
+            favoriteTables.removeFavorites(for: connectionId)
+            favoriteDatabases.removeFavorites(for: connectionId)
             agentSessions.removeSessions(for: connectionId)
         }
         purgeViewState(connectionIds, appSettings: appSettings, defaults: defaults)
 
         for store in tableScopedStores {
-            store.purgeConnections(connectionIds, leavesTombstones: origin.leavesTombstones)
-        }
-        if origin == .localOnly {
-            syncTracker.discardTombstones(ownedBy: connectionIds)
-            syncTracker.keepOffSync(owners: connectionIds)
+            store.purgeConnections(connectionIds)
         }
         Task {
-            await purgeAsyncStores(
-                connectionIds,
-                origin: origin,
-                sqlFavorites: sqlFavorites,
-                queryHistory: queryHistory,
-                syncTracker: syncTracker
-            )
+            await purgeAsyncStores(connectionIds, sqlFavorites: sqlFavorites, queryHistory: queryHistory)
         }
     }
 
-    // Separate from `purge` so a test can await it. Saved queries split by origin themselves: this runs after
-    // `applyRemoteChanges` stopped suppressing the tracker. Query history and tab versions are device-local.
+    // Separate from `purge` so a test can await it. Query history and tab versions are device-local.
     internal static func purgeAsyncStores(
         _ connectionIds: Set<UUID>,
-        origin: Origin,
         sqlFavorites: SQLFavoriteManager = .shared,
         queryHistory: QueryHistoryManager = .shared,
-        queryTabVersions: QueryTabVersionStorage = .shared,
-        syncTracker: SyncChangeTracker = .shared
+        queryTabVersions: QueryTabVersionStorage = .shared
     ) async {
         for connectionId in connectionIds {
-            switch origin {
-            case .local:
-                await sqlFavorites.removeFavoritesAndFolders(for: connectionId)
-            case .localOnly:
-                if await sqlFavorites.removeFavoritesAndFoldersWithoutSync(for: connectionId) {
-                    syncTracker.releaseOwnersKeptOffSync([connectionId])
-                }
-            case .remote:
-                await sqlFavorites.removeFavoritesAndFoldersWithoutSync(for: connectionId)
-            }
+            await sqlFavorites.removeFavoritesAndFolders(for: connectionId)
             if await !queryHistory.deleteEverything(forConnection: connectionId) {
                 logger.error(
                     "Query history for a deleted connection could not be cleared: \(connectionId, privacy: .public)"
@@ -150,7 +123,7 @@ internal enum ConnectionLocalState {
             TabDiskActor.clearSync(connectionId: connectionId)
         }
         for store in tableScopedStores {
-            store.purgeConnections(connectionIds, leavesTombstones: false)
+            store.purgeConnections(connectionIds)
         }
     }
 
@@ -173,20 +146,5 @@ internal enum ConnectionLocalState {
         QuickSwitcherCatalogStore.shared.removeConnection(connectionId)
         FavoritesExpansionState.shared.removeConnection(connectionId)
         ConnectionDataCache.removeConnection(connectionId)
-    }
-
-    private static func purgeFavorites(
-        _ connectionId: UUID,
-        leavesTombstones: Bool,
-        tables: FavoriteTablesStorage,
-        databases: FavoriteDatabasesStorage
-    ) {
-        guard leavesTombstones else {
-            tables.removeFavoritesWithoutSync(for: connectionId)
-            databases.removeFavoritesWithoutSync(for: connectionId)
-            return
-        }
-        tables.removeFavorites(for: connectionId)
-        databases.removeFavorites(for: connectionId)
     }
 }

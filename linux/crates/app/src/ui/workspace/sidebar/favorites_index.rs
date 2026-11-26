@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
 use tablepro_storage::saved_queries::{SavedQueriesSnapshot, SavedQuery, SavedQueryFolder};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Key {
-    Folder(i64),
-    Query(i64),
+    Folder(Uuid),
+    Query(Uuid),
 }
 
 impl Key {
@@ -18,7 +19,7 @@ impl Key {
 
     pub(super) fn parse(target: &str) -> Option<Self> {
         let (kind, id) = target.split_at_checked(1)?;
-        let id = id.parse().ok()?;
+        let id = Uuid::parse_str(id).ok()?;
         match kind {
             "f" => Some(Self::Folder(id)),
             "q" => Some(Self::Query(id)),
@@ -48,14 +49,14 @@ impl Node {
         }
     }
 
-    pub(super) fn parent(&self) -> Option<i64> {
+    pub(super) fn parent(&self) -> Option<Uuid> {
         match self {
             Self::Folder(folder) => folder.parent_id,
             Self::Query(query) => query.folder_id,
         }
     }
 
-    fn order(&self) -> (u8, i64, String, i64) {
+    fn order(&self) -> (u8, i64, String, Uuid) {
         match self {
             Self::Folder(folder) => (0, folder.order, folder.name.to_lowercase(), folder.id),
             Self::Query(query) => (1, query.order, query.name.to_lowercase(), query.id),
@@ -66,25 +67,29 @@ impl Node {
 #[derive(Default)]
 pub(super) struct Index {
     pub(super) nodes: HashMap<Key, Node>,
-    children: HashMap<Option<i64>, Vec<Key>>,
-    paths: HashMap<i64, String>,
+    children: HashMap<Option<Uuid>, Vec<Key>>,
+    paths: HashMap<Uuid, String>,
 }
 
 impl Index {
     pub(super) fn new(snapshot: SavedQueriesSnapshot) -> Option<Self> {
         let mut index = Self::default();
         let mut owners = HashSet::new();
+        // A reference nothing here answers to reads as the top level (core ADR 0052).
+        let folders: HashSet<Uuid> = snapshot.folders.iter().map(|folder| folder.id).collect();
         for node in snapshot
             .folders
             .into_iter()
             .map(Node::Folder)
             .chain(snapshot.queries.into_iter().map(Node::Query))
         {
-            owners.insert(match &node {
+            // What has no connection shows in every connection's snapshot beside that connection's own.
+            owners.extend(match &node {
                 Node::Folder(folder) => folder.connection_id,
                 Node::Query(query) => query.connection_id,
             });
-            index.children.entry(node.parent()).or_default().push(node.key());
+            let parent = node.parent().filter(|parent| folders.contains(parent));
+            index.children.entry(parent).or_default().push(node.key());
             if index.nodes.insert(node.key(), node).is_some() {
                 return None;
             }
@@ -113,15 +118,15 @@ impl Index {
         (visited.len() == index.nodes.len()).then_some(index)
     }
 
-    pub(super) fn children(&self, parent: Option<i64>) -> &[Key] {
+    pub(super) fn children(&self, parent: Option<Uuid>) -> &[Key] {
         self.children.get(&parent).map_or(&[], Vec::as_slice)
     }
 
-    pub(super) fn path(&self, id: i64) -> Option<&str> {
+    pub(super) fn path(&self, id: Uuid) -> Option<&str> {
         self.paths.get(&id).map(String::as_str)
     }
 
-    pub(super) fn destinations(&self) -> Vec<(i64, String)> {
+    pub(super) fn destinations(&self) -> Vec<(Uuid, String)> {
         let mut folders: Vec<_> = self.paths.iter().map(|(id, path)| (*id, path.clone())).collect();
         folders.sort_by_cached_key(|(id, path)| (path.to_lowercase(), path.clone(), *id));
         folders
@@ -146,14 +151,32 @@ impl Index {
 mod tests {
     use super::*;
     use std::time::SystemTime;
-    use uuid::Uuid;
 
-    fn folder(id: i64, name: &str, parent_id: Option<i64>) -> SavedQueryFolder {
+    fn id(number: u128) -> Uuid {
+        Uuid::from_u128(number)
+    }
+
+    fn folder(number: u128, name: &str, parent: Option<u128>) -> SavedQueryFolder {
         SavedQueryFolder {
-            id,
+            id: id(number),
             name: name.to_owned(),
-            parent_id,
-            connection_id: Uuid::nil(),
+            parent_id: parent.map(id),
+            connection_id: Some(Uuid::nil()),
+            order: 0,
+            created_at: SystemTime::UNIX_EPOCH,
+            updated_at: SystemTime::UNIX_EPOCH,
+        }
+    }
+
+    fn query(number: u128, name: &str, folder: Option<u128>, connection: Option<Uuid>) -> SavedQuery {
+        SavedQuery {
+            id: id(number),
+            name: name.to_owned(),
+            query: "SELECT 1".to_owned(),
+            connection_id: connection,
+            connection_name: String::new(),
+            keyword: None,
+            folder_id: folder.map(id),
             order: 0,
             created_at: SystemTime::UNIX_EPOCH,
             updated_at: SystemTime::UNIX_EPOCH,
@@ -178,13 +201,13 @@ mod tests {
         assert_eq!(
             index.destinations(),
             vec![
-                (7, "/a\\\\\\/b".to_owned()),
-                (3, "/Archive".to_owned()),
-                (4, "/Archive/Monthly".to_owned()),
-                (6, "/No Folder".to_owned()),
-                (1, "/Reports".to_owned()),
-                (2, "/Reports/Monthly".to_owned()),
-                (5, "/Reports\\/Monthly".to_owned()),
+                (id(7), "/a\\\\\\/b".to_owned()),
+                (id(3), "/Archive".to_owned()),
+                (id(4), "/Archive/Monthly".to_owned()),
+                (id(6), "/No Folder".to_owned()),
+                (id(1), "/Reports".to_owned()),
+                (id(2), "/Reports/Monthly".to_owned()),
+                (id(5), "/Reports\\/Monthly".to_owned()),
             ]
         );
     }
@@ -192,7 +215,6 @@ mod tests {
     #[test]
     fn malformed_hierarchies_are_refused_instead_of_hiding_queries_or_recursing() {
         for folders in [
-            vec![folder(1, "Orphan", Some(99))],
             vec![folder(1, "Cycle", Some(2)), folder(2, "Cycle", Some(1))],
             vec![folder(1, "Duplicate", None), folder(1, "Duplicate", None)],
         ] {
@@ -206,6 +228,41 @@ mod tests {
         }
     }
 
+    // A pull can bring a record before the folder it names (core ADR 0052, References).
+    #[test]
+    fn a_parent_or_folder_the_snapshot_lacks_reads_as_the_top_level() {
+        let index = Index::new(SavedQueriesSnapshot {
+            queries: vec![query(10, "Lost", Some(99), Some(Uuid::nil()))],
+            folders: vec![folder(1, "Orphan", Some(98))],
+        })
+        .expect("index");
+
+        assert_eq!(index.children(None), [Key::Folder(id(1)), Key::Query(id(10))]);
+        assert_eq!(index.path(id(1)), Some("/Orphan"));
+    }
+
+    #[test]
+    fn a_query_with_no_connection_sits_beside_the_connections_own() {
+        let index = Index::new(SavedQueriesSnapshot {
+            queries: vec![
+                query(10, "Everywhere", None, None),
+                query(11, "Mine", None, Some(Uuid::nil())),
+            ],
+            folders: vec![],
+        })
+        .expect("index");
+        assert_eq!(index.children(None).len(), 2);
+
+        let mixed = Index::new(SavedQueriesSnapshot {
+            queries: vec![
+                query(10, "Mine", None, Some(Uuid::nil())),
+                query(11, "Theirs", None, Some(Uuid::max())),
+            ],
+            folders: vec![],
+        });
+        assert!(mixed.is_none(), "two connections' records in one snapshot");
+    }
+
     #[test]
     fn typed_keys_and_sibling_order_are_stable() {
         let mut first = folder(8, "Z", None);
@@ -217,12 +274,12 @@ mod tests {
             folders: vec![second, first],
         })
         .expect("index");
-        assert_eq!(index.children(None), [Key::Folder(8), Key::Folder(3)]);
-        assert_ne!(Key::Folder(3), Key::Query(3));
-        for key in [Key::Folder(3), Key::Query(3)] {
+        assert_eq!(index.children(None), [Key::Folder(id(8)), Key::Folder(id(3))]);
+        assert_ne!(Key::Folder(id(3)), Key::Query(id(3)));
+        for key in [Key::Folder(id(3)), Key::Query(id(3))] {
             assert_eq!(Key::parse(&key.target()), Some(key));
         }
-        for text in ["", "😀", "qabc", "x3"] {
+        for text in ["", "😀", "qabc", "x3", "q3"] {
             assert_eq!(Key::parse(text), None);
         }
     }

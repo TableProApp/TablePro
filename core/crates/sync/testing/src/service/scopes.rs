@@ -131,6 +131,40 @@ impl FakeClient {
     }
 }
 
+// Tombstones each pending `key.reset` of the account whose proposed device's DSK is `key`.
+fn end_resets_proposed_under(state: &mut State, account: tablepro_keys::encoding::AccountId, key: &[u8; 32]) {
+    let owner = ScopeOwner::Personal(account);
+    let ids: Vec<(String, String)> = state.scopes.get(&owner).map_or_else(Vec::new, |data| {
+        data.records
+            .iter()
+            .filter(|(_, record)| record.kind.as_str() == "key.reset" && record.deleted.is_none())
+            .filter(|(_, record)| {
+                record
+                    .fields
+                    .as_ref()
+                    .and_then(|fields| fields.get("device"))
+                    .and_then(|device| super::push::key_field(device, "dsk"))
+                    == Some(*key)
+            })
+            .map(|(id, _)| id.clone())
+            .collect()
+    });
+    for id in ids {
+        let revision = state.take_revision();
+        let epoch = state.epoch();
+        let now = state.clock_us;
+        if let Some(record) = state.scopes.get_mut(&owner).and_then(|data| data.records.get_mut(&id)) {
+            record.version += 1;
+            record.revision = revision;
+            record.written_epoch = epoch;
+            record.write_tag = *uuid::Uuid::new_v4().as_bytes();
+            record.deleted = Some(tablepro_sync::api::transport::DeletedReason::User);
+            record.fields = None;
+            record.updated_at_us = now;
+        }
+    }
+}
+
 fn team_reports(state: &State, team: TeamId) -> Vec<StopReport> {
     state
         .stopped
@@ -171,9 +205,14 @@ impl ServiceTransport for FakeClient {
     async fn revoke_key_device(&self, proof: DpopKey) -> Result<(), TransportError> {
         let mut state = self.server.lock();
         self.admit(&mut state, None)?;
-        // Taken from any signed-in device; it clears the row's key device only under that key device's own DSK.
+        // Taken from any signed-in device; it clears the row's key device only under that key device's own DSK, and
+        // ends a pending reset only under the DSK its `key.reset` names (0051, Sign Out).
+        let key = super::push::proof_key(&Proof::Dpop(proof.clone()));
         if self.approval(&state, &Proof::Dpop(proof)) == Approval::Approved {
             state.approved.remove(&self.device_row);
+        }
+        if let Some(key) = key {
+            end_resets_proposed_under(&mut state, self.account, &key);
         }
         Ok(())
     }

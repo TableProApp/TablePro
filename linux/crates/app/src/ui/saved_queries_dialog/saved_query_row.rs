@@ -6,6 +6,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
 use super::SavedQueryObject;
+use uuid::Uuid;
 
 mod imp {
     use super::*;
@@ -75,7 +76,7 @@ impl SavedQueryRow {
         self.imp().object.replace(None);
     }
 
-    pub(super) fn id(&self) -> Option<i64> {
+    pub(super) fn id(&self) -> Option<Uuid> {
         self.imp().object.borrow().as_ref().and_then(SavedQueryObject::id)
     }
 

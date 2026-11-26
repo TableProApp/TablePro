@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use super::error::SyncError;
-use super::ids::RecordKey;
+use super::ids::{KindName, RecordKey};
 use super::state::{HeldReason, Provider};
 
 fn unimplemented<T>(what: &'static str) -> Result<T, SyncError> {
@@ -21,6 +21,19 @@ pub trait SyncControl: Send + Sync {
     async fn sync_now(&self, why: PassReason) -> Result<(), SyncError> {
         let _ = why;
         unimplemented("sync.sync_now")
+    }
+
+    // The categories this device syncs and whether passwords do: an off category sends nothing, and a deletion pulled
+    // for it waits (0054, Rules for both providers).
+    async fn set_categories(&self, categories: SyncCategories) -> Result<(), SyncError> {
+        let _ = categories;
+        unimplemented("sync.set_categories")
+    }
+
+    // A store the app still keeps wrote these records, after its write landed (0060). The diff decides what goes up.
+    async fn host_changed(&self, kind: KindName, written: Vec<String>, deleted: Vec<String>) -> Result<(), SyncError> {
+        let _ = (kind, written, deleted);
+        unimplemented("sync.host_changed")
     }
 
     // Off, iCloud or TablePro Sync for personal data, among what the managed policy allows (0055).
@@ -98,12 +111,23 @@ pub trait SyncControl: Send + Sync {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PassReason {
     Journal,
+    // A key flow wrote something a pass should carry (`KeyHooks::pass_soon`).
+    KeyFlow,
+    // `CKAccountChanged`: the engine reads the account status and opens that account's state file.
+    AccountChanged,
     Launch,
     Foreground,
     NetworkBack,
     CloudKitPush,
     Poll,
     Person,
+}
+
+// The kinds turned off on this device, and the password switch.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SyncCategories {
+    pub off: Vec<KindName>,
+    pub passwords: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

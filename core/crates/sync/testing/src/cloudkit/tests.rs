@@ -11,6 +11,7 @@ fn connection(name: &str, system_fields: Option<Vec<u8>>, title: &str) -> CloudK
         record_type: "Connection".to_owned(),
         name: name.to_owned(),
         system_fields,
+        created_ms: None,
         fields: vec![CloudKitField {
             name: "name".to_owned(),
             value: Some(CloudKitValue::Text(title.to_owned())),
@@ -243,4 +244,19 @@ async fn a_signed_out_device_has_no_account() {
         cloud.ensure_zone(USER.to_owned()).await.unwrap_err(),
         CloudKitFailure::NoAccount
     );
+}
+
+#[tokio::test]
+async fn a_record_made_again_after_its_zone_was_removed_has_a_later_creation_date() {
+    let cloud = zone().await;
+    saved(&cloud, connection("Connection_A", None, "a")).await;
+    let first = cloud.record(USER, "Connection_A").unwrap().created_ms.unwrap();
+    cloud.remove_zone_by_user(USER);
+    cloud.ensure_zone(USER.to_owned()).await.unwrap();
+    saved(&cloud, connection("Connection_B", None, "b")).await;
+    saved(&cloud, connection("Connection_A", None, "a")).await;
+
+    let again = cloud.record(USER, "Connection_A").unwrap().created_ms.unwrap();
+
+    assert!(again > first);
 }

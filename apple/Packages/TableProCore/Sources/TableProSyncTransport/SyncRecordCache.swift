@@ -85,6 +85,50 @@ public final class SyncRecordCache {
         }
     }
 
+    /// Leaves the cache holding exactly `records`: a file whose bytes already match is not
+    /// rewritten, and a record not among them is removed. False when the folder could not be listed
+    /// or any file could not be written or removed.
+    @discardableResult
+    public func replaceAll(with records: [CKRecord]) -> Bool {
+        migrateIfNeeded()
+        createDirectoryIfNeeded()
+        var complete = true
+        var kept: Set<String> = []
+        for record in records {
+            let url = fileURL(for: record.recordID.recordName)
+            kept.insert(url.lastPathComponent)
+            guard let data = archive(record) else {
+                complete = false
+                continue
+            }
+            guard (try? Data(contentsOf: url)) != data else { continue }
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                Self.logger.error(
+                    "Failed to cache record \(record.recordID.recordName, privacy: .public): \(error.localizedDescription)"
+                )
+                complete = false
+            }
+        }
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        } catch {
+            Self.logger.error("Failed to list the sync record cache: \(error.localizedDescription)")
+            return false
+        }
+        for file in files where !kept.contains(file.lastPathComponent) {
+            do {
+                try FileManager.default.removeItem(at: file)
+            } catch {
+                Self.logger.error("Failed to remove a cached record: \(error.localizedDescription)")
+                complete = false
+            }
+        }
+        return complete
+    }
+
     public func remove(_ recordIDs: [CKRecord.ID]) {
         guard !recordIDs.isEmpty else { return }
         migrateIfNeeded()

@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 use crate::name_rules::{self, NameFault};
 use crate::tag_name_error::TagNameError;
 
-/// A tag's name as the list shows it, the form a connection's name takes.
+// A typed name passes `new`; a stored one is kept as it was written and read through `shown` and `same_name`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
+#[serde(from = "String", into = "String")]
 pub struct ConnectionTagName(String);
 
 impl ConnectionTagName {
@@ -25,17 +25,26 @@ impl ConnectionTagName {
         &self.0
     }
 
+    pub fn shown(&self) -> String {
+        name_rules::cleaned(&self.0)
+    }
+
     // Two tags whose names differ only in case would read as one.
     pub fn same_name(&self, other: &str) -> bool {
         self.key() == name_rules::shown(other).to_lowercase()
     }
 
-    /// The name as two tags are told apart by.
     pub(crate) fn key(&self) -> String {
-        self.0.to_lowercase()
+        name_rules::shown(&self.0).to_lowercase()
     }
 
-    pub(crate) fn from_stored(value: &str) -> Result<Self, TagNameError> {
+    // A library moving in or a pull keeps what another app let the person type, of any length.
+    pub fn from_stored(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+
+    // For a name from outside the person's own library, such as a file.
+    pub(crate) fn cleaned_from(value: &str) -> Result<Self, TagNameError> {
         Self::new(
             &name_rules::cleaned(value)
                 .chars()
@@ -45,11 +54,9 @@ impl ConnectionTagName {
     }
 }
 
-impl TryFrom<String> for ConnectionTagName {
-    type Error = TagNameError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(&value)
+impl From<String> for ConnectionTagName {
+    fn from(value: String) -> Self {
+        Self(value)
     }
 }
 
@@ -108,17 +115,33 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_name_is_cleaned_and_a_blank_one_refused() {
+    fn a_name_from_outside_is_cleaned_and_a_blank_one_refused() {
         let long = "x".repeat(ConnectionTagName::MAX_CHARS + 5);
-        let read = ConnectionTagName::from_stored(&long).expect("a long name");
+        let read = ConnectionTagName::cleaned_from(&long).expect("a long name");
         assert_eq!(read.as_str(), "x".repeat(ConnectionTagName::MAX_CHARS));
 
-        let read = ConnectionTagName::from_stored("a\tb").expect("a control character");
+        let read = ConnectionTagName::cleaned_from("a\tb").expect("a control character");
         assert_eq!(read.as_str(), "a b");
 
-        let read = ConnectionTagName::from_stored("production\u{200b}").expect("a blank");
+        let read = ConnectionTagName::cleaned_from("production\u{200b}").expect("a blank");
         assert_eq!(read.as_str(), "production");
 
-        assert_eq!(ConnectionTagName::from_stored(" \n "), Err(TagNameError::Empty));
+        assert_eq!(ConnectionTagName::cleaned_from(" \n "), Err(TagNameError::Empty));
+    }
+
+    #[test]
+    fn a_stored_name_is_kept_as_written() {
+        let long = "x".repeat(ConnectionTagName::MAX_CHARS + 5);
+        for raw in [long.as_str(), " Prod ", ""] {
+            let name = ConnectionTagName::from_stored(raw);
+
+            assert_eq!(name.as_str(), raw);
+            assert_eq!(
+                serde_json::from_str::<ConnectionTagName>(&serde_json::to_string(&name).expect("json")).expect("read"),
+                name
+            );
+        }
+        assert!(ConnectionTagName::from_stored(" Prod ").same_name("prod"));
+        assert_eq!(ConnectionTagName::from_stored(" Prod\t").shown(), "Prod");
     }
 }

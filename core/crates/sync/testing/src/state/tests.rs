@@ -28,6 +28,7 @@ fn base(id: &str) -> Row {
         epoch: None,
         deleted: None,
         fields: None,
+        created_ms: None,
     })
 }
 

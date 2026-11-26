@@ -193,17 +193,6 @@ nonisolated final class CloudKitCoreTransport: CloudKitTransport, @unchecked Sen
     }
 }
 
-nonisolated enum CloudKitChangeToken {
-    // The form `SyncMetadataStorage` keeps, so the token the Swift engine saved is the engine's first one.
-    static func archive(_ token: CKServerChangeToken) -> Data? {
-        try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true)
-    }
-
-    static func unarchive(_ data: Data) -> CKServerChangeToken? {
-        try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
-    }
-}
-
 // Each call runs as a task of its own, so closing the gate or an account change can cancel it from outside the call.
 nonisolated final class CloudKitTransportGate: Sendable {
     private struct State {

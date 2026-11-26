@@ -3,7 +3,6 @@
 //  TableProTests
 //
 
-import CloudKit
 import Foundation
 @testable import TablePro
 import TableProImport
@@ -13,8 +12,6 @@ import Testing
 
 @MainActor
 struct ConnectionOriginTests {
-    private static let zoneID = CKRecordZone.ID(zoneName: "TableProSync", ownerName: CKCurrentUserDefaultName)
-
     private func pair() -> (thisMac: DatabaseConnection, imported: DatabaseConnection) {
         let own = DatabaseConnection(
             name: "Staging",
@@ -57,21 +54,6 @@ struct ConnectionOriginTests {
         let local = pair().imported
 
         #expect(pulled.adoptingDeviceLocalState(from: local).origin == .imported)
-    }
-
-    @Test("The origin never reaches the CloudKit record")
-    func cloudKitRecordCarriesNoOrigin() {
-        let (own, imported) = pair()
-        let ownRecord = SyncRecordMapper.toCKRecord(own, in: Self.zoneID)
-        let importedRecord = SyncRecordMapper.toCKRecord(imported, in: Self.zoneID)
-
-        #expect(Set(importedRecord.allKeys()) == Set(ownRecord.allKeys()))
-        #expect(!importedRecord.allKeys().contains { $0.localizedCaseInsensitiveContains("origin") })
-        for key in importedRecord.allKeys() where key != ConnectionSyncField.modifiedAtLocal.key {
-            let left = importedRecord[key] as? NSObject
-            let right = ownRecord[key] as? NSObject
-            #expect(left == right, "\(key)")
-        }
     }
 
     @Test("The origin never reaches an export, a share link or a team library entry")

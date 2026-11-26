@@ -223,17 +223,6 @@ struct SQLFormatterRulesTests {
         #expect(AppSettingsCategory.formatter != AppSettingsCategory.editor)
     }
 
-    @Test("A Mac upgraded from a build that skipped formatter records fetches the zone once")
-    func upgradeRefetchesSkippedFormatterRecords() throws {
-        let pool = EphemeralDefaultsPool()
-        let metadata = SyncMetadataStorage(userDefaults: try pool.make().defaults)
-        var older = SyncCoordinator.readableContent
-        older.remove(SyncCoordinator.formatterContentKind)
-        _ = metadata.adoptReadableRecordTypes(older)
-        #expect(metadata.adoptReadableRecordTypes(SyncCoordinator.readableContent))
-        #expect(!metadata.adoptReadableRecordTypes(SyncCoordinator.readableContent))
-    }
-
     @Test("Formatter settings persist under their own key and reset with the rest")
     func storageRoundTripAndReset() throws {
         let pool = EphemeralDefaultsPool()

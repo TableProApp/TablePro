@@ -5,7 +5,6 @@
 
 import Combine
 import Foundation
-import os
 import SQLite3
 @testable import TablePro
 import TableProImport
@@ -16,9 +15,7 @@ import Testing
 struct SQLFavoriteManagerImportTests {
     private let databasePath: String
     private let storage: SQLFavoriteStorage
-    private let syncDefaults: DirtyWriteRecordingDefaults
-    private let syncSuite: EphemeralDefaults
-    private let metadata: SyncMetadataStorage
+    private let journal = SyncJournalRecorder()
     private let events: AppEvents
     private let manager: SQLFavoriteManager
 
@@ -33,14 +30,11 @@ struct SQLFavoriteManagerImportTests {
         )
         databasePath = url.path(percentEncoded: false)
         storage = SQLFavoriteStorage(databaseURL: url, removeDatabaseOnDeinit: true)
-        syncSuite = try EphemeralDefaults()
-        syncDefaults = try #require(DirtyWriteRecordingDefaults(suiteName: syncSuite.suiteName))
-        metadata = SyncMetadataStorage(userDefaults: syncDefaults, prefix: "tests.\(unique)")
         let appEvents = AppEvents()
         events = appEvents
         manager = SQLFavoriteManager(
             storage: storage,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: journal.journal,
             appEvents: appEvents
         )
     }
@@ -73,27 +67,25 @@ struct SQLFavoriteManagerImportTests {
 
         #expect(write.insertedIds.count == 3)
         #expect(write.createdFolderIds.count == 2)
-        #expect(syncDefaults.dirtyWrites(for: .favorite) == 1)
-        #expect(syncDefaults.dirtyWrites(for: .favoriteFolder) == 1)
-        #expect(metadata.dirtyIds(for: .favorite) == Set(write.insertedIds.map(\.uuidString)))
-        #expect(metadata.dirtyIds(for: .favoriteFolder) == Set(write.createdFolderIds.map(\.uuidString)))
+        #expect(journal.changes.map(\.kind).sorted() == ["saved_query", "saved_query_folder"])
+        #expect(journal.dirtyIds(for: .favorite) == Set(write.insertedIds.map(\.uuidString)))
+        #expect(journal.dirtyIds(for: .favoriteFolder) == Set(write.createdFolderIds.map(\.uuidString)))
         #expect(announcements.payloads == [nil])
     }
 
-    @Test("Rows are committed before anything is marked dirty")
-    func rowsAreReadableBeforeTheyAreMarked() async throws {
+    @Test("Rows are committed before the journal hears of them")
+    func rowsAreReadableBeforeTheyAreJournaled() async throws {
         let path = databasePath
-        let observed = OSAllocatedUnfairLock(initialState: [CommittedRows?]())
-        syncDefaults.observeDirtyWrites { _ in
-            let rows = committedRows(at: path)
-            observed.withLock { $0.append(rows) }
+        var seen: [CommittedRows?] = []
+        let observing = journal.journal.listen { _ in
+            seen.append(committedRows(at: path))
         }
+        defer { observing.cancel() }
 
         let written = await manager.importSavedQueries(sampleImport)
         let write = try #require(written)
 
         let expected = CommittedRows(favorites: write.insertedIds.count, folders: write.createdFolderIds.count)
-        let seen = observed.withLock { $0 }
         #expect(seen.count == 2)
         #expect(seen.allSatisfy { $0 == expected })
     }
@@ -109,23 +101,21 @@ struct SQLFavoriteManagerImportTests {
         let write = await manager.importSavedQueries(sampleImport)
 
         #expect(write == nil)
-        #expect(syncDefaults.dirtyWrites(for: .favorite) == 0)
-        #expect(syncDefaults.dirtyWrites(for: .favoriteFolder) == 0)
-        #expect(metadata.dirtyIds(for: .favoriteFolder).isEmpty)
+        #expect(journal.changes.isEmpty)
         #expect(announcements.payloads.isEmpty)
     }
 
     @Test("An import that finds everything saved marks nothing and announces nothing")
     func alreadySavedImportIsSilent() async throws {
         _ = try #require(await manager.importSavedQueries(sampleImport))
-        syncDefaults.resetWrites()
+        journal.clear()
         let announcements = AnnouncementLog(events.sqlFavoritesDidUpdate)
 
         let written = await manager.importSavedQueries(sampleImport)
         let write = try #require(written)
 
         #expect(write.alreadySaved == 3)
-        #expect(syncDefaults.dirtyWrites(for: .favorite) == 0)
+        #expect(journal.changes.isEmpty)
         #expect(announcements.payloads.isEmpty)
     }
 
@@ -181,41 +171,6 @@ private final class AnnouncementLog {
     init(_ subject: PassthroughSubject<UUID?, Never>) {
         subscription = subject.sink { [weak self] payload in
             self?.payloads.append(payload)
-        }
-    }
-}
-
-private final class DirtyWriteRecordingDefaults: UserDefaults {
-    private struct State {
-        var writes: [String: Int] = [:]
-        var observer: (@Sendable (String) -> Void)?
-    }
-
-    private let state = OSAllocatedUnfairLock(initialState: State())
-
-    func dirtyWrites(for type: SyncRecordType) -> Int {
-        let suffix = ".dirty.\(type.rawValue)"
-        return state.withLock { current in
-            current.writes.filter { $0.key.hasSuffix(suffix) }.values.reduce(0, +)
-        }
-    }
-
-    func resetWrites() {
-        state.withLock { $0.writes = [:] }
-    }
-
-    func observeDirtyWrites(_ observer: @escaping @Sendable (String) -> Void) {
-        state.withLock { $0.observer = observer }
-    }
-
-    override func set(_ value: Any?, forKey defaultName: String) {
-        super.set(value, forKey: defaultName)
-        let observer = state.withLock { current -> (@Sendable (String) -> Void)? in
-            current.writes[defaultName, default: 0] += 1
-            return current.observer
-        }
-        if defaultName.contains(".dirty.") {
-            observer?(defaultName)
         }
     }
 }

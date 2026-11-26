@@ -1,0 +1,1432 @@
+{
+ "about": "A subset of tablepro-keys' vectors at fix/core-keys-g1 8a90c920c0 (PR #4568): flows.json's world and the scenarios the account flows run, and certificates.json's verify cases.",
+ "origin": "https://sync.example.com",
+ "world": {
+  "accounts": [
+   {
+    "name": "A",
+    "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+    "r_hex": "501e7734198583a1aa5842ae764f591935c5028b7db0118cad9834e1bfb53328",
+    "ik_hex": "932f62e3a343fb3e160070cef6e4939976ca53f659c4db13c6cbeab57e71cd29",
+    "account_keys": [
+     {
+      "av": 1,
+      "ask_seed_hex": "c0c8f276f0748203c74b96814e41e305b9c1876e8b4c970eed851b0ebb08ad05",
+      "ask_hex": "65feaea871d26f3921caf2fb4bc5d4a247cf41c16f27374474db6a80c6b57a76",
+      "aek_secret_hex": "93faa20bc3d718286b327415835b8f1535434754e151db5b6c68b4760b2c8e71",
+      "aek_hex": "a5af5112274891be05c07f02bc39ae6b2b3298fbe5274cee2d938f6b4b5df818"
+     },
+     {
+      "av": 2,
+      "ask_seed_hex": "04678c25394563635261e4b5dd0388002535795eff838ca19f3fe2450a223571",
+      "ask_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
+      "aek_secret_hex": "128439ea206a467e8f11b2c2b5724e177eb1fe50c5ee7efcf036ec9303798d9d",
+      "aek_hex": "931b0916c9d3cc36fc65cc382802b07e1937d8d88d1958d130c4d6682d58495e"
+     },
+     {
+      "av": 3,
+      "ask_seed_hex": "d43113a5ea4bf6e70b3bdc7e26fb064d57fb5063833fe0bfa24f46f3cc82d2e2",
+      "ask_hex": "e4bc3a07e1e2fd51dbb7477477c388546b56df36581f3106c56043931e1e5f9f",
+      "aek_secret_hex": "7133bcd704d030bd05155a26b296310e0af1fbd8b9f709bf9f2f16c50736af4c",
+      "aek_hex": "770f8b05d314918713a8428ed8bedc5f2b47b046b58422df8486d74170da7365"
+     }
+    ]
+   },
+   {
+    "name": "M",
+    "account": "019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90",
+    "r_hex": "826de0308e5ab310f5cfcaaa88176cfe8f61d8ccb56a9d63fa5fd09e9c0139b0",
+    "ik_hex": "2aa69caff79c8a3068f4b12b7508c6d6edd429f141fa8c1f9d3066eda61e188b",
+    "account_keys": [
+     {
+      "av": 1,
+      "ask_seed_hex": "78e3289dc7cab1a20c42fc5987420986369257736fc99783005939871a423faa",
+      "ask_hex": "8d77bcd70651c187d06598c8cfbdbd8e1110cea57c4aad769d795f5305dc567c",
+      "aek_secret_hex": "649d69716ec6a47634566d98e536d4c6ad8ee5811476093ed3b5c0a34cf084c4",
+      "aek_hex": "afd421ed2ebed8b1c8f3c7abd284868c7082ac6807633d9ac577d34f08657f6b"
+     },
+     {
+      "av": 2,
+      "ask_seed_hex": "6f61f6100fa3503a3bd3d838253c2c3d2918547e394b08e77776364d46fdc140",
+      "ask_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
+      "aek_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+      "aek_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003"
+     }
+    ]
+   },
+   {
+    "name": "E",
+    "account": "D3234C39-29F8-4DFD-AB57-C785F9097217",
+    "r_hex": "ff19cc1d9219712584dfefa6fee4c100df164429ad15325006f076b46a7c1c1c",
+    "ik_hex": "5b77033cfbf7a686effc2ee9cb7be6bc8896bca9e3d1a88d577a124858a6d1db",
+    "account_keys": [
+     {
+      "av": 1,
+      "ask_seed_hex": "ad941f47b57e66f9c6c75a4bb592f5c449be34113f2703917696391f49a3308b",
+      "ask_hex": "fc2b1c65d37e7503d417ec766ae1783832e9d0441f02dd9ea638e23f5943f2c2",
+      "aek_secret_hex": "a2cce43a25ca6093ee61011f6f8a77ce1538f6f2ae46a04a813d1d295fa5bff5",
+      "aek_hex": "1b1e6477b4f9329a38ffdec3d0f42a8d4e5cb652fa2c4102aa8b756e69dc6006"
+     }
+    ]
+   },
+   {
+    "name": "O",
+    "account": "8424AB1F-D93A-4875-8A4E-D54B300C3590",
+    "r_hex": "f334cba2f1aa97bb97c65315164223bea8925db79402ad26284c3b7d921d968d",
+    "ik_hex": "0821b1903a5c287e4e72048ca2024ec55fb0ecd2ddc2affb078e61644e171848",
+    "account_keys": [
+     {
+      "av": 1,
+      "ask_seed_hex": "5ed2373132f465b224d477e73af20e72ea251dd78f7df449286fcbc7fa9b19bc",
+      "ask_hex": "371ad390fd26a7e2dec84b70a4c3d784b56d6d987897cbf4fa4b3f6442013282",
+      "aek_secret_hex": "b35650914845b30f902e9ca584d7c6f3affa5e8f45b48dea26770c69cd5bc6d3",
+      "aek_hex": "2e3b81293736d4d9ff88ab922d519eb9ecf00f4f91608045b60feacef7697666"
+     },
+     {
+      "av": 2,
+      "ask_seed_hex": "cc3a153b0443ffc7def9b74f840aada2f40422f4691e4fa2886459ea5a5319c9",
+      "ask_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
+      "aek_secret_hex": "5b99a9df4687b43a519560b88de5d337145aa67c95023465c26dcc8af8fc9bc6",
+      "aek_hex": "94fb9a5c69b05c423e27aee3e8cef3a599e2f5fbe99f45f8dc395227b7374317"
+     }
+    ]
+   },
+   {
+    "name": "P",
+    "account": "11B5B614-7D89-4728-992A-7CCA62723257",
+    "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+    "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb",
+    "account_keys": [
+     {
+      "av": 1,
+      "ask_seed_hex": "f261b3c3fc0021bc003bbc338d9d576d911698bebaa5ecc6d8c0f3ee200f9ef9",
+      "ask_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+      "aek_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+      "aek_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+     },
+     {
+      "av": 2,
+      "ask_seed_hex": "06cf3763f117a527d90f0d6a011fbd6da97f53c4d6047c6b22cd4acde12e3f8d",
+      "ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+      "aek_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+      "aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+     }
+    ]
+   },
+   {
+    "name": "P from C",
+    "account": "11B5B614-7D89-4728-992A-7CCA62723257",
+    "r_hex": "5f4ce05d9654e8e295731dc3070e6def1e962adcac10b53fa8cabeca6fdd100e",
+    "ik_hex": "996a9d7e024c5c45dd0713e59efeaacf1d18e5eb960d41dc19679e31b382f340",
+    "account_keys": [
+     {
+      "av": 1,
+      "ask_seed_hex": "39a92c055095a32ff003e0c4c6d6f5538c5052da05c68029957a056381fc3887",
+      "ask_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
+      "aek_secret_hex": "9b0467c8df3a8bd7b51bfa6da2fcc265f81dd8b94b138d1359b00b3f481af635",
+      "aek_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d"
+     }
+    ]
+   }
+  ],
+  "devices": [
+   {
+    "name": "A device 1",
+    "key_device": "4030243F-5F20-4BAA-8358-DEAFD984ACCE",
+    "dek_secret_hex": "692f7d61619f4dd4f9955b67552060dd3c11e45411d647db72210c1290ee7d19",
+    "dek_hex": "e01e18758438b944b2ce504356095069f94633043e071ff17e4694a7f4460160",
+    "dsk_seed_hex": "906706862312c733ec9ccd39356dc0177fe47c39273dab9dc423a44c6c07378a",
+    "dsk_hex": "0bd755a82590beaad6d17e1022cdd12e45ee050871061016f604bdbff86c1051"
+   },
+   {
+    "name": "A lost device",
+    "key_device": "AAC01D2A-E6A7-409E-845F-6DC5341C3136",
+    "dek_secret_hex": "c577b1677afb581576d7a787c3787e55b753ab111867ddf206a945442b1f7741",
+    "dek_hex": "acaad66f87ddb8fa107a4201352e78ee047689eb4ea105ca100b1c5891aa2c66",
+    "dsk_seed_hex": "1c32ae029cfe10185d8a6480d9a49f64d2f4ec0d4a120f2d99686f8d12490495",
+    "dsk_hex": "91af6fefff32fb27f89079abc7bb05f746b4a8436aa403b844bcca780f72716b"
+   },
+   {
+    "name": "M device 1",
+    "key_device": "87F33152-F50A-4BD7-A45A-E285856D82F7",
+    "dek_secret_hex": "54951a4413987c3809c2b3a63640a7080168f9d07c16bba529536eb26dfa91e8",
+    "dek_hex": "cce053ee7d3845a83db1052158f9c39a27bd033f9eb0101504a56f044fd9d922",
+    "dsk_seed_hex": "62cac3350c6d84df703312a13011fa678f9ec7b0b238561492177b293975bc58",
+    "dsk_hex": "70ea458003f53e375aad13dcdf6c6a353523c59ee51ceb7e9ebf59e1da6f9584"
+   },
+   {
+    "name": "O device 1",
+    "key_device": "6DC551B4-D1FE-4F1B-9034-78A414130AE2",
+    "dek_secret_hex": "88c71adbd269f80be2ff0c8b30dbc9aec6033c81767573801fe8969532da356a",
+    "dek_hex": "20546cfdcff897ea91cb48b0f78b2426d071fbd5cf511b5ab09920746b059d3f",
+    "dsk_seed_hex": "c7dd5d8739e9c7d6c370450950d0a1b59c28583c9e13cde6ad08cae1cdae21f6",
+    "dsk_hex": "c62adc127e474d997d0298a700dfca83dea97a9ded0cc27dd36d2ab4210ca3d3"
+   },
+   {
+    "name": "P device B",
+    "key_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+    "dek_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475",
+    "dek_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+    "dsk_seed_hex": "2a811c11c61d16a37837f4905ab563943a5b18e8a984e1c99c4e113a523ab35e",
+    "dsk_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8"
+   },
+   {
+    "name": "P device C",
+    "key_device": "B412BF03-8F1F-4ED9-9320-6656F9E57E7F",
+    "dek_secret_hex": "30355ffe416e2bdbde5c9dfe0588f7a906e078c5c8a0a224490c8a10bac6f16b",
+    "dek_hex": "951d7b960185daff37bdbdaebf4c2388d30d94369a1cabf3d58d93d9cc60fa79",
+    "dsk_seed_hex": "9d5da414f4a106fbca691a3df30da7a71461d5d8c627f67a9fb18cf0206a6abb",
+    "dsk_hex": "be2107508850170dccc3f6db8d175a260a854a5a7c4f417e7f4f70e97102f9da"
+   },
+   {
+    "name": "P device C again",
+    "key_device": "5F990D03-8D36-4E3A-BC96-D8101569C8CC",
+    "dek_secret_hex": "1a07f8106d5457e76526b6b1e643a8164d565adf4bfe660f28775bc93bf12da7",
+    "dek_hex": "526421c217df62b45268215ff6508e8f7f1917e0f99c467a2abe730ba9c90e72",
+    "dsk_seed_hex": "0f56e056d73596094a8a9a89af214ef45462bb624f2abb160ecd36514a0d14b9",
+    "dsk_hex": "20a163858bcc3824ca012149d367da08467a6b9976952ad547baa03fd62aba12"
+   },
+   {
+    "name": "P device N",
+    "key_device": "89466905-7D19-4BD8-BA1D-662DAFA2967D",
+    "dek_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
+    "dek_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+    "dsk_seed_hex": "05d6d7f8c980c98460550b2c61448cacb19fec201c3c3b5b8da5e684ee0fda42",
+    "dsk_hex": "7a7c5f875ae5d25be0fda09e6c96d8b1405ee32cefd92f042262a99ccc99cf69"
+   },
+   {
+    "name": "P device N approved again",
+    "key_device": "5495ADC3-C47C-48A7-B150-0AB46595B3C0",
+    "dek_secret_hex": "b40085b5ea5bc263dda1b7202cbdd307059f9c721bda0f2e658b9a6e4d4cbeb4",
+    "dek_hex": "5f95abafec4f0a2a5210d5a398b7ef7e2293cc635778b9808368354407c35459",
+    "dsk_seed_hex": "548b446521d1093dfe4f24857925a6ded54164821b1a4e054dfd62c670b3434f",
+    "dsk_hex": "b4f3a0cc21e6704bff502f36b7d234ea1d22c75ebab89cf0aecfd10940ca6c65"
+   }
+  ],
+  "version_records": [
+   {
+    "label": "P PK1",
+    "scope": {
+     "type": "personal",
+     "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+    },
+    "kind": "key.version",
+    "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/1",
+    "fields": {
+     "suite": "tp1",
+     "start": 1,
+     "kid": "DBO4-tSlLmooLqL0lLJ9wd23r-GlxJTTxhfa7_j_KE8",
+     "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+     "signer_av": 1,
+     "sig": "MROTcKgzeuFsjcHWhK_DQC4rYDWyMQKITOGPvqk9YPcaOKUOgO1ywKK9_a-mZME8IQ3kcAeib0DsqscGmMVMBA"
+    },
+    "verify": {
+     "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+     "digest_hex": "08885e60f548ff5d741a91828d487ad46f921b06bc05dcf023b012d306e865bd"
+    }
+   },
+   {
+    "label": "P PK2",
+    "scope": {
+     "type": "personal",
+     "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+    },
+    "kind": "key.version",
+    "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+    "fields": {
+     "suite": "tp1",
+     "start": 0,
+     "kid": "yLkVpERiPzAQXF2wy2lJDsiYT3Xs9muO2I7vNT6-RmA",
+     "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+     "signer_av": 2,
+     "sig": "05Z8wDb_2rJGZSGvJ9kwGhh0Sv8mUj3P9iaHPQ11XDkZ2BHZwNpwJ_NTVXD04L-_gFC2IPG9w8uSkUesAfWBAQ"
+    },
+    "verify": {
+     "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+     "digest_hex": "f8c3d514dda5f932b17f25d32ff5d217fe646e99c1d55c2d6e0f6693aa07c27e"
+    }
+   },
+   {
+    "label": "P PK2 under av 2",
+    "scope": {
+     "type": "personal",
+     "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+    },
+    "kind": "key.version",
+    "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+    "fields": {
+     "suite": "tp1",
+     "start": 0,
+     "kid": "yLkVpERiPzAQXF2wy2lJDsiYT3Xs9muO2I7vNT6-RmA",
+     "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+     "signer_av": 2,
+     "sig": "05Z8wDb_2rJGZSGvJ9kwGhh0Sv8mUj3P9iaHPQ11XDkZ2BHZwNpwJ_NTVXD04L-_gFC2IPG9w8uSkUesAfWBAQ"
+    },
+    "verify": {
+     "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+     "digest_hex": "f8c3d514dda5f932b17f25d32ff5d217fe646e99c1d55c2d6e0f6693aa07c27e"
+    }
+   },
+   {
+    "label": "P PK3 held",
+    "scope": {
+     "type": "personal",
+     "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+    },
+    "kind": "key.version",
+    "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/3",
+    "fields": {
+     "suite": "tp1",
+     "start": 0,
+     "kid": "4f0rB5H9-ppGRfWSH1IWKk01dWGwXJ42tbgbo-ZKIk4",
+     "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+     "signer_av": 2,
+     "sig": "i3_rKaNWsMOWFsQitqfdMyarUueNXPb3SXpZVZc-bjCg3B6X4kyOwPtkTM2p1YLenxwd3smBWdqwAk35df-JDg"
+    },
+    "verify": {
+     "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+     "digest_hex": "66b656b395a916cd0ed9c9bb418056afaa8f638d61549833bf398a17e195f384"
+    }
+   },
+   {
+    "label": "P PK3 other",
+    "scope": {
+     "type": "personal",
+     "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+    },
+    "kind": "key.version",
+    "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/3",
+    "fields": {
+     "suite": "tp1",
+     "start": 0,
+     "kid": "nrKgmeAjWdG8q9uiHzXxhlI0AUMQ7HepxqE-sUNg6KI",
+     "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+     "signer_av": 2,
+     "sig": "Xg_qNt8fCDBeJknbXtBCHVOIaNKuONLPgImJzo5suGx41MaA_bQOjb83FJh8s0SOgseDe1B9GzFH8LTJvr4XBg"
+    },
+    "verify": {
+     "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+     "digest_hex": "b742798c876eb707fce9f96e318f65c0296b1310048a75b3bba329538edc3846"
+    }
+   },
+   {
+    "label": "P PK3 under av 1",
+    "scope": {
+     "type": "personal",
+     "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+    },
+    "kind": "key.version",
+    "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/3",
+    "fields": {
+     "suite": "tp1",
+     "start": 0,
+     "kid": "U8BbrUEofDmZkpNOi0uRsCMG6ecPGGs444i6ePteX70",
+     "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+     "signer_av": 1,
+     "sig": "DnSyuFiP4AXb4SnI1skfvpdJYV1-fSe9JjUOYsl71hOEaZPIj6xVSwOi9Cy1YyU1vzohmgs6OPn7OVDq6oX4Dw"
+    },
+    "verify": {
+     "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+     "digest_hex": "bc757d1bb2376174ea8396973085437c171808398fa732c968939a8386442a1b"
+    }
+   },
+   {
+    "label": "P PK2 under av 1",
+    "scope": {
+     "type": "personal",
+     "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+    },
+    "kind": "key.version",
+    "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+    "fields": {
+     "suite": "tp1",
+     "start": 0,
+     "kid": "-KsJgb7PhhxAPLeaY7TPCWTdyG9xlc0xTeqwvqLl1NQ",
+     "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+     "signer_av": 1,
+     "sig": "JJu_bLH3P2t0-0K-chBwQ7c7ImJoo-GgUBHIOFYLluipLORKgdZLReYgvx_plB7zfKGTqkN-xf1bOaZk5WP2Bg"
+    },
+    "verify": {
+     "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+     "digest_hex": "26ab504fbf91a5e502a325f6a20ae45144cc7dda316bf940e5319d388584cd21"
+    }
+   },
+   {
+    "label": "team 6",
+    "scope": {
+     "type": "team",
+     "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+    },
+    "kind": "key.version",
+    "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/6",
+    "fields": {
+     "suite": "tp1",
+     "start": 0,
+     "kid": "tp1tUC3X68knZmSJei_SxTqoh5w_TAN4uH707F5Qq08",
+     "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+     "signer_av": 2,
+     "sig": "gGtCHISs4NkXkqRmCiB2R4QcqQyziwcGAmrpfrV8ZVifek4ZW8iMLyD9hSdMTst0h6vk0bkREg3qqqengR5rCg"
+    },
+    "verify": {
+     "signer_hex": "cd0b13b918fa64caa27da8f761f900c56b207fa28435874f2ee23f3d081add56",
+     "digest_hex": "08c6da28b7a1c26ebf45265b023e2c12577cfb7e8fd839076a7e8de7ae844aac"
+    }
+   },
+   {
+    "label": "team 8 by M",
+    "scope": {
+     "type": "team",
+     "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+    },
+    "kind": "key.version",
+    "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/8",
+    "fields": {
+     "suite": "tp1",
+     "start": 0,
+     "kid": "SLU-ITl4splF8EN0Kmn_nBZFlD_I5px5X3J8CEtUaaI",
+     "signer": "019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90",
+     "signer_av": 2,
+     "sig": "4zhZi4Uz1iUpU8FkIPIB3sfHEh_YIa78hELVv0X37S0PIXeBm63oTPyztsrfy88lSm8fI-vQ4W73zgADYVdWCQ"
+    },
+    "verify": {
+     "signer_hex": "aa30fffd7339ae93bc8e9061d7468053225847132d956cdf78624d3db17cc9d0",
+     "digest_hex": "5dbbd39a2228a3a1b3a4752c723acaf3decbf8c6ac7d32a4ac7915f2641b5c59"
+    }
+   }
+  ]
+ },
+ "scenarios": [
+  {
+   "name": "an envelope below the version in force at its place, and one before the rotation",
+   "op": "scenario",
+   "row": "An envelope below the version in force at its place in the order, or below the copy held; the same envelope before the rotation that follows it, taken",
+   "layer": [
+    "flow",
+    "server"
+   ],
+   "client": "keys.stale",
+   "client_codes": [
+    "keys.stale"
+   ],
+   "server": "key_version_stale",
+   "server_codes": [
+    "key_version_stale"
+   ],
+   "given": {
+    "client_holds": {
+     "personal": 2
+    },
+    "order": "records in each step come in revision order"
+   },
+   "steps": [
+    {
+     "who": "server",
+     "does": "pull",
+     "records": [
+      {
+       "label": "PK version 3",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/3",
+       "fields": {
+        "suite": "tp1",
+        "start": 0,
+        "kid": "4f0rB5H9-ppGRfWSH1IWKk01dWGwXJ42tbgbo-ZKIk4",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 2,
+        "sig": "i3_rKaNWsMOWFsQitqfdMyarUueNXPb3SXpZVZc-bjCg3B6X4kyOwPtkTM2p1YLenxwd3smBWdqwAk35df-JDg"
+       },
+       "verify": {
+        "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+        "digest_hex": "66b656b395a916cd0ed9c9bb418056afaa8f638d61549833bf398a17e195f384"
+       }
+      },
+      {
+       "label": "an envelope under PK 2 after version 3",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "secret_envelope",
+       "id": "connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password",
+       "fields": {
+        "suite": "tp1",
+        "kv": 2,
+        "nonce": "VixyQyG9b9sMeVYH",
+        "ct": "DcS_ZzH4BeQU0GBZTcSntBYbOPnvNruozrK23dlssCqxFID7FCBooQZ1RY03LqaL7JdmTflVVittMGjwCYdfw6g6zW4rPDb28eaWYzt0IGY1CGcCmqxCgcoSL3JAqiUnfrLuNfS0b9pYxXj1TJHjdscZaLXDY2y1jugRxoNJJwFnSTED-3trDk99Bh4zUV9f"
+       },
+       "verify": {
+        "key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+        "secret": "hunter2"
+       }
+      }
+     ],
+     "client": "keys.stale for the envelope after version 3",
+     "server": "key_version_stale for a write under 2 once 3 is current",
+     "clause": "An envelope below the version in force at its place in the order, or below the copy held"
+    },
+    {
+     "who": "server",
+     "does": "pull",
+     "records": [
+      {
+       "label": "the same envelope under PK 2, before version 3",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "secret_envelope",
+       "id": "connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password",
+       "fields": {
+        "suite": "tp1",
+        "kv": 2,
+        "nonce": "4UU4KkH5ojxf_fdq",
+        "ct": "NBcP67mc7kvCJzm2ZpZmzpyzy82YiesuDPKb8OgBt0v1doZu_ooy0wzWoJmZP_qeB2konMRlhwRdbiJNQFxHMlmwuCkq_PpAXJ6S4dWRC6QtEu3wx1Oni1BnSVgxIOlRMbpeFFhVRjqoDyxl8V72w0MfR3MN-iLqdNdghPBCbvY62iIcA8N5uxV_5NvUts_A"
+       },
+       "verify": {
+        "key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+        "secret": "hunter2"
+       }
+      },
+      {
+       "label": "PK version 3",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/3",
+       "fields": {
+        "suite": "tp1",
+        "start": 0,
+        "kid": "4f0rB5H9-ppGRfWSH1IWKk01dWGwXJ42tbgbo-ZKIk4",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 2,
+        "sig": "i3_rKaNWsMOWFsQitqfdMyarUueNXPb3SXpZVZc-bjCg3B6X4kyOwPtkTM2p1YLenxwd3smBWdqwAk35df-JDg"
+       },
+       "verify": {
+        "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+        "digest_hex": "66b656b395a916cd0ed9c9bb418056afaa8f638d61549833bf398a17e195f384"
+       }
+      }
+     ],
+     "client": "taken",
+     "server": "applied",
+     "clause": "the same envelope before the rotation that follows it, taken"
+    }
+   ]
+  },
+  {
+   "name": "two genesis change sets, and an identical retry",
+   "op": "scenario",
+   "row": "Two genesis change sets; an identical retry after a timeout",
+   "layer": [
+    "server"
+   ],
+   "client": "none",
+   "client_codes": [],
+   "server": "create_only for the loser; applied for the retry",
+   "server_codes": [
+    "create_only",
+    "applied"
+   ],
+   "given": {
+    "account_has_keys": false
+   },
+   "steps": [
+    {
+     "who": "B",
+     "does": "push change set",
+     "records": [
+      {
+       "label": "B's genesis: certificate at av 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.account",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "kind": 0,
+        "ik": "XnRvV-MlZ81DMcbjyRt7PEpqXzUwCi6eFLUntGdmY8s",
+        "ask": "CJI76teVGCaIKGK2vJuRnWn84i8x2dX4uabxhNWIOeM",
+        "aek": "KrzNwgWiWSaq3DRcvy3c-sm80ev88TnncNGdRjL6oWw",
+        "sig": "2m_05Ma3ehd7_qWQ18gAi45Bu7ZWdEFBgnn4GxsPNh1GX9ajBS8-8lg1USqIm972snHIrC4_3zUZM99voQdCCQ"
+       },
+       "verify": {
+        "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb"
+       }
+      },
+      {
+       "label": "B's genesis: recovery blob",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.recovery",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "nonce": "hV3SOKS9ErrznBVC",
+        "ct": "aVPzzFftCs4hfRHv6lLHwTnpD9uCyqrUIDV5RZu1hJDxEKOakwWRfFL9L10px-NDw8NhjdsFBHOF0_THtzOydFnLm2Rd-1xHyqoaVUinkuY"
+       },
+       "verify": {
+        "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+        "certificate_ask_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "certificate_aek_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+       }
+      },
+      {
+       "label": "B's genesis: device certificate",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.device",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/0FB85DA3-26AF-49CC-9A5F-44BFADD5268B/1",
+       "fields": {
+        "suite": "tp1",
+        "dek": "OkBVHshddMQTea32kIyPIp72hiN511BDWp9jwk_rSAI",
+        "dsk": "ZpMsqP5S6h-zc0u6vwfI1Cz9hcduHw0lj33amLU2uvg",
+        "sig": "Gib-c5xumIi-UhdIJ4Tc-KbiDgIpGOYB6MUqyCkqhTeg8S9ww_a0P93eYnNnHhUPCdITuARZzzaFPPHnQB6GAQ"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3"
+       }
+      },
+      {
+       "label": "B's genesis: personal version 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/1",
+       "fields": {
+        "suite": "tp1",
+        "start": 1,
+        "kid": "DBO4-tSlLmooLqL0lLJ9wd23r-GlxJTTxhfa7_j_KE8",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 1,
+        "sig": "MROTcKgzeuFsjcHWhK_DQC4rYDWyMQKITOGPvqk9YPcaOKUOgO1ywKK9_a-mZME8IQ3kcAeib0DsqscGmMVMBA"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "digest_hex": "08885e60f548ff5d741a91828d487ad46f921b06bc05dcf023b012d306e865bd"
+       }
+      },
+      {
+       "label": "B's genesis: personal wrap 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.wrap",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/1/account/11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "enc": "FDHL4CcB1HoXp1gd8S25eQten0ZpQkA6NKtYmTVM6Wo",
+        "ct": "oTG7aaEg9rHtjTin2_LgrzbJtT37tN_0pz7OGYOmf-xtfS9VE3A--3PiB5qol4VV",
+        "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "wrapper_av": 1,
+        "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+        "sig": "R7-3Otj-7qc6iNGKnG2lOPOTqcQ65oMHHweciyw1v67167RIxsJEnTTZuEl_RpoL32EjBitQsg_5kGY8hIhUAA"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+        "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+        "kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+       }
+      },
+      {
+       "label": "B's genesis: history version 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/1",
+       "fields": {
+        "suite": "tp1",
+        "start": 1,
+        "kid": "VIQbmIPqSFNo2kSzDzXpJmtuckmaV6fTtW0mluUTyRM",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 1,
+        "sig": "gE0s-RQiZzEYeEk7VCzlOe8P152PG5puhxmn9nKcWqcV0nqTixi9QnGYlPIdAkj4N0Y_a_pN3pCCVmBlL53TAA"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "digest_hex": "0580653fd1b05de4dcb590b3207bf787fbda0fdfb804253e1f59da539fdc321a"
+       }
+      },
+      {
+       "label": "B's genesis: history wrap 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.wrap",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/1/account/11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "enc": "eLunIMA4IwgenDtAsrBMcexgnAJBHEXtIUIIRvRX1Ag",
+        "ct": "Pqlw4aHheIkXn229KPojH7JZO2BFvtP5KrnN1HlGPCLPlSELGgO0t2fGs73du4Zw",
+        "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "wrapper_av": 1,
+        "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+        "sig": "3eoikgHvNY0IpK1KkvhKzvz7SThFjAm2-FrJoXZuCzl9ABGLypCFLl2vnKFhjP7L1ZHpB07Xbw6BWeVeMbevCw"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+        "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+        "kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+       }
+      }
+     ],
+     "client": "none",
+     "server": "applied"
+    },
+    {
+     "who": "C",
+     "does": "push change set",
+     "records": [
+      {
+       "label": "C's genesis: certificate at av 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.account",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "kind": 0,
+        "ik": "mWqdfgJMXEXdBxPlnv6qzx0Y5euWDUHcGWeeMbOC80A",
+        "ask": "1qS3Za-VVEEYk4sHQNX-t53GpKFGuBMr_lxgyZBPKwA",
+        "aek": "T7ZYAB-DjKQRKBmVXX1e7hhkXYjhEVz9ChuJi1j4vR0",
+        "sig": "AhpIVwjXuD8ru2IRpkXfUlgCdaLvd9-jqlqIuJW8ZyuOXoedfDaEq1WNwHxBOelOGZC8INcBTatSw1AewoUNDA"
+       },
+       "verify": {
+        "ik_hex": "996a9d7e024c5c45dd0713e59efeaacf1d18e5eb960d41dc19679e31b382f340"
+       }
+      },
+      {
+       "label": "C's genesis: recovery blob",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.recovery",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "nonce": "VuZ6MpQsvSQWE7xJ",
+        "ct": "XR14vKN1w3CWatsEPoYQWRXFBLt-fmsHqm5pgpBKN6A41IGYtcfMqrs1I_ZJTCWkMkHVRSawo0bU1YUTL3YWPSl9fxVp3vxjv8ZBXRYJifU"
+       },
+       "verify": {
+        "r_hex": "5f4ce05d9654e8e295731dc3070e6def1e962adcac10b53fa8cabeca6fdd100e",
+        "certificate_ask_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
+        "certificate_aek_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d"
+       }
+      },
+      {
+       "label": "C's genesis: device certificate",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.device",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/B412BF03-8F1F-4ED9-9320-6656F9E57E7F/1",
+       "fields": {
+        "suite": "tp1",
+        "dek": "lR17lgGF2v83vb2uv0wjiNMNlDaaHKvz1Y2T2cxg-nk",
+        "dsk": "viEHUIhQFw3Mw_bbjRdaJgqFSlp8T0F-f09w6XEC-do",
+        "sig": "oFBvr8bmnFfUc74g6JevY-5vRI4ps55t8h8-V7bW2jxdeknRtsM2LKgyjtpL-gyiXG31TAuXx2MccnziW1z6Bg"
+       },
+       "verify": {
+        "signer_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00"
+       }
+      },
+      {
+       "label": "C's genesis: personal version 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/1",
+       "fields": {
+        "suite": "tp1",
+        "start": 1,
+        "kid": "oXt2kABih6YieeIpGaIBUJznYQ6s9nBYkFFsVIVeC6Y",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 1,
+        "sig": "w2Bo5530Ppm4BElAtQuXNrmpSCwYMvP4_6sQLjdds1byRF5B7B21y5tQ6DLzjvl7DRClzGA9AWR8z0GtJbmQCw"
+       },
+       "verify": {
+        "signer_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
+        "digest_hex": "1b71ee022f25841cff25b97f16e8ef4adb4adad9efff5a6e884bf7836fe8ca82"
+       }
+      },
+      {
+       "label": "C's genesis: personal wrap 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.wrap",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/1/account/11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "enc": "QYdzL4zhCU4Ckh3R4oAIPmKNLtbBbJ3vpgSKHTi54mY",
+        "ct": "-Or0_AMn_CExnykHOdXRbv2gBTDou_OknN7Z11oQB6gLiPgTrRkWNpce4YacEV6l",
+        "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "wrapper_av": 1,
+        "wrapper_device": "B412BF03-8F1F-4ED9-9320-6656F9E57E7F",
+        "sig": "b7vEFYr1vSDteRaWa80omPMnG4syEUHpoV6Y0Wc2HDl-pkd-rhGZpeKqZqrLuPfTH-9JdOnrGhxvwCH2vYh5AQ"
+       },
+       "verify": {
+        "signer_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
+        "pk_r_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d",
+        "recipient_secret_hex": "9b0467c8df3a8bd7b51bfa6da2fcc265f81dd8b94b138d1359b00b3f481af635",
+        "kid_hex": "a17b7690006287a62279e22919a201509ce7610eacf6705890516c54855e0ba6"
+       }
+      },
+      {
+       "label": "C's genesis: history version 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/1",
+       "fields": {
+        "suite": "tp1",
+        "start": 1,
+        "kid": "NnziVgx7HzhwUYAOhVWd4E_rgbFq6lyciyurpRNNnVc",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 1,
+        "sig": "7zUiPFB4S9Aol6FknRPBDmnB2590eLhFVdi8EGC7NmLSeOkOL1TuPIm-_H2qC920QdVmWrAqN80N1o0ObeJKCw"
+       },
+       "verify": {
+        "signer_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
+        "digest_hex": "11796506330bccc805dce775768962b0d0412aa80e3aaf922dd1d2cf8bcac168"
+       }
+      },
+      {
+       "label": "C's genesis: history wrap 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.wrap",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/1/account/11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "enc": "w24olwwj1ND0XGz5uPEn1bggFLqVE0oepVAyzMD_cnw",
+        "ct": "HDIx39H6Kth0QCrE9vMHiC2DqTDTI9app06DxM753A6ddPNXkUZVPpV5lulZsPBd",
+        "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "wrapper_av": 1,
+        "wrapper_device": "B412BF03-8F1F-4ED9-9320-6656F9E57E7F",
+        "sig": "Rw44uEYi6MoHqyNbseKOuIo8ZwsxzwuKJdrGvJlwWzEhYxKgrnHspHurlAJ5K-j2nInLQljy07m0EWpq4hzYDw"
+       },
+       "verify": {
+        "signer_hex": "d6a4b765af95544118938b0740d5feb79dc6a4a146b8132bfe5c60c9904f2b00",
+        "pk_r_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d",
+        "recipient_secret_hex": "9b0467c8df3a8bd7b51bfa6da2fcc265f81dd8b94b138d1359b00b3f481af635",
+        "kid_hex": "367ce2560c7b1f387051800e85559de04feb81b16aea5c9c8b2baba5134d9d57"
+       }
+      }
+     ],
+     "client": "none",
+     "server": "create_only",
+     "clause": "Two genesis change sets"
+    },
+    {
+     "who": "B",
+     "does": "push change set",
+     "records": [
+      {
+       "label": "B's genesis: certificate at av 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.account",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "kind": 0,
+        "ik": "XnRvV-MlZ81DMcbjyRt7PEpqXzUwCi6eFLUntGdmY8s",
+        "ask": "CJI76teVGCaIKGK2vJuRnWn84i8x2dX4uabxhNWIOeM",
+        "aek": "KrzNwgWiWSaq3DRcvy3c-sm80ev88TnncNGdRjL6oWw",
+        "sig": "2m_05Ma3ehd7_qWQ18gAi45Bu7ZWdEFBgnn4GxsPNh1GX9ajBS8-8lg1USqIm972snHIrC4_3zUZM99voQdCCQ"
+       },
+       "verify": {
+        "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb"
+       }
+      },
+      {
+       "label": "B's genesis: recovery blob",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.recovery",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "nonce": "hV3SOKS9ErrznBVC",
+        "ct": "aVPzzFftCs4hfRHv6lLHwTnpD9uCyqrUIDV5RZu1hJDxEKOakwWRfFL9L10px-NDw8NhjdsFBHOF0_THtzOydFnLm2Rd-1xHyqoaVUinkuY"
+       },
+       "verify": {
+        "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+        "certificate_ask_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "certificate_aek_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c"
+       }
+      },
+      {
+       "label": "B's genesis: device certificate",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.device",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/0FB85DA3-26AF-49CC-9A5F-44BFADD5268B/1",
+       "fields": {
+        "suite": "tp1",
+        "dek": "OkBVHshddMQTea32kIyPIp72hiN511BDWp9jwk_rSAI",
+        "dsk": "ZpMsqP5S6h-zc0u6vwfI1Cz9hcduHw0lj33amLU2uvg",
+        "sig": "Gib-c5xumIi-UhdIJ4Tc-KbiDgIpGOYB6MUqyCkqhTeg8S9ww_a0P93eYnNnHhUPCdITuARZzzaFPPHnQB6GAQ"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3"
+       }
+      },
+      {
+       "label": "B's genesis: personal version 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/1",
+       "fields": {
+        "suite": "tp1",
+        "start": 1,
+        "kid": "DBO4-tSlLmooLqL0lLJ9wd23r-GlxJTTxhfa7_j_KE8",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 1,
+        "sig": "MROTcKgzeuFsjcHWhK_DQC4rYDWyMQKITOGPvqk9YPcaOKUOgO1ywKK9_a-mZME8IQ3kcAeib0DsqscGmMVMBA"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "digest_hex": "08885e60f548ff5d741a91828d487ad46f921b06bc05dcf023b012d306e865bd"
+       }
+      },
+      {
+       "label": "B's genesis: personal wrap 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.wrap",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/1/account/11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "enc": "FDHL4CcB1HoXp1gd8S25eQten0ZpQkA6NKtYmTVM6Wo",
+        "ct": "oTG7aaEg9rHtjTin2_LgrzbJtT37tN_0pz7OGYOmf-xtfS9VE3A--3PiB5qol4VV",
+        "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "wrapper_av": 1,
+        "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+        "sig": "R7-3Otj-7qc6iNGKnG2lOPOTqcQ65oMHHweciyw1v67167RIxsJEnTTZuEl_RpoL32EjBitQsg_5kGY8hIhUAA"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+        "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+        "kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+       }
+      },
+      {
+       "label": "B's genesis: history version 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/1",
+       "fields": {
+        "suite": "tp1",
+        "start": 1,
+        "kid": "VIQbmIPqSFNo2kSzDzXpJmtuckmaV6fTtW0mluUTyRM",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 1,
+        "sig": "gE0s-RQiZzEYeEk7VCzlOe8P152PG5puhxmn9nKcWqcV0nqTixi9QnGYlPIdAkj4N0Y_a_pN3pCCVmBlL53TAA"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "digest_hex": "0580653fd1b05de4dcb590b3207bf787fbda0fdfb804253e1f59da539fdc321a"
+       }
+      },
+      {
+       "label": "B's genesis: history wrap 1",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.wrap",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/1/account/11B5B614-7D89-4728-992A-7CCA62723257/1",
+       "fields": {
+        "suite": "tp1",
+        "enc": "eLunIMA4IwgenDtAsrBMcexgnAJBHEXtIUIIRvRX1Ag",
+        "ct": "Pqlw4aHheIkXn229KPojH7JZO2BFvtP5KrnN1HlGPCLPlSELGgO0t2fGs73du4Zw",
+        "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "wrapper_av": 1,
+        "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+        "sig": "3eoikgHvNY0IpK1KkvhKzvz7SThFjAm2-FrJoXZuCzl9ABGLypCFLl2vnKFhjP7L1ZHpB07Xbw6BWeVeMbevCw"
+       },
+       "verify": {
+        "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+        "pk_r_hex": "2abccdc205a25926aadc345cbf2ddcfac9bcd1ebfcf139e770d19d4632faa16c",
+        "recipient_secret_hex": "940d8bea908211b4523e167182691992d02f6ff1728a61f5ba64ab09b22a6d5d",
+        "kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+       }
+      }
+     ],
+     "client": "none",
+     "server": "applied",
+     "clause": "an identical retry after a timeout"
+    }
+   ]
+  },
+  {
+   "name": "a device left out of a rotation",
+   "op": "scenario",
+   "row": "A device left out of a rotation, shown the certificate but not yet the whole change set; then all of it",
+   "layer": [
+    "flow"
+   ],
+   "client": "waits; then locks, erases nothing",
+   "client_codes": [],
+   "server": "none",
+   "server_codes": [],
+   "given": {
+    "device": "C",
+    "account_av": 1
+   },
+   "steps": [
+    {
+     "who": "server",
+     "does": "pull",
+     "records": [
+      {
+       "label": "the certificate at av 2",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.account",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/2",
+       "fields": {
+        "suite": "tp1",
+        "kind": 0,
+        "ik": "XnRvV-MlZ81DMcbjyRt7PEpqXzUwCi6eFLUntGdmY8s",
+        "ask": "Lbe52J-7DjBlARix5R27vxdggZ1vnZaZy-bKXOtVbRs",
+        "aek": "VdF1FzaeUB0hvTbqq1DlAyH-a-BmsovFOrBAbxPo634",
+        "sig": "1gd8aDYU-nZe3QVJ9H_TFEsLFFEnsJ5UatEqdyISWqsOctcqwqmf0MzjYGybs7cpd9tqctXoSy6KqvqPqqBFAg"
+       },
+       "verify": {
+        "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb"
+       }
+      }
+     ],
+     "client": "waits",
+     "server": "none",
+     "clause": "A device left out of a rotation, shown the certificate but not yet the whole change set"
+    },
+    {
+     "who": "server",
+     "does": "pull",
+     "records": [
+      {
+       "label": "B's rotation, which leaves C out: certificate at av 2",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.account",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/2",
+       "fields": {
+        "suite": "tp1",
+        "kind": 0,
+        "ik": "XnRvV-MlZ81DMcbjyRt7PEpqXzUwCi6eFLUntGdmY8s",
+        "ask": "Lbe52J-7DjBlARix5R27vxdggZ1vnZaZy-bKXOtVbRs",
+        "aek": "VdF1FzaeUB0hvTbqq1DlAyH-a-BmsovFOrBAbxPo634",
+        "sig": "1gd8aDYU-nZe3QVJ9H_TFEsLFFEnsJ5UatEqdyISWqsOctcqwqmf0MzjYGybs7cpd9tqctXoSy6KqvqPqqBFAg"
+       },
+       "verify": {
+        "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb"
+       }
+      },
+      {
+       "label": "B's rotation, which leaves C out: recovery blob",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.recovery",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/2",
+       "fields": {
+        "suite": "tp1",
+        "nonce": "4wYzPxsCsO0GuwSk",
+        "ct": "A5RkvjaWw2HdJmR-Vs_0K-o8eZdDSLV181eY5HT0nd1Ev30EhuGr0CwWZedNvRrmvgly5rjXlqtMx_LKjvwcAd38aIXKQsSj7FS_npk8lP8"
+       },
+       "verify": {
+        "r_hex": "709163438a15bf17a250a53544b34183a418095b88b085f2f2d65f0e93ec1a27",
+        "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+        "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+       }
+      },
+      {
+       "label": "B's rotation, which leaves C out: kept device 0",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.device",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/0FB85DA3-26AF-49CC-9A5F-44BFADD5268B/2",
+       "fields": {
+        "suite": "tp1",
+        "dek": "OkBVHshddMQTea32kIyPIp72hiN511BDWp9jwk_rSAI",
+        "dsk": "ZpMsqP5S6h-zc0u6vwfI1Cz9hcduHw0lj33amLU2uvg",
+        "sig": "NBiA3kj5BMNbLX2V62SzIbSfiKBv9GfJ_YkIm1kHXHwO_PjCDRSBMCB8u-iWRFIoUH5fsOtexscLa_VjqdqMAQ"
+       },
+       "verify": {
+        "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b"
+       }
+      },
+      {
+       "label": "B's rotation, which leaves C out: account wrap to kept device 0",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.wrap",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/account/2/device/0FB85DA3-26AF-49CC-9A5F-44BFADD5268B/2",
+       "fields": {
+        "suite": "tp1",
+        "enc": "CuHeqLRS_HF4Gkvm0z7x_NdPAfTfmwk6Kjw3vhS_olM",
+        "ct": "92unxeqPKs1rjyh6D4HbebcGjsRFZ4htbDthZ8BzPubw_cSR6prWW4Dk9lecvtiYpXV_l7KEHo1oQN1fRXaSYm_ODwns3D0p1kbqfScF7Fs",
+        "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "wrapper_av": 2,
+        "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+        "sig": "A-XIXjtzEARz9FW4KSz8n3tfGoDqkBjqX_HweYuRtLkcGkRo3AWV-DDeCKVVbg9jze8m8f8vvOXkQyvaezTvBw"
+       },
+       "verify": {
+        "signer_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8",
+        "pk_r_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+        "recipient_secret_hex": "ecab6ded5765b43547f19b49d8f2738c059cd41b60f21a9bd7e5ea206704c475",
+        "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+        "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e"
+       }
+      },
+      {
+       "label": "B's rotation, which leaves C out: personal version 2",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+       "fields": {
+        "suite": "tp1",
+        "start": 0,
+        "kid": "yLkVpERiPzAQXF2wy2lJDsiYT3Xs9muO2I7vNT6-RmA",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 2,
+        "sig": "05Z8wDb_2rJGZSGvJ9kwGhh0Sv8mUj3P9iaHPQ11XDkZ2BHZwNpwJ_NTVXD04L-_gFC2IPG9w8uSkUesAfWBAQ"
+       },
+       "verify": {
+        "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+        "digest_hex": "f8c3d514dda5f932b17f25d32ff5d217fe646e99c1d55c2d6e0f6693aa07c27e"
+       }
+      },
+      {
+       "label": "B's rotation, which leaves C out: personal ring 2",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.ring",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+       "fields": {
+        "suite": "tp1",
+        "nonce": "uV40IY_-DXBH_7Ne",
+        "ct": "zpO-GDofcmRZqGVbZAdTA2A0e-vaMow7UReEmJVYXAfPdP38p5kQmdgim95X-t4G-dbVFQ"
+       },
+       "verify": {
+        "newer_key_hex": "04687518985cc249b55c6ebbc3c42d94571a9d2a7e2c84e078d4421ec195e7e4",
+        "below_kid_hex": "0c13b8fad4a52e6a282ea2f494b27dc1ddb7afe1a5c494d3c617daeff8ff284f"
+       }
+      },
+      {
+       "label": "B's rotation, which leaves C out: personal wrap 2",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.wrap",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2/account/11B5B614-7D89-4728-992A-7CCA62723257/2",
+       "fields": {
+        "suite": "tp1",
+        "enc": "JbxxXtnyW1GHVMiqTyBsSDtl9IEzA6ll6toAwz6s0RA",
+        "ct": "4mfXg_ITwpc9ElBUvDGCOcrj8H-3q9ENInEsl3jEm3hZ3h1OIAapkPdNFqR0zSxP",
+        "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "wrapper_av": 2,
+        "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+        "sig": "5DVXKqwY7kBLD-gyqFcQv8VX2b6rY1fBJBtxzCYaABn_BYDkzYHZRrAY1DoDwxmUFENNPoykaOng8dcgDSg1Aw"
+       },
+       "verify": {
+        "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+        "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+        "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+        "kid_hex": "c8b915a444623f30105c5db0cb69490ec8984f75ecf66b8ed88eef353ebe4660"
+       }
+      },
+      {
+       "label": "B's rotation, which leaves C out: history version 2",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.version",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/2",
+       "fields": {
+        "suite": "tp1",
+        "start": 0,
+        "kid": "e1hh3Eqv4npJ0xE-NazraiUxXBQ_C4aSCQTnR6l32KA",
+        "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "signer_av": 2,
+        "sig": "QBvOdF43ycmCMcakwq-wV6_0YFYfptoFWasFlkL8KaK5vX48n1JtktWEB5t7btZ8LLQVFjlIElH1re94uZYrBQ"
+       },
+       "verify": {
+        "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+        "digest_hex": "87f84054457db76ca2f6157032a89c5df7359d0ca05c23a82f6b7003316ce983"
+       }
+      },
+      {
+       "label": "B's rotation, which leaves C out: history ring 2",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.ring",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/2",
+       "fields": {
+        "suite": "tp1",
+        "nonce": "00-xYaJ18vaK6-ie",
+        "ct": "2j4sgOj9BsUFnPYMmKsGvUsOXBtw148zBRmH_JxwQYKQVnSibpcfZSRq09zVTQZ8YAooBA"
+       },
+       "verify": {
+        "newer_key_hex": "f853af1d6876e65d2ce39d4dd00e2228d05aa6f6d7b19619a394d3ff991a8f28",
+        "below_kid_hex": "54841b9883ea485368da44b30f35e9266b6e72499a57a7d3b56d2696e513c913"
+       }
+      },
+      {
+       "label": "B's rotation, which leaves C out: history wrap 2",
+       "scope": {
+        "type": "personal",
+        "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+       },
+       "kind": "key.wrap",
+       "id": "11B5B614-7D89-4728-992A-7CCA62723257/history/2/account/11B5B614-7D89-4728-992A-7CCA62723257/2",
+       "fields": {
+        "suite": "tp1",
+        "enc": "z5aIso56lN6w40pDcykV9VMRSUvoPg7uW0bHESAkfQQ",
+        "ct": "HBM-EXobTz5obeJ46y6VRDvLLO73gMWytK9RcDXXR3U_J9B7SiUAwy76HJbGgzRg",
+        "wrapper": "11B5B614-7D89-4728-992A-7CCA62723257",
+        "wrapper_av": 2,
+        "wrapper_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+        "sig": "kc-fV-qzOb9xKKxDTm7SG4sz6WRn7xFeDjsg8A0OJIbmotmPiUCyE_jJMjw0rvpC696s6kqPeChof5Q8upqIDQ"
+       },
+       "verify": {
+        "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+        "pk_r_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
+        "recipient_secret_hex": "6e1c454444bca9e9ee18f4fe60599d4ec965d76468aeafcaaefe6c249aba4ec5",
+        "kid_hex": "7b5861dc4aafe27a49d3113e35aceb6a25315c143f0b86920904e747a977d8a0"
+       }
+      }
+     ],
+     "client": "the whole change set: locks, erases nothing",
+     "server": "none",
+     "clause": "then all of it"
+    }
+   ]
+  }
+ ],
+ "certificates": [
+  {
+   "name": "a certificate naming one IK, signed by another",
+   "op": "verify_account_certificate",
+   "row": "A certificate under another IK",
+   "input": {
+    "origin": "https://sync.example.com",
+    "record": {
+     "kind": "key.account",
+     "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+     "fields": {
+      "suite": "tp1",
+      "kind": 0,
+      "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+      "ask": "yGMH2wA0maHwoh5yK_I7OoNM12jmr6P6f2yFaCXymvU",
+      "aek": "VZ7AXmwSK_nMR7RzjgBCkjzOO1Uwt9o-SEu_gmqKH2U",
+      "sig": "9u_-6A7WGbpoSnKquvb7oynyBvLRMr25aDq8h8KUM_eEH2JxeyojwP1d0bcFlfqP0jZSkL3XJbrpwv0vmanuAQ"
+     }
+    }
+   },
+   "error": "keys.signature",
+   "server": "bad_statement",
+   "clause": "A certificate under another IK"
+  },
+  {
+   "name": "a replace endorsed by the new IK instead of the old",
+   "op": "verify_account_certificate",
+   "row": "A replace without the old IK's endorsement",
+   "input": {
+    "origin": "https://sync.example.com",
+    "record": {
+     "kind": "key.account",
+     "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+     "fields": {
+      "suite": "tp1",
+      "kind": 1,
+      "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+      "ask": "vXMLGxLnJhupdx1RDAtCwMWshfgokcwajiWN0SVTahw",
+      "aek": "2ELRZg_hm6lVRtjWLgQziCjMBV8V8IWgguREk6m7xyA",
+      "sig": "GVZPq_SAtkhULWVV4GKw6liL9_JEIWeNYqUc6PEoG1ETygbwy24X1hUUjpnFGeEm8hfnOoDzP9CqkqQ-x6Q5Ag",
+      "replace_sig": "yV1uyhaRE7mrjjXWNx9MhayfF1FwAtTfmhONJGd8TckkXaAgi8yjfwclyNurKRNA32b3dmk4EOt1kustz-MGAw"
+     }
+    },
+    "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+   },
+   "error": "keys.unendorsed",
+   "server": "bad_statement",
+   "clause": "A replace without the old IK's endorsement"
+  },
+  {
+   "name": "an IK change with no endorsement, as after a reset",
+   "op": "verify_account_certificate",
+   "row": "An IK change with no endorsement",
+   "input": {
+    "origin": "https://sync.example.com",
+    "record": {
+     "kind": "key.account",
+     "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+     "fields": {
+      "suite": "tp1",
+      "kind": 2,
+      "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+      "ask": "vXMLGxLnJhupdx1RDAtCwMWshfgokcwajiWN0SVTahw",
+      "aek": "2ELRZg_hm6lVRtjWLgQziCjMBV8V8IWgguREk6m7xyA",
+      "sig": "qZNnOj15KtHeDGnBRf35eK_wbrAWP715_iKxQ3C0rnlnnnA83KreINHCJFzS29EEiNuUIZ6icKqwxBQmi1J8Cw"
+     }
+    },
+    "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+   },
+   "error": "keys.unendorsed",
+   "server": null,
+   "clause": "An IK change with no endorsement"
+  },
+  {
+   "name": "a replace the old IK endorsed",
+   "op": "verify_account_certificate",
+   "input": {
+    "origin": "https://sync.example.com",
+    "record": {
+     "kind": "key.account",
+     "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+     "fields": {
+      "suite": "tp1",
+      "kind": 1,
+      "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+      "ask": "vXMLGxLnJhupdx1RDAtCwMWshfgokcwajiWN0SVTahw",
+      "aek": "2ELRZg_hm6lVRtjWLgQziCjMBV8V8IWgguREk6m7xyA",
+      "sig": "GVZPq_SAtkhULWVV4GKw6liL9_JEIWeNYqUc6PEoG1ETygbwy24X1hUUjpnFGeEm8hfnOoDzP9CqkqQ-x6Q5Ag",
+      "replace_sig": "-5Tj8KdUDxOy7sFOCtAIRLxcavw7xV2tvcrTMv07qAP9zYZhsfSyr3Qufq57d1P6JubEmQzS6sOjCcby8dYNAQ"
+     }
+    },
+    "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+   },
+   "output": {
+    "ik_change": "endorsed"
+   }
+  },
+  {
+   "name": "a rotation under the same IK",
+   "op": "verify_account_certificate",
+   "input": {
+    "origin": "https://sync.example.com",
+    "record": {
+     "kind": "key.account",
+     "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/3",
+     "fields": {
+      "suite": "tp1",
+      "kind": 0,
+      "ik": "zLk3KL_ybFDMx3sQbj-nsHV_htyt1yuCZr47wp7R-wY",
+      "ask": "-mAL8omgvWiDo99-4Ni4BndFrlXl0qeXcyrb1S01IRQ",
+      "aek": "jgNAkQbKDY-9-5uBJuq228c0bx3aNskhylNVMhorrzU",
+      "sig": "dpQa7pwfDOVqZ5wkUiQpX3-lHDSwBKccXdZtzhd34Djzy4R4-hDU8CsKkscxSOxVZmzfOiRVSpmAOoMMRpMICg"
+     }
+    },
+    "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+   },
+   "output": {
+    "ik_change": "same"
+   }
+  },
+  {
+   "name": "the certificate under the retired IK verifies a version record signed before the replace",
+   "op": "verify_under_certificate",
+   "row": "A certificate under an IK seen replaced, offered as the newest; the same certificate verifying an object signed before the replace",
+   "input": {
+    "origin": "https://sync.example.com",
+    "certificate": {
+     "kind": "key.account",
+     "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+     "fields": {
+      "suite": "tp1",
+      "kind": 0,
+      "ik": "zLk3KL_ybFDMx3sQbj-nsHV_htyt1yuCZr47wp7R-wY",
+      "ask": "yGMH2wA0maHwoh5yK_I7OoNM12jmr6P6f2yFaCXymvU",
+      "aek": "VZ7AXmwSK_nMR7RzjgBCkjzOO1Uwt9o-SEu_gmqKH2U",
+      "sig": "9u_-6A7WGbpoSnKquvb7oynyBvLRMr25aDq8h8KUM_eEH2JxeyojwP1d0bcFlfqP0jZSkL3XJbrpwv0vmanuAQ"
+     }
+    },
+    "record": {
+     "kind": "key.version",
+     "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/personal/1",
+     "fields": {
+      "suite": "tp1",
+      "start": 1,
+      "kid": "0dh7ajjIRrMnoZrmyRfAM7mA4IJ06U89au1qgJFAfsw",
+      "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+      "signer_av": 1,
+      "sig": "YW0LRhVg_Pu6Be4KFi0ScyOZ32blqCyrNEv9Z5X6GkxrSCoMkAEJg-QJDdRfwgT4zemJOazxok1eo372Gmq-DA"
+     }
+    }
+   },
+   "output": {
+    "ok": true
+   },
+   "server": null,
+   "clause": "the same certificate verifying an object signed before the replace"
+  }
+ ]
+}

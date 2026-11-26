@@ -361,6 +361,7 @@ mod tests {
 
     fn record_one(runtime: &crate::runtime::AppRuntime, history: &tablepro_storage::QueryHistory) {
         let entry = tablepro_storage::query_history::NewEntry {
+            record_id: uuid::Uuid::new_v4(),
             query: "SELECT 1".to_owned(),
             driver_id: "postgres".to_owned(),
             connection_id: uuid::Uuid::new_v4(),

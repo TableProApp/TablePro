@@ -17,7 +17,7 @@ struct CloudKitCoreTransportTests {
     }
 
     private static func tag(_ name: String, systemFields: Data? = nil, fields: [CloudKitField] = []) -> CloudKitRecord {
-        CloudKitRecord(recordType: "ConnectionTag", name: name, systemFields: systemFields, fields: fields)
+        CloudKitRecord(recordType: "ConnectionTag", name: name, systemFields: systemFields, createdMs: nil, fields: fields)
     }
 
     private static func serverRecord(_ name: String, in zone: CKRecordZone.ID = zone) -> CKRecord {
@@ -223,7 +223,7 @@ struct CloudKitCoreTransportTests {
             saves: [
                 Self.tag(tooLong),
                 Self.tag("Tag_A", fields: [CloudKitField(name: "_secret", value: .text(value: "x"))]),
-                CloudKitRecord(recordType: "Not a type", name: "Tag_B", systemFields: nil, fields: []),
+                CloudKitRecord(recordType: "Not a type", name: "Tag_B", systemFields: nil, createdMs: nil, fields: []),
                 Self.tag("Tag_C")
             ],
             deletes: [""]

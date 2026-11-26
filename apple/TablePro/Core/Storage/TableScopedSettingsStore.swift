@@ -22,9 +22,7 @@ internal protocol TableScopedSettingsStore: AnyObject {
     // session still has settings on disk. A nil schema means the whole database.
     func dropContainer(connectionId: UUID, database: String, schema: String?)
 
-    // leavesTombstones is false when another device did the deleting: a synced store that marks its records deleted
-    // there pushes the sender's own deletion back at it.
-    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool)
+    func purgeConnections(_ connectionIds: Set<UUID>)
 }
 
 @MainActor

@@ -10,7 +10,7 @@ using TablePro.Interop;
 namespace TablePro.App.Views;
 
 // Where a saved query landed, so the pane can open its folder.
-internal sealed record SavedQueryPlace(long Id, long? FolderId);
+internal sealed record SavedQueryPlace(Guid Id, Guid? FolderId);
 
 // A saved query's name, folder and, when editing, its text, asked in a dialog; the core keeps them.
 internal static class SaveQueryDialog
@@ -278,9 +278,10 @@ internal static class SaveQueryDialog
         {
             var deferral = args.GetDeferral();
             draft.Name = name.Text.Trim();
-            if (folder is not null)
+            // A folder the list does not hold yet shows as No Folder, so only a pick moves the query.
+            if (folder is not null && draft.FolderChosen)
             {
-                draft.FolderId = (folder.SelectedItem as ComboBoxItem)?.Tag as long?;
+                draft.FolderId = (folder.SelectedItem as ComboBoxItem)?.Tag as Guid?;
             }
 
             if (sql is not null)
@@ -333,7 +334,7 @@ internal static class SaveQueryDialog
     }
 
     // Each folder by its path, indented under the one above it.
-    private static ComboBox FolderBox(IReadOnlyList<SavedQueryFolderChoice> folders, long? selected)
+    private static ComboBox FolderBox(IReadOnlyList<SavedQueryFolderChoice> folders, Guid? selected)
     {
         var box = new ComboBox { Header = Strings.Get("SavedQueryFolderHeader"), HorizontalAlignment = HorizontalAlignment.Stretch };
         box.Items.Add(new ComboBoxItem { Content = Strings.Get("SavedQueryNoFolder") });
@@ -397,15 +398,15 @@ internal static class SaveQueryDialog
     }
 
     // What the dialog shows again after the replace question, and what the store holds so far.
-    private sealed class Draft(long? id, string name, string sql, long? folderId)
+    private sealed class Draft(Guid? id, string name, string sql, Guid? folderId)
     {
-        public long? Id { get; set; } = id;
+        public Guid? Id { get; set; } = id;
 
         public string Name { get; set; } = name;
 
         public string Sql { get; set; } = sql;
 
-        public long? FolderId { get; set; } = folderId;
+        public Guid? FolderId { get; set; } = folderId;
 
         // No folder is also the box's start, so only a pick tells a move to the top level from no choice.
         public bool FolderChosen { get; set; }
@@ -415,7 +416,7 @@ internal static class SaveQueryDialog
         public string StoredSql { get; set; } = sql;
 
         // A new query starts at the top level, so it moves only when a folder was picked.
-        public long? StoredFolder { get; set; } = id is null ? null : folderId;
+        public Guid? StoredFolder { get; set; } = id is null ? null : folderId;
 
         public string? Error { get; set; }
 

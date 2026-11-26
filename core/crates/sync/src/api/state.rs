@@ -25,6 +25,15 @@ pub trait StateStore: Send + Sync {
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError>;
 }
 
+// What ends the distrust an open found of the key tables (0054, A stale file).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeysSettled {
+    // A stale file's rebuild saw every anchored pin and version on the server.
+    Rebuilt,
+    // An approval, a recovery or a genesis gave a file with no anchor keys and key tables it can trust.
+    Reapproved,
+}
+
 // Rows read and written in one commit. Dropping it uncommitted writes nothing.
 #[async_trait]
 pub trait StateTxn: Send {
@@ -38,7 +47,12 @@ pub trait StateTxn: Send {
     async fn delete(&mut self, key: &RowKey) -> Result<(), StateError>;
 
     // Erases every key table in this commit: Sign Out, or another account on this row (0054, The device's key state).
+    // The device then joins again as a new device would, so nothing an open found of the key tables stays owed.
     async fn clear_key_tables(&mut self) -> Result<(), StateError>;
+
+    // This commit settles what the open found of the key tables. Until a commit that carries it lands, every open
+    // reports the same distrust, so a restart does not launder it.
+    fn settle_keys(&mut self, _settled: KeysSettled) {}
 
     async fn commit(self: Box<Self>) -> Result<Committed, StateError>;
 }
@@ -123,6 +137,9 @@ pub enum Table {
     Scopes,
     Stores,
     Bases,
+    // 0064: the bases a pull will apply, written before the store; at a restart one whose store copy matches becomes
+    // the base, and one that does not stays a local edit.
+    PendingBases,
     Standing,
     Held,
     Deferred,
@@ -141,11 +158,12 @@ pub enum Table {
 }
 
 impl Table {
-    pub const SYNC: [Self; 11] = [
+    pub const SYNC: [Self; 12] = [
         Self::Binding,
         Self::Scopes,
         Self::Stores,
         Self::Bases,
+        Self::PendingBases,
         Self::Standing,
         Self::Held,
         Self::Deferred,
@@ -172,6 +190,7 @@ impl Table {
             Self::Scopes => "scopes",
             Self::Stores => "stores",
             Self::Bases => "bases",
+            Self::PendingBases => "pending_bases",
             Self::Standing => "standing",
             Self::Held => "held",
             Self::Deferred => "deferred",
@@ -238,9 +257,12 @@ pub struct ScopeRow {
     pub lineage: Vec<LineageEpoch>,
     // The history scope's cursor for older entries, kept to page back on demand.
     pub older_cursor: Option<Cursor>,
+    // The kinds the last pull read. A build that reads more fetches what it held for the others again.
+    pub read_kinds: Vec<KindName>,
     pub refill: bool,
     pub rotation_due: bool,
-    // The last pull reached a page with no records; the roster is decided on only then (0051, `members`).
+    // The last pull reached a page with no records. It schedules pulls; a roster decision takes the `CaughtUp` of a
+    // pull that followed its scopes body, never this flag.
     pub caught_up: bool,
 }
 
@@ -256,6 +278,7 @@ impl ScopeRow {
             policies: ScopePolicies::default(),
             lineage: Vec::new(),
             older_cursor: None,
+            read_kinds: Vec::new(),
             refill: false,
             rotation_due: false,
             caught_up: false,
@@ -263,9 +286,11 @@ impl ScopeRow {
     }
 }
 
+// One row per store file the core keeps, such as `connections.json` or `history.db`: every kind that file holds refills
+// together (0060, 0064).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreRow {
-    // The store's name, such as `connections` or `history`.
+    // The store file's name.
     pub store: String,
     pub generation: Uuid,
     pub sequence: u64,
@@ -283,6 +308,8 @@ pub struct BaseRow {
     pub deleted: Option<DeletedReason>,
     // The fields as last agreed; None for create-once kinds.
     pub fields: Option<Value>,
+    // CloudKit's creation date of the record the base came from, in milliseconds; None on the service.
+    pub created_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -302,7 +329,10 @@ pub struct StandingRow {
 pub enum HeldReason {
     Unreadable,
     UnknownKind,
+    // A pulled value waits for the person (0044's approval-required fields).
     AwaitingApproval,
+    // This device is not approved yet, so it holds what it may not apply (0056, D8).
+    AwaitingDeviceApproval,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -427,8 +457,108 @@ pub struct KeyVersionRow {
     // Empty for personal and history rows.
     pub holders: Vec<Holder>,
     pub state: KeyVersionState,
+    // Why a `stopped` row waits, None otherwise (0062). Anchored with the row, so a file restore keeps it.
+    pub stopped_cause: Option<StoppedCause>,
     // The epoch it ended in; None unless ended.
     pub epoch: Option<EpochId>,
+}
+
+impl KeyVersionRow {
+    // Stops the row for `cause`. A scope that meets two causes keeps the stricter: `catch_up`, then `restart_held`,
+    // then `restore_wait` (0062, 0064). A personal or history row only ever stops as `catch_up`. A row that ended
+    // stays ended.
+    pub fn stop(&mut self, cause: StoppedCause) {
+        if self.state == KeyVersionState::Ended {
+            return;
+        }
+        let cause = if self.purpose == KeyPurpose::Team {
+            cause
+        } else {
+            StoppedCause::CatchUp
+        };
+        let kept = self.stopped_cause.map_or(cause, |held| held.max(cause));
+        self.state = KeyVersionState::Stopped;
+        self.stopped_cause = Some(kept);
+    }
+
+    // Clears a stop only by the event its cause and purpose allow (0062; 0056, Approving a device, step 7): a team's
+    // catch-up stop by re-confirmation, a team's restore stop once the server holds every version it waited for, a
+    // personal or history stop by an approval with the version signed under the current `av`. Anything else is
+    // refused and the row stays as it was.
+    pub fn clear_stop(&mut self, by: StopClear) -> Result<(), StopNotCleared> {
+        if self.state != KeyVersionState::Stopped {
+            return Err(StopNotCleared);
+        }
+        let allowed = match (self.purpose, self.stopped_cause) {
+            (KeyPurpose::Team, Some(StoppedCause::CatchUp)) => by == StopClear::Reconfirmed,
+            (KeyPurpose::Team, Some(StoppedCause::RestoreWait)) => by == StopClear::AwaitedVersionsBack,
+            (KeyPurpose::Team, Some(StoppedCause::RestartHeld)) => by == StopClear::AcceptedRestart,
+            (KeyPurpose::Personal | KeyPurpose::History, _) => by == StopClear::Approval,
+            (KeyPurpose::Team, None) => false,
+        };
+        if !allowed {
+            return Err(StopNotCleared);
+        }
+        self.state = KeyVersionState::Ok;
+        self.stopped_cause = None;
+        Ok(())
+    }
+
+    // Ends the scope in `epoch`, which nothing clears; an ended row has no stop cause (0062).
+    pub fn end(&mut self, epoch: Option<EpochId>) {
+        self.state = KeyVersionState::Ended;
+        self.stopped_cause = None;
+        self.epoch = epoch;
+    }
+}
+
+// What clears a stop (0062).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StopClear {
+    // An owner or admin the device counted as a holder rotated, and the device took the new version.
+    Reconfirmed,
+    // The server holds again every version the device waited for, with the same fields.
+    AwaitedVersionsBack,
+    // An approval brought the personal or history version signed under the current `av`.
+    Approval,
+    // The person compared the restarting owner's words and accepted the restart (0064).
+    AcceptedRestart,
+}
+
+// The event does not clear this row's stop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("this event does not clear the scope's stop")]
+pub struct StopNotCleared;
+
+// Why a row stopped (0062, 0064), weakest first, so the stricter of two causes is the greater: a wait for a version a
+// restore lost to come back, a team restart held until the person compares words, a catch-up the device could not
+// verify.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum StoppedCause {
+    RestoreWait,
+    RestartHeld,
+    CatchUp,
+}
+
+impl StoppedCause {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CatchUp => "catch_up",
+            Self::RestoreWait => "restore_wait",
+            Self::RestartHeld => "restart_held",
+        }
+    }
+
+    // Only a catch-up stop is reported: no rotation clears the others (0062, 0064).
+    pub const fn is_reported(self) -> bool {
+        matches!(self, Self::CatchUp)
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        [Self::CatchUp, Self::RestoreWait, Self::RestartHeld]
+            .into_iter()
+            .find(|cause| cause.as_str() == text)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -489,6 +619,8 @@ pub enum Row {
     Scope(ScopeRow),
     Store(StoreRow),
     Base(BaseRow),
+    // A base a pull wrote before the store, in `pending_bases`; its columns are a base's.
+    PendingBase(BaseRow),
     Standing(StandingRow),
     Held(HeldRow),
     Deferred(DeferredRow),
@@ -512,6 +644,7 @@ pub enum RowKey {
     Scope(ScopeName),
     Store(String),
     Base(RecordKey),
+    PendingBase(RecordKey),
     Standing(RecordKey),
     Held(RecordKey),
     Deferred(RecordKey),
@@ -536,6 +669,7 @@ impl Row {
             Self::Scope(row) => RowKey::Scope(row.scope),
             Self::Store(row) => RowKey::Store(row.store.clone()),
             Self::Base(row) => RowKey::Base(row.key.clone()),
+            Self::PendingBase(row) => RowKey::PendingBase(row.key.clone()),
             Self::Standing(row) => RowKey::Standing(row.key.clone()),
             Self::Held(row) => RowKey::Held(row.key.clone()),
             Self::Deferred(row) => RowKey::Deferred(row.key.clone()),
@@ -576,6 +710,7 @@ impl RowKey {
             Self::Scope(_) => Table::Scopes,
             Self::Store(_) => Table::Stores,
             Self::Base(_) => Table::Bases,
+            Self::PendingBase(_) => Table::PendingBases,
             Self::Standing(_) => Table::Standing,
             Self::Held(_) => Table::Held,
             Self::Deferred(_) => Table::Deferred,
@@ -604,7 +739,12 @@ impl RowKey {
             Self::Store(text) | Self::LegacyMirror(text) | Self::DeletedHistory(text) => {
                 column(&mut out, text.as_bytes());
             }
-            Self::Base(key) | Self::Standing(key) | Self::Held(key) | Self::Deferred(key) | Self::Conflict(key) => {
+            Self::Base(key)
+            | Self::PendingBase(key)
+            | Self::Standing(key)
+            | Self::Held(key)
+            | Self::Deferred(key)
+            | Self::Conflict(key) => {
                 record_columns(&mut out, key);
             }
             Self::Approval(key, field) => {
@@ -707,6 +847,119 @@ mod tests {
         assert_eq!(all, sorted);
         assert!(Table::SYNC.iter().all(|table| !table.is_key_table()));
         assert!(Table::KEY.iter().all(|table| table.is_key_table()));
+    }
+
+    fn team_row(purpose: KeyPurpose) -> KeyVersionRow {
+        KeyVersionRow {
+            scope: ScopeName::Personal,
+            purpose,
+            version: Version::new(3).unwrap(),
+            record: [0; 32],
+            holders: Vec::new(),
+            state: KeyVersionState::Ok,
+            stopped_cause: None,
+            epoch: None,
+        }
+    }
+
+    #[test]
+    fn a_scope_that_meets_both_causes_keeps_catch_up() {
+        let mut waiting = team_row(KeyPurpose::Team);
+        waiting.stop(StoppedCause::RestoreWait);
+        let restore_only = waiting.stopped_cause;
+        waiting.stop(StoppedCause::CatchUp);
+        let mut caught = team_row(KeyPurpose::Team);
+        caught.stop(StoppedCause::CatchUp);
+        caught.stop(StoppedCause::RestoreWait);
+
+        assert_eq!(restore_only, Some(StoppedCause::RestoreWait));
+        assert_eq!(waiting.stopped_cause, Some(StoppedCause::CatchUp));
+        assert_eq!(caught.stopped_cause, Some(StoppedCause::CatchUp));
+        assert_eq!(caught.state, KeyVersionState::Stopped);
+    }
+
+    #[test]
+    fn a_personal_or_history_row_stops_only_as_catch_up_and_an_ended_row_stays_ended() {
+        let mut history = team_row(KeyPurpose::History);
+        history.stop(StoppedCause::RestoreWait);
+        let history_cause = history.stopped_cause;
+        let mut ended = team_row(KeyPurpose::Team);
+        ended.end(Some(EpochId(uuid::Uuid::nil())));
+        ended.stop(StoppedCause::CatchUp);
+
+        assert_eq!(history_cause, Some(StoppedCause::CatchUp));
+        assert_eq!(history.clear_stop(StopClear::Reconfirmed), Err(StopNotCleared));
+        assert_eq!(history.clear_stop(StopClear::Approval), Ok(()));
+        assert_eq!((history.state, history.stopped_cause), (KeyVersionState::Ok, None));
+        assert_eq!((ended.state, ended.stopped_cause), (KeyVersionState::Ended, None));
+        assert_eq!(StoppedCause::parse("restore_wait"), Some(StoppedCause::RestoreWait));
+        assert_eq!(StoppedCause::CatchUp.as_str(), "catch_up");
+    }
+
+    #[test]
+    fn a_team_stop_clears_only_by_the_event_its_cause_allows() {
+        let mut caught = team_row(KeyPurpose::Team);
+        caught.stop(StoppedCause::CatchUp);
+        let mut waiting = team_row(KeyPurpose::Team);
+        waiting.stop(StoppedCause::RestoreWait);
+
+        let caught_by_versions = caught.clear_stop(StopClear::AwaitedVersionsBack);
+        let caught_by_approval = caught.clear_stop(StopClear::Approval);
+        let waiting_by_reconfirm = waiting.clear_stop(StopClear::Reconfirmed);
+
+        assert_eq!(caught_by_versions, Err(StopNotCleared));
+        assert_eq!(caught_by_approval, Err(StopNotCleared));
+        assert_eq!(caught.stopped_cause, Some(StoppedCause::CatchUp));
+        assert_eq!(waiting_by_reconfirm, Err(StopNotCleared));
+        assert_eq!(caught.clear_stop(StopClear::Reconfirmed), Ok(()));
+        assert_eq!(waiting.clear_stop(StopClear::AwaitedVersionsBack), Ok(()));
+        assert_eq!(
+            team_row(KeyPurpose::Team).clear_stop(StopClear::Reconfirmed),
+            Err(StopNotCleared)
+        );
+    }
+
+    #[test]
+    fn a_held_restart_clears_only_once_the_person_accepts_it_and_a_catch_up_outranks_it() {
+        let mut held = team_row(KeyPurpose::Team);
+        held.stop(StoppedCause::RestoreWait);
+        held.stop(StoppedCause::RestartHeld);
+        let over_restore = held.stopped_cause;
+        let mut caught = team_row(KeyPurpose::Team);
+        caught.stop(StoppedCause::RestartHeld);
+        caught.stop(StoppedCause::CatchUp);
+
+        assert_eq!(over_restore, Some(StoppedCause::RestartHeld));
+        assert_eq!(held.clear_stop(StopClear::Reconfirmed), Err(StopNotCleared));
+        assert_eq!(held.clear_stop(StopClear::AwaitedVersionsBack), Err(StopNotCleared));
+        assert_eq!(held.clear_stop(StopClear::AcceptedRestart), Ok(()));
+        assert_eq!(caught.stopped_cause, Some(StoppedCause::CatchUp));
+        assert!(!StoppedCause::RestartHeld.is_reported());
+        assert_eq!(StoppedCause::parse("restart_held"), Some(StoppedCause::RestartHeld));
+    }
+
+    #[test]
+    fn ending_a_stopped_row_drops_its_cause() {
+        let mut waiting = team_row(KeyPurpose::Team);
+        waiting.stop(StoppedCause::RestoreWait);
+        let epoch = EpochId(uuid::Uuid::from_u128(4));
+
+        waiting.end(Some(epoch));
+
+        assert_eq!(
+            (waiting.state, waiting.stopped_cause, waiting.epoch),
+            (KeyVersionState::Ended, None, Some(epoch))
+        );
+        assert_eq!(waiting.clear_stop(StopClear::AwaitedVersionsBack), Err(StopNotCleared));
+    }
+
+    #[test]
+    fn a_personal_row_asked_to_wait_on_a_restore_records_catch_up() {
+        let mut personal = team_row(KeyPurpose::Personal);
+
+        personal.stop(StoppedCause::RestoreWait);
+
+        assert_eq!(personal.stopped_cause, Some(StoppedCause::CatchUp));
     }
 
     #[test]
