@@ -6,18 +6,19 @@
 use std::sync::Arc;
 
 use serde_json::Value;
-use tablepro_storage::{TeamLibraryItem, TeamLibraryKind, TeamLibraryOwner};
+use tablepro_storage::{TeamLibraryKind, TeamLibraryOwner};
 use tablepro_sync::SyncError;
 use tablepro_sync::api::ids::ScopeName;
 use tablepro_sync::api::scopes::Role;
 use tablepro_sync::api::team_library::{
-    FacadeBase, ImportedEdit, TeamConnection, TeamFolder, TeamId, TeamItemRef, TeamLibraryControl, TeamLibraryError,
-    TeamLibraryImport, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentState, UnsentTeamEdit,
+    FacadeBase, ImportedEdit, TeamConnection, TeamFolder, TeamId, TeamItem, TeamItemRef, TeamLibraryControl,
+    TeamLibraryError, TeamLibraryImport, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentState,
+    UnsentTeamEdit,
 };
 use uuid::Uuid;
 
 use super::keys::TeamRoleTag;
-use super::service::{SyncService, unfilled};
+use super::service::SyncService;
 use crate::core_handle::Core;
 use crate::error::CoreError;
 use crate::runtime::on_runtime;
@@ -41,6 +42,12 @@ pub struct TeamLibraryItemInfo {
     pub kind: TeamLibraryKindTag,
     pub id: String,
     pub fields_json: String,
+    // Who last changed it, as the server names them to this account, and when in milliseconds since the Unix epoch;
+    // None until a pull names anyone.
+    #[uniffi(default = None)]
+    pub updated_by: Option<String>,
+    #[uniffi(default = None)]
+    pub updated_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -229,11 +236,13 @@ fn item_ref_info(item: TeamItemRef) -> TeamLibraryItemRef {
     }
 }
 
-fn item_info(item: TeamLibraryItem) -> TeamLibraryItemInfo {
+fn item_info(item: TeamItem) -> TeamLibraryItemInfo {
     TeamLibraryItemInfo {
-        kind: kind_tag(item.kind),
-        id: item.id,
-        fields_json: item.fields.to_string(),
+        kind: kind_tag(item.item.kind),
+        id: item.item.id,
+        fields_json: item.item.fields.to_string(),
+        updated_by: item.updated_by,
+        updated_at_ms: item.updated_at_ms,
     }
 }
 
@@ -343,18 +352,24 @@ fn import(arg: TeamLibraryImportArg) -> Result<TeamLibraryImport, CoreError> {
 }
 
 impl SyncService {
-    // The engine's lane hands its Team Library here.
-    fn team_library_control(&self) -> Result<Arc<dyn TeamLibraryControl>, CoreError> {
-        unfilled("sync.team_library")
-    }
-
-    async fn on_team_library<T, F>(&self, work: impl FnOnce(Arc<dyn TeamLibraryControl>) -> F) -> Result<T, CoreError>
+    // Team scopes always use TablePro Sync, whatever the personal provider is (core ADR 0054, Providers), so every
+    // Team Library call reaches the service engine, which runs teams-only on an iCloud or Off device.
+    async fn on_team_library<T, F>(
+        &self,
+        work: impl FnOnce(Arc<dyn TeamLibraryControl>) -> F + Send + 'static,
+    ) -> Result<T, CoreError>
     where
         T: Send + 'static,
         F: Future<Output = Result<T, SyncError>> + Send + 'static,
     {
-        let running = work(self.team_library_control()?);
-        on_runtime(&self.tasks, async move { running.await.map_err(CoreError::from) }).await
+        let service = Arc::clone(&self.service);
+        on_runtime(&self.tasks, async move {
+            let engine = service.engine().await?;
+            work(Arc::clone(&engine.sync) as Arc<dyn TeamLibraryControl>)
+                .await
+                .map_err(CoreError::from)
+        })
+        .await
     }
 }
 
@@ -362,7 +377,7 @@ impl SyncService {
 impl SyncService {
     pub async fn team_library(&self) -> Result<Vec<TeamLibraryTeamInfo>, CoreError> {
         let teams = self
-            .on_team_library(|control| async move { control.team_library().await })
+            .on_team_library(move |control| async move { control.team_library().await })
             .await?;
         Ok(teams.into_iter().map(team_info).collect())
     }
@@ -376,7 +391,7 @@ impl SyncService {
         let team = team(&team_id)?;
         let connections = connections.into_iter().map(connection).collect::<Result<Vec<_>, _>>()?;
         let publish = self
-            .on_team_library(|control| async move { control.publish_team_connections(team, connections).await })
+            .on_team_library(move |control| async move { control.publish_team_connections(team, connections).await })
             .await?;
         Ok(publish_info(publish))
     }
@@ -392,7 +407,9 @@ impl SyncService {
         let folders = folders.into_iter().map(folder).collect::<Result<Vec<_>, _>>()?;
         let queries = queries.into_iter().map(query).collect::<Result<Vec<_>, _>>()?;
         let publish = self
-            .on_team_library(|control| async move { control.publish_team_saved_queries(team, folders, queries).await })
+            .on_team_library(
+                move |control| async move { control.publish_team_saved_queries(team, folders, queries).await },
+            )
             .await?;
         Ok(publish_info(publish))
     }
@@ -405,7 +422,7 @@ impl SyncService {
         let team = team(&team_id)?;
         let items = items.into_iter().map(item_ref).collect();
         let publish = self
-            .on_team_library(|control| async move { control.remove_team_items(team, items).await })
+            .on_team_library(move |control| async move { control.remove_team_items(team, items).await })
             .await?;
         Ok(publish_info(publish))
     }
@@ -413,7 +430,7 @@ impl SyncService {
     // What a sign-out or a switch lists before it asks push, discard or cancel.
     pub async fn unsent_team_edits(&self) -> Result<Vec<UnsentTeamEditInfo>, CoreError> {
         let edits = self
-            .on_team_library(|control| async move { control.unsent_team_edits().await })
+            .on_team_library(move |control| async move { control.unsent_team_edits().await })
             .await?;
         Ok(edits.into_iter().map(unsent_info).collect())
     }
@@ -421,20 +438,20 @@ impl SyncService {
     // None discards every team's, refused and imported edits included.
     pub async fn discard_team_edits(&self, team_id: Option<String>) -> Result<(), CoreError> {
         let team = team_id.as_deref().map(team).transpose()?;
-        self.on_team_library(|control| async move { control.discard_team_edits(team).await })
+        self.on_team_library(move |control| async move { control.discard_team_edits(team).await })
             .await
     }
 
     // Also after the sign-in ended, as Sign Out deletes once it has signed out. On failure Team Library stays off for
     // this account until a later delete succeeds.
     pub async fn delete_team_library_data(&self) -> Result<(), CoreError> {
-        self.on_team_library(|control| async move { control.delete_team_library_data().await })
+        self.on_team_library(move |control| async move { control.delete_team_library_data().await })
             .await
     }
 
     pub async fn team_scope_status(&self) -> Result<Vec<TeamScopeStatusInfo>, CoreError> {
         let status = self
-            .on_team_library(|control| async move { control.team_scope_status().await })
+            .on_team_library(move |control| async move { control.team_scope_status().await })
             .await?;
         Ok(status.into_iter().map(status_info).collect())
     }
@@ -443,7 +460,7 @@ impl SyncService {
     // versions once each team is pulled, so an edit the team changed meanwhile asks Keep Mine or Keep Theirs.
     pub async fn import_team_library(&self, teams: Vec<TeamLibraryImportArg>) -> Result<(), CoreError> {
         let teams = teams.into_iter().map(import).collect::<Result<Vec<_>, _>>()?;
-        self.on_team_library(|control| async move { control.import_team_library(teams).await })
+        self.on_team_library(move |control| async move { control.import_team_library(teams).await })
             .await
     }
 }
@@ -455,7 +472,7 @@ impl Core {
     // owner's next sync service reads them, and until then Team Library stays off for it.
     pub async fn delete_other_team_library_data(&self, keep: Option<TeamLibraryOwnerArg>) -> Result<(), CoreError> {
         let _ = keep.map(TeamLibraryOwner::from);
-        unfilled("sync.delete_other_team_library_data")
+        Err(SyncError::unimplemented("sync.delete_other_team_library_data").into())
     }
 }
 
@@ -466,6 +483,7 @@ impl Core {
 )]
 mod tests {
     use serde_json::json;
+    use tablepro_storage::TeamLibraryItem;
 
     use super::*;
 
@@ -556,26 +574,25 @@ mod tests {
             name: Some("Acme".to_owned()),
             role: Some(Role::Editor),
             writable: true,
-            items: vec![TeamLibraryItem {
-                kind: TeamLibraryKind::Folder,
-                id: "F1".to_owned(),
-                fields: json!({"name": "Shared"}),
+            items: vec![TeamItem {
+                item: TeamLibraryItem {
+                    kind: TeamLibraryKind::Folder,
+                    id: "F1".to_owned(),
+                    fields: json!({"name": "Shared"}),
+                },
+                updated_by: Some("Ada".to_owned()),
+                updated_at_ms: Some(1_700_000_000_000),
             }],
         });
 
         assert_eq!(info.team_id, wire(5));
         assert_eq!(info.role, Some(TeamRoleTag::Editor));
         assert_eq!(info.items[0].kind, TeamLibraryKindTag::Folder);
+        assert_eq!(info.items[0].updated_by.as_deref(), Some("Ada"));
+        assert_eq!(info.items[0].updated_at_ms, Some(1_700_000_000_000));
         assert_eq!(
             serde_json::from_str::<Value>(&info.items[0].fields_json).unwrap(),
             json!({"name": "Shared"})
         );
-    }
-
-    #[test]
-    fn an_unfilled_team_library_call_names_itself() {
-        let error = unfilled::<()>("sync.team_library").unwrap_err();
-
-        assert_eq!(error.code(), "sync.unimplemented");
     }
 }

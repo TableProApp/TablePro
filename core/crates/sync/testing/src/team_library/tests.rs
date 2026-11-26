@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde_json::json;
 use tablepro_storage::{TeamLibraryItem, TeamLibraryKind};
 use tablepro_sync::api::scopes::Role;
+use tablepro_sync::api::team_library::TeamItem;
 use uuid::Uuid;
 
 use super::*;
@@ -25,10 +26,14 @@ fn held(n: u128, role: Role) -> TeamLibraryTeam {
         name: None,
         role: Some(role),
         writable: role != Role::Member,
-        items: vec![TeamLibraryItem {
-            kind: TeamLibraryKind::Query,
-            id: "q1".to_owned(),
-            fields: json!({"name": "Revenue", "query": "select 1"}),
+        items: vec![TeamItem {
+            item: TeamLibraryItem {
+                kind: TeamLibraryKind::Query,
+                id: "q1".to_owned(),
+                fields: json!({"name": "Revenue", "query": "select 1"}),
+            },
+            updated_by: Some("Ada".to_owned()),
+            updated_at_ms: Some(1),
         }],
     }
 }

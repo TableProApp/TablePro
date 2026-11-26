@@ -105,7 +105,15 @@ pub struct TeamLibraryTeam {
     // None until the first scopes body this run.
     pub role: Option<Role>,
     pub writable: bool,
-    pub items: Vec<TeamLibraryItem>,
+    pub items: Vec<TeamItem>,
+}
+
+// An item with who last changed it and when, as the last pull of it said; None before a pull named anyone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamItem {
+    pub item: TeamLibraryItem,
+    pub updated_by: Option<String>,
+    pub updated_at_ms: Option<i64>,
 }
 
 // The id the team stores, compared without case as shipped Macs match them (0052, Team scope).

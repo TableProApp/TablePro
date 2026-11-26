@@ -13,7 +13,9 @@ pub mod state;
 pub mod team_library;
 pub mod transport;
 
-pub use adapter::{HostSettings, LocalChange, LocalRecord, LocalRecords, RecordAdapter, SettingsDocument, StoreStamp};
+pub use adapter::{
+    HostSettings, LocalChange, LocalRecord, LocalRecords, PulledWriter, RecordAdapter, SettingsDocument, StoreStamp,
+};
 pub use cloudkit::{
     CloudKitAccount, CloudKitChanges, CloudKitDeletion, CloudKitFailure, CloudKitFetched, CloudKitField,
     CloudKitOutcome, CloudKitRecord, CloudKitTransport, CloudKitValue,
@@ -31,7 +33,7 @@ pub use legacy::{LegacyMetadata, LegacyMirror};
 pub use scopes::{ScopeInfo, ScopesAnswer, ScopesBody};
 pub use state::{Row, RowKey, RowRange, StateFiles, StateStore, StateTxn, Table};
 pub use team_library::{
-    FacadeBase, ImportedEdit, SignInGuard, TeamConnection, TeamFolder, TeamItemRef, TeamLibraryControl,
+    FacadeBase, ImportedEdit, SignInGuard, TeamConnection, TeamFolder, TeamItem, TeamItemRef, TeamLibraryControl,
     TeamLibraryError, TeamLibraryImport, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentState,
     UnsentTeamEdit,
 };
