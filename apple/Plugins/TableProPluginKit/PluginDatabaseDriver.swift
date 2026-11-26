@@ -368,6 +368,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]]
     func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]]
     func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]]
+    // `fetchTableDDL` for the tables of the schema it can answer from one snapshot, keyed by table name, each the text
+    // the per-table read gives. A table it leaves out is read alone.
+    func fetchAllTableDDL(schema: String?) async throws -> [String: String]
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata]
     var providesBulkTableMetadataFetch: Bool { get }
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
@@ -1198,6 +1201,7 @@ public extension PluginDatabaseDriver {
     func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] { [:] }
     func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] { [:] }
     func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]] { [:] }
+    func fetchAllTableDDL(schema: String?) async throws -> [String: String] { [:] }
 
     // One read per table. A driver with a schema-wide query overrides it.
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
