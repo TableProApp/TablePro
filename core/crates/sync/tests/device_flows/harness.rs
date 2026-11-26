@@ -374,23 +374,36 @@ impl Device {
         let mut txn = self.txn().await;
         txn.put(Row::Scope(row)).await.unwrap();
         txn.commit().await.unwrap();
+        let scope = ScopeName::Team(team);
+        let info = tablepro_sync::api::scopes::ScopeInfo {
+            scope,
+            role,
+            horizon: 0,
+            epochs: Vec::new(),
+            writable: true,
+            policies: tablepro_sync::api::scopes::ScopePolicies::default(),
+            quota: None,
+            rotation_due: false,
+            members: members
+                .iter()
+                .map(|(account, role)| TeamMember {
+                    account: *account,
+                    role: *role,
+                })
+                .collect(),
+            stopped: Vec::new(),
+            approved: None,
+        };
+        let page = tablepro_sync::api::transport::PulledPage {
+            records: Vec::new(),
+            cursor: None,
+            changes_cursor: None,
+            caught_up: true,
+            unread: Vec::new(),
+        };
+        let caught_up = tablepro_sync::api::key_flows::CaughtUp::from_page(scope, &page);
         self.service
-            .roster_read(
-                team,
-                Roster {
-                    members: members
-                        .iter()
-                        .map(|(account, role)| TeamMember {
-                            account: *account,
-                            role: *role,
-                        })
-                        .collect(),
-                    role,
-                    rotation_due: false,
-                    stopped: Vec::new(),
-                    caught_up: true,
-                },
-            )
+            .roster_read(team, Roster::of(&info, caught_up))
             .await
             .unwrap();
     }
