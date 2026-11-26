@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProImport
 
 extension WelcomeViewModel {
     func handle(_ request: WelcomeRequest) {
@@ -23,8 +24,8 @@ extension WelcomeViewModel {
             urlImportPresented = true
         case .openProjectFolder:
             openProjectFolder()
-        case .showWelcomeSheet:
-            showWelcomeSheet()
+        case .importHandoff(let handoff):
+            handOff(handoff)
         }
     }
 

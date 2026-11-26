@@ -18,7 +18,7 @@ public sealed partial class ShellTests
         var folder = AppSession.NewDataFolder(theme);
         using (var app = AppSession.Relaunch(folder, theme))
         {
-            app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+            app.OpenSampleFromHelp();
             app.FindByName("Track", app.Find("ObjectTree"));
             var tabs = app.Find("Tabs");
 
@@ -88,7 +88,7 @@ public sealed partial class ShellTests
     public void ADoubleClickRenamesAQueryTabWithOneTabOrManyInEitherWindow(string theme)
     {
         using var app = AppSession.Relaunch(AppSession.NewDataFolder(theme), theme, maximize: false);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         var tabs = app.Find("Tabs");
 
@@ -126,7 +126,7 @@ public sealed partial class ShellTests
     public void NewAndReopenedQueryTabsNeverRepeatANumberAcrossWindows(string theme)
     {
         using var app = AppSession.Relaunch(AppSession.NewDataFolder(theme), theme, maximize: false);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         var tabs = app.Find("Tabs");
         int Count(string name) => tabs.FindAllDescendants(condition =>

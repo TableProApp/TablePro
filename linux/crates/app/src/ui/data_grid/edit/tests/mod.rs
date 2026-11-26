@@ -206,7 +206,7 @@ fn edit_keys_match_cell_editor_entries() {
     for (action, outcome) in expected {
         let triggers = crate::application::triggers_for(action);
         assert!(!triggers.is_empty(), "{action} is not in the table");
-        for accel in triggers {
+        for accel in &triggers {
             let (key, modifiers) = keystroke(accel);
             assert_eq!(editor_key(key, modifiers), Some(outcome), "{accel}");
         }

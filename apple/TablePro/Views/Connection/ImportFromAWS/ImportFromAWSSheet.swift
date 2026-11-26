@@ -3,9 +3,9 @@ import TableProImport
 import TableProPluginKit
 
 struct ImportFromAWSSheet: View {
+    let onCancel: () -> Void
     let onFinished: (ImportOutcome) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var session = AWSDiscoverySession()
     @State private var step: Step = .configure
     @State private var discoveryToken = 0
@@ -25,7 +25,7 @@ struct ImportFromAWSSheet: View {
                 AWSDiscoveryConfigurationStep(
                     session: session,
                     onStart: beginDiscovery,
-                    onCancel: { dismiss() }
+                    onCancel: onCancel
                 )
 
             case .discovering:
@@ -37,6 +37,7 @@ struct ImportFromAWSSheet: View {
                     banner: notice.map(ImportReviewBanner.notice),
                     preview: preview,
                     onBack: { step = .configure },
+                    onCancel: onCancel,
                     onFinished: onFinished
                 )
 
@@ -81,7 +82,7 @@ struct ImportFromAWSSheet: View {
                 Button(String(localized: "Back")) { step = .configure }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(String(localized: "Done")) { dismiss() }
+                Button(String(localized: "Done")) { onCancel() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }

@@ -78,11 +78,30 @@ fn approved(url: &Url) -> Result<Url, WebAuthenticationError> {
 }
 
 fn mac(dir: &Path, endpoints: Endpoints, keyring: Arc<Keyring>, authenticator: Option<Arc<Authenticator>>) -> Account {
-    let settings = AccountSettings {
-        client: AppClient::MACOS,
-        legacy_entitlement_file: Some(dir.join("Account").join("entitlement.jwt")),
-        ..stub_settings(dir, endpoints)
-    };
+    apple(
+        AccountSettings {
+            client: AppClient::MACOS,
+            legacy_entitlement_file: Some(dir.join("Account").join("entitlement.jwt")),
+            ..stub_settings(dir, endpoints)
+        },
+        keyring,
+        authenticator,
+    )
+}
+
+// The iOS app has no sign-in from before the core to adopt.
+fn iphone(dir: &Path, endpoints: Endpoints, keyring: Arc<Keyring>, authenticator: Arc<Authenticator>) -> Account {
+    apple(
+        AccountSettings {
+            client: AppClient::IOS,
+            ..stub_settings(dir, endpoints)
+        },
+        keyring,
+        Some(authenticator),
+    )
+}
+
+fn apple(settings: AccountSettings, keyring: Arc<Keyring>, authenticator: Option<Arc<Authenticator>>) -> Account {
     let hosts = AccountHosts {
         vaults: Arc::new(crate::token_vault::SingleVault(keyring)),
         browser: Arc::new(super::tests::NoBrowser),
@@ -165,6 +184,48 @@ async fn a_mac_signs_in_through_its_web_authenticator_as_its_own_client() {
             .as_deref(),
         Some("stub-refresh")
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_iphone_signs_in_through_the_same_scheme_as_its_own_client_and_registers_as_ios() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let requests = Asked::default();
+    let authenticator = Authenticator::answering(approved);
+    let account = iphone(
+        dir.path(),
+        production_stub(requests.clone()),
+        Keyring::holding(None),
+        authenticator.clone(),
+    );
+
+    account.sign_in(std::future::pending()).await.expect("signed in");
+
+    let [(url, scheme)] = authenticator.asked().try_into().expect("one page");
+    assert_eq!(scheme, "app.tablepro");
+    assert_eq!(query(&url, "client_id").as_deref(), Some("tablepro-ios"));
+    assert_eq!(
+        query(&url, "redirect_uri").as_deref(),
+        Some("app.tablepro:/oauth/callback")
+    );
+    let sent = asked(&requests);
+    let exchange = sent
+        .iter()
+        .find(|request| request.starts_with("POST /oauth/token"))
+        .expect("the exchange");
+    assert_eq!(
+        form(exchange.splitn(3, ' ').nth(2).unwrap_or_default())
+            .get("client_id")
+            .map(String::as_str),
+        Some("tablepro-ios")
+    );
+    let registration = sent
+        .iter()
+        .find_map(|request| request.strip_prefix("POST /v2/devices "))
+        .expect("the device registration");
+    let body: serde_json::Value = serde_json::from_str(registration).expect("a JSON body");
+    assert_eq!(body["platform"], "ios");
+    assert_eq!(body["machine_id"], machine().as_str());
+    assert!(signed_in(&account).entitlement.is_some());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -39,7 +39,7 @@ public sealed partial class ShellTests
     public void VimModeEditsTheQueryAndShowsItsModeOnTheBar(string theme)
     {
         var folder = AppSession.NewDataFolder(theme);
-        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}", "vimMode": true }""");
+        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}", "setupGuideSeen": true, "vimMode": true }""");
         using var app = AppSession.Relaunch(folder, theme);
 
         OpenSample(app);

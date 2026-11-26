@@ -43,14 +43,6 @@ internal struct WelcomeImportMenuButton: NSViewRepresentable {
 
     @MainActor
     internal final class Coordinator: NSObject {
-        internal enum Command: Int, CaseIterable {
-            case importConnectionsFile
-            case importFromURL
-            case importFromApp
-            case importFromAWS
-            case openProjectFolder
-        }
-
         var actions: WelcomeImportActions
 
         init(actions: WelcomeImportActions) {
@@ -60,29 +52,29 @@ internal struct WelcomeImportMenuButton: NSViewRepresentable {
         func makeMenu() -> NSMenu {
             let menu = NSMenu()
             menu.addItem(NSMenuItem(title: String(localized: "Import"), action: nil, keyEquivalent: ""))
-            menu.addItem(item(String(localized: "Import Connections…"), .importConnectionsFile))
-            menu.addItem(item(String(localized: "Import from URL…"), .importFromURL))
-            menu.addItem(item(String(localized: "Import from Other App…"), .importFromApp))
-            menu.addItem(item(String(localized: "Import from AWS…"), .importFromAWS))
-            menu.addItem(.separator())
-            menu.addItem(item(String(localized: "Open Project Folder…"), .openProjectFolder))
+            for command in ImportCommand.allCases {
+                if command.startsGroup {
+                    menu.addItem(.separator())
+                }
+                menu.addItem(item(command))
+            }
             return menu
         }
 
         @objc
         func runCommand(_ sender: NSMenuItem) {
-            guard let command = Command(rawValue: sender.tag) else { return }
+            guard let command = ImportCommand(rawValue: sender.tag) else { return }
             switch command {
-            case .importConnectionsFile: actions.importConnectionsFile()
-            case .importFromURL: actions.importFromURL()
-            case .importFromApp: actions.importFromApp()
-            case .importFromAWS: actions.importFromAWS()
-            case .openProjectFolder: actions.openProjectFolder()
+            case .connectionsFile: actions.importConnectionsFile()
+            case .url: actions.importFromURL()
+            case .otherApp: actions.importFromApp()
+            case .aws: actions.importFromAWS()
+            case .projectFolder: actions.openProjectFolder()
             }
         }
 
-        private func item(_ title: String, _ command: Command) -> NSMenuItem {
-            let item = NSMenuItem(title: title, action: #selector(runCommand(_:)), keyEquivalent: "")
+        private func item(_ command: ImportCommand) -> NSMenuItem {
+            let item = NSMenuItem(title: command.title, action: #selector(runCommand(_:)), keyEquivalent: "")
             item.target = self
             item.tag = command.rawValue
             return item

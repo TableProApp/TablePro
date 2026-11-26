@@ -32,7 +32,7 @@ public sealed partial class ShellTests
         app.WaitForClose("New connection");
 
         // Copied from the page's own search box, so the test needs no clipboard of its own.
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.Find("HomeItem").AsListBoxItem().Select();
         var search = app.Find("LibrarySearch").FindFirstDescendant(condition => condition.ByControlType(ControlType.Edit));
         Assert.NotNull(search);
@@ -105,7 +105,7 @@ public sealed partial class ShellTests
     public void AGroupTakesAColourFromItsMenu(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.Find("HomeItem").AsListBoxItem().Select();
         var tree = app.Find("ConnectionTree");
         app.Find("NewGroupButton").AsButton().Invoke();
@@ -132,7 +132,7 @@ public sealed partial class ShellTests
     {
         const string Renamed = "AC/DC (details)";
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.Click(app.FindByName("Artist", app.Find("ObjectTree")), () => app.TryFind("TableStatus") is not null);
         var grid = app.Find("ResultsGrid");
         app.WaitForCell(grid, 0, 1, value => value == "AC/DC");
@@ -170,7 +170,7 @@ public sealed partial class ShellTests
     public void ColumnsHideMoveAndFreezeAndTheTableOpensAgainWithThem(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         var tree = app.Find("ObjectTree");
         app.Click(app.FindByName("Track", tree), () => app.TryFind("TableStatus") is not null);
         var grid = app.Find("ResultsGrid");
@@ -213,7 +213,7 @@ public sealed partial class ShellTests
     {
         const int Milliseconds = 6;
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.Click(app.FindByName("Track", app.Find("ObjectTree")), () => app.TryFind("TableStatus") is not null);
         var grid = app.Find("ResultsGrid");
         var values = Enumerable.Range(0, 5)

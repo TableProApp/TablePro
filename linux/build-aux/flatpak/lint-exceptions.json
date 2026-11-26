@@ -1,10 +1,18 @@
 {
     "app.tablepro.TablePro": [
         "finish-args-home-filesystem-access",
-        "finish-args-has-socket-ssh-auth"
+        "finish-args-has-socket-ssh-auth",
+        "finish-args-flatpak-appdata-folder-com.jetbrains.DataGrip-ro-access",
+        "finish-args-flatpak-appdata-folder-io.beekeeperstudio.Studio-ro-access",
+        "finish-args-flatpak-appdata-folder-io.beekeeperstudio.desktop-ro-access",
+        "finish-args-flatpak-appdata-folder-io.dbeaver.DBeaverCommunity-ro-access"
     ],
     "app.tablepro.TablePro.Devel": [
         "finish-args-home-filesystem-access",
-        "finish-args-has-socket-ssh-auth"
+        "finish-args-has-socket-ssh-auth",
+        "finish-args-flatpak-appdata-folder-com.jetbrains.DataGrip-ro-access",
+        "finish-args-flatpak-appdata-folder-io.beekeeperstudio.Studio-ro-access",
+        "finish-args-flatpak-appdata-folder-io.beekeeperstudio.desktop-ro-access",
+        "finish-args-flatpak-appdata-folder-io.dbeaver.DBeaverCommunity-ro-access"
     ]
 }

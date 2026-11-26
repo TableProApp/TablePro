@@ -184,7 +184,7 @@ fn rows_import_in_order_and_one_dbx_cannot_read_is_left_out() {
         ]
     );
     assert_eq!(
-        home.importer.inventory_blocking(),
+        home.importer.inventory_blocking().expect("an inventory"),
         Inventory {
             connections: 9,
             saved_queries: 4
@@ -769,7 +769,11 @@ fn the_store_is_found_where_tauri_keeps_it_on_each_platform() {
         let home = Home::with_store(platform, &fixture());
 
         assert!(home.importer.is_available_blocking(), "{platform:?}");
-        assert_eq!(home.importer.inventory_blocking().connections, 9, "{platform:?}");
+        assert_eq!(
+            home.importer.inventory_blocking().expect("an inventory").connections,
+            9,
+            "{platform:?}"
+        );
     }
 }
 
@@ -798,7 +802,10 @@ fn sql_the_store_holds_never_runs() {
          SELECT x AS rowid, '{\"id\":\"v\",\"db_type\":\"mysql\"}' AS config_json FROM n;",
     );
 
-    assert_eq!(home.importer.inventory_blocking(), Inventory::default());
+    assert!(matches!(
+        home.importer.inventory_blocking(),
+        Err(ForeignImportError::Parse { .. })
+    ));
     let outcome = home
         .importer
         .collect_blocking(&CONNECTIONS_ONLY, &CancellationToken::new());

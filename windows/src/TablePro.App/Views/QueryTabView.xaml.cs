@@ -56,6 +56,7 @@ public sealed partial class QueryTabView
         var engineId = share.Session.EngineId;
         var restoring = filePath is not null && onDisk is null;
         InitializeComponent();
+        DisplaySettings.FollowKeys(this, ShowKeys);
         Results.ShowsEdits = true;
         var grid = Results.GridView;
         SqlText.Text = onDisk?.Text ?? sql ?? string.Empty;
@@ -978,6 +979,14 @@ public sealed partial class QueryTabView
         }
     }
 
+
+    // The keys come from the shortcut preset, so the tooltips name them from it.
+    private void ShowKeys()
+    {
+        ToolTipService.SetToolTip(RunButton, DisplaySettings.Tip(RunButton.Label, "executeAllStatements"));
+        ToolTipService.SetToolTip(StopButton, DisplaySettings.Tip(StopButton.Label, "cancelQuery"));
+        ToolTipService.SetToolTip(SaveChangesButton, DisplaySettings.Tip(SaveChangesButton.Label, "saveChanges"));
+    }
     private void OnRun(object sender, RoutedEventArgs e) => Run();
 
     // :w runs the query, as the macOS editor's does.
