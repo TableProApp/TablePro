@@ -19,6 +19,21 @@ nonisolated enum ElsewhereWriter {
         try write(query: query, to: core)
     }
 
+    // The library becomes exactly these connections, each keeping what the store held beside it.
+    static func replace(connections: [DatabaseConnection], in libraryDirectory: URL) throws {
+        let library = try core(in: libraryDirectory).library()
+        let contents = try CoreLibraryStore.blocking { try await library.libraryContents() }
+        let stored = Dictionary(contents.connections.map { ($0.connection.id.lowercased(), $0) }, uniquingKeysWith: { first, _ in first })
+        let kept = Set(connections.map { $0.id.uuidString.lowercased() })
+        let write = LibraryWriteRecord(
+            connections: connections.map { LibraryRecordMapping.record($0, keeping: stored[$0.id.uuidString.lowercased()]) },
+            groups: contents.groups,
+            tags: contents.tags,
+            favorites: contents.favorites.filter { kept.contains($0.lowercased()) }
+        )
+        _ = try CoreLibraryStore.blocking { try await library.replaceLibrary(library: write) }
+    }
+
     static func write(query: SavedQuery, in libraryDirectory: URL) throws {
         try write(query: query, to: core(in: libraryDirectory))
     }

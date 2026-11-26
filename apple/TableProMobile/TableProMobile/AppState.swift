@@ -169,10 +169,28 @@ final class AppState {
     }
 
     // A pass the engine finished may have written the stores, so each is read again when it moved. A part this device
-    // could not save waits: its next write saves it, and a reload would put back what the person changed.
+    // could not save is written again first; if the store moved under it, only what the store holds can sync, so the
+    // reload takes the store's.
     private func reloadAfterSync() {
         savedQueries.reloadAfterSync()
-        guard loadStatus == .ready, unsavedLibraryParts.isEmpty else { return }
+        guard loadStatus == .ready else { return }
+        if !unsavedLibraryParts.isEmpty {
+            persist(connections: connections)
+        }
+        reloadLibraryIfMoved()
+        // Unread copies another device deleted leave the previous stable's files with a write, which also purges what
+        // they left; one that fails is tried again after the next pass.
+        let pending = pendingUnreadableRemovals
+        let unreadable = library.unreadable
+        let owed = !pending.connections.isDisjoint(with: unreadable.connections)
+            || !pending.groups.isDisjoint(with: unreadable.groups)
+            || !pending.tags.isDisjoint(with: unreadable.tags)
+        if owed {
+            persist(connections: connections)
+        }
+    }
+
+    private func reloadLibraryIfMoved() {
         let loaded: CoreLibraryStore.Library
         do {
             guard try library.changedSinceRead() else { return }
@@ -180,6 +198,10 @@ final class AppState {
         } catch {
             Self.logger.error("The library did not reload after a sync pass: \(LogRedaction.publicDescription(of: error), privacy: .public)")
             return
+        }
+        if !unsavedLibraryParts.isEmpty {
+            Self.logger.error("A library change this device could not save gave way to what a sync pass wrote")
+            unsavedLibraryParts.removeAll()
         }
         let removedIds = Set(connections.map(\.id))
             .subtracting(loaded.connections.map(\.id))
@@ -268,28 +290,7 @@ final class AppState {
         libraryPublisher.publish(connections)
     }
 
-    @discardableResult
-    func applySyncedConnections(_ pulled: [DatabaseConnection]) -> Bool {
-        guard !refuseWriteIfNotReady() else { return false }
-        let merged = pulled.map { MongoURISecretMigration.keepingSecretsInKeychain($0, in: secureStore) }
-        guard merged != connections || unsavedLibraryParts.contains(.connections) else { return true }
-        let removedIds = Set(connections.map(\.id)).subtracting(merged.map(\.id))
-        guard persist(connections: merged, onlyIfSaved: true) else { return false }
-        localState.purge(removedIds)
-        sessionModels.purge(removedIds)
-        savedQueries.removeRecords(ofConnections: removedIds, tombstoning: false)
-        publishLibrary()
-        return true
-    }
 
-    // An owner this build cannot read syncs only when its standing says so; one just deleted still did.
-    private func syncsConnection(_ id: UUID) -> Bool {
-        if let connection = connections.first(where: { $0.id == id }) {
-            return connection.participatesInSync
-        }
-        guard library.unreadable.connections.contains(id) else { return true }
-        return syncCoordinator.metadata.standing(ofConnection: id) == .syncs
-    }
 
     private func loadPersistedData() {
         do {
@@ -360,17 +361,15 @@ final class AppState {
 
     // MARK: - Persistence Bridges
 
-    // A pulled change shown but not saved would make the next equal merge report it saved and move the token past it.
-    // A local change whose save failed is in memory only, so an equal pull saves it again rather than skip it.
+    // A local change whose save failed is in memory only, so the next write saves it again.
     @discardableResult
-    private func persist(connections: [DatabaseConnection], onlyIfSaved: Bool = false) -> Bool {
+    private func persist(connections: [DatabaseConnection]) -> Bool {
         let heldKeys = PastedSSHKeyMigration.keysStillHeld(
             pastedSSHKeysAwaitingKeychain,
             by: connections,
             orUnreadable: library.unreadable.connections
         )
         let saved = writeLibrary(libraryImage(connections: connections), keepingPastedSSHKeys: heldKeys, part: "connections")
-        guard saved || !onlyIfSaved else { return false }
         markLibraryPart(.connections, saved: saved)
         connectionsState = .loaded(connections)
         pastedSSHKeysAwaitingKeychain = heldKeys
@@ -382,9 +381,8 @@ final class AppState {
     }
 
     @discardableResult
-    private func persist(groups: [ConnectionGroup], onlyIfSaved: Bool = false) -> Bool {
+    private func persist(groups: [ConnectionGroup]) -> Bool {
         let saved = writeLibrary(libraryImage(groups: groups), keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain, part: "groups")
-        guard saved || !onlyIfSaved else { return false }
         markLibraryPart(.groups, saved: saved)
         groupsState = .loaded(groups)
         pruneLibraryPreferences()
@@ -392,9 +390,8 @@ final class AppState {
     }
 
     @discardableResult
-    private func persist(tags: [ConnectionTag], onlyIfSaved: Bool = false) -> Bool {
+    private func persist(tags: [ConnectionTag]) -> Bool {
         let saved = writeLibrary(libraryImage(tags: tags), keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain, part: "tags")
-        guard saved || !onlyIfSaved else { return false }
         markLibraryPart(.tags, saved: saved)
         tagsState = .loaded(tags)
         return saved
@@ -442,17 +439,6 @@ final class AppState {
         syncCoordinator.metadata.removalsPendingForUnreadableCopies.subtract(removed.recordNames)
     }
 
-    // Marked unsaved, so the merge that follows writes each file even when its list is unchanged. A record the server
-    // lists again was saved after the deletion still waiting from an earlier pull.
-    private func removeWithNextSave(_ deleted: UnreadableCopies, keeping listed: UnreadableCopies) {
-        let metadata = syncCoordinator.metadata
-        metadata.removalsPendingForUnreadableCopies = metadata.removalsPendingForUnreadableCopies
-            .subtracting(listed.recordNames)
-            .union(deleted.recordNames)
-        if !deleted.connections.isEmpty { unsavedLibraryParts.insert(.connections) }
-        if !deleted.groups.isEmpty { unsavedLibraryParts.insert(.groups) }
-        if !deleted.tags.isEmpty { unsavedLibraryParts.insert(.tags) }
-    }
 
     // What belonged to a connection another device deleted goes with it, as for one this device could read.
     private func purgeRemovedUnreadable(_ ids: Set<UUID>) {

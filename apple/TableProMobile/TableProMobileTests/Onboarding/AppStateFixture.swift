@@ -93,6 +93,15 @@ struct AppStateFixture {
         )
     }
 
+    // A change another device made, as the engine's pass writes it to the core's library; the app reads it back as it
+    // does after every pass.
+    func pull(_ connections: [DatabaseConnection], into state: AppState, through engine: FakeIOSSyncEngine) async {
+        let directory = libraryDirectory
+        engine.update { $0.pass = { _ in try? ElsewhereWriter.replace(connections: connections, in: directory) } }
+        await state.syncCoordinator.sync(.userRequest)
+        engine.update { $0.pass = nil }
+    }
+
     func makeFormViewModel(
         editing connection: DatabaseConnection? = nil,
         certificateStore: any CertificateMaterialStoring = InMemoryCertificateStore()

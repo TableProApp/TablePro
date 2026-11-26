@@ -12,7 +12,6 @@ struct AppStateLibraryTests {
     private let searchIndex = RecordingSearchIndex()
     private let widgetWrites = WidgetWriteCounter()
 
-    private var metadata: SyncMetadataStorage { fixture.metadata }
 
     init() throws {
         fixture = try AppStateFixture()
@@ -32,12 +31,14 @@ struct AppStateLibraryTests {
     private func makeState(
         syncEnabled: Bool,
         secureStore: any SecureStore = MockSecureStore(),
-        publisher: ConnectionLibraryPublisher? = nil
+        publisher: ConnectionLibraryPublisher? = nil,
+        engine: FakeIOSSyncEngine? = nil
     ) -> AppState {
         fixture.makeState(
             syncEnabled: syncEnabled,
             secureStore: secureStore,
-            libraryPublisher: publisher ?? makePublisher()
+            libraryPublisher: publisher ?? makePublisher(),
+            engine: engine
         )
     }
 
@@ -141,7 +142,7 @@ struct AppStateLibraryTests {
         #expect(rows.last?["name"] as? Int == 5)
     }
 
-    @Test("Opening the sample twice keeps one sample connection, and it is never marked for sync")
+    @Test("Opening the sample twice keeps one sample connection, and the core's store keeps it on this device")
     func sampleIsLocal() throws {
         let state = makeState(syncEnabled: true)
 
@@ -151,28 +152,11 @@ struct AppStateLibraryTests {
         #expect(first == second)
         #expect(state.connections.filter(\.isSample).count == 1)
         #expect(state.connections.first?.database == SampleDatabaseInstaller.fileName)
-        #expect(!metadata.dirtyIds(for: .connection).contains(first.uuidString))
-
-        state.removeConnections([first])
-        #expect(metadata.tombstones(for: .connection).isEmpty)
-    }
-
-    @Test("An ordinary connection is marked for sync while sync is on")
-    func ordinaryConnectionIsMarked() {
-        let state = makeState(syncEnabled: true)
-        let connection = DatabaseConnection(name: "Prod", type: .postgresql)
-
-        #expect(state.addConnection(connection))
-        #expect(metadata.dirtyIds(for: .connection).contains(connection.id.uuidString))
-    }
-
-    @Test("A change made while sync is off waits for sync instead of being dropped")
-    func changeWaitsWhileOff() {
-        let state = makeState(syncEnabled: false)
-        let connection = DatabaseConnection(name: "Prod", type: .postgresql)
-
-        #expect(state.addConnection(connection))
-        #expect(metadata.dirtyIds(for: .connection).contains(connection.id.uuidString))
+        let document = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.coreConnectionsFile)) as? [String: Any]
+        )
+        let entries = try #require(document["connections"] as? [[String: Any]])
+        #expect(entries.first { ($0["id"] as? String)?.lowercased() == first.uuidString.lowercased() }?["is_sample"] as? Bool == true)
     }
 
     // Changed on purpose: the origin page replaces the welcome page and has its own seen key.
@@ -266,17 +250,18 @@ struct AppStateLibraryTests {
         #expect(searchIndex.indexedIds == [kept.id])
     }
 
-    @Test("A connection deleted on another device leaves Spotlight when sync merges")
+    @Test("A connection deleted on another device leaves Spotlight after the pass")
     func syncedDeletionLeavesTheIndex() async throws {
         let publisher = makePublisher()
-        let state = makeState(syncEnabled: false, publisher: publisher)
+        let engine = FakeIOSSyncEngine()
+        let state = makeState(syncEnabled: true, publisher: publisher, engine: engine)
+        state.connectSync()
         let kept = DatabaseConnection(name: "Kept", type: .postgresql)
         let deleted = DatabaseConnection(name: "Deleted", type: .postgresql)
         #expect(state.addConnection(kept))
         #expect(state.addConnection(deleted))
 
-        let merged = state.connections.filter { $0.id != deleted.id }
-        state.applySyncedConnections(merged)
+        await fixture.pull(state.connections.filter { $0.id != deleted.id }, into: state, through: engine)
         await publisher.settle()
 
         #expect(state.connections.map(\.id) == [kept.id])
@@ -299,15 +284,16 @@ struct AppStateLibraryTests {
         #expect(searchIndex.indexedIds == [member.id])
     }
 
-    @Test("A library that failed to load refuses a sync merge and publishes nothing until it loads")
+    @Test("A library that failed to load publishes nothing after a sync pass until it loads")
     func failedLoadPublishesNothing() async throws {
         let file = fixture.connectionsFile
         let unreadable = Data("{ not json".utf8)
         try unreadable.write(to: file)
         let publisher = makePublisher()
-        let state = makeState(syncEnabled: false, publisher: publisher)
+        let state = makeState(syncEnabled: true, publisher: publisher, engine: FakeIOSSyncEngine())
+        state.connectSync()
 
-        state.applySyncedConnections([DatabaseConnection(name: "Merged", type: .postgresql)])
+        await state.syncCoordinator.sync(.userRequest)
         await publisher.settle()
 
         #expect(try Data(contentsOf: file) == unreadable)
@@ -336,7 +322,7 @@ struct AppStateLibraryTests {
         #expect(searchIndex.indexedIds == [second])
     }
 
-    @Test("Deleting a tag strips it from the connections that carry it and syncs only those")
+    @Test("Deleting a tag strips it from the connections that carry it")
     func tagDeletionStripsCarriers() throws {
         let state = makeState(syncEnabled: true)
         let tag = ConnectionTag(name: "Staging", color: .orange)
@@ -347,14 +333,11 @@ struct AppStateLibraryTests {
         #expect(state.addConnection(bystander))
         let sample = try state.openSampleDatabase()
         #expect(state.mutateConnection(sample) { $0.tagIds = [tag.id] } == .applied)
-        metadata.clearDirty(type: .connection)
 
         #expect(state.deleteTag(tag.id))
 
         #expect(!state.tags.contains { $0.id == tag.id })
         #expect(state.connections.allSatisfy { !$0.tagIds.contains(tag.id) })
-        #expect(metadata.dirtyIds(for: .connection) == [carrier.id.uuidString])
-        #expect(metadata.tombstones(for: .tag).map(\.id) == [tag.id.uuidString])
 
         let reloaded = makeState(syncEnabled: true)
         #expect(!reloaded.tags.contains { $0.id == tag.id })
@@ -372,7 +355,6 @@ struct AppStateLibraryTests {
 
         #expect(state.tags.contains { $0.id == preset.id })
         #expect(state.connections.first?.tagIds == [preset.id])
-        #expect(metadata.tombstones(for: .tag).isEmpty)
     }
 
     @Test("Handoff is offered for a saved connection until it is deleted, and never for the sample")
@@ -415,7 +397,6 @@ struct AppStateLibraryTests {
 
         state.setFavorite([stored.id], isFavorite: true)
         state.moveConnections([stored.id], toGroup: group.id)
-        metadata.clearDirty(type: .connection)
         viewModel.port = "5433"
         let savedId = await viewModel.save(appState: state, secureStore: MockSecureStore())
 
@@ -424,22 +405,19 @@ struct AppStateLibraryTests {
         #expect(saved.isFavorite)
         #expect(saved.groupId == group.id)
         #expect(saved.port == 5_433)
-        #expect(metadata.dirtyIds(for: .connection).contains(stored.id.uuidString))
     }
 
-    @Test("Saving an untouched form writes nothing and marks nothing for sync")
+    @Test("Saving an untouched form writes nothing")
     func untouchedSaveWritesNothing() async throws {
         let state = makeState(syncEnabled: false)
         let stored = DatabaseConnection(name: "Prod", type: .postgresql, host: "db.example.com", port: 5_432)
         #expect(state.addConnection(stored))
-        metadata.clearDirty(type: .connection)
         let before = try Data(contentsOf: fixture.connectionsFile)
 
         let savedId = await fixture.makeFormViewModel(editing: stored)
             .save(appState: state, secureStore: MockSecureStore())
 
         #expect(savedId == stored.id)
-        #expect(metadata.dirtyIds(for: .connection).isEmpty)
         #expect(try Data(contentsOf: fixture.connectionsFile) == before)
     }
 
@@ -633,25 +611,6 @@ struct AppStateLibraryTests {
 
     // MARK: - Database file paths
 
-    @Test("A sync merge the library could not save reports so until a save goes through")
-    func unsavedSyncMergeIsReported() throws {
-        let state = makeState(syncEnabled: false)
-        let original = DatabaseConnection(name: "Orders", type: .postgresql)
-        #expect(state.addConnection(original))
-        var renamed = original
-        renamed.name = "Renamed"
-
-        try FileManager.default.removeItem(at: fixture.coreConnectionsFile)
-        try FileManager.default.createDirectory(at: fixture.coreConnectionsFile, withIntermediateDirectories: false)
-        #expect(!state.applySyncedConnections([renamed]))
-        #expect(!state.applySyncedConnections([renamed]))
-
-        try FileManager.default.removeItem(at: fixture.coreConnectionsFile)
-        #expect(state.applySyncedConnections([renamed]))
-        let reloaded = try JSONDecoder().decode([DatabaseConnection].self, from: Data(contentsOf: fixture.connectionsFile))
-        #expect(reloaded.map(\.name) == ["Renamed"])
-    }
-
     @Test("An older build's SSL require keeps its spelling through a library save")
     func legacySSLRequireSurvivesASave() throws {
         let legacy = """
@@ -671,7 +630,7 @@ struct AppStateLibraryTests {
         #expect(ssl["mode"] as? String == "require")
     }
 
-    @Test("Stored file paths load and save exactly as written, and nothing is marked for sync")
+    @Test("Stored file paths load and save exactly as written")
     func storedPathsAreNeverRewritten() throws {
         try Data().write(to: fixture.documentsFile("notes.db"))
         let earlier = DatabaseConnection(
@@ -705,7 +664,6 @@ struct AppStateLibraryTests {
             from: Data(contentsOf: fixture.connectionsFile)
         )
         #expect(reloaded.map(\.database) == [earlier, otherDevice, mac, added].map(\.database))
-        #expect(metadata.dirtyIds(for: .connection) == [added.id.uuidString])
     }
 
     @Test("Launching records the container the app runs in")
@@ -822,7 +780,7 @@ struct AppStateLibraryTests {
         return try #require(attributes[.systemFileNumber] as? Int)
     }
 
-    @Test("A key pasted on an older build moves into the secure store and out of the file, without a sync upload")
+    @Test("A key pasted on an older build moves into the secure store and out of the file")
     func legacyKeyMoves() throws {
         let id = UUID()
         _ = try writeLegacyLibrary(id: id)
@@ -837,7 +795,6 @@ struct AppStateLibraryTests {
         let rewritten = try #require(String(data: Data(contentsOf: fixture.connectionsFile), encoding: .utf8))
         #expect(!rewritten.contains("privateKeyData"))
         #expect(!rewritten.contains(keyMarker))
-        #expect(metadata.dirtyIds(for: .connection).isEmpty)
     }
 
     @Test("A key in a connection this build cannot read moves into the secure store and out of the file")
@@ -945,7 +902,6 @@ struct AppStateLibraryTests {
         #expect(state.connections.map(\.id) == [id])
         #expect(try Data(contentsOf: fixture.connectionsFile) == legacy)
         #expect(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(id.uuidString)") == nil)
-        #expect(metadata.dirtyIds(for: .connection).isEmpty)
     }
 
     @Test("A key still waiting for the store survives a later library write and moves on the next launch")
@@ -998,7 +954,6 @@ struct AppStateLibraryTests {
         #expect(state.loadStatus == .ready)
         #expect(try keysInFile() == [ids[0]: legacyKey(for: ids[0])])
         #expect(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(ids[1].uuidString)") == legacyKey(for: ids[1]))
-        #expect(metadata.dirtyIds(for: .connection).isEmpty)
     }
 }
 

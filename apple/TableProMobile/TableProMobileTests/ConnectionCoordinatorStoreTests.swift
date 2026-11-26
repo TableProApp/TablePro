@@ -181,12 +181,14 @@ struct ConnectionRecordChangeTests {
 @Suite("Connection coordinator store")
 struct ConnectionCoordinatorStoreTests {
     private let fixture: AppStateFixture
+    private let engine = FakeIOSSyncEngine()
     private let appState: AppState
     private let store: ConnectionCoordinatorStore
 
     init() throws {
         fixture = try AppStateFixture()
-        appState = fixture.makeState(syncEnabled: false)
+        appState = fixture.makeState(syncEnabled: true, engine: engine)
+        appState.connectSync()
         store = ConnectionCoordinatorStore(connectionManager: appState.connectionManager)
     }
 
@@ -307,7 +309,7 @@ struct ConnectionCoordinatorStoreTests {
         synced.safeModeLevel = .readOnly
         synced.isReadOnly = true
         synced.additionalFields["schema"] = "reporting"
-        appState.applySyncedConnections([synced])
+        await fixture.pull([synced], into: appState, through: engine)
         store.reconcile(from: beforeSync, to: appState.connections)
         let generationAfterSync = store.generation(for: original.id)
         let coordinator = store.coordinator(for: synced, appState: appState)

@@ -39,19 +39,20 @@ struct AppStateSyncWiringTests {
         #expect(state.savedQueries.contents.queries.map(\.id) == [query.id])
     }
 
-    @Test("A save of one part also removes the unread groups and tags another device deleted")
-    func oneSaveRemovesEveryPendingUnreadCopy() throws {
+    @Test("A pass removes the unread groups and tags another device deleted, all in one write")
+    func onePassRemovesEveryPendingUnreadCopy() async throws {
+        let engine = FakeIOSSyncEngine()
         let group = UUID()
         let tag = UUID()
         let groupsFile = fixture.libraryDirectory.appendingPathComponent("groups.json")
         let tagsFile = fixture.libraryDirectory.appendingPathComponent("tags.json")
         try Data(#"[{"id":"\#(group.uuidString)","name":7}]"#.utf8).write(to: groupsFile)
         try Data(#"[{"id":"\#(tag.uuidString)","name":8}]"#.utf8).write(to: tagsFile)
-        let state = makeSyncedState()
+        let state = makeSyncedState(engine: engine)
         #expect(state.unreadableCopies == UnreadableCopies(groups: [group], tags: [tag]))
         fixture.metadata.removalsPendingForUnreadableCopies = UnreadableCopies(groups: [group], tags: [tag]).recordNames
 
-        #expect(state.applySyncedConnections([DatabaseConnection(name: "Pulled", type: .postgresql)]))
+        await fixture.pull([DatabaseConnection(name: "Pulled", type: .postgresql)], into: state, through: engine)
 
         #expect(state.unreadableCopies.isEmpty)
         #expect(fixture.metadata.removalsPendingForUnreadableCopies.isEmpty)
@@ -62,7 +63,8 @@ struct AppStateSyncWiringTests {
     }
 
     @Test("A removal a failed write already made still purges what the connection left once a write goes through")
-    func failedWriteKeepsThePurgeOwed() throws {
+    func failedWriteKeepsThePurgeOwed() async throws {
+        let engine = FakeIOSSyncEngine()
         let held = DatabaseConnection(name: "Held", type: .postgresql)
         try JSONEncoder().encode([held]).write(to: fixture.connectionsFile)
         _ = fixture.makeState(syncEnabled: false)
@@ -79,7 +81,7 @@ struct AppStateSyncWiringTests {
 
         let secureStore = MockSecureStore()
         try secureStore.store("secret", forKey: "com.TablePro.password.\(held.id.uuidString)")
-        let state = fixture.makeState(syncEnabled: true, secureStore: secureStore)
+        let state = fixture.makeState(syncEnabled: true, secureStore: secureStore, engine: engine)
         state.connectSync()
         #expect(state.unreadableCopies == UnreadableCopies(connections: [held.id], groups: [group]))
         fixture.metadata.removalsPendingForUnreadableCopies = UnreadableCopies(connections: [held.id], groups: [group]).recordNames
@@ -87,9 +89,10 @@ struct AppStateSyncWiringTests {
         try FileManager.default.createDirectory(at: groupsFile, withIntermediateDirectories: false)
         let pulled = DatabaseConnection(name: "Pulled", type: .postgresql)
 
-        #expect(!state.applySyncedConnections([pulled]))
+        await fixture.pull([pulled], into: state, through: engine)
+        #expect(try secureStore.retrieve(forKey: "com.TablePro.password.\(held.id.uuidString)") == "secret")
         try FileManager.default.removeItem(at: groupsFile)
-        #expect(state.applySyncedConnections([pulled]))
+        await fixture.pull([pulled], into: state, through: engine)
 
         #expect(state.unreadableCopies.isEmpty)
         #expect(fixture.metadata.removalsPendingForUnreadableCopies.isEmpty)
