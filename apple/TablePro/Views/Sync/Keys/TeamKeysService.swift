@@ -64,21 +64,14 @@ nonisolated internal struct TeamStoppedDevice: Equatable, Sendable, Identifiable
     var id: String { device }
 }
 
-nonisolated internal enum TeamCredentialSecret: Equatable, Sendable {
-    case password
-    case sslKeyPassphrase
-    case sshPassword
-    case sshKeyPassphrase
-    case sshTotpSecret
-    case driverField(label: String?)
-}
-
+// A secret a removed party could read: the team connection that holds it and the envelope table's secret kind, such
+// as `password` or `plugin.<field id>` (core ADR 0056, Envelopes and history).
 nonisolated internal struct TeamCredentialToRotate: Equatable, Sendable, Identifiable {
-    let envelope: String
+    let connectionID: String
     let connectionName: String?
-    let secret: TeamCredentialSecret?
+    let fieldKey: String
 
-    var id: String { envelope }
+    var id: String { "\(connectionID)/\(fieldKey)" }
 }
 
 nonisolated internal struct TeamKeysSnapshot: Equatable, Sendable {

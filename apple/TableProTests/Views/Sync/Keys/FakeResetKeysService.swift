@@ -41,6 +41,7 @@ final class FakeResetKeysService: ResetKeysService, @unchecked Sendable {
         case finish(draft: String, typed: [String])
         case discard(draft: String)
         case cancel(reset: String, recoveryKey: String?)
+        case proposeAgain(reset: String)
         case activate(reset: String)
         case dismiss(notice: String)
     }
@@ -105,6 +106,10 @@ final class FakeResetKeysService: ResetKeysService, @unchecked Sendable {
 
     func cancelReset(reset: String, recoveryKey: String?) async throws {
         try answer("cancelReset", call: .cancel(reset: reset, recoveryKey: recoveryKey)) { $0.pending = nil }
+    }
+
+    func proposeResetAgain(reset: String) async throws {
+        try answer("proposeResetAgain", call: .proposeAgain(reset: reset)) { _ in }
     }
 
     func activateReset(reset: String) async throws {

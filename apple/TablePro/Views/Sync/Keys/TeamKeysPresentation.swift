@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProFFI
+import TableProPluginKit
 
 // What the team key status row says and offers. The order is the order of precedence: an ended or stopped team key
 // says so before anything else about it.
@@ -113,16 +114,28 @@ internal enum TeamKeysPresentation {
         member.isYou ? String(format: String(localized: "%@ (You)"), member.displayName) : member.displayName
     }
 
-    static func secretName(_ secret: TeamCredentialSecret?) -> String {
-        switch secret {
-        case .password: String(localized: "Password")
-        case .sslKeyPassphrase: String(localized: "SSL key passphrase")
-        case .sshPassword: String(localized: "SSH password")
-        case .sshKeyPassphrase: String(localized: "SSH key passphrase")
-        case .sshTotpSecret: String(localized: "SSH one-time code secret")
-        case .driverField(let label?): label
-        case .driverField(nil), nil: String(localized: "Secret")
+    // A driver's own secret is `plugin.<field id>`, named by the label that driver gives the field.
+    static func secretName(_ fieldKey: String, driverLabel: (String) -> String?) -> String {
+        switch fieldKey {
+        case "password": return String(localized: "Password")
+        case "ssl_key_passphrase": return String(localized: "SSL key passphrase")
+        case "ssh_password": return String(localized: "SSH password")
+        case "ssh_key_passphrase": return String(localized: "SSH key passphrase")
+        case "ssh_totp_secret": return String(localized: "SSH one-time code secret")
+        default:
+            guard fieldKey.hasPrefix("plugin.") else { return String(localized: "Secret") }
+            return driverLabel(String(fieldKey.dropFirst("plugin.".count))) ?? String(localized: "Secret")
         }
+    }
+
+    // The label the drivers give a secure field with this id, when they agree on one. The row names no driver, so a
+    // field id two drivers label differently reads as a plain secret.
+    static func driverFieldLabel(_ fieldID: String, registry: PluginMetadataRegistry = .shared) -> String? {
+        let labels = Set(registry.allRegisteredTypeIds().compactMap { typeID in
+            registry.snapshot(forRegisteredTypeId: typeID)?.connection.additionalConnectionFields
+                .first { $0.id == fieldID && $0.isSecure }?.label
+        })
+        return labels.count == 1 ? labels.first : nil
     }
 
     // The notices about this team and its members. A stopped or ended team key shows in the status row instead.
@@ -214,6 +227,9 @@ internal enum TeamKeysFailureText {
         }
         if error is TeamKeysEngineMissing {
             return String(localized: "Sign in to your TablePro account to use end-to-end keys.")
+        }
+        if error is TeamKeysCallMissing {
+            return message(code: "sync.unimplemented")
         }
         guard let error = error as? CoreError else { return generic }
         guard case .Failed(let info) = error else { return nil }

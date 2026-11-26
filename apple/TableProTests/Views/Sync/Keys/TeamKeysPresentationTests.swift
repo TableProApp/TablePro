@@ -141,6 +141,17 @@ struct TeamKeysPresentationTests {
         #expect(!notices[0].text.contains("9F9F9F9F"))
     }
 
+    @Test("An envelope id gives the connection and the secret kind, and each kind its name")
+    func credentialsToRotate() {
+        let credential = TeamKeysLiveService.credential(ofEnvelope: "library_connection/conn-1/plugin.awsSecretKey")
+
+        #expect(credential == TeamCredentialToRotate(connectionID: "conn-1", connectionName: nil, fieldKey: "plugin.awsSecretKey"))
+        #expect(TeamKeysLiveService.credential(ofEnvelope: "password") == nil)
+        #expect(TeamKeysPresentation.secretName("ssh_key_passphrase") { _ in nil } == String(localized: "SSH key passphrase"))
+        #expect(TeamKeysPresentation.secretName("plugin.awsSecretKey") { $0 == "awsSecretKey" ? "Secret Access Key" : nil } == "Secret Access Key")
+        #expect(TeamKeysPresentation.secretName("plugin.other") { _ in nil } == String(localized: "Secret"))
+    }
+
     @Test("A person with no name or email reads as unknown, never as an account id")
     func noRawIds() {
         let member = F.member(F.ana, status: .holder)

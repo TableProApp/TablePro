@@ -8,6 +8,9 @@ import TableProFFI
 
 internal struct TeamKeysEngineMissing: Error {}
 
+// A flow this build's core does not serve yet.
+internal struct TeamKeysCallMissing: Error {}
+
 // The key screens reach the one sync service `SyncEngineHost` opened over the account (core ADR 0054).
 @MainActor
 internal enum TeamKeysEngine {
@@ -78,7 +81,7 @@ internal final class TeamKeysLiveService: TeamKeysService {
 
     func credentialsToRotate(team: String) async throws -> [TeamCredentialToRotate] {
         let envelopes = try await service().credentialsToRotate(scope: team)
-        return envelopes.map { TeamCredentialToRotate(envelope: $0, connectionName: nil, secret: Self.secret(ofEnvelope: $0)) }
+        return envelopes.compactMap(Self.credential(ofEnvelope:))
     }
 
     func keyNotices() async throws -> [KeyNoticeInfo] {
@@ -89,19 +92,17 @@ internal final class TeamKeysLiveService: TeamKeysService {
         try await service().dismissKeyNotice(notice: notice)
     }
 
-    // An envelope id is `<parent kind>/<parent id>/<secret kind>` (core ADR 0052), so its secret kind is the part after
-    // the last `/`. The connection's name is not in the id, so it stays unnamed here.
-    static func secret(ofEnvelope envelope: String) -> TeamCredentialSecret? {
-        guard let slash = envelope.lastIndex(of: "/") else { return nil }
-        let kind = envelope[envelope.index(after: slash)...]
-        switch kind {
-        case "password": return .password
-        case "ssl_key_passphrase": return .sslKeyPassphrase
-        case "ssh_password": return .sshPassword
-        case "ssh_key_passphrase": return .sshKeyPassphrase
-        case "ssh_totp_secret": return .sshTotpSecret
-        default: return kind.hasPrefix("plugin.") ? .driverField(label: nil) : nil
+    // An envelope id is `<parent kind>/<parent id>/<secret kind>`, the parent's id lying between the first and the
+    // last `/` (core ADR 0052). Lane K8 serves these rows with the connection's name; until then they carry none.
+    static func credential(ofEnvelope envelope: String) -> TeamCredentialToRotate? {
+        guard let first = envelope.firstIndex(of: "/"), let last = envelope.lastIndex(of: "/"), first < last else {
+            return nil
         }
+        return TeamCredentialToRotate(
+            connectionID: String(envelope[envelope.index(after: first)..<last]),
+            connectionName: nil,
+            fieldKey: String(envelope[envelope.index(after: last)...])
+        )
     }
 
     // The server lists names and emails to owners and admins only, so another member reads none. The record does not

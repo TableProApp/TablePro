@@ -52,6 +52,11 @@ private struct ResetKeysRows: View {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     NoticeLabel(notice.text, severity: notice.severity)
                     Spacer(minLength: 12)
+                    if case .waitsForStepUp(let reset) = notice.kind {
+                        Button(String(localized: "Confirm It's You…")) { Task { await model.proposeAgain(reset) } }
+                            .fixedSize()
+                            .disabled(model.work != nil)
+                    }
                     Button(String(localized: "Dismiss")) { Task { await model.dismiss(notice) } }
                         .fixedSize()
                         .disabled(model.work != nil)

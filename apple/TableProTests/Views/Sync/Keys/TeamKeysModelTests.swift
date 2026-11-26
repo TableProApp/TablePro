@@ -23,7 +23,7 @@ struct TeamKeysModelTests {
 
     @Test("A load shows the team key, this team's notices and the credentials to rotate")
     func loadsEverything() async {
-        let credential = TeamCredentialToRotate(envelope: "library_connection/c1/password", connectionName: "Prod", secret: .password)
+        let credential = TeamCredentialToRotate(connectionID: "c1", connectionName: "Prod", fieldKey: "password")
         service.update { state in
             state.notices = [F.notice("n1", .keysChanged(account: F.bo)), F.notice("n2", .teamKeyRestarted(team: "team_other"))]
             state.credentials = [credential]

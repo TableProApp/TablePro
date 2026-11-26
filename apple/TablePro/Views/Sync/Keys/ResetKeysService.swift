@@ -15,6 +15,8 @@ nonisolated internal protocol ResetKeysService: AnyObject, Sendable {
     // A sheet closed before its proposal went up: the draft goes, and the recovery key it held with it.
     func discardKeyDraft(draft: String) async throws
     func cancelReset(reset: String, recoveryKey: String?) async throws
+    // A kind 3 proposal a server restore lost, sent again; the server asks for a fresh step-up first (core ADR 0065).
+    func proposeResetAgain(reset: String) async throws
     func activateReset(reset: String) async throws
     func keyNotices() async throws -> [KeyNoticeInfo]
     func dismissKeyNotice(notice: String) async throws
@@ -51,6 +53,11 @@ internal final class ResetKeysLiveService: ResetKeysService {
 
     func cancelReset(reset: String, recoveryKey: String?) async throws {
         try await service().cancelReset(reset: reset, recoveryKey: recoveryKey)
+    }
+
+    // Lane K8 adds the call that sends the lost proposal again; until then the core holds it with the notice.
+    func proposeResetAgain(reset: String) async throws {
+        throw TeamKeysCallMissing()
     }
 
     func activateReset(reset: String) async throws {

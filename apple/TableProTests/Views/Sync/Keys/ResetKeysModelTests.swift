@@ -82,7 +82,7 @@ struct ResetKeysModelTests {
         #expect(model.pending == nil)
         #expect(model.notices == [
             ResetNotice(id: "n1", kind: .ended(.superseded)),
-            ResetNotice(id: "n3", kind: .waitsForStepUp),
+            ResetNotice(id: "n3", kind: .waitsForStepUp(reset: "reset-1")),
         ])
     }
 
@@ -109,6 +109,18 @@ struct ResetKeysModelTests {
             .cancel(reset: "reset-1", recoveryKey: nil),
             .cancel(reset: "reset-1", recoveryKey: R.recoveryKey),
         ])
+    }
+
+    @Test("A lost kind 3 proposal goes up again behind the step-up the server asks for")
+    func proposesAgainAfterAStepUp() async {
+        service.update { $0.failures["proposeResetAgain"] = [Self.stepUpRequired] }
+        let model = model()
+
+        await model.proposeAgain("reset-1")
+
+        #expect(stepUps.challenges.count == 1)
+        #expect(service.calls == [.proposeAgain(reset: "reset-1"), .proposeAgain(reset: "reset-1")])
+        #expect(model.failure == nil)
     }
 
     @Test("A wait not over yet is refused with its own words")

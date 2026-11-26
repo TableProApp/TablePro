@@ -29,7 +29,7 @@ internal struct ResetNotice: Identifiable, Equatable {
     enum Kind: Equatable {
         case ended(ResetStateTag)
         // A kind 3 reset a server restore lost, which goes up again only after a fresh step-up (core ADR 0065).
-        case waitsForStepUp
+        case waitsForStepUp(reset: String)
     }
 
     let id: String
@@ -41,7 +41,7 @@ internal struct ResetNotice: Identifiable, Equatable {
         case .ended(.superseded): String(localized: "The key reset ended without changing your keys.")
         case .ended(.active): String(localized: "Your keys were reset.")
         case .ended(.pending): String(localized: "A key reset is waiting.")
-        case .waitsForStepUp: String(localized: "A server restore lost your key reset. It is asked for again once you confirm it's you.")
+        case .waitsForStepUp: String(localized: "A server restore lost your key reset. Confirm it's you to ask for it again.")
         }
     }
 
@@ -61,6 +61,7 @@ internal final class ResetKeysModel: ObservableObject {
     enum Work: Equatable {
         case cancelling
         case activating
+        case proposingAgain
         case dismissing(String)
     }
 
@@ -155,7 +156,7 @@ internal final class ResetKeysModel: ObservableObject {
             self.notices = notices.compactMap { notice -> ResetNotice? in
                 switch notice.kind {
                 case .resetEnded(_, let state): ResetNotice(id: notice.id, kind: .ended(state))
-                case .resetWaitsForStepUp: ResetNotice(id: notice.id, kind: .waitsForStepUp)
+                case .resetWaitsForStepUp(let reset): ResetNotice(id: notice.id, kind: .waitsForStepUp(reset: reset))
                 default: nil
                 }
             }
@@ -180,6 +181,12 @@ internal final class ResetKeysModel: ObservableObject {
     func activate(_ reset: PendingResetInfo) async {
         await perform(.activating, failureTitle: String(localized: "Couldn't Finish the Reset")) { [service] in
             try await service.activateReset(reset: reset.reset)
+        }
+    }
+
+    func proposeAgain(_ reset: String) async {
+        await perform(.proposingAgain, failureTitle: String(localized: "Couldn't Ask for the Reset Again")) { [service, stepUp] in
+            try await stepUp.run { try await service.proposeResetAgain(reset: reset) }
         }
     }
 
