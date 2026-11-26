@@ -8,20 +8,32 @@ publish.workspace = true
 [dependencies]
 tablepro-keys.workspace = true
 tablepro-records.workspace = true
+tablepro-storage.workspace = true
 async-trait.workspace = true
 # The system RNG for the SAS nonces (0056, Libraries).
 aws-lc-rs.workspace = true
+hex.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+sqlx = { workspace = true, features = ["migrate", "macros"] }
 thiserror.workspace = true
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tracing.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
 
+# The same SQLite as tablepro-storage links (its manifest says why).
+[target.'cfg(any(target_os = "linux", target_vendor = "apple"))'.dependencies]
+sqlx = { workspace = true, features = ["sqlite-unbundled"] }
+
+[target.'cfg(not(any(target_os = "linux", target_vendor = "apple")))'.dependencies]
+sqlx = { workspace = true, features = ["sqlite"] }
+
 [dev-dependencies]
-hex.workspace = true
 tablepro-sync-testing.workspace = true
-tokio = { workspace = true, features = ["macros", "rt"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 
 [lints]
 workspace = true

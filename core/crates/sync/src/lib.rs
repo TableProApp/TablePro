@@ -3,6 +3,9 @@
 // key flows and the control surface the FFI wraps.
 
 pub mod api;
+pub mod engine;
 pub mod keys;
+pub mod service;
+pub mod state;
 
 pub use api::SyncError;
