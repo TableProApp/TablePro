@@ -94,6 +94,8 @@ pub struct ServiceSync {
     queued: Mutex<HashMap<ScopeName, usize>>,
     // The managed values forbid personal data on TablePro Sync for this engine's life.
     policy_forbids: std::sync::atomic::AtomicBool,
+    // A restored or replaced file's move row was dropped, so the rows this engine writes since are its own.
+    stale_move_dropped: std::sync::atomic::AtomicBool,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -231,6 +233,7 @@ impl ServiceSync {
             mode: Mutex::new(parts.mode),
             queued: Mutex::default(),
             policy_forbids: std::sync::atomic::AtomicBool::new(false),
+            stale_move_dropped: std::sync::atomic::AtomicBool::new(false),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),
@@ -294,7 +297,11 @@ impl ServiceSync {
     // Between passes: a move between providers, or the person turning personal sync on or off. Turning it on reads the
     // personal scope again on the next pass, since its kinds were off meanwhile.
     pub async fn set_mode(&self, mode: ServiceMode) {
-        let mode = if self.policy_rests() { ServiceMode::TeamsOnly } else { mode };
+        let mode = if self.policy_rests() {
+            ServiceMode::TeamsOnly
+        } else {
+            mode
+        };
         let leaving = mode == ServiceMode::TeamsOnly;
         if leaving {
             self.leaving.fetch_add(1, Ordering::SeqCst);
@@ -507,8 +514,12 @@ impl ServiceSync {
     // The move this file holds open or done, if any. A file restored or replaced under the device holds none it can
     // act on: an old row is no consent to move again, and the refill drops it.
     pub async fn move_row(&self) -> Result<Option<MoveRow>, SyncError> {
-        if self.state.opened().sync_tables == crate::api::state::SyncTrust::Refill {
-            return Ok(None);
+        if self.state.opened().sync_tables == crate::api::state::SyncTrust::Refill
+            && !self.stale_move_dropped.swap(true, Ordering::SeqCst)
+        {
+            let mut txn = begin(&self.state).await?;
+            txn.delete(&RowKey::Move).await?;
+            txn.commit().await?;
         }
         Ok(match begin(&self.state).await?.get(&RowKey::Move).await? {
             Some(Row::Move(row)) => Some(row),

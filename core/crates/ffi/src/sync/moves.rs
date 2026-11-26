@@ -246,6 +246,13 @@ impl SyncService {
                 user_record_name: account.clone(),
             })
             .await?;
+        // A restored file's move is no consent to move today's data.
+        if state.opened().sync_tables == tablepro_sync::api::state::SyncTrust::Refill {
+            let mut txn = state.begin().await?;
+            txn.delete(&tablepro_sync::api::state::RowKey::Move).await?;
+            txn.commit().await?;
+            return Ok(None);
+        }
         let row = state
             .begin()
             .await?
@@ -269,9 +276,7 @@ impl SyncService {
             Provider::Service => self.config.provider == SyncProviderTag::TableproSync,
             Provider::ICloud => self.config.provider == SyncProviderTag::Icloud,
         };
-        if kept
-            && let Err(error) = engine.sync.clear_done_move().await
-        {
+        if kept && let Err(error) = engine.sync.clear_done_move().await {
             tracing::warn!(code = error.code(), "a finished move's row stayed");
         }
     }

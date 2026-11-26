@@ -460,9 +460,19 @@ impl SyncService {
         Ok(())
     }
 
+    // The engine whose file waits for the choice: TablePro Sync's after another account or server, whatever the
+    // personal provider is now, else the personal provider's, as iCloud after another Apple ID.
     pub async fn plan_new_identity(&self) -> Result<NewIdentityPlanInfo, CoreError> {
-        self.on_control(move |control| async move { control.plan_new_identity().await.map(NewIdentityPlanInfo::from) })
-            .await
+        let (slot, personal) = (Arc::clone(&self.service), self.control_now());
+        on_runtime(&self.tasks, async move {
+            if let Ok(engine) = slot.engine().await
+                && let Ok(plan) = engine.sync.plan_new_identity().await
+            {
+                return Ok(plan.into());
+            }
+            Ok(personal?.plan_new_identity().await?.into())
+        })
+        .await
     }
 
     // `account` is the plan's; an answer for another account than the one signed in now answers `sync.changed`.
@@ -471,8 +481,16 @@ impl SyncService {
         choice: NewIdentityChoiceTag,
         account: String,
     ) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.choose_for_new_identity(choice.into(), account).await })
-            .await
+        let (slot, personal) = (Arc::clone(&self.service), self.control_now());
+        on_runtime(&self.tasks, async move {
+            if let Ok(engine) = slot.engine().await
+                && engine.sync.plan_new_identity().await.is_ok()
+            {
+                return Ok(engine.sync.choose_for_new_identity(choice.into(), account).await?);
+            }
+            Ok(personal?.choose_for_new_identity(choice.into(), account).await?)
+        })
+        .await
     }
 
     pub async fn upload_again(&self) -> Result<(), CoreError> {

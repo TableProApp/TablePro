@@ -119,23 +119,26 @@ impl Arrival {
     // This device's CloudKit base names the record: its store held it, so its absence there is this device's deletion,
     // unless the record, or the connection it belongs to, stays on the device (0054, Rules for both providers).
     pub(crate) fn deleted_here(&self, key: &RecordKey) -> bool {
-        let Some((icloud, named)) = self.icloud().zip(in_zone(key)) else {
-            return false;
-        };
-        let Some(base) = icloud.bases.get(&named) else {
-            return false;
-        };
-        let Some(kind) = key.kind.known() else {
+        self.icloud()
+            .zip(in_zone(key))
+            .is_some_and(|(icloud, named)| icloud.bases.contains_key(&named))
+    }
+
+    // The record, or the connection it belongs to, stays on the device, by the iCloud file's standing: no deletion of
+    // it is inferred, from the zone or from the bases (0054, Rules for both providers).
+    pub(crate) fn kept_here(&self, key: &RecordKey) -> bool {
+        let (Some(icloud), Some(kind)) = (self.icloud(), key.kind.known()) else {
             return false;
         };
         let connection = if kind == tablepro_records::Kind::Connection {
             uuid::Uuid::parse_str(&key.record_id).ok()
         } else {
-            base.fields
-                .as_ref()
+            in_zone(key)
+                .and_then(|named| icloud.bases.get(&named))
+                .and_then(|base| base.fields.as_ref())
                 .and_then(|fields| crate::engine::owner(kind, fields))
         };
-        !connection.is_some_and(|connection| icloud.kept_off.contains(&connection))
+        connection.is_some_and(|connection| icloud.kept_off.contains(&connection))
     }
 
     // The first device that moves a record creates it on the service with the marker of the CloudKit base it moved

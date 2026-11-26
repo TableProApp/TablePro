@@ -751,10 +751,9 @@ impl ServiceSync {
             // store no longer holds is this device's own deletion, which a move with no zone listing still reads.
             (Some(marker), None)
                 if !awaiting
-                    && pull
-                        .arrival
-                        .as_deref()
-                        .is_some_and(|arrival| arrival.gone(&key) || arrival.deleted_here(&key)) =>
+                    && pull.arrival.as_deref().is_some_and(|arrival| {
+                        !arrival.kept_here(&key) && (arrival.gone(&key) || arrival.deleted_here(&key))
+                    }) =>
             {
                 settle_moved(&key, kind, &marker, None, &record)
             }

@@ -29,6 +29,9 @@ use crate::api::state::StateStore;
 use crate::cloudkit::fetch::Categories;
 use crate::engine::{Clock, JournalEntry, JournalObserver};
 
+// How long a quit waits for the owners the launch is reading.
+const OWNERS_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -45,6 +48,7 @@ struct Shared {
     // The owners were read from the state file; until then the marks wait for them, so a deletion of an owned record
     // made offline before the launch's first pass still gets its tombstone.
     owners_read: std::sync::atomic::AtomicBool,
+    owners_ready: watch::Sender<bool>,
     waiting_owners: Mutex<Vec<JournalEntry>>,
     // Signals whose marks the host refused, sent again with the next ones and by a flush.
     failed: Mutex<Vec<JournalEntry>>,
@@ -137,6 +141,11 @@ fn marked(known: &mut LegacyMetadata, dirty: Vec<LegacyRecordRef>, tombstones: V
 // try.
 async fn send_marks(shared: &Shared, entries: Vec<JournalEntry>) -> Result<(), AdapterError> {
     let _order = shared.order.lock().await;
+    send_marks_in_order(shared, entries).await
+}
+
+// Under `order`, which owner readiness takes too, so no mark overtakes one that waited for the owners.
+async fn send_marks_in_order(shared: &Shared, entries: Vec<JournalEntry>) -> Result<(), AdapterError> {
     let mut entries = std::mem::take(&mut *lock(&shared.failed))
         .into_iter()
         .chain(entries)
@@ -205,12 +214,14 @@ impl LegacyLink {
             Some(state) => export::owners(state).await?,
             None => HashMap::new(),
         };
+        let _order = self.shared.order.lock().await;
         *lock(&self.shared.owners) = owners;
         if !self.shared.owners_read.swap(true, Ordering::SeqCst) {
             let waited = std::mem::take(&mut *lock(&self.shared.waiting_owners));
             if !waited.is_empty() {
-                let _ = send_marks(&self.shared, waited).await;
+                let _ = send_marks_in_order(&self.shared, waited).await;
             }
+            self.shared.owners_ready.send_replace(true);
         }
         Ok(())
     }
@@ -218,6 +229,7 @@ impl LegacyLink {
     // No state file names an owner, before any mark is queued.
     pub(in crate::cloudkit) fn no_owners(&self) {
         self.shared.owners_read.store(true, Ordering::SeqCst);
+        self.shared.owners_ready.send_replace(true);
     }
 
     pub(in crate::cloudkit) fn owners_read(&self) -> bool {
@@ -235,6 +247,7 @@ impl LegacyLink {
             known: Mutex::new(None),
             owners: Mutex::new(HashMap::new()),
             owners_read: std::sync::atomic::AtomicBool::new(false),
+            owners_ready: watch::Sender::new(false),
             waiting_owners: Mutex::new(Vec::new()),
             failed: Mutex::new(Vec::new()),
             clock,
@@ -257,12 +270,17 @@ impl LegacyLink {
         let mut taken = self.shared.taken.subscribe();
         // The count's sender lives as long as `shared`, so this ends only once the count is reached.
         let _ = taken.wait_for(|taken| *taken >= queued).await;
-        // A quit before the owners were read marks what it can: a deletion whose owner it cannot name gets none.
-        if !self.shared.owners_read.swap(true, Ordering::SeqCst) {
-            let waited = std::mem::take(&mut *lock(&self.shared.waiting_owners));
-            if !waited.is_empty() {
-                lock(&self.shared.failed).extend(waited);
+        // The marks that wait for the owners go once they are read, which the launch starts at once. A quit before
+        // then fails with the marks kept, never dropping a deletion it cannot name the owner of.
+        let mut ready = self.shared.owners_ready.subscribe();
+        if tokio::time::timeout(OWNERS_WAIT, ready.wait_for(|ready| *ready))
+            .await
+            .is_err()
+        {
+            return Err(AdapterError::Unreadable {
+                detail: "the state file that names each owned record's connection".to_owned(),
             }
+            .into());
         }
         if lock(&self.shared.failed).is_empty() {
             return Ok(());

@@ -130,6 +130,7 @@ pub struct CloudKitSync {
     account: Mutex<Option<String>>,
     status: Mutex<SyncStatus>,
     legacy: Option<LegacyLink>,
+    stale_move_dropped: AtomicBool,
 }
 
 // The bases a move meets the service with, and the connections the file recorded kept off sync.
@@ -198,6 +199,7 @@ impl CloudKitSync {
                 queued_changes: 0,
             }),
             legacy: None,
+            stale_move_dropped: AtomicBool::new(false),
         }
     }
 
@@ -267,11 +269,18 @@ impl CloudKitSync {
     // The state file of the account this engine syncs, opened if no pass opened it yet: a move reads and marks it
     // whether or not iCloud ran in this process.
     async fn move_file(&self, session: &Session) -> Result<Option<Arc<dyn StateStore>>, SyncError> {
-        Ok(match (&session.state, &session.account) {
-            (Some(state), _) => Some(Arc::clone(state)),
-            (None, Some(account)) => Some(self.files.open(identity(account)).await?),
-            (None, None) => None,
-        })
+        let state = match (&session.state, &session.account) {
+            (Some(state), _) => Arc::clone(state),
+            (None, Some(account)) => self.files.open(identity(account)).await?,
+            (None, None) => return Ok(None),
+        };
+        // A restored or replaced file's move row is no move of today's: it goes before anything reads it.
+        if state.opened().sync_tables == SyncTrust::Refill && !self.stale_move_dropped.swap(true, Ordering::SeqCst) {
+            let mut txn = state.begin().await?;
+            txn.delete(&RowKey::Move).await?;
+            txn.commit().await?;
+        }
+        Ok(Some(state))
     }
 
     async fn mark_move(&self, state: &dyn StateStore, phase: MovePhase) -> Result<(), SyncError> {

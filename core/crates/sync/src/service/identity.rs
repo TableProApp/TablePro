@@ -25,6 +25,19 @@ pub async fn unsent_changes(state: &Arc<dyn StateStore>, adapters: &Adapters) ->
     let mut unsent = 0_u64;
     for scope in OWN {
         let held = approval::held_members(begin(state).await?.as_mut(), scope).await?;
+        // What the push leaves out is no unsent change either: records held or contested.
+        let mut skip: std::collections::HashMap<KindName, HashSet<String>> = std::collections::HashMap::new();
+        for table in [Table::Held, Table::Conflicts] {
+            for row in begin(state).await?.scan(&RowRange::Scope(table, scope)).await? {
+                let key = match row {
+                    Row::Held(row) => row.key,
+                    Row::Conflict(row) => row.key,
+                    _ => continue,
+                };
+                skip.entry(key.kind).or_default().insert(key.record_id);
+            }
+        }
+        let none = HashSet::new();
         for adapter in adapters.in_scope(scope) {
             let kind = adapter.kind();
             let rows = begin(state)
@@ -39,7 +52,8 @@ pub async fn unsent_changes(state: &Arc<dyn StateStore>, adapters: &Adapters) ->
                 })
                 .collect();
             let local = super::push::going_up(kind, scope, adapter.records(scope).await?, &bases, &held);
-            let pending = diff(scope, kind, &local, &bases, &HashSet::new()).pending.len();
+            let skipped = skip.get(&KindName::of(kind)).unwrap_or(&none);
+            let pending = diff(scope, kind, &local, &bases, skipped).pending.len();
             unsent = unsent.saturating_add(u64::try_from(pending).unwrap_or(u64::MAX));
         }
     }
@@ -174,10 +188,13 @@ impl ServiceSync {
         Ok(())
     }
 
+    // Every record that leaves is read before any goes, since a record's standing follows its connection, and the
+    // connections go last, so no record of one reads as unknown and stays.
     async fn leave_synced_records(&self) -> Result<(), SyncError> {
+        let mut leaving: Vec<(ScopeName, Arc<dyn crate::api::adapter::RecordAdapter>, Vec<LocalChange>)> = Vec::new();
         for scope in OWN {
             for adapter in self.adapters.in_scope(scope) {
-                let leaving: Vec<LocalChange> = adapter
+                let changes: Vec<LocalChange> = adapter
                     .records(scope)
                     .await?
                     .records
@@ -187,11 +204,15 @@ impl ServiceSync {
                         record_id: record.record_id,
                     })
                     .collect();
-                if !leaving.is_empty() {
-                    self.stop.check()?;
-                    adapter.apply(scope, leaving).await?;
+                if !changes.is_empty() {
+                    leaving.push((scope, adapter, changes));
                 }
             }
+        }
+        leaving.sort_by_key(|(_, adapter, _)| adapter.kind() == tablepro_records::Kind::Connection);
+        for (scope, adapter, changes) in leaving {
+            self.stop.check()?;
+            adapter.apply(scope, changes).await?;
         }
         Ok(())
     }
