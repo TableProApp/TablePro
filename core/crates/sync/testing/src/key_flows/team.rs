@@ -4,14 +4,16 @@ use serde_json::{Value, json};
 use tablepro_keys::KeysError;
 use tablepro_keys::encoding::{AccountId, TeamId, Version};
 use tablepro_keys::envelope::EnvelopeId;
+use tablepro_keys::keys::Ed25519Public;
 use tablepro_sync::api::error::SyncError;
 use tablepro_sync::api::ids::{EpochId, ScopeName};
 use tablepro_sync::api::key_flows::{
-    KeyApplied, KeyArrival, KeyChangeSet, KeyNoticeKind, KeyState, LockCause, MemberKeyStatus, MemberKeys,
-    OpenedEnvelope, PushBackVerdict, RestoreFlows, Roster, StopAction, StopFlows, StoppedDevice, TeamFlows, TeamKeys,
+    AccountFlows, HeldRestart, KeyApplied, KeyArrival, KeyChangeSet, KeyNoticeKind, KeyState, LockCause,
+    MemberKeyStatus, MemberKeys, OpenedEnvelope, PushBackVerdict, RestoreFlows, Roster, StopAction, StopFlows,
+    StoppedDevice, TeamFlows, TeamKeys,
 };
 use tablepro_sync::api::scopes::Role;
-use tablepro_sync::api::state::KeyVersionState;
+use tablepro_sync::api::state::{KeyVersionState, StopClear, StoppedCause};
 use tablepro_sync::api::transport::{ChangeOutcome, RejectedCode};
 
 use super::account::{fake_open, fake_seal, notice, opened, take_kv};
@@ -48,12 +50,12 @@ impl TeamFlows for FakeKeyFlows {
         Ok(TeamKeys {
             team: id,
             version: held.version,
-            state: if held.ended {
-                KeyVersionState::Ended
-            } else {
-                KeyVersionState::Ok
+            state: match (held.ended, held.stopped_cause) {
+                (true, _) => KeyVersionState::Ended,
+                (false, Some(_)) => KeyVersionState::Stopped,
+                (false, None) => KeyVersionState::Ok,
             },
-            stopped_cause: None,
+            stopped_cause: if held.ended { None } else { held.stopped_cause },
             rotation_due: held.rotation_due,
             holder: held.holder,
             members: held
@@ -73,7 +75,7 @@ impl TeamFlows for FakeKeyFlows {
                     account: report.account,
                     device: report.device.clone(),
                     version: report.version,
-                    can_reconfirm: held.holder && held.role.manages_keys(),
+                    can_reconfirm: held.role.manages_keys() && held.held_versions.contains(&report.version.get()),
                 })
                 .collect(),
         })
@@ -88,6 +90,7 @@ impl TeamFlows for FakeKeyFlows {
         }
         held.version = next(None);
         held.holder = true;
+        held.held_versions.insert(1);
         Ok(())
     }
 
@@ -133,6 +136,11 @@ impl TeamFlows for FakeKeyFlows {
         if !held.holder {
             return Err(SyncError::Keys(KeysError::NotHolder));
         }
+        if held.stopped_cause.is_some() {
+            return Err(SyncError::NotAllowed {
+                what: "rotate a team key that stopped on this device",
+            });
+        }
         if !held.role.manages_keys() && !held.rotation_due {
             return Err(role(RejectedCode::Role));
         }
@@ -142,6 +150,7 @@ impl TeamFlows for FakeKeyFlows {
             }
         }
         held.version = next(held.version);
+        held.held_versions.extend(held.version.map(Version::get));
         held.rotation_due = false;
         Ok(())
     }
@@ -169,9 +178,45 @@ impl TeamFlows for FakeKeyFlows {
             }
         }
         held.version = next(held.version);
+        held.held_versions.extend(held.version.map(Version::get));
         held.holder = true;
         held.rotation_due = false;
         notice(&mut model, KeyNoticeKind::TeamKeyRestarted { team: id });
+        Ok(())
+    }
+
+    async fn held_restart(&self, id: TeamId) -> Result<Option<HeldRestart>, SyncError> {
+        let held = team(&mut self.lock(), id)?.held_restart;
+        let Some((version, signer)) = held else {
+            return Ok(None);
+        };
+        let words = self.fingerprint(signer).await?;
+        let signer_ik = self.identity(&mut self.lock(), signer)?;
+        Ok(Some(HeldRestart {
+            team: id,
+            version,
+            signer,
+            signer_ik,
+            words,
+        }))
+    }
+
+    async fn accept_restart(&self, id: TeamId, signer_ik: Ed25519Public) -> Result<(), SyncError> {
+        let held = team(&mut self.lock(), id)?.held_restart;
+        let (version, signer) = held.ok_or(SyncError::Unknown { what: "held restart" })?;
+        // Bound to the IK whose words the person compared.
+        if self.identity(&mut self.lock(), signer)? != signer_ik {
+            return Err(SyncError::Keys(KeysError::Mismatch {
+                what: "the restart's signer is not the one compared",
+            }));
+        }
+        self.clear_team_stop(id, StopClear::AcceptedRestart)?;
+        let mut model = self.lock();
+        let held = team(&mut model, id)?;
+        held.held_restart = None;
+        held.version = Some(version);
+        held.holder = true;
+        held.held_versions.insert(version.get());
         Ok(())
     }
 
@@ -183,7 +228,7 @@ impl TeamFlows for FakeKeyFlows {
     async fn roster_read(&self, id: TeamId, roster: Roster) -> Result<(), SyncError> {
         let mut model = self.lock();
         let held = team(&mut model, id)?;
-        if !roster.caught_up {
+        if !roster.caught_up() {
             return Ok(());
         }
         let removed_holder = held.members.iter().any(|(account, (_, status))| {
@@ -232,6 +277,12 @@ impl TeamFlows for FakeKeyFlows {
         let held = live_team(&mut model, id)?;
         if !held.holder {
             return Err(role(RejectedCode::Role));
+        }
+        // A stopped team writes nothing under its key (0056, A stopped device).
+        if held.stopped_cause.is_some() {
+            return Err(SyncError::NotAllowed {
+                what: "seal under a team key that stopped on this device",
+            });
         }
         // Team envelopes wait in the queue while the team is due a rotation (0051, Teams).
         if held.rotation_due {
@@ -305,13 +356,31 @@ impl RestoreFlows for FakeKeyFlows {
             }
             scope @ ScopeName::Team(id) => {
                 // A refused confirmation wrap ends nothing: the member is confirmed again at the next version.
-                let refused_version = set.changes.iter().zip(&outcomes).any(|(change, outcome)| {
-                    change.kind.as_str() != "key.wrap" && !matches!(outcome, ChangeOutcome::Applied { .. })
-                });
-                if !refused_version {
+                let refused: Vec<&ChangeOutcome> = set
+                    .changes
+                    .iter()
+                    .zip(&outcomes)
+                    .filter(|(change, outcome)| {
+                        change.kind.as_str() != "key.wrap" && !matches!(outcome, ChangeOutcome::Applied { .. })
+                    })
+                    .map(|(_, outcome)| outcome)
+                    .collect();
+                if refused.is_empty() {
                     return Ok(PushBackVerdict::Continue);
                 }
-                team(&mut model, id)?.ended = true;
+                // The server lacks what makes this account a holder of the version before: wait for it to go back
+                // (0051, What cannot go back).
+                let waits = refused.iter().all(|outcome| {
+                    matches!(outcome, ChangeOutcome::Rejected { code } if *code == RejectedCode::KeyDependency)
+                });
+                if waits {
+                    drop(model);
+                    self.stop_team(id, StoppedCause::RestoreWait);
+                    return Ok(PushBackVerdict::Wait { scope });
+                }
+                let held = team(&mut model, id)?;
+                held.ended = true;
+                held.stopped_cause = None;
                 notice(&mut model, KeyNoticeKind::ScopeEnded { scope });
                 Ok(PushBackVerdict::Ended { scope })
             }
@@ -322,7 +391,20 @@ impl RestoreFlows for FakeKeyFlows {
 #[async_trait]
 impl StopFlows for FakeKeyFlows {
     async fn stop_actions(&self) -> Result<Vec<StopAction>, SyncError> {
-        let mut actions = self.lock().stop_actions.clone();
+        let model = self.lock();
+        // A restore stop is not reported: no owner's rotation can fill it (0062).
+        let waiting = |team: &TeamId| {
+            model
+                .teams
+                .get(team)
+                .is_some_and(|held| held.stopped_cause == Some(StoppedCause::RestoreWait))
+        };
+        let mut actions: Vec<StopAction> = model
+            .stop_actions
+            .iter()
+            .copied()
+            .filter(|action| !matches!(action, StopAction::Report { team, .. } if waiting(team)))
+            .collect();
         // A withdrawal settles before any new report for that team.
         actions.sort_by_key(|action| matches!(action, StopAction::Report { .. }));
         Ok(actions)

@@ -143,14 +143,14 @@ pub use sync::{
     AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, CloudKitAccount, CloudKitChanges, CloudKitDeletion,
     CloudKitFailure, CloudKitFetched, CloudKitField, CloudKitOutcome, CloudKitRecord, CloudKitTransport, CloudKitValue,
     ConflictChoiceTag, DeviceItemClassTag, DeviceItemTag, FingerprintInfo, GenesisOutcomeTag, HeldReasonTag,
-    HeldRecordInfo, HostDeviceStore, HostLegacyMirror, HostSettings, KeyChangeInfo, KeyNoticeInfo, KeyNoticeKindTag,
-    KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg, LegacyStandingTag,
-    LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo, MoveBackPlanInfo, MovePlanInfo,
-    NewIdentityChoiceTag, PassReasonTag, PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo,
+    HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings, KeyChangeInfo, KeyNoticeInfo,
+    KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg,
+    LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo, MoveBackPlanInfo,
+    MovePlanInfo, NewIdentityChoiceTag, PassReasonTag, PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo,
     RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo,
     SessionEndTag, SessionPhaseTag, SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag,
-    StoppedDeviceInfo, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef,
-    SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
+    StoppedDeviceInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag,
+    SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
 };
 pub use syntax::SqlGrammarTag;
 pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};

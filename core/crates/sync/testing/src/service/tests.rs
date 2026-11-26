@@ -120,6 +120,12 @@ fn member(av: u32) -> String {
     format!("{ACCOUNT}/{av}")
 }
 
+// A device's DSK as a key object body carries it.
+fn dsk_of(device: &Device) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(device.key.0.public().unwrap().0)
+}
+
 // The personal and history key versions up to `upto`, each its own change set.
 async fn key_versions(device: &Device, upto: u32) {
     for version in 1..=upto {
@@ -848,12 +854,19 @@ async fn a_team_envelope_is_refused_while_the_team_is_due_a_rotation() {
     server.add_team(team, &[(account(), Role::Owner)]);
     let mac = device(&server, "dev_mac", true);
     let version = format!("{}/team/1", tablepro_keys::encoding::uuid_to_wire(team.0));
-    mac.push(
-        ScopeName::Team(team),
-        vec![write("key.version", &version, None, json!({"suite": "tp1"}))],
-    )
-    .await
-    .unwrap();
+    let signed = mac
+        .push(
+            ScopeName::Team(team),
+            vec![write(
+                "key.version",
+                &version,
+                None,
+                json!({"suite": "tp1", "signer": ACCOUNT}),
+            )],
+        )
+        .await
+        .unwrap();
+    tag_of(&signed[0]);
     server.set_rotation_due(team, true);
     let id = format!("library_connection/{}/password", CONNECTION.to_lowercase());
 
@@ -955,7 +968,7 @@ async fn before_approval_a_lone_device_certificate_is_refused() {
                 "key.request",
                 "5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357",
                 None,
-                json!({"suite": "tp1"}),
+                json!({"suite": "tp1", "dsk": dsk_of(&new)}),
             )],
         )
         .await;
@@ -1032,6 +1045,17 @@ async fn before_approval_a_genesis_carries_no_plaintext_and_a_nonce_step_is_refu
             )],
         )
         .await;
+    new.push(
+        ScopeName::Personal,
+        vec![write(
+            "key.request",
+            request,
+            None,
+            json!({"suite": "tp1", "dsk": dsk_of(&new)}),
+        )],
+    )
+    .await
+    .unwrap();
     let reveal = new
         .push(
             ScopeName::Personal,
@@ -1101,7 +1125,7 @@ async fn key_versions_from(device: &Device, version: u32) {
 
 #[tokio::test]
 async fn an_admin_s_roster_carries_the_stop_reports_into_its_team_keys() {
-    use tablepro_sync::api::key_flows::{Roster, TeamFlows};
+    use tablepro_sync::api::key_flows::{CaughtUp, Roster, TeamFlows};
 
     use crate::key_flows::FakeKeyFlows;
 
@@ -1128,7 +1152,8 @@ async fn an_admin_s_roster_carries_the_stop_reports_into_its_team_keys() {
         .iter()
         .find(|scope| scope.scope == ScopeName::Team(team))
         .unwrap();
-    let roster = Roster::of(info, true);
+    let page = admin.pull(ScopeName::Team(team), None).await.unwrap();
+    let roster = Roster::of(info, CaughtUp::from_page(ScopeName::Team(team), &page));
     let flows = FakeKeyFlows::new(
         tablepro_keys::encoding::Origin::parse("https://api.tablepro.app").unwrap(),
         account(),
@@ -1145,7 +1170,7 @@ async fn an_admin_s_roster_carries_the_stop_reports_into_its_team_keys() {
 
 #[tokio::test]
 async fn an_editor_s_roster_carries_no_stop_reports() {
-    use tablepro_sync::api::key_flows::Roster;
+    use tablepro_sync::api::key_flows::{CaughtUp, Roster};
 
     let server = FakeServer::new();
     let team = TeamId(Uuid::new_v4());
@@ -1166,6 +1191,217 @@ async fn an_editor_s_roster_carries_no_stop_reports() {
         .find(|scope| scope.scope == ScopeName::Team(team))
         .unwrap();
 
-    assert!(Roster::of(info, true).stopped.is_empty());
+    let page = editor.pull(ScopeName::Team(team), None).await.unwrap();
+    let roster = Roster::of(info, CaughtUp::from_page(ScopeName::Team(team), &page));
+
+    assert!(roster.caught_up());
+    assert!(roster.stopped.is_empty());
     assert_eq!(server.stop_reports(team).len(), 1);
+}
+
+#[tokio::test]
+async fn a_roster_is_decided_only_with_a_caught_up_pull_of_its_own_team() {
+    use tablepro_sync::api::key_flows::{CaughtUp, Roster};
+
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    let other = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account(), Role::Editor)]);
+    server.add_team(other, &[(account(), Role::Editor)]);
+    let mac = device(&server, "dev_mac", true);
+    mac.push(
+        ScopeName::Team(team),
+        vec![write("library_folder", CONNECTION, None, json!({"name": "a"}))],
+    )
+    .await
+    .unwrap();
+    let ScopesAnswer::Body { body, .. } = mac.client.scopes(None, mac.proof()).await.unwrap() else {
+        panic!("no body");
+    };
+    let info = body
+        .scopes
+        .iter()
+        .find(|scope| scope.scope == ScopeName::Team(team))
+        .unwrap();
+
+    let first = mac.pull(ScopeName::Team(team), None).await.unwrap();
+    let elsewhere = mac.pull(ScopeName::Team(other), None).await.unwrap();
+
+    assert!(CaughtUp::from_page(ScopeName::Team(team), &first).is_none());
+    assert!(!Roster::of(info, None).caught_up());
+    assert!(!Roster::of(info, CaughtUp::from_page(ScopeName::Team(other), &elsewhere)).caught_up());
+}
+
+#[tokio::test]
+async fn a_cancel_before_approval_needs_the_recovery_key_s_signature() {
+    let server = FakeServer::new();
+    let new = device(&server, "dev_new", false);
+    let id = format!("{ACCOUNT}/8A41C3E2-5B6D-4F7A-9C10-2E3D4B5A6F78");
+
+    let unsigned = new
+        .push(
+            ScopeName::Personal,
+            vec![write("key.cancel", &id, None, json!({"suite": "tp1"}))],
+        )
+        .await;
+    let signed = new
+        .push(
+            ScopeName::Personal,
+            vec![write("key.cancel", &id, None, json!({"suite": "tp1", "sig": "s"}))],
+        )
+        .await;
+
+    assert_eq!(unsigned.unwrap_err(), TransportError::DeviceNotApproved);
+    tag_of(&signed.unwrap()[0]);
+}
+
+#[tokio::test]
+async fn a_request_and_its_steps_are_bound_to_their_dpop_keys() {
+    let server = FakeServer::new();
+    let new = device(&server, "dev_new", false);
+    let mac = device(&server, "dev_mac", true);
+    let request = "5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357";
+    let step = |name: &str| format!("{request}/{name}");
+
+    let foreign = new
+        .push(
+            ScopeName::Personal,
+            vec![write(
+                "key.request",
+                request,
+                None,
+                json!({"suite": "tp1", "dsk": dsk_of(&mac)}),
+            )],
+        )
+        .await
+        .unwrap();
+    new.push(
+        ScopeName::Personal,
+        vec![write(
+            "key.request",
+            request,
+            None,
+            json!({"suite": "tp1", "dsk": dsk_of(&new)}),
+        )],
+    )
+    .await
+    .unwrap();
+    let nonce_wrong = mac
+        .push(
+            ScopeName::Personal,
+            vec![write(
+                "key.sas",
+                &step("nonce"),
+                None,
+                json!({"suite": "tp1", "dsk": dsk_of(&new)}),
+            )],
+        )
+        .await
+        .unwrap();
+    let nonce = mac
+        .push(
+            ScopeName::Personal,
+            vec![write(
+                "key.sas",
+                &step("nonce"),
+                None,
+                json!({"suite": "tp1", "dsk": dsk_of(&mac)}),
+            )],
+        )
+        .await
+        .unwrap();
+    let reveal_by_approver = mac
+        .push(
+            ScopeName::Personal,
+            vec![write("key.sas", &step("reveal"), None, json!({"suite": "tp1"}))],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(rejected(&foreign[0]), RejectedCode::WriterBound);
+    assert_eq!(rejected(&nonce_wrong[0]), RejectedCode::WriterBound);
+    tag_of(&nonce[0]);
+    assert_eq!(rejected(&reveal_by_approver[0]), RejectedCode::WriterBound);
+}
+
+#[tokio::test]
+async fn a_team_version_wrap_and_ring_are_bound_to_their_signer() {
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account(), Role::Owner)]);
+    let mac = device(&server, "dev_mac", true);
+    let owner = tablepro_keys::encoding::uuid_to_wire(team.0);
+    let stranger = "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63";
+
+    let as_other = mac
+        .push(
+            ScopeName::Team(team),
+            vec![write(
+                "key.version",
+                &format!("{owner}/team/1"),
+                None,
+                json!({"suite": "tp1", "signer": stranger}),
+            )],
+        )
+        .await
+        .unwrap();
+    let set = mac
+        .push(
+            ScopeName::Team(team),
+            vec![
+                write(
+                    "key.version",
+                    &format!("{owner}/team/2"),
+                    None,
+                    json!({"suite": "tp1", "signer": ACCOUNT}),
+                ),
+                write("key.ring", &format!("{owner}/team/2"), None, json!({"suite": "tp1"})),
+            ],
+        )
+        .await
+        .unwrap();
+    let wrap = format!("{owner}/team/2/account/{ACCOUNT}/1");
+    let wrapped_as_other = mac
+        .push(
+            ScopeName::Team(team),
+            vec![write(
+                "key.wrap",
+                &wrap,
+                None,
+                json!({"suite": "tp1", "wrapper": stranger}),
+            )],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(rejected(&as_other[0]), RejectedCode::WriterBound);
+    tag_of(&set[0]);
+    tag_of(&set[1]);
+    assert_eq!(rejected(&wrapped_as_other[0]), RejectedCode::WriterBound);
+}
+
+#[tokio::test]
+async fn sign_out_under_a_reset_s_dsk_ends_that_reset() {
+    let server = FakeServer::new();
+    let mac = device(&server, "dev_mac", true);
+    let other = device(&server, "dev_other", true);
+    let reset = format!("{ACCOUNT}/8A41C3E2-5B6D-4F7A-9C10-2E3D4B5A6F78");
+    let body = json!({"suite": "tp1", "device": {"suite": "tp1", "dsk": dsk_of(&mac)}});
+    mac.push(ScopeName::Personal, vec![write("key.reset", &reset, None, body)])
+        .await
+        .unwrap();
+
+    other.client.revoke_key_device(other.key.clone()).await.unwrap();
+    let kept = server
+        .stored(ScopeOwner::Personal(account()), "key.reset", &reset)
+        .unwrap()
+        .deleted;
+    mac.client.revoke_key_device(mac.key.clone()).await.unwrap();
+    let ended = server
+        .stored(ScopeOwner::Personal(account()), "key.reset", &reset)
+        .unwrap()
+        .deleted;
+
+    assert_eq!(kept, None);
+    assert_eq!(ended, Some(DeletedReason::User));
 }
