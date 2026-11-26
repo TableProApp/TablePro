@@ -14,16 +14,11 @@ struct FavoriteDatabasesStorageTests {
     private static let storageKey = "com.TablePro.favoriteDatabases"
     private let pool = EphemeralDefaultsPool()
 
-    private func makeStorage() throws -> (FavoriteDatabasesStorage, UserDefaults, SyncMetadataStorage) {
+    private func makeStorage() throws -> (FavoriteDatabasesStorage, UserDefaults, SyncJournalRecorder) {
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
-
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let storage = FavoriteDatabasesStorage(
-            defaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata)
-        )
-        return (storage, defaults, metadata)
+        let journal = SyncJournalRecorder()
+        let storage = FavoriteDatabasesStorage(defaults: defaults, syncJournal: journal.journal)
+        return (storage, defaults, journal)
     }
 
     private func store(_ json: String, in defaults: UserDefaults) {
@@ -124,10 +119,10 @@ struct FavoriteDatabasesStorageTests {
 
     @Test("Re-picking the environment a database already has changes nothing")
     func settingTheSameEnvironmentIsANoOp() throws {
-        let (storage, _, metadata) = try makeStorage()
+        let (storage, _, journal) = try makeStorage()
         let connectionId = UUID()
         storage.setFavorite(database: "app", environment: .production, connectionId: connectionId)
-        metadata.clearDirty(type: .favoriteDatabase)
+        journal.clearDirty(type: .favoriteDatabase)
 
         var notifications = 0
         let observer = NotificationCenter.default.addObserver(
@@ -138,24 +133,24 @@ struct FavoriteDatabasesStorageTests {
         storage.setFavorite(database: "app", environment: .production, connectionId: connectionId)
 
         #expect(notifications == 0)
-        #expect(metadata.dirtyIds(for: .favoriteDatabase).isEmpty)
+        #expect(journal.dirtyIds(for: .favoriteDatabase).isEmpty)
     }
 
     @Test("Removing a database that is not a favorite changes nothing")
     func removingAnAbsentFavoriteIsANoOp() throws {
-        let (storage, _, metadata) = try makeStorage()
+        let (storage, _, journal) = try makeStorage()
         let connectionId = UUID()
 
         storage.removeFavorite(database: "missing", connectionId: connectionId)
 
-        #expect(metadata.tombstones(for: .favoriteDatabase).isEmpty)
+        #expect(journal.tombstones(for: .favoriteDatabase).isEmpty)
     }
 
     // MARK: - Sync
 
     @Test("Adding a favorite marks its sync id dirty")
     func addMarksDirty() throws {
-        let (storage, _, metadata) = try makeStorage()
+        let (storage, _, journal) = try makeStorage()
         let connectionId = UUID()
         storage.setFavorite(database: "app", environment: .development, connectionId: connectionId)
 
@@ -164,7 +159,7 @@ struct FavoriteDatabasesStorageTests {
             database: "app",
             environment: .development
         )
-        #expect(metadata.dirtyIds(for: .favoriteDatabase) == [FavoriteDatabasesStorage.syncId(for: entry)])
+        #expect(journal.dirtyIds(for: .favoriteDatabase) == [FavoriteDatabasesStorage.syncId(for: entry)])
     }
 
     /// The record is keyed on identity alone. Hashing the environment into it would orphan the old
@@ -199,7 +194,7 @@ struct FavoriteDatabasesStorageTests {
 
     @Test("Removing a favorite creates a sync tombstone")
     func removeCreatesTombstone() throws {
-        let (storage, _, metadata) = try makeStorage()
+        let (storage, _, journal) = try makeStorage()
         let connectionId = UUID()
         storage.setFavorite(database: "app", environment: .development, connectionId: connectionId)
         storage.removeFavorite(database: "app", connectionId: connectionId)
@@ -210,54 +205,7 @@ struct FavoriteDatabasesStorageTests {
             environment: .development
         )
         let id = FavoriteDatabasesStorage.syncId(for: entry)
-        #expect(metadata.dirtyIds(for: .favoriteDatabase).isEmpty)
-        #expect(metadata.tombstones(for: .favoriteDatabase).contains { $0.id == id })
-    }
-
-    @Test("Remote apply helpers track no local change")
-    func withoutSyncTracksNothing() throws {
-        let (storage, _, metadata) = try makeStorage()
-        let connectionId = UUID()
-        let entry = FavoriteDatabaseEntry(
-            connectionId: connectionId,
-            database: "orders",
-            environment: .testing
-        )
-
-        storage.setFavoriteWithoutSync(entry)
-        #expect(storage.favorites(for: connectionId).first?.environment == .testing)
-
-        storage.removeFavoritesWithoutSync(ids: [FavoriteDatabasesStorage.syncId(for: entry)])
-        #expect(storage.favorites(for: connectionId).isEmpty)
-        #expect(metadata.dirtyIds(for: .favoriteDatabase).isEmpty)
-        #expect(metadata.tombstones(for: .favoriteDatabase).isEmpty)
-    }
-
-    /// A remote apply carries a payload, so it has to overwrite rather than insert-if-absent.
-    @Test("A remote apply overwrites the local environment")
-    func remoteApplyOverwritesEnvironment() throws {
-        let (storage, _, _) = try makeStorage()
-        let connectionId = UUID()
-        storage.setFavorite(database: "app", environment: .development, connectionId: connectionId)
-
-        storage.setFavoriteWithoutSync(
-            FavoriteDatabaseEntry(connectionId: connectionId, database: "app", environment: .production)
-        )
-
-        #expect(storage.favorites(for: connectionId).map(\.environment) == [.production])
-    }
-
-    @Test("Deleting a connection remotely leaves no tombstone to push back")
-    func remoteConnectionDeleteTracksNothing() throws {
-        let (storage, _, metadata) = try makeStorage()
-        let connectionId = UUID()
-        storage.setFavoriteWithoutSync(
-            FavoriteDatabaseEntry(connectionId: connectionId, database: "app", environment: .production)
-        )
-
-        storage.removeFavoritesWithoutSync(for: connectionId)
-
-        #expect(storage.favorites(for: connectionId).isEmpty)
-        #expect(metadata.tombstones(for: .favoriteDatabase).isEmpty)
+        #expect(journal.dirtyIds(for: .favoriteDatabase).isEmpty)
+        #expect(journal.tombstones(for: .favoriteDatabase).contains { $0.id == id })
     }
 }

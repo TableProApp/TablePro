@@ -23,14 +23,14 @@ private final class WelcomeLibraryFixture {
             .appendingPathComponent("welcome-toolbar-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let events = AppEvents()
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: defaults))
+        let tracker = SyncJournalRecorder()
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: defaults,
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
-        let groupStorage = GroupStorage(syncTracker: tracker, connectionStorage: connectionStorage)
-        let tagStorage = TagStorage(syncTracker: tracker, connectionStorage: connectionStorage, appEvents: events)
+        let groupStorage = GroupStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage)
+        let tagStorage = TagStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage, appEvents: events)
         let prod = ConnectionTag(name: "prod", color: .red)
         let euWest = ConnectionTag(name: "eu-west", color: .blue)
         let unused = ConnectionTag(name: "unused-prod", color: .gray)
@@ -70,14 +70,13 @@ private final class WelcomeLibraryFixture {
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
             featureAccess: live.featureAccess,
-            syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
             queryHistoryManager: live.queryHistoryManager,
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             welcomeRouter: WelcomeRouter(),
             telemetry: live.telemetry
         )

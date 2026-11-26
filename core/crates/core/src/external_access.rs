@@ -96,11 +96,7 @@ mod tests {
                 [Run, Refuse(ReadOnlyAccess), Refuse(ReadOnlyAccess)],
             ),
             (ExternalAccess::ReadWrite, SafeModeLevel::Silent, [Run, write, drop]),
-            (
-                ExternalAccess::ReadWrite,
-                SafeModeLevel::Alert,
-                [Run, write, drop],
-            ),
+            (ExternalAccess::ReadWrite, SafeModeLevel::Alert, [Run, write, drop]),
             (
                 ExternalAccess::ReadWrite,
                 SafeModeLevel::ReadOnly,

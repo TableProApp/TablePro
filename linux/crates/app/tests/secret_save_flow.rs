@@ -75,6 +75,12 @@ fn keyed_ssh() -> SavedSshConfig {
             // The save records whether the passphrase actually landed.
             has_passphrase: true,
         },
+        enabled: true,
+        kept_key_path: None,
+        agent_socket: None,
+        totp: Default::default(),
+        remote_file: Default::default(),
+        unknown: Default::default(),
     }
 }
 

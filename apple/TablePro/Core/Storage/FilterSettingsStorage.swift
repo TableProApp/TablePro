@@ -593,7 +593,7 @@ final class FilterSettingsStorage: ObservableObject, TableScopedSettingsStore {
         ) + Self.browseKeySuffix
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
+    func purgeConnections(_ connectionIds: Set<UUID>) {
         guard !connectionIds.isEmpty else { return }
 
         let encodedPrefixes = connectionIds.map { TableScope.storagePrefix(connectionId: $0) }

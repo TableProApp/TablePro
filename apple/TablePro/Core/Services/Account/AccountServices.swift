@@ -45,6 +45,8 @@ internal final class AccountServices: AccountBackendListener {
     let shares: any ShareService
     let events = PassthroughSubject<AccountEvent, Never>()
     private let backend: any AccountBackend
+    // The account the sync service opens with; nil for a backend that has none.
+    let syncAccount: (any SyncAccountProviding)?
     private let transport: any ClientTransport
     private let storedKey: StoredLicenseKey
     private let clock: any Clock<Duration>
@@ -63,6 +65,7 @@ internal final class AccountServices: AccountBackendListener {
 
     init(
         backend: any AccountBackend,
+        syncAccount: (any SyncAccountProviding)? = nil,
         transport: any ClientTransport,
         storedKey: StoredLicenseKey,
         access: FeatureAccess,
@@ -71,6 +74,7 @@ internal final class AccountServices: AccountBackendListener {
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.backend = backend
+        self.syncAccount = syncAccount
         self.transport = transport
         self.storedKey = storedKey
         self.access = access

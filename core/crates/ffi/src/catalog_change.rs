@@ -588,8 +588,9 @@ mod tests {
             SafeModeLevel::ALL.map(|level| catalog_gate(level, operation.access(), false))
         };
 
-        assert_eq!(gates(&drop), [SaveGate::Confirm, SaveGate::Confirm, SaveGate::Refuse]);
-        assert_eq!(gates(&create), [SaveGate::Run, SaveGate::Confirm, SaveGate::Refuse]);
+        use SaveGate::{Confirm, Refuse, Run};
+        assert_eq!(gates(&drop), [Confirm, Confirm, Confirm, Confirm, Confirm, Refuse]);
+        assert_eq!(gates(&create), [Run, Confirm, Confirm, Confirm, Confirm, Refuse]);
         assert_eq!(
             catalog_gate(SafeModeLevel::Silent, create.access(), true),
             SaveGate::Refuse

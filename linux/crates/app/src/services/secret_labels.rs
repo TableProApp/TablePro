@@ -82,6 +82,12 @@ mod tests {
                 username: username.map(str::to_owned),
                 jump_hosts: Vec::new(),
                 auth,
+                enabled: true,
+                kept_key_path: None,
+                agent_socket: None,
+                totp: Default::default(),
+                remote_file: Default::default(),
+                unknown: Default::default(),
             }),
             ..connection()
         }

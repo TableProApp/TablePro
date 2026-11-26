@@ -48,8 +48,8 @@ pub struct Core {
     items: Arc<dyn SecretItems>,
     // The TablePro account's, in the same store as every other secret.
     refresh_tokens: RefreshTokens,
-    paths: Option<StoragePaths>,
-    store: Option<ConnectionStore>,
+    pub(crate) paths: Option<StoragePaths>,
+    pub(crate) store: Option<ConnectionStore>,
     writes: LibraryWrites,
     // Opened on first use, so a core that never shows history never migrates or prunes it.
     history: Arc<OnceCell<Arc<QueryHistoryStore>>>,
@@ -781,6 +781,12 @@ mod tests {
             username: None,
             jump_hosts: Vec::new(),
             auth: SavedSshAuth::Agent,
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
         let typed = || vec![(SecretKind::DatabasePassword, SecretString::from("typed"))];
         let held = |vault: Arc<dyn SecretVault>, id| async move {
@@ -861,6 +867,12 @@ mod tests {
                 },
                 _ => SavedSshAuth::Password,
             },
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
         saved
     }

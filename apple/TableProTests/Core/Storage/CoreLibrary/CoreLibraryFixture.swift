@@ -12,8 +12,7 @@ import TableProSyncTransport
 final class CoreLibraryFixture {
     let directory: URL
     let keychain = InMemoryKeychain()
-    let metadata: SyncMetadataStorage
-    let tracker: SyncChangeTracker
+    let journal = SyncJournalRecorder()
     let events = AppEvents()
     private let suites = EphemeralDefaultsPool()
     let defaults: UserDefaults
@@ -23,8 +22,6 @@ final class CoreLibraryFixture {
             .appendingPathComponent("CoreLibrary-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defaults = try suites.make().defaults
-        metadata = SyncMetadataStorage(userDefaults: try suites.make().defaults)
-        tracker = SyncChangeTracker(metadataStorage: metadata)
     }
 
     deinit {
@@ -38,18 +35,18 @@ final class CoreLibraryFixture {
         ConnectionStorage(
             fileURL: legacyURL,
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: journal.journal,
             keychain: keychain,
             appEvents: self.events
         )
     }
 
     func groups(_ storage: ConnectionStorage) -> GroupStorage {
-        GroupStorage(syncTracker: tracker, connectionStorage: storage, appEvents: events)
+        GroupStorage(syncJournal: journal.journal, connectionStorage: storage, appEvents: events)
     }
 
     func tags(_ storage: ConnectionStorage) -> TagStorage {
-        TagStorage(syncTracker: tracker, connectionStorage: storage, appEvents: events)
+        TagStorage(syncJournal: journal.journal, connectionStorage: storage, appEvents: events)
     }
 
     func preferences(_ storage: ConnectionStorage) -> ConnectionListPreferences {

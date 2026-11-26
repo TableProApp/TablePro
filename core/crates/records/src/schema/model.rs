@@ -57,7 +57,10 @@ const SAVED_CONNECTION: &[(&str, Target)] = &[
     ("ssh.jump_hosts.port", Wire("ssh_config.jump_hosts.port")),
     ("ssh.jump_hosts.username", Wire("ssh_config.jump_hosts.username")),
     ("ssh.jump_hosts.auth", Wire("ssh_config.jump_hosts.auth_method")),
-    ("ssh.jump_hosts.key_path", Wire("ssh_config.jump_hosts.private_key_path")),
+    (
+        "ssh.jump_hosts.key_path",
+        Wire("ssh_config.jump_hosts.private_key_path"),
+    ),
     ("ssh.auth.kind", Wire("ssh_config.auth_method")),
     ("ssh.auth.path", Wire("ssh_config.private_key_path")),
     ("ssh.auth.has_passphrase", Wire("ssh_config.passphrase_stored")),
@@ -101,8 +104,7 @@ const SAVED_CONNECTION: &[(&str, Target)] = &[
     ("unknown", Kept),
 ];
 
-// `tablepro_storage::SshProfile`. Whether a key's passphrase is kept is this device's to know. A profile is never
-// switched off and opens no remote file, so those stay unsent.
+// `tablepro_storage::SshProfile`. A kept passphrase is this device's to know; a profile is never off and opens no file.
 const SSH_PROFILE: &[(&str, Target)] = &[
     ("id", Id),
     ("name", Wire("name")),
@@ -216,9 +218,10 @@ const SAVED_QUERY_FOLDER: &[(&str, Target)] = &[
     ("updated_at", Wire("updated_at")),
 ];
 
-// Pins stay on the device (0052, History).
+// The rowid and pins stay on the device (0052, History).
 const HISTORY_ENTRY: &[(&str, Target)] = &[
-    ("id", Id),
+    ("id", DeviceOnly),
+    ("record_id", Id),
     ("query", Wire("query")),
     ("driver_id", Wire("database_type")),
     ("connection_id", Wire("connection_id")),

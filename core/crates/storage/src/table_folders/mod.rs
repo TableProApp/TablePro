@@ -130,7 +130,10 @@ impl TableFolders {
         .bind(folder.updated_at_ms)
         .execute(&self.pool)
         .await?;
-        self.tell(JournalEntry::new(RecordKind::TableFolder).wrote([RecordRef::Id(folder.id)]), None);
+        self.tell(
+            JournalEntry::new(RecordKind::TableFolder).wrote([RecordRef::Id(folder.id)]),
+            None,
+        );
         Ok(())
     }
 
@@ -145,7 +148,10 @@ impl TableFolders {
             .await?
             .rows_affected();
         if changed > 0 {
-            self.tell(JournalEntry::new(RecordKind::TableFolder).wrote([RecordRef::Id(id)]), None);
+            self.tell(
+                JournalEntry::new(RecordKind::TableFolder).wrote([RecordRef::Id(id)]),
+                None,
+            );
             return Ok(());
         }
         let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM table_folders WHERE id = ?")

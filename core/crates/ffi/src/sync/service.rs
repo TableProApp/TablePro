@@ -1,0 +1,601 @@
+use std::future::Future;
+use std::sync::Arc;
+
+use tablepro_session::runtime::Tasks;
+use tablepro_sync::SyncError;
+use tablepro_sync::api::control::SyncControl;
+use tablepro_sync::api::{CloudKitFailure, KindName, ScopeName, TransportError};
+use tablepro_sync::engine::Journal;
+use tokio_util::task::AbortOnDropHandle;
+
+use super::engines::{IcloudEngine, ServiceSlot, icloud_categories, journal};
+use super::keys::LockCauseTag;
+use super::service_records::{categories_arg, digest_arg, record_arg};
+use crate::account::{AccountService, SyncProviderTag};
+use crate::error::CoreError;
+use crate::runtime::on_runtime;
+
+// The typed fields a sync refusal carries, which the app acts on: RFC 9470's challenge to step up and retry, a
+// `Retry-After`, the rejected change's own code (0051, Push), and why the device locked.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SyncFailureInfo {
+    StepUp { acr_values: Vec<String>, max_age_secs: u64 },
+    RetryAfter { ms: u64 },
+    Rejected { code: String },
+    Locked { cause: LockCauseTag },
+}
+
+fn failure_info(error: &SyncError) -> Option<SyncFailureInfo> {
+    match error {
+        SyncError::Transport(TransportError::StepUpRequired(challenge)) => Some(SyncFailureInfo::StepUp {
+            acr_values: challenge.acr_values.clone(),
+            max_age_secs: challenge.max_age_secs,
+        }),
+        SyncError::Transport(
+            TransportError::RateLimited { retry_after_ms }
+            | TransportError::RestoreCheckUnavailable { retry_after_ms }
+            | TransportError::Server { retry_after_ms, .. },
+        )
+        | SyncError::CloudKit(CloudKitFailure::Throttled { retry_after_ms }) => {
+            retry_after_ms.map(|ms| SyncFailureInfo::RetryAfter { ms })
+        }
+        SyncError::Rejected { code } => Some(SyncFailureInfo::Rejected {
+            code: code.as_str().to_owned(),
+        }),
+        SyncError::Locked { cause } => Some(SyncFailureInfo::Locked { cause: (*cause).into() }),
+        _ => None,
+    }
+}
+
+impl From<SyncError> for CoreError {
+    fn from(error: SyncError) -> Self {
+        if error == SyncError::Cancelled {
+            return Self::Cancelled;
+        }
+        let sync = failure_info(&error);
+        match Self::failed(error.code(), error.to_string()) {
+            Self::Failed { mut info } => {
+                info.sync = sync;
+                Self::Failed { info }
+            }
+            cancelled @ Self::Cancelled => cancelled,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SyncPlatformTag {
+    Macos,
+    Ios,
+    Linux,
+    Windows,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SyncConfig {
+    pub platform: SyncPlatformTag,
+    // The provider for personal data that the app keeps (core ADR 0054, The provider key). Team scopes and the key
+    // objects always use TablePro Sync.
+    pub provider: SyncProviderTag,
+    pub categories: SyncCategoriesArg,
+    // The iCloud account whose state file this device used last, which `SyncService::icloud_account` gives the app to
+    // keep; None on first use. A switch made while the app was closed deletes that account's file.
+    #[uniffi(default = None)]
+    pub icloud_account: Option<String>,
+}
+
+// The kinds turned off on this device, by their wire names, and the password switch.
+#[derive(Debug, Clone, PartialEq, Eq, Default, uniffi::Record)]
+pub struct SyncCategoriesArg {
+    pub off_kinds: Vec<String>,
+    pub passwords: bool,
+}
+
+// Told that something changed, on a runtime thread. It only schedules a read on the app's own thread: no work, and
+// nothing that blocks (core ADR 0002).
+#[uniffi::export(callback_interface)]
+pub trait SyncListener: Send + Sync {
+    // `status`, the approvals, the conflicts or the held records changed.
+    fn status_changed(&self);
+
+    // The key state, a session, a reset, a team's keys or the key notices changed.
+    fn keys_changed(&self);
+}
+
+// One per app, over the stores of the Core it was opened on and the sign-in it was given. Dropping it stops the
+// engines and their schedulers.
+#[derive(uniffi::Object)]
+pub struct SyncService {
+    pub(crate) tasks: Tasks,
+    pub(crate) account: Option<Arc<AccountService>>,
+    pub(crate) config: SyncConfig,
+    pub(crate) icloud: Result<IcloudEngine, SyncError>,
+    pub(crate) service: Arc<ServiceSlot>,
+    // This Core's connections, which name what a removed party could read.
+    pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
+    pub(crate) _forward: AbortOnDropHandle<()>,
+}
+
+impl std::fmt::Debug for SyncService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SyncService")
+            .field("config", &self.config)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SyncPhaseTag {
+    Off,
+    Unavailable,
+    Idle,
+    Syncing,
+    Waiting { retry_in_ms: u64 },
+    PullOnly,
+    ZoneRemoved,
+    NewIdentity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SyncStatusInfo {
+    pub provider: Option<SyncProviderTag>,
+    pub phase: SyncPhaseTag,
+    pub last_pass_ms: Option<i64>,
+    // The last pass's error code.
+    pub problem: Option<String>,
+    pub waiting_approvals: u32,
+    pub conflicts: u32,
+    pub held: u32,
+    pub queued_changes: u32,
+}
+
+// A scope as the server's last scopes body named it (core ADR 0051, Scopes; Policies). A switch is None where the scope
+// carries none; `writable` is false past grace or after a lapse, when only key-object writes are taken.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ScopeStatusInfo {
+    pub scope: String,
+    pub writable: bool,
+    pub personal_sync: Option<bool>,
+    pub password_sync: Option<bool>,
+    pub history_sync: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PassReasonTag {
+    // A store the app keeps wrote, after the write landed.
+    Journal,
+    // `CKAccountChanged`, after the operations in flight were cancelled.
+    AccountChanged,
+    Launch,
+    Foreground,
+    NetworkBack,
+    CloudKitPush,
+    Person,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum NewIdentityChoiceTag {
+    MoveMyData,
+    StartEmpty,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ConflictChoiceTag {
+    KeepMine,
+    KeepTheirs,
+}
+
+// A synced record: its scope as the wire names it (`personal`, `history` or `team_...`), its kind and its id.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SyncRecordRef {
+    pub scope: String,
+    pub kind: String,
+    pub record_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MovePlanInfo {
+    pub records: u64,
+    pub staying_behind: u64,
+    pub secrets_to_seal: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MoveBackPlanInfo {
+    pub icloud_deletions: u64,
+}
+
+// Values are JSON text. `digest` names the pulled value the person is shown, as lower-case hex, and goes back with the
+// decision: a value a pull changed since is not decided (core ADR 0066).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PendingApprovalInfo {
+    pub record: SyncRecordRef,
+    pub field: String,
+    pub pulled: String,
+    pub digest: String,
+    pub current: Option<String>,
+}
+
+// None is a deletion. `digest` names the conflict as listed, as lower-case hex, and goes back with the choice.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TeamConflictInfo {
+    pub record: SyncRecordRef,
+    pub fields: Vec<String>,
+    pub mine: Option<String>,
+    pub theirs: Option<String>,
+    pub digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum HeldReasonTag {
+    Unreadable,
+    UnknownKind,
+    AwaitingApproval,
+    // This device is not approved yet, so it holds what it may not apply (core ADR 0056).
+    AwaitingDeviceApproval,
+    // Over 1 MiB, or a value the server's rules refuse, with the server's code.
+    Refused { code: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HeldRecordInfo {
+    pub record: SyncRecordRef,
+    pub reason: HeldReasonTag,
+}
+
+// Which engine a call reaches on the runtime: the personal provider's for personal data and history, and TablePro
+// Sync's for the team scopes, whatever the personal provider is (core ADR 0054, Providers).
+#[derive(Clone)]
+struct Route {
+    provider: SyncProviderTag,
+    icloud: Result<Arc<dyn SyncControl>, SyncError>,
+    service: Arc<ServiceSlot>,
+}
+
+const OFF: SyncError = SyncError::NotAllowed {
+    what: "sync personal data while sync is off",
+};
+
+impl Route {
+    async fn service(&self) -> Result<Arc<dyn SyncControl>, SyncError> {
+        self.service
+            .engine()
+            .await
+            .map(|engine| Arc::clone(&engine.sync) as Arc<dyn SyncControl>)
+    }
+
+    async fn personal(&self) -> Result<Arc<dyn SyncControl>, SyncError> {
+        match self.provider {
+            SyncProviderTag::Icloud => self.icloud.clone(),
+            SyncProviderTag::TableproSync => self.service().await,
+            SyncProviderTag::Off => Err(OFF),
+        }
+    }
+
+    async fn for_scope(&self, scope: ScopeName) -> Result<Arc<dyn SyncControl>, SyncError> {
+        match scope {
+            ScopeName::Team(_) => self.service().await,
+            ScopeName::Personal | ScopeName::History => self.personal().await,
+        }
+    }
+
+    // TablePro Sync's engine for the team scopes, or None when there is no sign-in to run it on a device whose
+    // personal provider is another; any other failure is the answer.
+    async fn teams(&self) -> Result<Option<Arc<dyn SyncControl>>, SyncError> {
+        match self.service().await {
+            Ok(control) => Ok(Some(control)),
+            Err(SyncError::Transport(TransportError::SignedOut)) if self.provider != SyncProviderTag::TableproSync => {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    // The engines that hold records here, the personal provider's first, each looked up on its own, and the first
+    // failure of one that should run.
+    async fn running(&self) -> (Vec<Arc<dyn SyncControl>>, Option<SyncError>) {
+        let mut engines = Vec::new();
+        let mut failed = None;
+        if self.provider == SyncProviderTag::Icloud {
+            match self.icloud.clone() {
+                Ok(control) => engines.push(control),
+                Err(error) => failed = Some(error),
+            }
+        }
+        match self.teams().await {
+            Ok(Some(control)) => engines.push(control),
+            Ok(None) => {}
+            Err(error) => {
+                failed.get_or_insert(error);
+            }
+        }
+        (engines, failed)
+    }
+}
+
+impl SyncService {
+    fn route(&self) -> Route {
+        Route {
+            provider: self.config.provider,
+            icloud: self
+                .icloud
+                .as_ref()
+                .map(|engine| Arc::clone(&engine.sync) as Arc<dyn SyncControl>)
+                .map_err(Clone::clone),
+            service: Arc::clone(&self.service),
+        }
+    }
+
+    // The personal provider's engine as it stands, for the calls that answer at once.
+    fn control_now(&self) -> Result<Arc<dyn SyncControl>, SyncError> {
+        match self.config.provider {
+            SyncProviderTag::Icloud => self.route().icloud,
+            SyncProviderTag::TableproSync => self
+                .service
+                .now()
+                .map(|engine| Arc::clone(&engine.sync) as Arc<dyn SyncControl>),
+            SyncProviderTag::Off => Err(OFF),
+        }
+    }
+
+    // Runs `work` over the route on the runtime.
+    async fn on_route<T, F>(&self, work: impl FnOnce(Route) -> F + Send + 'static) -> Result<T, CoreError>
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<T, SyncError>> + Send + 'static,
+    {
+        let route = self.route();
+        on_runtime(&self.tasks, async move { work(route).await.map_err(CoreError::from) }).await
+    }
+
+    // Runs `work` over the personal provider's engine on the runtime.
+    async fn on_control<T, F>(
+        &self,
+        work: impl FnOnce(Arc<dyn SyncControl>) -> F + Send + 'static,
+    ) -> Result<T, CoreError>
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<T, SyncError>> + Send + 'static,
+    {
+        self.on_route(move |route| async move { work(route.personal().await?).await })
+            .await
+    }
+}
+
+#[uniffi::export]
+impl SyncService {
+    pub fn status(&self) -> SyncStatusInfo {
+        if self.config.provider == SyncProviderTag::Off {
+            return SyncStatusInfo {
+                provider: Some(SyncProviderTag::Off),
+                phase: SyncPhaseTag::Off,
+                last_pass_ms: None,
+                problem: None,
+                waiting_approvals: 0,
+                conflicts: 0,
+                held: 0,
+                queued_changes: 0,
+            };
+        }
+        match self.control_now() {
+            Ok(control) => control.status().into(),
+            Err(error) => SyncStatusInfo {
+                provider: Some(self.config.provider),
+                phase: SyncPhaseTag::Unavailable,
+                last_pass_ms: None,
+                problem: Some(error.code().to_owned()),
+                waiting_approvals: 0,
+                conflicts: 0,
+                held: 0,
+                queued_changes: 0,
+            },
+        }
+    }
+
+    // A pass of each engine that holds records here; the first failure is the answer, after every pass ran.
+    pub async fn sync_now(&self, why: PassReasonTag) -> Result<(), CoreError> {
+        self.on_route(move |route| async move {
+            let (engines, mut failed) = route.running().await;
+            for control in engines {
+                if let Err(error) = control.sync_now(why.into()).await {
+                    failed.get_or_insert(error);
+                }
+            }
+            failed.map_or(Ok(()), Err)
+        })
+        .await
+    }
+
+    // Each running engine takes them; the iCloud engine reads a category turned on whole on its next fetch.
+    pub async fn set_categories(&self, categories: SyncCategoriesArg) -> Result<(), CoreError> {
+        let categories = categories_arg(&categories)?;
+        if let Ok(engine) = &self.icloud {
+            engine.sync.set_categories(icloud_categories(&categories));
+        }
+        let slot = Arc::clone(&self.service);
+        on_runtime(&self.tasks, async move { Ok(slot.set_categories(categories).await?) }).await
+    }
+
+    // A store the app still keeps wrote these records of `kind`, after its write landed (core ADR 0060).
+    pub async fn record_host_changes(
+        &self,
+        kind: String,
+        written: Vec<String>,
+        deleted: Vec<String>,
+    ) -> Result<(), CoreError> {
+        let kind = KindName::parse(&kind)?
+            .known()
+            .ok_or(SyncError::Unknown { what: "kind" })?;
+        let service = self.service.now().ok();
+        let journals: Vec<&Journal> = self
+            .icloud
+            .iter()
+            .map(|engine| &engine.journal)
+            .chain(service.iter().map(|engine| &engine.journal))
+            .collect();
+        journal(&journals, kind, written, deleted);
+        Ok(())
+    }
+
+    // Among what the managed policy allows (core ADR 0055).
+    pub async fn choose_provider(&self, provider: SyncProviderTag) -> Result<(), CoreError> {
+        self.on_control(move |control| async move { control.choose_provider(provider.into()).await })
+            .await
+    }
+
+    pub async fn plan_move_to_service(&self) -> Result<MovePlanInfo, CoreError> {
+        self.on_control(move |control| async move { control.plan_move_to_service().await.map(MovePlanInfo::from) })
+            .await
+    }
+
+    pub async fn move_to_service(&self) -> Result<(), CoreError> {
+        self.on_control(move |control| async move { control.move_to_service().await })
+            .await
+    }
+
+    pub async fn plan_move_to_icloud(&self) -> Result<MoveBackPlanInfo, CoreError> {
+        self.on_control(move |control| async move { control.plan_move_to_icloud().await.map(MoveBackPlanInfo::from) })
+            .await
+    }
+
+    // Refused unless the count is the plan's, which the person confirmed.
+    pub async fn move_to_icloud(&self, confirmed_deletions: u64) -> Result<(), CoreError> {
+        self.on_control(move |control| async move { control.move_to_icloud(confirmed_deletions).await })
+            .await
+    }
+
+    pub async fn choose_for_new_identity(&self, choice: NewIdentityChoiceTag) -> Result<(), CoreError> {
+        self.on_control(move |control| async move { control.choose_for_new_identity(choice.into()).await })
+            .await
+    }
+
+    pub async fn upload_again(&self) -> Result<(), CoreError> {
+        self.on_control(move |control| async move { control.upload_again().await })
+            .await
+    }
+
+    pub async fn delete_icloud_zone(&self) -> Result<(), CoreError> {
+        self.on_control(move |control| async move { control.delete_icloud_zone().await })
+            .await
+    }
+
+    pub async fn approvals(&self) -> Result<Vec<PendingApprovalInfo>, CoreError> {
+        self.on_route(move |route| async move {
+            let (engines, failed) = route.running().await;
+            if let Some(error) = failed {
+                return Err(error);
+            }
+            let mut approvals = Vec::new();
+            for control in engines {
+                approvals.extend(control.approvals().await?.into_iter().map(PendingApprovalInfo::from));
+            }
+            Ok(approvals)
+        })
+        .await
+    }
+
+    // `digest` is the approval's, as `approvals` gave it; a pull that changed the value since answers `sync.changed`.
+    pub async fn decide_approval(
+        &self,
+        record: SyncRecordRef,
+        field: String,
+        digest: String,
+        approve: bool,
+    ) -> Result<(), CoreError> {
+        let (key, seen) = (record_arg(&record)?, digest_arg(&digest)?);
+        self.on_route(move |route| async move {
+            let control = route.for_scope(key.scope).await?;
+            control.decide_approval(key, field, seen, approve).await
+        })
+        .await
+    }
+
+    // Only team records meet in a conflict, so they are TablePro Sync's; with no sign-in there are none.
+    pub async fn conflicts(&self) -> Result<Vec<TeamConflictInfo>, CoreError> {
+        self.on_route(move |route| async move {
+            let conflicts = match route.teams().await? {
+                Some(control) => control.conflicts().await?,
+                None => Vec::new(),
+            };
+            Ok(conflicts.into_iter().map(TeamConflictInfo::from).collect())
+        })
+        .await
+    }
+
+    // `digest` is the conflict's, as `conflicts` gave it; a pull that replaced the conflict since answers `sync.changed`.
+    pub async fn resolve_conflict(
+        &self,
+        record: SyncRecordRef,
+        digest: String,
+        keep: ConflictChoiceTag,
+    ) -> Result<(), CoreError> {
+        let (key, seen) = (record_arg(&record)?, digest_arg(&digest)?);
+        self.on_route(move |route| async move {
+            let control = route.for_scope(key.scope).await?;
+            control.resolve_conflict(key, seen, keep.into()).await
+        })
+        .await
+    }
+
+    pub async fn held_records(&self) -> Result<Vec<HeldRecordInfo>, CoreError> {
+        self.on_route(move |route| async move {
+            let (engines, failed) = route.running().await;
+            if let Some(error) = failed {
+                return Err(error);
+            }
+            let mut held = Vec::new();
+            for control in engines {
+                held.extend(control.held_records().await?.into_iter().map(HeldRecordInfo::from));
+            }
+            Ok(held)
+        })
+        .await
+    }
+
+    // True while older entries remain on the server.
+    pub async fn load_older_history(&self) -> Result<bool, CoreError> {
+        self.on_control(move |control| async move { control.load_older_history().await })
+            .await
+    }
+
+    // The history entries this device keeps, its retention setting: a snapshot of the history scope takes that many,
+    // newest first, and `load_older_history` pages back. None keeps every entry.
+    pub fn set_history_window(&self, entries: Option<u32>) {
+        self.service.set_history_window(entries);
+    }
+
+    // The scopes TablePro Sync's last scopes body named, for the server's policy switches; empty before its first
+    // poll or while it does not run. `status_changed` follows a body that changed them.
+    pub fn scope_statuses(&self) -> Vec<ScopeStatusInfo> {
+        self.service.now().map_or_else(
+            |_| Vec::new(),
+            |engine| {
+                engine
+                    .sync
+                    .scopes_seen()
+                    .into_iter()
+                    .map(ScopeStatusInfo::from)
+                    .collect()
+            },
+        )
+    }
+
+    // The app awaits it as it quits: it returns once every write the app reported so far has marked the Swift sync
+    // metadata the previous stable reads, and fails while the app refuses a mark (core ADR 0054, Downgrade mirror).
+    pub async fn flush_legacy_marks(&self) -> Result<(), CoreError> {
+        let Ok(engine) = &self.icloud else {
+            return Ok(());
+        };
+        let sync = Arc::clone(&engine.sync);
+        on_runtime(&self.tasks, async move { Ok(sync.flush_legacy_marks().await?) }).await
+    }
+
+    // The iCloud account whose state file the device uses now, for the app to keep and pass back as
+    // `SyncConfig::icloud_account` at the next launch.
+    pub fn icloud_account(&self) -> Option<String> {
+        match &self.icloud {
+            Ok(engine) => engine.sync.account(),
+            Err(_) => self.config.icloud_account.clone(),
+        }
+    }
+}

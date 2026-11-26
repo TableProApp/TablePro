@@ -79,11 +79,11 @@ struct ConnectionStoreTagRemovalTests {
     func rewrittenStoreWithoutTagIsUntrusted() throws {
         let fileURL = try makeFileURL()
         let suite = try EphemeralDefaults()
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults))
+        let tracker = SyncJournalRecorder()
         let first = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: suite.defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain,
             integrity: integrity
         )
@@ -100,7 +100,7 @@ struct ConnectionStoreTagRemovalTests {
         let reloaded = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: suite.defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain,
             integrity: integrity
         )
@@ -117,7 +117,7 @@ struct ConnectionStoreTagRemovalTests {
         let storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: suite.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults)),
+            syncJournal: SyncHostJournal(),
             keychain: keychain,
             integrity: integrity
         )
@@ -173,7 +173,7 @@ struct ConnectionStoreTagRemovalTests {
         let storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: suite.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults)),
+            syncJournal: SyncHostJournal(),
             keychain: keychain,
             integrity: integrity
         )

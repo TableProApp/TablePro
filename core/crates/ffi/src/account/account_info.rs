@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use secrecy::SecretString;
 use tablepro_account::{
     AccessToken, AccountStatus, AppClient, Device, EntitlementProblem, FeatureAccess, License, LicenseClaim,
-    LicenseState, Membership, Profile, SignOutCause, TeamClaim,
+    LicenseState, Membership, Profile, SignOutCause, StepUpChallenge, TeamClaim,
 };
 
 // Codes stay strings, as the account crate keeps them: a plan, status or role this build does not know still shows.
@@ -142,7 +142,7 @@ pub enum LicenseStateTag {
     Active,
     // Past its end, inside the grace: everything still works.
     Grace,
-    // Past the grace: only the Team Library's pull and export.
+    // Past the grace: pulls of the sync features, and key-object writes.
     Lapsed,
 }
 
@@ -153,6 +153,33 @@ pub struct AccessTokenInfo {
     pub api_url: String,
     // The sign-in the token is of, so the app sends nothing it kept for another under it.
     pub session_id: Option<String>,
+}
+
+// RFC 9470's challenge, as `account.step_up_required` carries it in `ErrorInfo.step_up` and `sync.step_up_required` in
+// its `SyncFailureInfo::StepUp`: what `AccountService::step_up` asks the server's sign-in page for.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StepUpChallengeInfo {
+    // In the server's order of preference.
+    pub acr_values: Vec<String>,
+    pub max_age_secs: Option<u64>,
+}
+
+impl From<StepUpChallenge> for StepUpChallengeInfo {
+    fn from(challenge: StepUpChallenge) -> Self {
+        Self {
+            acr_values: challenge.acr_values,
+            max_age_secs: challenge.max_age_secs,
+        }
+    }
+}
+
+impl From<StepUpChallengeInfo> for StepUpChallenge {
+    fn from(challenge: StepUpChallengeInfo) -> Self {
+        Self {
+            acr_values: challenge.acr_values,
+            max_age_secs: challenge.max_age_secs,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]

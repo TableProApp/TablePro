@@ -16,7 +16,7 @@ final class ImportLibraryFixture {
     let directory: URL
     let keychain: InMemoryKeychain
     let appEvents: AppEvents
-    let metadata: SyncMetadataStorage
+    let journal: SyncJournalRecorder
     let connections: ConnectionStorage
     let groups: GroupStorage
     let tags: TagStorage
@@ -24,7 +24,6 @@ final class ImportLibraryFixture {
     let sshProfiles: SSHProfileStorage
     let favorites: SQLFavoriteManager
 
-    private let syncSuite: EphemeralDefaults
     private let storeSuite: EphemeralDefaults
 
     init(damage: Set<Damage> = []) throws {
@@ -39,12 +38,10 @@ final class ImportLibraryFixture {
         self.directory = directory
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        syncSuite = try EphemeralDefaults("ImportLibrary.sync")
         storeSuite = try EphemeralDefaults("ImportLibrary.store")
         let defaults = storeSuite.defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncSuite.defaults)
-        self.metadata = metadata
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let tracker = SyncJournalRecorder()
+        journal = tracker
         let integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
 
         let connectionsURL = directory.appendingPathComponent("connections.json")
@@ -68,34 +65,34 @@ final class ImportLibraryFixture {
         let connectionStorage = ConnectionStorage(
             fileURL: connectionsURL,
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain,
             appEvents: events,
             integrity: integrity
         )
         connections = connectionStorage
         groups = GroupStorage(
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             appEvents: events
         )
-        tags = TagStorage(syncTracker: tracker, connectionStorage: connectionStorage, appEvents: events)
+        tags = TagStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage, appEvents: events)
         profiles = CredentialProfileStorage(
             fileURL: profilesURL,
             keychain: keychain,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             integrity: integrity
         )
         sshProfiles = SSHProfileStorage(
             userDefaults: defaults,
             keychain: keychain,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage
         )
         favorites = SQLFavoriteManager(
             storage: SQLFavoriteStorage(databaseURL: favoritesURL, removeDatabaseOnDeinit: !damage.contains(.favorites)),
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             appEvents: events
         )
     }

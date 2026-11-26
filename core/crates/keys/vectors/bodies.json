@@ -45,7 +45,8 @@
         }
       },
       "error": "keys.suite",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "A suite not listed"
     },
     {
       "name": "a duplicate member",
@@ -59,7 +60,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "a missing member",
@@ -73,7 +75,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "an unknown member",
@@ -87,7 +90,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "replace_sig on a kind 0 certificate",
@@ -101,7 +105,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "a wrongly typed member",
@@ -115,7 +120,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "an integer with a fraction",
@@ -129,7 +135,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "a kind out of range",
@@ -143,7 +150,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "a key of 31 bytes",
@@ -157,7 +165,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "padded base64url",
@@ -171,7 +180,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "non-zero pad bits",
@@ -185,7 +195,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "the standard alphabet",
@@ -199,7 +210,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "signer_av 0",
@@ -213,7 +225,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "signer_av 2^31",
@@ -227,7 +240,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "start 2",
@@ -241,7 +255,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "a lower-case signer",
@@ -255,7 +270,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "a version of 0 in the id",
@@ -269,7 +285,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "a version of 2^31 in the id",
@@ -283,7 +300,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "a version with a leading zero in the id",
@@ -297,7 +315,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
     },
     {
       "name": "not an object",
@@ -311,7 +330,53 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a recovery blob ct cut by a byte",
+      "op": "key_object",
+      "row": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes",
+      "input": {
+        "object": {
+          "kind": "key.recovery",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"nonce\":\"XdXcLAsttXwmXAxj\",\"ct\":\"SI0EhIuYFYI9nfK57b-TJ4xZp8_PqGSTYUslo1Q3RsYv3lIGAK4Ro-6fEKlQq9UvVfu00QRkUsqrXm-yWJRHShCZ0-OwMOw6-V9m8kfXlQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes"
+    },
+    {
+      "name": "a recovery blob nonce cut by a byte",
+      "op": "key_object",
+      "row": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes",
+      "input": {
+        "object": {
+          "kind": "key.recovery",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"nonce\":\"XdXcLAsttXwmXAw\",\"ct\":\"SI0EhIuYFYI9nfK57b-TJ4xZp8_PqGSTYUslo1Q3RsYv3lIGAK4Ro-6fEKlQq9UvVfu00QRkUsqrXm-yWJRHShCZ0-OwMOw6-V9m8kfXlXo\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes"
+    },
+    {
+      "name": "a replace with no replace_sig",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":1,\"ik\":\"g74BdCONzR7nvem_gpGeDXLL8PRsuufGoi0R-1DjCq0\",\"ask\":\"ZwgPf72kVFIHZPqs32rM7CMcH5HPCfRm5BATR6RtMlA\",\"aek\":\"x2wQPBYoGIcdH2lePDgA3kqLIoDSG2obTTQG2rzUJ1w\",\"sig\":\"JeVV-EVrBU1WkOGUZLTlHU3JYlLcCe70pjLYtFlxPIJtdZ9l2zn5L6vMDuwrnVK-wrKFAyD5f7Jzh_rNP6CWCg\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "a reset proposal",
@@ -339,7 +404,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "a suite not listed inside a reset",
@@ -353,7 +419,8 @@
         }
       },
       "error": "keys.suite",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "A suite not listed"
     }
   ],
   "same_object": [
@@ -393,7 +460,8 @@
         }
       },
       "error": "keys.conflict",
-      "server": "create_only"
+      "server": "create_only",
+      "clause": "A key object pushed again or pulled at a held id with other fields"
     }
   ]
 }

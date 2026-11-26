@@ -3,6 +3,8 @@ mod entry;
 mod export;
 #[cfg(test)]
 mod favourites_migration_tests;
+#[cfg(test)]
+mod fixtures;
 mod history_connection;
 mod history_cursor;
 mod history_page;
@@ -12,6 +14,8 @@ mod identity_tests;
 mod new_entry;
 mod outcome;
 mod prune_report;
+#[cfg(test)]
+mod record_ids_migration_tests;
 pub mod retention;
 mod schema;
 mod search_fold;
@@ -57,8 +61,8 @@ const MAX_UNPINNED_ENTRIES: i64 = 100_000;
 /// limit on parameters.
 const IDS_PER_STATEMENT: usize = 500;
 
-const ENTRY_COLUMNS: &str = "h.id, h.query, h.driver_id, h.connection_id, h.connection_name, h.executed_at, \
-     h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error";
+const ENTRY_COLUMNS: &str = "h.id, h.record_id, h.query, h.driver_id, h.connection_id, h.connection_name, \
+     h.executed_at, h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error";
 
 /// A value for a placeholder of a statement built from parts.
 pub(crate) enum Bind {
@@ -171,10 +175,10 @@ impl QueryHistory {
         crate::table_folders::TableFolders::new(self.pool.clone(), self.path.clone(), self.signals.clone())
     }
 
-    fn history_changed(&self, written: impl IntoIterator<Item = i64>, deleted: impl IntoIterator<Item = i64>) {
+    fn history_changed(&self, written: impl IntoIterator<Item = Uuid>, deleted: impl IntoIterator<Item = Uuid>) {
         let entry = JournalEntry::new(RecordKind::HistoryEntry)
-            .wrote(written.into_iter().map(RecordRef::Row))
-            .deleted(deleted.into_iter().map(RecordRef::Row));
+            .wrote(written.into_iter().map(RecordRef::Id))
+            .deleted(deleted.into_iter().map(RecordRef::Id));
         if !entry.is_empty() {
             self.journal.notify(&[entry]);
         }
@@ -193,16 +197,20 @@ impl QueryHistory {
             Outcome::Error(msg) => (0, 0, Some(msg.clone())),
             Outcome::Cancelled => (0, 1, None),
         };
-        let id = sqlx::query(
+        // An entry is written once: one a pull or an import brings again keeps the row it has.
+        let inserted: Option<i64> = sqlx::query_scalar(
             r#"
             INSERT INTO history (
-                query, query_folded, driver_id, connection_id, connection_name,
+                record_id, query, query_folded, driver_id, connection_id, connection_name,
                 executed_at, duration_ms, rows_affected,
                 success, cancelled, error
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (record_id) DO NOTHING
+            RETURNING id
             "#,
         )
+        .bind(entry.record_id.to_string())
         .bind(&entry.query)
         .bind(fold(&entry.query))
         .bind(&entry.driver_id)
@@ -214,11 +222,18 @@ impl QueryHistory {
         .bind(success)
         .bind(cancelled)
         .bind(error_text)
-        .execute(&self.pool)
-        .await?
-        .last_insert_rowid();
-        self.history_changed([id], []);
-        Ok(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        match inserted {
+            Some(id) => {
+                self.history_changed([entry.record_id], []);
+                Ok(id)
+            }
+            None => Ok(sqlx::query_scalar("SELECT id FROM history WHERE record_id = ?")
+                .bind(entry.record_id.to_string())
+                .fetch_one(&self.pool)
+                .await?),
+        }
     }
 
     /// One page of the entries `query` matches, pinned first, then
@@ -301,6 +316,7 @@ impl QueryHistory {
         let pinned_i: i64 = row.try_get("pinned")?;
         Ok(Entry {
             id: row.try_get("id")?,
+            record_id: crate::stored_id::uuid_column(&row, "record_id")?,
             query: row.try_get("query")?,
             driver_id: row.try_get("driver_id")?,
             connection_id,
@@ -316,13 +332,13 @@ impl QueryHistory {
     }
 
     pub async fn set_pinned(&self, id: i64, pinned: bool) -> Result<(), StorageError> {
-        let changed = sqlx::query("UPDATE history SET pinned = ? WHERE id = ?")
-            .bind(if pinned { 1_i64 } else { 0 })
-            .bind(id)
-            .execute(&self.pool)
-            .await?
-            .rows_affected();
-        self.history_changed((changed > 0).then_some(id), []);
+        let changed: Option<String> =
+            sqlx::query_scalar("UPDATE history SET pinned = ? WHERE id = ? RETURNING record_id")
+                .bind(if pinned { 1_i64 } else { 0 })
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
+        self.history_changed(record_ids(changed), []);
         Ok(())
     }
 
@@ -347,8 +363,9 @@ impl QueryHistory {
         for chunk in ids.chunks(IDS_PER_STATEMENT) {
             let placeholders = vec!["?"; chunk.len()].join(",");
             let sql = format!(
-                "DELETE FROM history WHERE id IN ({placeholders}) RETURNING id, query, driver_id, connection_id, \
-                 connection_name, executed_at, duration_ms, rows_affected, success, cancelled, pinned, error"
+                "DELETE FROM history WHERE id IN ({placeholders}) RETURNING id, record_id, query, driver_id, \
+                 connection_id, connection_name, executed_at, duration_ms, rows_affected, success, cancelled, \
+                 pinned, error"
             );
             let mut statement = sqlx::query(AssertSqlSafe(sql));
             for id in chunk {
@@ -359,7 +376,7 @@ impl QueryHistory {
             }
         }
         transaction.commit().await?;
-        self.history_changed([], deleted.iter().map(|entry| entry.id));
+        self.history_changed([], deleted.iter().map(|entry| entry.record_id));
         deleted.sort_by_key(|entry| entry.id);
         Ok(deleted)
     }
@@ -371,12 +388,13 @@ impl QueryHistory {
         for entry in entries {
             sqlx::query(
                 "INSERT INTO history (
-                     id, query, query_folded, driver_id, connection_id, connection_name,
+                     id, record_id, query, query_folded, driver_id, connection_id, connection_name,
                      executed_at, duration_ms, rows_affected, success, cancelled, pinned, error
                  )
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(entry.id)
+            .bind(entry.record_id.to_string())
             .bind(&entry.query)
             .bind(fold(&entry.query))
             .bind(&entry.driver_id)
@@ -393,7 +411,7 @@ impl QueryHistory {
             .await?;
         }
         transaction.commit().await?;
-        self.history_changed(entries.iter().map(|entry| entry.id), []);
+        self.history_changed(entries.iter().map(|entry| entry.record_id), []);
         Ok(())
     }
 
@@ -409,10 +427,10 @@ impl QueryHistory {
             }],
         )
         .await?;
-        let removed: Vec<i64> = sqlx::query_scalar("DELETE FROM history RETURNING id")
+        let removed: Vec<String> = sqlx::query_scalar("DELETE FROM history RETURNING record_id")
             .fetch_all(&mut *transaction)
             .await?;
-        let affected = removed.len();
+        let affected = removed.len() as u64;
         // The delete triggers leave the queries' words in the index until it is optimized.
         if affected > 0 {
             sqlx::query("INSERT INTO history_search(history_search) VALUES('optimize')")
@@ -420,8 +438,8 @@ impl QueryHistory {
                 .await?;
         }
         transaction.commit().await?;
-        self.history_changed([], removed);
-        Ok(affected)
+        self.history_changed([], record_ids(removed));
+        Ok(affected as usize)
     }
 
     /// Drop what the user no longer needs: first anything past the
@@ -440,11 +458,11 @@ impl QueryHistory {
 
     pub(crate) async fn prune_with_cap(&self, retention_days: u32, cap: i64) -> Result<PruneReport, StorageError> {
         let mut report = PruneReport::default();
+        let mut removed: Vec<String> = Vec::new();
 
-        let mut removed: Vec<i64> = Vec::new();
         if let Some(cutoff) = retention::cutoff(retention_days, SystemTime::now()) {
-            let expired: Vec<i64> =
-                sqlx::query_scalar("DELETE FROM history WHERE pinned = 0 AND executed_at < ? RETURNING id")
+            let expired: Vec<String> =
+                sqlx::query_scalar("DELETE FROM history WHERE pinned = 0 AND executed_at < ? RETURNING record_id")
                     .bind(to_unix(cutoff))
                     .fetch_all(&self.pool)
                     .await?;
@@ -452,10 +470,10 @@ impl QueryHistory {
             removed.extend(expired);
         }
 
-        let over_cap: Vec<i64> = sqlx::query_scalar(
+        let over_cap: Vec<String> = sqlx::query_scalar(
             "DELETE FROM history WHERE pinned = 0 AND id NOT IN (
                  SELECT id FROM history WHERE pinned = 0 ORDER BY executed_at DESC, id DESC LIMIT ?
-             ) RETURNING id",
+             ) RETURNING record_id",
         )
         .bind(cap)
         .fetch_all(&self.pool)
@@ -475,7 +493,7 @@ impl QueryHistory {
         let transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         trim_upgrade_copies(&self.path, &[]).await?;
         transaction.commit().await?;
-        self.history_changed([], removed);
+        self.history_changed([], record_ids(removed));
         Ok(report)
     }
 
@@ -502,21 +520,21 @@ impl QueryHistory {
             }],
         )
         .await?;
-        let removed: Vec<i64> = sqlx::query_scalar("DELETE FROM history WHERE connection_id = ? RETURNING id")
+        let gone: Vec<String> = sqlx::query_scalar("DELETE FROM history WHERE connection_id = ? RETURNING record_id")
             .bind(connection.to_string())
             .fetch_all(&mut *transaction)
             .await?;
+        let removed = gone.len() as u64;
         // As after a prune: the delete triggers leave tombstones in the
         // index until it is optimized.
-        if !removed.is_empty() {
+        if removed > 0 {
             sqlx::query("INSERT INTO history_search(history_search) VALUES('optimize')")
                 .execute(&mut *transaction)
                 .await?;
         }
         transaction.commit().await?;
-        let count = removed.len() as u64;
-        self.history_changed([], removed);
-        Ok(count)
+        self.history_changed([], record_ids(gone));
+        Ok(removed)
     }
 
     /// Every connection the history holds entries for, under the name
@@ -606,6 +624,14 @@ pub(crate) async fn trim_upgrade_copies(path: &Path, first: &[CopyDelete]) -> Re
 }
 
 // SQLITE_BUSY and SQLITE_LOCKED, with their extended codes.
+// After the commit, so an id that does not read is left out of the journal rather than failing a write that landed.
+fn record_ids(texts: impl IntoIterator<Item = String>) -> Vec<Uuid> {
+    texts
+        .into_iter()
+        .filter_map(|text| Uuid::parse_str(&text).ok())
+        .collect()
+}
+
 fn is_busy(error: &StorageError) -> bool {
     let StorageError::Database(error) = error else {
         return false;
@@ -667,6 +693,7 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
         }
     }
     if has_folders {
+        backup_folders::repair_folders(&mut transaction).await?;
         backup_folders::repair_queries(&mut transaction).await?;
     }
     if sqlx::query("PRAGMA main.foreign_key_check")
@@ -756,6 +783,7 @@ mod tests {
 
     fn entry(query: &str, connection: Uuid) -> NewEntry {
         NewEntry {
+            record_id: Uuid::new_v4(),
             query: query.to_owned(),
             driver_id: "sqlite".to_owned(),
             connection_id: connection,
@@ -854,7 +882,7 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 5);
+        assert_eq!(applied, 6);
     }
 
     /// A database an earlier build wrote, with its saved queries, is kept
@@ -1048,7 +1076,7 @@ mod tests {
     /// means a change went into a file that has already run somewhere.
     #[test]
     fn migrator_embeds_every_migration() {
-        assert_eq!(schema::MIGRATOR.iter().count(), 5);
+        assert_eq!(schema::MIGRATOR.iter().count(), 6);
     }
 
     #[tokio::test]
@@ -1486,7 +1514,7 @@ mod tests {
             .save(crate::saved_queries::NewSavedQuery {
                 name: "kept".to_owned(),
                 query: "SELECT 1".to_owned(),
-                connection_id: Uuid::nil(),
+                connection_id: Some(Uuid::nil()),
                 connection_name: "test".to_owned(),
             })
             .await
@@ -1532,7 +1560,7 @@ mod tests {
         let named = |name: &str| crate::saved_queries::NewSavedQuery {
             name: name.to_owned(),
             query: "SELECT 1".to_owned(),
-            connection_id: Uuid::nil(),
+            connection_id: Some(Uuid::nil()),
             connection_name: "test".to_owned(),
         };
         saved.save(named("first")).await.expect("a saved query");
@@ -1604,9 +1632,12 @@ mod tests {
         let connection = Uuid::new_v4();
         let folders = history.saved_query_folders();
         let favourites = history.favourites();
-        let folder = folders.create(connection, "Reports", None).await.expect("a folder");
+        let folder = folders
+            .create(Some(connection), "Reports", None)
+            .await
+            .expect("a folder");
         folders
-            .create(connection, "Monthly", Some(folder))
+            .create(Some(connection), "Monthly", Some(folder))
             .await
             .expect("a subfolder");
         let table = crate::favourites::FavouriteTable {

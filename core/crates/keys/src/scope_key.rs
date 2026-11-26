@@ -154,7 +154,7 @@ impl Ring {
         Self::seal_with_nonce(origin, key, newer, older, crypto::random_array()?)
     }
 
-    pub fn seal_with_nonce(
+    pub(crate) fn seal_with_nonce(
         origin: &Origin,
         key: KeyRef,
         newer: &ScopeKey,

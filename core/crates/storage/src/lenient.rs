@@ -36,8 +36,8 @@ impl<T> Lenient<T> {
         self.held.len()
     }
 
-    pub(crate) fn held_entry(&self, id: Uuid) -> Option<&Value> {
-        self.held.iter().find(|entry| entry_id(entry) == Some(id))
+    pub(crate) fn held_entries(&self) -> impl Iterator<Item = (Uuid, &Value)> {
+        self.held.iter().filter_map(|entry| Some((entry_id(entry)?, entry)))
     }
 
     /// Drop the held copies of `id`, once a readable one takes its place or the entry is deleted.

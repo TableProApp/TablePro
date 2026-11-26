@@ -28,7 +28,7 @@ struct ConnectionLibraryStorageTests {
         let unique = UUID().uuidString
         let ephemeral = try EphemeralDefaults()
         let suiteDefaults = ephemeral.defaults
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suiteDefaults))
+        let tracker = SyncJournalRecorder()
         let storeURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("library-connections_\(unique)", isDirectory: true)
@@ -42,7 +42,7 @@ struct ConnectionLibraryStorageTests {
         let connectionStorage = ConnectionStorage(
             fileURL: storeURL,
             userDefaults: suiteDefaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             appEvents: events,
             integrity: storeIntegrity
         )
@@ -52,7 +52,7 @@ struct ConnectionLibraryStorageTests {
         appEvents = events
         storage = connectionStorage
         groupStorage = GroupStorage(
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             appEvents: events
         )

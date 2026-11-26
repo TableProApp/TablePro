@@ -14,22 +14,18 @@ struct TableFolderStorageTests {
 
     private struct Harness {
         let storage: TableFolderStorage
-        let metadata: SyncMetadataStorage
         let defaults: UserDefaults
         let notifications: NotificationCenter
-        let tracker: SyncChangeTracker
+        let tracker: SyncJournalRecorder
     }
 
     private func makeHarness() throws -> Harness {
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let tracker = SyncJournalRecorder()
         let notifications = NotificationCenter()
-        let storage = TableFolderStorage(defaults: defaults, syncTracker: tracker, notificationCenter: notifications)
+        let storage = TableFolderStorage(defaults: defaults, syncJournal: tracker.journal, notificationCenter: notifications)
         return Harness(
             storage: storage,
-            metadata: metadata,
             defaults: defaults,
             notifications: notifications,
             tracker: tracker
@@ -159,7 +155,7 @@ struct TableFolderStorageTests {
         let harness = try makeHarness()
         let folder = harness.storage.createFolder(named: "Billing", in: shop, containing: ["invoices"])
 
-        let reloaded = TableFolderStorage(defaults: harness.defaults, syncTracker: harness.tracker)
+        let reloaded = TableFolderStorage(defaults: harness.defaults, syncJournal: harness.tracker.journal)
 
         #expect(reloaded.layout(in: shop).folders == [folder])
         #expect(reloaded.layout(in: shop).placements == ["invoices": folder.id])
@@ -251,23 +247,17 @@ struct TableFolderStorageTests {
         #expect(harness.storage.layout(in: other).folders == [kept])
     }
 
-    @Test("Deleting a connection here tombstones its folders; a deletion from elsewhere does not")
-    func purgeRespectsTombstoneFlag() throws {
+    @Test("Deleting a connection journals the deletion of its folders and placements")
+    func purgeJournalsDeletions() throws {
         let harness = try makeHarness()
         let folder = harness.storage.createFolder(named: "Billing", in: shop, containing: ["invoices"])
 
-        harness.storage.purgeConnections([connectionId], leavesTombstones: true)
+        harness.storage.purgeConnections([connectionId])
 
         #expect(harness.storage.allFolders().isEmpty)
-        #expect(harness.metadata.tombstones(for: .tableFolder).map(\.id) == [folder.id.uuidString])
-
-        let remote = try makeHarness()
-        remote.storage.createFolder(named: "Billing", in: shop, containing: ["invoices"])
-        remote.storage.purgeConnections([connectionId], leavesTombstones: false)
-
-        #expect(remote.metadata.tombstones(for: .tableFolder).isEmpty)
-        #expect(remote.metadata.dirtyIds(for: .tableFolder).isEmpty)
-        #expect(remote.metadata.dirtyIds(for: .tableFolderItem).isEmpty)
+        #expect(harness.tracker.tombstones(for: .tableFolder).map(\.id) == [folder.id.uuidString])
+        #expect(harness.tracker.dirtyIds(for: .tableFolder).isEmpty)
+        #expect(harness.tracker.dirtyIds(for: .tableFolderItem).isEmpty)
     }
 
     // MARK: - Sync marks
@@ -277,9 +267,9 @@ struct TableFolderStorageTests {
         let harness = try makeHarness()
         let folder = harness.storage.createFolder(named: "Billing", in: shop, containing: ["invoices"])
 
-        #expect(harness.metadata.dirtyIds(for: .tableFolder) == [folder.id.uuidString])
+        #expect(harness.tracker.dirtyIds(for: .tableFolder) == [folder.id.uuidString])
         let key = TableFolderItemKey(scope: shop, name: "invoices")
-        #expect(harness.metadata.dirtyIds(for: .tableFolderItem) == [key.syncId])
+        #expect(harness.tracker.dirtyIds(for: .tableFolderItem) == [key.syncId])
     }
 
     @Test("Deleting a folder tombstones it and every placement it held")
@@ -290,9 +280,9 @@ struct TableFolderStorageTests {
         harness.storage.deleteFolder(id: folder.id, connectionId: connectionId)
 
         let key = TableFolderItemKey(scope: shop, name: "invoices")
-        #expect(harness.metadata.tombstones(for: .tableFolder).map(\.id) == [folder.id.uuidString])
-        #expect(harness.metadata.tombstones(for: .tableFolderItem).map(\.id) == [key.syncId])
-        #expect(harness.metadata.dirtyIds(for: .tableFolder).isEmpty)
+        #expect(harness.tracker.tombstones(for: .tableFolder).map(\.id) == [folder.id.uuidString])
+        #expect(harness.tracker.tombstones(for: .tableFolderItem).map(\.id) == [key.syncId])
+        #expect(harness.tracker.dirtyIds(for: .tableFolder).isEmpty)
     }
 
     @Test("A placement's sync id keeps separators apart, so two objects never share a record")
@@ -387,13 +377,12 @@ struct TableFolderStorageTests {
         let key = "com.TablePro.tableFolders." + connectionId.uuidString
         let damaged = Data("not json".utf8)
         harness.defaults.set(damaged, forKey: key)
-        let storage = TableFolderStorage(defaults: harness.defaults, syncTracker: harness.tracker)
+        let storage = TableFolderStorage(defaults: harness.defaults, syncJournal: harness.tracker.journal)
 
         storage.createFolder(named: "Billing", in: shop, containing: ["invoices"])
-        storage.applyRemote(folders: [TableFolder(scope: shop, name: "Remote")], items: [])
 
         #expect(harness.defaults.data(forKey: key) == damaged)
-        #expect(harness.metadata.dirtyIds(for: .tableFolder).isEmpty)
+        #expect(harness.tracker.dirtyIds(for: .tableFolder).isEmpty)
         #expect(storage.layout(in: shop).isEmpty)
     }
 
@@ -412,36 +401,5 @@ struct TableFolderStorageTests {
         #expect(placements.count == 1)
         #expect(placements.first?.folderId == moving.id)
         #expect(harness.storage.layout(in: sales).folders.map(\.id).contains(stale.id))
-    }
-
-    // MARK: - Remote
-
-    @Test("A placement that arrives before its folder shows once the folder lands")
-    func remoteItemWaitsForFolder() throws {
-        let harness = try makeHarness()
-        let folder = TableFolder(scope: shop, name: "Billing")
-        let item = TableFolderItem(scope: shop, name: "invoices", folderId: folder.id)
-
-        harness.storage.applyRemote(folders: [], items: [item])
-        #expect(harness.storage.layout(in: shop).placements.isEmpty)
-
-        harness.storage.applyRemote(folders: [folder], items: [])
-        #expect(harness.storage.layout(in: shop).placements == ["invoices": folder.id])
-        #expect(harness.metadata.dirtyIds(for: .tableFolder).isEmpty)
-        #expect(harness.metadata.dirtyIds(for: .tableFolderItem).isEmpty)
-    }
-
-    @Test("A folder deleted elsewhere takes its placements with it")
-    func remoteFolderDeletionReleasesObjects() throws {
-        let harness = try makeHarness()
-        let folder = harness.storage.createFolder(named: "Billing", in: shop, containing: ["invoices"])
-
-        harness.storage.removeRemote(folderIds: [folder.id], itemSyncIds: [])
-
-        #expect(harness.storage.allFolders().isEmpty)
-        #expect(harness.storage.allItems().isEmpty)
-        #expect(harness.metadata.dirtyIds(for: .tableFolder).isEmpty)
-        #expect(harness.metadata.dirtyIds(for: .tableFolderItem).isEmpty)
-        #expect(harness.metadata.tombstones(for: .tableFolder).isEmpty)
     }
 }

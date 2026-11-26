@@ -13,6 +13,7 @@ const WAIT: Duration = Duration::from_secs(10);
 
 fn entry(connection: Uuid, query: &str, outcome: Outcome) -> NewEntry {
     NewEntry {
+        record_id: uuid::Uuid::new_v4(),
         query: query.into(),
         driver_id: "sqlite".into(),
         connection_id: connection,

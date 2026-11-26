@@ -322,10 +322,46 @@ fn the_connection_table_names_every_member_the_store_holds() {
 }
 
 #[test]
-fn the_profile_and_table_folder_tables_name_every_member_the_store_holds() {
-    let exhaustive = |ssh: SshProfile, credential: CredentialProfile, folder: TableFolder, item: TableFolderItem| {
-        let SshProfile { id: _, name: _, ssh } = ssh;
+fn the_ssh_profile_table_names_every_member_the_store_holds() {
+    let exhaustive = |profile: SshProfile| {
+        let SshProfile { id: _, name: _, ssh } = profile;
         exhaustive_ssh(ssh);
+    };
+    let _ = exhaustive;
+    assert_eq!(
+        members("SshProfile"),
+        sorted(vec![
+            "id",
+            "name",
+            "ssh.enabled",
+            "ssh.host",
+            "ssh.port",
+            "ssh.username",
+            "ssh.jump_hosts.id",
+            "ssh.jump_hosts.host",
+            "ssh.jump_hosts.port",
+            "ssh.jump_hosts.username",
+            "ssh.jump_hosts.auth",
+            "ssh.jump_hosts.key_path",
+            "ssh.auth.kind",
+            "ssh.auth.path",
+            "ssh.auth.has_passphrase",
+            "ssh.kept_key_path",
+            "ssh.agent_socket",
+            "ssh.totp.mode",
+            "ssh.totp.algorithm",
+            "ssh.totp.digits",
+            "ssh.totp.period",
+            "ssh.remote_file.path",
+            "ssh.remote_file.access",
+            "ssh.unknown",
+        ])
+    );
+}
+
+#[test]
+fn the_profile_and_table_folder_tables_name_every_member_the_store_holds() {
+    let exhaustive = |credential: CredentialProfile, folder: TableFolder, item: TableFolderItem| {
         let CredentialProfile {
             id: _,
             name: _,
@@ -366,35 +402,6 @@ fn the_profile_and_table_folder_tables_name_every_member_the_store_holds() {
         } = item;
     };
     let _ = exhaustive;
-    assert_eq!(
-        members("SshProfile"),
-        sorted(vec![
-            "id",
-            "name",
-            "ssh.enabled",
-            "ssh.host",
-            "ssh.port",
-            "ssh.username",
-            "ssh.jump_hosts.id",
-            "ssh.jump_hosts.host",
-            "ssh.jump_hosts.port",
-            "ssh.jump_hosts.username",
-            "ssh.jump_hosts.auth",
-            "ssh.jump_hosts.key_path",
-            "ssh.auth.kind",
-            "ssh.auth.path",
-            "ssh.auth.has_passphrase",
-            "ssh.kept_key_path",
-            "ssh.agent_socket",
-            "ssh.totp.mode",
-            "ssh.totp.algorithm",
-            "ssh.totp.digits",
-            "ssh.totp.period",
-            "ssh.remote_file.path",
-            "ssh.remote_file.access",
-            "ssh.unknown",
-        ])
-    );
     assert_eq!(
         members("CredentialProfile"),
         sorted(vec![
@@ -552,6 +559,7 @@ fn the_history_table_names_every_member_the_store_holds() {
     let exhaustive_entry = |entry: Entry| {
         let Entry {
             id: _,
+            record_id: _,
             query: _,
             driver_id: _,
             connection_id: _,
@@ -570,6 +578,7 @@ fn the_history_table_names_every_member_the_store_holds() {
         members("query_history::Entry"),
         sorted(vec![
             "id",
+            "record_id",
             "query",
             "driver_id",
             "connection_id",

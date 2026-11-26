@@ -17,9 +17,12 @@ impl ConnectionsDocument {
     /// `kept` is the group and place the entry had, which it keeps when
     /// it stays in that group.
     pub(super) fn settle_place(&self, connection: &mut SavedConnection, kept: Option<(Option<Uuid>, u32)>) {
-        if connection
-            .group_id
-            .is_some_and(|id| !self.groups.iter().any(|group| group.id == id))
+        // A group the list lacks stays where the entry was already filed: a pull can bring the group later.
+        let stays = kept.is_some_and(|(group, _)| group == connection.group_id);
+        if !stays
+            && connection
+                .group_id
+                .is_some_and(|id| !self.groups.iter().any(|group| group.id == id))
         {
             connection.group_id = None;
         }
@@ -35,9 +38,9 @@ impl ConnectionsDocument {
 
     pub(super) fn next_group_order(&self, parent: Option<Uuid>) -> u32 {
         next(
-            self.groups
+            crate::GroupTree::new(&self.groups)
+                .children(parent)
                 .iter()
-                .filter(|group| group.parent_id == parent)
                 .map(|group| group.order),
         )
     }

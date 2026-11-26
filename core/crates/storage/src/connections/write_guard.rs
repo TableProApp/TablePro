@@ -4,9 +4,7 @@ use std::sync::MutexGuard;
 use super::StoreState;
 use crate::journal::{JournalEntry, JournalSlot};
 
-// Holds the store's mutex and the lock file from the re-read to the rename. What a commit changed
-// reaches the journal once both are released, in one call, so a journal that calls into another
-// language never runs under them.
+// The journal hears of a commit after both locks are released, so a foreign callback never runs under them.
 pub(super) struct WriteGuard<'a> {
     state: Option<MutexGuard<'a, StoreState>>,
     file: Option<std::fs::File>,
@@ -31,7 +29,11 @@ impl<'a> WriteGuard<'a> {
     pub(super) fn changed(&mut self, entries: impl IntoIterator<Item = JournalEntry>) {
         for entry in entries {
             match self.changed.iter_mut().find(|held| held.kind == entry.kind) {
-                Some(held) => *held = std::mem::replace(held, JournalEntry::new(entry.kind)).wrote(entry.written).deleted(entry.deleted),
+                Some(held) => {
+                    *held = std::mem::replace(held, JournalEntry::new(entry.kind))
+                        .wrote(entry.written)
+                        .deleted(entry.deleted)
+                }
                 None => self.changed.push(entry),
             }
         }

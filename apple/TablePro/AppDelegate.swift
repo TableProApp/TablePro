@@ -125,7 +125,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         runPostLaunchActivationIfNeeded()
         guard !AppStorageEnvironment.shared.isIsolated else { return }
-        SyncCoordinator.shared.syncIfNeeded()
+        SyncProviderCoordinator.shared.syncIfNeeded()
         AccountServices.shared.applicationDidBecomeActive()
     }
 
@@ -155,7 +155,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AccountServices.shared.start()
         // Before sync starts, so a profile's provider is the switch's first state.
         SyncProviderPolicy.shared.start()
-        SyncCoordinator.shared.start()
+        SyncProviderCoordinator.shared.start()
         // Its gate reads the sign-in the core restores after launch.
         Task {
             await AccountServices.shared.waitUntilRestored()
@@ -170,16 +170,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        SyncCoordinator.shared.pushRegistrationDidFinish(registered: true)
+        SyncProviderCoordinator.shared.pushRegistrationDidFinish(registered: true)
     }
 
     func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
         Self.logger.warning("Push registration failed: \(error.localizedDescription, privacy: .private)")
-        SyncCoordinator.shared.pushRegistrationDidFinish(registered: false)
+        SyncProviderCoordinator.shared.pushRegistrationDidFinish(registered: false)
     }
 
     func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
-        SyncCoordinator.shared.handleRemoteNotification(userInfo)
+        SyncProviderCoordinator.shared.handleRemoteNotification(userInfo)
     }
 
     // Unhiding brings windows back with no window notification, and while hidden every window reports invisible.
@@ -213,6 +213,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 AppRelauncher.shared.terminationWasCancelled()
                 return
             }
+            // Once the quit is decided, so a Cancel never waits on it.
+            await SyncProviderCoordinator.shared.flushBeforeQuit()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

@@ -55,13 +55,22 @@ public final class SyncPushChannel {
     }
 
     public var isLive: Bool {
-        guard isRegistered, !missedNotice, let account = metadata.lastAccountId else { return false }
+        isLive(account: metadata.lastAccountId)
+    }
+
+    // On the core engine the account is the one the transport last found signed in, not the Swift engine's record.
+    public func isLive(account: String?) -> Bool {
+        guard isRegistered, !missedNotice, let account else { return false }
         return metadata.subscribedAccountId == account
     }
 
     // A failed save never fails the run. One CloudKit refuses is not sent again for that account until the next launch.
     public func saveSubscriptionIfNeeded(_ save: () async throws -> Void) async {
-        guard let account = metadata.lastAccountId,
+        await saveSubscriptionIfNeeded(account: metadata.lastAccountId, save)
+    }
+
+    public func saveSubscriptionIfNeeded(account: String?, _ save: () async throws -> Void) async {
+        guard let account,
               metadata.subscribedAccountId != account,
               refusedAccount != account else { return }
         do {

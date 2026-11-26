@@ -35,11 +35,11 @@ struct AIChatAlwaysAllowTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: try pool.make().defaults))
+        let tracker = SyncJournalRecorder()
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: try pool.make().defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             appEvents: AppEvents()
         )
         registry = ChatToolRegistry()
@@ -135,14 +135,13 @@ struct AIChatAlwaysAllowTests {
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
             featureAccess: live.featureAccess,
-            syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
             queryHistoryManager: live.queryHistoryManager,
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: live.syncTracker,
+            syncJournal: live.syncJournal,
             welcomeRouter: live.welcomeRouter,
             telemetry: live.telemetry
         )

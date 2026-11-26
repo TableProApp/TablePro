@@ -2,18 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::ConnectionIcon;
 
-/// The icon a group or a connection shows in place of its default one.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LibraryIcon {
     Named(ConnectionIcon),
-    /// Kept so a macOS library round-trips. Only the Apple apps can draw
-    /// it; the others draw the default icon.
+    // Only the Apple apps draw it; the others draw the default icon.
     Symbol(SymbolName),
 }
 
-// A connection stored its icon as the named icon's id before it could hold a symbol, and a build
-// that reads only that form still reads a named icon.
+// A named icon stays its id string, the only form an earlier build reads.
 pub(crate) mod connection_field {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -36,12 +33,20 @@ pub(crate) mod connection_field {
     }
 
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<LibraryIcon>, D::Error> {
-        Ok(
-            Option::<Stored>::deserialize(deserializer)?.map(|stored| match stored {
-                Stored::Named(named) => LibraryIcon::Named(named),
-                Stored::Tagged(icon) => icon,
-            }),
-        )
+        Ok(Option::<Stored>::deserialize(deserializer)?.map(|stored| match stored {
+            Stored::Named(named) => LibraryIcon::Named(named),
+            Stored::Tagged(icon) => icon,
+        }))
+    }
+}
+
+impl LibraryIcon {
+    // The named icon an app that draws no symbol shows.
+    pub fn named(&self) -> Option<ConnectionIcon> {
+        match self {
+            Self::Named(named) => Some(*named),
+            Self::Symbol(_) => None,
+        }
     }
 }
 
@@ -123,7 +128,10 @@ mod tests {
         assert_eq!(named_json, r#"{"named":"server"}"#);
         assert_eq!(symbol_json, r#"{"symbol":"server.rack"}"#);
         assert_eq!(serde_json::from_str::<LibraryIcon>(&named_json).expect("named"), named);
-        assert_eq!(serde_json::from_str::<LibraryIcon>(&symbol_json).expect("symbol"), symbol);
+        assert_eq!(
+            serde_json::from_str::<LibraryIcon>(&symbol_json).expect("symbol"),
+            symbol
+        );
     }
 
     #[test]

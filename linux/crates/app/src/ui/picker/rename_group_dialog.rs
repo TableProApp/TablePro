@@ -3,7 +3,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_storage::{ConnectionGroup, ConnectionGroupName};
 
-use crate::services::library_outline::LibraryOutline;
+use crate::services::library_outline::{LibraryItem, LibraryOutline};
 
 const CANCEL: &str = "cancel";
 const RENAME: &str = "rename";
@@ -13,13 +13,14 @@ pub(super) async fn ask_group_rename(
     outline: &LibraryOutline,
     group: &ConnectionGroup,
 ) -> Option<ConnectionGroupName> {
-    let (dialog, entry) = rename_group_dialog(&group.name, outline.sibling_names(group.parent_id, Some(group.id)));
+    let filed_under = outline.parent_of(LibraryItem::Group(group.id)).flatten();
+    let (dialog, entry) = rename_group_dialog(&group.name, outline.sibling_names(filed_under, Some(group.id)));
     if crate::workspace::respond(&dialog, parent).await != RENAME {
         return None;
     }
     ConnectionGroupName::new(&entry.text())
         .ok()
-        .filter(|name| *name != group.name)
+        .filter(|name| name.as_str() != group.name.shown())
 }
 
 // `taken` leaves the group itself out, so a change of case alone can be saved.
@@ -30,7 +31,7 @@ pub(super) fn rename_group_dialog(
     let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Rename Group")), None);
     let entry = adw::EntryRow::builder()
         .title(crate::i18n::gettext("Name"))
-        .text(current.as_str())
+        .text(current.shown())
         .activates_default(true)
         .build();
     let rows = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();

@@ -31,12 +31,12 @@ mod store_tests;
 mod write_guard;
 
 pub use additions::ImportedConnection;
-pub use library::LibraryWrite;
 pub use details::{
     CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionOrigin,
     CredentialReference, DeviceOnly, KnownOrigin, LocalPasswordSource, SocksProxy, SshRoute, SshRouteHop,
     SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
 };
+pub use library::LibraryWrite;
 pub use profiles::{CredentialPassword, CredentialProfile, SshProfile};
 pub use ssh::{
     RemoteFileAccess, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm,
@@ -252,9 +252,7 @@ fn is_empty_list<T>(list: &Lenient<T>) -> bool {
 }
 
 impl ConnectionsDocument {
-    // Each id names one entry and a connection names a tag once, whatever a hand-edited or crafted file says. Every
-    // value is kept as stored: a reference nothing answers to reads as the top level or as no tag, so a pull that brings
-    // a connection before its group or tag loses neither.
+    // Values stay as stored, so a pull that brings a connection before its group or tag loses neither link.
     fn tidy(&mut self) {
         let mut seen = HashSet::with_capacity(self.tags.len());
         self.tags.retain(|tag| seen.insert(tag.id));
@@ -480,6 +478,20 @@ impl ConnectionList {
         found
     }
 
+    // Every group's connections in place, built once for a caller that lists them all.
+    pub fn connections_by_group(&self) -> HashMap<Option<Uuid>, Vec<&SavedConnection>> {
+        let known: HashSet<Uuid> = self.groups.iter().map(|group| group.id).collect();
+        let mut by_group: HashMap<Option<Uuid>, Vec<&SavedConnection>> = HashMap::new();
+        for connection in self.connections.iter() {
+            let group = connection.group_id.filter(|id| known.contains(id));
+            by_group.entry(group).or_default().push(connection);
+        }
+        for members in by_group.values_mut() {
+            members.sort_by_key(|connection| connection.order);
+        }
+        by_group
+    }
+
     // The group the list files the connection under: one the list lacks reads as the top level.
     pub fn group_of(&self, connection: &SavedConnection) -> Option<Uuid> {
         connection
@@ -703,9 +715,13 @@ impl ConnectionStore {
             .find(|saved| saved.id == connection.id)
             .map(|saved| (saved.group_id, saved.order));
         document.settle_place(&mut connection, stored);
-        document.connections.retain(|saved| saved.id != connection.id);
         document.connections.release(connection.id);
-        document.connections.push(connection);
+        // In place: entries of one order sort by where the list keeps them, as a Mac library's often do.
+        let id = connection.id;
+        match document.connections.iter_mut().find(|saved| saved.id == id) {
+            Some(slot) => *slot = connection,
+            None => document.connections.push(connection),
+        }
         self.commit(&mut state, document)
     }
 
@@ -907,10 +923,11 @@ impl ConnectionStore {
         let mut state = self.lock();
         let before = self.ensure_loaded(&mut state)?;
         let mut document = before.clone();
+        // By the names as they show: an imported name is cleaned, a stored one is kept as written.
         let held: HashMap<String, Uuid> = document
             .connections
             .iter()
-            .map(|saved| (saved.name.clone(), saved.id))
+            .map(|saved| (crate::name_rules::shown(&saved.name), saved.id))
             .collect();
         let mut entries = Vec::with_capacity(incoming.connections.len());
         let same_tags = merge_tags(&mut document.tags, incoming.tags);
@@ -1142,26 +1159,33 @@ fn decode(path: &Path, bytes: Option<&[u8]>) -> Result<ConnectionsDocument, Docu
     Ok(document)
 }
 
-// A held entry and a readable one of the same id differ, so a record a build could not read and now can is a write.
-fn lenient_changes<T: Identified + PartialEq>(kind: RecordKind, before: &Lenient<T>, after: &Lenient<T>) -> JournalEntry {
-    let ids = |list: &Lenient<T>| -> Vec<Uuid> { list.iter().map(Identified::id).chain(list.held_ids()).collect() };
-    let now: HashSet<Uuid> = ids(after).into_iter().collect();
-    let was: HashSet<Uuid> = ids(before).into_iter().collect();
+// Maps rather than scans: a crafted file of many entries must not make every write hold the store.
+fn lenient_changes<T: Identified + PartialEq>(
+    kind: RecordKind,
+    before: &Lenient<T>,
+    after: &Lenient<T>,
+) -> JournalEntry {
+    let (was, now) = (entries_of(before), entries_of(after));
+    let was_at: HashMap<Uuid, Result<&T, &Value>> = was.iter().rev().copied().collect();
+    let now_at: HashSet<Uuid> = now.iter().map(|(id, _)| *id).collect();
     JournalEntry::new(kind)
         .wrote(
-            ids(after)
-                .into_iter()
-                .filter(|id| !was.contains(id) || entry_of(before, *id) != entry_of(after, *id))
-                .map(RecordRef::Id),
+            now.iter()
+                .filter(|(id, entry)| was_at.get(id) != Some(entry))
+                .map(|(id, _)| RecordRef::Id(*id)),
         )
-        .deleted(ids(before).into_iter().filter(|id| !now.contains(id)).map(RecordRef::Id))
+        .deleted(
+            was.iter()
+                .filter(|(id, _)| !now_at.contains(id))
+                .map(|(id, _)| RecordRef::Id(*id)),
+        )
 }
 
-fn entry_of<T: Identified>(list: &Lenient<T>, id: Uuid) -> Option<Result<&T, &Value>> {
+fn entries_of<T: Identified>(list: &Lenient<T>) -> Vec<(Uuid, Result<&T, &Value>)> {
     list.iter()
-        .find(|entry| entry.id() == id)
-        .map(Ok)
-        .or_else(|| list.held_entry(id).map(Err))
+        .map(|entry| (entry.id(), Ok(entry)))
+        .chain(list.held_entries().map(|(id, entry)| (id, Err(entry))))
+        .collect()
 }
 
 fn list_changes<T: Identified + PartialEq>(kind: RecordKind, before: &[T], after: &[T]) -> JournalEntry {
@@ -1229,8 +1253,8 @@ fn merge_connection(
         Some(index) if list[index].connects_like(&connection) => {
             // Two connections saved without a name to one server share
             // one, and re-importing their export must rename neither.
-            let name = if connection.name == list[index].name {
-                connection.name
+            let name = if connection.name == crate::name_rules::shown(&list[index].name) {
+                list[index].name.clone()
             } else {
                 unclaimed_name(list, held, &connection.name, Some(connection.id))
             };
@@ -1282,9 +1306,13 @@ fn add_imported(
 
 /// `name`, or a suffixed one when an entry other than `owner` holds it.
 fn unclaimed_name(list: &[SavedConnection], held: &HashMap<String, Uuid>, name: &str, owner: Option<Uuid>) -> String {
-    let taken: Vec<&str> = list
+    let shown: Vec<(String, Uuid)> = list
         .iter()
-        .map(|saved| (saved.name.as_str(), saved.id))
+        .map(|saved| (crate::name_rules::shown(&saved.name), saved.id))
+        .collect();
+    let taken: Vec<&str> = shown
+        .iter()
+        .map(|(name, id)| (name.as_str(), *id))
         .chain(held.iter().map(|(name, id)| (name.as_str(), *id)))
         .filter(|(_, id)| Some(*id) != owner)
         .map(|(name, _)| name)
@@ -1552,6 +1580,12 @@ mod tests {
                 username: Some("deploy".to_owned()),
                 jump_hosts: Vec::new(),
                 auth,
+                enabled: true,
+                kept_key_path: None,
+                agent_socket: None,
+                totp: Default::default(),
+                remote_file: Default::default(),
+                unknown: Default::default(),
             }),
             database: "shop".to_owned(),
             ..sample_connection()
@@ -1853,11 +1887,17 @@ mod tests {
             host: "bastion.example.com".into(),
             port: Some(2222),
             username: Some("deploy".into()),
-            jump_hosts: vec!["ops@jump1:2200".into(), "[fd00::1]".into()],
+            jump_hosts: SshJumpHost::parse_list("ops@jump1:2200, [fd00::1]"),
             auth: SavedSshAuth::PrivateKey {
                 path: Some(PathBuf::from("/home/u/.ssh/id_ed25519")),
                 has_passphrase: true,
             },
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
         let mut minimal = sample_connection();
         minimal.ssh = Some(SavedSshConfig {
@@ -1866,6 +1906,12 @@ mod tests {
             username: None,
             jump_hosts: Vec::new(),
             auth: SavedSshAuth::Agent,
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
 
         store.upsert_blocking(full.clone()).expect("upsert full");
@@ -1944,11 +1990,17 @@ mod tests {
             host: "bastion.internal".to_owned(),
             port: Some(22),
             username: Some("deploy".to_owned()),
-            jump_hosts: vec!["edge.internal".to_owned()],
+            jump_hosts: SshJumpHost::parse_list("edge.internal"),
             auth: SavedSshAuth::PrivateKey {
                 path: Some(PathBuf::from("/home/me/.ssh/id_ed25519")),
                 has_passphrase: true,
             },
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
         store.upsert_blocking(connection).expect("upsert");
 
@@ -2353,8 +2405,9 @@ mod tests {
         }
     }
 
+    // The edit entry points write a name through `shown`; the store keeps what another app's library holds.
     #[test]
-    fn a_rename_is_stored_as_the_list_shows_it() {
+    fn a_name_is_stored_as_given() {
         let root = TempDir::new().expect("tempdir");
         let store = store(&root);
         let mine = saved("staging");
@@ -2365,9 +2418,10 @@ mod tests {
             .expect("update")
             .expect("the entry");
 
-        assert_eq!(updated.name, "production");
+        assert_eq!(updated.name, "pro\u{200b}duction ");
         let list = store.load_blocking().expect("load");
-        assert_eq!(list[0].name, "production");
+        assert_eq!(list[0].name, "pro\u{200b}duction ");
+        assert_eq!(crate::shown_name(&list[0].name), "production");
     }
 
     #[test]
@@ -2635,7 +2689,7 @@ mod tests {
         ));
         let renamed = ConnectionTag {
             name: tag_name("prod"),
-            color: crate::ConnectionColor::Orange,
+            color: Some(crate::ConnectionColor::Orange),
             ..production.clone()
         };
         store.update_tag_blocking(renamed.clone()).expect("the rename");
@@ -2689,30 +2743,34 @@ mod tests {
             .expect("its own name in another case");
     }
 
+    // A tag the list lacks stays, since a pull can bring a connection before its tag; it reads as no tag.
     #[test]
-    fn a_connection_keeps_only_tags_the_list_has_once_each() {
+    fn a_connection_names_each_tag_once_and_keeps_one_the_list_lacks() {
         let root = TempDir::new().expect("tempdir");
         let store = store(&root);
         let production = store
             .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
             .expect("the tag");
+        let later = Uuid::new_v4();
         let connection = SavedConnection {
-            tags: vec![production.id, Uuid::new_v4(), production.id],
+            tags: vec![production.id, later, production.id],
             ..saved("acme-prod")
         };
 
         store.upsert_blocking(connection.clone()).expect("upsert");
-        assert_eq!(store.load_blocking().expect("list")[0].tags, [production.id]);
+        assert_eq!(store.load_blocking().expect("list")[0].tags, [production.id, later]);
 
+        let another = Uuid::new_v4();
         let updated = store
-            .update_blocking(connection.id, |entry| entry.tags.push(Uuid::new_v4()))
+            .update_blocking(connection.id, |entry| entry.tags.push(another))
             .expect("update")
             .expect("the entry");
-        assert_eq!(updated.tags, [production.id]);
+        assert_eq!(updated.tags, [production.id, later, another]);
     }
 
+    // Two tags of one name stay two, as two devices that each made one leave them; an id listed twice is one tag.
     #[test]
-    fn a_hand_edited_file_with_doubled_tags_reads_as_one_tag_each() {
+    fn a_file_with_a_doubled_tag_reads_its_first_entry_and_keeps_a_namesake() {
         let root = TempDir::new().expect("tempdir");
         let first = tag("production", crate::ConnectionColor::Red);
         let twin = tag("Production", crate::ConnectionColor::Blue);
@@ -2721,28 +2779,28 @@ mod tests {
             &root,
             &String::from_utf8(document(
                 vec![connection.clone()],
-                vec![first.clone(), twin, first.clone()],
+                vec![first.clone(), twin.clone(), first.clone()],
             ))
             .expect("utf-8"),
         );
         let store = store(&root);
 
-        assert_eq!(store.tags_blocking().expect("tags").to_vec(), vec![first.clone()]);
-        assert_eq!(store.load_blocking().expect("list")[0].tags, [first.id]);
+        assert_eq!(store.tags_blocking().expect("tags").to_vec(), vec![first, twin.clone()]);
+        assert_eq!(store.load_blocking().expect("list")[0].tags, [twin.id]);
     }
 
     #[test]
-    fn a_tag_with_a_blank_name_makes_the_file_unreadable_rather_than_dropped() {
+    fn a_tag_with_a_blank_name_is_kept_as_written() {
         let root = TempDir::new().expect("tempdir");
         seed(
             &root,
             r#"{"version": 1, "connections": [], "tags": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"  ","color":"red"}]}"#,
         );
 
-        assert!(matches!(
-            store(&root).load_blocking(),
-            Err(StorageError::DocumentUnavailable(_))
-        ));
+        let tags = store(&root).tags_blocking().expect("the tags");
+
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].name.as_str(), "  ");
     }
 
     #[test]
@@ -2789,7 +2847,7 @@ mod tests {
             .create_tag_blocking(tag_name("acme"), crate::ConnectionColor::Blue)
             .expect("the tag");
         let acme_prod = SavedConnection {
-            icon: Some(crate::ConnectionIcon::Shield),
+            icon: Some(crate::LibraryIcon::Named(crate::ConnectionIcon::Shield)),
             ..tagged("acme-prod", &[&production, &acme])
         };
         let globex_prod = tagged("globex-prod", &[&production]);
@@ -2815,7 +2873,10 @@ mod tests {
         let list = target.load_blocking().expect("list");
         assert_eq!(list.len(), 2);
         let held = list.iter().find(|saved| saved.id == acme_prod.id).expect("acme-prod");
-        assert_eq!(held.icon, Some(crate::ConnectionIcon::Shield));
+        assert_eq!(
+            held.icon,
+            Some(crate::LibraryIcon::Named(crate::ConnectionIcon::Shield))
+        );
     }
 
     #[test]
@@ -2877,13 +2938,13 @@ mod tests {
         let connection = tagged("acme", &[&production]);
         let renamed = ConnectionTag {
             name: tag_name("prod"),
-            color: crate::ConnectionColor::Orange,
+            color: Some(crate::ConnectionColor::Orange),
             ..production.clone()
         };
         // Read first, while "production" is still that tag's name.
         let clash = ConnectionTag {
             name: tag_name("PRODUCTION"),
-            color: crate::ConnectionColor::Green,
+            color: Some(crate::ConnectionColor::Green),
             ..staging.clone()
         };
 
@@ -2898,7 +2959,7 @@ mod tests {
         assert_eq!(tags.iter().find(|tag| tag.id == production.id), Some(&renamed));
         let kept = tags.iter().find(|tag| tag.id == staging.id).expect("staging");
         assert_eq!(kept.name.as_str(), "staging");
-        assert_eq!(kept.color, crate::ConnectionColor::Green);
+        assert_eq!(kept.color, Some(crate::ConnectionColor::Green));
     }
 
     #[test]
@@ -2910,7 +2971,7 @@ mod tests {
         let acme = tag("acme", crate::ConnectionColor::Blue);
         let retagged = SavedConnection {
             tags: vec![acme.id, Uuid::new_v4()],
-            icon: Some(crate::ConnectionIcon::Cloud),
+            icon: Some(crate::LibraryIcon::Named(crate::ConnectionIcon::Cloud)),
             ..mine.clone()
         };
 
@@ -2921,7 +2982,10 @@ mod tests {
         assert_eq!((report.added, report.updated), (0, 1));
         let list = store.load_blocking().expect("list");
         assert_eq!(list[0].tags, [acme.id], "a tag the file does not list was kept");
-        assert_eq!(list[0].icon, Some(crate::ConnectionIcon::Cloud));
+        assert_eq!(
+            list[0].icon,
+            Some(crate::LibraryIcon::Named(crate::ConnectionIcon::Cloud))
+        );
     }
 
     #[test]

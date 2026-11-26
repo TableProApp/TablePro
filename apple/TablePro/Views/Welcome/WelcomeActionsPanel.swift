@@ -4,7 +4,7 @@ import TableProSyncTransport
 struct WelcomeActionsPanel: View {
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var updates = UpdateCenter.shared
-    @ObservedObject private var syncCoordinator = SyncCoordinator.shared
+    @ObservedObject private var syncCoordinator = SyncProviderCoordinator.shared
     let onSignIn: () -> Void
     let onNewConnection: () -> Void
     let onOpenFile: () -> Void

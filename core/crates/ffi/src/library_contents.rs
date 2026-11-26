@@ -4,8 +4,8 @@ use chrono::DateTime;
 use tablepro_core::{AuthMode, ExternalAccess, NetworkOptions};
 use tablepro_records::cloudkit::library::{icon_for_symbol, symbol_for_icon};
 use tablepro_storage::{
-    ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionTag, ConnectionTagName,
-    DeviceOnly, LibraryWrite, SavedConnection,
+    ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionTag, ConnectionTagName, DeviceOnly,
+    LibraryWrite, SavedConnection,
 };
 use uuid::Uuid;
 
@@ -24,8 +24,7 @@ pub struct LibraryConnectionRecord {
     pub device: DeviceSettingsRecord,
 }
 
-// The library as stored: every id and value as written, each list in the order the file keeps it, parents and groups
-// as stored even where the list lacks the one they name.
+// As stored: a parent or group the list lacks is kept, where the snapshot reads it as the top.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct LibraryContents {
     pub connections: Vec<LibraryConnectionRecord>,
@@ -60,8 +59,7 @@ impl ConnectionLibrary {
         .await
     }
 
-    // The whole library in one write, every id and value as given: nothing is trimmed, checked or placed as a save
-    // does. Keys a newer build stored in a connection stay. Secrets are the app's, kept or deleted as it decides.
+    // Values as given, unlike a save; a newer build's keys stay; secrets are the app's to keep or delete.
     pub async fn replace_library(&self, library: LibraryWriteRecord) -> Result<(), CoreError> {
         let _held = self.hold_writes().await;
         self.blocking(move |store| {
@@ -209,7 +207,9 @@ mod tests {
             })
         );
         assert_eq!(
-            library_icon_symbol(server.expect("an icon")).expect("a symbol").as_deref(),
+            library_icon_symbol(server.expect("an icon"))
+                .expect("a symbol")
+                .as_deref(),
             Some("server.rack")
         );
         assert_eq!(

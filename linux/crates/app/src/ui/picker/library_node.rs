@@ -204,9 +204,10 @@ pub(crate) fn connection_look(saved: &SavedConnection, section: LibrarySection, 
         None => subtitle.clone(),
     };
     NodeLook {
-        title: saved.name.clone(),
+        // A stored name another app wrote shows as a typed one would, so none passes for another.
+        title: tablepro_storage::shown_name(&saved.name),
         subtitle,
-        icon_name: connection_icon(saved.icon, seen.file_based).to_owned(),
+        icon_name: connection_icon(saved.icon.as_ref().and_then(LibraryIcon::named), seen.file_based).to_owned(),
         color: saved.color,
         description,
         favourite: seen.favourite,
@@ -223,7 +224,7 @@ pub(crate) fn group_look(group: &ConnectionGroup, count: u32) -> NodeLook {
         Some(LibraryIcon::Symbol(_)) | None => icons::FOLDER,
     };
     NodeLook {
-        title: group.name.as_str().to_owned(),
+        title: group.name.shown(),
         subtitle: String::new(),
         icon_name: icon.to_owned(),
         color: group.color,
@@ -307,7 +308,7 @@ mod tests {
     #[test]
     fn a_connection_shows_its_icon_or_its_engines() {
         let picked = SavedConnection {
-            icon: Some(ConnectionIcon::Cloud),
+            icon: Some(tablepro_storage::LibraryIcon::Named(ConnectionIcon::Cloud)),
             ..saved_connection("cloud")
         };
         let plain = saved_connection("plain");

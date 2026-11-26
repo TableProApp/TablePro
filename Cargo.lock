@@ -7978,6 +7978,7 @@ dependencies = [
  "chrono",
  "csbindgen",
  "futures",
+ "hex",
  "russh",
  "secrecy",
  "serde_json",
@@ -7996,12 +7997,15 @@ dependencies = [
  "tablepro-driver-redis",
  "tablepro-driver-sqlite",
  "tablepro-foreign-import",
+ "tablepro-keys",
  "tablepro-mcp",
  "tablepro-net",
  "tablepro-records",
  "tablepro-session",
  "tablepro-ssh",
  "tablepro-storage",
+ "tablepro-sync",
+ "tablepro-sync-testing",
  "tablepro-test-support",
  "tempfile",
  "thiserror 2.0.20",
@@ -8011,6 +8015,7 @@ dependencies = [
  "uniffi",
  "uuid",
  "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]
@@ -8224,6 +8229,51 @@ dependencies = [
  "tracing",
  "unicode-normalization",
  "uuid",
+]
+
+[[package]]
+name = "tablepro-sync"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "aws-lc-rs",
+ "chrono",
+ "hex",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "tablepro-account",
+ "tablepro-cloud-api",
+ "tablepro-keys",
+ "tablepro-records",
+ "tablepro-storage",
+ "tablepro-sync-testing",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "tablepro-sync-testing"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "secrecy",
+ "serde_json",
+ "sha2 0.11.0",
+ "tablepro-keys",
+ "tablepro-records",
+ "tablepro-sync",
+ "tokio",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]

@@ -541,7 +541,7 @@ custom_rules:
   # Sync
   sync_raw_record_field:
     name: "Raw CKRecord Field"
-    included: ['.*/(TablePro/Core/Sync|Packages/TableProCore/Sources/TableProSync)/SyncRecordMapper\.swift$']
+    included: ['.*/Packages/TableProCore/Sources/TableProSync/SyncRecordMapper\.swift$']
     regex: '\brecord\["'
     message: "Declare the field in its SyncSchemaField enum and go through record.fields(_:)."
     severity: error
@@ -551,9 +551,10 @@ custom_rules:
     excluded:
       - '.*/[^/]*Tests/'
       - '.*Tests\.swift$'
-      - '.*/(TablePro/Core/Sync|Packages/TableProCore/Sources/TableProSync)/SyncRecordMapper\.swift$'
+      - '.*/Packages/TableProCore/Sources/TableProSync/SyncRecordMapper\.swift$'
+      - '.*/Packages/TableProCore/Sources/TableProSyncTransport/CloudKitDatabase\.swift$'
     excluded_match_kinds: [comment, doccomment]
-    message: "CKRecord.ID raises past 255 UTF-16 units. Go through SyncRecordMapper.recordID(type:id:in:)."
+    message: "CKRecord.ID raises past 255 UTF-16 units. Go through SyncRecordMapper.recordID(type:id:in:), or CloudKitRecordID.make(name:in:) for a name the core engine gives."
     severity: error
   # Also listed in Plugins/.swiftlint.yml and TableProMobile/.swiftlint.yml. The default search
   # compares grapheme clusters, so a quote a combining mark follows is not found.

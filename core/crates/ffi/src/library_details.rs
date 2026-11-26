@@ -265,7 +265,11 @@ impl ConnectionLibrary {
         self.blocking(move |store| {
             let list = store.list_blocking()?;
             let id = unclaimed(&list, id);
-            let stored = list.ssh_profiles.iter().find(|held| held.id == id).map(|held| &held.ssh);
+            let stored = list
+                .ssh_profiles
+                .iter()
+                .find(|held| held.id == id)
+                .map(|held| &held.ssh);
             let saved = SshProfile {
                 id,
                 name,

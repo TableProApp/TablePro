@@ -121,6 +121,8 @@ fn record(name: &str) -> ConnectionRecord {
             username: Some("ops".to_owned()),
             jump_hosts: Vec::new(),
             auth: SshAuthTag::Password,
+            enabled: None,
+            options: None,
         }),
         safe_mode: SafeModeTag::Alert,
         query_timeout_secs: Some(30),
@@ -130,6 +132,8 @@ fn record(name: &str) -> ConnectionRecord {
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        icon: None,
+        order: 0,
     }
 }
 

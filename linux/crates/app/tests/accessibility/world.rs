@@ -58,7 +58,7 @@ impl World {
             .map_err(|error| format!("could not save the tag: {error}"))?;
         let connection = SavedConnection {
             tags: vec![tag.id],
-            icon: Some(ConnectionIcon::Server),
+            icon: Some(tablepro_storage::LibraryIcon::Named(ConnectionIcon::Server)),
             ..saved_connection(&dir.path().join("fake.db"))
         };
         if saved {

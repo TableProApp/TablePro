@@ -28,7 +28,7 @@ internal final class TagStorage {
     internal static let shared = TagStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TagStorage")
 
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let connectionStorageProvider: () -> ConnectionStorage
     private let appEvents: AppEvents
     /// Set when the library could not be read. Every mutation rewrites the whole library, so
@@ -37,11 +37,11 @@ internal final class TagStorage {
     internal private(set) var storeIsUnreadable = false
 
     internal init(
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
         appEvents: AppEvents = .shared
     ) {
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.connectionStorageProvider = connectionStorage
         self.appEvents = appEvents
         if loadTags().isEmpty {
@@ -76,7 +76,7 @@ internal final class TagStorage {
             Self.logger.error("Failed to save tags")
             return false
         }
-        syncTracker.markDirty(.tag, ids: SyncRecordChanges.changedIds(from: previous, to: tags))
+        syncJournal.recorded(.tag, written: SyncRecordChanges.changedIds(from: previous, to: tags))
         return true
     }
 
@@ -91,33 +91,16 @@ internal final class TagStorage {
         notifyChanged()
     }
 
-    /// Apply a tag that arrived from another device.
-    ///
-    /// Written as it arrived, and skipped when it matches what is already stored.
-    @discardableResult
-    internal func applyRemoteTag(_ tag: ConnectionTag) -> RemoteApplyOutcome {
-        var tags = loadTags()
-
-        if let index = tags.firstIndex(where: { $0.id == tag.id }) {
-            guard tags[index] != tag else { return .skipped }
-            tags[index] = tag
-        } else {
-            tags.append(tag)
-        }
-
-        return saveTags(tags) ? .applied : .failed
-    }
-
     internal func deleteTag(_ tag: ConnectionTag) {
         guard !tag.isPreset else { return }
         var tags = loadTags()
         tags.removeAll { $0.id == tag.id }
         guard saveTags(tags) else { return }
-        syncTracker.markDeleted(.tag, id: tag.id.uuidString)
+        syncJournal.recorded(.tag, deleted: [tag.id.uuidString])
         notifyChanged()
     }
 
-    /// Connections are persisted before the tag tombstone fires (sync delete-ordering invariant).
+    /// Connections are persisted before the tag's deletion is journaled.
     internal func deleteTag(_ tag: ConnectionTag, clearingFrom connectionStorage: ConnectionStorage) {
         guard !tag.isPreset else { return }
         connectionStorage.removeTagId(tag.id)

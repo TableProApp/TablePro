@@ -16,7 +16,7 @@ final class GroupStorageTests: XCTestCase {
     private var defaults: UserDefaults!
     private var syncDefaults: UserDefaults!
     private var storage: GroupStorage!
-    private var tracker: SyncChangeTracker!
+    private var tracker: SyncJournalRecorder!
     private var connectionStorage: ConnectionStorage!
     private var connectionFileURL: URL!
     private var appEvents: AppEvents!
@@ -30,8 +30,7 @@ final class GroupStorageTests: XCTestCase {
         syncSuite = try EphemeralDefaults()
         defaults = suite.defaults
         syncDefaults = syncSuite.defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        tracker = SyncChangeTracker(metadataStorage: metadata)
+        tracker = SyncJournalRecorder()
         connectionFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("group-connections_\(unique)", isDirectory: true)
@@ -43,7 +42,7 @@ final class GroupStorageTests: XCTestCase {
         connectionStorage = ConnectionStorage(
             fileURL: connectionFileURL,
             userDefaults: defaults,
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
         appEvents = AppEvents()
         changeCount = 0
@@ -51,7 +50,7 @@ final class GroupStorageTests: XCTestCase {
             self?.changeCount += 1
         }
         storage = GroupStorage(
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: self.connectionStorage,
             appEvents: appEvents
         )
@@ -265,7 +264,7 @@ final class GroupStorageTests: XCTestCase {
     func testAnIconOnlyEditMarksTheGroupDirtyForSync() throws {
         let group = ConnectionGroup(name: "Prod", color: .red)
         try storage.addGroup(group)
-        tracker.clearAllDirty(.group)
+        tracker.clearDirty(type: .group)
         changeCount = 0
 
         try storage.editGroup(
@@ -274,7 +273,7 @@ final class GroupStorageTests: XCTestCase {
             to: ConnectionGroupFields(name: "Prod", color: .red, iconName: "server.rack")
         )
 
-        XCTAssertTrue(tracker.dirtyRecords(for: .group).contains(group.id.uuidString))
+        XCTAssertTrue(tracker.dirtyIds(for: .group).contains(group.id.uuidString))
         XCTAssertEqual(changeCount, 1)
         var withIcon = group
         withIcon.iconName = "server.rack"
@@ -285,12 +284,12 @@ final class GroupStorageTests: XCTestCase {
     func testAnEditThatChangesNothingWritesNothing() throws {
         let group = ConnectionGroup(name: "Prod", color: .red, iconName: "server.rack")
         try storage.addGroup(group)
-        tracker.clearAllDirty(.group)
+        tracker.clearDirty(type: .group)
         changeCount = 0
 
         try storage.editGroup(id: group.id, from: ConnectionGroupFields(group), to: ConnectionGroupFields(group))
 
-        XCTAssertTrue(tracker.dirtyRecords(for: .group).isEmpty)
+        XCTAssertTrue(tracker.dirtyIds(for: .group).isEmpty)
         XCTAssertEqual(changeCount, 0)
     }
 
@@ -325,7 +324,7 @@ final class GroupStorageTests: XCTestCase {
         synced.name = "Production"
         synced.color = .orange
         synced.parentId = clients.id
-        _ = storage.applyRemoteGroup(synced)
+        XCTAssertTrue(storage.saveGroups(storage.loadGroups().map { $0.id == synced.id ? synced : $0 }))
 
         var edited = opening
         edited.iconName = "flame"
@@ -365,14 +364,14 @@ final class GroupStorageTests: XCTestCase {
 
         let connection = DatabaseConnection(name: "Grouped", groupId: group.id)
         connectionStorage.addConnection(connection)
-        tracker.clearAllDirty(.connection)
+        tracker.clearDirty(type: .connection)
 
         storage.deleteGroup(group)
 
         let reloaded = connectionStorage.loadConnections()
         XCTAssertEqual(reloaded.count, 1)
         XCTAssertNil(reloaded[0].groupId)
-        XCTAssertTrue(tracker.dirtyRecords(for: .connection).contains(connection.id.uuidString))
+        XCTAssertTrue(tracker.dirtyIds(for: .connection).contains(connection.id.uuidString))
     }
 
     // MARK: - Lookup
@@ -405,7 +404,7 @@ final class GroupStorageTests: XCTestCase {
 
         let loaded = storage.loadGroups()
         XCTAssertEqual(loaded.count, 2)
-        // updateGroup does not check names, so both are "Production" now.
+        // An update does not enforce unique names.
         XCTAssertEqual(loaded[0].name, "Production")
         XCTAssertEqual(loaded[1].name, "Production")
     }
@@ -434,55 +433,6 @@ final class GroupStorageTests: XCTestCase {
         XCTAssertEqual(changeCount, 0)
     }
 
-    /// A pull applies one record at a time and raises a single notification for the whole batch,
-    /// so a per-record one here would multiply it by the number of groups that changed.
-    func testApplyingARemoteGroupAnnouncesNothing() {
-        storage.applyRemoteGroup(ConnectionGroup(name: "FromAnotherMac"))
-
-        XCTAssertEqual(changeCount, 0)
-        XCTAssertEqual(storage.loadGroups().count, 1)
-    }
-
-    // MARK: - Remote Apply
-
-    /// A pull carries no dependency order. Judging one record against a graph the rest of the
-    /// batch has not reached yet rooted the moved group for good, and the next push sent that back
-    /// as a revert of a move the user made on the other Mac.
-    func testAReversedHierarchySurvivesArrivingInEitherOrder() throws {
-        let a = ConnectionGroup(name: "A")
-        let b = ConnectionGroup(name: "B", parentId: a.id)
-        try storage.addGroup(a)
-        try storage.addGroup(b)
-
-        var movedA = a
-        movedA.parentId = b.id
-        var rootedB = b
-        rootedB.parentId = nil
-
-        storage.applyRemoteGroup(movedA)
-        storage.applyRemoteGroup(rootedB)
-        XCTAssertFalse(storage.repairHierarchy())
-
-        XCTAssertEqual(storage.group(for: a.id)?.parentId, b.id)
-        XCTAssertNil(storage.group(for: b.id)?.parentId)
-    }
-
-    func testRepairHierarchyRootsAGroupLeftOnACycle() throws {
-        let a = ConnectionGroup(name: "A")
-        let b = ConnectionGroup(name: "B", parentId: a.id)
-        try storage.addGroup(a)
-        try storage.addGroup(b)
-
-        var cyclicA = a
-        cyclicA.parentId = b.id
-        storage.applyRemoteGroup(cyclicA)
-
-        XCTAssertTrue(storage.repairHierarchy())
-        XCTAssertNil(storage.group(for: a.id)?.parentId)
-        XCTAssertNil(storage.group(for: b.id)?.parentId)
-        XCTAssertFalse(storage.repairHierarchy())
-    }
-
     /// The list draws a cycle as two separate roots, so deleting one of them must not take the
     /// other with it, however the raw stored graph reads.
     func testDeletingAGroupLeftOnACycleKeepsTheOtherMember() throws {
@@ -493,32 +443,11 @@ final class GroupStorageTests: XCTestCase {
 
         var cyclicA = a
         cyclicA.parentId = b.id
-        storage.applyRemoteGroup(cyclicA)
+        XCTAssertTrue(storage.saveGroups([cyclicA, b]))
 
         storage.deleteGroup(a)
 
         XCTAssertEqual(storage.loadGroups().map(\.id), [b.id])
-    }
-
-    func testApplyingAnUnchangedRemoteGroupWritesNothing() throws {
-        let group = ConnectionGroup(name: "Shared", color: .green)
-        try storage.addGroup(group)
-        tracker.clearAllDirty(.group)
-
-        XCTAssertEqual(storage.applyRemoteGroup(group), .skipped)
-        XCTAssertTrue(tracker.dirtyRecords(for: .group).isEmpty)
-    }
-
-    func testApplyingANewRemoteGroupReportsItWasWritten() {
-        XCTAssertEqual(storage.applyRemoteGroup(ConnectionGroup(name: "FromAnotherMac")), .applied)
-    }
-
-    /// The pull reads this to decide whether to acknowledge the batch, so a store that refused must
-    /// not answer the same as one that had nothing to do.
-    func testApplyingARemoteGroupOverAnUnreadableStoreReportsFailure() {
-        defaults.set(Data([0x00, 0x01]), forKey: "com.TablePro.groups")
-
-        XCTAssertEqual(storage.applyRemoteGroup(ConnectionGroup(name: "FromAnotherMac")), .failed)
     }
 
     // MARK: - Unreadable Store

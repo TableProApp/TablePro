@@ -8,7 +8,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_storage::{ConnectionTag, SavedConnection};
 
-use super::tag_dialog::{ask_new_tag, ask_tag_changes};
+use super::tag_dialog::{ask_new_tag, ask_tag_changes, preselected};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::saved_connection_list::SavedConnectionList;
 use crate::ui::SessionWindowInput;
@@ -126,12 +126,12 @@ impl ManageTagsDialog {
 
     fn row(self: &Rc<Self>, tag: &ConnectionTag, count: usize) -> adw::ActionRow {
         let row = adw::ActionRow::builder()
-            .title(tag.name.as_str())
+            .title(tag.name.shown())
             .use_markup(false)
             .subtitle(used_by(count))
             .activatable(true)
             .build();
-        row.add_prefix(&color_dot(Some(tag.color)));
+        row.add_prefix(&color_dot(tag.color));
         let delete = gtk::Button::builder()
             .icon_name(crate::ui::icons::USER_TRASH)
             .valign(gtk::Align::Center)
@@ -171,6 +171,10 @@ impl ManageTagsDialog {
         let (dialog, sender) = (self.dialog.clone(), self.sender.clone());
         glib::spawn_future_local(async move {
             if let Some((name, color)) = ask_tag_changes(dialog.upcast_ref(), &tags, &tag).await {
+                let color = match tag.color {
+                    None if color == preselected(&tags, Some(&tag)) => None,
+                    _ => Some(color),
+                };
                 sender.deliver(SessionWindowInput::UpdateTag(ConnectionTag { name, color, ..tag }));
             }
         });
@@ -229,7 +233,7 @@ pub(super) fn delete_alert(tag: &ConnectionTag, count: usize) -> adw::AlertDialo
     let dialog = adw::AlertDialog::new(
         Some(&crate::i18n::gettext_f(
             "Delete “{tag}”?",
-            &[("tag", tag.name.as_str())],
+            &[("tag", &tag.name.shown())],
         )),
         body.as_deref(),
     );

@@ -8,10 +8,16 @@ import os
 import TableProFFI
 import TableProLogRedaction
 
+// The account a sync service opens with, on the core that holds the app's stores (core ADR 0054).
+nonisolated internal protocol SyncAccountProviding: AnyObject, Sendable {
+    // Nil when the account did not open.
+    func accountService() async -> AccountService?
+}
+
 // The core's AccountService (core/docs/decisions/0047-the-apple-apps-sign-in-through-the-core.md). It opens on a task
 // at launch and restores the last run's sign-in after that; until then the account reads as signed out, and a call
 // waits for the open.
-nonisolated internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
+nonisolated internal final class CoreAccountBackend: AccountBackend, SyncAccountProviding, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CoreAccountBackend")
 
     let machineID: String
@@ -168,6 +174,10 @@ nonisolated internal final class CoreAccountBackend: AccountBackend, @unchecked 
     func applyPolicy(_ policy: ManagedPolicyArg) async {
         guard let service = await opening.value else { return }
         service.applyPolicy(policy: policy)
+    }
+
+    func accountService() async -> AccountService? {
+        await opening.value
     }
 
     // An account that did not open holds no values to allow anything by.

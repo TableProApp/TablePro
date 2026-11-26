@@ -43,7 +43,7 @@ internal final class GroupStorage {
     internal static let shared = GroupStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "GroupStorage")
 
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let connectionStorageProvider: () -> ConnectionStorage
     private let appEvents: AppEvents
     /// Set when the library could not be read. Every mutation rewrites the whole library, so
@@ -52,11 +52,11 @@ internal final class GroupStorage {
     internal private(set) var storeIsUnreadable = false
 
     internal init(
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
         appEvents: AppEvents = .shared
     ) {
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.connectionStorageProvider = connectionStorage
         self.appEvents = appEvents
     }
@@ -88,7 +88,7 @@ internal final class GroupStorage {
             Self.logger.error("Failed to save groups")
             return false
         }
-        syncTracker.markDirty(.group, ids: SyncRecordChanges.changedIds(from: previous, to: groups))
+        syncJournal.recorded(.group, written: SyncRecordChanges.changedIds(from: previous, to: groups))
         return true
     }
 
@@ -222,55 +222,6 @@ internal final class GroupStorage {
         notifyChanged()
     }
 
-    /// Apply a group that arrived from another device, reporting whether anything changed.
-    ///
-    /// Written exactly as it arrived. A record cannot be judged on its own, because a pull carries
-    /// no dependency order: a hierarchy the other device reversed legally, rooting B and then
-    /// moving A under B, arrives as two records, and whichever lands first describes a state that
-    /// looks like a cycle against the half of the change that has not arrived yet. Repairing it
-    /// here would root A permanently, and the next push would send that back as a revert of a move
-    /// the user made. `repairHierarchy` runs once the whole batch is in, when the graph is whole.
-    ///
-    /// The pull that calls this raises one change notification for the batch, so this raises none.
-    ///
-    /// A record identical to the one already stored is skipped. The iOS coordinator has always had
-    /// this guard.
-    @discardableResult
-    internal func applyRemoteGroup(_ group: ConnectionGroup) -> RemoteApplyOutcome {
-        var groups = loadGroups()
-
-        if let index = groups.firstIndex(where: { $0.id == group.id }) {
-            guard groups[index] != group else { return .skipped }
-            groups[index] = group
-        } else {
-            groups.append(group)
-        }
-
-        return saveGroups(groups) ? .applied : .failed
-    }
-
-    /// Root every group left on a parent cycle, reporting whether anything moved.
-    ///
-    /// Called once a pull has applied every record it carried, which is the first moment the graph
-    /// can be judged. A cycle that survives to here was authored by a device that should not have
-    /// been able to author one, or predates the validation, and leaving it stored would make
-    /// `deleteGroup` compute a subtree the list does not show.
-    @discardableResult
-    internal func repairHierarchy() -> Bool {
-        let groups = loadGroups()
-        let cyclic = LibraryGroupGraph.cyclicGroupIds(in: groups)
-        guard !cyclic.isEmpty else { return false }
-
-        Self.logger.error("Rooting \(cyclic.count, privacy: .public) groups left on a parent cycle")
-        let repaired = groups.map { group -> ConnectionGroup in
-            guard cyclic.contains(group.id) else { return group }
-            var rooted = group
-            rooted.parentId = nil
-            return rooted
-        }
-        return saveGroups(repaired)
-    }
-
     @discardableResult
     internal func deleteGroup(_ group: ConnectionGroup) -> Bool {
         var groups = loadGroups()
@@ -280,9 +231,7 @@ internal final class GroupStorage {
         groups.removeAll { allIdsToDelete.contains($0.id) }
         guard saveGroups(groups) else { return false }
 
-        for deletedId in allIdsToDelete {
-            syncTracker.markDeleted(.group, id: deletedId.uuidString)
-        }
+        syncJournal.recorded(.group, deleted: allIdsToDelete.map(\.uuidString))
 
         let storage = connectionStorageProvider()
         var connections = storage.loadConnections()

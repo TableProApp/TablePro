@@ -11,11 +11,8 @@ import XCTest
 @MainActor
 final class TagStorageTests: XCTestCase {
     private var suite: EphemeralDefaults!
-    private var syncSuite: EphemeralDefaults!
     private var defaults: UserDefaults!
-    private var syncDefaults: UserDefaults!
-    private var metadata: SyncMetadataStorage!
-    private var tracker: SyncChangeTracker!
+    private var tracker: SyncJournalRecorder!
     private var appEvents: AppEvents!
     private var directory: URL!
     private var connectionStorage: ConnectionStorage!
@@ -26,11 +23,8 @@ final class TagStorageTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         suite = try EphemeralDefaults()
-        syncSuite = try EphemeralDefaults()
         defaults = suite.defaults
-        syncDefaults = syncSuite.defaults
-        metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        tracker = SyncChangeTracker(metadataStorage: metadata)
+        tracker = SyncJournalRecorder()
         appEvents = AppEvents()
         changeCount = 0
         changeSubscription = appEvents.connectionUpdated.sink { [weak self] _ in
@@ -38,7 +32,7 @@ final class TagStorageTests: XCTestCase {
         }
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         connectionStorage = makeConnectionStorage()
-        storage = TagStorage(syncTracker: tracker, connectionStorage: self.connectionStorage, appEvents: appEvents)
+        storage = TagStorage(syncJournal: tracker.journal, connectionStorage: self.connectionStorage, appEvents: appEvents)
         changeCount = 0
     }
 
@@ -50,11 +44,8 @@ final class TagStorageTests: XCTestCase {
         directory = nil
         appEvents = nil
         tracker = nil
-        metadata = nil
         defaults = nil
-        syncDefaults = nil
         suite = nil
-        syncSuite = nil
         super.tearDown()
     }
 
@@ -66,7 +57,7 @@ final class TagStorageTests: XCTestCase {
         ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: InMemoryKeychain(),
             appEvents: self.appEvents
         )
@@ -77,7 +68,7 @@ final class TagStorageTests: XCTestCase {
     private func makeStorage(seeding payload: Data) -> TagStorage {
         defaults.set(payload, forKey: "com.TablePro.tags")
         connectionStorage = makeConnectionStorage()
-        return TagStorage(syncTracker: tracker, connectionStorage: self.connectionStorage, appEvents: appEvents)
+        return TagStorage(syncJournal: tracker.journal, connectionStorage: self.connectionStorage, appEvents: appEvents)
     }
 
     // MARK: - Add
@@ -115,7 +106,7 @@ final class TagStorageTests: XCTestCase {
         storage.deleteTag(tag)
 
         XCTAssertEqual(changeCount, 1)
-        XCTAssertTrue(metadata.tombstones(for: .tag).contains { $0.id == tag.id.uuidString })
+        XCTAssertTrue(tracker.tombstones(for: .tag).contains { $0.id == tag.id.uuidString })
     }
 
     func testAPresetIsNotDeleted() throws {
@@ -124,35 +115,6 @@ final class TagStorageTests: XCTestCase {
         storage.deleteTag(preset)
 
         XCTAssertTrue(storage.loadTags().contains { $0.id == preset.id })
-    }
-
-    // MARK: - Remote Apply
-
-    func testApplyingAnUnchangedRemoteTagWritesNothing() throws {
-        let tag = customTag
-        try storage.addTag(tag)
-        tracker.clearAllDirty(.tag)
-
-        XCTAssertEqual(storage.applyRemoteTag(tag), .skipped)
-        XCTAssertTrue(tracker.dirtyRecords(for: .tag).isEmpty)
-    }
-
-    func testApplyingANewRemoteTagReportsItWasWritten() {
-        XCTAssertEqual(storage.applyRemoteTag(ConnectionTag(name: "from-another-mac")), .applied)
-    }
-
-    /// The pull reads this to decide whether to acknowledge the batch, so a store that refused must
-    /// not answer the same as one that had nothing to do.
-    func testApplyingARemoteTagOverAnUnreadableStoreReportsFailure() {
-        let storage = makeStorage(seeding: Data([0x00, 0x01]))
-
-        XCTAssertEqual(storage.applyRemoteTag(ConnectionTag(name: "from-another-mac")), .failed)
-    }
-
-    func testApplyingARemoteTagAnnouncesNothing() {
-        storage.applyRemoteTag(ConnectionTag(name: "from-another-mac"))
-
-        XCTAssertEqual(changeCount, 0)
     }
 
     // MARK: - Unreadable Store

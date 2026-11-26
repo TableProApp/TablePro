@@ -39,7 +39,7 @@ struct SyncPaneLayout: Equatable {
 struct SyncSettingsView: View {
     @Binding var settings: SyncSettings
 
-    @ObservedObject private var coordinator = SyncCoordinator.shared
+    @ObservedObject private var coordinator = SyncProviderCoordinator.shared
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var policy = ManagedPolicyCenter.shared
 

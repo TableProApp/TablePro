@@ -36,11 +36,11 @@ impl ConnectionFilterModel {
         let mut listed: Vec<(String, Uuid)> = connections
             .iter()
             .map(|connection| {
-                let name = saved
-                    .iter()
-                    .find(|saved| saved.id == connection.id)
-                    .map_or(&connection.name, |saved| &saved.name);
-                (name.clone(), connection.id)
+                let name = saved.iter().find(|saved| saved.id == connection.id).map_or_else(
+                    || connection.name.clone(),
+                    |saved| tablepro_storage::shown_name(&saved.name),
+                );
+                (name, connection.id)
             })
             .collect();
         listed.sort_by_cached_key(|(name, id)| (name.to_lowercase(), *id));

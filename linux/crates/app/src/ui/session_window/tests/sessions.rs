@@ -327,10 +327,8 @@ fn a_safe_mode_level_goes_to_the_session_it_was_picked_for() {
     pick_level(&test, "confirm-writes");
     shell.tab_view().set_selected_page(&other_tab);
 
-    wait_until(WAIT, || {
-        level(&first_key) == Some(tablepro_core::SafeModeLevel::Alert)
-    })
-    .expect("the level on the session it was picked for");
+    wait_until(WAIT, || level(&first_key) == Some(tablepro_core::SafeModeLevel::Alert))
+        .expect("the level on the session it was picked for");
     assert_eq!(
         level(&other_key),
         Some(tablepro_core::SafeModeLevel::Silent),

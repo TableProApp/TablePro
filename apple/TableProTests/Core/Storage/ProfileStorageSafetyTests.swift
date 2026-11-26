@@ -10,7 +10,7 @@ struct ProfileStorageSafetyTests {
     private let pool = EphemeralDefaultsPool()
     private let directory: URL
     private let keychain = InMemoryKeychain()
-    private let tracker: SyncChangeTracker
+    private let tracker: SyncJournalRecorder
     private let integrity: ConnectionStoreIntegrity
 
     init() throws {
@@ -18,7 +18,7 @@ struct ProfileStorageSafetyTests {
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: try pool.make().defaults))
+        tracker = SyncJournalRecorder()
         integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
     }
 
@@ -30,7 +30,7 @@ struct ProfileStorageSafetyTests {
         return ConnectionStorage(
             fileURL: fileURL,
             userDefaults: try pool.make().defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain ?? self.keychain,
             integrity: integrity
         )
@@ -43,7 +43,7 @@ struct ProfileStorageSafetyTests {
         CredentialProfileStorage(
             fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain ?? self.keychain,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connections,
             integrity: integrity
         )
@@ -56,7 +56,7 @@ struct ProfileStorageSafetyTests {
         SSHProfileStorage(
             userDefaults: try pool.make().defaults,
             keychain: keychain ?? self.keychain,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connections
         )
     }

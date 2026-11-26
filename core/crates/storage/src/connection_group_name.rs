@@ -84,7 +84,7 @@ mod tests {
         let name = "é".repeat(1_000);
 
         assert_eq!(ConnectionGroupName::new(&name).map(String::from), Ok(name.clone()));
-        assert_eq!(ConnectionGroupName::from_stored(&name).map(String::from), Some(name));
+        assert_eq!(String::from(ConnectionGroupName::from_stored(&name)), name);
     }
 
     #[test]
@@ -113,12 +113,15 @@ mod tests {
             assert_eq!(name.as_str(), raw);
             assert_eq!(String::from(name.clone()), raw);
             assert_eq!(
-                serde_json::from_str::<ConnectionGroupName>(&serde_json::to_string(&name).expect("json")).expect("read"),
+                serde_json::from_str::<ConnectionGroupName>(&serde_json::to_string(&name).expect("json"))
+                    .expect("read"),
                 name
             );
         }
         assert_eq!(ConnectionGroupName::from_stored(" Work\tHome ").shown(), "Work Home");
-        assert!(ConnectionGroupName::from_stored(" work ").same_name(&ConnectionGroupName::from_stored("Wo\u{200b}rk")));
+        assert!(
+            ConnectionGroupName::from_stored(" work ").same_name(&ConnectionGroupName::from_stored("Wo\u{200b}rk"))
+        );
     }
 
     #[test]

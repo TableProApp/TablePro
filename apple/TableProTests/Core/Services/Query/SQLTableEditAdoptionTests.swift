@@ -41,7 +41,7 @@ struct SQLTableEditAdoptionTests {
 
         func dropContainer(connectionId: UUID, database: String, schema: String?) {}
 
-        func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {}
+        func purgeConnections(_ connectionIds: Set<UUID>) {}
     }
 
     @MainActor
@@ -96,7 +96,7 @@ struct SQLTableEditAdoptionTests {
         let syncDefaults = try EphemeralDefaults()
         let favorites = FavoriteTablesStorage(
             userDefaults: defaults.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults.defaults))
+            syncJournal: SyncHostJournal()
         )
         let store = RecordingStore()
         let adoption = CatalogEditAdoption(settingsStores: [store], favoriteTables: favorites)

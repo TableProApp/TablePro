@@ -104,7 +104,7 @@ internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
         sweepSchemas()
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
+    func purgeConnections(_ connectionIds: Set<UUID>) {
         for connectionId in connectionIds {
             store.removeValues(withPrefix: Self.keyPrefix + TableScope.storagePrefix(connectionId: connectionId))
             store.removeValues(withPrefix: Self.legacyKeyPrefix(for: connectionId))

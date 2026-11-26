@@ -22,6 +22,7 @@ mod paths;
 pub mod query_history;
 pub mod saved_queries;
 pub mod store_identity;
+mod stored_id;
 pub mod table_folders;
 mod tag_name_error;
 pub mod team_library;
@@ -39,10 +40,10 @@ pub use connections::{
     CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionList,
     ConnectionListSnapshot, ConnectionListState, ConnectionOrigin, ConnectionStore, CredentialPassword,
     CredentialProfile, CredentialReference, DeviceOnly, ImportChange, ImportEntry, ImportPreview, ImportReport,
-    ImportedConnection, KnownOrigin, LibraryWrite, LocalPasswordSource, RemoteFileAccess, RemoveOutcome, SavedConnection,
-    SavedSshAuth, SavedSshConfig, SocksProxy, SshJumpAuth, SshJumpHost, SshProfile, SshRemoteFile, SshRoute, SshRouteHop,
-    SshRouteTarget, SshTotp, SshTotpAlgorithm, SshTotpMode, TunnelCommand, TunnelCommandMethod, VaultAuth,
-    VaultDatabaseRole,
+    ImportedConnection, KnownOrigin, LibraryWrite, LocalPasswordSource, RemoteFileAccess, RemoveOutcome,
+    SavedConnection, SavedSshAuth, SavedSshConfig, SocksProxy, SshJumpAuth, SshJumpHost, SshProfile, SshRemoteFile,
+    SshRoute, SshRouteHop, SshRouteTarget, SshTotp, SshTotpAlgorithm, SshTotpMode, TunnelCommand, TunnelCommandMethod,
+    VaultAuth, VaultDatabaseRole,
 };
 pub use credentials::{
     CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretItemLabeler,
@@ -52,10 +53,10 @@ pub use document_problem::{DocumentProblem, DocumentProblemKind};
 pub use drafts::{DraftId, DraftScope, DraftStore};
 pub use error::StorageError;
 pub use favourites::{DatabaseEnvironment, FavouriteDatabase, FavouriteTable, Favourites};
-pub use library_icon::{LibraryIcon, SymbolName};
 pub use group_name_error::GroupNameError;
 pub use group_tree::GroupTree;
 pub use journal::{ChangeJournal, JournalEntry, RecordKind, RecordRef};
+pub use library_icon::{LibraryIcon, SymbolName};
 pub use name_rules::shown as shown_name;
 pub use paths::StoragePaths;
 pub use query_history::QueryHistory;

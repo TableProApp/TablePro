@@ -200,11 +200,15 @@ mod tests {
     }
 
     #[test]
-    fn a_mysql_read_script_with_delimiter_lines_runs_at_every_level() {
+    fn a_mysql_read_script_with_delimiter_lines_runs_at_every_level_that_lets_reads_through() {
         let script = "DELIMITER //\nSELECT 1//\nDELIMITER ;\nSELECT 2;";
 
         for level in SafeModeLevel::ALL {
-            assert_eq!(gate(script, SqlGrammar::MySql, level), RunGate::default(), "{level:?}");
+            let run = gate(script, SqlGrammar::MySql, level);
+            match level.confirms_reads() {
+                true => assert!(!run.confirm.is_empty() && !run.refused, "{level:?}"),
+                false => assert_eq!(run, RunGate::default(), "{level:?}"),
+            }
         }
     }
 }

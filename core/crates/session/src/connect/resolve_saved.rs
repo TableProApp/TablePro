@@ -32,16 +32,19 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
     let driver = drivers
         .get(&saved.driver_id)
         .ok_or_else(|| ConnectError::UnknownDriver(saved.driver_id.clone()))?;
+    // The file is on the SSH host, so opening the local path of the same name would open another database.
+    if saved.ssh.as_ref().is_some_and(SavedSshConfig::opens_remote_file) {
+        return Err(DriverError::from(ConfigError::RemoteFileOverSsh).into());
+    }
     let target = if driver.capabilities().is_file_based() {
         let endpoint = FileEndpoint::open_existing(PathBuf::from(&saved.database)).map_err(DriverError::from)?;
         RequestTarget::File(endpoint)
     } else {
         let endpoint = NetworkEndpoint::new(&saved.host, saved.port).map_err(DriverError::from)?;
-        let tunnel = saved.ssh.as_ref().filter(|ssh| ssh.enabled);
-        if tunnel.is_some_and(|ssh| ssh.remote_file.path.as_deref().is_some_and(|path| !path.is_empty())) {
-            return Err(DriverError::from(ConfigError::RemoteFileOverSsh).into());
-        }
-        let ssh = tunnel
+        let ssh = saved
+            .ssh
+            .as_ref()
+            .filter(|ssh| ssh.enabled)
             .map(ssh_config)
             .transpose()
             .map_err(|problem| DriverError::from(tablepro_core::TransportError::Ssh(problem.into())))?;
@@ -81,7 +84,11 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
 /// secrets yet.
 pub fn ssh_config(saved: &SavedSshConfig) -> Result<SshConfig, tablepro_core::SshDestinationProblem> {
     let destination = SshDestination::new(&saved.host, saved.port, saved.username.clone())?;
-    let jump_hosts = saved.jump_hosts.iter().map(jump_destination).collect::<Result<_, _>>()?;
+    let jump_hosts = saved
+        .jump_hosts
+        .iter()
+        .map(jump_destination)
+        .collect::<Result<_, _>>()?;
     let auth = match &saved.auth {
         // Both transports try the none method first, so a server that asks for nothing lets the tunnel in.
         SavedSshAuth::Agent | SavedSshAuth::None => SshAuth::Agent,
@@ -116,7 +123,7 @@ mod tests {
     use secrecy::ExposeSecret;
     use tablepro_core::credentials::{SecretKind, SecretVault};
     use tablepro_core::{
-        ConfigError, SshDestinationPart, SshDestinationProblem, SshFailure, TlsConfig, TransportError,
+        SafeModeLevel, SshDestinationPart, SshDestinationProblem, SshFailure, TlsConfig, TransportError,
     };
     use tablepro_storage::{KeyringCredentials, KeyringError};
     use tablepro_test_support::{ConnectionScript, FakeDriver, FakeSecretVault};
@@ -165,11 +172,91 @@ mod tests {
 
     fn bastion(auth: SavedSshAuth) -> SavedSshConfig {
         SavedSshConfig {
-            host: "bastion.example.com".to_owned(),
             port: Some(2222),
             username: Some("deploy".to_owned()),
-            jump_hosts: vec!["ops@jump1:2200,jump2".to_owned()],
-            auth,
+            jump_hosts: SshJumpHost::parse_list("ops@jump1:2200,jump2"),
+            ..SavedSshConfig::new("bastion.example.com", auth)
+        }
+    }
+
+    async fn resolve_unattended(saved: &SavedConnection) -> Result<RefreshedRequest, ConnectError> {
+        resolve_saved(
+            saved,
+            &drivers(),
+            &NoStoredCredentials,
+            CredentialInteraction::Unattended,
+            CredentialDemand::default(),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn a_tunnel_switched_off_is_not_dialed_and_none_auth_tries_the_agent() {
+        let mut off = saved(Some(bastion(SavedSshAuth::Agent)));
+        if let Some(ssh) = off.ssh.as_mut() {
+            ssh.enabled = false;
+        }
+        let none = saved(Some(bastion(SavedSshAuth::None)));
+
+        let request = resolve_unattended(&off).await.unwrap().request;
+        let RequestTarget::Network { ssh, .. } = request.target else {
+            panic!("expected a network target");
+        };
+        assert!(ssh.is_none(), "a tunnel switched off was dialed");
+        let request = resolve_unattended(&none).await.unwrap().request;
+        let RequestTarget::Network { ssh: Some(ssh), .. } = request.target else {
+            panic!("expected a network target over ssh");
+        };
+        assert!(matches!(ssh.auth, SshAuth::Agent));
+    }
+
+    #[tokio::test]
+    async fn a_hop_with_its_own_key_and_a_remote_file_are_refused() {
+        let mut keyed = saved(Some(bastion(SavedSshAuth::Agent)));
+        let mut remote = saved(Some(bastion(SavedSshAuth::Agent)));
+        if let Some(ssh) = keyed.ssh.as_mut() {
+            ssh.jump_hosts[0].auth = Some(SshJumpAuth::PrivateKey);
+        }
+        if let Some(ssh) = remote.ssh.as_mut() {
+            ssh.remote_file.path = Some("~/app.db".to_owned());
+        }
+
+        assert_eq!(
+            resolve_unattended(&keyed).await.unwrap_err(),
+            ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
+                SshFailure::InvalidDestination {
+                    problem: SshDestinationProblem::JumpHostKey {
+                        host: "jump1".to_owned()
+                    }
+                }
+            )))
+        );
+        assert_eq!(
+            resolve_unattended(&remote).await.unwrap_err(),
+            ConnectError::Driver(DriverError::Config(ConfigError::RemoteFileOverSsh))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_level_that_asks_for_more_than_this_app_can_runs_read_only() {
+        for (level, runs) in [
+            (SafeModeLevel::Silent, SafeModeLevel::Silent),
+            (SafeModeLevel::Alert, SafeModeLevel::Alert),
+            (SafeModeLevel::AlertFull, SafeModeLevel::ReadOnly),
+            (SafeModeLevel::SafeMode, SafeModeLevel::ReadOnly),
+            (SafeModeLevel::SafeModeFull, SafeModeLevel::ReadOnly),
+        ] {
+            let mut connection = saved(None);
+            connection.safe_mode = level;
+
+            let request = resolve_unattended(&connection).await.unwrap().request;
+
+            assert_eq!(request.safe_mode, runs, "{level:?}");
+            assert_eq!(
+                request.workspace_settings.read_only,
+                runs == SafeModeLevel::ReadOnly,
+                "{level:?}"
+            );
         }
     }
 
@@ -392,6 +479,35 @@ mod tests {
             panic!("a file driver resolved to a network target");
         };
         assert_eq!(endpoint.path(), std::path::Path::new("/srv/app.db"));
+    }
+
+    #[tokio::test]
+    async fn a_file_on_the_ssh_host_is_refused_rather_than_opened_here() {
+        let mut drivers = DriverRegistry::new();
+        drivers.register(Arc::new(FakeDriver::connecting(
+            &FakeDriver::FILE_CAPABILITIES,
+            ConnectionScript::default(),
+        )));
+        let mut remote = saved(Some(bastion(SavedSshAuth::Agent)));
+        remote.database = "/srv/app.db".to_owned();
+        if let Some(ssh) = remote.ssh.as_mut() {
+            ssh.remote_file.path = Some("/srv/app.db".to_owned());
+        }
+
+        let refused = resolve_saved(
+            &remote,
+            &drivers,
+            &NoStoredCredentials,
+            CredentialInteraction::Unattended,
+            CredentialDemand::default(),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(
+            refused,
+            ConnectError::Driver(DriverError::Config(ConfigError::RemoteFileOverSsh))
+        );
     }
 
     #[test]

@@ -60,6 +60,8 @@ struct World<'a> {
     p: Person,
     // P's account as another device's genesis would make it: its own R, IK and keys.
     p_other: Person,
+    // An account the server made up, with keys only the server holds.
+    x: Person,
     team: uuid::Uuid,
 }
 
@@ -104,6 +106,7 @@ impl World<'_> {
             "E" => &self.e,
             "O" => &self.o,
             "P'" => &self.p_other,
+            "X" => &self.x,
             _ => &self.p,
         }
     }
@@ -273,7 +276,10 @@ impl World<'_> {
             self.team,
             &KeyRecordId::Ring(key),
             &KeyBody::Ring(ring),
-            vec![],
+            vec![
+                ("newer_key_hex", h(team_key(version).expose())),
+                ("below_kid_hex", h(&team_key(version - 1).kid().expect("kid").0)),
+            ],
         )
     }
 
@@ -310,6 +316,8 @@ impl World<'_> {
             vec![
                 ("signer_hex", h(&signing.public().expect("public").0)),
                 ("pk_r_hex", h(&recipient.at(to_av).aek.public().expect("public").0)),
+                ("recipient_secret_hex", h(recipient.at(to_av).aek.expose())),
+                ("kid_hex", h(&scope_key.kid().expect("kid").0)),
             ],
         )
     }
@@ -363,16 +371,26 @@ impl World<'_> {
             key_device: from.key_device,
         };
         let wrap = self.cache.wrap(target, &to.dek, plaintext, wrapper, signing);
+        let mut verify = vec![
+            ("signer_hex", h(&signing.public().expect("public").0)),
+            ("pk_r_hex", h(&to.dek.public().expect("public").0)),
+            ("recipient_secret_hex", h(to.dek.expose())),
+        ];
+        if purpose == WrapPurpose::Account {
+            let keys = AccountKeys::from_plaintext(plaintext)
+                .expect("account keys")
+                .public()
+                .expect("public");
+            verify.push(("certificate_ask_hex", h(&keys.ask.0)));
+            verify.push(("certificate_aek_hex", h(&keys.aek.0)));
+        }
         rec(
             label,
             None,
             person.id.0,
             &KeyRecordId::Wrap(target),
             &KeyBody::Wrap(WrapBody::of(&wrap)),
-            vec![
-                ("signer_hex", h(&signing.public().expect("public").0)),
-                ("pk_r_hex", h(&to.dek.public().expect("public").0)),
-            ],
+            verify,
         )
     }
 
@@ -433,7 +451,7 @@ impl World<'_> {
                 av: v(av),
             },
             &KeyBody::Recovery(blob),
-            vec![],
+            blob_verify(&person.r, person.at(av)),
         )
     }
 
@@ -558,12 +576,42 @@ impl World<'_> {
                     av: v(av),
                 },
                 &KeyBody::Recovery(blob),
-                vec![],
+                blob_verify(&new_r, person.at(av)),
             ),
             self.device_cert(&format!("{proposal}: the proposed device certificate"), who, av, device),
         ];
         records.extend(self.scope_keys_at(proposal, who, av, start, device));
         records
+    }
+
+    // A connection password envelope under `who`'s personal key version `kv`.
+    fn envelope(&self, label: &str, who: &str, kv: u32, connection: &str) -> JsonValue {
+        let person = self.person(who);
+        let key = personal_key(person.name, kv);
+        let id = crate::envelope::EnvelopeId::parse(&format!("connection/{connection}/password")).expect("id");
+        let dest = crate::json::parse(br#"{"host":"db.internal","port":5432}"#).expect("dest");
+        let plaintext = crate::envelope::envelope_plaintext("hunter2", &dest).expect("plaintext");
+        let sealed = crate::envelope::seal_envelope_plaintext(
+            &key,
+            &origin(),
+            crate::encoding::Scope::Personal(person.id),
+            &id,
+            v(kv),
+            plaintext.as_bytes(),
+            draw(&format!("flows/{label}/nonce")),
+        )
+        .expect("seal");
+        obj(vec![
+            ("label", s(label)),
+            ("scope", scope_json(person.id.0, false)),
+            ("kind", s("secret_envelope")),
+            ("id", s(&id.to_wire())),
+            ("fields", super::out::fields(&crate::body::sealed_json(&sealed))),
+            (
+                "verify",
+                obj(vec![("key_hex", h(key.expose())), ("secret", s("hunter2"))]),
+            ),
+        ])
     }
 
     // A reset's IK comes from its own new recovery key, so each attempt has its own (ADR 0056, Reset).
@@ -574,13 +622,36 @@ impl World<'_> {
             .expect("ik")
     }
 
-    fn request(&self, label: &str, who: &str, request: RequestId, device: &DeviceKeys) -> JsonValue {
+    // N's view: the account's IK, its own keys and r_N, which its reveal opens the commitment with.
+    fn sas_view(
+        &self,
+        who: &str,
+        request: RequestId,
+        device: &DeviceKeys,
+    ) -> (crate::sas::Transcript, crate::sas::SasDevice, [u8; 32]) {
         let person = self.person(who);
-        let body = RequestBody {
+        let transcript = crate::sas::Transcript {
+            origin: origin(),
+            account: person.id,
+            request,
+            ik: person.ik.public().expect("public"),
+        };
+        let n = crate::sas::SasDevice {
             key_device: device.key_device,
             dek: device.dek.public().expect("public"),
             dsk: device.dsk.public().expect("public"),
-            commit: draw(&format!("flows/{label}/commit")),
+        };
+        (transcript, n, draw(&format!("flows/request {}/r_N", request.to_wire())))
+    }
+
+    fn request(&self, label: &str, who: &str, request: RequestId, device: &DeviceKeys) -> JsonValue {
+        let person = self.person(who);
+        let (transcript, n, r_n) = self.sas_view(who, request, device);
+        let body = RequestBody {
+            key_device: n.key_device,
+            dek: n.dek,
+            dsk: n.dsk,
+            commit: transcript.commitment(&n, &r_n).expect("commit"),
         };
         rec(
             label,
@@ -588,7 +659,7 @@ impl World<'_> {
             person.id.0,
             &KeyRecordId::Request { request },
             &KeyBody::Request(body),
-            vec![],
+            vec![("ik_hex", h(&transcript.ik.0)), ("r_n_hex", h(&r_n))],
         )
     }
 
@@ -612,7 +683,9 @@ impl World<'_> {
         )
     }
 
-    fn reveal(&self, label: &str, who: &str, request: RequestId) -> JsonValue {
+    // N's reveal of the r_N its request committed to.
+    fn reveal(&self, label: &str, who: &str, request: RequestId, device: &DeviceKeys) -> JsonValue {
+        let (transcript, n, r_n) = self.sas_view(who, request, device);
         rec(
             label,
             None,
@@ -621,10 +694,14 @@ impl World<'_> {
                 request,
                 step: SasStep::Reveal,
             },
-            &KeyBody::Sas(SasBody::Reveal {
-                r: draw(&format!("flows/{label}/r")),
-            }),
-            vec![],
+            &KeyBody::Sas(SasBody::Reveal { r: r_n }),
+            vec![
+                ("ik_hex", h(&transcript.ik.0)),
+                ("commit_hex", h(&transcript.commitment(&n, &r_n).expect("commit"))),
+                ("n_key_device", s(&n.key_device.to_wire())),
+                ("n_dek_hex", h(&n.dek.0)),
+                ("n_dsk_hex", h(&n.dsk.0)),
+            ],
         )
     }
 
@@ -678,7 +755,10 @@ impl World<'_> {
                 reset,
             },
             &KeyBody::Reset(Box::new(body)),
-            vec![("ik_hex", h(&new_ik.public().expect("public").0))],
+            vec![
+                ("ik_hex", h(&new_ik.public().expect("public").0)),
+                ("r_hex", h(new_r.expose())),
+            ],
         )
     }
 
@@ -695,7 +775,11 @@ impl World<'_> {
         let sig =
             with_r.then(|| sign_cancel(&origin(), person.id, v(reset_av), proposed_ik, &person.ik).expect("cancel"));
         let verify = if with_r {
-            vec![("ik_hex", h(&person.ik.public().expect("public").0))]
+            vec![
+                ("ik_hex", h(&person.ik.public().expect("public").0)),
+                ("reset_av", n(u64::from(reset_av))),
+                ("proposed_ik_hex", h(&proposed_ik.0)),
+            ]
         } else {
             Vec::new()
         };
@@ -731,6 +815,57 @@ fn step(who: &str, does: &str, records: Vec<JsonValue>, client: &str, server: &s
         ("client", s(client)),
         ("server", s(server)),
     ])
+}
+
+// A check the crate makes for a step's client code: the op and input `verify::run` takes, and
+// the code it answers.
+fn crate_check(op: &str, input: Vec<(&str, JsonValue)>, error: &str) -> JsonValue {
+    obj(vec![("op", s(op)), ("input", obj(input)), ("error", s(error))])
+}
+
+fn signed_under(signed: u32, newest_known: u32) -> JsonValue {
+    crate_check(
+        "check_signed_under_newest",
+        vec![
+            ("signed_under", n(u64::from(signed))),
+            ("newest_known", n(u64::from(newest_known))),
+        ],
+        "keys.stale",
+    )
+}
+
+fn checked(mut step: JsonValue, checks: Vec<JsonValue>) -> JsonValue {
+    if let JsonValue::Object(members) = &mut step {
+        members.push(("checks".to_owned(), arr(checks)));
+    }
+    step
+}
+
+fn step_with(
+    who: &str,
+    does: &str,
+    records: Vec<JsonValue>,
+    extra: Vec<(&str, JsonValue)>,
+    client: &str,
+    server: &str,
+) -> JsonValue {
+    let mut members = vec![("who", s(who)), ("does", s(does)), ("records", arr(records))];
+    members.extend(extra);
+    members.push(("client", s(client)));
+    members.push(("server", s(server)));
+    obj(members)
+}
+
+// Sign Out's revoke, a DPoP proof under the device's DSK (ADR 0051, Sign Out).
+fn sign_out_proof(device: &DeviceKeys, label: &str) -> String {
+    let request = crate::dpop::DpopRequest {
+        method: "DELETE",
+        url: "https://sync.example.com/v2/sync/key-device",
+        access_token: "access-token-for-vectors",
+        iat: 1_764_000_000,
+        nonce: None,
+    };
+    crate::dpop::proof_with_jti(&device.dsk, request, draw(&format!("flows/sign out {label}/jti"))).expect("proof")
 }
 
 fn codes(text: &str) -> JsonValue {
@@ -805,6 +940,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         o: Person::new("O", AccountId(draw_uuid("flows/O id")), 2),
         p: Person::new("P", AccountId(draw_uuid("flows/P id")), 2),
         p_other: Person::new("P from C", AccountId(draw_uuid("flows/P id")), 1),
+        x: Person::new("X", AccountId(draw_uuid("flows/X id")), 1),
         team: uuid_from_wire(TEAM_T).expect("team"),
     };
     let a1 = device("A device 1");
@@ -838,7 +974,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         given: given(vec![("client_holds", holds(5, &["A@2", "M@1"])), ("account_av", obj(vec![("A", n(2)), ("E", n(1))])), ("rotation_due", b(false))]),
         steps: vec![
             step("E", "push", vec![w.member("E's certificate in the team", "E", 1), w.team_version("version 6 signed by E", 6, Start::Next, "E", 1), w.team_ring("its ring", 6)], "keys.not_holder", "role"),
-            step("A", "push", vec![w.team_version("version 6 signed by A under av 1", 6, Start::Next, "A", 1), w.team_ring("its ring", 6)], "keys.stale", "bad_statement"),
+            checked(step("A", "push", vec![w.team_version("version 6 signed by A under av 1", 6, Start::Next, "A", 1), w.team_ring("its ring", 6)], "keys.stale", "bad_statement"), vec![signed_under(1, 2)]),
         ],
     }));
 
@@ -853,15 +989,18 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                 ("client_holds", holds(5, &["A@2"])),
                 ("client_knows_av", obj(vec![("A", n(2))])),
             ]),
-            steps: vec![step(
-                "server",
-                "pull",
-                vec![
-                    w.team_version("version 6 signed by A under av 1", 6, Start::Next, "A", 1),
-                    w.team_version("version 7 signed by A under av 2", 7, Start::Next, "A", 2),
-                ],
-                "keys.stale at version 6; the client stays at version 5",
-                "none",
+            steps: vec![checked(
+                step(
+                    "server",
+                    "pull",
+                    vec![
+                        w.team_version("version 6 signed by A under av 1", 6, Start::Next, "A", 1),
+                        w.team_version("version 7 signed by A under av 2", 7, Start::Next, "A", 2),
+                    ],
+                    "keys.stale at version 6; the client stays at version 5",
+                    "none",
+                ),
+                vec![signed_under(1, 2)],
             )],
         },
     ));
@@ -872,12 +1011,12 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "none",
         layer: &["flow"],
         given: given(vec![("client_holds", holds(6, &["A@2", "P@2"])), ("client_knows_av", obj(vec![("A", n(2)), ("M", n(2))]))]),
-        steps: vec![step("server", "pull", vec![
+        steps: vec![checked(step("server", "pull", vec![
             w.team_version("version 7 signed under A's old av 1", 7, Start::Next, "A", 1),
             w.team_wrap("version 7 to M, under A's av 1", 7, "M", 2, "A", 1, &a_lost),
             w.team_version("version 8 signed by M under av 2", 8, Start::Next, "M", 2),
             w.team_wrap("version 8 to P, by M", 8, "P", 2, "M", 2, &m1),
-        ], "keys.stale at version 7; M is no holder", "none")],
+        ], "keys.stale at version 7; M is no holder", "none"), vec![signed_under(1, 2)])],
     }));
 
     let stopped = |extra: Vec<(&str, JsonValue)>| {
@@ -962,15 +1101,25 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             layer: &["flow"],
             given: obj(vec![
                 ("personal_state", s("stopped")),
+                ("history_state", s("stopped")),
                 ("other_devices", arr(Vec::new())),
             ]),
-            steps: vec![step(
-                "P",
-                "decide",
-                vec![],
-                "recovery with R or a reset is offered",
-                "none",
-            )],
+            steps: vec![
+                step(
+                    "P",
+                    "decide on the personal key",
+                    vec![],
+                    "recovery with R or a reset is offered",
+                    "none",
+                ),
+                step(
+                    "P",
+                    "decide on the history key",
+                    vec![],
+                    "recovery with R or a reset is offered",
+                    "none",
+                ),
+            ],
         },
     ));
 
@@ -1080,10 +1229,17 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         client: "keys.stale",
         server: "key_version_stale",
         layer: &["flow", "server"],
-        given: obj(vec![("pull_order", arr(vec![s("envelope under PK 2"), s("PK version 3"), s("envelope under PK 2")]))]),
-        steps: vec![step("server", "pull", vec![
-            w.version("PK version 3", pk(3), Start::Next, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
-        ], "the envelope before version 3 is taken; the one after it is keys.stale", "key_version_stale for a write under 2 once 3 is current")],
+        given: obj(vec![("client_holds", obj(vec![("personal", n(2))])), ("order", s("records in each step come in revision order"))]),
+        steps: vec![
+            checked(step("server", "pull", vec![
+                w.version("PK version 3", pk(3), Start::Next, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
+                w.envelope("an envelope under PK 2 after version 3", "P", 2, "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44"),
+            ], "keys.stale for the envelope after version 3", "key_version_stale for a write under 2 once 3 is current"), vec![crate_check("check_not_below", vec![("held", n(3)), ("offered", n(2))], "keys.stale")]),
+            step("server", "pull", vec![
+                w.envelope("the same envelope under PK 2, before version 3", "P", 2, "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44"),
+                w.version("PK version 3", pk(3), Start::Next, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
+            ], "taken", "applied"),
+        ],
     }));
 
     let request = RequestId(draw_uuid("flows/request"));
@@ -1128,13 +1284,40 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         },
     ));
 
+    let reveal_before_nonce = {
+        let (transcript, n_side, r_n) = w.sas_view("P", request, &dev_n);
+        let a_side = crate::sas::SasDevice {
+            key_device: dev_b.key_device,
+            dek: dev_b.dek.public().expect("public"),
+            dsk: dev_b.dsk.public().expect("public"),
+        };
+        let view = obj(vec![
+            ("origin", s(transcript.origin.as_str())),
+            ("account", s(&transcript.account.to_wire())),
+            ("request", s(&request.to_wire())),
+            ("ik_hex", h(&transcript.ik.0)),
+            ("n", super::gen_sas::device_json(&n_side)),
+            ("r_n_hex", h(&r_n)),
+            ("a", super::gen_sas::device_json(&a_side)),
+            ("r_a_hex", h(&draw::<32>("flows/a reveal before the nonce/r_A"))),
+        ]);
+        crate_check(
+            "sas_session",
+            vec![
+                ("view", view),
+                ("role", s("new_device")),
+                ("steps", arr(vec![s("reveal")])),
+            ],
+            "keys.session",
+        )
+    };
     rows.push(scenario("a reveal before the nonce, steps after the session ended", Row {
         row: "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`",
         client: "keys.session",
         server: "request_closed",
         layer: &["flow", "server"],
         given: obj(vec![("session", s("open"))]),
-        steps: vec![step("N", "push", vec![w.reveal("N's reveal before any nonce", "P", request)], "keys.session", "request_closed")],
+        steps: vec![checked(step("N", "push", vec![w.reveal("N's reveal before any nonce", "P", request, &dev_n)], "keys.session", "request_closed"), vec![reveal_before_nonce])],
     }));
 
     rows.push(scenario(
@@ -1199,7 +1382,10 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "none",
         layer: &["flow"],
         given: obj(vec![("own_device_pins", arr(vec![s("B")])), ("certified_devices", arr(vec![s("B"), s("C")]))]),
-        steps: vec![step("B", "decide", vec![w.device_cert("C's certificate, never compared", "P", 2, &dev_c)], "keys.not_compared", "none")],
+        steps: vec![
+            step("B", "decide", vec![w.device_cert("C's certificate, never compared", "P", 2, &dev_c)], "keys.not_compared", "none"),
+            step("B", "decide", vec![w.device_cert("N's certificate, the only source of the DEK a pin would hold", "P", 2, &dev_n)], "keys.not_compared", "none"),
+        ],
     }));
 
     let mut bad_genesis = w.genesis("B's genesis", "P", &dev_b);
@@ -1217,24 +1403,100 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         "signer_hex",
         h(&w.p.at(1).ask.public().expect("public").0),
     );
-    set_verify(&mut broken_version, "valid", b(false));
+    set_verify(&mut broken_version, "error", s("keys.signature"));
     bad_genesis[3] = broken_version;
-    rows.push(scenario(
-        "a change set with one bad object",
-        Row {
-            row: "A genesis, rotation, approval, reset or team rotation change set with one bad object",
-            client: "that object's error",
-            server: "that object's code, change_set for the rest; nothing applies",
-            layer: &["flow", "server"],
-            given: obj(vec![("account_has_keys", b(false))]),
-            steps: vec![step(
-                "B",
-                "push change set",
-                bad_genesis,
-                "keys.signature for the version record",
-                "bad_statement for it, change_set for the rest",
-            )],
-        },
+    // One scenario per kind of change set, each from the state that kind needs, so the bad object is
+    // the only thing wrong with it.
+    let bad_object = |name: &str, given: JsonValue, who: &str, records: Vec<JsonValue>, client: &str| {
+        scenario(
+            name,
+            Row {
+                row: "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+                client: "that object's error",
+                server: "that object's code, change_set for the rest; nothing applies",
+                layer: &["flow", "server"],
+                given,
+                steps: vec![step(
+                    who,
+                    "push change set",
+                    records,
+                    client,
+                    "bad_statement for it, change_set for the rest",
+                )],
+            },
+        )
+    };
+    rows.push(bad_object(
+        "a genesis with one bad object",
+        obj(vec![("account_has_keys", b(false))]),
+        "B",
+        bad_genesis,
+        "keys.signature for the version record",
+    ));
+    rows.push(bad_object(
+        "a rotation with one bad object",
+        obj(vec![("account_av", n(1))]),
+        "B",
+        with_bad_object(
+            w.rotation("B's rotation", "P", 2, &[&dev_b], &dev_b),
+            "B's rotation: personal version 2",
+            &w.p.at(1).ask,
+            "keys.signature",
+        ),
+        "keys.signature for the version record",
+    ));
+    rows.push(bad_object(
+        "an approval with one bad object",
+        obj(vec![
+            ("account_av", n(2)),
+            ("session", s("revealed")),
+            ("nonce_from", s("B")),
+            ("compared_dsk", s("B")),
+        ]),
+        "B",
+        with_bad_object(
+            w.approval("B approves N", "P", 2, &dev_n, &dev_b, &trust_for_p),
+            "B approves N: account wrap",
+            &dev_c.dsk,
+            "keys.not_compared",
+        ),
+        "keys.not_compared for the account wrap",
+    ));
+    rows.push(bad_object(
+        "a reset activation with one bad object",
+        obj(vec![
+            ("account_av", n(1)),
+            ("pending_reset", b(true)),
+            ("proposed_by", s("B")),
+            ("held_until_passed", b(true)),
+        ]),
+        "B",
+        with_bad_object(
+            w.activation("P's reset proposal", "P", 2, CertKind::ResetKeepingKeys, &dev_b),
+            "P's reset proposal: history version 2",
+            &w.p.at(1).ask,
+            "keys.signature",
+        ),
+        "keys.signature for the version record",
+    ));
+    rows.push(bad_object(
+        "a team rotation with one bad object",
+        given(vec![
+            ("server_holds", holds(6, &["A@2"])),
+            ("account_av", obj(vec![("A", n(2)), ("M", n(2))])),
+        ]),
+        "A",
+        with_bad_object(
+            vec![
+                w.team_version("version 7", 7, Start::Next, "A", 2),
+                w.team_ring("its ring", 7),
+                w.team_wrap("version 7 to M", 7, "M", 2, "A", 2, &a1),
+            ],
+            "version 7 to M",
+            &w.o.at(2).ask,
+            "keys.signature",
+        ),
+        "keys.signature for the wrap",
     ));
 
     rows.push(scenario(
@@ -1349,6 +1611,18 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                     "none",
                     "bad_statement",
                 ),
+            ],
+        },
+    ));
+    rows.push(scenario(
+        "kinds from the wrong caller, with no reset pending",
+        Row {
+            row: "A reset proposal while one is pending; kind 2 from a sign-in, kind 3 from an approved device",
+            client: "none",
+            server: "bad_statement",
+            layer: &["server"],
+            given: obj(vec![("pending_reset", b(false))]),
+            steps: vec![
                 step(
                     "N, not approved",
                     "push",
@@ -1441,7 +1715,10 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "204 both",
         layer: &["server"],
         given: obj(vec![("pending_reset", b(true)), ("reset_dsk_hex", h(&dev_b.dsk.public().expect("public").0))]),
-        steps: vec![step("B", "DELETE /v2/sync/key-device", vec![proposal.clone()], "the reset ends with the reset's DSK; nothing changes under another key", "204 both")],
+        steps: vec![
+            step_with("B", "DELETE /v2/sync/key-device", vec![proposal.clone()], vec![("dpop", s(&sign_out_proof(&dev_b, "under the reset's DSK")))], "the reset ends", "204"),
+            step_with("B", "DELETE /v2/sync/key-device", vec![], vec![("dpop", s(&sign_out_proof(&device("P device C"), "under another key")))], "nothing changes", "204"),
+        ],
     }));
     rows.push(scenario(
         "a pending reset 7 days past held_until",
@@ -1559,8 +1836,114 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "role",
         layer: &["flow", "server"],
         given: given(vec![("server_holds", holds(6, &["M@2"])), ("client", s("M"))]),
-        steps: vec![step("O", "push change set", vec![w.team_version("version 7 by O with start 1", 7, Start::Over, "O", 2), w.team_wrap("version 7 to O", 7, "O", 2, "O", 2, &o1)], "keys.not_holder", "role")],
+        steps: vec![
+            step("O", "the restart reaches M, a holder", vec![w.team_version("version 7 by O with start 1", 7, Start::Over, "O", 2), w.team_wrap("version 7 to O", 7, "O", 2, "O", 2, &o1)], "keys.not_holder", "none"),
+            step("O", "push change set while M, a holder, is on the roster", vec![w.team_version("version 7 by O with start 1", 7, Start::Over, "O", 2), w.team_wrap("version 7 to O", 7, "O", 2, "O", 2, &o1)], "none", "role"),
+        ],
     }));
+
+    // ADR 0064: a restart a member's device did not sign waits for a comparison of the signer's words.
+    let fingerprint_words = |who: &str| {
+        let person = w.person(who);
+        let fingerprint =
+            crate::fingerprint::fingerprint(&origin(), person.id, &person.ik.public().expect("public")).expect("f");
+        arr(crate::fingerprint::fingerprint_words(&fingerprint)
+            .into_iter()
+            .map(s)
+            .collect())
+    };
+    let restart_given = || {
+        given(vec![
+            ("client", s("M")),
+            ("client_holds", holds(5, &["O@2", "M@2"])),
+            ("server_holds", holds(6, &["O@2"])),
+        ])
+    };
+    rows.push(scenario(
+        "a restart shown to a device that held an earlier version, then accepted",
+        Row {
+            row: RESTART_HELD_ROW,
+            client: "keys.restart_held; applied, its signer the holder",
+            server: "none",
+            layer: &["flow"],
+            given: restart_given(),
+            steps: vec![
+                step(
+                    "server",
+                    "pull",
+                    vec![
+                        w.team_version("version 7 by O with start 1", 7, Start::Over, "O", 2),
+                        w.team_wrap("version 7 to M", 7, "M", 2, "O", 2, &o1),
+                    ],
+                    "keys.restart_held: version 7 is not current, and M writes nothing under the team key",
+                    "none",
+                ),
+                step_with(
+                    "M",
+                    "the person compares O's six fingerprint words and accepts",
+                    vec![],
+                    vec![("words", fingerprint_words("O"))],
+                    "applied: version 7 is current, O is its holder, and O's pin is compared",
+                    "none",
+                ),
+            ],
+        },
+    ));
+    let made_up = KeyRef {
+        owner: w.team,
+        purpose: KeyPurpose::Team,
+        version: v(7),
+    };
+    let made_up_key = scope_key("flows/TK7 made up by the server");
+    rows.push(scenario(
+        "a restart by an account the server made up",
+        Row {
+            row: RESTART_HELD_ROW,
+            client: "keys.restart_held; stays held",
+            server: "none",
+            layer: &["flow"],
+            given: restart_given(),
+            steps: vec![
+                step(
+                    "server",
+                    "pull",
+                    vec![
+                        w.member("X's certificate in the team", "X", 1),
+                        w.version(
+                            "version 7 by X with start 1",
+                            made_up,
+                            Start::Over,
+                            &made_up_key,
+                            "X",
+                            1,
+                            &w.x.at(1).ask,
+                        ),
+                        w.scope_wrap(
+                            "version 7 to M, by X",
+                            made_up,
+                            &made_up_key,
+                            "M",
+                            2,
+                            "X",
+                            1,
+                            &w.x.at(1).ask,
+                            &device("X device"),
+                        ),
+                    ],
+                    "keys.restart_held: version 7 is not current, and M writes nothing under the team key",
+                    "none",
+                ),
+                step_with(
+                    "M",
+                    "the person compares X's six fingerprint words, which match no one's, and says they differ",
+                    vec![],
+                    vec![("words", fingerprint_words("X"))],
+                    "stays held: keys.restart_held",
+                    "none",
+                ),
+            ],
+        },
+    ));
 
     rows.push(scenario(
         "a sole owner who reset restarts its team",
@@ -1816,19 +2199,77 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         client: "keys.retired_ik; taken",
         server: "none",
         layer: &["flow"],
-        given: obj(vec![("pin", obj(vec![("account", s("A")), ("replaced", arr(vec![s("A's IK")]))]))]),
+        given: obj(vec![("pin", obj(vec![("account", s("A")), ("replaced", arr(vec![obj(vec![("ik", s("A's IK")), ("av", n(4))])]))]))]),
         steps: vec![step("server", "pull", vec![w.account("A's certificate at av 3 under its old IK", "A", 3)], "keys.retired_ik as the newest; taken for objects signed under it before the replace", "none")],
     }));
 
     super::out::file(
         "flows",
-        "ADR 0056's Vectors rows a flow or the server decides: each row's key objects from one world, with its client and server columns. tablepro-keys checks every object; the flows and the server check the outcomes.",
+        "ADR 0056's Vectors rows a flow or the server decides: each row's key objects from one world, with its client and server columns. tablepro-keys checks every object as its recipient would: each signature its `verify` names, and every wrap, ring, recovery blob and envelope opened. An object whose `verify` has `error` fails with that code; the flows and the server check the outcomes.",
         vec![
             ("origin", s(ORIGIN)),
             ("world", world_json(&w)),
             ("scenarios", arr(rows)),
         ],
     )
+}
+
+// A change set whose object of `label` is signed again under `wrong`, so it alone fails its check.
+fn with_bad_object(mut records: Vec<JsonValue>, label: &str, wrong: &Ed25519Seed, error: &str) -> Vec<JsonValue> {
+    let position = records.iter().position(
+        |record| matches!(In::of(record).optional("label"), Some(JsonValue::String(text)) if text.ends_with(label)),
+    );
+    let position = position.unwrap_or_else(|| panic!("no record {label}"));
+    let record = &mut records[position];
+    let mut input = In::of(record);
+    let kind = input.str("kind").to_owned();
+    let id = input.str("id").to_owned();
+    let mut object = KeyObject::parse(&kind, &id, input.value("fields").to_json().as_bytes()).expect("object");
+    let message = match (&object.id, &object.body) {
+        (KeyRecordId::Version(_), KeyBody::Version(_)) => object
+            .version_record()
+            .expect("version")
+            .message(&origin())
+            .expect("message"),
+        (KeyRecordId::Wrap(_), KeyBody::Wrap(_)) => {
+            let wrap = object.wrap().expect("wrap");
+            let pk_r = X25519Public(In::of(record).sub("verify").hex32("pk_r_hex"));
+            crate::wrap::wrap_sig_message(
+                &wrap.info(&origin(), &pk_r).expect("info"),
+                &wrap.enc,
+                &wrap.ct,
+                wrap.wrapper,
+            )
+            .expect("message")
+        }
+        _ => panic!("{label}: only a version record or a wrap is broken here"),
+    };
+    let sig = wrong.sign(&message).expect("sign");
+    match &mut object.body {
+        KeyBody::Version(body) => body.sig = sig,
+        KeyBody::Wrap(body) => body.sig = sig,
+        _ => {}
+    }
+    let fields = super::out::fields(&object.fields_json());
+    if let JsonValue::Object(members) = record {
+        for (name, value) in members.iter_mut() {
+            if name == "fields" {
+                *value = fields.clone();
+            }
+        }
+    }
+    set_verify(record, "error", s(error));
+    records
+}
+
+// What opens a blob and what its keys must give: the recovery key and the certificate's public keys.
+fn blob_verify(r: &RecoveryKey, keys: &AccountKeys) -> Vec<(&'static str, JsonValue)> {
+    let public = keys.public().expect("public");
+    vec![
+        ("r_hex", h(r.expose())),
+        ("certificate_ask_hex", h(&public.ask.0)),
+        ("certificate_aek_hex", h(&public.aek.0)),
+    ]
 }
 
 fn personal_ring(key: KeyRef, who: &str, label: &str) -> JsonValue {
@@ -1847,7 +2288,10 @@ fn personal_ring(key: KeyRef, who: &str, label: &str) -> JsonValue {
         key.owner,
         &KeyRecordId::Ring(key),
         &KeyBody::Ring(ring),
-        vec![],
+        vec![
+            ("newer_key_hex", h(newer.expose())),
+            ("below_kid_hex", h(&older.kid().expect("kid").0)),
+        ],
     )
 }
 
@@ -1864,7 +2308,7 @@ fn approval_rows(
         purpose: KeyPurpose::Personal,
         version: v(version),
     };
-    let pin = |who: &Person, av: u32, how: PinHow, alert: bool, replaced: Vec<Ed25519Public>| TrustPin {
+    let pin = |who: &Person, av: u32, how: PinHow, alert: bool, replaced: Vec<crate::trust::Replaced>| TrustPin {
         account: who.id,
         ik: who.ik.public().expect("public"),
         av: v(av),
@@ -1912,7 +2356,10 @@ fn approval_rows(
                 ),
                 "keys.stale; the device keeps its keys",
                 "none",
-            )],
+            )]
+            .into_iter()
+            .map(|step| checked(step, vec![signed_under(1, 2)]))
+            .collect(),
         },
     ));
     let other_ik_a = Ed25519Seed::from_bytes(draw("flows/A other IK"))
@@ -1964,7 +2411,7 @@ fn approval_rows(
         layer: &["flow"],
         given: obj(vec![("device_pins", arr(vec![obj(vec![("account", s("A")), ("ik_hex", h(&other_ik_a.0))])]))]),
         steps: vec![step("B approves N", "pull", w.approval("B with A's old IK replaced", "P", 2, dev_n, dev_b, &trust(
-            vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new()), pin(&w.a, 3, PinHow::Replaced, false, vec![other_ik_a])],
+            vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new()), pin(&w.a, 3, PinHow::Replaced, false, vec![crate::trust::Replaced { ik: other_ik_a, av: v(3) }])],
             vec![pv(2, "P PK2")],
         )), "with the endorsement held: follows the new IK; without it: an alert", "none")],
     }));
@@ -1976,7 +2423,7 @@ fn approval_rows(
         given: obj(vec![("device_holds", obj(vec![("personal", n(3)), ("record_hex", h(&record_of("P PK3 held")))]))]),
         steps: vec![
             step("B approves N", "pull", w.approval("B with PK 2", "P", 2, dev_n, dev_b, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(2, "P PK2")])), "keeps its own", "none"),
-            step("C approves N", "pull", w.approval("C with another PK 3 record", "P", 2, dev_n, dev_c, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(3, "P PK3 other")])), "keys.conflict", "none"),
+            checked(step("C approves N", "pull", w.approval("C with another PK 3 record", "P", 2, dev_n, dev_c, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(3, "P PK3 other")])), "keys.conflict", "none"), vec![crate_check("check_record_digest", vec![("origin", s(super::fixtures::ORIGIN)), ("anchored_hex", h(&record_of("P PK3 held"))), ("record", labelled_version(w, "P PK3 other").0)], "keys.conflict")]),
         ],
     }));
     rows.push(scenario("B keeps team version 6 when approved from a C the server kept behind", Row {
@@ -1987,7 +2434,7 @@ fn approval_rows(
         given: obj(vec![("b_holds", holds(6, &["A@2", "P@2"])), ("b_knows_av", obj(vec![("A", n(2))]))]),
         steps: vec![
             step("C approves B", "pull", w.approval("C's view with team version 8", "P", 2, dev_b, dev_c, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![tv(8, "team 8 by M")])), "B keeps version 6", "none"),
-            step("server", "pull", vec![w.team_version("version 7 under A's old av 1", 7, Start::Next, "A", 1), w.team_wrap("version 7 to M under A's av 1", 7, "M", 2, "A", 1, a1), w.team_version("version 8 by M", 8, Start::Next, "M", 2)], "keys.stale", "none"),
+            checked(step("server", "pull", vec![w.team_version("version 7 under A's old av 1", 7, Start::Next, "A", 1), w.team_wrap("version 7 to M under A's av 1", 7, "M", 2, "A", 1, a1), w.team_version("version 8 by M", 8, Start::Next, "M", 2)], "keys.stale", "none"), vec![signed_under(1, 2)]),
         ],
     }));
     let c_old = |version: u32| {
@@ -2016,7 +2463,7 @@ fn approval_rows(
         server: "none",
         layer: &["flow"],
         given: obj(vec![("c_holds", arr(vec![c_old(2), c_old(3)])), ("b_holds", arr(vec![b_v2.clone()]))]),
-        steps: vec![step("B approves C", "pull", w.approval("B with PK 2 under av 2", "P", 2, dev_c, dev_b, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(2, "P PK2 under av 2")])), "keys.conflict at version 2", "none")],
+        steps: vec![checked(step("B approves C", "pull", w.approval("B with PK 2 under av 2", "P", 2, dev_c, dev_b, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(2, "P PK2 under av 2")])), "keys.conflict at version 2", "none"), vec![crate_check("check_record_digest", vec![("origin", s(super::fixtures::ORIGIN)), ("anchored_hex", h(&record_of("P PK2 under av 2"))), ("record", c_old(2))], "keys.conflict")])],
     }));
     rows.push(scenario(
         "the same C after an anchored rebuild that kept only version 3",
@@ -2080,7 +2527,10 @@ fn approval_rows(
                 ),
                 "keys.stale",
                 "none",
-            )],
+            )]
+            .into_iter()
+            .map(|step| checked(step, vec![signed_under(1, 2)]))
+            .collect(),
         },
     ));
     rows.push(scenario("an approval over a stopped personal key and over an ended scope", Row {
@@ -2279,6 +2729,23 @@ fn labelled_version(w: &World<'_>, label: &str) -> (JsonValue, [u8; 32]) {
     (record, digest)
 }
 
+// Every device a scenario names, under its fixture name; its keys are drawn from the name.
+// ADR 0064's three restart vectors, as its Vectors line names them.
+pub(super) const RESTART_HELD_ROW: &str = "a restart shown to a device that held an earlier version; the person compares and accepts; a restart by an account the server made up, words that differ";
+
+const DEVICES: [&str; 10] = [
+    "A device 1",
+    "A lost device",
+    "M device 1",
+    "O device 1",
+    "P device B",
+    "P device C",
+    "P device C again",
+    "P device N",
+    "P device N approved again",
+    "X device",
+];
+
 fn world_json(w: &World<'_>) -> JsonValue {
     let person = |p: &Person| {
         obj(vec![
@@ -2322,13 +2789,34 @@ fn world_json(w: &World<'_>) -> JsonValue {
                 person(&w.e),
                 person(&w.o),
                 person(&w.p),
+                person(&w.p_other),
+                person(&w.x),
             ]),
+        ),
+        (
+            "devices",
+            arr(DEVICES
+                .iter()
+                .map(|name| {
+                    let keys = device(name);
+                    obj(vec![
+                        ("name", s(name)),
+                        ("key_device", s(&keys.key_device.to_wire())),
+                        ("dek_secret_hex", h(keys.dek.expose())),
+                        ("dek_hex", h(&keys.dek.public().expect("public").0)),
+                        ("dsk_seed_hex", h(keys.dsk.expose())),
+                        ("dsk_hex", h(&keys.dsk.public().expect("public").0)),
+                    ])
+                })
+                .collect()),
         ),
         ("team", s(&uuid_to_wire(w.team))),
         ("team_keys", team_keys),
         (
             "roles",
-            s("A admin, O owner, M member, E editor, P member; B, C and N are P's devices"),
+            s(
+                "A admin, O owner, M member, E editor, P member; B, C and N are P's devices. \"P from C\" is P's account as device C's own genesis made it, with its own R, IK and keys. X is an account the server made up",
+            ),
         ),
         (
             "version_records",
@@ -2340,44 +2828,103 @@ fn world_json(w: &World<'_>) -> JsonValue {
     ])
 }
 
-// Checks every record of a scenario: it parses, and the signature the record's `verify` names holds.
-pub(super) fn check(file: &str, case: &JsonValue) {
+// Checks every record of a scenario, in its steps and in `given`: it parses, every signature its
+// `verify` names holds, and every ring, blob and wrap opens to what it should. The outcomes the
+// rows declare are the flows' and the server's to check.
+pub(super) fn check(_file: &str, case: &JsonValue) {
     let mut members = Members::of(case).expect("case");
     let name = members.string("name").expect("name").to_owned();
-    let JsonValue::Array(steps) = members.required("steps").expect("steps") else {
-        panic!("{file}: {name}: steps")
-    };
-    for step in steps {
-        let JsonValue::Object(fields) = step else {
-            panic!("{name}: step")
-        };
-        let Some((_, JsonValue::Array(records))) = fields.iter().find(|(member, _)| member == "records") else {
-            panic!("{name}: records")
-        };
-        for record in records {
-            check_record(&name, record);
+    let mut records = Vec::new();
+    collect_records(members.required("steps").expect("steps"), &mut records);
+    collect_records(members.required("given").expect("given"), &mut records);
+    for record in records {
+        check_record(&name, record);
+    }
+    if let JsonValue::Array(steps) = members.required("steps").expect("steps") {
+        for step in steps {
+            if let Some(JsonValue::Array(checks)) = In::of(step).optional("checks") {
+                for check in checks {
+                    let mut check = In::of(check);
+                    let op = check.str("op");
+                    let answered = super::verify::run(op, check.value("input"))
+                        .map(|_| ())
+                        .map_err(|error| error.code());
+                    assert_eq!(answered, Err(check.str("error")), "{name}: {op}");
+                }
+            }
         }
     }
 }
 
+fn collect_records<'a>(value: &'a JsonValue, out: &mut Vec<&'a JsonValue>) {
+    match value {
+        JsonValue::Object(members) => {
+            let has = |name: &str| members.iter().any(|(member, _)| member == name);
+            if has("kind") && has("id") && has("fields") {
+                out.push(value);
+            } else {
+                members.iter().for_each(|(_, member)| collect_records(member, out));
+            }
+        }
+        JsonValue::Array(items) => items.iter().for_each(|item| collect_records(item, out)),
+        _ => {}
+    }
+}
+
+#[expect(clippy::too_many_lines, reason = "one arm per key kind")]
 fn check_record(name: &str, record: &JsonValue) {
     let mut input = In::of(record);
     let label = input.str("label").to_owned();
     let kind = input.str("kind").to_owned();
     let id = input.str("id").to_owned();
     let fields = input.value("fields").to_json();
+    if kind == "secret_envelope" {
+        let mut verify = input.sub("verify");
+        let sealed =
+            crate::body::parse_sealed(fields.as_bytes()).unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
+        let envelope_id = crate::envelope::EnvelopeId::parse(&id).expect("envelope id");
+        let scope = crate::encoding::Scope::Personal(AccountId(input_owner(record)));
+        let opened = crate::envelope::open_envelope(
+            &ScopeKey::from_bytes(verify.hex32("key_hex")),
+            &origin(),
+            scope,
+            &envelope_id,
+            &sealed,
+        )
+        .unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
+        assert_eq!(
+            secrecy::ExposeSecret::expose_secret(&opened.secret),
+            verify.str("secret"),
+            "{name}: {label}"
+        );
+        return;
+    }
     let object =
         KeyObject::parse(&kind, &id, fields.as_bytes()).unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
     let mut verify = input.sub("verify");
-    let valid = !matches!(verify_value(&mut verify, "valid"), Some(JsonValue::Bool(false)));
+    let error = verify
+        .optional("error")
+        .map(|code| crate::json::as_str(code).expect("error").to_owned());
     let o = origin();
-    let result = match (&object.id, &object.body) {
+    let certificate_keys = |verify: &mut In<'_>| crate::keys::AccountPublicKeys {
+        ask: Ed25519Public(verify.hex32("certificate_ask_hex")),
+        aek: X25519Public(verify.hex32("certificate_aek_hex")),
+    };
+    let result: Result<(), crate::KeysError> = match (&object.id, &object.body) {
         (
             KeyRecordId::Account { account, av } | KeyRecordId::Member { account, av },
             KeyBody::Account(body) | KeyBody::Member(body),
         ) => {
             let certificate = body.certificate(*account, *av);
-            certificate.verify(&o)
+            certificate.verify(&o).and_then(|()| {
+                if verify.has("previous_ik_hex") {
+                    certificate
+                        .ik_change(&o, &Ed25519Public(verify.hex32("previous_ik_hex")))
+                        .map(|_| ())
+                } else {
+                    Ok(())
+                }
+            })
         }
         (
             KeyRecordId::Device {
@@ -2388,43 +2935,151 @@ fn check_record(name: &str, record: &JsonValue) {
             KeyBody::Device(body),
         ) => body
             .certificate(*account, *key_device, *av)
-            .verify(&o, &Ed25519Public(hex32(&mut verify, "signer_hex"))),
+            .verify(&o, &Ed25519Public(verify.hex32("signer_hex"))),
         (KeyRecordId::Version(_), KeyBody::Version(_)) => {
             let record = object.version_record().expect("version");
-            let signed = record.verify(&o, &Ed25519Public(hex32(&mut verify, "signer_hex")));
+            let signed = record.verify(&o, &Ed25519Public(verify.hex32("signer_hex")));
             if signed.is_ok() {
                 assert_eq!(
                     record.digest(&o).expect("digest"),
-                    hex32(&mut verify, "digest_hex"),
+                    verify.hex32("digest_hex"),
                     "{name}: {label}"
                 );
             }
             signed
         }
-        (KeyRecordId::Wrap(_), KeyBody::Wrap(_)) => {
+        (KeyRecordId::Wrap(target), KeyBody::Wrap(_)) => {
             let wrap = object.wrap().expect("wrap");
-            wrap.verify(
+            let pk_r = X25519Public(verify.hex32("pk_r_hex"));
+            let signer = Ed25519Public(verify.hex32("signer_hex"));
+            let secret = X25519Secret::from_bytes(verify.hex32("recipient_secret_hex"));
+            // Each purpose's own check, since the code of a bad signature depends on whose it should be.
+            match target.purpose {
+                WrapPurpose::Account => wrap
+                    .open_account(&o, &secret, &pk_r, &signer, &certificate_keys(&mut verify))
+                    .map(|_| ()),
+                WrapPurpose::Trust => wrap.open_trust(&o, &secret, &pk_r, &signer).map(|_| ()),
+                WrapPurpose::Key(purpose) => {
+                    let key = KeyRef {
+                        owner: target.owner,
+                        purpose,
+                        version: target.version,
+                    };
+                    let record = kid_record(key, verify.hex32("kid_hex"));
+                    wrap.open_scope_key(&o, &secret, &pk_r, &signer, &record).map(|_| ())
+                }
+            }
+        }
+        (KeyRecordId::Ring(key), KeyBody::Ring(ring)) => {
+            let below = KeyRef {
+                version: key.version.previous().expect("below"),
+                ..*key
+            };
+            ring.open(
                 &o,
-                &X25519Public(hex32(&mut verify, "pk_r_hex")),
-                &Ed25519Public(hex32(&mut verify, "signer_hex")),
+                *key,
+                &ScopeKey::from_bytes(verify.hex32("newer_key_hex")),
+                &kid_record(below, verify.hex32("below_kid_hex")),
             )
+            .map(|_| ())
+        }
+        (KeyRecordId::Recovery { account, av }, KeyBody::Recovery(blob)) => {
+            let r = RecoveryKey::from_bytes(verify.hex32("r_hex"));
+            let keys = certificate_keys(&mut verify);
+            r.open_blob(&o, *account, *av, blob)
+                .and_then(|opened| opened.check_against(&keys.ask, &keys.aek))
         }
         (KeyRecordId::Reset { account, .. }, KeyBody::Reset(reset)) => {
-            reset.account.certificate(*account, reset.av).verify(&o)
+            let certificate = reset.account.certificate(*account, reset.av);
+            let r = RecoveryKey::from_bytes(verify.hex32("r_hex"));
+            certificate
+                .verify(&o)
+                .and_then(|()| {
+                    let ik = r.identity_seed(&o, *account)?.public()?;
+                    if ik == certificate.ik {
+                        Ok(())
+                    } else {
+                        Err(crate::KeysError::Signature)
+                    }
+                })
+                .and_then(|()| {
+                    reset
+                        .device
+                        .certificate(*account, reset.key_device, reset.av)
+                        .verify(&o, &certificate.ask)
+                })
+                .and_then(|()| r.open_blob(&o, *account, reset.av, &reset.recovery))
+                .and_then(|opened| opened.check_against(&certificate.ask, &certificate.aek))
         }
-        _ => Ok(()),
+        (KeyRecordId::Cancel { account, .. }, KeyBody::Cancel { sig }) => match sig {
+            Some(sig) => crate::cert::verify_cancel(
+                &o,
+                *account,
+                verify.version("reset_av"),
+                &Ed25519Public(verify.hex32("proposed_ik_hex")),
+                sig,
+                &Ed25519Public(verify.hex32("ik_hex")),
+            ),
+            // A device's own cancel carries no signature; the server checks who sends it.
+            None => Ok(()),
+        },
+        (KeyRecordId::Request { request }, KeyBody::Request(body)) => {
+            let transcript = crate::sas::Transcript {
+                origin: o.clone(),
+                account: AccountId(input_owner(record)),
+                request: *request,
+                ik: Ed25519Public(verify.hex32("ik_hex")),
+            };
+            let n = crate::sas::SasDevice {
+                key_device: body.key_device,
+                dek: body.dek,
+                dsk: body.dsk,
+            };
+            transcript.check_commitment(&n, &verify.hex32("r_n_hex"), &body.commit)
+        }
+        (KeyRecordId::Sas { request, .. }, KeyBody::Sas(SasBody::Reveal { r })) => {
+            let transcript = crate::sas::Transcript {
+                origin: o.clone(),
+                account: AccountId(input_owner(record)),
+                request: *request,
+                ik: Ed25519Public(verify.hex32("ik_hex")),
+            };
+            let n = crate::sas::SasDevice {
+                key_device: crate::encoding::KeyDeviceId::from_wire(verify.str("n_key_device")).expect("id"),
+                dek: X25519Public(verify.hex32("n_dek_hex")),
+                dsk: Ed25519Public(verify.hex32("n_dsk_hex")),
+            };
+            transcript.check_commitment(&n, r, &verify.hex32("commit_hex"))
+        }
+        // A `nonce` step's r_A and a `cancel` step's reason have nothing to check but their form.
+        (KeyRecordId::Sas { .. }, KeyBody::Sas(_)) => Ok(()),
+        _ => panic!("{name}: {label}: a kind the checker does not know"),
     };
-    if valid {
-        result.unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
-    } else {
-        assert!(result.is_err(), "{name}: {label} should not verify");
+    match error {
+        None => result.unwrap_or_else(|error| panic!("{name}: {label}: {error:?}")),
+        Some(code) => assert_eq!(
+            result.map_err(|error| error.code()),
+            Err(code.as_str()),
+            "{name}: {label}"
+        ),
     }
 }
 
-fn verify_value<'a>(verify: &mut In<'a>, name: &str) -> Option<&'a JsonValue> {
-    verify.optional(name)
+// A record's owner, from its scope.
+fn input_owner(record: &JsonValue) -> uuid::Uuid {
+    let mut input = In::of(record);
+    let mut scope = input.sub("scope");
+    uuid_from_wire(scope.str("owner")).expect("owner")
 }
 
-fn hex32(input: &mut In<'_>, name: &str) -> [u8; 32] {
-    input.hex32(name)
+// A version record standing in for the one a key is checked against: only its key and `kid` count.
+fn kid_record(key: KeyRef, kid: [u8; 32]) -> VersionRecord {
+    VersionRecord {
+        key,
+        start: Start::Next,
+        kid: crate::keys::Kid(kid),
+        signer: AccountId(uuid::Uuid::nil()),
+        signer_av: v(1),
+        sig: crate::keys::Signature([0; 64]),
+    }
 }

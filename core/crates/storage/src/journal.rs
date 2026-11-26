@@ -71,12 +71,7 @@ impl fmt::Display for RecordKind {
     }
 }
 
-/// What every store's write path tells once a write has landed (core ADRs 0054 and 0060).
-///
-/// It names each kind the commit changed with the records it wrote and deleted, and asks for a pass
-/// soon. The sync diff, not the journal, decides what goes up, so a missed call delays a push and
-/// loses nothing. A store calls it once per commit, after the commit, outside every lock it holds,
-/// from the thread that wrote; it must return at once.
+// Once per commit, outside the store's locks; the diff decides what goes up, so a missed call loses nothing (0060).
 pub trait ChangeJournal: Send + Sync {
     fn changed(&self, entries: &[JournalEntry]);
 }
@@ -99,20 +94,12 @@ impl JournalEntry {
     }
 
     pub fn wrote(mut self, records: impl IntoIterator<Item = RecordRef>) -> Self {
-        for record in records {
-            if !self.written.contains(&record) {
-                self.written.push(record);
-            }
-        }
+        push_unique(&mut self.written, records);
         self
     }
 
     pub fn deleted(mut self, records: impl IntoIterator<Item = RecordRef>) -> Self {
-        for record in records {
-            if !self.deleted.contains(&record) {
-                self.deleted.push(record);
-            }
-        }
+        push_unique(&mut self.deleted, records);
         self
     }
 
@@ -121,20 +108,34 @@ impl JournalEntry {
     }
 }
 
+// A set beside the list, since a write such as clearing the history can name many thousands.
+fn push_unique(list: &mut Vec<RecordRef>, records: impl IntoIterator<Item = RecordRef>) {
+    let mut seen: std::collections::HashSet<RecordRef> = list.iter().cloned().collect();
+    for record in records {
+        if seen.insert(record.clone()) {
+            list.push(record);
+        }
+    }
+}
+
 // A record as its store names it. The record rules (tablepro-records) write the wire id from it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum RecordRef {
-    // A connection, group, tag, SSH or credential profile, or table folder.
+    // A connection, group, tag, SSH or credential profile, table folder, saved query, folder or history entry.
     Id(uuid::Uuid),
     // A team library item, by its team and the client id the team stores.
-    TeamItem { team_id: String, id: String },
-    // A saved query, saved query folder or history entry, by its row until it carries a record id (0052).
-    Row(i64),
+    TeamItem {
+        team_id: String,
+        id: String,
+    },
     // A favourite table or a table folder item, by the table it names; an absent database or schema is empty.
     Table(crate::TableRef),
     // A favourite database.
-    Database { connection_id: uuid::Uuid, database: String },
+    Database {
+        connection_id: uuid::Uuid,
+        database: String,
+    },
 }
 
 // Shared by every handle of one store, so a journal set late reaches the handles made before it.
@@ -162,7 +163,6 @@ impl JournalSlot {
             journal.changed(entries);
         }
     }
-
 }
 
 // What a write to one of the history database's tables tells: the views that follow the saved
