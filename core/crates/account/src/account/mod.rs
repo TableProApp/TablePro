@@ -32,6 +32,7 @@ mod mac_tests;
 mod server_calls;
 mod server_state;
 mod share_calls;
+mod team_calls;
 
 pub(crate) use server_state::{Licensed, Server, Trust};
 
@@ -150,6 +151,7 @@ enum Call {
     Share,
     // Rate limited apart from the other share calls on the server, so its 429 holds only further creates.
     ShareCreate,
+    TeamMembers,
 }
 
 impl Session {
