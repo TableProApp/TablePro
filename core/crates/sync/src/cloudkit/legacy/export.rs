@@ -22,7 +22,7 @@ use tablepro_records::record_id::{parse_uuid, shortened, uuid_id};
 use tablepro_records::settings::owner;
 use uuid::Uuid;
 
-use super::super::fetch::{Categories, SCOPE, stored_id};
+use super::super::fetch::{Categories, PRIOR, SCOPE, prior_of, stored_id};
 use super::super::modify::{Pusher, at_base};
 use super::import;
 use super::seen::Frame;
@@ -172,6 +172,8 @@ struct Rows {
     deferred: Vec<RecordKey>,
     standing: Vec<LegacyStanding>,
     waiting: BTreeMap<(KindName, String), BTreeSet<String>>,
+    // The copy from before the pull that started a wait, by record.
+    prior: HashMap<RecordKey, (Vec<u8>, Value)>,
 }
 
 async fn rows(state: &dyn StateStore) -> Result<Rows, SyncError> {
@@ -216,6 +218,18 @@ async fn rows(state: &dyn StateStore) -> Result<Rows, SyncError> {
         }
     }
     rows.waiting = approval::held_members(txn.as_mut(), SCOPE).await?;
+    for row in txn.scan(&RowRange::Table(Table::LegacyMirror)).await? {
+        let Row::LegacyMirror(row) = row else { continue };
+        let Some((kind, id)) = row.item.strip_prefix(PRIOR).and_then(|rest| rest.split_once('/')) else {
+            continue;
+        };
+        let (Ok(kind), Some(prior)) = (KindName::parse(kind), prior_of(&row.value)) else {
+            continue;
+        };
+        if rows.waiting.contains_key(&(kind.clone(), id.to_owned())) {
+            rows.prior.insert(RecordKey::new(SCOPE, kind, id.to_owned()), prior);
+        }
+    }
     Ok(rows)
 }
 
@@ -532,7 +546,21 @@ pub(super) async fn metadata(cx: &Context<'_>, known: &LegacyMetadata) -> Result
         .bases
         .iter()
         .filter_map(|(kind, bases)| Some((mirrored(*kind)?, bases)))
-        .flat_map(|(record_type, bases)| bases.iter().filter_map(move |base| cached(record_type, base)))
+        .flat_map(|(record_type, bases)| {
+            let prior = &rows.prior;
+            bases.iter().filter_map(move |base| match prior.get(&base.key) {
+                // A waiting record goes to the previous stable as it was before the pull that started the wait.
+                Some((tag, fields)) => cached(
+                    record_type,
+                    &BaseRow {
+                        tag: ChangeTag::CloudKit(tag.clone()),
+                        fields: Some(fields.clone()),
+                        ..base.clone()
+                    },
+                ),
+                None => cached(record_type, base),
+            })
+        })
         .collect();
     Ok(builder.finish())
 }

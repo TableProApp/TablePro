@@ -244,11 +244,30 @@ impl SyncService {
             (Err(_), Some(mirror)) => Some(Arc::new(LegacyMarks::new(mirror, Arc::new(SystemClock)))),
             _ => None,
         };
-        // The core stores' writes mark it too, as the app's own stores' do.
+        // The core stores' writes mark it too, as the app's own stores' do, each deletion of an owned record with the
+        // connection the last iCloud file's base names.
         let marks_hear_stores = match (&legacy_marks, &hosts) {
             (Some(marks), Ok(hosts)) => hosts.listen(Arc::clone(marks) as Arc<dyn JournalObserver>),
             _ => None,
         };
+        if let Some(marks) = &legacy_marks {
+            let (marks, files) = (Arc::clone(marks), files.clone());
+            let account = parts.config.icloud_account.clone();
+            drop(tasks.spawn_task(async move {
+                let state = match (files, account) {
+                    (Some(files), Some(account)) => files
+                        .open(tablepro_sync::api::state::StateIdentity::ICloud {
+                            user_record_name: account,
+                        })
+                        .await
+                        .ok(),
+                    _ => None,
+                };
+                if let Err(error) = marks.owners_from(state.as_deref()).await {
+                    tracing::warn!(code = error.code(), "the downgrade marks read no owners");
+                }
+            }));
+        }
         let kept = categories.clone().unwrap_or_default();
         // A provider the values no longer allow carries no personal data from the start (0055, Leaving a provider).
         let personal = parts.config.provider == SyncProviderTag::TableproSync

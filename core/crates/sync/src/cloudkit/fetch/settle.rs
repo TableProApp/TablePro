@@ -20,8 +20,8 @@ use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
 use crate::api::state::{
-    ApprovalDecision, ApprovalRow, BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, ScopeRow, Standing,
-    StateTxn,
+    ApprovalDecision, ApprovalRow, BaseRow, DeferredRow, HeldReason, HeldRow, LegacyMirrorRow, Row, RowKey, ScopeRow,
+    Standing, StateTxn,
 };
 use crate::api::transport::{DeletedReason, PulledRecord};
 
@@ -122,6 +122,35 @@ fn local_change(record: Option<&LocalRecord>, merged: Merged) -> Option<Planned>
         (None, Some(_)) => Some(Planned::Delete),
         (None, None) => None,
     }
+}
+
+// The `legacy_mirror` item that holds a waiting record's copy from before the pull that started the wait.
+pub(in crate::cloudkit) fn prior_item(key: &RecordKey) -> String {
+    format!("{PRIOR}{}/{}", key.kind.as_str(), key.record_id)
+}
+
+pub(in crate::cloudkit) const PRIOR: &str = "prior/";
+
+// The system fields and the fields, each as a u32 big-endian length and its bytes.
+fn prior_value(tag: &[u8], fields: &Value) -> Vec<u8> {
+    let fields = fields.to_string();
+    let mut out = Vec::with_capacity(8 + tag.len() + fields.len());
+    for part in [tag, fields.as_bytes()] {
+        out.extend_from_slice(&u32::try_from(part.len()).unwrap_or(u32::MAX).to_be_bytes());
+        out.extend_from_slice(part);
+    }
+    out
+}
+
+pub(in crate::cloudkit) fn prior_of(value: &[u8]) -> Option<(Vec<u8>, Value)> {
+    let take = |at: usize| -> Option<(&[u8], usize)> {
+        let length = usize::try_from(u32::from_be_bytes(value.get(at..at + 4)?.try_into().ok()?)).ok()?;
+        Some((value.get(at + 4..at + 4 + length)?, at + 4 + length))
+    };
+    let (tag, next) = take(0)?;
+    let (fields, end) = take(next)?;
+    (end == value.len()).then_some(())?;
+    Some((tag.to_vec(), serde_json::from_slice(fields).ok()?))
 }
 
 fn held_change(copy: &Copy) -> PulledRecord {
@@ -330,6 +359,7 @@ impl<'s, 'f> Settle<'s, 'f> {
             let (base, merged) = (base_fields(found.base.as_ref()), merged_fields(&merged));
             unsettled::approval_view(copy.kind, &record.fields, base, merged, &undecided)
         });
+        let prior = found.base.clone();
         match approval::gate(&mut self.txn, &key, copy.kind, held.as_ref(), merged).await? {
             Gated::Apply(merged) => {
                 let merged = settled(copy.kind, merged, &copy.fields);
@@ -344,6 +374,7 @@ impl<'s, 'f> Settle<'s, 'f> {
                     .await?;
             }
         }
+        self.keep_prior(&key, prior).await?;
         self.txn
             .put(Row::Base(BaseRow {
                 key: key.clone(),
@@ -440,10 +471,42 @@ impl<'s, 'f> Settle<'s, 'f> {
         self.plan(kind, key, planned);
     }
 
+    // While a pulled value waits for the person, the base holds the pulled copy but the store keeps the device's
+    // value, so the previous stable after a downgrade must push against the copy from before that pull: its push is
+    // then refused and it merges, rather than sending the device's old value over the pulled one (0054, Downgrade
+    // mirror). The copy stays from the pull that started the wait until nothing waits.
+    async fn keep_prior(&mut self, key: &RecordKey, prior: Option<BaseRow>) -> Result<(), SyncError> {
+        let item = prior_item(key);
+        let waits = approval::rows_of(&mut self.txn, key)
+            .await?
+            .iter()
+            .any(|row| row.decision != ApprovalDecision::Approved);
+        if !waits {
+            self.txn.delete(&RowKey::LegacyMirror(item)).await?;
+            return Ok(());
+        }
+        let kept = self.txn.get(&RowKey::LegacyMirror(item.clone())).await?.is_some();
+        if let (false, Some(BaseRow {
+            tag: ChangeTag::CloudKit(tag),
+            fields: Some(fields),
+            ..
+        })) = (kept, prior)
+        {
+            self.txn
+                .put(Row::LegacyMirror(LegacyMirrorRow {
+                    item,
+                    value: prior_value(&tag, &fields),
+                }))
+                .await?;
+        }
+        Ok(())
+    }
+
     pub(super) async fn deleted(&mut self, key: &RecordKey) -> Result<(), SyncError> {
         let Some(kind) = kind_of(key) else {
             return Ok(());
         };
+        self.txn.delete(&RowKey::LegacyMirror(prior_item(key))).await?;
         if !self.fetcher.categories.syncs(kind) {
             self.counts.deferred += 1;
             self.txn

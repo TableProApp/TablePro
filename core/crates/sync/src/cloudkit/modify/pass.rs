@@ -442,6 +442,12 @@ impl CloudKitSync {
             self.stop.stop();
             return Err(SyncError::NotAllowed { what: MOVED });
         }
+        // Before any CloudKit call, so a deletion of an owned record made offline still names its owner for the
+        // previous stable (0054, Downgrade mirror).
+        if let Some(legacy) = self.legacy.as_ref().filter(|legacy| !legacy.owners_read()) {
+            let state = self.move_file(session).await?;
+            legacy.owners_from(state.as_deref()).await?;
+        }
         let account = match self.transport.account_status().await {
             Ok(status) => status.user_record_name,
             Err(failure) => return Err(self.ended(session, failure)),

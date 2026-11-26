@@ -371,6 +371,112 @@ async fn an_owned_record_deleted_offline_is_marked_with_its_connection() {
     assert_eq!(held.tombstones[0].owner, Some(connection));
 }
 
+// After a restart, offline: the deletion of an owned record made before the launch's first pass reaches CloudKit still
+// names its connection, read from the state file's bases before any CloudKit call.
+#[tokio::test]
+async fn an_owned_record_deleted_before_the_first_pass_reaches_icloud_is_marked_with_its_connection() {
+    let rig = Rig::new().await;
+    let connection = Uuid::from_u128(12);
+    let id = favourite_table(connection, Some("db"), Some("public"), "orders").id;
+    rig.save_elsewhere(
+        Kind::FavouriteTable,
+        &id,
+        &json!({"connection_id": uuid_id(connection), "database": "db", "schema": "public", "name": "orders"}),
+    );
+    let mirror = mirror();
+    rig.sync_mirrored(&mirror).run_pass(PassReason::Launch).await.unwrap();
+    let restarted = rig
+        .sync(Some(USER))
+        .with_legacy_mirror(Arc::clone(&mirror) as Arc<dyn LegacyMirror>);
+    rig.cloud.fail_next(tablepro_sync::api::cloudkit::CloudKitFailure::Network);
+
+    rig.store(Kind::FavouriteTable).remove(&id);
+    restarted
+        .journal()
+        .changed(&[entry(Kind::FavouriteTable, &[], &[&id])]);
+    let offline = restarted.run_pass(PassReason::Launch).await;
+    restarted.flush_legacy_marks().await.unwrap();
+    let held = mirror.metadata();
+
+    assert!(offline.is_err());
+    assert_eq!(tombstones(&held), [pair("FavoriteTable", &id)]);
+    assert_eq!(held.tombstones[0].owner, Some(connection));
+}
+
+// With iCloud off the marks go on their own: a deletion of an owned record waits for the owners the last iCloud file
+// names, so it is marked with its connection, not dropped.
+#[tokio::test]
+async fn with_icloud_off_an_owned_deletion_waits_for_its_owner_and_is_marked() {
+    let rig = Rig::new().await;
+    let connection = Uuid::from_u128(12);
+    let id = favourite_table(connection, Some("db"), Some("public"), "orders").id;
+    rig.save_elsewhere(
+        Kind::FavouriteTable,
+        &id,
+        &json!({"connection_id": uuid_id(connection), "database": "db", "schema": "public", "name": "orders"}),
+    );
+    let mirror = mirror();
+    rig.sync_mirrored(&mirror).run_pass(PassReason::Launch).await.unwrap();
+    let marks = tablepro_sync::cloudkit::LegacyMarks::new(
+        Arc::clone(&mirror) as Arc<dyn LegacyMirror>,
+        Arc::clone(&rig.clock) as Arc<dyn Clock>,
+    );
+    let state = rig.files.open(Rig::identity()).await.unwrap();
+
+    marks.changed(&[entry(Kind::FavouriteTable, &[], &[&id])]);
+    marks.owners_from(Some(state.as_ref())).await.unwrap();
+    marks.flush().await.unwrap();
+    let held = mirror.metadata();
+
+    assert_eq!(tombstones(&held), [pair("FavoriteTable", &id)]);
+    assert_eq!(held.tombstones[0].owner, Some(connection));
+}
+
+// A pulled host waits for the person while the device keeps its own: the previous stable gets the record as it was
+// before that pull, change tag and fields, so a push it makes after a downgrade is refused and merges rather than
+// sending the device's old host over the pulled one.
+#[tokio::test]
+async fn a_record_waiting_for_approval_goes_to_the_previous_stable_as_it_was_before_the_pull() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "db.internal"}));
+    let mirror = mirror();
+    let sync = rig.sync_mirrored(&mirror);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.approve_everything().await;
+    sync.run_pass(PassReason::Poll).await.unwrap();
+    let before = rig.cloud.record(USER, &name(Kind::Connection, A)).unwrap();
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "host": "elsewhere.example.com"}),
+    );
+
+    sync.run_pass(PassReason::Poll).await.unwrap();
+    let waiting = rig.waiting().await;
+    let cached = mirror
+        .metadata()
+        .cache
+        .into_iter()
+        .find(|record| record.name == name(Kind::Connection, A))
+        .unwrap();
+    rig.approve_everything().await;
+    sync.run_pass(PassReason::Poll).await.unwrap();
+    let after = mirror
+        .metadata()
+        .cache
+        .into_iter()
+        .find(|record| record.name == name(Kind::Connection, A))
+        .unwrap();
+
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(cached.system_fields, before.system_fields);
+    assert_eq!(
+        cached.fields.iter().find(|field| field.name == "host").map(|field| &field.value),
+        before.fields.iter().find(|field| field.name == "host").map(|field| &field.value)
+    );
+    assert_ne!(after.system_fields, before.system_fields);
+}
+
 // A deletion the pass sent is not marked again by a signal that was still queued when it sent it.
 #[tokio::test]
 async fn a_deletion_the_pass_sent_does_not_come_back_from_a_queued_mark() {

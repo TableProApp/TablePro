@@ -42,6 +42,10 @@ struct Shared {
     known: Mutex<Option<LegacyMetadata>>,
     // The owner of each record whose base names one, for the journal's deletions (`export::owners`).
     owners: Mutex<HashMap<(String, String), Uuid>>,
+    // The owners were read from the state file; until then a deletion of an owned record waits for them, so one made
+    // offline before the launch's first pass still gets its tombstone.
+    owners_read: std::sync::atomic::AtomicBool,
+    waiting_owners: Mutex<Vec<JournalEntry>>,
     // Signals whose marks the host refused, sent again with the next ones and by a flush.
     failed: Mutex<Vec<JournalEntry>>,
     clock: Arc<dyn Clock>,
@@ -137,6 +141,13 @@ async fn send_marks(shared: &Shared, entries: Vec<JournalEntry>) -> Result<(), A
         .into_iter()
         .chain(entries)
         .collect::<Vec<_>>();
+    if !shared.owners_read.load(Ordering::SeqCst) {
+        let (owned, rest): (Vec<JournalEntry>, Vec<JournalEntry>) = entries
+            .into_iter()
+            .partition(|entry| export::owned(entry.kind) && !entry.deleted.is_empty());
+        lock(&shared.waiting_owners).extend(owned);
+        entries = rest;
+    }
     let owners = lock(&shared.owners).clone();
     let (dirty, tombstones) = marks_of(&entries, shared.clock.now_ms(), &owners);
     if dirty.is_empty() && tombstones.is_empty() {
@@ -188,6 +199,27 @@ fn same_marks(known: &LegacyMetadata, metadata: &LegacyMetadata) -> bool {
 }
 
 impl LegacyLink {
+    // The owners each owned record's base names, from the state file the engine syncs, or none when there is no such
+    // file; the deletions that waited for them are marked now.
+    pub(in crate::cloudkit) async fn owners_from(&self, state: Option<&dyn StateStore>) -> Result<(), SyncError> {
+        let owners = match state {
+            Some(state) => export::owners(state).await?,
+            None => HashMap::new(),
+        };
+        *lock(&self.shared.owners) = owners;
+        if !self.shared.owners_read.swap(true, Ordering::SeqCst) {
+            let waited = std::mem::take(&mut *lock(&self.shared.waiting_owners));
+            if !waited.is_empty() {
+                let _ = send_marks(&self.shared, waited).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub(in crate::cloudkit) fn owners_read(&self) -> bool {
+        self.shared.owners_read.load(Ordering::SeqCst)
+    }
+
     // On the runtime: the journal's marks go out on a task of their own.
     pub(in crate::cloudkit) fn new(
         host: Arc<dyn LegacyMirror>,
@@ -198,6 +230,8 @@ impl LegacyLink {
             order: tokio::sync::Mutex::new(()),
             known: Mutex::new(None),
             owners: Mutex::new(HashMap::new()),
+            owners_read: std::sync::atomic::AtomicBool::new(false),
+            waiting_owners: Mutex::new(Vec::new()),
             failed: Mutex::new(Vec::new()),
             clock,
             queued: AtomicU64::new(0),
@@ -219,6 +253,13 @@ impl LegacyLink {
         let mut taken = self.shared.taken.subscribe();
         // The count's sender lives as long as `shared`, so this ends only once the count is reached.
         let _ = taken.wait_for(|taken| *taken >= queued).await;
+        // A quit before the owners were read marks what it can: a deletion whose owner it cannot name gets none.
+        if !self.shared.owners_read.swap(true, Ordering::SeqCst) {
+            let waited = std::mem::take(&mut *lock(&self.shared.waiting_owners));
+            if !waited.is_empty() {
+                lock(&self.shared.failed).extend(waited);
+            }
+        }
         if lock(&self.shared.failed).is_empty() {
             return Ok(());
         }
@@ -251,7 +292,7 @@ impl LegacyLink {
         };
         if !imports && seen.is_some() {
             drop(txn);
-            *lock(&self.shared.owners) = export::owners(state).await?;
+            self.owners_from(Some(state)).await?;
             return Ok(());
         }
         if imports {
@@ -265,7 +306,7 @@ impl LegacyLink {
         }
         Seen::of(&read).put(txn.as_mut()).await?;
         txn.commit().await?;
-        *lock(&self.shared.owners) = export::owners(state).await?;
+        self.owners_from(Some(state)).await?;
         Ok(())
     }
 
@@ -275,7 +316,7 @@ impl LegacyLink {
         // A mark queued before this point may name a deletion this pass already sent: it lands first, so the export
         // replaces it rather than the mark coming back after the export. One the host refuses is sent again later.
         let _ = self.flush().await;
-        *lock(&self.shared.owners) = export::owners(cx.state).await?;
+        self.owners_from(Some(cx.state)).await?;
         let order = self.shared.order.lock().await;
         let Some(known) = lock(&self.shared.known).clone() else {
             return Ok(());
@@ -343,6 +384,12 @@ impl LegacyMarks {
     // Once every write named so far has marked the host; fails while the host refuses a mark.
     pub async fn flush(&self) -> Result<(), SyncError> {
         self.link.flush().await
+    }
+
+    // The iCloud state file of the account the previous stable syncs, whose bases name the connection each owned
+    // record belongs to, or none when the device never used one: a deletion of an owned record waits for it.
+    pub async fn owners_from(&self, state: Option<&dyn StateStore>) -> Result<(), SyncError> {
+        self.link.owners_from(state).await
     }
 }
 
