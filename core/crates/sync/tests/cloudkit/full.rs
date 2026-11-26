@@ -1,8 +1,9 @@
 use serde_json::json;
 use tablepro_records::Kind;
 use tablepro_sync::api::ids::ScopeName;
-use tablepro_sync::api::state::{Row, RowKey, ScopeRow, Standing};
+use tablepro_sync::api::state::{Row, RowKey, ScopeRow, Standing, StoreRow};
 use tablepro_sync::cloudkit::fetch::read_everything_again;
+use uuid::Uuid;
 
 use crate::faults::Unreliable;
 use crate::support::{A, B, C, D, Rig, USER, name, projected};
@@ -210,6 +211,50 @@ async fn a_store_restored_while_its_category_is_off_refills_once_the_category_is
     assert_eq!(
         rig.store(Kind::Tag).fields(A),
         Some(projected(Kind::Tag, A, &json!({"name": "prod"})))
+    );
+}
+
+// A file schema 1 wrote keeps a `stores` row per kind. The kind whose row is behind its store still owes its refill,
+// its sibling in the same file does not, and both rows give way to the file's one row.
+#[tokio::test]
+async fn a_schema_1_kind_row_behind_its_store_still_owes_its_refill() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::SavedQuery, A, &json!({"name": "a"}));
+    rig.save_elsewhere(Kind::FavouriteTable, B, &json!({"name": "b"}));
+    rig.fetch().await.unwrap();
+    let library = rig.store(Kind::SavedQuery);
+    let legacy = |kind: Kind| format!("{}/{}", library.store_name(), kind.as_str());
+    let mut txn = rig.state.begin().await.unwrap();
+    txn.delete(&RowKey::Store(library.store_name().to_owned()))
+        .await
+        .unwrap();
+    for (kind, generation, sequence) in [
+        (Kind::SavedQuery, library.generation(), library.sequence()),
+        (Kind::FavouriteTable, Uuid::nil(), 0),
+    ] {
+        txn.put(Row::Store(StoreRow {
+            store: legacy(kind),
+            generation,
+            sequence,
+        }))
+        .await
+        .unwrap();
+    }
+    txn.commit().await.unwrap();
+
+    let report = rig.fetch().await.unwrap();
+    let next = rig.fetch().await.unwrap();
+
+    assert_eq!(report.refilled, [Kind::FavouriteTable]);
+    assert!(!next.full && next.refilled.is_empty());
+    let mut txn = rig.state.begin().await.unwrap();
+    for kind in [Kind::SavedQuery, Kind::FavouriteTable] {
+        assert_eq!(txn.get(&RowKey::Store(legacy(kind))).await.unwrap(), None);
+    }
+    drop(txn);
+    assert_eq!(
+        rig.store_row(Kind::SavedQuery).await.unwrap().generation,
+        library.generation()
     );
 }
 
