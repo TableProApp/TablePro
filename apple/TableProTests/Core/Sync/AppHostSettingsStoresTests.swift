@@ -13,6 +13,7 @@ struct AppHostSettingsStoresTests {
         let storage: AppSettingsStorage
         let manager: AppSettingsManager
         let slashCommands: CustomSlashCommandStorage
+        let slashCommandDefaults: UserDefaults
         let columnLayouts: FileColumnLayoutPersister
         let themes: ThemeCatalog
         let stores: AppHostSettingsStores
@@ -40,7 +41,8 @@ struct AppHostSettingsStoresTests {
                 switchSync: { _ in },
                 changeSyncCategories: {}
             )
-            let slashCommands = CustomSlashCommandStorage(defaults: try pool.make().defaults, syncJournal: journal)
+            let slashCommandDefaults = try pool.make().defaults
+            let slashCommands = CustomSlashCommandStorage(defaults: slashCommandDefaults, syncJournal: journal)
             let columnLayouts = FileColumnLayoutPersister(
                 storageDirectory: root.appendingPathComponent("ColumnLayout", isDirectory: true),
                 defaults: try pool.make().defaults,
@@ -51,6 +53,7 @@ struct AppHostSettingsStoresTests {
             self.storage = storage
             self.manager = manager
             self.slashCommands = slashCommands
+            self.slashCommandDefaults = slashCommandDefaults
             self.columnLayouts = columnLayouts
             self.themes = themes
             stores = AppHostSettingsStores(
@@ -257,5 +260,41 @@ struct AppHostSettingsStoresTests {
         let documents = try harness.stores.documents()
 
         #expect(documents[ThemeCatalog.syncCategory(for: "user.newer")] == bytes)
+    }
+
+    @Test("Saved slash commands that no longer decode fail the read rather than reading as every command removed")
+    func unreadableSlashCommandsFailTheRead() throws {
+        let harness = try Harness()
+        harness.slashCommandDefaults.set(Data("not json".utf8), forKey: "ai.customSlashCommands.v1")
+
+        #expect(throws: (any Error).self) { try harness.stores.documents() }
+    }
+
+    @Test("A theme file the catalog has not listed yet is read, not left out")
+    func unlistedThemeFileIsRead() throws {
+        let harness = try Harness()
+        let theme = try Self.theme("user.dropped")
+        let themes = harness.root.appendingPathComponent("Themes", isDirectory: true)
+        try FileManager.default.createDirectory(at: themes, withIntermediateDirectories: true)
+        try ThemeFileFormat.encode(theme).write(to: themes.appendingPathComponent("dropped.json"))
+
+        let documents = try harness.stores.documents()
+
+        #expect(documents[ThemeCatalog.syncCategory(for: theme.id)] == (try ThemeFileFormat.encode(theme)))
+    }
+
+    @Test("A themes folder that cannot be listed fails the read rather than reading as every theme removed")
+    func unlistableThemesFolderFailsTheRead() throws {
+        let harness = try Harness()
+        let notAFolder = harness.root.appendingPathComponent("ThemesFile", isDirectory: false)
+        try Data().write(to: notAFolder)
+        let catalog = ThemeCatalog(
+            userDirectory: notAFolder,
+            bundleDirectory: nil,
+            fileTrash: .folder(harness.root.appendingPathComponent("Trash", isDirectory: true)),
+            syncJournal: SyncHostJournal()
+        )
+
+        #expect(throws: (any Error).self) { try catalog.syncPayloads() }
     }
 }

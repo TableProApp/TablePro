@@ -334,11 +334,13 @@ final class KeychainHelper: KeychainStoring {
             deleteItems(query, key: key)
             return
         }
+        // The removal is noted first: a quit between the two then leaves this Mac's item and a note a save clears, never
+        // a removed item whose iCloud copy reads back.
         copyLock.withLock {
-            deleteItems(baseQuery(forKey: key), key: key)
             if !state.deviceCopiesAdded {
                 provider.noteRemovedHere(key)
             }
+            deleteItems(baseQuery(forKey: key), key: key)
         }
     }
 

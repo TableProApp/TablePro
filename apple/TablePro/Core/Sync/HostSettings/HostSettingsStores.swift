@@ -103,8 +103,8 @@ final class AppHostSettingsStores: HostSettingsStores {
         for category in AppSettingsCategory.synced where storage.holdsValue(forCategory: category) {
             documents[category] = try preferences(category)
         }
-        if slashCommands.holdsValue {
-            documents[CustomSlashCommandStorage.syncCategory] = try encoder.encode(slashCommands.commands)
+        if let commands = try slashCommands.syncedCommands() {
+            documents[CustomSlashCommandStorage.syncCategory] = try encoder.encode(commands)
         }
         for (storageKey, data) in try columnLayouts.syncedLayouts() {
             documents[FileColumnLayoutPersister.syncCategory(for: storageKey)] = data
@@ -118,7 +118,7 @@ final class AppHostSettingsStores: HostSettingsStores {
         case .preferences:
             return storage.holdsValue(forCategory: category) ? try preferences(category) : nil
         case .slashCommands:
-            return slashCommands.holdsValue ? try encoder.encode(slashCommands.commands) : nil
+            return try slashCommands.syncedCommands().map { try encoder.encode($0) }
         case .columnLayout(let storageKey):
             return try columnLayouts.syncedLayout(storageKey: storageKey)
         case .theme:

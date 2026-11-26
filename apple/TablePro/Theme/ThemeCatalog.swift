@@ -500,6 +500,12 @@ internal extension ThemeCatalog {
     // instead of reading as a theme removed on every Mac; Settings lists it, to fix or move to the Trash. One a newer
     // build wrote goes as its bytes, by its id. A built-in id or a second copy of an id hides no theme.
     func syncPayloads() throws -> [String: Data] {
+        // A listing that failed when the catalog loaded left it empty; a theme on disk it does not know reloads it, and
+        // one still unknown after that fails the read.
+        if try !unknownThemeFiles().isEmpty {
+            reloadSynchronously()
+            guard try unknownThemeFiles().isEmpty else { throw ThemeSyncReadError.unreadable }
+        }
         var payloads: [String: Data] = [:]
         for category in syncCategories {
             guard let payload = syncPayload(forCategory: category) else { throw ThemeSyncReadError.unencodable }
@@ -511,6 +517,17 @@ internal extension ThemeCatalog {
             }
         }
         return payloads
+    }
+
+    private func unknownThemeFiles() throws -> [URL] {
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(at: userDirectory, includingPropertiesForKeys: nil)
+        } catch CocoaError.fileReadNoSuchFile {
+            return []
+        }
+        let known = Set(userFiles.values.map(\.url.path)).union(rejected.map(\.path))
+        return files.filter { $0.pathExtension.lowercased() == "json" && !known.contains($0.path) }
     }
 
     // Nil for a file that loads, which only the catalog refused, or one gone since.
