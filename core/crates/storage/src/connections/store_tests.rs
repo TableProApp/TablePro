@@ -1119,3 +1119,92 @@ fn an_import_files_into_a_group_that_reads_at_the_top_by_its_name() {
         .expect("the import");
     assert_eq!(api.group_id, Some(waiting.id));
 }
+
+fn sha256_of(path: &std::path::Path) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(std::fs::read(path).expect("the file")))
+}
+
+#[test]
+fn a_library_read_and_write_give_the_digest_of_the_bytes_on_disk() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    assert_eq!(store.read_library_blocking().expect("read").digest, None, "no file yet");
+
+    let written = store
+        .replace_library_blocking(library_as_another_app_holds_it())
+        .expect("write");
+
+    let path = paths(&root).connections_file();
+    assert_eq!(written.as_deref(), Some(sha256_of(&path).as_str()));
+    let edited = std::fs::read_to_string(&path)
+        .expect("the file")
+        .replace("Prod", "Staging");
+    std::fs::write(&path, edited).expect("an edit outside the store");
+    let read = store.read_library_blocking().expect("read");
+    assert_eq!(read.digest.as_deref(), Some(sha256_of(&path).as_str()));
+    assert_ne!(read.digest, written);
+    assert_eq!(
+        store
+            .replace_library_blocking(LibraryWrite {
+                connections: read.list.connections.to_vec(),
+                groups: read.list.groups.to_vec(),
+                tags: read.list.tags.to_vec(),
+                favorites: read.list.favorites.to_vec(),
+            })
+            .expect("a write that changes nothing"),
+        read.digest
+    );
+}
+
+#[test]
+fn a_rebuild_keeps_only_what_it_names_and_starts_a_new_generation() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, held) = seeded_with_unreadable(&root, false);
+    let journal = Arc::new(Recording::default());
+    store.save_ssh_profile_blocking(ssh_profile()).expect("a profile");
+    let mut kept = plain("kept");
+    kept.unknown = BTreeMap::from([("from_a_newer_build".to_owned(), json!(true))]);
+    store.upsert_blocking(kept.clone()).expect("save");
+    let before = store.identity_blocking().expect("identity").expect("stamped");
+    store.set_journal(Some(journal.clone()));
+
+    let written = store
+        .rebuild_library_blocking(LibraryWrite {
+            connections: vec![SavedConnection {
+                unknown: BTreeMap::new(),
+                ..kept.clone()
+            }],
+            ..LibraryWrite::default()
+        })
+        .expect("rebuild");
+
+    let list = store.list_blocking().expect("list");
+    assert!(list.unreadable.is_empty(), "{:?}", list.unreadable);
+    assert!(list.ssh_profiles.is_empty());
+    assert!(list.connections[0].unknown.is_empty());
+    let after = list.store.expect("stamped");
+    assert_ne!(after.generation, before.generation);
+    assert_eq!(
+        written.as_deref(),
+        Some(sha256_of(&paths(&root).connections_file()).as_str())
+    );
+    let calls = journal.take_entries();
+    assert_eq!(calls.len(), 1);
+    let gone: Vec<RecordRef> = calls[0].iter().flat_map(|entry| entry.deleted.clone()).collect();
+    assert!(gone.contains(&RecordRef::Id(held.id)), "{gone:?}");
+}
+
+#[test]
+fn a_rebuild_refuses_an_id_named_twice() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let connection = plain("a");
+
+    let refused = store.rebuild_library_blocking(LibraryWrite {
+        connections: vec![connection.clone(), connection],
+        ..LibraryWrite::default()
+    });
+
+    assert!(matches!(refused, Err(StorageError::RepeatedId { .. })), "{refused:?}");
+}

@@ -133,7 +133,7 @@ impl StorageError {
             Self::Encode(..) => "storage.encode",
             Self::HistoryNewerThanApp { .. } => "storage.history_newer_than_app",
             Self::HistoryMigration(..) => "storage.history_migration",
-            Self::DocumentUnavailable(..) => "storage.document_unavailable",
+            Self::DocumentUnavailable(problem) => problem.code(),
             Self::DraftNotUtf8 { .. } => "storage.draft_not_utf8",
             Self::ImportOutdated => "storage.import_outdated",
             Self::ConnectionNotFound { .. } => "storage.connection_not_found",
