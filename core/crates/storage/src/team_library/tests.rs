@@ -258,18 +258,46 @@ fn a_delete_cut_off_after_its_mark_keeps_the_owner_s_file_unread_until_the_mark_
         .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q1", "a")])
         .expect("put");
 
-    store.mark_deleting_blocking().expect("marked");
+    store.mark_deleting_blocking("db1").expect("marked");
     let reopened = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
     let while_marked = reopened.teams_blocking();
     let write_while_marked = reopened.put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q2", "b")]);
     reopened.delete_blocking().expect("deleted");
-    reopened.clear_deleting_blocking().expect("cleared");
+    reopened.store_deleted_blocking().expect("settled");
+    reopened.clear_deleting_blocking("db1").expect("cleared");
 
     assert!(matches!(while_marked, Err(StorageError::DeletePending { .. })));
     assert!(matches!(write_while_marked, Err(StorageError::DeletePending { .. })));
     assert!(!reopened.delete_pending_blocking());
     assert!(!reopened.path().exists());
     assert!(reopened.teams_blocking().expect("teams").is_empty());
+}
+
+// One marker per state database (K8t leftover): once the file is gone the owner reads again, and each database's
+// marker stays for its own rows until that database clears it; one database never clears another's.
+#[test]
+fn each_state_database_keeps_its_own_delete_marker() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
+    store
+        .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q1", "a")])
+        .expect("put");
+
+    store.mark_deleting_blocking("db1").expect("marked");
+    store.mark_deleting_blocking("db2").expect("marked");
+    store.delete_blocking().expect("deleted");
+    let before_settled = store.delete_pending_blocking();
+    store.store_deleted_blocking().expect("settled");
+    let after_settled = store.delete_pending_blocking();
+    store.clear_deleting_blocking("db1").expect("cleared");
+
+    assert!(before_settled);
+    assert!(!after_settled);
+    assert!(!store.deleting_blocking("db1"));
+    assert!(store.deleting_blocking("db2"));
+    assert!(!store.delete_pending_blocking());
+    assert!(store.teams_blocking().expect("teams").is_empty());
+    assert!(store.mark_deleting_blocking("../db").is_err());
 }
 
 #[test]

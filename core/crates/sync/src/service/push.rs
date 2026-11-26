@@ -173,6 +173,19 @@ pub(super) fn fingerprint(change: &Change) -> [u8; 32] {
     hasher.finalize().into()
 }
 
+// A team scope's deletions go after its writes, the parts before the whole: a query moved out of a folder lands
+// before the folder goes, so the server never deletes it with the folder, and a folder before the connection its
+// queries named (0052, Team scope).
+fn deletes_last(pending: &mut [Pending]) {
+    let rank = |pending: &Pending| match (&pending.op, pending.key.kind.known()) {
+        (PendingOp::Write { .. }, _) => 0,
+        (PendingOp::Delete, Some(Kind::LibraryQuery)) => 1,
+        (PendingOp::Delete, Some(Kind::LibraryFolder)) => 2,
+        (PendingOp::Delete, _) => 3,
+    };
+    pending.sort_by_key(rank);
+}
+
 impl ServiceSync {
     pub(super) async fn push_scope(&self, ctx: &mut PassCtx, info: &ScopeInfo) -> Result<AfterPush, SyncError> {
         let scope = info.scope;
@@ -203,7 +216,10 @@ impl ServiceSync {
         if !matches!(scope, ScopeName::Team(_)) && (info.approved != Some(true) || self.hooks.locked().is_some()) {
             return Ok(AfterPush::Done);
         }
-        let pending = self.pending(ctx, &row).await?;
+        let mut pending = self.pending(ctx, &row).await?;
+        if matches!(scope, ScopeName::Team(_)) {
+            deletes_last(&mut pending);
+        }
         ctx.report.queued += pending.len();
         *ctx.report.queued_in.entry(scope).or_default() += pending.len();
         if pending.is_empty() {

@@ -23,6 +23,12 @@ pub trait StateStore: Send + Sync {
     fn opened(&self) -> &Opened;
 
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError>;
+
+    // Once a delete committed, nothing of what it removed stays in the file's WAL frames or free pages, as a verified
+    // delete of an owner's data needs (K8t; 0054, The state file). A store that keeps no file has nothing to purge.
+    async fn purge(&self) -> Result<(), StateError> {
+        Ok(())
+    }
 }
 
 // What ends the distrust an open found of the key tables (0054, A stale file).
@@ -387,6 +393,9 @@ pub enum HeldReason {
     // The store refused a value a refill pulled: when it takes it, the pull wins as the refill would have, so the
     // copy the restore left never reads as the device's edit.
     RefusedInRefill,
+    // A team library record whose id another of its kind holds in other case: neither is applied, listed or sent, as
+    // the publish plan leaves both out (0052, Team scope).
+    Collides,
 }
 
 #[derive(Debug, Clone, PartialEq)]

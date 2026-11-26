@@ -74,14 +74,28 @@ fn store_at(paths: &StoragePaths) -> TeamLibraryStore {
 
 impl Mac {
     pub async fn new(server: &Arc<FakeServer>, row: &str, dir: &std::path::Path) -> Self {
-        Self::open(server, row, dir, None).await
+        Self::open(server, row, dir, None, false).await
+    }
+
+    // A Mac whose personal provider is iCloud or Off: the service carries its teams only.
+    pub async fn teams_only(server: &Arc<FakeServer>, row: &str, dir: &std::path::Path) -> Self {
+        Self::open(server, row, dir, None, true).await
+    }
+
+    // A Mac whose state file is SQLite on disk, as the apps open it.
+    pub async fn on_disk(server: &Arc<FakeServer>, row: &str, dir: &std::path::Path) -> (Self, std::path::PathBuf) {
+        let store = Arc::new(tablepro_sync_testing::FakeDeviceStore::new());
+        let files = crate::harness::files_at(&dir.join("sync"), &store);
+        let path = files.path(&crate::harness::identity(row));
+        let state = crate::harness::open_on_disk(&dir.join("sync"), row, &store).await;
+        (Self::open(server, row, dir, Some(state), false).await, path)
     }
 
     // The same device after a quit: its state file and its store's file, a new engine over them.
     pub async fn reopen(self, server: &Arc<FakeServer>, row: &str, dir: &std::path::Path) -> Self {
         let state = Arc::clone(&self.device.state);
         drop(self);
-        Self::open(server, row, dir, Some(state)).await
+        Self::open(server, row, dir, Some(state), false).await
     }
 
     async fn open(
@@ -89,10 +103,14 @@ impl Mac {
         row: &str,
         dir: &std::path::Path,
         state: Option<Arc<dyn StateStore>>,
+        teams_only: bool,
     ) -> Self {
         let paths = StoragePaths::under(&dir.join(row), "tablepro", "app.tablepro.TablePro");
         let store = store_at(&paths);
         let mut builder = DeviceBuilder::new(server, row);
+        if teams_only {
+            builder = builder.teams_only();
+        }
         for adapter in TeamLibraryAdapter::all(&store) {
             builder = builder.extra_adapter(adapter);
         }

@@ -16,7 +16,9 @@ use crate::api::ids::{RecordKey, ScopeName};
 use crate::api::state::{Row, RowKey};
 
 impl ServiceSync {
-    // A delete left unfinished is finished before anything reads the team scopes; until it is, they stay out.
+    // A delete left unfinished is finished before anything reads the team scopes; until it is, they stay out. One that
+    // another database left owing the owner's file is finished here for this database too: the file goes once, and
+    // this database's rows of the owner with it.
     pub(in crate::service) async fn before_team_pass(&self) {
         if self.team_library.attached.get().is_none() || !self.team_library_off() {
             return;

@@ -406,7 +406,7 @@ impl Builder<'_> {
                 (HeldReason::AwaitingApproval, _) => {
                     self.unread.insert(record_type.name);
                 }
-                (HeldReason::AwaitingDeviceApproval, _) => {}
+                (HeldReason::AwaitingDeviceApproval | HeldReason::Collides, _) => {}
             }
         }
         for (kind, id) in rows.waiting.keys() {

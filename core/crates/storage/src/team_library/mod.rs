@@ -210,22 +210,79 @@ impl TeamLibraryStore {
         self.inner.journal.set(journal);
     }
 
-    // Beside the file and named after it, so it outlives the file it marks.
+    // Beside the file and named after it, so it outlives the file it marks. The owner's marker is a cleanup's, which any
+    // of the owner's state databases finishes; each database's own marker says what its delete still owes.
     fn marker(&self) -> PathBuf {
         marker_for(&self.inner.path)
     }
 
-    // A marker that cannot be checked counts as standing.
+    fn database_marker(&self, database: &str) -> Result<PathBuf, StorageError> {
+        if database.is_empty() || !database.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+            return Err(StorageError::Schema(
+                "a state database is named by letters and digits".to_owned(),
+            ));
+        }
+        Ok(self.inner.path.with_extension(format!("{database}.{DELETING}")))
+    }
+
+    // Every database's marker of this owner, with what it still owes. One that cannot be read owes the store too.
+    fn database_markers(&self) -> Vec<(PathBuf, bool)> {
+        let (Some(folder), Some(stem)) = (self.inner.path.parent(), self.inner.path.file_stem()) else {
+            return Vec::new();
+        };
+        let prefix = format!("{}.", stem.to_string_lossy());
+        let suffix = format!(".{DELETING}");
+        let Ok(entries) = std::fs::read_dir(folder) else {
+            return Vec::new();
+        };
+        entries
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.starts_with(&prefix) && name.ends_with(&suffix) && name.len() > prefix.len() + suffix.len()
+            })
+            .map(|entry| {
+                let owes_store = std::fs::read(entry.path()).map_or(true, |stage| stage != ROWS_OWED);
+                (entry.path(), owes_store)
+            })
+            .collect()
+    }
+
+    // Nothing of the owner is read or written while a delete still owes the store file: the owner's marker stands, or
+    // a database's marker has yet to see the file go. A marker that cannot be checked counts as standing.
     pub fn delete_pending_blocking(&self) -> bool {
-        !matches!(std::fs::symlink_metadata(self.marker()), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
+        standing(&self.marker()) || self.database_markers().iter().any(|(_, owes_store)| *owes_store)
     }
 
-    pub fn mark_deleting_blocking(&self) -> Result<(), StorageError> {
-        crate::fs::write_private_blocking(&self.marker(), b"")
+    // What `database`'s own delete still owes: its marker, or the owner's, stands.
+    pub fn deleting_blocking(&self, database: &str) -> bool {
+        standing(&self.marker()) || self.database_marker(database).is_ok_and(|marker| standing(&marker))
     }
 
-    // Only once whatever else holds the owner's data is gone too.
-    pub fn clear_deleting_blocking(&self) -> Result<(), StorageError> {
+    pub fn mark_deleting_blocking(&self, database: &str) -> Result<(), StorageError> {
+        crate::fs::write_private_blocking(&self.database_marker(database)?, STORE_OWED)
+    }
+
+    // The file is gone: each database's marker now owes only that database's rows, so the owner can be read again
+    // while a database another sign-in holds has yet to drop them.
+    pub fn store_deleted_blocking(&self) -> Result<(), StorageError> {
+        if standing(&self.inner.path) {
+            return Err(StorageError::Io {
+                path: self.inner.path.clone(),
+                source: std::io::Error::other("the file is still there after its delete"),
+            });
+        }
+        for (marker, owes_store) in self.database_markers() {
+            if owes_store {
+                crate::fs::write_private_blocking(&marker, ROWS_OWED)?;
+            }
+        }
+        Ok(())
+    }
+
+    // Only once `database`'s own rows of the owner are gone too; another database's marker stays for its own delete.
+    pub fn clear_deleting_blocking(&self, database: &str) -> Result<(), StorageError> {
+        remove_verified(&self.database_marker(database)?)?;
         remove_verified(&self.marker())
     }
 
@@ -456,8 +513,17 @@ fn local_of(locals: Vec<TeamLibraryLocal>, team_id: &str) -> TeamLibraryLocal {
         })
 }
 
+const DELETING: &str = "deleting";
+// A database marker's stage: the owner's file still to go, or only the database's own rows.
+const STORE_OWED: &[u8] = b"store";
+const ROWS_OWED: &[u8] = b"rows";
+
 fn marker_for(path: &Path) -> PathBuf {
-    path.with_extension("deleting")
+    path.with_extension(DELETING)
+}
+
+fn standing(path: &Path) -> bool {
+    !matches!(std::fs::symlink_metadata(path), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
 }
 
 fn remove_verified(path: &Path) -> Result<(), StorageError> {
@@ -567,7 +633,10 @@ fn lock_for_delete(path: &Path) -> Result<std::fs::File, StorageError> {
 fn owner_digest(name: &str) -> Option<&str> {
     let digest = name
         .strip_suffix(".json")
-        .or_else(|| name.strip_suffix(".deleting"))
+        .or_else(|| {
+            name.strip_suffix(".deleting")
+                .map(|rest| rest.split_once('.').map_or(rest, |(digest, _)| digest))
+        })
         .or_else(|| {
             name.strip_prefix('.')
                 .filter(|rest| rest.ends_with(".tmp"))

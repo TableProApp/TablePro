@@ -61,6 +61,10 @@ impl StateStore for Flaky {
             fail_commit: Arc::clone(&self.fail_commit),
         }))
     }
+
+    async fn purge(&self) -> Result<(), StateError> {
+        self.inner.purge().await
+    }
 }
 
 struct FlakyTxn {

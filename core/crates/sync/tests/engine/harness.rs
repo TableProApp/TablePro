@@ -780,6 +780,10 @@ impl StateStore for Crashing {
             armed: Arc::clone(&self.armed),
         }))
     }
+
+    async fn purge(&self) -> Result<(), StateError> {
+        self.inner.purge().await
+    }
 }
 
 struct CrashingTxn {

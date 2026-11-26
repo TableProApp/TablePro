@@ -1,6 +1,7 @@
 // The verified delete of an owner's Team Library data: the store file, then every library record of the team scopes
-// in this state file, each read back to show it went. The store is marked first and the mark goes last, so a delete a
-// crash or a failure cut off keeps Team Library off, after a restart too, until a delete finishes.
+// in this state file, each read back to show it went. This state database marks the owner first and clears its own
+// mark last, so a delete a crash or a failure cut off keeps Team Library off here, after a restart too, until it
+// finishes; another database's mark stays for its own rows (K8t leftover: one marker per state database).
 
 use std::sync::atomic::Ordering;
 
@@ -53,27 +54,59 @@ impl ServiceSync {
     // A mark that cannot be written keeps nothing back: the delete goes ahead, and fails only if data stays behind.
     pub(super) async fn delete_all(&self) -> Result<(), SyncError> {
         self.team_library.off.store(true, Ordering::SeqCst);
-        if let Err(error) = self.store_call(|store| store.mark_deleting_blocking()).await {
+        let database = self.database();
+        if let Err(error) = self
+            .store_call(move |store| store.mark_deleting_blocking(&database))
+            .await
+        {
             tracing::warn!(
                 code = error.code(),
                 "the team library delete goes ahead without its mark"
             );
         }
+        // The file goes whether or not the mark landed.
+        self.store_call(|store| {
+            store.delete_blocking()?;
+            store.store_deleted_blocking()
+        })
+        .await
+        .map_err(|error| failed(&error))?;
         self.finish_delete().await
     }
 
-    // What the store's mark still owes: the state file's library rows and the store's stamp, then the mark itself.
+    // What this database's mark still owes: the store file unless a delete already saw it go, the state file's library
+    // rows and the store's stamp, then the mark itself.
     pub(super) async fn finish_delete(&self) -> Result<(), SyncError> {
+        let database = self.database();
         let finished = async {
-            self.store_call(|store| store.delete_blocking()).await?;
+            self.delete_store_file().await?;
             self.drop_library_rows(&[]).await?;
-            self.store_call(|store| store.clear_deleting_blocking()).await
+            self.store_call(move |store| store.clear_deleting_blocking(&database))
+                .await
         }
         .await;
         finished.map_err(|error| failed(&error))?;
         self.team_library.off.store(false, Ordering::SeqCst);
         self.refresh_counts().await;
         Ok(())
+    }
+
+    // The owner's file, once per delete: a mark that already saw it go owes only its database's rows, so a database
+    // finishing late never takes a file another sign-in has refilled since.
+    async fn delete_store_file(&self) -> Result<(), SyncError> {
+        self.store_call(|store| {
+            if store.delete_pending_blocking() {
+                store.delete_blocking()?;
+                store.store_deleted_blocking()?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    // The name this state database's mark carries.
+    pub(super) fn database(&self) -> String {
+        crate::state::state_name(self.state.identity()).0
     }
 
     // Every library record of `only`, or of every team scope, and with all of them the store's stamp, so the store's
@@ -92,6 +125,7 @@ impl ServiceSync {
             txn.delete(&RowKey::Store(STORE.to_owned())).await?;
         }
         txn.commit().await?;
+        self.state.purge().await?;
         let mut check = begin(&self.state).await?;
         for table in LIBRARY_TABLES {
             if check

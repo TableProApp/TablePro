@@ -15,5 +15,6 @@ mod harness;
 mod delete;
 mod import;
 mod publish;
+mod pull;
 mod support;
 mod unsent;

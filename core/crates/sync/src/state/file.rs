@@ -183,6 +183,8 @@ async fn connect(path: &Path) -> Result<SqlitePool, StateError> {
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Full)
         .pragma("trusted_schema", "OFF")
+        // What a delete removes is overwritten in its pages, so it never lingers in free pages (`purge`).
+        .pragma("secure_delete", "ON")
         .disable_statement_logging();
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -356,6 +358,21 @@ impl StateStore for SqliteState {
             seal: Arc::clone(&self.seal),
             written: Written::default(),
         }))
+    }
+
+    // `secure_delete` already zeroed the rows in their pages; the frames before the delete leave with a checkpoint that
+    // empties the WAL. The file is held exclusively, so no reader keeps the checkpoint waiting.
+    async fn purge(&self) -> Result<(), StateError> {
+        let (busy, _, _): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(sql)?;
+        if busy != 0 {
+            return Err(StateError::Io {
+                detail: "the WAL could not be checkpointed whole".to_owned(),
+            });
+        }
+        Ok(())
     }
 }
 

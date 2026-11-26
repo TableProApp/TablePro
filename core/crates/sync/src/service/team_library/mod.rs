@@ -41,6 +41,13 @@ pub(crate) const LIBRARY_KINDS: [TeamLibraryKind; 3] = [
     TeamLibraryKind::Query,
 ];
 
+// The ids one team's records of a kind share in other case, as the publish plan finds them (0052, Team scope).
+pub(in crate::service) fn colliding_ids<'a>(
+    ids: impl IntoIterator<Item = (TeamLibraryKind, &'a str)>,
+) -> std::collections::HashSet<(TeamLibraryKind, String)> {
+    plan::collisions(ids)
+}
+
 pub(crate) fn library_kind(kind: Kind) -> Option<TeamLibraryKind> {
     match kind {
         Kind::LibraryConnection => Some(TeamLibraryKind::Connection),
@@ -104,8 +111,8 @@ impl ServiceSync {
             return Err(StateError::WrongIdentity.into());
         }
         let pending = {
-            let store = store.clone();
-            blocking(move || store.delete_pending_blocking()).await?
+            let (store, database) = (store.clone(), crate::state::state_name(self.state.identity()).0);
+            blocking(move || store.deleting_blocking(&database) || store.delete_pending_blocking()).await?
         };
         if self
             .team_library
@@ -183,15 +190,13 @@ impl ServiceSync {
             .is_some_and(|row| row.epoch.is_some() && row.caught_up && !row.refill))
     }
 
-    // A delete that did not finish, here or by another sign-in's call, keeps every team scope out of the pass, so
-    // nothing of the owner is read or sent.
+    // A delete that did not finish, this database's own or one that still owes the owner's file, keeps every team scope
+    // out of the pass, so nothing of the owner is read or sent.
     pub(super) fn team_library_off(&self) -> bool {
         self.team_library.off.load(Ordering::SeqCst)
-            || self
-                .team_library
-                .attached
-                .get()
-                .is_some_and(|attached| attached.store.delete_pending_blocking())
+            || self.team_library.attached.get().is_some_and(|attached| {
+                attached.store.delete_pending_blocking() || attached.store.deleting_blocking(&self.database())
+            })
     }
 
     // True with no Team Library attached, as the engine's own tests run.

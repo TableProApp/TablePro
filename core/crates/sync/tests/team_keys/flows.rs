@@ -311,6 +311,10 @@ impl StateStore for OpenedAs {
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError> {
         self.inner.begin().await
     }
+
+    async fn purge(&self) -> Result<(), StateError> {
+        self.inner.purge().await
+    }
 }
 
 // The device after a restart whose open found its state file as `opened` says, its rows as they were.

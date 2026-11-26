@@ -401,6 +401,33 @@ impl FakeServer {
         }
     }
 
+    // A record no check of this server's would take, as another build or a hostile server wrote it.
+    pub fn plant(&self, owner: ScopeOwner, kind: tablepro_records::Kind, record_id: &str, fields: Value) {
+        let mut state = self.lock();
+        let revision = state.take_revision();
+        let (now, epoch) = (state.clock_us, state.epoch());
+        let record = StoredRecord {
+            kind: KindName::of(kind),
+            record_id: record_id.to_owned(),
+            version: 1,
+            revision,
+            written_epoch: epoch,
+            write_tag: *Uuid::new_v4().as_bytes(),
+            fields: Some(fields),
+            deleted: None,
+            taken_at_us: now,
+            updated_at_us: now,
+            updated_device: None,
+            updated_by: None,
+        };
+        state
+            .scopes
+            .entry(owner)
+            .or_default()
+            .records
+            .insert((kind.as_str().to_owned(), record_id.to_owned()), record);
+    }
+
     pub fn stored(&self, owner: ScopeOwner, kind: &str, record_id: &str) -> Option<StoredRecord> {
         self.lock()
             .scopes

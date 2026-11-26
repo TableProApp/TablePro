@@ -44,6 +44,35 @@ async fn a_delete_takes_the_store_file_and_the_team_s_library_records_and_the_te
     assert!(mac.device.sync.unsent_team_edits().await.unwrap().is_empty());
 }
 
+// Once the delete answers, nothing of the team's records stays in the state file's pages or its WAL (K8t leftover,
+// purge).
+#[tokio::test]
+async fn a_delete_leaves_nothing_of_the_records_in_the_state_file_or_its_wal() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    let (mac, path) = Mac::on_disk(&server, "dev_mac", dir.path()).await;
+    let marked = "zebra-purge-7731";
+    mac.device
+        .sync
+        .publish_team_saved_queries(team(), Vec::new(), vec![query(3, marked, None)])
+        .await
+        .unwrap();
+    let on_disk = || {
+        let mut bytes = std::fs::read(&path).unwrap();
+        let mut wal = path.clone().into_os_string();
+        wal.push("-wal");
+        bytes.extend(std::fs::read(wal).unwrap_or_default());
+        bytes
+    };
+    let holds = |bytes: &[u8]| bytes.windows(marked.len()).any(|window| window == marked.as_bytes());
+    let before = holds(&on_disk());
+
+    mac.device.sync.delete_team_library_data().await.unwrap();
+
+    assert!(before);
+    assert!(!holds(&on_disk()));
+}
+
 #[tokio::test]
 async fn a_delete_another_sign_in_made_keeps_team_library_off_until_the_owner_s_engine_finishes_it() {
     let server = team_server(Role::Owner);

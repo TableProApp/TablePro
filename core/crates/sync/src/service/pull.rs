@@ -13,6 +13,7 @@ use tablepro_records::schema::readable;
 use super::keys::{Family, HistoryOpens, KeyMark, Opens, family, key_mark};
 use super::refill::Cut;
 use super::scopes::refresh;
+use super::team_library::{colliding_ids, library_kind};
 use super::{PassCtx, ServiceSync, begin};
 use crate::adapters::approval::{self, Split};
 use crate::adapters::categories::DeviceCategories;
@@ -29,6 +30,7 @@ use crate::api::state::{
 use crate::api::transport::{DeletedReason, Proof, PullRequest, PulledPage, PulledRecord, TransportError};
 use crate::engine::{Judgement, base_of, settle, settle_moved};
 use crate::moves::Arrival;
+use tablepro_storage::TeamLibraryKind;
 
 struct Pull {
     scope: ScopeName,
@@ -197,6 +199,21 @@ fn cleared(rows: &[ApprovalRow]) -> Split {
 struct LocalIndex {
     records: HashMap<String, LocalRecord>,
     unreadable: HashSet<String>,
+}
+
+// The copy a refill kept while its kind was off, as the base its refill merges against.
+fn kept_copy_base(key: &RecordKey, deferred: &PulledRecord) -> Option<BaseRow> {
+    deferred.fields.as_ref().map(|fields| BaseRow {
+        key: key.clone(),
+        // The copy has no tag of its own, so it never reads as the server's copy unchanged.
+        tag: ChangeTag::Service(String::new()),
+        version: None,
+        revision: None,
+        epoch: None,
+        deleted: None,
+        fields: Some(fields.clone()),
+        created_ms: None,
+    })
 }
 
 fn held(reason: HeldReason, key: RecordKey, record: PulledRecord) -> HeldRow {
@@ -616,6 +633,52 @@ impl ServiceSync {
         Ok(())
     }
 
+    // The team library records of this page whose id another of their kind holds in other case, among the page, the
+    // bases and the store. Both are held by id with the server's copy as their base, so neither is applied, sent or
+    // listed, the same way the publish plan leaves both out (0052, Team scope; K8t).
+    async fn colliding(
+        &self,
+        scope: ScopeName,
+        adapters: &[Arc<dyn RecordAdapter>],
+        records: &[PulledRecord],
+        locals: &HashMap<usize, LocalIndex>,
+    ) -> Result<HashSet<RecordKey>, SyncError> {
+        if !matches!(scope, ScopeName::Team(_)) {
+            return Ok(HashSet::new());
+        }
+        let mut ids: Vec<(TeamLibraryKind, String)> = Vec::new();
+        for (index, adapter) in adapters.iter().enumerate() {
+            let Some(library) = library_kind(adapter.kind()) else {
+                continue;
+            };
+            let bases = self.bases_in(scope, adapter.kind()).await?;
+            ids.extend(bases.into_iter().map(|base| (library, base.key.record_id)));
+            ids.extend(
+                locals
+                    .get(&index)
+                    .into_iter()
+                    .flat_map(|local| local.records.keys().cloned())
+                    .map(|id| (library, id)),
+            );
+        }
+        ids.extend(records.iter().filter_map(|record| {
+            let library = record.kind.known().and_then(library_kind)?;
+            Some((library, record.record_id.clone()))
+        }));
+        let collided = colliding_ids(ids.iter().map(|(kind, id)| (*kind, id.as_str())));
+        Ok(records
+            .iter()
+            .filter(|record| {
+                record
+                    .kind
+                    .known()
+                    .and_then(library_kind)
+                    .is_some_and(|library| collided.contains(&(library, record.record_id.to_lowercase())))
+            })
+            .map(|record| RecordKey::new(scope, record.kind.clone(), record.record_id.clone()))
+            .collect())
+    }
+
     async fn settle_all(
         &self,
         pull: &Pull,
@@ -633,7 +696,13 @@ impl ServiceSync {
         let inputs = self.settle_inputs(&keys).await?;
         let locals = local_indexes(pull.scope, adapters, &records).await?;
         let writers = writers_of(adapters, &records);
+        let collided = self.colliding(pull.scope, adapters, &records, &locals).await?;
         for (key, record) in keys.into_iter().zip(records) {
+            if collided.contains(&key) {
+                writes.bases.push(base_of(&key, false, &record));
+                writes.held.push(held(HeldReason::Collides, key, record));
+                continue;
+            }
             let adapter = record
                 .kind
                 .known()
@@ -684,17 +753,7 @@ impl ServiceSync {
             // since goes up and the rest takes the server's copy (0054, Store identity).
             let refill = inputs.deferred.get(&key).map(|deferred| {
                 writes.undeferred.push(key.clone());
-                deferred.fields.as_ref().map(|fields| BaseRow {
-                    key: key.clone(),
-                    // The copy has no tag of its own, so it never reads as the server's copy unchanged.
-                    tag: ChangeTag::Service(String::new()),
-                    version: None,
-                    revision: None,
-                    epoch: None,
-                    deleted: None,
-                    fields: Some(fields.clone()),
-                    created_ms: None,
-                })
+                kept_copy_base(&key, deferred)
             });
             let base = match (&refill, judgement) {
                 (Some(refill), Judgement::Merge) => refill.as_ref(),

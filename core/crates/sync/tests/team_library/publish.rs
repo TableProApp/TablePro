@@ -166,6 +166,63 @@ async fn removing_a_published_folder_moves_what_others_keep_in_it_and_leaves_tha
     assert_eq!(again, TeamPublish::default());
 }
 
+// Team Library runs on a Mac whose personal provider is iCloud or Off, where the service carries the teams only:
+// its publish goes up and another member's edit comes down (K8's teams-only mode).
+#[tokio::test]
+async fn team_library_runs_on_a_mac_whose_personal_provider_is_icloud_or_off() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    let mac = Mac::teams_only(&server, "dev_mac", dir.path()).await;
+    let mini = Mac::new(&server, "dev_mini", dir.path()).await;
+
+    let published = mac
+        .device
+        .sync
+        .publish_team_saved_queries(team(), Vec::new(), vec![query(3, "From iCloud", None)])
+        .await
+        .unwrap();
+    mini.device.sync().await;
+    mini.device
+        .sync
+        .publish_team_saved_queries(team(), Vec::new(), vec![query(4, "From the service", None)])
+        .await
+        .unwrap();
+    mac.device.sync().await;
+
+    assert_eq!(published.edits, 1);
+    assert_eq!(
+        server_fields(&server, "library_query", &lower(3)),
+        Some(query_fields("From iCloud", None))
+    );
+    assert!(mac.items(TeamLibraryKind::Query).iter().any(|(id, _)| *id == lower(4)));
+    assert_eq!(mac.device.sync.mode(), tablepro_sync::service::ServiceMode::TeamsOnly);
+}
+
+// The query moved out of a folder lands before the folder's deletion, so a server that deletes what a folder holds
+// never takes the query with it (K8t leftover, push order).
+#[tokio::test]
+async fn a_folder_deletion_goes_up_after_the_queries_moved_out_of_it() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    let (mac, _mini) = published_by_both(&server, dir.path()).await;
+
+    mac.device
+        .sync
+        .publish_team_saved_queries(team(), vec![folder(1, "Top", None)], Vec::new())
+        .await
+        .unwrap();
+
+    let moved = server.stored(owner(), "library_query", &lower(4)).unwrap();
+    let gone = server.stored(owner(), "library_folder", &lower(2)).unwrap();
+    assert!(gone.deleted.is_some());
+    assert!(
+        moved.revision < gone.revision,
+        "{} then {}",
+        moved.revision,
+        gone.revision
+    );
+}
+
 #[tokio::test]
 async fn an_item_the_team_deleted_asks_and_keep_mine_brings_it_back() {
     let server = team_server(Role::Owner);
