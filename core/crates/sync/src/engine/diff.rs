@@ -382,9 +382,21 @@ mod tests {
         };
         let live = base(kind, "ai", fields.clone());
 
-        let mut over_tombstone = diff(ScopeName::Personal, kind, &local, &[tombstone.clone()], &HashSet::new());
+        let mut over_tombstone = diff(
+            ScopeName::Personal,
+            kind,
+            &local,
+            std::slice::from_ref(&tombstone),
+            &HashSet::new(),
+        );
         let gone_over_tombstone = hold_left_behind(&mut over_tombstone, &[tombstone], &left);
-        let mut over_live = diff(ScopeName::Personal, kind, &local, &[live.clone()], &HashSet::new());
+        let mut over_live = diff(
+            ScopeName::Personal,
+            kind,
+            &local,
+            std::slice::from_ref(&live),
+            &HashSet::new(),
+        );
         let gone_over_live = hold_left_behind(&mut over_live, &[live], &left);
 
         assert!(over_tombstone.pending.is_empty());
