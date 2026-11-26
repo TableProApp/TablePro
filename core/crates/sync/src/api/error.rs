@@ -26,6 +26,8 @@ pub enum SyncError {
     State(#[from] StateError),
     #[error(transparent)]
     Adapter(#[from] AdapterError),
+    #[error(transparent)]
+    TeamLibrary(#[from] super::team_library::TeamLibraryError),
     // A flow's change set or write was refused, with the change's code (0051, Push).
     #[error("the server refused the change: {}", code.as_str())]
     Rejected { code: RejectedCode },
@@ -47,6 +49,10 @@ pub enum SyncError {
     Changed { what: &'static str },
     #[error("the call was cancelled")]
     Cancelled,
+    // A move between providers stopped before every personal record went up; it goes on from there when called again,
+    // and the provider it left stays stopped (0054, Moving between providers).
+    #[error("the move between providers is not finished")]
+    MoveIncomplete,
 }
 
 impl SyncError {
@@ -64,6 +70,7 @@ impl SyncError {
             Self::DeviceStore(error) => error.code(),
             Self::State(error) => error.code(),
             Self::Adapter(error) => error.code(),
+            Self::TeamLibrary(error) => error.code(),
             Self::Rejected { .. } => "sync.rejected",
             Self::Locked { .. } => "sync.locked",
             Self::TypedBackWrong => "sync.typed_back_wrong",
@@ -71,6 +78,7 @@ impl SyncError {
             Self::NotAllowed { .. } => "sync.not_allowed",
             Self::Changed { .. } => "sync.changed",
             Self::Cancelled => "sync.cancelled",
+            Self::MoveIncomplete => "sync.move_incomplete",
         }
     }
 }

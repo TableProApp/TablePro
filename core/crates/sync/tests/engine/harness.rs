@@ -786,7 +786,7 @@ pub struct Device {
     pub hooks: Arc<EngineHooks>,
     pub stop: StopSignal,
     pub clock: Arc<TestClock>,
-    pub sync: ServiceSync,
+    pub sync: Arc<ServiceSync>,
     pub seed: Arc<Ed25519Seed>,
 }
 
@@ -891,7 +891,7 @@ impl DeviceBuilder {
         let hooks = Arc::new(EngineHooks::new(wake.clone(), None));
         let stop = StopSignal::new();
         let clock = Arc::new(TestClock::default());
-        let sync = ServiceSync::new(ServiceParts {
+        let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: Arc::clone(&wire) as Arc<dyn ServiceTransport>,
             state: Arc::clone(&state),
             adapters: Adapters::new(adapters),
@@ -906,7 +906,7 @@ impl DeviceBuilder {
                 passwords: true,
             },
             mode: self.mode,
-        });
+        }));
         Device {
             server: self.server,
             wire,
