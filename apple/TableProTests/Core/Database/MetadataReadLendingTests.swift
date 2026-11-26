@@ -116,4 +116,21 @@ struct MetadataReadLendingTests {
         manager.sessionTransactions.record(.idle, on: driver, for: key)
         #expect(manager.lendsSessionDriver(toMetadataReadOn: scope(connection), workload: .interactive))
     }
+
+    // A lent read would replace ROW_COUNT(), FOUND_ROWS() and the warnings the user's own statement left.
+    @Test("A session that ran a statement someone wrote is not lent, and its reconnect's new driver is")
+    func sessionThatRanAnAuthoredStatementIsNotLent() async throws {
+        let (connection, driver) = makeSession()
+        defer { cleanUp(connection.id) }
+        let manager = DatabaseManager.shared
+        let place = scope(connection)
+
+        await manager.noteSessionStatements(["UPDATE orders SET paid = true"], ranOn: driver, scope: place)
+        #expect(!manager.lendsSessionDriver(toMetadataReadOn: place, workload: .interactive))
+
+        let reconnected = MockDatabaseDriver(connection: connection)
+        reconnected.currentSchema = "public"
+        manager.updateSession(connection.id) { $0.install(reconnected, openedDatabase: "app") }
+        #expect(manager.lendsSessionDriver(toMetadataReadOn: place, workload: .interactive))
+    }
 }

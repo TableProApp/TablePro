@@ -134,7 +134,8 @@ extension DatabaseManager {
     /// of the first table list while the session that just logged in sits idle.
     ///
     /// Only an idle session lends itself: no turn held or queued on its gate, no work in flight, no transaction or
-    /// protected write, and no other lent read. The read must leave nothing behind, so the session must already be
+    /// protected write, no other lent read, and no statement a person or an agent wrote run on it yet, whose row count
+    /// and warnings the read would replace. The read must leave nothing behind, so the session must already be
     /// where the read goes: its database and its schema, since `pin` would otherwise move them for the user's next
     /// statement. A catalog read pins its own search path for the one statement. A manual-commit session or one with
     /// startup commands could open a transaction on a plain SELECT, which the user would then see as their own.
@@ -164,6 +165,7 @@ extension DatabaseManager {
               (queriesInFlight[connectionId] ?? 0) == (inItsTurn ? 1 : 0),
               // No hold is not enough: a state check that timed out, or an engine that never says, leaves none.
               sessionTransactions.standing(of: connectionId) == .none,
+              !ranAuthoredStatements(on: driver, for: connectionId),
               sessionStateLedger.state(heldBy: driver, for: connectionId).isEmpty,
               !holdsProtectedWrite(connectionId),
               !MetadataConnectionPool.shared.isReplacingTransport(for: connectionId),
@@ -177,3 +179,24 @@ extension DatabaseManager {
 }
 
 private struct LentSessionRefused: Error {}
+
+// Weak and compared by identity, so a reconnect's new driver starts with nothing to keep.
+struct AuthoredStatementDriver {
+    weak var driver: AnyObject?
+}
+
+extension DatabaseManager {
+    // ROW_COUNT(), FOUND_ROWS() and the warning list describe the last statement until the next one, so a session
+    // that ran one a person or an agent wrote is never lent: the lent read would replace what they read next.
+    func noteAuthoredStatements(ranOn driver: DatabaseDriver, for connectionId: UUID) {
+        var drivers = (authoredStatementDrivers[connectionId] ?? []).filter { $0.driver != nil }
+        if !drivers.contains(where: { $0.driver === driver }) {
+            drivers.append(AuthoredStatementDriver(driver: driver))
+        }
+        authoredStatementDrivers[connectionId] = drivers
+    }
+
+    func ranAuthoredStatements(on driver: DatabaseDriver, for connectionId: UUID) -> Bool {
+        authoredStatementDrivers[connectionId]?.contains { $0.driver === driver } ?? false
+    }
+}

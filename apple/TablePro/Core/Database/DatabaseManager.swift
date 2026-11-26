@@ -73,6 +73,8 @@ final class DatabaseManager: ObservableObject {
     /// Connections whose session driver is serving a metadata read the pool would have had to dial for. One at a
     /// time, decided synchronously, so two reads that both find the session idle do not both queue on its gate.
     internal var lentMetadataReads: Set<UUID> = []
+    /// Session drivers that ran a statement a person or an agent wrote, which a lent read would follow.
+    internal var authoredStatementDrivers: [UUID: [AuthoredStatementDriver]] = [:]
 
     /// When each connection's server last answered, whether that was the connect itself, a health
     /// check, or a check made because the user was about to use it.
