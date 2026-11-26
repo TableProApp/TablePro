@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use sqlx::{AssertSqlSafe, Connection, Row, SqlitePool};
@@ -7,6 +6,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
+use crate::journal::{RecordKind, Signals};
 use crate::unix_time::to_unix;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,21 +53,20 @@ pub struct FavouriteDatabase {
 pub struct Favourites {
     pool: SqlitePool,
     path: PathBuf,
-    changes: Arc<watch::Sender<u64>>,
+    signals: Signals,
 }
 
 impl Favourites {
-    pub(crate) fn new(pool: SqlitePool, path: PathBuf, changes: Arc<watch::Sender<u64>>) -> Self {
-        Self { pool, path, changes }
+    pub(crate) fn new(pool: SqlitePool, path: PathBuf, signals: Signals) -> Self {
+        Self { pool, path, signals }
     }
 
     pub fn changes(&self) -> watch::Receiver<u64> {
-        self.changes.subscribe()
+        self.signals.subscribe()
     }
 
-    fn changed(&self) {
-        self.changes
-            .send_modify(|revision| *revision = revision.wrapping_add(1));
+    fn changed(&self, kind: RecordKind) {
+        self.signals.changed(&[kind]);
     }
 
     pub async fn add_table(&self, table: &FavouriteTable) -> Result<(), StorageError> {
@@ -90,7 +89,7 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed();
+            self.changed(RecordKind::FavouriteTable);
         }
         Ok(())
     }
@@ -126,7 +125,7 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed();
+            self.changed(RecordKind::FavouriteTable);
         }
         Ok(())
     }
@@ -178,7 +177,7 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed();
+            self.changed(RecordKind::FavouriteDatabase);
         }
         Ok(())
     }
@@ -206,7 +205,7 @@ impl Favourites {
             .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed();
+            self.changed(RecordKind::FavouriteDatabase);
         }
         Ok(())
     }

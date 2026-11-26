@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, SafeModeLevel, TlsConfig};
-use tablepro_storage::{ConnectionStore, SavedConnection, StorageError};
+use tablepro_storage::{ConnectionStore, DeviceOnly, SavedConnection, StorageError};
 use uuid::Uuid;
 
 const CHINOOK: &[u8] = include_bytes!("../../../../../core/resources/Chinook.sqlite");
@@ -60,6 +60,13 @@ pub(crate) fn ensure_blocking(
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        // A sample stays on this device: no sync or export carries it.
+        device: DeviceOnly {
+            is_sample: true,
+            ..DeviceOnly::default()
+        },
+        unknown: Default::default(),
     };
     store.upsert_blocking(saved.clone())?;
     Ok(saved)
@@ -85,6 +92,7 @@ mod tests {
         );
         assert_eq!(copied.len(), CHINOOK.len());
         assert_eq!(first.driver_id, "sqlite");
+        assert!(first.device.is_sample);
         assert_eq!(first.database, sample_path(&paths.data).display().to_string());
 
         let again = ensure_blocking(&paths.data, &store, "Chinook (Sample)").expect("the sample again");

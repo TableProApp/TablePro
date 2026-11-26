@@ -6,7 +6,6 @@ mod ordering;
 mod ordering_tests;
 mod saved_query;
 
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use sqlx::{AssertSqlSafe, Connection, Row, SqlitePool};
@@ -15,6 +14,7 @@ use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 use crate::error::StorageError;
+use crate::journal::{RecordKind, Signals};
 use crate::unix_time::{from_unix, to_unix};
 
 pub use folders::{SavedQueryFolder, SavedQueryFolders};
@@ -47,21 +47,20 @@ pub struct SavedQueriesSnapshot {
 pub struct SavedQueries {
     pool: SqlitePool,
     path: std::path::PathBuf,
-    changes: Arc<watch::Sender<u64>>,
+    signals: Signals,
 }
 
 impl SavedQueries {
-    pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf, changes: Arc<watch::Sender<u64>>) -> Self {
-        Self { pool, path, changes }
+    pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf, signals: Signals) -> Self {
+        Self { pool, path, signals }
     }
 
     pub fn changes(&self) -> watch::Receiver<u64> {
-        self.changes.subscribe()
+        self.signals.subscribe()
     }
 
     fn changed(&self) {
-        self.changes
-            .send_modify(|revision| *revision = revision.wrapping_add(1));
+        self.signals.changed(&[RecordKind::SavedQuery]);
     }
 
     pub async fn save(&self, query: NewSavedQuery) -> Result<SaveOutcome, StorageError> {
@@ -398,8 +397,8 @@ impl SavedQueries {
 
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
         let (queries, changed) = deletion::delete_connection(&self.pool, &self.path, connection).await?;
-        if changed {
-            self.changed();
+        if !changed.is_empty() {
+            self.signals.changed(&changed);
         }
         Ok(queries)
     }

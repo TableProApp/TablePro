@@ -6,6 +6,7 @@ use sqlx::{AssertSqlSafe, Connection, Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use crate::StorageError;
+use crate::journal::RecordKind;
 use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
 use crate::unix_time::to_unix;
 
@@ -62,11 +63,12 @@ pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: i64) -> Re
     Ok(())
 }
 
+// The number of queries deleted, and the kinds of record that changed.
 pub(super) async fn delete_connection(
     pool: &SqlitePool,
     path: &Path,
     connection: Uuid,
-) -> Result<(usize, bool), StorageError> {
+) -> Result<(usize, Vec<RecordKind>), StorageError> {
     let mut database = pool.acquire().await?;
     let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
     let owner = connection.to_string();
@@ -75,6 +77,8 @@ pub(super) async fn delete_connection(
         "saved_query_folders",
         "favourite_tables",
         "favourite_databases",
+        "table_folders",
+        "table_folder_items",
     ]
     .map(|table| CopyDelete {
         table,
@@ -91,18 +95,40 @@ pub(super) async fn delete_connection(
         .bind(&owner)
         .fetch_all(&mut *transaction)
         .await?;
-    let mut changed = queries > 0 || !folders.is_empty();
+    let mut changed = Vec::new();
+    if queries > 0 {
+        changed.push(RecordKind::SavedQuery);
+    }
+    if !folders.is_empty() {
+        changed.push(RecordKind::SavedQueryFolder);
+    }
     delete_folder_rows(&mut transaction, &folders.into_iter().collect()).await?;
-    for statement in [
-        "DELETE FROM favourite_tables WHERE connection_id = ?",
-        "DELETE FROM favourite_databases WHERE connection_id = ?",
+    for (statement, kind) in [
+        (
+            "DELETE FROM favourite_tables WHERE connection_id = ?",
+            RecordKind::FavouriteTable,
+        ),
+        (
+            "DELETE FROM favourite_databases WHERE connection_id = ?",
+            RecordKind::FavouriteDatabase,
+        ),
+        (
+            "DELETE FROM table_folders WHERE connection_id = ?",
+            RecordKind::TableFolder,
+        ),
+        (
+            "DELETE FROM table_folder_items WHERE connection_id = ?",
+            RecordKind::TableFolderItem,
+        ),
     ] {
-        changed |= sqlx::query(statement)
+        let removed = sqlx::query(statement)
             .bind(&owner)
             .execute(&mut *transaction)
             .await?
-            .rows_affected()
-            > 0;
+            .rows_affected();
+        if removed > 0 {
+            changed.push(kind);
+        }
     }
     transaction.commit().await?;
     Ok((queries as usize, changed))
