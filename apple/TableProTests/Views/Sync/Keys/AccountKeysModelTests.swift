@@ -92,12 +92,14 @@ struct AccountKeysModelTests {
         let model = fixture.model()
         await model.reload()
         model.replaceRecoveryKey()
-        fixture.flows.fail("keyState", with: FakeAccountKeyFlows.failure("sync.network"))
-        fixture.flows.fail("keyState", with: FakeAccountKeyFlows.failure("sync.network"))
+        for _ in 0 ..< 3 {
+            fixture.flows.fail("keyState", with: FakeAccountKeyFlows.failure("sync.network"))
+        }
 
         fixture.accountChanges.send()
 
-        try await waitUntil { model.state.failure != nil && fixture.flows.calls(named: "keyState").count == 3 }
+        // The reads after the change fail, so only the change itself can have dropped the old account's keys.
+        try await waitUntil { model.state.failure != nil && fixture.flows.calls(named: "keyState").count >= 2 }
         #expect(model.sheet == nil)
         #expect(model.state.value == nil)
         #expect(model.devices.value == nil)
@@ -169,7 +171,7 @@ struct AccountKeysModelTests {
         let removal = Task { await model.remove(fixture.flows.devices[0]) }
         await gate.arrived(1)
         fixture.accountChanges.send()
-        try await waitUntil { model.state.value == nil || model.state.isLoading }
+        try await waitUntil { fixture.flows.calls(named: "keyState").count >= 2 }
         await gate.open()
         await removal.value
 

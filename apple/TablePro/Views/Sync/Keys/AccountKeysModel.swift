@@ -84,22 +84,23 @@ internal final class AccountKeysModel: ObservableObject {
     }
 
     // One read at a time; a change that lands during one reads again once it ends. A failed read keeps what was shown.
+    // The task clears itself with no suspension after its last check, so a request in between is never lost.
     func reload() async {
+        reloadsAgain = true
         if let reloading {
-            reloadsAgain = true
             await reloading.value
             return
         }
         let task = Task { [weak self] in
             guard let self else { return }
-            repeat {
+            while reloadsAgain {
                 reloadsAgain = false
                 await read()
-            } while reloadsAgain
+            }
+            reloading = nil
         }
         reloading = task
         await task.value
-        reloading = nil
     }
 
     // While the page is on screen. Cancelled with the page's task.
