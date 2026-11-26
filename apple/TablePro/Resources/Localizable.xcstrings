@@ -833,6 +833,9 @@
         }
       }
     },
+    "“%@” changed after you deleted it" : {
+
+    },
     "“%@” Changed on Disk" : {
       "localizations" : {
         "fr" : {
@@ -1319,6 +1322,9 @@
           }
         }
       }
+    },
+    "“%@” was deleted from the team library" : {
+
     },
     "\"%@\" was deleted or moved." : {
       "localizations" : {
@@ -73698,6 +73704,9 @@
     "Deletes rows from %@ (not counted)" : {
 
     },
+    "Deletes the item from the team library" : {
+
+    },
     "Deleting row %@ from %@ permanently removes it." : {
       "localizations" : {
         "en" : {
@@ -116014,6 +116023,9 @@
           }
         }
       }
+    },
+    "Leaves the item deleted" : {
+
     },
     "Leaves the team's version as it is" : {
 
@@ -159849,6 +159861,9 @@
         }
       }
     },
+    "Puts the item back with your changes" : {
+
+    },
     "Puzzle Piece" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -194881,6 +194896,12 @@
     "Someone in %@ changed this item after TablePro last downloaded the team library. Choose the version the team library keeps." : {
 
     },
+    "Someone in %@ changed this item after you deleted it. Keep Mine deletes it, and Keep Theirs keeps the team's version." : {
+
+    },
+    "Someone in %@ deleted this item after you changed it. Keep Mine puts it back with your changes, and Keep Theirs leaves it deleted." : {
+
+    },
     "Something went wrong (error %d). Try again in a moment." : {
       "localizations" : {
         "fr" : {
@@ -206754,6 +206775,9 @@
 
     },
     "TablePro couldn't save a token for this client to the Keychain, so the client wasn't paired. Try pairing again." : {
+
+    },
+    "TablePro couldn't save your choice. Try again." : {
 
     },
     "TablePro Data Was Removed from iCloud" : {
@@ -249077,6 +249101,9 @@
           }
         }
       }
+    },
+    "You and someone in %@ changed the same fields of this item. Choose the version the team library keeps." : {
+
     },
     "You appear to be offline. Try again once you're connected." : {
       "localizations" : {
