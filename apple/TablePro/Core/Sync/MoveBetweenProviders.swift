@@ -133,9 +133,10 @@ internal final class ProviderMoves: ObservableObject {
         try await host.engine(current).planMoveToService()
     }
 
-    // On iCloud the core runs the last iCloud pass and stops iCloud on this Mac itself, so the coordinator keeps CloudKit
-    // open until the move returns; only then does the stored provider change, which stops the coordinator. A move that
-    // fails leaves iCloud stopped in the core and the stored provider where it was, so Try Again goes on from there.
+    // From iCloud the core runs the last iCloud pass and stops iCloud on this Mac itself, so the coordinator keeps
+    // CloudKit open until the move returns; only then does the stored provider change, which stops the coordinator. From
+    // Off it is the first upload, the server's copy winning a conflict. A move that fails leaves iCloud stopped in the
+    // core and the stored provider where it was, so Try Again goes on from there.
     func moveToService() async throws -> MoveToServiceOutcome {
         guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
         guard !Self.refusesPersonalSync(scopes) else { throw ProviderMoveError.serverRefusesPersonalSync }
@@ -146,7 +147,11 @@ internal final class ProviderMoves: ObservableObject {
             let keys = try await engine.keyState()
             try ensureCurrent(asked)
             guard case .approved = keys else { return .needsKeys(keys) }
-            try await engine.moveToService()
+            if from == .icloud {
+                try await engine.moveToService()
+            } else {
+                try await engine.firstUpload()
+            }
             try ensureCurrent(asked)
             setProvider(.tableproSync)
             if from == .icloud {

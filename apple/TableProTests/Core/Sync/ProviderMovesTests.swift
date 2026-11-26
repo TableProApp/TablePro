@@ -102,6 +102,14 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
         }
     }
 
+    func firstUpload() async throws {
+        log.append("\(name) firstUpload")
+        await read { $0.moveGate }?.wait()
+        if read({ $0.moveFails }) {
+            throw ScriptedFailure()
+        }
+    }
+
     func planMoveToIcloud() async throws -> MoveBackPlanInfo {
         MoveBackPlanInfo(icloudDeletions: 3)
     }
@@ -212,13 +220,13 @@ struct ProviderMovesTests {
         #expect(!fixture.moves.awaitsMove)
     }
 
-    @Test("From Off the upload runs on the service open for Off")
+    @Test("From Off it is the first upload, on the service open for Off")
     func moveFromOff() async throws {
         let fixture = Fixture(provider: .off)
 
         _ = try await fixture.moves.moveToService()
 
-        #expect(fixture.log.all == ["off keyState", "off moveToService", "provider tablepro-sync", "tablepro-sync syncNow"])
+        #expect(fixture.log.all == ["off keyState", "off firstUpload", "provider tablepro-sync", "tablepro-sync syncNow"])
         #expect(fixture.provider == .tableproSync)
     }
 
@@ -277,7 +285,7 @@ struct ProviderMovesTests {
         await #expect(throws: ProviderMoveError.serverRefusesPersonalSync) {
             try await fixture.moves.moveToService()
         }
-        #expect(!fixture.log.all.contains("off moveToService"))
+        #expect(!fixture.log.all.contains("off firstUpload"))
     }
 
     @Test("A second move while one runs is refused")
@@ -413,7 +421,7 @@ struct ProviderMovesTests {
 
         #expect(fixture.provider == .tableproSync)
         #expect(!fixture.moves.awaitsMove)
-        #expect(fixture.log.all.contains("off moveToService"))
+        #expect(fixture.log.all.contains("off firstUpload"))
     }
 
     // MARK: - Another account
@@ -559,6 +567,7 @@ private final class CoordinatedEngine: SyncEngine, SyncMoveEngine, @unchecked Se
     func keyState() async throws -> KeyStateInfo { .approved(av: 1, keyDevice: "DEVICE") }
     func planMoveToService() async throws -> MovePlanInfo { MovePlanInfo(records: 1, stayingBehind: 0, secretsToSeal: 0) }
     func moveToService() async throws { record("move to service") }
+    func firstUpload() async throws { record("first upload") }
     func planMoveToIcloud() async throws -> MoveBackPlanInfo { MoveBackPlanInfo(icloudDeletions: 0) }
     func moveToIcloud(confirmedDeletions: UInt64) async throws { record("move to iCloud") }
     func chooseForNewIdentity(choice: NewIdentityChoiceTag) async throws {}
