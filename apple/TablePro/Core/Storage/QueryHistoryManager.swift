@@ -3,22 +3,33 @@ import Foundation
 import TableProPluginKit
 
 final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, QueryPlanSnapshotReading, Sendable {
-    static let shared = QueryHistoryManager(
-        storage: QueryHistoryStorage(onSetAside: { DamagedStoreNotice.queryHistorySetAside($0) })
-    )
+    static let shared: QueryHistoryManager = {
+        let storage = QueryHistoryStorage(onSetAside: { DamagedStoreNotice.queryHistorySetAside($0) })
+        let mirror = QueryHistoryCoreMirror(storage: storage, database: .shared) { ids in
+            await MainActor.run {
+                let named = ConnectionStorage.shared.loadConnections().filter { ids.contains($0.id) }
+                return Dictionary(named.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+            }
+        }
+        return QueryHistoryManager(storage: storage, coreMirror: mirror)
+    }()
 
     // Not private: QueryHistoryManager+Rewind reaches it from another file.
     internal let storage: QueryHistoryStorage
     let rewindAvailability: RewindAvailabilityCache
     private let isCapturePaused: @Sendable () -> Bool
+    // Nil keeps the history out of the core, for a store nothing else reads.
+    internal let coreMirror: QueryHistoryCoreMirror?
 
     init(
         storage: QueryHistoryStorage = QueryHistoryStorage(),
-        isCapturePaused: @escaping @Sendable () -> Bool = { QueryHistoryCaptureStore.isPaused }
+        isCapturePaused: @escaping @Sendable () -> Bool = { QueryHistoryCaptureStore.isPaused },
+        coreMirror: QueryHistoryCoreMirror? = nil
     ) {
         self.storage = storage
         self.rewindAvailability = RewindAvailabilityCache(storage: storage)
         self.isCapturePaused = isCapturePaused
+        self.coreMirror = coreMirror
     }
 
     // MARK: - Recording
@@ -59,6 +70,7 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
 
         let success = await storage.record(entry)
         if success {
+            coreMirror?.scheduleRecorded(entry.id)
             await MainActor.run {
                 AppEvents.shared.queryHistoryDidUpdate.send(entry.connectionId)
             }
@@ -122,14 +134,15 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
 
     // MARK: - Deleting
 
+    // Each reports a failure while the core still holds what went, so nobody is told SQL is gone that is not.
     func delete(id: UUID) async -> Bool {
         let success = await storage.delete(id: id)
-        if success {
-            await MainActor.run {
-                AppEvents.shared.queryHistoryDidUpdate.send(nil)
-            }
+        guard success else { return false }
+        let mirrored = await coreMirror?.dropped([id]) ?? true
+        await MainActor.run {
+            AppEvents.shared.queryHistoryDidUpdate.send(nil)
         }
-        return success
+        return mirrored
     }
 
     /// Used when the connection itself is gone, so it takes the plan and rewind snapshots with the
@@ -137,31 +150,46 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
     @discardableResult
     func deleteEverything(forConnection connectionId: UUID) async -> Bool {
         let success = await storage.deleteEverything(forConnection: connectionId)
-        if success {
-            await MainActor.run {
-                AppEvents.shared.queryHistoryDidUpdate.send(nil)
-            }
+        guard success else { return false }
+        let mirrored = await coreMirror?.cleared(connectionId: connectionId) ?? true
+        await MainActor.run {
+            AppEvents.shared.queryHistoryDidUpdate.send(nil)
         }
-        return success
+        return mirrored
     }
 
     func clear(matching filter: QueryHistoryFilter) async -> Bool {
-        let success = await storage.clear(matching: filter)
-        if success {
-            await MainActor.run {
-                AppEvents.shared.queryHistoryDidUpdate.send(nil)
-            }
+        let everyRow = QueryHistoryStorage.coversEveryRow(filter)
+        var before: Set<UUID>?
+        if coreMirror != nil, !everyRow {
+            before = await storage.entryIds()
         }
-        return success
+        let success = await storage.clear(matching: filter)
+        guard success else { return false }
+        let mirrored: Bool
+        if everyRow {
+            mirrored = await coreMirror?.cleared(connectionId: nil) ?? true
+        } else if let before, let after = await storage.entryIds() {
+            mirrored = await coreMirror?.dropped(before.subtracting(after)) ?? true
+        } else {
+            mirrored = await coreMirror?.push() ?? true
+        }
+        await MainActor.run {
+            AppEvents.shared.queryHistoryDidUpdate.send(nil)
+        }
+        return mirrored
     }
 
     // MARK: - Retention
 
+    // Then the core takes in the runs it lacks, the previous stable's included.
     @MainActor
     func performStartupCleanup() async {
         await applyRetentionSettings()
-        guard AppSettingsManager.shared.history.autoCleanup else { return }
-        await runCleanup()
+        if AppSettingsManager.shared.history.autoCleanup {
+            await runCleanup()
+        }
+        await coreMirror?.push()
     }
 
     @MainActor
@@ -179,6 +207,7 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
 
     private func runCleanup() async {
         guard await storage.cleanup() else { return }
+        coreMirror?.schedulePush()
         await MainActor.run {
             AppEvents.shared.queryHistoryDidUpdate.send(nil)
         }

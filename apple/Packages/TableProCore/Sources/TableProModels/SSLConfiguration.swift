@@ -76,14 +76,15 @@ public struct SSLConfiguration: Codable, Hashable, Sendable {
         caCertificatePath: String? = nil,
         clientCertificatePath: String? = nil,
         clientKeyPath: String? = nil,
-        isMacPreferred: Bool = false
+        isMacPreferred: Bool = false,
+        isLegacyRequire: Bool = false
     ) {
         self.mode = mode
         self.caCertificatePath = caCertificatePath
         self.clientCertificatePath = clientCertificatePath
         self.clientKeyPath = clientKeyPath
         self.isMacPreferred = isMacPreferred && mode == .require
-        self.isLegacyRequire = false
+        self.isLegacyRequire = isLegacyRequire && mode == .require
     }
 
     // Same mode and paths, and the same Preferred, except that a copy an older iOS build stored takes the server's.

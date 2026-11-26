@@ -28,10 +28,33 @@ internal final class SSHConnectionAttempt: @unchecked Sendable {
 
     internal let deadline: ConnectionDeadline
     private let state: OSAllocatedUnfairLock<State>
+    // The connect, handshake, sign-in and channel opens block in poll or recv; on Swift's cooperative pool a
+    // burst of dials (Reopen Last Session, recovery after wake) would hold every thread the app's other async
+    // work needs. One queue per attempt, so one slow host never waits behind another.
+    private let negotiationQueue = DispatchQueue(label: "com.TablePro.ssh.negotiation", qos: .userInitiated)
 
     internal init(deadline: ConnectionDeadline, endpoint: ConnectionTimeoutEndpoint) {
         self.deadline = deadline
         self.state = OSAllocatedUnfairLock(initialState: State(endpoint: endpoint))
+    }
+
+    // Runs one blocking step on the attempt's queue and resumes the caller with its result. Cancelling the
+    // caller cancels the attempt, whose transport interrupt wakes the step; the step is never abandoned, so
+    // nothing it holds outlives the call. The step and its result cross to the queue and back while the caller
+    // waits, so the libssh2 handles they carry are never used from two threads at once.
+    internal func runBlocking<T>(_ step: @escaping () throws -> T) async throws -> T {
+        nonisolated(unsafe) let step = step
+        let queue = negotiationQueue
+        return try await withTaskCancellationHandler {
+            let result = await withCheckedContinuation { (continuation: CheckedContinuation<UncheckedResult<T>, Never>) in
+                queue.async {
+                    continuation.resume(returning: UncheckedResult(Result { try step() }))
+                }
+            }
+            return try result.value.get()
+        } onCancel: {
+            cancel()
+        }
     }
 
     internal func startWatchdog() -> Task<Void, Never> {
@@ -195,5 +218,13 @@ internal final class ConnectionRelayDeadlineProvider: @unchecked Sendable {
                 isInitial: false
             )
         }
+    }
+}
+
+internal struct UncheckedResult<T>: @unchecked Sendable {
+    let value: Result<T, any Error>
+
+    init(_ value: Result<T, any Error>) {
+        self.value = value
     }
 }

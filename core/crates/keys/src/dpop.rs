@@ -43,7 +43,7 @@ pub fn proof(dsk: &Ed25519Seed, request: DpopRequest<'_>) -> Result<String, Keys
     proof_with_jti(dsk, request, crypto::random_array()?)
 }
 
-pub fn proof_with_jti(dsk: &Ed25519Seed, request: DpopRequest<'_>, jti: [u8; 16]) -> Result<String, KeysError> {
+pub(crate) fn proof_with_jti(dsk: &Ed25519Seed, request: DpopRequest<'_>, jti: [u8; 16]) -> Result<String, KeysError> {
     let mut header =
         String::from("{\"typ\":\"dpop+jwt\",\"alg\":\"Ed25519\",\"jwk\":{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":");
     push_string(&mut header, &b64::encode(&dsk.public()?.0));

@@ -65,6 +65,7 @@ use libadwaita::prelude::*;
 use tablepro_core::meta::SchemaInfo;
 use tablepro_core::{DataModel, EditorSession};
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
+use tablepro_storage::LibraryIcon;
 use uuid::Uuid;
 
 pub(crate) use self::catalog_ops::DatabaseDrop;
@@ -1271,9 +1272,10 @@ impl WorkspaceModel {
             workspace.notify_connection_name();
         }
         let icon = match &self.key {
-            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => {
-                self.saved_connections.get(*id).and_then(|saved| saved.icon)
-            }
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => self
+                .saved_connections
+                .get(*id)
+                .and_then(|saved| saved.icon.as_ref().and_then(LibraryIcon::named)),
             SessionKey::File(_) => None,
         }
         .map(|icon| crate::ui::icons::connection_icon(icon).to_owned());

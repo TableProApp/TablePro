@@ -9,6 +9,10 @@
 public protocol CodeSuggestionDelegate: AnyObject {
     func completionTriggerCharacters() -> Set<String>
 
+    // Optional. In the turn of the key or command that asks, before the request starts; a request that only
+    // refreshes an open window, or asks again after one ends, does not call it.
+    func completionRequestDidBegin(textView: TextViewController)
+
     func completionSuggestionsRequested(
         textView: TextViewController,
         cursorPosition: CursorPosition,
@@ -42,6 +46,7 @@ public protocol CodeSuggestionDelegate: AnyObject {
 
 public extension CodeSuggestionDelegate {
     func completionTriggerCharacters() -> Set<String> { [] }
+    func completionRequestDidBegin(textView: TextViewController) { }
     func completionNeedsFreshItems(textView: TextViewController, cursorPosition: CursorPosition) -> Bool { false }
     func completionWindowDidShow(textView: TextViewController, itemCount: Int) { }
     func completionWindowDidClose() { }

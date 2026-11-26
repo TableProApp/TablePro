@@ -180,7 +180,7 @@ fn shown(harness: &Harness) -> crate::test_support::OwnedWindow<adw::Window> {
 fn confirm_writes_holds_an_update_for_an_answer_and_runs_a_select_at_once() {
     let harness = editor_with(answering(), "SELECT 1;");
     let session = harness.active.get().expect("the session");
-    assert!(session.set_safe_mode(tablepro_core::SafeModeLevel::ConfirmWrites));
+    assert!(session.set_safe_mode(tablepro_core::SafeModeLevel::Alert));
     let window = shown(&harness);
 
     run_and_wait(&harness);

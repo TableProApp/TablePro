@@ -88,6 +88,11 @@ final class DatabaseManager: ObservableObject {
 
     // One reconnect loop per session, owned by DatabaseManager+Recovery.swift.
     internal var recoveryLoops: [UUID: SessionRecoveryLoop] = [:]
+    /// The last network path the monitor reported; satisfied until it says otherwise, as in a test host.
+    internal var networkPath: NetworkPathSnapshot?
+    /// Recovery loops waiting for the network path to come back or change, woken together when it does.
+    internal var networkChangeWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+    internal var networkMonitor: ConnectionNetworkMonitor?
     internal let recoveryClock: any Clock<Duration>
 
     /// Why a session was torn down, kept past the session entry so a window that only observes
