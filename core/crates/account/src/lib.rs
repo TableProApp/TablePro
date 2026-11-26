@@ -47,5 +47,6 @@ pub use share::{
     ShareRequest, ShareTeam, SharedLink, sent_share_password,
 };
 pub use share_link::{is_share_token, share_token_from_link};
+pub use tablepro_cloud_api::StepUpChallenge;
 pub use token_vault::{RefreshTokenVault, RefreshTokenVaults, SingleVault};
 pub use url::Url;
