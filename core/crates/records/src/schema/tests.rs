@@ -318,6 +318,8 @@ fn the_connection_table_names_every_member_the_store_holds() {
             "device.cloud_sql_proxy",
             "device.socks_proxy",
             "device.tunnel_command",
+            "device.tls_mode_unsettled",
+            "device.ssh_profile_unlinked",
             "unknown",
         ])
     );
