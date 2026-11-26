@@ -405,3 +405,279 @@ async fn the_new_personal_and_history_versions_are_signed_under_the_new_av_and_c
     };
     assert_eq!(row.version, av(2));
 }
+
+async fn approved_pair() -> (std::sync::Arc<FakeServer>, Device, Device, SecretString) {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    let c = Device::new(&server, account, "dev_c").await;
+    let text = b.genesis().await;
+    c.approved_by(&b).await;
+    (server, b, c, text)
+}
+
+#[tokio::test]
+async fn a_replace_whose_push_fails_is_never_followed_until_it_applies() {
+    let (server, b, _c, text) = approved_pair().await;
+    let account = b.account;
+    b.pull().await;
+    let draft = b.service.begin_replace(text).await.unwrap();
+    server.fail_next(tablepro_sync::api::transport::TransportError::Network {
+        detail: "503".to_owned(),
+    });
+
+    let failed = b
+        .service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), Vec::new())
+        .await
+        .unwrap_err();
+    b.pull().await;
+
+    assert_eq!(failed.code(), "sync.network");
+    let pin = b.pin(account).await.unwrap();
+    assert_eq!((pin.av, pin.replaced.len()), (Version::FIRST, 0));
+    assert!(matches!(b.key_state().await, KeyState::Approved { av, .. } if av == Version::FIRST));
+    let sealed = b
+        .service
+        .seal_personal_envelope(envelope(), SecretString::from("x"), json!({}))
+        .await
+        .unwrap();
+    assert_eq!(sealed["kv"], 1);
+    b.service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), Vec::new())
+        .await
+        .unwrap();
+    assert_eq!(b.pin(account).await.unwrap().av, av(2));
+}
+
+#[tokio::test]
+async fn a_replace_keeps_only_devices_the_account_still_certifies() {
+    let (_server, b, c, text) = approved_pair().await;
+    let d = Device::new(&b.server, b.account, "dev_d").await;
+    d.approved_by(&b).await;
+    let b_device = key_device(&b).await;
+    let d_device = key_device(&d).await;
+    // C rotates keeping B alone, so D, which B compared with, is no longer certified at av 2.
+    let next = replace(&c, &text, vec![b_device]).await;
+    b.pull().await;
+    assert!(matches!(b.key_state().await, KeyState::Approved { av: at, .. } if at == av(2)));
+
+    let draft = b.service.begin_replace(next).await.unwrap();
+
+    assert!(draft.devices.iter().all(|row| row.device.key_device != d_device));
+    let refused = b
+        .service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), vec![d_device])
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), "sync.not_allowed");
+    assert!(b.get(RowKey::KeyDevicePin(d_device)).await.is_some());
+}
+
+#[tokio::test]
+async fn a_replace_forgets_the_own_device_pins_it_left_out() {
+    let (_server, b, c, text) = approved_pair().await;
+    let c_device = key_device(&c).await;
+
+    replace(&b, &text, Vec::new()).await;
+
+    assert!(b.get(RowKey::KeyDevicePin(c_device)).await.is_none());
+}
+
+#[tokio::test]
+async fn a_replace_runs_only_on_an_approved_device_it_can_trust() {
+    let (_server, b, _c, text) = approved_pair().await;
+    let Some(Row::KeyVersion(row)) = b
+        .get(RowKey::KeyVersion(ScopeName::Personal, KeyPurpose::Personal))
+        .await
+    else {
+        panic!()
+    };
+    b.put(vec![Row::KeyVersion(tablepro_sync::api::state::KeyVersionRow {
+        state: tablepro_sync::api::state::KeyVersionState::Stopped,
+        stopped_cause: Some(tablepro_sync::api::state::StoppedCause::CatchUp),
+        ..row
+    })])
+    .await;
+
+    let refused = b.service.begin_replace(text).await.unwrap_err();
+
+    assert_eq!(
+        refused,
+        tablepro_sync::SyncError::Locked {
+            cause: LockCause::PersonalStopped
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_replace_draft_whose_recovery_key_the_account_moved_past_is_refused() {
+    let (_server, b, c, text) = approved_pair().await;
+    let b_device = key_device(&b).await;
+    b.pull().await;
+    let draft = b.service.begin_replace(text.clone()).await.unwrap();
+    replace(&c, &text, vec![b_device]).await;
+    b.pull().await;
+
+    let refused = b
+        .service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), Vec::new())
+        .await
+        .unwrap_err();
+
+    assert_eq!(refused.code(), "keys.signature");
+    assert_eq!(b.pin(b.account).await.unwrap().av, av(2));
+    let again = b
+        .service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), Vec::new())
+        .await
+        .unwrap_err();
+    assert_eq!(again.code(), "sync.unknown");
+}
+
+// K7-2's recovery stood in for: a device on a fresh row with only R reads the key kinds before approval, opens the
+// blob at `at` and rotates to the next `av`, keeping itself alone (0056, Recovery).
+async fn recovered(
+    server: &std::sync::Arc<FakeServer>,
+    account: tablepro_keys::encoding::AccountId,
+    text: &SecretString,
+    at: Version,
+) -> Device {
+    use tablepro_sync::keys::{AccountObjectsPlan, KeptDevice};
+
+    let recovery = RecoveryKey::parse(text.expose_secret()).unwrap();
+    let next = at.next().unwrap();
+    let x = Device::new(server, account, "dev_x").await;
+    x.pull().await;
+    let certificate = crate::harness::stored_certificate(server, account, at);
+    let keys = recovery
+        .open_blob(
+            &origin(),
+            account,
+            at,
+            &crate::harness::stored_blob(server, account, at),
+        )
+        .unwrap();
+    keys.check_against(&certificate.ask, &certificate.aek).unwrap();
+    x.service.store_account_keys(at, &keys).await.unwrap();
+    let device = x.service.ensure_device_keys().await.unwrap();
+    let new_keys = tablepro_keys::keys::AccountKeys::generate().unwrap();
+    let mut objects = x
+        .service
+        .account_objects(&AccountObjectsPlan {
+            av: next,
+            kind: CertKind::GenesisOrRotation,
+            ik: &recovery.identity_seed(&origin(), account).unwrap(),
+            endorsing_ik: None,
+            recovery: &recovery,
+            keys: &new_keys,
+            devices: &[KeptDevice::of(&device).unwrap()],
+            wrapper: Some(&device),
+        })
+        .unwrap();
+    for purpose in [KeyPurpose::Personal, KeyPurpose::History] {
+        let current = carried(server, account, purpose, at, &keys, &certificate);
+        objects.extend(next_version(&x, purpose, next, &current, &new_keys, device.key_device));
+    }
+    x.service.store_account_keys(next, &new_keys).await.unwrap();
+    let changes = objects
+        .iter()
+        .map(|object| tablepro_sync::keys::create_change(object).unwrap())
+        .collect();
+    x.service
+        .push_change_set(ScopeName::Personal, changes, x.proof().await)
+        .await
+        .unwrap();
+    let mut txn = x.txn().await;
+    x.service
+        .adopt_account_change_set(txn.as_mut(), &objects)
+        .await
+        .unwrap();
+    txn.commit().await.unwrap();
+    x.server_approves().await;
+    x.pull().await;
+    x
+}
+
+// The scope key of `purpose` at `at`, opened from its wrap to the account's AEK there, as a recovery carries it.
+fn carried(
+    server: &FakeServer,
+    account: tablepro_keys::encoding::AccountId,
+    purpose: KeyPurpose,
+    at: Version,
+    keys: &tablepro_keys::keys::AccountKeys,
+    certificate: &tablepro_keys::cert::AccountCertificate,
+) -> tablepro_keys::keys::ScopeKey {
+    let key = tablepro_keys::scope_key::KeyRef {
+        owner: account.0,
+        purpose,
+        version: at,
+    };
+    let record = crate::harness::stored(
+        server,
+        account,
+        "key.version",
+        &tablepro_keys::record_id::KeyRecordId::Version(key).to_wire(),
+    )
+    .version_record()
+    .unwrap();
+    let target = tablepro_keys::wrap::scope_key_target(key, account, at);
+    let wrap = crate::harness::stored(
+        server,
+        account,
+        "key.wrap",
+        &tablepro_keys::record_id::KeyRecordId::Wrap(target).to_wire(),
+    )
+    .wrap()
+    .unwrap();
+    wrap.open_scope_key(&origin(), &keys.aek, &certificate.aek, &certificate.ask, &record)
+        .unwrap()
+}
+
+fn next_version(
+    device: &Device,
+    purpose: KeyPurpose,
+    next: Version,
+    current: &tablepro_keys::keys::ScopeKey,
+    keys: &tablepro_keys::keys::AccountKeys,
+    key_device: KeyDeviceId,
+) -> Vec<KeyObject> {
+    let fresh = tablepro_keys::keys::ScopeKey::generate().unwrap();
+    device
+        .service
+        .personal_version_objects(
+            purpose,
+            &tablepro_sync::keys::ScopeKeyPlan {
+                version: next,
+                key: &fresh,
+                start: tablepro_keys::scope_key::Start::Next,
+                previous: Some(current),
+            },
+            next,
+            keys,
+            key_device,
+        )
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_recovery_from_zero_devices_reads_the_old_versions_through_their_rings_under_a_replaced_identity() {
+    let (server, b, _c, text) = approved_pair().await;
+    let account = b.account;
+    let old = envelope();
+    let sealed = b
+        .service
+        .seal_personal_envelope(old.clone(), SecretString::from("from av 1"), json!({}))
+        .await
+        .unwrap();
+    let next = replace(&b, &text, Vec::new()).await;
+
+    let x = recovered(&server, account, &next, av(2)).await;
+
+    let pin = x.pin(account).await.unwrap();
+    let opened = x.service.open_personal_envelope(old, sealed, None).await.unwrap();
+
+    assert_eq!(opened.secret.expose_secret(), "from av 1");
+    assert_eq!(pin.av, av(3));
+    assert_eq!(pin.replaced.len(), 1);
+}

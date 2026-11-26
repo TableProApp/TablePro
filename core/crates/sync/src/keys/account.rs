@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use tablepro_keys::KeysError;
 use tablepro_keys::body::{AccountBody, DeviceBody, KeyBody, KeyObject, WrapBody};
 use tablepro_keys::cert::{AccountCertificate, CertKind, DeviceCertificate};
 use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, ResetId, Version, WrapPurpose};
@@ -20,11 +21,14 @@ use super::KeyService;
 use crate::api::device_store::DeviceItem;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
-use crate::api::state::{KeyPinRow, KeyVersionRow, KeyVersionState, Row, RowKey, StateTxn};
+use crate::api::key_flows::LockCause;
+use crate::api::state::{KeyPinRow, KeyVersionRow, KeyVersionState, Row, StateTxn};
 use crate::api::transport::DpopKey;
 
 // The first byte of every item this file writes, so a later format can be told apart.
 const ITEM_FORMAT: u8 = 1;
+// The device keys item while a Sign Out is under way.
+const SIGNING_OUT: u8 = 2;
 const DEVICE_KEYS_LEN: usize = 16 + 32 + 32;
 const ACCOUNT_KEYS_LEN: usize = 32 + 32;
 
@@ -42,6 +46,12 @@ pub struct HeldDeviceKeys {
 pub struct ResetKeys {
     pub account: AccountKeys,
     pub device: DeviceKeys,
+}
+
+pub(crate) struct SigningOut {
+    pub(crate) keys: HeldDeviceKeys,
+    pub(crate) newest_av: u32,
+    pub(crate) resets: Vec<ResetId>,
 }
 
 // This device's own account as its key tables and device store hold it: the newest `av` it verified, the IK it
@@ -90,25 +100,47 @@ pub struct AccountObjectsPlan<'a> {
 }
 
 impl KeyService {
+    // A Sign Out under way holds no keys any flow may use.
     pub async fn device_keys(&self) -> Result<HeldDeviceKeys, SyncError> {
-        let item = self.device_store.load(self.device_keys_item()).await?;
-        item.map_or_else(
-            || Ok(HeldDeviceKeys::default()),
-            |bytes| decode_held_device_keys(&bytes),
-        )
+        match self.device_store.load(self.device_keys_item()).await? {
+            None => Ok(HeldDeviceKeys::default()),
+            Some(bytes) if bytes.first() == Some(&SIGNING_OUT) => Ok(HeldDeviceKeys::default()),
+            Some(bytes) => decode_held_device_keys(&bytes),
+        }
     }
 
     pub async fn store_device_keys(&self, keys: &HeldDeviceKeys) -> Result<(), SyncError> {
-        let mut out = Zeroizing::new(vec![ITEM_FORMAT]);
-        for slot in [&keys.current, &keys.pending] {
-            match slot {
-                Some(device) => {
-                    out.push(1);
-                    encode_device_keys(device, &mut out);
-                }
-                None => out.push(0),
-            }
+        if self.signing_out().await?.is_some() {
+            return Err(SyncError::NotAllowed {
+                what: "store device keys before a Sign Out under way finishes",
+            });
         }
+        let mut out = Zeroizing::new(vec![ITEM_FORMAT]);
+        encode_held_device_keys(keys, &mut out);
+        Ok(self.device_store.store(self.device_keys_item(), out).await?)
+    }
+
+    // A Sign Out that started and has not finished: the device keys it proves with, the newest `av` whose account
+    // keys it erases, and the resets whose keys it erases. Kept in the device keys' own item, so the secrets go before
+    // the record of what to erase does.
+    pub(crate) async fn signing_out(&self) -> Result<Option<SigningOut>, SyncError> {
+        match self.device_store.load(self.device_keys_item()).await? {
+            Some(bytes) if bytes.first() == Some(&SIGNING_OUT) => decode_signing_out(&bytes).map(Some),
+            _ => Ok(None),
+        }
+    }
+
+    pub(crate) async fn start_signing_out(&self, signing_out: &SigningOut) -> Result<(), SyncError> {
+        let mut out = Zeroizing::new(vec![SIGNING_OUT]);
+        out.extend_from_slice(&signing_out.newest_av.to_be_bytes());
+        let resets = u16::try_from(signing_out.resets.len()).map_err(|_| SyncError::Malformed {
+            what: "too many resets to sign out of",
+        })?;
+        out.extend_from_slice(&resets.to_be_bytes());
+        for reset in &signing_out.resets {
+            out.extend_from_slice(reset.0.as_bytes());
+        }
+        encode_held_device_keys(&signing_out.keys, &mut out);
         Ok(self.device_store.store(self.device_keys_item(), out).await?)
     }
 
@@ -249,9 +281,9 @@ impl KeyService {
             av,
         };
         let held = self
-            .held_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
+            .applied_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
             .await?;
-        Ok(held.and_then(|held| match held.object.body {
+        Ok(held.and_then(|object| match object.body {
             KeyBody::Account(body) => Some(body.certificate(self.account, av)),
             _ => None,
         }))
@@ -270,13 +302,13 @@ impl KeyService {
             key_device: device.key_device,
             av: certificate.av,
         };
-        let Some(held) = self
-            .held_object(txn, ScopeName::Personal, KeyKind::Device, &id.to_wire())
+        let Some(object) = self
+            .applied_object(txn, ScopeName::Personal, KeyKind::Device, &id.to_wire())
             .await?
         else {
             return Ok(false);
         };
-        let KeyBody::Device(body) = held.object.body else {
+        let KeyBody::Device(body) = object.body else {
             return Ok(false);
         };
         let device_certificate = body.certificate(self.account, device.key_device, certificate.av);
@@ -357,8 +389,9 @@ impl KeyService {
         Ok(objects)
     }
 
-    // An account change set this device pushed, once applied: its objects held as applied, the own pin at its `av`,
-    // and the personal and history versions it brings made current.
+    // An account change set this device pushed, once applied: its objects held as applied, the own pin at its `av`
+    // with every IK the account had before it in `replaced`, and the personal and history versions it brings made
+    // current. Each version must be the account's own, signed under the new ASK and above the one held.
     pub async fn adopt_account_change_set(
         &self,
         txn: &mut dyn StateTxn,
@@ -376,61 +409,77 @@ impl KeyService {
                 what: "account change set without its certificate",
             })?;
         certificate.verify(&self.origin)?;
-        for object in objects {
-            self.hold_object(txn, ScopeName::Personal, object, true).await?;
-        }
-        let pin = match self.pin(txn, self.account).await? {
-            Some(held) if held.ik == certificate.ik => KeyPinRow {
-                av: held.av.max(certificate.av),
-                alert: false,
-                ..held
-            },
-            Some(held) => {
-                let mut replaced = held.replaced;
-                if !replaced.contains(&held.ik) {
-                    replaced.push(held.ik);
-                }
-                KeyPinRow {
-                    account: self.account,
-                    ik: certificate.ik,
-                    av: certificate.av,
-                    how: PinHow::Compared,
-                    alert: false,
-                    replaced,
-                }
-            }
-            // This device derived the IK from the recovery key itself.
-            None => KeyPinRow {
-                account: self.account,
-                ik: certificate.ik,
-                av: certificate.av,
-                how: PinHow::Compared,
-                alert: false,
-                replaced: Vec::new(),
-            },
-        };
-        txn.put(Row::KeyPin(pin)).await?;
+        let mut versions = Vec::new();
         for object in objects {
             let Some(record) = object.version_record() else {
                 continue;
             };
-            let purpose = record.key.purpose;
-            if purpose == KeyPurpose::Team || record.signer_av != certificate.av {
-                continue;
-            }
-            let key = RowKey::KeyVersion(ScopeName::Personal, purpose);
-            if let Some(Row::KeyVersion(held)) = txn.get(&key).await?
-                && held.version > record.key.version
+            if record.key.purpose == KeyPurpose::Team
+                || record.signer != self.account
+                || record.key.owner != self.account.0
+                || record.signer_av != certificate.av
             {
-                return Err(tablepro_keys::KeysError::Stale {
-                    held: held.version.get(),
-                    offered: record.key.version.get(),
-                }
-                .into());
+                return Err(KeysError::Signature.into());
             }
+            record.verify(&self.origin, &certificate.ask)?;
+            if let Some(held) = self.personal_row(txn, record.key.purpose).await? {
+                if held.state == KeyVersionState::Ended {
+                    return Err(SyncError::Locked {
+                        cause: LockCause::AccountEnded,
+                    });
+                }
+                // A recovery may pass versions a stopped device never took; it never goes back.
+                if record.key.version <= held.version {
+                    return Err(KeysError::Stale {
+                        held: held.version.get(),
+                        offered: record.key.version.get(),
+                    }
+                    .into());
+                }
+            }
+            versions.push(record);
+        }
+        for object in objects {
+            self.hold_object(txn, ScopeName::Personal, object, true).await?;
+        }
+        let held = self.pin(txn, self.account).await?;
+        let mut replaced = held.as_ref().map(|pin| pin.replaced.clone()).unwrap_or_default();
+        for av in 1..certificate.av.get() {
+            if let Some(older) = self.own_certificate(txn, Version::new(av)?).await?
+                && older.ik != certificate.ik
+                && !replaced.contains(&older.ik)
+                && older.verify(&self.origin).is_ok()
+            {
+                replaced.push(older.ik);
+            }
+        }
+        if let Some(pin) = &held
+            && pin.ik != certificate.ik
+            && !replaced.contains(&pin.ik)
+        {
+            replaced.push(pin.ik);
+        }
+        let how = match &held {
+            Some(pin) if pin.ik == certificate.ik => pin.how,
+            // This device derived the IK from the recovery key itself.
+            _ => PinHow::Compared,
+        };
+        txn.put(Row::KeyPin(KeyPinRow {
+            account: self.account,
+            ik: certificate.ik,
+            av: held
+                .as_ref()
+                .filter(|pin| pin.ik == certificate.ik)
+                .map_or(certificate.av, |pin| pin.av.max(certificate.av)),
+            how,
+            alert: false,
+            replaced,
+        }))
+        .await?;
+        for record in versions {
             txn.put(Row::KeyVersion(KeyVersionRow {
                 scope: ScopeName::Personal,
-                purpose,
+                purpose: record.key.purpose,
                 version: record.key.version,
                 record: record.digest(&self.origin)?,
                 holders: Vec::new(),
@@ -471,6 +520,51 @@ fn decode_device_keys(bytes: &[u8]) -> Result<DeviceKeys, SyncError> {
         key_device: KeyDeviceId(id),
         dsk: Ed25519Seed::from_slice(&bytes[16..48])?,
         dek: X25519Secret::from_slice(&bytes[48..80])?,
+    })
+}
+
+fn encode_held_device_keys(keys: &HeldDeviceKeys, out: &mut Vec<u8>) {
+    for slot in [&keys.current, &keys.pending] {
+        match slot {
+            Some(device) => {
+                out.push(1);
+                encode_device_keys(device, out);
+            }
+            None => out.push(0),
+        }
+    }
+}
+
+fn decode_signing_out(bytes: &[u8]) -> Result<SigningOut, SyncError> {
+    let malformed = || SyncError::Malformed {
+        what: "device keys item",
+    };
+    let rest = bytes.get(1..).ok_or_else(malformed)?;
+    let newest_av = u32::from_be_bytes(
+        rest.get(..4)
+            .ok_or_else(malformed)?
+            .try_into()
+            .map_err(|_| malformed())?,
+    );
+    let count = u16::from_be_bytes(
+        rest.get(4..6)
+            .ok_or_else(malformed)?
+            .try_into()
+            .map_err(|_| malformed())?,
+    );
+    let mut at = 6;
+    let mut resets = Vec::with_capacity(usize::from(count));
+    for _ in 0..count {
+        let id = rest.get(at..at + 16).ok_or_else(malformed)?;
+        resets.push(ResetId(Uuid::from_slice(id).map_err(|_| malformed())?));
+        at += 16;
+    }
+    let mut keys = vec![ITEM_FORMAT];
+    keys.extend_from_slice(rest.get(at..).ok_or_else(malformed)?);
+    Ok(SigningOut {
+        keys: decode_held_device_keys(&keys)?,
+        newest_av,
+        resets,
     })
 }
 

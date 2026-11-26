@@ -1,14 +1,12 @@
 // The device's key state, the recovery key as a person sees it once, and Genesis (0056, The recovery key; Account
 // flows, Genesis).
 
-use std::sync::Arc;
-
 use secrecy::ExposeSecret;
 use tablepro_keys::body::KeyObject;
 use tablepro_keys::cert::CertKind;
 use tablepro_keys::encoding::{KeyPurpose, Version, random_uuid};
 use tablepro_keys::keys::{AccountKeys, DeviceKeys, ScopeKey};
-use tablepro_keys::record_id::KeyKind;
+use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::scope_key::Start;
 use zeroize::Zeroizing;
@@ -19,7 +17,7 @@ use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::{DraftId, GenesisOutcome, KeyState, LockCause, RecoveryKeyDraft, TypedBack};
 use crate::api::state::{KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
-use crate::api::transport::{ChangeOutcome, DpopKey, RejectedCode};
+use crate::api::transport::{ChangeOutcome, RejectedCode};
 
 const GROUPS: u8 = 14;
 
@@ -78,7 +76,8 @@ impl ShownKey {
 }
 
 struct GenesisDraft {
-    shown: ShownKey,
+    // Wiped once the change set is built: the recovery key is not needed again (0056, Rotation, step 4).
+    shown: Option<ShownKey>,
     // Built once and pushed again as it is after a failed try, so nothing is sealed twice (0056, Nonce budget).
     built: Option<(Vec<KeyObject>, AccountKeys)>,
 }
@@ -129,15 +128,34 @@ impl KeyService {
     pub(crate) async fn start_genesis(&self) -> Result<RecoveryKeyDraft, SyncError> {
         let _serial = self.serialized().await;
         let mut txn = self.begin().await?;
+        // A genesis this device pushed and never heard the end of goes up again, the same objects, before any new
+        // one: a second set of keys must never stand in for one that applied (0054, `key_objects`).
+        if let Some(candidates) = self.genesis_candidates(txn.as_mut()).await? {
+            drop(txn);
+            match self.push_genesis(&candidates).await {
+                // Refused whole: nothing of it applied, and it is gone.
+                Err(SyncError::Rejected { .. }) => {}
+                Ok(_) => {
+                    return Err(SyncError::NotAllowed {
+                        what: "start keys on an account that has them",
+                    });
+                }
+                Err(error) => return Err(error),
+            }
+            txn = self.begin().await?;
+        }
         if self.state_of_keys(txn.as_mut()).await? != KeyState::NoKeys {
             return Err(SyncError::NotAllowed {
                 what: "start keys on an account that has them",
             });
         }
         let shown = ShownKey::new()?;
-        let draft = self.drafts().put(GenesisDraft { shown, built: None })?;
-        self.drafts()
-            .with(draft, |held: &mut GenesisDraft| held.shown.draft(draft))?
+        let recovery = shown.draft(DraftId(uuid::Uuid::nil()))?;
+        let draft = self.drafts().put(GenesisDraft {
+            shown: Some(shown),
+            built: None,
+        })?;
+        Ok(RecoveryKeyDraft { draft, ..recovery })
     }
 
     pub(crate) async fn complete_genesis(
@@ -146,32 +164,54 @@ impl KeyService {
         typed: &TypedBack,
     ) -> Result<GenesisOutcome, SyncError> {
         let _serial = self.serialized().await;
-        self.drafts()
-            .with(draft, |held: &mut GenesisDraft| held.shown.check_typed_back(typed))??;
-        let mut txn = self.begin().await?;
-        if self.account_has_keys(txn.as_mut()).await? {
-            // A pull already took this device's own genesis back after its answer was lost.
-            if self.own_account(txn.as_mut()).await?.is_some() {
-                self.drafts().remove(draft);
-                return Ok(GenesisOutcome::Created);
-            }
-            drop(txn);
-            return self.another_genesis_won(draft, &[]).await;
-        }
-        drop(txn);
-        let device = self.ensure_device_keys().await?;
         let built = self
             .drafts()
             .with(draft, |held: &mut GenesisDraft| held.built.clone())?;
+        if built.is_none() {
+            self.drafts().with(draft, |held: &mut GenesisDraft| {
+                held.shown
+                    .as_ref()
+                    .ok_or(SyncError::Unknown { what: "draft" })
+                    .and_then(|shown| shown.check_typed_back(typed))
+            })??;
+        }
+        let mut txn = self.begin().await?;
+        if self.account_has_keys(txn.as_mut()).await? {
+            // The genesis that applied may be this device's own, its answer lost and no pull since.
+            self.adopt_own_genesis(txn.as_mut()).await?;
+            let ours = self.own_account(txn.as_mut()).await?.is_some();
+            txn.commit().await?;
+            self.drafts().remove(draft);
+            if ours {
+                return Ok(GenesisOutcome::Created);
+            }
+            let objects = built.map(|(objects, _)| objects).unwrap_or_default();
+            self.discard_losing_genesis(&objects).await?;
+            self.hooks().pass_soon();
+            return Ok(GenesisOutcome::AnotherDeviceWon);
+        }
+        let candidates = self.genesis_candidates(txn.as_mut()).await?;
+        drop(txn);
+        let ours = |objects: &[KeyObject]| {
+            candidates
+                .as_ref()
+                .is_none_or(|held| held.len() == objects.len() && objects.iter().all(|object| held.contains(object)))
+        };
         let (objects, keys) = match built {
-            Some(built) => built,
-            None => {
-                let built = self.drafts().with(draft, |held: &mut GenesisDraft| {
-                    self.genesis_objects(&held.shown.key, &device)
-                })??;
-                self.drafts()
-                    .with(draft, |held: &mut GenesisDraft| held.built = Some(built.clone()))?;
-                built
+            Some(built) if ours(&built.0) => built,
+            None if candidates.is_none() => {
+                let device = self.ensure_device_keys().await?;
+                self.drafts().with(draft, |held: &mut GenesisDraft| {
+                    let shown = held.shown.take().ok_or(SyncError::Unknown { what: "draft" })?;
+                    let built = self.genesis_objects(&shown.key, &device)?;
+                    held.built = Some(built.clone());
+                    Ok::<_, SyncError>(built)
+                })??
+            }
+            _ => {
+                return Err(SyncError::NotAllowed {
+                    what: "finish a genesis while an earlier one on this device is unresolved",
+                });
             }
         };
         self.store_account_keys(Version::FIRST, &keys).await?;
@@ -181,23 +221,34 @@ impl KeyService {
                 .await?;
         }
         txn.commit().await?;
+        let outcome = self.push_genesis(&objects).await;
+        if !matches!(outcome, Err(SyncError::Transport(_))) {
+            self.drafts().remove(draft);
+        }
+        outcome
+    }
+
+    // Pushes this device's genesis objects as one change set, and settles what the answer says: adopted, given way
+    // to another device's, or refused and gone. A failed call leaves them as candidates to push again.
+    async fn push_genesis(&self, objects: &[KeyObject]) -> Result<GenesisOutcome, SyncError> {
         let changes = objects.iter().map(create_change).collect::<Result<Vec<_>, _>>()?;
-        let outcomes = self
-            .push_change_set(ScopeName::Personal, changes, DpopKey(Arc::new(device.dsk.clone())))
-            .await?;
+        let proof = self.dpop_key().await?;
+        let outcomes = self.push_change_set(ScopeName::Personal, changes, proof).await?;
         match refusal(&outcomes) {
             None => {
                 let mut txn = self.begin().await?;
-                self.adopt_account_change_set(txn.as_mut(), &objects).await?;
+                self.adopt_account_change_set(txn.as_mut(), objects).await?;
                 txn.commit().await?;
-                self.drafts().remove(draft);
                 self.hooks().pass_soon();
                 Ok(GenesisOutcome::Created)
             }
-            Some(RejectedCode::CreateOnly) => self.another_genesis_won(draft, &objects).await,
+            Some(RejectedCode::CreateOnly) => {
+                self.discard_losing_genesis(objects).await?;
+                self.hooks().pass_soon();
+                Ok(GenesisOutcome::AnotherDeviceWon)
+            }
             Some(code) => {
-                self.discard_genesis(&objects).await?;
-                self.drafts().with(draft, |held: &mut GenesisDraft| held.built = None)?;
+                self.discard_losing_genesis(objects).await?;
                 Err(SyncError::Rejected { code })
             }
         }
@@ -242,29 +293,70 @@ impl KeyService {
 
     // A certificate the server served, not this device's own candidate that never applied.
     async fn account_has_keys(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
-        Ok(self
-            .held_objects(txn, ScopeName::Personal, KeyKind::Account)
+        Ok(!self
+            .applied_objects(txn, ScopeName::Personal, KeyKind::Account)
             .await?
-            .iter()
-            .any(|held| held.applied))
+            .is_empty())
     }
 
-    // Another device's genesis applied first: this one's keys are discarded and it asks for approval (0056, Genesis).
-    async fn another_genesis_won(&self, draft: DraftId, objects: &[KeyObject]) -> Result<GenesisOutcome, SyncError> {
-        self.discard_genesis(objects).await?;
-        self.drafts().remove(draft);
-        self.hooks().pass_soon();
-        Ok(GenesisOutcome::AnotherDeviceWon)
+    // This device's own genesis objects that never applied, in the order a genesis sends them; None when it has no
+    // genesis certificate of its own waiting.
+    async fn genesis_candidates(&self, txn: &mut dyn StateTxn) -> Result<Option<Vec<KeyObject>>, SyncError> {
+        let first = KeyRecordId::Account {
+            account: self.account(),
+            av: Version::FIRST,
+        };
+        let waiting = self
+            .held_object(txn, ScopeName::Personal, KeyKind::Account, &first.to_wire())
+            .await?
+            .is_some_and(|held| !held.applied);
+        if !waiting {
+            return Ok(None);
+        }
+        let mut objects = Vec::new();
+        for kind in [
+            KeyKind::Account,
+            KeyKind::Recovery,
+            KeyKind::Device,
+            KeyKind::Version,
+            KeyKind::Wrap,
+        ] {
+            for held in self.held_objects(txn, ScopeName::Personal, kind).await? {
+                if !held.applied && genesis_object(&held.object) {
+                    objects.push(held.object);
+                }
+            }
+        }
+        Ok(Some(objects))
     }
 
-    async fn discard_genesis(&self, objects: &[KeyObject]) -> Result<(), SyncError> {
+    // The objects go, and so do the account keys at `av` 1 unless they are the ones the certificate in force names:
+    // those are this device's own genesis after all.
+    async fn discard_losing_genesis(&self, objects: &[KeyObject]) -> Result<(), SyncError> {
         let mut txn = self.begin().await?;
         self.drop_candidates(txn.as_mut(), ScopeName::Personal, objects).await?;
+        let applied = self.own_certificate(txn.as_mut(), Version::FIRST).await?;
         txn.commit().await?;
-        if !objects.is_empty() {
+        if let Some(keys) = self.account_keys(Version::FIRST).await?
+            && applied.is_none_or(|certificate| keys.check_against(&certificate.ask, &certificate.aek).is_err())
+        {
             self.erase_account_keys(Version::FIRST).await?;
         }
         Ok(())
+    }
+}
+
+// An object a genesis sends: everything at `av` 1.
+fn genesis_object(object: &KeyObject) -> bool {
+    match &object.id {
+        KeyRecordId::Account { av, .. } | KeyRecordId::Recovery { av, .. } | KeyRecordId::Device { av, .. } => {
+            *av == Version::FIRST
+        }
+        KeyRecordId::Version(_) => object
+            .version_record()
+            .is_some_and(|record| record.signer_av == Version::FIRST && record.key.version == Version::FIRST),
+        KeyRecordId::Wrap(target) => target.version == Version::FIRST && target.recipient_version == Version::FIRST,
+        _ => false,
     }
 }
 

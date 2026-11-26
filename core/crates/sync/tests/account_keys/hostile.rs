@@ -568,3 +568,79 @@ async fn a_rotation_wrap_whose_keys_are_not_the_certificate_s_is_a_mismatch_and_
         }
     );
 }
+
+#[tokio::test]
+async fn a_planted_wrap_naming_a_certificate_that_does_not_verify_does_not_hide_the_genuine_one() {
+    let server = FakeServer::new();
+    let (device, _, _) = replaced(&server).await;
+    let account = device.account;
+    let fake = AccountCertificate::sign(
+        &origin(),
+        account,
+        av(4),
+        CertKind::GenesisOrRotation,
+        &Ed25519Seed::generate().unwrap(),
+        AccountKeys::generate().unwrap().public().unwrap(),
+        None,
+    )
+    .unwrap();
+    let aek = device
+        .service
+        .account_keys(Version::FIRST)
+        .await
+        .unwrap()
+        .unwrap()
+        .aek
+        .public()
+        .unwrap();
+    let target = scope_key_target(
+        KeyRef {
+            owner: account.0,
+            purpose: KeyPurpose::Personal,
+            version: av(2),
+        },
+        account,
+        Version::FIRST,
+    );
+    let planted = Wrap::seal_scope_key(
+        &origin(),
+        target,
+        &aek,
+        &ScopeKey::generate().unwrap(),
+        Wrapper {
+            account,
+            av: av(4),
+            key_device: device.service.device_keys().await.unwrap().current.unwrap().key_device,
+        },
+        &Ed25519Seed::generate().unwrap(),
+    )
+    .unwrap();
+    device
+        .feed(
+            vec![
+                record_of(&account_object(&fake)),
+                record_of(&KeyObject {
+                    id: KeyRecordId::Wrap(target),
+                    body: KeyBody::Wrap(WrapBody::of(&planted)),
+                }),
+            ],
+            ArrivalOrder::InOrder,
+        )
+        .await;
+    let id = EnvelopeId::new(
+        ParentKind::Connection,
+        &uuid_to_wire(random_uuid().unwrap()),
+        SecretKind::Password,
+    )
+    .unwrap();
+
+    let sealed = device
+        .service
+        .seal_personal_envelope(id.clone(), SecretString::from("current"), json!({}))
+        .await
+        .unwrap();
+
+    assert_eq!(sealed["kv"], 2);
+    let opened = device.service.open_personal_envelope(id, sealed, None).await.unwrap();
+    assert_eq!(opened.secret.expose_secret(), "current");
+}

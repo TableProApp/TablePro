@@ -1,6 +1,7 @@
-// Sign Out (0056, Account flows; 0051, Sign Out): the revoke for this row when online, under this device's DSK and
-// under the DSK of a reset it proposed, so the row holds no key device and that reset ends. Then the key tables and
-// every key item go. Nothing rotates (D7).
+// Sign Out (0056, Account flows; 0051, Sign Out): the revoke for this row when online, under each DSK the row may
+// hold, the one in force and the one an approval in flight brings, and under the DSK of a reset it proposed, so the
+// row holds no key device and that reset ends. Then every key item and the key tables go. Nothing rotates (D7). What
+// it erases is written down first, so a Sign Out cut off finishes at the next call.
 
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ use tablepro_keys::keys::Ed25519Seed;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 
 use super::KeyService;
+use super::account::SigningOut;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::SignOutOutcome;
@@ -19,7 +21,27 @@ use crate::api::transport::{DpopKey, TransportError};
 impl KeyService {
     pub(crate) async fn erase_on_sign_out(&self) -> Result<SignOutOutcome, SyncError> {
         let _serial = self.serialized().await;
-        let held = self.device_keys().await?;
+        let signing_out = match self.signing_out().await? {
+            Some(signing_out) => signing_out,
+            None => {
+                let signing_out = self.what_sign_out_erases().await?;
+                self.start_signing_out(&signing_out).await?;
+                signing_out
+            }
+        };
+        self.finish_signing_out(&signing_out).await
+    }
+
+    // A Sign Out a crash cut off finishes before anything else reads the device's keys.
+    pub(crate) async fn finish_cut_off_sign_out(&self) -> Result<(), SyncError> {
+        if let Some(signing_out) = self.signing_out().await? {
+            self.finish_signing_out(&signing_out).await?;
+        }
+        Ok(())
+    }
+
+    async fn what_sign_out_erases(&self) -> Result<SigningOut, SyncError> {
+        let keys = self.device_keys().await?;
         let mut txn = self.begin().await?;
         let resets: Vec<ResetId> = txn
             .scan(&RowRange::Table(Table::KeyPending))
@@ -43,19 +65,35 @@ impl KeyService {
                 _ => None,
             })
             .max();
-        drop(txn);
+        // One past the newest: a rotation stores its new keys before its push, and may have stopped there.
+        let newest_av = pinned.max(certified).map_or(0, Version::get).saturating_add(1);
+        Ok(SigningOut {
+            keys,
+            newest_av,
+            resets,
+        })
+    }
 
-        let mut proofs: Vec<Ed25519Seed> = held.current.iter().map(|device| device.dsk.clone()).collect();
-        for reset in &resets {
+    async fn finish_signing_out(&self, signing_out: &SigningOut) -> Result<SignOutOutcome, SyncError> {
+        let mut proofs: Vec<Ed25519Seed> = Vec::new();
+        let mut held = [&signing_out.keys.current, &signing_out.keys.pending]
+            .into_iter()
+            .flatten()
+            .map(|device| device.dsk.clone())
+            .collect::<Vec<_>>();
+        for reset in &signing_out.resets {
             if let Some(keys) = self.reset_keys(*reset).await? {
-                let public = keys.device.dsk.public()?;
-                let mut sent = false;
-                for proof in &proofs {
-                    sent |= proof.public()? == public;
-                }
-                if !sent {
-                    proofs.push(keys.device.dsk.clone());
-                }
+                held.push(keys.device.dsk.clone());
+            }
+        }
+        for dsk in held {
+            let public = dsk.public()?;
+            let mut sent = false;
+            for proof in &proofs {
+                sent |= proof.public()? == public;
+            }
+            if !sent {
+                proofs.push(dsk);
             }
         }
         let mut outcome = SignOutOutcome::Revoked;
@@ -69,19 +107,14 @@ impl KeyService {
             }
         }
 
-        // The secrets go first: a crash before the tables clear leaves a device with no keys to use, never keys
-        // with no record of them.
-        self.erase_device_keys().await?;
-        // One past the newest: a rotation stores its new keys before its push, and may have stopped there.
-        let newest = pinned.max(certified).map_or(0, Version::get).saturating_add(1);
-        for av in 1..=newest {
+        for av in 1..=signing_out.newest_av {
             let Ok(av) = Version::new(av) else {
                 break;
             };
             self.erase_account_keys(av).await?;
         }
-        for reset in resets {
-            self.erase_reset_keys(reset).await?;
+        for reset in &signing_out.resets {
+            self.erase_reset_keys(*reset).await?;
         }
         let mut txn = self.begin().await?;
         txn.clear_key_tables().await?;
@@ -100,6 +133,8 @@ impl KeyService {
         txn.commit().await?;
         self.drafts().clear();
         self.clear_notices();
+        // Last, since it holds the record of what this Sign Out erases.
+        self.erase_device_keys().await?;
         Ok(outcome)
     }
 }

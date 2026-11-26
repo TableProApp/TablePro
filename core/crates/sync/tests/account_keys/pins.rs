@@ -330,3 +330,99 @@ async fn fingerprints_are_six_words_and_a_qr_code_a_scan_of_which_counts_as_a_co
         "sync.unknown"
     );
 }
+
+#[tokio::test]
+async fn the_own_account_moves_only_through_the_personal_scope_never_a_team_s_copy() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    let c = Device::new(&server, account, "dev_c").await;
+    let text = b.genesis().await;
+    c.approved_by(&b).await;
+    let c_device = c.service.device_keys().await.unwrap().current.unwrap().key_device;
+    b.pull().await;
+    let draft = b.service.begin_replace(text).await.unwrap();
+    b.service
+        .finish_replace(
+            draft.recovery.draft,
+            crate::harness::typed_back(&draft.recovery),
+            vec![c_device],
+        )
+        .await
+        .unwrap();
+    let KeyBody::Account(body) =
+        crate::harness::stored(&server, account, "key.account", &format!("{}/2", account.to_wire())).body
+    else {
+        panic!()
+    };
+    let rotated = body.certificate(account, av(2));
+    let scope = team();
+
+    // A team pulled before the personal scope shows the account's own new certificate first.
+    let change = offer(&c, scope, &rotated).await;
+
+    assert_eq!(change, Ok(PinChange::Unchanged));
+    assert_eq!(c.pin(account).await.unwrap().av, Version::FIRST);
+    c.pull().await;
+    assert_eq!(
+        c.key_state().await,
+        tablepro_sync::api::key_flows::KeyState::Approved {
+            av: av(2),
+            key_device: c_device
+        }
+    );
+}
+
+#[tokio::test]
+async fn an_alert_after_an_endorsed_replace_keeps_the_replace_it_followed() {
+    let device = device().await;
+    let scope = team();
+    let member = Member::new();
+    offer(&device, scope, &member.certificate(1)).await.unwrap();
+    let second = Ed25519Seed::generate().unwrap();
+    device.put(vec![member_row(scope, &member.replace(2, &second))]).await;
+    let reset = Member {
+        account: member.account,
+        ik: Ed25519Seed::generate().unwrap(),
+    };
+
+    let change = offer(&device, scope, &reset.certificate(3)).await;
+
+    assert_eq!(change, Ok(PinChange::Alert));
+    let pin = device.pin(member.account).await.unwrap();
+    assert_eq!(
+        (pin.ik, pin.av, pin.how, pin.alert, pin.replaced),
+        (
+            second.public().unwrap(),
+            av(2),
+            PinHow::Replaced,
+            true,
+            vec![member.ik.public().unwrap()]
+        )
+    );
+}
+
+#[tokio::test]
+async fn an_ik_seen_replaced_verifies_only_certificates_older_than_the_pin() {
+    let device = device().await;
+    let scope = team();
+    let member = Member::new();
+    offer(&device, scope, &member.certificate(1)).await.unwrap();
+    let next = Ed25519Seed::generate().unwrap();
+    offer(&device, scope, &member.replace(2, &next)).await.unwrap();
+    let mut txn = device.txn().await;
+
+    let older = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(1))
+        .await
+        .unwrap();
+    let newer = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(3))
+        .await
+        .unwrap_err();
+
+    assert_eq!(older, IkStanding::Replaced);
+    assert_eq!(newer.code(), "keys.retired_ik");
+}
