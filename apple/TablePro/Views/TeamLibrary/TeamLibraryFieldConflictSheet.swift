@@ -402,8 +402,11 @@ private struct TeamLibraryConflictFieldGrid: View {
                         TeamLibraryConflictValueCell(value: column.value(row) ?? .notSet)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(Text(column.title))
-                            .accessibilityValue(Text(TeamLibraryConflictValueCell.spoken(column.value(row) ?? .notSet)))
+                            .accessibilityLabel(
+                                Text(column.title)
+                                    + Text(verbatim: ", ")
+                                    + Text(verbatim: TeamLibraryConflictValueCell.spoken(column.value(row) ?? .notSet))
+                            )
                             .accessibilityIdentifier("team-library-conflict-\(column.id)-\(row.field)")
                     }
                 }

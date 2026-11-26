@@ -157,9 +157,8 @@ struct TeamLibraryFieldConflictSheetTests {
 
         let mineValue = try #require(HostedAccessibility.element("team-library-conflict-mine-query", in: window))
         let theirsValue = try #require(HostedAccessibility.element("team-library-conflict-theirs-query", in: window))
-        #expect(HostedAccessibility.label(of: mineValue) == String(localized: "Your Version"))
-        #expect(HostedAccessibility.value(of: mineValue) == "select mine")
-        #expect(HostedAccessibility.value(of: theirsValue) == "select theirs")
+        #expect(HostedAccessibility.label(of: mineValue) == String(localized: "Your Version") + ", select mine")
+        #expect(HostedAccessibility.label(of: theirsValue) == String(localized: "Team's Version") + ", select theirs")
         #expect(HostedAccessibility.element("team-library-conflict-failure", in: window) != nil)
 
         let mine = try #require(HostedAccessibility.element("team-library-conflict-keep-mine", in: window))

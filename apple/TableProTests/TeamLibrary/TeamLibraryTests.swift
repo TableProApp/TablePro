@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProFFI
@@ -42,7 +43,7 @@ struct TeamLibraryTests {
             TeamLibraryFixture.item(.query, "q1", ["name": "Orders", "query": "select 1", "sort_order": 0], updatedBy: "Grace Hopper"),
             TeamLibraryFixture.item(.query, "q2", ["name": "Signups", "query": "select 2", "folder_client_id": "f1", "sort_order": 1], updatedBy: "  ")
         ])])
-        engine.set([TeamConflictFixture.conflict("q1")])
+        engine.set([TeamConflictFixture.conflict("q1", scope: TeamLibraryFixture.team)])
         let fixture = try await TeamLibraryFixture(engine: engine)
 
         try await fixture.start()

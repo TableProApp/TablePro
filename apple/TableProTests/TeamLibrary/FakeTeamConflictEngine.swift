@@ -94,6 +94,7 @@ enum TeamConflictFixture {
     static func conflict(
         _ id: String = "q1",
         kind: String = "library_query",
+        scope: String = team,
         fields: [String] = ["query"],
         mine: [String: Any]? = ["name": "Orders", "query": "select mine"],
         theirs: [String: Any]? = ["name": "Orders", "query": "select theirs"]
@@ -102,7 +103,7 @@ enum TeamConflictFixture {
         let theirs = theirs.map(json)
         let listed = [id, kind, fields.joined(separator: ","), mine ?? "-", theirs ?? "-"].joined(separator: "\n")
         return TeamConflictInfo(
-            record: record(id, kind: kind),
+            record: record(id, kind: kind, scope: scope),
             fields: fields,
             mine: mine,
             theirs: theirs,

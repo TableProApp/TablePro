@@ -122,8 +122,9 @@ internal final class TeamLibrary: ObservableObject {
         do {
             let engine = try await source.engine()
             let teams = try await engine.teamLibrary()
-            let statuses = try await engine.teamScopeStatus()
-            let unsent = try await engine.unsentTeamEdits()
+            // The teams show whatever else fails to read; the status and the edits keep their last reading.
+            let statuses = (try? await engine.teamScopeStatus()) ?? lastStatuses
+            let unsent = (try? await engine.unsentTeamEdits()) ?? self.unsent
             guard started == generation, session == shownSession else { return }
             commit(teams: teams, statuses: statuses, unsent: unsent)
             await conflicts.refresh()

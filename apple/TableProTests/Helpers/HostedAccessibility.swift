@@ -57,10 +57,6 @@ enum HostedAccessibility {
         return title.isEmpty ? string(kAXDescriptionAttribute, of: element) : title
     }
 
-    static func value(of element: AXUIElement) -> String? {
-        string(kAXValueAttribute, of: element)
-    }
-
     static func press(_ element: AXUIElement) {
         AXUIElementPerformAction(element, kAXPressAction as CFString)
     }
