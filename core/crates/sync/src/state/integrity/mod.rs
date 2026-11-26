@@ -296,22 +296,20 @@ async fn refill(tx: &mut Transaction<'static, Sqlite>, provider: Provider) -> Re
 // After any integrity recovery the file is fresh for its account: what this device holds goes up only once the person
 // chose Move my data or Start empty again, whatever the host names, since what an earlier choice kept off the account
 // may be gone with the file (orchestrator ruling on 0054). Written in the recovery's own commit, so no crash before a
-// pass loses it; the engine counts the changes for the prompt. An iCloud file that never saw its zone asks nothing.
-async fn ask_again(
-    tx: &mut Transaction<'static, Sqlite>,
-    provider: Provider,
-    started_over: bool,
-) -> Result<(), StateError> {
+// pass loses it, and over an Upload Again wait, which the next fetch finds again if the zone is still gone. No row does
+// not prove the device never synced. The engine counts what the device would send.
+async fn ask_again(tx: &mut Transaction<'static, Sqlite>) -> Result<(), StateError> {
     let scope = match read(tx, &RowKey::Scope(ScopeName::Personal)).await? {
         Some(Row::Scope(scope)) => scope,
-        _ if started_over || provider == Provider::Service => ScopeRow::new(ScopeName::Personal),
-        _ => return Ok(()),
+        _ => ScopeRow::new(ScopeName::Personal),
     };
-    if scope.push_wait.is_none() {
+    if !matches!(scope.push_wait, Some(PushWait::AccountChoice { .. })) {
         write(
             tx,
             &Row::Scope(ScopeRow {
-                push_wait: Some(PushWait::AccountChoice { unsent: 0 }),
+                push_wait: Some(PushWait::AccountChoice {
+                    unsent: PushWait::UNCOUNTED,
+                }),
                 ..scope
             }),
         )
@@ -384,11 +382,17 @@ pub(crate) async fn open(
         Ok(key) => items.root().await.map(|root| (key, root)),
         Err(error) => Err(error),
     };
+    // A file no store ever sealed goes on unsealed; a sealed one waits for its store to come back, since commits it
+    // could not seal would leave it unable to verify once the store is back. A new file goes on unsealed only on a host
+    // with no store: one whose store is away could be replacing a lost file, which the anchor tells once it answers.
+    let goes_unsealed = if bound.new_file {
+        !store.present()
+    } else {
+        bound.binding.state_mac == UNSEALED
+    };
     let (key, root) = match loaded {
         Ok(loaded) => loaded,
-        // A file no store ever sealed goes on unsealed; a sealed one waits for its store to come back, since commits
-        // it could not seal would leave it unable to verify once the store is back.
-        Err(DeviceStoreError::Unavailable { .. }) if bound.new_file || bound.binding.state_mac == UNSEALED => {
+        Err(DeviceStoreError::Unavailable { .. }) if goes_unsealed => {
             let upgraded = upgrade::rows(&mut tx).await?;
             return unsealed(tx, bound.new_file || upgraded, store, name, party).await;
         }
@@ -408,7 +412,7 @@ pub(crate) async fn open(
     let mut found = checked.find(&mut tx, key.as_ref(), &root).await?;
     if matches!(found, Found::Foreign) {
         binding = start_over(&mut tx, &binding).await?;
-        ask_again(&mut tx, party.provider(), true).await?;
+        ask_again(&mut tx).await?;
         new_file = true;
         key_digest = digest::key_digest_in(&mut tx, party.provider()).await?;
         let checked = Checked {
@@ -571,7 +575,7 @@ async fn repair(
     keys: Owed,
 ) -> Result<(), StateError> {
     refill(&mut tx, seal.provider()).await?;
-    ask_again(&mut tx, seal.provider(), false).await?;
+    ask_again(&mut tx).await?;
     let mut anchor = seal.anchor.lock().await;
     let mut root = anchor.root.clone().unwrap_or_else(|| Root::new(binding.file_id));
     root.file_id = binding.file_id;

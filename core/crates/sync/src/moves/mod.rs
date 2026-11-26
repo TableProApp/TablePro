@@ -15,7 +15,7 @@ use crate::api::error::SyncError;
 use crate::api::state::{MovePhase, MoveRow, Provider, Row, RowKey, StateFiles, StateIdentity};
 use crate::cloudkit::modify::{CloudKitSync, IcloudCopy, copy_rows};
 use crate::service::ServiceSync;
-use tokio::sync::{RwLock, RwLockReadGuard};
+use tablepro_account::{PolicyGate, PolicyRead};
 
 pub struct MoveParts {
     pub service: Arc<ServiceSync>,
@@ -29,8 +29,8 @@ pub struct MoveParts {
     // Whether the managed values allow the provider now (0055); checked right before each commit a move makes, so a
     // revocation between two steps commits nothing more.
     pub allowed: Allowed,
-    // What applies a policy change holds for writing while it does (`MoveFence`).
-    pub gate: Arc<RwLock<()>>,
+    // The account's, which a policy change takes (`MoveFence`).
+    pub gate: Arc<PolicyGate>,
 }
 
 pub type Allowed = Arc<dyn Fn(Provider) -> bool + Send + Sync>;
@@ -45,25 +45,27 @@ fn fence(allowed: &Allowed, provider: Provider) -> Result<(), SyncError> {
     }
 }
 
-// The policy's word on the move's target. A commit holds the gate's read side from its check until it lands, and a
-// policy change takes the write side, so the change lands before the commit (which is refused) or after it (and the
+// The policy's word on the move's target. A commit holds a read of the account's gate from its check until it lands,
+// and a policy change waits for it, so the change lands before the commit (which is refused) or after it (and the
 // next step is) (orchestrator ruling on 0055).
 pub(crate) struct MoveFence<'a> {
     allowed: &'a Allowed,
-    gate: &'a RwLock<()>,
+    gate: &'a Arc<PolicyGate>,
     provider: Provider,
 }
 
-impl<'a> MoveFence<'a> {
-    pub(crate) fn check(&self) -> Result<(), SyncError> {
+impl MoveFence<'_> {
+    // A step that commits nothing, which a change under way holds back.
+    pub(crate) async fn check(&self) -> Result<(), SyncError> {
+        let _read = self.gate.read().await;
         fence(self.allowed, self.provider)
     }
 
     // Held until the commit after it lands.
-    pub(crate) async fn hold(&self) -> Result<RwLockReadGuard<'a, ()>, SyncError> {
-        let held = self.gate.read().await;
-        self.check()?;
-        Ok(held)
+    pub(crate) async fn hold(&self) -> Result<PolicyRead, SyncError> {
+        let read = self.gate.read().await;
+        fence(self.allowed, self.provider)?;
+        Ok(read)
     }
 }
 
@@ -113,7 +115,7 @@ impl Mover {
             return Ok(());
         }
         let policy = self.policy(Provider::Service);
-        policy.check()?;
+        policy.check().await?;
         icloud.stop_for_move(&policy).await?;
         let copy = icloud.copy_for_move().await?;
         self.parts
@@ -139,7 +141,7 @@ impl Mover {
                 return Ok(());
             }
             let policy = self.policy(Provider::Service);
-            policy.check()?;
+            policy.check().await?;
             let copy = icloud.copy_without_icloud(&policy).await?;
             self.parts
                 .service
@@ -200,7 +202,7 @@ impl Mover {
             });
         }
         let policy = self.policy(Provider::Service);
-        policy.check()?;
+        policy.check().await?;
         if let Some(account) = &self.parts.icloud_account {
             self.parts.files.delete(icloud_file(account)).await?;
         }
@@ -231,7 +233,7 @@ impl Mover {
             });
         }
         let policy = self.policy(Provider::ICloud);
-        policy.check()?;
+        policy.check().await?;
         self.parts.service.leave_for_icloud(&policy).await?;
         self.parts
             .service
@@ -255,12 +257,13 @@ impl Mover {
             what: "delete an iCloud zone this device never used",
         })?;
         let transport = self.transport()?;
-        fence(&self.parts.allowed, Provider::ICloud)?;
+        let policy = self.policy(Provider::ICloud);
+        policy.check().await?;
         match transport.delete_zone(account.clone()).await {
             Ok(()) | Err(CloudKitFailure::ZoneNotFound | CloudKitFailure::ZoneDeletedByUser) => {}
             Err(failure) => return Err(failure.into()),
         }
-        fence(&self.parts.allowed, Provider::ICloud)?;
+        let _held = policy.hold().await?;
         self.parts.files.delete(icloud_file(account)).await?;
         Ok(())
     }

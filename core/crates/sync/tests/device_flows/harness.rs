@@ -167,6 +167,10 @@ impl HostDeviceStore for Store {
         }
         self.inner.delete(item).await
     }
+
+    fn present(&self) -> bool {
+        self.inner.present()
+    }
 }
 
 pub fn origin() -> Origin {

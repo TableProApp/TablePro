@@ -14,6 +14,8 @@ struct State {
     items: HashMap<DeviceItem, Zeroizing<Vec<u8>>>,
     locked: bool,
     unavailable: bool,
+    // The host declares no store at all.
+    absent: bool,
     fail_next: Vec<DeviceStoreError>,
 }
 
@@ -35,6 +37,7 @@ impl FakeDeviceStore {
     pub fn without_store() -> Self {
         let store = Self::default();
         store.lock().unavailable = true;
+        store.lock().absent = true;
         store
     }
 
@@ -125,6 +128,10 @@ impl HostDeviceStore for FakeDeviceStore {
         let mut state = self.admit(&item)?;
         state.items.remove(&item);
         Ok(())
+    }
+
+    fn present(&self) -> bool {
+        !self.lock().absent
     }
 }
 

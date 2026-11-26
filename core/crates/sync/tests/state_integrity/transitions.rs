@@ -56,18 +56,20 @@ async fn a_sealed_file_waits_for_its_store_and_opens_fresh_once_it_is_back() {
     assert_eq!(state.opened(), &Opened::FRESH);
 }
 
-// A file a device with no store kept, met once a store appears: nothing proves it, so it opens with no anchor and is
-// sealed from then on.
+// A file a device that declares no store kept, met once a store appears: nothing proves it, so it opens with no anchor
+// and is sealed from then on. With no store to wait for, the new file opens unsealed and asks nothing (orchestrator
+// ruling on 0054).
 #[tokio::test]
 async fn a_file_no_store_sealed_opens_with_no_anchor_once_a_store_appears() {
     let disk = Disk::new();
-    disk.store.set_unavailable(true);
+    disk.store.set_absent(true);
     let state = disk.open().await;
     let unsealed = state.opened().clone();
+    let asked = get(&state, RowKey::Scope(ScopeName::Personal)).await;
     put(&state, vec![store_row(1), envelope(1)]).await;
     drop(state);
 
-    disk.store.set_unavailable(false);
+    disk.store.set_absent(false);
     let state = disk.open().await;
     let first = state.opened().clone();
     drop(state);
@@ -80,33 +82,46 @@ async fn a_file_no_store_sealed_opens_with_no_anchor_once_a_store_appears() {
             key_tables: KeyTrust::Unanchored,
         }
     );
+    assert_eq!(asked, None);
     assert_eq!(first, unanchored_refill());
     assert_eq!(again.opened().sync_tables, SyncTrust::Trusted);
     assert_eq!(again.opened().key_tables, KeyTrust::Unanchored);
     assert_eq!(table(&again, Table::KeyEnvelopes).await, vec![envelope(1)]);
 }
 
-// A file made while the store was away, after an earlier file of the identity left its key and anchor: it never
-// verified under that key, so none of it is kept, and the anchor's floor stands in for its key tables.
+// A file lost while the device's store is away, after an earlier file of the identity left its key and anchor: no new
+// file is made until the store answers, which then shows the loss, so the anchor's floor stands in for the key tables
+// and the file asks again before anything personal goes up (orchestrator ruling on 0054).
 #[tokio::test]
-async fn a_file_made_without_its_store_starts_over_on_the_anchor_once_the_store_is_back() {
+async fn a_file_lost_while_its_store_is_away_waits_for_the_store_then_recovers() {
     let disk = Disk::new();
     let state = disk.open().await;
     put(&state, vec![envelope(2)]).await;
     drop(state);
     disk.remove(&identity()).await;
     disk.store.set_unavailable(true);
-    let state = disk.open().await;
-    put(&state, vec![store_row(1), envelope(1)]).await;
-    drop(state);
-
+    let away = disk.files.open(identity()).await.err();
+    disk.store.set_locked(true);
     disk.store.set_unavailable(false);
+    let locked = disk.files.open(identity()).await.err();
+    disk.store.set_locked(false);
+
     let state = disk.open().await;
 
+    assert_eq!(away, Some(StateError::AnchorUnsettled));
+    assert_eq!(locked, Some(StateError::AnchorUnsettled));
     assert_eq!(state.opened().sync_tables, SyncTrust::Refill);
     assert!(matches!(&state.opened().key_tables, KeyTrust::Rebuild { checkpoint } if checkpoint.envelopes.len() == 1));
     assert_eq!(table(&state, Table::KeyEnvelopes).await, vec![envelope(2)]);
-    assert_eq!(get(&state, RowKey::Store("connections".to_owned())).await, None);
+    let Some(Row::Scope(scope)) = get(&state, RowKey::Scope(ScopeName::Personal)).await else {
+        panic!("no scope row");
+    };
+    assert_eq!(
+        scope.push_wait,
+        Some(PushWait::AccountChoice {
+            unsent: PushWait::UNCOUNTED
+        })
+    );
 }
 
 // A MAC key made again goes into the store only once the file it seals landed: a crash or a failed write before leaves
@@ -310,8 +325,9 @@ async fn a_copy_sealed_under_a_key_since_made_again_starts_over_on_the_anchor() 
 }
 
 // After any integrity recovery the file waits for the person to choose Move my data or Start empty again before
-// anything personal goes up, in the recovery's own commit (orchestrator ruling on 0054): an older service copy, a copy
-// started over on the anchor, and an iCloud copy of a file that saw its zone.
+// anything personal goes up, in the recovery's own commit, uncounted until an engine reads it (orchestrator ruling on
+// 0054): an older service copy, a copy started over on the anchor, an iCloud copy that held an Upload Again wait, and
+// an iCloud file lost under its anchor, whose missing row proves nothing.
 #[tokio::test]
 async fn a_recovered_file_waits_for_the_person_to_choose_again() {
     let disk = Disk::new();
@@ -319,7 +335,10 @@ async fn a_recovered_file_waits_for_the_person_to_choose_again() {
         Some(Row::Scope(scope)) => scope.push_wait,
         _ => None,
     };
-    let asks = Some(PushWait::AccountChoice { unsent: 0 });
+    let asks = Some(PushWait::AccountChoice {
+        unsent: PushWait::UNCOUNTED,
+    });
+    let personal = || RowKey::Scope(ScopeName::Personal);
     let state = disk.open().await;
     put(&state, vec![store_row(1)]).await;
     drop(state);
@@ -328,30 +347,41 @@ async fn a_recovered_file_waits_for_the_person_to_choose_again() {
     put(&state, vec![store_row(2)]).await;
     drop(state);
     disk.restore(&identity(), &older).await;
-    let restored = wait(get(&disk.open().await, RowKey::Scope(ScopeName::Personal)).await);
+    let restored = wait(get(&disk.open().await, personal()).await);
     disk.files.delete(identity()).await.unwrap();
     let state = disk.open().await;
     put(&state, vec![store_row(3)]).await;
     drop(state);
     disk.restore(&identity(), &older).await;
-    let started_over = wait(get(&disk.open().await, RowKey::Scope(ScopeName::Personal)).await);
+    let started_over = wait(get(&disk.open().await, personal()).await);
+    let reopened = wait(get(&disk.open().await, personal()).await);
     let state = disk.open_as(&icloud()).await;
-    put(&state, vec![Row::Scope(ScopeRow::new(ScopeName::Personal))]).await;
+    put(
+        &state,
+        vec![Row::Scope(ScopeRow {
+            push_wait: Some(PushWait::UploadAgain),
+            ..ScopeRow::new(ScopeName::Personal)
+        })],
+    )
+    .await;
     drop(state);
     let icloud_older = disk.copy(&icloud()).await;
     let state = disk.open_as(&icloud()).await;
     put(&state, vec![store_row(4)]).await;
     drop(state);
     disk.restore(&icloud(), &icloud_older).await;
-    let icloud_restored = wait(get(&disk.open_as(&icloud()).await, RowKey::Scope(ScopeName::Personal)).await);
+    let icloud_restored = wait(get(&disk.open_as(&icloud()).await, personal()).await);
+    let state = disk.open_as(&icloud()).await;
+    put(&state, vec![store_row(5)]).await;
+    drop(state);
+    disk.remove(&icloud()).await;
+    let icloud_lost = wait(get(&disk.open_as(&icloud()).await, personal()).await);
 
     assert_eq!(restored, asks);
     assert_eq!(started_over, asks);
+    assert_eq!(reopened, asks);
     assert_eq!(icloud_restored, asks);
-    assert_eq!(
-        wait(get(&disk.open().await, RowKey::Scope(ScopeName::Personal)).await),
-        asks
-    );
+    assert_eq!(icloud_lost, asks);
 }
 
 // The file the anchor names, with its MAC written over, is refused: only a file the anchor does not know starts over.

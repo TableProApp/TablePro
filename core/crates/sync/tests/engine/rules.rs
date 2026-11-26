@@ -1475,6 +1475,8 @@ async fn a_recovered_state_file_asks_again_before_anything_personal_goes_up() {
         let _ = std::fs::remove_file(name);
     }
     connections.put(&id(1), json!({"name": "Made while the file was gone"}));
+    // The recovery's open, then a quit before any pass: the next open trusts the file and still asks, with the count.
+    drop(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await);
     let mini = DeviceBuilder::new(&server, "dev_mini")
         .state(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await)
         .connections(Arc::clone(&connections), Arc::clone(&file))
@@ -1482,6 +1484,7 @@ async fn a_recovered_state_file_asks_again_before_anything_personal_goes_up() {
         .build()
         .await;
 
+    let before_any_pass = mini.sync.plan_new_identity().await.unwrap();
     let waited = mini.sync().await;
     let sent_unasked = stored(&server, "connection", &id(1));
     let plan = mini.sync.plan_new_identity().await.unwrap();
@@ -1490,6 +1493,7 @@ async fn a_recovered_state_file_asks_again_before_anything_personal_goes_up() {
         .await
         .unwrap();
 
+    assert_eq!(before_any_pass.unsent, 1);
     assert_eq!(waited.push_wait, Some(PushWait::AccountChoice { unsent: 1 }));
     assert_eq!(sent_unasked, None);
     assert_eq!(

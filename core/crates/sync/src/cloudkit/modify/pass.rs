@@ -687,16 +687,21 @@ impl CloudKitSync {
             if state.opened().sync_tables == SyncTrust::Refill {
                 self.stop.check()?;
                 zone::refill(state).await?;
-                // The prompt the recovery asks with counts what this device would send (`integrity::ask_again`).
-                if let Some(PushWait::AccountChoice { .. }) = zone::push_wait(state).await? {
-                    let categories = lock(&self.categories).clone();
-                    let fetcher = Fetcher::new(self.transport.as_ref(), state, &self.adapters, categories)?;
-                    let unsent = Pusher::new(&fetcher, &self.stop, self.clock.now_ms()).unsent().await?;
-                    drop(fetcher);
-                    zone::wait(state, Some(PushWait::AccountChoice { unsent })).await?;
-                }
             }
             session.stale_handled = true;
+        }
+        // The wait an integrity recovery wrote counts what this device would send (`integrity::ask_again`).
+        if zone::push_wait(state).await?
+            == Some(PushWait::AccountChoice {
+                unsent: PushWait::UNCOUNTED,
+            })
+        {
+            let categories = lock(&self.categories).clone();
+            let fetcher = Fetcher::new(self.transport.as_ref(), state, &self.adapters, categories)?;
+            let unsent = Pusher::new(&fetcher, &self.stop, self.clock.now_ms()).unsent().await?;
+            drop(fetcher);
+            self.stop.check()?;
+            zone::wait(state, Some(PushWait::AccountChoice { unsent })).await?;
         }
         // Taken together under the lock `set_categories` holds as it sets the flag, so a kind turned on is read whole by
         // the pass that has it on.

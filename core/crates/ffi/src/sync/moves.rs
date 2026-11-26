@@ -31,7 +31,11 @@ impl SyncService {
         let icloud = self.icloud.as_ref().ok().map(|engine| Arc::clone(&engine.sync));
         let (cloudkit, files, icloud_account) = (self.cloudkit.clone(), self.files.clone(), self.icloud_account());
         let (account, platform) = (self.account.clone(), self.config.platform);
-        let gate = Arc::clone(&self.policy_gate);
+        // With no account there is no policy, and no change to wait for.
+        let gate = self
+            .account
+            .as_ref()
+            .map_or_else(Arc::default, |account| account.account.policy_gate());
         let allowed: tablepro_sync::moves::Allowed = Arc::new(move |provider| {
             let tag = match provider {
                 Provider::Service => SyncProviderTag::TableproSync,
@@ -165,9 +169,6 @@ pub(crate) fn hold_to_policy(service: &std::sync::Weak<SyncService>) -> impl Fut
             let Some(held) = service.upgrade() else {
                 return;
             };
-            // A move commit holds the gate from its check until it lands: the change waits for one in flight, and every
-            // commit after it reads the changed values (orchestrator ruling on 0055).
-            drop(held.policy_gate.write().await);
             held.leave_a_forbidden_provider().await;
             drop(held);
             if values.changed().await.is_err() {

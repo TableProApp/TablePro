@@ -33,8 +33,8 @@ use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    ApprovalDecision, KeyVersionState, MovePhase, MoveRow, Provider, PushWait, Row, RowKey, RowRange, ScopeRow,
-    Standing, StateIdentity, StateStore, StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
+    ApprovalDecision, KeyVersionState, MovePhase, MoveRow, Provider, Row, RowKey, RowRange, Standing, StateIdentity,
+    StateStore, StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
 };
 use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{
@@ -732,6 +732,7 @@ impl ServiceSync {
     ) -> Result<PassReport, SyncError> {
         self.check_stop()?;
         self.refill_stale_file(session).await?;
+        self.count_recovery_wait().await?;
         self.owe_account_choice().await?;
         self.queue().finish_decided().await?;
         let body = self.poll_scopes(session).await?;
@@ -1075,23 +1076,12 @@ impl ServiceSync {
             return Ok(());
         }
         if self.state.opened().sync_tables == crate::api::state::SyncTrust::Refill {
-            let unsent = identity::unsent_changes(&self.state, &self.adapters).await?;
             self.check_stop()?;
             let mut txn = begin(&self.state).await?;
             for row in txn.scan(&RowRange::Table(Table::Stores)).await? {
                 txn.delete(&row.key()).await?;
             }
             txn.delete(&RowKey::Move).await?;
-            // The prompt the recovery asks with counts what this device would send (`integrity::ask_again`).
-            if let Some(Row::Scope(row)) = txn.get(&RowKey::Scope(ScopeName::Personal)).await?
-                && matches!(row.push_wait, Some(PushWait::AccountChoice { .. }))
-            {
-                txn.put(Row::Scope(ScopeRow {
-                    push_wait: Some(PushWait::AccountChoice { unsent }),
-                    ..row
-                }))
-                .await?;
-            }
             self.check_stop()?;
             txn.commit().await?;
         }

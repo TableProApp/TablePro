@@ -44,7 +44,7 @@ impl MoveBack {
             return Ok(());
         }
         let names: Vec<String> = self.deletions.iter().map(|(name, _)| name.clone()).collect();
-        fence.check()?;
+        fence.check().await?;
         let outcomes = transport.modify(self.account.clone(), Vec::new(), names).await?;
         let keys: HashMap<&str, &RecordKey> = self.deletions.iter().map(|(name, key)| (name.as_str(), key)).collect();
         let mut txn = state.begin().await?;

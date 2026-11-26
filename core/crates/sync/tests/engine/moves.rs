@@ -142,14 +142,16 @@ impl Apple {
         })
     }
 
-    // As `mover`, off iCloud, under values a test flips, behind a policy gate the test holds; `calls` counts the checks.
-    fn mover_gated(
+    // As `mover`, off iCloud, behind a policy gate: `revoke` runs as a policy change, from another thread, once the
+    // values were asked `at` times, while that check's read is held. `calls` counts the checks.
+    fn mover_revoked_during(
         &self,
-        gate: &Arc<tokio::sync::RwLock<()>>,
-        allows: &Arc<std::sync::atomic::AtomicBool>,
+        gate: &Arc<tablepro_account::PolicyGate>,
+        at: usize,
         calls: &Arc<std::sync::atomic::AtomicUsize>,
     ) -> Mover {
-        let (allows, calls) = (Arc::clone(allows), Arc::clone(calls));
+        let allows = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let (calls, changing) = (Arc::clone(calls), Arc::clone(gate));
         Mover::new(MoveParts {
             service: Arc::clone(&self.device.sync),
             icloud: None,
@@ -160,7 +162,14 @@ impl Apple {
                 if provider != tablepro_sync::api::state::Provider::ICloud {
                     return true;
                 }
-                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 == at {
+                    let (gate, allows) = (Arc::clone(&changing), Arc::clone(&allows));
+                    std::thread::spawn(move || {
+                        gate.change(|| allows.store(false, std::sync::atomic::Ordering::SeqCst));
+                    });
+                    // The change marks itself under way before this check's commit lands.
+                    std::thread::sleep(std::time::Duration::from_millis(30));
+                }
                 allows.load(std::sync::atomic::Ordering::SeqCst)
             }),
             gate: Arc::clone(gate),
@@ -742,46 +751,39 @@ async fn a_move_back_revoked_before_its_open_row_commits_records_no_move() {
     assert_eq!(mac.device.sync.mode(), ServiceMode::Personal);
 }
 
-// A policy change holds the move's commits: one waiting on it reads the values it left, so a revocation applied
-// meanwhile refuses that commit, and nothing of the move back is recorded (orchestrator ruling on 0055).
+// A policy change that comes while a move commit holds its read waits for that commit to land, and the move's next
+// step reads the change: the open row stands, nothing is deleted on iCloud, and the move back stops there
+// (orchestrator ruling on 0055).
 #[tokio::test]
-async fn a_move_commit_waits_for_a_policy_change_and_reads_what_it_left() {
+async fn a_policy_change_during_a_move_commit_lands_after_it_and_stops_the_next_step() {
     let server = FakeServer::new();
     let cloud = Arc::new(FakeCloudKit::signed_in(USER));
     let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
     mac.put(1, carried(1, "Prod", 1));
     mac.icloud_pass().await;
     mac.mover(true).move_to_service().await.unwrap();
+    let web = on_the_service(&server).await;
+    web.connections.remove(&id(1));
+    web.sync().await;
+    mac.device.sync().await;
     let plan = mac.mover(false).plan_move_to_icloud().await.unwrap();
-    let gate = Arc::new(tokio::sync::RwLock::new(()));
-    let allows = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let gate = Arc::new(tablepro_account::PolicyGate::default());
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mover = mac.mover_gated(&gate, &allows, &calls);
 
-    let changing = gate.write().await;
-    let back = tokio::spawn(async move { mover.move_to_icloud(plan.icloud_deletions).await });
-    for _ in 0..500 {
-        if calls.load(std::sync::atomic::Ordering::SeqCst) > 0 {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    let checked_while_changing = calls.load(std::sync::atomic::Ordering::SeqCst);
-    allows.store(false, std::sync::atomic::Ordering::SeqCst);
-    drop(changing);
-    let back = back.await.unwrap();
+    // The second check is the open row's commit.
+    let back = mac
+        .mover_revoked_during(&gate, 2, &calls)
+        .move_to_icloud(plan.icloud_deletions)
+        .await;
     let row = mac.device.sync.move_row().await.unwrap();
 
-    // The move's start passed; its first commit waited out the change, then read the revocation.
-    assert_eq!(checked_while_changing, 1);
-    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
     assert_eq!(back.unwrap_err().code(), "sync.not_allowed");
-    assert_ne!(
-        row.map(|row| row.target),
-        Some(tablepro_sync::api::state::Provider::ICloud)
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 3);
+    assert_eq!(
+        row.map(|row| (row.target, row.phase)),
+        Some((tablepro_sync::api::state::Provider::ICloud, MovePhase::Open))
     );
-    assert_eq!(mac.device.sync.mode(), ServiceMode::Personal);
+    assert!(in_zone(&cloud, 1));
 }
 
 // Only what the person confirmed leaves the zone: a record the device no longer holds for any other reason, as one

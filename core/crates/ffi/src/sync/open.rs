@@ -343,7 +343,6 @@ impl SyncService {
             files,
             _forward: forwarding,
             _policy: std::sync::Mutex::new(None),
-            policy_gate: Arc::default(),
         });
         let watching = service.tasks.spawn_owned(hold_to_policy(&Arc::downgrade(&service)));
         *service

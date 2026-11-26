@@ -297,6 +297,9 @@ pub enum PushWait {
 }
 
 impl PushWait {
+    // The count an integrity recovery's wait holds until an engine counts what the device would send.
+    pub const UNCOUNTED: u64 = u64::MAX;
+
     pub const fn name(self) -> &'static str {
         match self {
             Self::AccountChoice { .. } => "account_choice",

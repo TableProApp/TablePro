@@ -119,7 +119,37 @@ impl ServiceSync {
         Ok(self.scope_row(ScopeName::Personal).await?.and_then(|row| row.push_wait))
     }
 
+    // The wait an integrity recovery wrote counts what this device would send once an engine reads it, after a restart
+    // before any pass too (`integrity::ask_again`).
+    pub(super) async fn count_recovery_wait(&self) -> Result<(), SyncError> {
+        if self.own_push_wait().await?
+            != Some(PushWait::AccountChoice {
+                unsent: PushWait::UNCOUNTED,
+            })
+        {
+            return Ok(());
+        }
+        let unsent = unsent_changes(&self.state, &self.adapters).await?;
+        self.stop.check()?;
+        let mut txn = begin(&self.state).await?;
+        if let Some(Row::Scope(row)) = txn.get(&RowKey::Scope(ScopeName::Personal)).await?
+            && row.push_wait
+                == Some(PushWait::AccountChoice {
+                    unsent: PushWait::UNCOUNTED,
+                })
+        {
+            txn.put(Row::Scope(ScopeRow {
+                push_wait: Some(PushWait::AccountChoice { unsent }),
+                ..row
+            }))
+            .await?;
+            txn.commit().await?;
+        }
+        Ok(())
+    }
+
     pub(super) async fn plan_choice(&self) -> Result<NewIdentityPlan, SyncError> {
+        self.count_recovery_wait().await?;
         match self.own_push_wait().await? {
             Some(PushWait::AccountChoice { unsent }) => Ok(NewIdentityPlan {
                 unsent,
