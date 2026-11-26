@@ -390,6 +390,47 @@ async fn a_certificate_under_the_account_s_own_ik_at_a_far_av_does_not_stretch_s
     assert!(device.store.is_empty());
 }
 
+// Own certificates the server made up at many far `av`s each verify under no pin: they stretch Sign Out by nothing.
+#[tokio::test]
+async fn many_certificates_the_server_made_up_cost_sign_out_nothing() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let planted = (0..50)
+        .map(|offset| {
+            let far = tablepro_keys::cert::AccountCertificate::sign(
+                &origin(),
+                account,
+                Version::new(1_000 + offset).unwrap(),
+                tablepro_keys::cert::CertKind::GenesisOrRotation,
+                &tablepro_keys::keys::Ed25519Seed::generate().unwrap(),
+                AccountKeys::generate().unwrap().public().unwrap(),
+                None,
+            )
+            .unwrap();
+            crate::harness::record_of(&tablepro_keys::body::KeyObject {
+                id: tablepro_keys::record_id::KeyRecordId::Account { account, av: far.av },
+                body: tablepro_keys::body::KeyBody::Account(tablepro_keys::body::AccountBody::of(&far)),
+            })
+        })
+        .collect();
+    device
+        .feed(planted, tablepro_sync::api::key_flows::ArrivalOrder::InOrder)
+        .await;
+    let watched = std::sync::Arc::new(crate::harness::Watched {
+        store: device.store.clone(),
+        away: false,
+        deletes: std::sync::Mutex::new(0),
+    });
+    let counting = device.restarted_over(watched.clone());
+
+    counting.service.sign_out().await.unwrap();
+
+    assert!(*watched.deletes.lock().unwrap() < 10);
+    assert!(device.store.is_empty());
+}
+
 #[tokio::test]
 async fn no_reset_key_is_readable_while_a_sign_out_is_under_way() {
     let server = FakeServer::new();

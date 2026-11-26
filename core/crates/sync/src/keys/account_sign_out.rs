@@ -6,6 +6,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use tablepro_keys::body::KeyBody;
 use tablepro_keys::encoding::{ResetId, Version};
 use tablepro_keys::keys::Ed25519Seed;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
@@ -71,24 +72,45 @@ impl KeyService {
         Ok(SigningOut { keys, resets })
     }
 
-    // The `av`s whose account keys this device may hold: 1, its own pin's, each own certificate the key tables hold,
-    // applied or a candidate, and the one after each, since a rotation stores its new keys before it holds its
-    // candidate. The key tables go only after the erasing, so a Sign Out cut off reads the same ones again. Erasing an
-    // item that is not there succeeds, so an `av` someone planted costs one delete, never a count up to it.
+    // The `av`s whose account keys this device may hold: 1, its own pin's, each own candidate, and the one after each,
+    // since a rotation stores its new keys before it holds its candidate. An applied certificate counts up to the `av`
+    // after the newest of those, as the one a recovery opened before its own rotation, and above it only under the own
+    // pin, which the server cannot sign. The key tables go only after the erasing, so a Sign Out cut off reads the
+    // same ones again. Erasing an item that is not there succeeds, so no `av` is ever counted up to.
     async fn account_key_avs(&self) -> Result<BTreeSet<Version>, SyncError> {
         let mut txn = self.begin().await?;
         let mut named = BTreeSet::from([Version::FIRST]);
         if let Some(pin) = self.pin(txn.as_mut(), self.account()).await? {
             named.insert(pin.av);
         }
+        let mut applied = Vec::new();
         for held in self
             .held_objects(txn.as_mut(), ScopeName::Personal, KeyKind::Account)
             .await?
         {
-            if let KeyRecordId::Account { account, av } = held.object.id
-                && account == self.account()
-            {
+            let (KeyRecordId::Account { account, av }, KeyBody::Account(body)) = (held.object.id, &held.object.body)
+            else {
+                continue;
+            };
+            if account != self.account() {
+                continue;
+            }
+            if held.applied {
+                applied.push(body.certificate(account, av));
+            } else {
                 named.insert(av);
+            }
+        }
+        let reach = named.last().and_then(|newest| newest.next().ok());
+        for certificate in applied {
+            let within = reach.is_some_and(|reach| certificate.av <= reach);
+            if within
+                || self
+                    .verify_certificate(txn.as_mut(), ScopeName::Personal, &certificate)
+                    .await
+                    .is_ok()
+            {
+                named.insert(certificate.av);
             }
         }
         let after: Vec<Version> = named.iter().filter_map(|av| av.next().ok()).collect();
