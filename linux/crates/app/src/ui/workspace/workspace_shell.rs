@@ -12,7 +12,7 @@ use libadwaita as adw;
 use libadwaita::prelude::{AdwDialogExt, AlertDialogExt, BinExt, PreferencesGroupExt};
 use tablepro_core::DataModel;
 use tablepro_storage::saved_queries::SavedQuery;
-use tablepro_storage::{QueryHistory, SavedQueriesSnapshot};
+use tablepro_storage::{SavedQueriesSnapshot, SavedQueryDatabase};
 use uuid::Uuid;
 
 use super::health_banner::REVIEW_HOST_KEY;
@@ -791,11 +791,11 @@ impl WorkspaceShell {
         let imp = self.imp();
         if imp.favorites_watch.borrow().is_none()
             && let Some((history, _)) = imp.favorites_source.get()
-            && let Some(history) = history.store()
+            && let Some(saved) = history.saved()
         {
             imp.favorites_watch
                 .replace(Some(tablepro_session::runtime::WatchForwarder::new(
-                    history.saved_queries().changes(),
+                    saved.saved_queries().changes(),
                     glib::clone!(
                         #[weak(rename_to = shell)]
                         self,
@@ -828,12 +828,12 @@ impl WorkspaceShell {
             return;
         };
         pane.loading();
-        let ready = history.ready_store();
+        let ready = history.ready_saved();
         crate::runtime::spawn_and_deliver(
             tasks,
             async move {
-                let history = ready.await?;
-                Some(history.saved_queries().snapshot(connection).await)
+                let saved = ready.await?;
+                Some(saved.saved_queries().snapshot(connection).await)
             },
             glib::clone!(
                 #[weak(rename_to = shell)]
@@ -942,20 +942,23 @@ impl WorkspaceShell {
 
     pub(crate) fn rename_favorite(&self, id: Uuid, name: String) {
         self.change_favorites(
-            async move |history| history.saved_queries().rename(id, &name).await,
+            async move |saved| saved.saved_queries().rename(id, &name).await,
             gettext("Could not rename that saved query."),
         );
     }
 
     pub(crate) fn delete_favorite(&self, id: Uuid) {
         self.change_favorites(
-            async move |history| history.saved_queries().delete(id).await,
+            async move |saved| saved.saved_queries().delete(id).await,
             gettext("Could not delete that saved query."),
         );
     }
 
-    pub(super) fn change_favorites<W>(&self, change: impl FnOnce(QueryHistory) -> W + Send + 'static, failure: String)
-    where
+    pub(super) fn change_favorites<W>(
+        &self,
+        change: impl FnOnce(SavedQueryDatabase) -> W + Send + 'static,
+        failure: String,
+    ) where
         W: std::future::Future<Output = Result<(), tablepro_storage::StorageError>> + Send + 'static,
     {
         self.change_favorites_with(change, failure, favorite_failure_text);
@@ -963,7 +966,7 @@ impl WorkspaceShell {
 
     pub(super) fn change_favorites_with<W>(
         &self,
-        change: impl FnOnce(QueryHistory) -> W + Send + 'static,
+        change: impl FnOnce(SavedQueryDatabase) -> W + Send + 'static,
         failure: String,
         describe: fn(&tablepro_storage::StorageError, &str) -> String,
     ) where
@@ -976,11 +979,11 @@ impl WorkspaceShell {
         let Some(hold) = imp.favorites_hold.get() else {
             return;
         };
-        let ready = history.ready_store();
+        let ready = history.ready_saved();
         let (send, received) = tokio::sync::oneshot::channel();
         crate::runtime::spawn_held(tasks, hold.as_ref(), async move {
             let result = match ready.await {
-                Some(history) => change(history).await,
+                Some(saved) => change(saved).await,
                 None => Err(tablepro_storage::StorageError::NotInitialised),
             };
             let _ = send.send(result);
@@ -1297,7 +1300,7 @@ mod tests {
         test.workspace()
             .with_model(|model| model.on_save_query_named(name.to_owned(), "SELECT 1".to_owned()));
         wait_until(WAIT, || test.hold.live() == 0).expect("save complete");
-        let store = test.services.history().store().expect("history").saved_queries();
+        let store = test.services.history().saved().expect("saved queries").saved_queries();
         let name = name.to_owned();
         let reading = test.services.tasks.spawn_task(async move {
             store
@@ -1340,7 +1343,7 @@ mod tests {
         release.send(()).expect("write still running");
         wait_until(WAIT, || write_hold.upgrade().is_none()).expect("rename hold released");
         wait_until(WAIT, || test.hold.live() == 0).expect("write complete");
-        let store = test.services.history().store().expect("history").saved_queries();
+        let store = test.services.history().saved().expect("saved queries").saved_queries();
         let reading = test.services.tasks.spawn_task(async move { store.get(id).await });
         let saved = finish_on_main(WAIT, reading)
             .expect("read complete")
@@ -1394,7 +1397,7 @@ mod tests {
         let favorite = saved_favorite(&test, "Orders");
         let shell = test.window.shell().expect("shell");
         let read = || {
-            let store = test.services.history().store().expect("history").saved_queries();
+            let store = test.services.history().saved().expect("saved queries").saved_queries();
             let id = favorite.id;
             let reading = test.services.tasks.spawn_task(async move { store.get(id).await });
             finish_on_main(WAIT, reading)

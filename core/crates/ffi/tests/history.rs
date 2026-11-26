@@ -13,6 +13,17 @@ use tablepro_ffi::{
     SecretItemTag, SecretKindTag,
 };
 
+fn shown(text: impl Into<String>, connection: Option<String>) -> tablepro_ffi::HistoryFilterArg {
+    tablepro_ffi::HistoryFilterArg {
+        text: text.into(),
+        connection_ids: connection.map(|id| vec![id]),
+        sources: None,
+        status: tablepro_ffi::HistoryStatusTag::Any,
+        executed_after_ms: None,
+        executed_before_ms: None,
+    }
+}
+
 struct NoSecrets;
 
 impl HostSecrets for NoSecrets {
@@ -78,6 +89,7 @@ fn ran(sql: &str, at_secs: i64) -> HistoryRun {
         duration_ms: Some(12),
         rows_affected: Some(3),
         outcome: HistoryOutcomeTag::Succeeded,
+        details: Default::default(),
     }
 }
 
@@ -100,8 +112,14 @@ async fn a_recorded_run_is_found_by_its_words() {
         ..ran("SELECT nope FROM people", 1_700_000_001)
     };
     let refused = history.record(session.clone(), failed).await.unwrap().unwrap();
-    let named = history.search("name people".to_owned(), None, None, 50).await.unwrap();
-    let both = history.search("PEOPLE".to_owned(), None, None, 50).await.unwrap();
+    let named = history
+        .search(shown("name people".to_owned(), None), None, 50)
+        .await
+        .unwrap();
+    let both = history
+        .search(shown("PEOPLE".to_owned(), None), None, 50)
+        .await
+        .unwrap();
 
     let [entry] = named.entries.as_slice() else {
         panic!("{:?}", named.entries)
@@ -144,8 +162,11 @@ async fn a_search_keeps_to_the_connection_it_names() {
         .await
         .unwrap()
         .unwrap();
-    let only_first = history.search(String::new(), Some(first.id()), None, 50).await.unwrap();
-    let every = history.search(String::new(), None, None, 50).await.unwrap();
+    let only_first = history
+        .search(shown(String::new(), Some(first.id())), None, 50)
+        .await
+        .unwrap();
+    let every = history.search(shown(String::new(), None), None, 50).await.unwrap();
 
     let ids: Vec<i64> = only_first.entries.iter().map(|entry| entry.id).collect();
     assert_eq!(ids, [mine]);
@@ -164,8 +185,8 @@ async fn pages_follow_the_cursor_and_show_no_run_twice() {
         ids.push(history.record(session.clone(), ran(&sql, at)).await.unwrap().unwrap());
     }
 
-    let first = history.search(String::new(), None, None, 2).await.unwrap();
-    let second = history.search(String::new(), None, first.next, 2).await.unwrap();
+    let first = history.search(shown(String::new(), None), None, 2).await.unwrap();
+    let second = history.search(shown(String::new(), None), first.next, 2).await.unwrap();
 
     let shown: Vec<i64> = first.entries.iter().map(|entry| entry.id).collect();
     let rest: Vec<i64> = second.entries.iter().map(|entry| entry.id).collect();
@@ -193,9 +214,9 @@ async fn a_deleted_run_is_gone_and_clear_removes_the_rest() {
         .unwrap();
 
     history.delete(vec![gone]).await.unwrap();
-    let after_delete = history.search(String::new(), None, None, 50).await.unwrap();
+    let after_delete = history.search(shown(String::new(), None), None, 50).await.unwrap();
     history.clear().await.unwrap();
-    let after_clear = history.search(String::new(), None, None, 50).await.unwrap();
+    let after_clear = history.search(shown(String::new(), None), None, 50).await.unwrap();
 
     let ids: Vec<i64> = after_delete.entries.iter().map(|entry| entry.id).collect();
     assert_eq!(ids, [left]);
@@ -225,9 +246,9 @@ async fn a_prune_drops_runs_past_the_age_kept_then_the_oldest_past_the_count_kep
     }
 
     let aged = history.prune(365, 0).await.unwrap();
-    let after_age = history.search(String::new(), None, None, 50).await.unwrap();
+    let after_age = history.search(shown(String::new(), None), None, 50).await.unwrap();
     let capped = history.prune(0, 2).await.unwrap();
-    let after_cap = history.search(String::new(), None, None, 50).await.unwrap();
+    let after_cap = history.search(shown(String::new(), None), None, 50).await.unwrap();
 
     assert_eq!(aged, 1);
     let kept: Vec<i64> = after_age.entries.iter().map(|entry| entry.id).collect();
@@ -253,7 +274,7 @@ async fn a_statement_the_engine_withholds_is_not_stored() {
         .record(session.clone(), ran("SELECT 'hunter2", 1_700_000_001))
         .await
         .unwrap();
-    let stored = history.search(String::new(), None, None, 50).await.unwrap();
+    let stored = history.search(shown(String::new(), None), None, 50).await.unwrap();
 
     assert_eq!((key, unclosed), (None, None));
     assert!(stored.entries.is_empty(), "{:?}", stored.entries);

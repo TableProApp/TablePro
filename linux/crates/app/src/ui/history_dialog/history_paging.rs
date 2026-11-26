@@ -103,6 +103,7 @@ mod tests {
             cancelled: false,
             pinned: false,
             error: None,
+            details: Default::default(),
         })
     }
 

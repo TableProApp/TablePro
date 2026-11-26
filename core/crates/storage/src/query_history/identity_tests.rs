@@ -2,16 +2,25 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use super::*;
+use crate::SavedQueryDatabase;
 use crate::favourites::{DatabaseEnvironment, FavouriteTable};
 use crate::journal::recording::Recording;
 use crate::saved_queries::NewSavedQuery;
 use crate::store_identity::StoreContinuity;
 use crate::table_folders::{TableRef, TableScope};
 
+fn paths(root: &tempfile::TempDir) -> StoragePaths {
+    StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro")
+}
+
 async fn open(root: &tempfile::TempDir) -> QueryHistory {
-    QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+    QueryHistory::open(&paths(root)).await.expect("open")
+}
+
+async fn open_saved(root: &tempfile::TempDir) -> SavedQueryDatabase {
+    SavedQueryDatabase::open(&paths(root))
         .await
-        .expect("open")
+        .expect("open the saved queries")
 }
 
 fn run(query: &str, connection: Uuid) -> NewEntry {
@@ -25,6 +34,7 @@ fn run(query: &str, connection: Uuid) -> NewEntry {
         duration_ms: Some(1),
         rows_affected: None,
         outcome: Outcome::Success,
+        details: RunDetails::default(),
     }
 }
 
@@ -37,8 +47,7 @@ fn saved(name: &str, connection: Uuid) -> NewSavedQuery {
     }
 }
 
-const SYNCED_TABLES: [&str; 7] = [
-    "history",
+const SAVED_TABLES: [&str; 6] = [
     "saved_queries",
     "saved_query_folders",
     "favourite_tables",
@@ -52,8 +61,11 @@ async fn a_database_is_stamped_once_and_keeps_its_generation() {
     let root = tempfile::tempdir().expect("tempdir");
     let first = open(&root).await.identity().await.expect("identity");
     let again = open(&root).await.identity().await.expect("identity");
+    let saved = open_saved(&root).await.identity().await.expect("identity");
+    let saved_again = open_saved(&root).await.identity().await.expect("identity");
 
     assert_eq!(again, first);
+    assert_eq!(saved_again, saved);
 }
 
 // A migration that rebuilds one of these tables drops its triggers with it, and the sequence would
@@ -62,8 +74,11 @@ async fn a_database_is_stamped_once_and_keeps_its_generation() {
 async fn every_synced_table_raises_the_sequence_on_insert_update_and_delete() {
     let root = tempfile::tempdir().expect("tempdir");
     let history = open(&root).await;
+    let saved = open_saved(&root).await;
 
-    for table in SYNCED_TABLES {
+    let stores =
+        std::iter::once(("history", &history.pool)).chain(SAVED_TABLES.into_iter().map(|table| (table, saved.pool())));
+    for (table, pool) in stores {
         for event in ["ai", "au", "ad"] {
             let name = format!("{table}_store_sequence_{event}");
             let found: i64 = sqlx::query_scalar(
@@ -71,7 +86,7 @@ async fn every_synced_table_raises_the_sequence_on_insert_update_and_delete() {
             )
             .bind(&name)
             .bind(table)
-            .fetch_one(&history.pool)
+            .fetch_one(pool)
             .await
             .expect("count");
             assert_eq!(found, 1, "{name}");
@@ -83,6 +98,7 @@ async fn every_synced_table_raises_the_sequence_on_insert_update_and_delete() {
 async fn each_store_write_raises_the_sequence() {
     let root = tempfile::tempdir().expect("tempdir");
     let history = open(&root).await;
+    let store = open_saved(&root).await;
     let connection = Uuid::new_v4();
     let mut seen = history.identity().await.expect("identity");
     let mut raised = |now: StoreIdentity, what: &str| {
@@ -95,24 +111,34 @@ async fn each_store_write_raises_the_sequence() {
     raised(history.identity().await.expect("identity"), "record");
     history.set_pinned(entry, true).await.expect("pin");
     raised(history.identity().await.expect("identity"), "pin");
-    let queries = history.saved_queries();
+    history.delete_returning(&[entry]).await.expect("delete");
+    raised(history.identity().await.expect("identity"), "delete entry");
+
+    let history_seen = seen;
+    seen = store.identity().await.expect("identity");
+    let mut raised = |now: StoreIdentity, what: &str| {
+        assert_eq!(now.generation, seen.generation, "{what}");
+        assert!(now.sequence > seen.sequence, "{what}");
+        seen = now;
+    };
+    let queries = store.saved_queries();
     let query = queries.save(saved("a", connection)).await.expect("save");
-    raised(history.identity().await.expect("identity"), "save");
+    raised(store.identity().await.expect("identity"), "save");
     queries.rename(query.id, "b").await.expect("rename");
-    raised(history.identity().await.expect("identity"), "rename");
-    history
+    raised(store.identity().await.expect("identity"), "rename");
+    store
         .saved_query_folders()
         .create(Some(connection), "Reports", None)
         .await
         .expect("folder");
-    raised(history.identity().await.expect("identity"), "folder");
-    history
+    raised(store.identity().await.expect("identity"), "folder");
+    store
         .favourites()
         .set_database(connection, "shop", DatabaseEnvironment::Production)
         .await
         .expect("favourite database");
-    raised(history.identity().await.expect("identity"), "favourite database");
-    let folder = history
+    raised(store.identity().await.expect("identity"), "favourite database");
+    let folder = store
         .table_folders()
         .create(
             TableScope {
@@ -124,11 +150,14 @@ async fn each_store_write_raises_the_sequence() {
         )
         .await
         .expect("table folder");
-    raised(history.identity().await.expect("identity"), "table folder");
-    history.table_folders().delete(folder.id).await.expect("delete folder");
-    raised(history.identity().await.expect("identity"), "delete folder");
-    history.delete_returning(&[entry]).await.expect("delete");
-    raised(history.identity().await.expect("identity"), "delete entry");
+    raised(store.identity().await.expect("identity"), "table folder");
+    store.table_folders().delete(folder.id).await.expect("delete folder");
+    raised(store.identity().await.expect("identity"), "delete folder");
+    assert_eq!(
+        history.identity().await.expect("identity"),
+        history_seen,
+        "a saved query's write moved the history's sequence"
+    );
 }
 
 #[tokio::test]
@@ -147,17 +176,20 @@ async fn a_new_generation_marks_a_restore_and_an_older_copy_reads_as_older() {
     assert_eq!(renewed.compared_with(seen), StoreContinuity::NewGeneration);
 }
 
-async fn journaled(root: &tempfile::TempDir) -> (QueryHistory, Arc<Recording>) {
+// Both stores, telling one journal.
+async fn journaled(root: &tempfile::TempDir) -> (QueryHistory, SavedQueryDatabase, Arc<Recording>) {
     let history = open(root).await;
+    let saved = open_saved(root).await;
     let journal = Arc::new(Recording::default());
     history.set_journal(Some(journal.clone()));
-    (history, journal)
+    saved.set_journal(Some(journal.clone()));
+    (history, saved, journal)
 }
 
 #[tokio::test]
 async fn every_history_write_tells_the_journal() {
     let root = tempfile::tempdir().expect("tempdir");
-    let (history, journal) = journaled(&root).await;
+    let (history, _saved, journal) = journaled(&root).await;
     let connection = Uuid::new_v4();
 
     let entry = history.record(run("SELECT 1", connection)).await.expect("record");
@@ -178,10 +210,10 @@ async fn every_history_write_tells_the_journal() {
 #[tokio::test]
 async fn every_saved_query_and_folder_write_tells_the_journal_its_kinds() {
     let root = tempfile::tempdir().expect("tempdir");
-    let (history, journal) = journaled(&root).await;
+    let (_history, store, journal) = journaled(&root).await;
     let connection = Uuid::new_v4();
-    let queries = history.saved_queries();
-    let folders = history.saved_query_folders();
+    let queries = store.saved_queries();
+    let folders = store.saved_query_folders();
     let query_kind = || vec![RecordKind::SavedQuery];
     let both = || vec![RecordKind::SavedQuery, RecordKind::SavedQueryFolder];
 
@@ -224,9 +256,9 @@ async fn every_saved_query_and_folder_write_tells_the_journal_its_kinds() {
 #[tokio::test]
 async fn deleting_a_connections_data_names_each_kind_it_removed() {
     let root = tempfile::tempdir().expect("tempdir");
-    let (history, journal) = journaled(&root).await;
+    let (_history, store, journal) = journaled(&root).await;
     let connection = Uuid::new_v4();
-    let favourites = history.favourites();
+    let favourites = store.favourites();
     favourites
         .add_table(&FavouriteTable {
             connection_id: connection,
@@ -242,7 +274,7 @@ async fn deleting_a_connections_data_names_each_kind_it_removed() {
         .expect("set");
     journal.take();
 
-    history
+    store
         .saved_queries()
         .delete_for_connection(connection)
         .await
@@ -257,9 +289,9 @@ async fn deleting_a_connections_data_names_each_kind_it_removed() {
 #[tokio::test]
 async fn every_favourite_and_table_folder_write_tells_the_journal_its_kind() {
     let root = tempfile::tempdir().expect("tempdir");
-    let (history, journal) = journaled(&root).await;
+    let (_history, store, journal) = journaled(&root).await;
     let connection = Uuid::new_v4();
-    let favourites = history.favourites();
+    let favourites = store.favourites();
     let table = FavouriteTable {
         connection_id: connection,
         database: None,
@@ -285,8 +317,8 @@ async fn every_favourite_and_table_folder_write_tells_the_journal_its_kind() {
         .await
         .expect("set");
     favourites.remove_database(connection, "shop").await.expect("remove");
-    let folder = history.table_folders().create(scope, "Sales").await.expect("folder");
-    history.table_folders().file(&[orders], folder.id).await.expect("file");
+    let folder = store.table_folders().create(scope, "Sales").await.expect("folder");
+    store.table_folders().file(&[orders], folder.id).await.expect("file");
 
     assert_eq!(
         journal.take(),
@@ -304,10 +336,10 @@ async fn every_favourite_and_table_folder_write_tells_the_journal_its_kind() {
 #[tokio::test]
 async fn each_history_db_write_names_the_records_it_wrote_and_deleted() {
     let root = tempfile::tempdir().expect("tempdir");
-    let (history, journal) = journaled(&root).await;
+    let (history, store, journal) = journaled(&root).await;
     let connection = Uuid::new_v4();
-    let queries = history.saved_queries();
-    let folders = history.saved_query_folders();
+    let queries = store.saved_queries();
+    let folders = store.saved_query_folders();
     let rows = |ids: &[Uuid]| ids.iter().copied().map(RecordRef::Id).collect::<Vec<_>>();
 
     let ran = run("SELECT 1", connection);

@@ -30,8 +30,8 @@ public sealed class SavedQueryTests : IDisposable
     public async Task AQueryIsSavedFiledInAFolderAndReplacedOnlyWhenAsked()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var history = await _core.OpenHistoryAsync(cancellationToken);
-        using var queries = history.OpenSavedQueries();
+        using var database = await _core.OpenSavedQueryDatabaseAsync(cancellationToken);
+        using var queries = database.OpenSavedQueries();
 
         var reports = await queries.CreateFolderAsync(Shop, "Reports", null);
         var monthly = await queries.CreateFolderAsync(Shop, "Monthly", reports);
@@ -55,8 +55,8 @@ public sealed class SavedQueryTests : IDisposable
     [Fact]
     public async Task ARefusedNameOrKeywordThrowsItsCode()
     {
-        using var history = await _core.OpenHistoryAsync(TestContext.Current.CancellationToken);
-        using var queries = history.OpenSavedQueries();
+        using var database = await _core.OpenSavedQueryDatabaseAsync(TestContext.Current.CancellationToken);
+        using var queries = database.OpenSavedQueries();
         var one = await queries.SaveAsync(Shop, "shop", "One", "SELECT 1", replace: false);
         var two = await queries.SaveAsync(Shop, "shop", "Two", "SELECT 2", replace: false);
         await queries.SetKeywordAsync(one!.Value, "sel");
@@ -81,9 +81,9 @@ public sealed class SavedQueryTests : IDisposable
     public async Task DeletingAFolderGivesItsQueriesToTheTopAndAConnectionsDataGoesWithIt()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var history = await _core.OpenHistoryAsync(cancellationToken);
-        using var queries = history.OpenSavedQueries();
-        using var favourites = history.OpenFavourites();
+        using var database = await _core.OpenSavedQueryDatabaseAsync(cancellationToken);
+        using var queries = database.OpenSavedQueries();
+        using var favourites = database.OpenFavourites();
         var folder = await queries.CreateFolderAsync(Shop, "Reports", null);
         var id = await queries.SaveAsync(Shop, "shop", "Mine", "SELECT 1", replace: false);
         await queries.MoveAsync(id!.Value, folder);
@@ -105,8 +105,8 @@ public sealed class SavedQueryTests : IDisposable
     [Fact]
     public async Task FavouriteTablesAndDatabasesAreKeptPerConnection()
     {
-        using var history = await _core.OpenHistoryAsync(TestContext.Current.CancellationToken);
-        using var favourites = history.OpenFavourites();
+        using var database = await _core.OpenSavedQueryDatabaseAsync(TestContext.Current.CancellationToken);
+        using var favourites = database.OpenFavourites();
         var orders = new FavouriteTable("shop", null, "orders");
 
         await favourites.AddTableAsync(Shop, orders);

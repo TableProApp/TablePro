@@ -11,7 +11,7 @@ use tablepro_storage::{
 
 use crate::error::CoreError;
 use crate::favourites::{DatabaseEnvironmentTag, FavouriteStore};
-use crate::history::{HistoryOutcomeTag, QueryHistoryStore, from_millis, millis};
+use crate::history::{HistoryOutcomeTag, HistoryRunDetails, QueryHistoryStore, from_millis, millis};
 use crate::library::{parse_id, parse_ids};
 use crate::runtime::on_runtime;
 use crate::saved_queries::SavedQueryStore;
@@ -153,6 +153,7 @@ pub struct HistoryEntryRecord {
     pub duration_ms: Option<i64>,
     pub rows_affected: Option<i64>,
     pub outcome: HistoryOutcomeTag,
+    pub details: HistoryRunDetails,
 }
 
 #[uniffi::export]
@@ -375,7 +376,16 @@ impl QueryHistoryStore {
         .await
     }
 
-    // By record id. Returns how many were there.
+    // The person's own deletion, by record id: each entry leaves a tombstone until sync has pushed it, so the
+    // deletion reaches the other devices. Returns how many were there.
+    pub async fn delete_entries(&self, record_ids: Vec<String>) -> Result<u64, CoreError> {
+        let ids = parse_ids(&record_ids)?;
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move { Ok(history.delete_records(&ids).await?) }).await
+    }
+
+    // By record id, with no tombstone, so nothing reaches another device: for entries the app's own store let go
+    // without the person asking, as its retention does. Returns how many were there.
     pub async fn remove_entries(&self, record_ids: Vec<String>) -> Result<u64, CoreError> {
         let ids = parse_ids(&record_ids)?;
         let history = self.history.clone();
@@ -569,6 +579,7 @@ impl TryFrom<HistoryEntryRecord> for NewEntry {
             duration_ms: record.duration_ms,
             rows_affected: record.rows_affected,
             outcome: Outcome::from(record.outcome),
+            details: record.details.into(),
         })
     }
 }

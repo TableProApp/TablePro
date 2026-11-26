@@ -7,13 +7,13 @@ const SHOP: &str = "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44";
 const BLOG: &str = "E6C12C96-3CBD-4A0E-9F41-E36B47F35D84";
 const REPORTS: &str = "380CB783-4B26-48F3-8F84-1468967A9FA3";
 
-async fn history(dir: &std::path::Path) -> QueryHistory {
-    QueryHistory::open(&StoragePaths::under(dir, "tablepro", "app.tablepro.TablePro"))
+async fn history(dir: &std::path::Path) -> SavedQueryDatabase {
+    SavedQueryDatabase::open(&StoragePaths::under(dir, "tablepro", "app.tablepro.TablePro"))
         .await
         .unwrap()
 }
 
-fn adapter(history: &QueryHistory, kind: Kind) -> Arc<dyn RecordAdapter> {
+fn adapter(history: &SavedQueryDatabase, kind: Kind) -> Arc<dyn RecordAdapter> {
     SavedQueryAdapter::all(history, None)
         .into_iter()
         .find(|adapter| adapter.kind() == kind)
@@ -130,7 +130,7 @@ async fn a_pulled_change_keeps_the_connection_name_the_device_shows() {
 }
 
 // The name this device shows beside the query, which only its own writes set.
-async fn show_connection_as(history: &QueryHistory, connection_name: &str) {
+async fn show_connection_as(history: &SavedQueryDatabase, connection_name: &str) {
     let store = history.saved_queries();
     let mut query = store.contents().await.unwrap().queries.remove(0);
     query.connection_name = connection_name.to_owned();

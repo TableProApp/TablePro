@@ -113,6 +113,7 @@ mod tests {
 
     use uuid::Uuid;
 
+    use super::super::RunDetails;
     use super::*;
 
     fn failed(connection_name: &str, error: &str) -> Entry {
@@ -130,6 +131,7 @@ mod tests {
             cancelled: false,
             pinned: false,
             error: Some(error.to_owned()),
+            details: RunDetails::default(),
         }
     }
 

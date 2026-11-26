@@ -66,6 +66,7 @@ impl RanStatements {
                 .ok()
                 .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok()),
             rows_affected,
+            details: Default::default(),
             outcome,
         };
         history.record(entry, self.dialect).await;

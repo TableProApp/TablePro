@@ -37,8 +37,8 @@ impl HistoryAvailability {
     }
 }
 
-/// Query history and saved queries share the one database, so this
-/// names both.
+/// The query history and the saved queries open together, so this names
+/// the one that failed.
 fn open_failure_text(error: &StorageError) -> String {
     match error {
         StorageError::HistoryNewerThanApp { .. } => crate::i18n::gettext(
@@ -46,6 +46,12 @@ fn open_failure_text(error: &StorageError) -> String {
         ),
         StorageError::HistoryMigration(_) => {
             crate::i18n::gettext("The query history could not be updated for this version of TablePro.")
+        }
+        StorageError::SavedQueriesNewerThanApp { .. } => crate::i18n::gettext(
+            "The saved queries were written by a newer version of TablePro. Update TablePro to read them.",
+        ),
+        StorageError::SavedQueriesMigration(_) => {
+            crate::i18n::gettext("The saved queries could not be updated for this version of TablePro.")
         }
         StorageError::Io { path, source }
         | StorageError::Permissions { path, source }
@@ -91,6 +97,10 @@ mod tests {
         assert_eq!(
             HistoryAvailability::failed(&StorageError::HistoryNewerThanApp { version: 9 }).failure(),
             Some("The query history was written by a newer version of TablePro. Update TablePro to read it.")
+        );
+        assert_eq!(
+            HistoryAvailability::failed(&StorageError::SavedQueriesNewerThanApp { version: 9 }).failure(),
+            Some("The saved queries were written by a newer version of TablePro. Update TablePro to read them.")
         );
         let copy = "/home/ada/.local/state/tablepro/history.db.v20260918000000-1762300000";
         assert_eq!(

@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::StorageError;
 use crate::journal::{JournalEntry, RecordKind, RecordRef};
-use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
+use crate::query_history::{Bind, CopyDelete, trim_saved_copies};
 
 use super::{TableFolder, TableFolderItem, TableFolders, TableRef, checked_name, folder_from_row, uuid_column};
 
@@ -93,7 +93,7 @@ impl TableFolders {
         for folder in &write.folders {
             checked_name(&folder.name)?;
         }
-        trim_upgrade_copies(&self.path, &copy_deletes(&removed_folders, &removed_items)).await?;
+        trim_saved_copies(&self.files, &copy_deletes(&removed_folders, &removed_items)).await?;
         let (gone_folders, gone_items) = remove(&mut transaction, &removed_folders, &removed_items).await?;
         let (wrote_folders, wrote_items) = put(&mut transaction, write).await?;
         let digest = read_contents(&mut transaction).await?.digest;
@@ -283,10 +283,10 @@ fn digest(folders: &[TableFolder], items: &[TableFolderItem]) -> Result<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{QueryHistory, StoragePaths, TableScope};
+    use crate::{SavedQueryDatabase, StoragePaths, TableScope};
 
     async fn folders(root: &tempfile::TempDir) -> TableFolders {
-        QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+        SavedQueryDatabase::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
             .await
             .expect("open")
             .table_folders()

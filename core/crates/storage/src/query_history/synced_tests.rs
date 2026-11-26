@@ -5,6 +5,7 @@ use uuid::Uuid;
 use super::super::fixtures::old_database;
 use super::super::{
     HistoryPageRequest, HistoryQuery, HistoryTombstone, MAX_UNPINNED_ENTRIES, NewEntry, Outcome, QueryHistory,
+    RunDetails,
 };
 use crate::StoragePaths;
 
@@ -25,6 +26,7 @@ fn entry(query: &str, connection: Uuid, seconds: u64) -> NewEntry {
         duration_ms: Some(5),
         rows_affected: None,
         outcome: Outcome::Success,
+        details: RunDetails::default(),
     }
 }
 

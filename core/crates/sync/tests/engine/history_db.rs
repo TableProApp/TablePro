@@ -1,4 +1,5 @@
-// The kinds of the core's `history.db` through their adapters over the real store: saved queries and folders, with
+// The kinds of the core's `saved_queries.db` and `history.db` through their adapters over the real stores: saved
+// queries and folders, with
 // the keyword and name settlement every device applies the same way (0052, Collisions), and the query history with
 // its window, paging back, prunes and the person's deletions (0051, Pull, Tombstones; 0054, Providers, History).
 
@@ -8,9 +9,9 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
-use tablepro_storage::query_history::{NewEntry, Outcome};
+use tablepro_storage::query_history::{NewEntry, Outcome, RunDetails};
 use tablepro_storage::saved_queries::SavedQuery;
-use tablepro_storage::{QueryHistory, SavedQueryFolder, SavedQueryWrite, StoragePaths};
+use tablepro_storage::{QueryHistory, SavedQueryDatabase, SavedQueryFolder, SavedQueryWrite, StoragePaths};
 use tablepro_sync::adapters::history::HistoryAdapter;
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
 use tablepro_sync::adapters::settings::ConnectionStanding;
@@ -66,26 +67,27 @@ fn wire_id(id: Uuid) -> String {
     id.hyphenated().to_string().to_uppercase()
 }
 
-async fn device(server: &Arc<FakeServer>, row: &str, dir: &Path) -> (Device, QueryHistory) {
+// One device's two stores.
+struct Stores {
+    history: QueryHistory,
+    saved: SavedQueryDatabase,
+}
+
+async fn device(server: &Arc<FakeServer>, row: &str, dir: &Path) -> (Device, Stores) {
     device_keeping(server, row, dir, LocalOnly::of(&[SCRATCH])).await
 }
 
-async fn device_keeping(
-    server: &Arc<FakeServer>,
-    row: &str,
-    dir: &Path,
-    standing: Arc<LocalOnly>,
-) -> (Device, QueryHistory) {
-    let history = QueryHistory::open(&StoragePaths::under(dir, "tablepro", "app.tablepro.TablePro"))
-        .await
-        .unwrap();
+async fn device_keeping(server: &Arc<FakeServer>, row: &str, dir: &Path, standing: Arc<LocalOnly>) -> (Device, Stores) {
+    let paths = StoragePaths::under(dir, "tablepro", "app.tablepro.TablePro");
+    let history = QueryHistory::open(&paths).await.unwrap();
+    let saved = SavedQueryDatabase::open(&paths).await.unwrap();
     let standing: Arc<dyn ConnectionStanding> = standing;
     let mut builder = DeviceBuilder::new(server, row)
         .extra_adapter(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(&standing))));
-    for adapter in SavedQueryAdapter::all(&history, Some(standing)) {
+    for adapter in SavedQueryAdapter::all(&saved, Some(standing)) {
         builder = builder.extra_adapter(adapter);
     }
-    (builder.build().await, history)
+    (builder.build().await, Stores { history, saved })
 }
 
 // The service takes a history entry only under the newest HK version it holds.
@@ -118,8 +120,9 @@ fn query(id: Uuid, name: &str, keyword: Option<&str>, created_ms: u64) -> SavedQ
     }
 }
 
-async fn save(history: &QueryHistory, queries: Vec<SavedQuery>, folders: Vec<SavedQueryFolder>) {
-    history
+async fn save(stores: &Stores, queries: Vec<SavedQuery>, folders: Vec<SavedQueryFolder>) {
+    stores
+        .saved
         .saved_queries()
         .write(&SavedQueryWrite {
             queries,
@@ -130,8 +133,9 @@ async fn save(history: &QueryHistory, queries: Vec<SavedQuery>, folders: Vec<Sav
         .unwrap();
 }
 
-async fn held(history: &QueryHistory, id: Uuid) -> Option<SavedQuery> {
-    history
+async fn held(stores: &Stores, id: Uuid) -> Option<SavedQuery> {
+    stores
+        .saved
         .saved_queries()
         .contents()
         .await
@@ -177,6 +181,7 @@ async fn two_devices_converge_on_saved_queries_and_folders_held_in_the_core_stor
     let mut unfiled = daily.clone();
     unfiled.folder_id = None;
     mac_history
+        .saved
         .saved_queries()
         .write(&SavedQueryWrite {
             queries: vec![unfiled],
@@ -194,7 +199,7 @@ async fn two_devices_converge_on_saved_queries_and_folders_held_in_the_core_stor
         (Some(uuid(REPORTS)), Some("daily"), daily.created_at)
     );
     for history in [&mac_history, &mini_history] {
-        let contents = history.saved_queries().contents().await.unwrap();
+        let contents = history.saved.saved_queries().contents().await.unwrap();
         assert!(contents.folders.is_empty());
         assert_eq!(contents.queries.len(), 1);
         assert_eq!(contents.queries[0].name, "Daily revenue");
@@ -267,6 +272,7 @@ fn run(connection: &str, query: &str, executed_ms: u64) -> NewEntry {
         duration_ms: Some(4),
         rows_affected: Some(1),
         outcome: Outcome::Success,
+        details: RunDetails::default(),
     }
 }
 
@@ -276,8 +282,9 @@ fn on_history(server: &FakeServer, id: Uuid) -> Option<(bool, Option<DeletedReas
         .map(|record| (record.fields.is_some(), record.deleted))
 }
 
-async fn ids(history: &QueryHistory) -> HashSet<Uuid> {
-    history
+async fn ids(stores: &Stores) -> HashSet<Uuid> {
+    stores
+        .history
         .entries()
         .await
         .unwrap()
@@ -306,15 +313,16 @@ async fn history_goes_up_sealed_a_prune_pushes_nothing_and_the_person_s_deletion
         run(SCRATCH, "SELECT scratch", now),
     );
     for entry in [&old, &kept, &scratch] {
-        mac_history.record(entry.clone()).await.unwrap();
+        mac_history.history.record(entry.clone()).await.unwrap();
     }
 
     mac.sync().await;
     mini.sync().await;
     let pulled = ids(&mini_history).await;
-    mac_history.prune(30).await.unwrap();
+    mac_history.history.prune(30).await.unwrap();
     mac.sync().await;
     let kept_row = mac_history
+        .history
         .entries()
         .await
         .unwrap()
@@ -322,7 +330,7 @@ async fn history_goes_up_sealed_a_prune_pushes_nothing_and_the_person_s_deletion
         .find(|entry| entry.record_id == kept.record_id)
         .unwrap()
         .id;
-    mac_history.delete_returning(&[kept_row]).await.unwrap();
+    mac_history.history.delete_returning(&[kept_row]).await.unwrap();
     mac.sync().await;
     mini.sync().await;
 
@@ -342,11 +350,11 @@ async fn history_goes_up_sealed_a_prune_pushes_nothing_and_the_person_s_deletion
         Some((false, Some(DeletedReason::User)))
     );
     assert!(
-        mac_history.tombstones().await.unwrap().is_empty(),
+        mac_history.history.tombstones().await.unwrap().is_empty(),
         "the pushed deletion lets its tombstone go"
     );
     assert_eq!(ids(&mini_history).await, HashSet::from([old.record_id]));
-    assert!(mini_history.tombstones().await.unwrap().is_empty());
+    assert!(mini_history.history.tombstones().await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -359,7 +367,7 @@ async fn a_device_takes_its_window_of_history_newest_first_and_pages_back_into_t
         .map(|n| run(SHOP, &format!("SELECT {n}"), 1_767_225_600_000 + n * 1_000))
         .collect();
     for entry in &runs {
-        mac_history.record(entry.clone()).await.unwrap();
+        mac_history.history.record(entry.clone()).await.unwrap();
         mac.sync().await;
     }
     let (mini, mini_history) = device(&server, "dev_mini", mini_dir.path()).await;
@@ -382,6 +390,7 @@ async fn a_device_takes_its_window_of_history_newest_first_and_pages_back_into_t
         runs.iter().map(|entry| entry.record_id).collect::<HashSet<_>>()
     );
     let paged = mini_history
+        .history
         .entries()
         .await
         .unwrap()
@@ -406,7 +415,7 @@ async fn a_run_an_apple_app_recorded_with_a_password_in_it_never_reaches_the_ser
         driver_id: "MySQL".to_owned(),
         ..run(SHOP, "SELECT * FROM orders", 1_767_225_601_000)
     };
-    mac_history.put(&[secret.clone(), plain.clone()]).await.unwrap();
+    mac_history.history.put(&[secret.clone(), plain.clone()]).await.unwrap();
 
     mac.sync().await;
 
@@ -437,11 +446,11 @@ async fn a_local_only_connection_s_queries_and_its_runs_deletions_never_leave_th
     )
     .await;
     let shop_run = run(SHOP, "SELECT 1", 1_767_225_600_000);
-    mac_history.record(shop_run.clone()).await.unwrap();
+    mac_history.history.record(shop_run.clone()).await.unwrap();
     mac.sync().await;
 
     standing.keep_here(SHOP);
-    mac_history.clear_all().await.unwrap();
+    mac_history.history.clear_all().await.unwrap();
     mac.sync().await;
 
     assert_eq!(on_server(&server, query_id(1)), None);
@@ -451,5 +460,5 @@ async fn a_local_only_connection_s_queries_and_its_runs_deletions_never_leave_th
         Some((true, None)),
         "the deletion of a run of a connection now kept here stays here"
     );
-    assert!(mac_history.tombstones().await.unwrap().is_empty());
+    assert!(mac_history.history.tombstones().await.unwrap().is_empty());
 }

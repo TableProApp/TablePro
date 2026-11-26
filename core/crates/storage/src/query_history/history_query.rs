@@ -2,8 +2,8 @@ use std::time::SystemTime;
 
 use uuid::Uuid;
 
-use super::StatusFilter;
 use super::search_fold::fold;
+use super::{RunSource, StatusFilter};
 
 /// The trigram index has nothing to match a shorter term against.
 const TRIGRAM_LENGTH: usize = 3;
@@ -14,8 +14,14 @@ const TRIGRAM_LENGTH: usize = 3;
 pub struct HistoryQuery {
     terms: Vec<String>,
     pub connection: Option<Uuid>,
+    // Only runs of these connections; an empty list matches none.
+    pub connections: Option<Vec<Uuid>>,
+    // Only runs these started; an empty list matches none, and a run that names no source matches only None.
+    pub sources: Option<Vec<RunSource>>,
     pub status: StatusFilter,
     pub executed_after: Option<SystemTime>,
+    // Inclusive, as `executed_after` is.
+    pub executed_before: Option<SystemTime>,
 }
 
 /// One term as SQLite is asked for it.

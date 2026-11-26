@@ -1,5 +1,5 @@
 // The `saved_query` and `saved_query_folder` kinds (0051, Kinds; 0052, Saved queries, folders and history in the core)
-// over the core's saved queries in `history.db`. Ids and references are upper-case UUIDs, a reference nothing answers
+// over the core's saved queries in `saved_queries.db`. Ids and references are upper-case UUIDs, a reference nothing answers
 // to reads as the top level, and times are whole milliseconds. A write that puts two records in one place under one
 // name or one keyword is settled by the store, the record created first keeping it (0052, Collisions); the store's
 // copy of each loser then differs from its base, so the next push sends the release as this device's own edit, as the
@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use tablepro_records::Kind;
 use tablepro_records::record_id::{parse_uuid, uuid_id};
 use tablepro_storage::saved_queries::SavedQuery;
-use tablepro_storage::{QueryHistory, SavedQueryFolder, SavedQueryWrite, StorageError};
+use tablepro_storage::{SavedQueryDatabase, SavedQueryFolder, SavedQueryWrite, StorageError};
 use uuid::Uuid;
 
 use super::settings::ConnectionStanding;
@@ -24,18 +24,19 @@ use crate::api::error::AdapterError;
 use crate::api::ids::ScopeName;
 use crate::api::state::Standing;
 
-// The file every kind of the history database belongs to, so restoring it refills them together (0060).
-pub const HISTORY_STORE: &str = "history.db";
+// The file saved queries, their folders, favourites and table folders belong to, so restoring it refills them together
+// (0060 as amended).
+pub const SAVED_QUERY_STORE: &str = "saved_queries.db";
 
 pub(crate) fn store_error(error: StorageError) -> AdapterError {
     AdapterError::Store {
-        store: HISTORY_STORE.to_owned(),
+        store: SAVED_QUERY_STORE.to_owned(),
         detail: error.to_string(),
     }
 }
 
-pub(crate) async fn history_identity(history: &QueryHistory) -> Result<StoreStamp, AdapterError> {
-    let identity = history.identity().await.map_err(store_error)?;
+pub(crate) async fn saved_query_identity(database: &SavedQueryDatabase) -> Result<StoreStamp, AdapterError> {
+    let identity = database.identity().await.map_err(store_error)?;
     Ok(StoreStamp {
         generation: identity.generation,
         sequence: identity.sequence,
@@ -197,7 +198,7 @@ enum Held {
 }
 
 pub struct SavedQueryAdapter {
-    history: QueryHistory,
+    database: SavedQueryDatabase,
     held: Held,
     // None while the connections' standing is not known: a record of a connection then waits.
     connections: Option<Arc<dyn ConnectionStanding>>,
@@ -206,14 +207,14 @@ pub struct SavedQueryAdapter {
 impl SavedQueryAdapter {
     // One adapter per kind over the one store.
     pub fn all(
-        history: &QueryHistory,
+        database: &SavedQueryDatabase,
         connections: Option<Arc<dyn ConnectionStanding>>,
     ) -> Vec<Arc<dyn RecordAdapter>> {
         [Held::Queries, Held::Folders]
             .into_iter()
             .map(|held| {
                 Arc::new(Self {
-                    history: history.clone(),
+                    database: database.clone(),
                     held,
                     connections: connections.clone(),
                 }) as Arc<dyn RecordAdapter>
@@ -265,18 +266,18 @@ impl RecordAdapter for SavedQueryAdapter {
     }
 
     fn store(&self) -> &str {
-        HISTORY_STORE
+        SAVED_QUERY_STORE
     }
 
     async fn identity(&self) -> Result<StoreStamp, AdapterError> {
-        history_identity(&self.history).await
+        saved_query_identity(&self.database).await
     }
 
     async fn records(&self, scope: ScopeName) -> Result<LocalRecords, AdapterError> {
         if scope != ScopeName::Personal {
             return Ok(LocalRecords::default());
         }
-        let contents = self.history.saved_queries().contents().await.map_err(store_error)?;
+        let contents = self.database.saved_queries().contents().await.map_err(store_error)?;
         let records = match self.held {
             Held::Queries => contents
                 .queries
@@ -310,7 +311,7 @@ impl RecordAdapter for SavedQueryAdapter {
         if scope != ScopeName::Personal || changes.is_empty() {
             return self.identity().await;
         }
-        let store = self.history.saved_queries();
+        let store = self.database.saved_queries();
         let held = match self.held {
             Held::Queries => store.contents().await.map_err(store_error)?.queries,
             Held::Folders => Vec::new(),

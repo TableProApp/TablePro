@@ -6,7 +6,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use tablepro_records::Kind;
 use tablepro_records::record_id::{favourite_database, favourite_table, table_folder_item};
-use tablepro_storage::{ConnectionStore, QueryHistory, StoragePaths};
+use tablepro_storage::{ConnectionStore, SavedQueryDatabase, StoragePaths};
 use tablepro_sync::adapters::approval::Queue;
 use tablepro_sync::adapters::library;
 use tablepro_sync::api::RecordAdapter;
@@ -22,7 +22,7 @@ struct Shelf {
     rig: Rig,
     _dir: TempDir,
     store: ConnectionStore,
-    history: QueryHistory,
+    history: SavedQueryDatabase,
 }
 
 impl Shelf {
@@ -32,7 +32,7 @@ impl Shelf {
         Self {
             rig: Rig::new().await,
             store: ConnectionStore::new(&paths),
-            history: QueryHistory::open(&paths).await.unwrap(),
+            history: SavedQueryDatabase::open(&paths).await.unwrap(),
             _dir: dir,
         }
     }

@@ -175,6 +175,7 @@ async fn a_run_this_device_recorded_reads_as_its_wire_entry_in_whole_seconds() {
         duration_ms: None,
         rows_affected: None,
         outcome: Outcome::Success,
+        details: RunDetails::default(),
     };
     history.record(ran.clone()).await.unwrap();
 
@@ -222,6 +223,7 @@ fn ran_on(engine: &str, query: &str) -> NewEntry {
         duration_ms: None,
         rows_affected: None,
         outcome: Outcome::Success,
+        details: RunDetails::default(),
     }
 }
 
@@ -360,4 +362,61 @@ async fn a_deletion_of_a_connection_that_does_not_sync_stays_here_and_one_not_kn
         vec![shop.record_id],
         "the Local only connection's deletion never leaves the device"
     );
+}
+
+#[tokio::test]
+async fn a_run_s_details_go_up_and_come_back_and_its_fingerprint_stays_here() {
+    let dir = tempfile::tempdir().unwrap();
+    let (history, adapter) = adapter(dir.path()).await;
+    let mut ran = ran_on("PostgreSQL", "SELECT 1");
+    ran.details = RunDetails {
+        database: Some("shop".to_owned()),
+        schema: Some("public".to_owned()),
+        source: Some(RunSource::TableBrowse),
+        statement_type: Some(StatementType::Select),
+        first_row_ms: Some(7),
+        server_ms: Some(5),
+        fingerprint: Some(99),
+    };
+    history.record(ran.clone()).await.unwrap();
+
+    let fields = adapter.records(ScopeName::History).await.unwrap().records[0]
+        .fields
+        .clone();
+
+    for (member, value) in [
+        ("database", json!("shop")),
+        ("schema", json!("public")),
+        ("source", json!("table_browse")),
+        ("statement_type", json!("select")),
+        ("first_row_ms", json!(7)),
+        ("server_ms", json!(5)),
+    ] {
+        assert_eq!(fields[member], value, "{member}");
+    }
+    assert!(fields.get("fingerprint").is_none());
+    let pulled = entry_from(&uuid_id(Uuid::new_v4()), &fields).unwrap().unwrap();
+    assert_eq!(
+        pulled.details,
+        RunDetails {
+            fingerprint: None,
+            ..ran.details
+        }
+    );
+}
+
+#[test]
+fn every_source_and_statement_type_is_a_wire_value() {
+    let enum_values = |member: &str| match tablepro_records::schema::HISTORY_ENTRY
+        .iter()
+        .find(|field| field.key == member)
+        .map(|field| field.ty)
+    {
+        Some(tablepro_records::schema::Type::Enum(values)) => values.to_vec(),
+        other => panic!("{member} is {other:?}"),
+    };
+    let sources: Vec<&str> = RunSource::ALL.iter().map(|source| source.as_str()).collect();
+    let kinds: Vec<&str> = StatementType::ALL.iter().map(|kind| kind.as_str()).collect();
+    assert_eq!(sources, enum_values("source"));
+    assert_eq!(kinds, enum_values("statement_type"));
 }

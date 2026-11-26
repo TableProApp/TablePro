@@ -56,7 +56,7 @@ impl QuickOpen {
         spawn_and_deliver(
             &tasks,
             async move {
-                let store = history.ready_store().await.ok_or_else(|| unavailable(&history))?;
+                let store = history.ready_saved().await.ok_or_else(|| unavailable(&history))?;
                 let queries = store.saved_queries().list(Some(connection)).await.map_err(|error| {
                     tracing::warn!(%error, "could not list quick open saved queries");
                     gettext("Could not load saved queries.")
@@ -124,9 +124,15 @@ impl QuickOpen {
         spawn_and_deliver(
             &tasks,
             async move {
-                let store = history.ready_store().await.ok_or_else(|| unavailable(&history))?;
                 match query {
-                    QueryId::Saved(id) => match store.saved_queries().get(id).await {
+                    QueryId::Saved(id) => match history
+                        .ready_saved()
+                        .await
+                        .ok_or_else(|| unavailable(&history))?
+                        .saved_queries()
+                        .get(id)
+                        .await
+                    {
                         Ok(Some(saved)) if saved.connection_id.is_none_or(|owner| owner == connection) => {
                             Ok(saved.query)
                         }
@@ -136,7 +142,13 @@ impl QuickOpen {
                             Err(gettext("Could not open this saved query."))
                         }
                     },
-                    QueryId::Past(id) => match store.fetch_by_ids(&[id]).await {
+                    QueryId::Past(id) => match history
+                        .ready_store()
+                        .await
+                        .ok_or_else(|| unavailable(&history))?
+                        .fetch_by_ids(&[id])
+                        .await
+                    {
                         Ok(entries) => entries
                             .into_iter()
                             .find(|entry| entry.connection_id == connection && entry.success)

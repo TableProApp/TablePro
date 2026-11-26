@@ -11,7 +11,8 @@ use tablepro_records::Kind;
 use tablepro_records::record_id::uuid_id;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTagName, CredentialProfile,
-    DatabaseEnvironment, FavouriteTable, QueryHistory, SavedConnection, SshProfile, StoragePaths, TableRef, TableScope,
+    DatabaseEnvironment, FavouriteTable, SavedConnection, SavedQueryDatabase, SshProfile, StoragePaths, TableRef,
+    TableScope,
 };
 use tablepro_sync::adapters::library;
 use tablepro_sync::api::control::SyncControl;
@@ -26,7 +27,7 @@ use super::harness::{Device, DeviceBuilder, personal, write};
 struct Library {
     _dir: TempDir,
     store: ConnectionStore,
-    history: QueryHistory,
+    history: SavedQueryDatabase,
 }
 
 impl Library {
@@ -34,7 +35,7 @@ impl Library {
         let dir = tempfile::tempdir().unwrap();
         let paths = StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
         let store = ConnectionStore::new(&paths);
-        let history = QueryHistory::open(&paths).await.unwrap();
+        let history = SavedQueryDatabase::open(&paths).await.unwrap();
         Self {
             _dir: dir,
             store,

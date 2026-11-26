@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tablepro_keys::encoding::{AccountId, Origin};
 use tablepro_records::Kind;
-use tablepro_storage::{ConnectionStore, QueryHistory};
+use tablepro_storage::{ConnectionStore, QueryHistory, SavedQueryDatabase};
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
 use tablepro_sync::adapters::history::HistoryAdapter;
@@ -83,12 +83,13 @@ pub(crate) struct Hosts {
     pub(crate) names: DriverNames,
     // This device's id as the host keeps it, which names the SSH routes it publishes.
     pub(crate) publisher: Option<uuid::Uuid>,
-    // This Core's history database: its saved queries, their folders and the query history.
+    // This Core's query history, and the store of its saved queries, their folders, favourites and table folders.
     pub(crate) history: Option<QueryHistory>,
+    pub(crate) saved_queries: Option<SavedQueryDatabase>,
     // Which connections stay on this device. Until it is known, no history syncs and nothing of a connection does
     // (0051, What syncs).
     pub(crate) standing: Option<Arc<dyn ConnectionStanding>>,
-    // What the history database's writes tell each engine that syncs it.
+    // What the stores' writes tell each engine that syncs them.
     pub(crate) store_journal: Arc<StoreJournal>,
     // Team Library's store and sign-in, which only the service engine syncs.
     pub(crate) team_library: Option<TeamLibraryHost>,
@@ -104,30 +105,33 @@ impl Hosts {
                 Arc::new(SettingsAdapter::new(Arc::clone(host), self.standing.clone())) as Arc<dyn RecordAdapter>
             })
             .collect();
-        // The table folders and favourites the history database holds come with the library, which says which of
+        // The table folders and favourites the saved queries' store holds come with the library, which says which of
         // their connections sync.
         if let Some(store) = &self.library {
             adapters.extend(library::adapters(
                 store,
-                self.history.as_ref(),
+                self.saved_queries.as_ref(),
                 self.names,
                 provider,
                 self.publisher,
             ));
         }
-        if let Some(history) = &self.history {
-            adapters.extend(SavedQueryAdapter::all(history, self.standing.clone()));
-            if let Some(standing) = &self.standing {
-                adapters.push(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(standing))));
-            }
+        if let Some(saved) = &self.saved_queries {
+            adapters.extend(SavedQueryAdapter::all(saved, self.standing.clone()));
+        }
+        if let (Some(history), Some(standing)) = (&self.history, &self.standing) {
+            adapters.push(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(standing))));
         }
         adapters
     }
 
     // The stores' writes tell `listener` until the handle drops with what holds it.
     pub(crate) fn listen(&self, listener: Arc<dyn JournalObserver>) -> Option<Listening> {
-        (self.library.is_some() || self.history.is_some() || self.team_library.is_some())
-            .then(|| self.store_journal.listen(listener))
+        (self.library.is_some()
+            || self.history.is_some()
+            || self.saved_queries.is_some()
+            || self.team_library.is_some())
+        .then(|| self.store_journal.listen(listener))
     }
 }
 

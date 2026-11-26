@@ -22,6 +22,7 @@ fn entry(connection: Uuid, query: &str, outcome: Outcome) -> NewEntry {
         duration_ms: Some(1),
         rows_affected: None,
         outcome,
+        details: Default::default(),
     }
 }
 

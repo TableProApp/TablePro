@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use uuid::Uuid;
 
-use super::Outcome;
+use super::{Outcome, RunDetails};
 
 #[derive(Debug, Clone)]
 pub struct NewEntry {
@@ -16,4 +16,5 @@ pub struct NewEntry {
     pub duration_ms: Option<i64>,
     pub rows_affected: Option<i64>,
     pub outcome: Outcome,
+    pub details: RunDetails,
 }

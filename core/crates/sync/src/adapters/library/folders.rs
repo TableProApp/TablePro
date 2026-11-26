@@ -1,4 +1,4 @@
-// Table folders and the tables filed in them (`SyncRecordMapper`, Table Folder), in the history database. A folder is
+// Table folders and the tables filed in them (`SyncRecordMapper`, Table Folder), in the saved queries' database. A folder is
 // named by its id, an item by the digest of the table it files (0052, Derived ids). A folder or item of a connection
 // that does not sync stays on the device.
 
@@ -11,12 +11,12 @@ use tablepro_records::Kind;
 use tablepro_records::record_id::{parse_uuid, table_folder_item, uuid_id};
 use tablepro_storage::table_folders::{TableFolderContents, TableFolderWrite};
 use tablepro_storage::{
-    ConnectionStore, QueryHistory, StorageError, TableFolder, TableFolderItem, TableFolders, TableRef, TableScope,
+    ConnectionStore, SavedQueryDatabase, StorageError, TableFolder, TableFolderItem, TableFolders, TableRef, TableScope,
 };
 use uuid::Uuid;
 
 use super::values::{Object, integer, text, uuid_at, uuid_value};
-use super::{HISTORY_STORE, Seen, changed_since, lock, seen, stale};
+use super::{SAVED_QUERY_STORE, Seen, changed_since, lock, seen, stale};
 use crate::adapters::blocking;
 use crate::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
 use crate::api::error::AdapterError;
@@ -24,7 +24,7 @@ use crate::api::ids::ScopeName;
 use crate::api::state::Standing;
 
 pub struct TableFolderAdapter {
-    history: QueryHistory,
+    database: SavedQueryDatabase,
     folders: TableFolders,
     connections: ConnectionStore,
     kind: Kind,
@@ -33,13 +33,13 @@ pub struct TableFolderAdapter {
 
 impl TableFolderAdapter {
     // `connections` says which connections sync, so a folder of one kept off sync stays here.
-    pub fn all(history: &QueryHistory, connections: &ConnectionStore) -> Vec<Arc<dyn RecordAdapter>> {
+    pub fn all(database: &SavedQueryDatabase, connections: &ConnectionStore) -> Vec<Arc<dyn RecordAdapter>> {
         [Kind::TableFolder, Kind::TableFolderItem]
             .into_iter()
             .map(|kind| {
                 Arc::new(Self {
-                    history: history.clone(),
-                    folders: history.table_folders(),
+                    database: database.clone(),
+                    folders: database.table_folders(),
                     connections: connections.clone(),
                     kind,
                     seen: Mutex::new(None),
@@ -51,7 +51,7 @@ impl TableFolderAdapter {
 
 fn store_error(error: StorageError) -> AdapterError {
     AdapterError::Store {
-        store: HISTORY_STORE.to_owned(),
+        store: SAVED_QUERY_STORE.to_owned(),
         detail: error.to_string(),
     }
 }
@@ -121,7 +121,7 @@ pub(super) fn item_from_wire(fields: &Value) -> Option<TableFolderItem> {
     })
 }
 
-// Which connections sync, so what the history database files under one kept off sync stays here.
+// Which connections sync, so what the saved queries' database files under one kept off sync stays here.
 pub(super) async fn connection_standing_map(
     connections: &ConnectionStore,
 ) -> Result<HashMap<Uuid, Standing>, AdapterError> {
@@ -231,11 +231,11 @@ impl RecordAdapter for TableFolderAdapter {
     }
 
     fn store(&self) -> &str {
-        HISTORY_STORE
+        SAVED_QUERY_STORE
     }
 
     async fn identity(&self) -> Result<StoreStamp, AdapterError> {
-        let identity = self.history.identity().await.map_err(store_error)?;
+        let identity = self.database.identity().await.map_err(store_error)?;
         Ok(StoreStamp {
             generation: identity.generation,
             sequence: identity.sequence,
@@ -263,7 +263,7 @@ impl RecordAdapter for TableFolderAdapter {
         if let Some(expected) = expected {
             let now = seen(&self.read(&contents, &connection_standing_map(&self.connections).await?));
             if changed_since(&expected, &now, &changes) {
-                return Err(stale(HISTORY_STORE));
+                return Err(stale(SAVED_QUERY_STORE));
             }
         }
         let write = self.write(&contents, changes);
@@ -274,7 +274,7 @@ impl RecordAdapter for TableFolderAdapter {
             .await
         {
             Ok(_) => self.identity().await,
-            Err(StorageError::ImportOutdated) => Err(stale(HISTORY_STORE)),
+            Err(StorageError::ImportOutdated) => Err(stale(SAVED_QUERY_STORE)),
             Err(error) => Err(store_error(error)),
         }
     }

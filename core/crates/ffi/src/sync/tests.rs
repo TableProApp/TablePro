@@ -81,6 +81,7 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         legacy_mirror: None,
         library: None,
         history: None,
+        saved_queries: None,
         link: Err(tablepro_sync::api::TransportError::SignedOut.into()),
         session: None,
         listener: Arc::new(Listener::default()),
@@ -680,17 +681,17 @@ async fn with_icloud_off_a_core_store_write_marks_the_swift_metadata_by_the_quit
     let tasks = runtime::tasks().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let paths = tablepro_storage::StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
-    let history = tablepro_storage::QueryHistory::open(&paths).await.unwrap();
+    let saved = tablepro_storage::SavedQueryDatabase::open(&paths).await.unwrap();
     let mirror = Arc::new(tablepro_sync_testing::FakeLegacyMirror::new());
     let opened = open(&tasks, |parts| OpenParts {
         legacy_mirror: Some(mirror.clone() as Arc<dyn tablepro_sync::api::LegacyMirror>),
-        history: Some(history.clone()),
+        saved_queries: Some(saved.clone()),
         ..parts
     })
     .await;
     let id = Uuid::new_v4();
 
-    history
+    saved
         .saved_queries()
         .write(&tablepro_storage::SavedQueryWrite {
             queries: vec![tablepro_storage::saved_queries::SavedQuery {
