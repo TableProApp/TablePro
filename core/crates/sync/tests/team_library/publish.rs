@@ -413,3 +413,32 @@ async fn an_item_the_team_deleted_and_someone_brought_back_is_no_longer_this_dev
     assert!(back.deleted.is_none());
     assert_eq!(back.fields, Some(query_fields("Back", None)));
 }
+
+#[tokio::test]
+async fn republishing_the_copy_both_started_from_during_a_conflict_and_keeping_theirs_sends_nothing() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    let (mac, _mini) = conflicted(&server, dir.path()).await;
+
+    mac.device
+        .sync
+        .publish_team_saved_queries(
+            team(),
+            vec![folder(1, "Top", None), folder(2, "Mine", Some(1))],
+            vec![query(3, "Mine too", Some(2))],
+        )
+        .await
+        .unwrap();
+    let key = RecordKey::new(scope(), Kind::LibraryQuery, lower(3));
+    crate::support::resolve(&mac, key, ConflictChoice::KeepTheirs).await;
+    mac.device.sync().await;
+
+    assert_eq!(
+        server_fields(&server, "library_query", &lower(3)).unwrap()["name"],
+        json!("Renamed there")
+    );
+    let held = mac.items(TeamLibraryKind::Query);
+    let here = held.iter().find(|(id, _)| *id == lower(3)).unwrap();
+    assert_eq!(here.1["name"], json!("Renamed there"));
+    assert!(mac.device.sync.unsent_team_edits().await.unwrap().is_empty());
+}

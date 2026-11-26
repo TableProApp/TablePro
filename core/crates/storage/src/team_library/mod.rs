@@ -378,8 +378,7 @@ impl TeamLibraryStore {
     // The account's file and any write a crash left beside it, verified gone.
     pub fn delete_blocking(&self) -> Result<(), StorageError> {
         let _held = self.lock();
-        // Another process's write in flight would otherwise put the file back after this returns.
-        let _file = crate::fs::lock_beside_blocking(&self.inner.path);
+        let _file = lock_for_delete(&self.inner.path)?;
         delete_file_blocking(&self.inner.path)
     }
 
@@ -540,14 +539,27 @@ pub fn delete_other_owners_blocking(paths: &StoragePaths, keep: Option<&TeamLibr
     for path in &targets {
         crate::fs::write_private_blocking(&marker_for(path), b"")?;
     }
+    // Marked again under the lock just before its delete: the owner's own engine may have finished a delete of its
+    // own and cleared the mark meanwhile, and a pass of it then sees the mark before it sends anything.
     let mut failed = None;
     for path in &targets {
-        let _file = crate::fs::lock_beside_blocking(path);
-        if let Err(error) = delete_file_blocking(path) {
+        let deleted = lock_for_delete(path).and_then(|_file| {
+            crate::fs::write_private_blocking(&marker_for(path), b"")?;
+            delete_file_blocking(path)
+        });
+        if let Err(error) = deleted {
             failed.get_or_insert(error);
         }
     }
     failed.map_or(Ok(()), Err)
+}
+
+// Another process's write in flight would put the file back after a delete returns, so a delete without the lock fails.
+fn lock_for_delete(path: &Path) -> Result<std::fs::File, StorageError> {
+    crate::fs::lock_beside_blocking(path).ok_or_else(|| StorageError::Io {
+        path: path.to_owned(),
+        source: std::io::Error::other("the file's lock could not be taken for its delete"),
+    })
 }
 
 // The owner digest a name in the folder belongs to: `<digest>.json`, `.<digest>.json.<random>.tmp` or

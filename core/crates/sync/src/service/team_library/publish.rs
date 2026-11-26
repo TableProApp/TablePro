@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use serde_json::Value;
 use tablepro_keys::encoding::TeamId;
 use tablepro_records::record_id::library_ids_match;
 use tablepro_storage::{TeamLibraryCopy, TeamLibraryKind, TeamLibraryRef};
@@ -12,6 +13,7 @@ use super::super::{ServiceSync, Session, begin};
 use super::plan::{Planned, TeamView, kind_of, same_item};
 use super::unsent::{Unsent, settled};
 use super::writes;
+use crate::adapters::conflict::{contested, overlay};
 use crate::api::adapter::LocalChange;
 use crate::api::control::PassReason;
 use crate::api::error::SyncError;
@@ -74,8 +76,10 @@ impl ServiceSync {
         Ok(info)
     }
 
-    // Conflicts first: an open one takes the new copy as its own side, so Keep Mine never puts back an older one and
-    // a sheet showing that older one is turned away by its digest. Each write checks the sign-in just before it lands.
+    // Conflicts first: an open one takes the new copy as its side, so Keep Mine never puts back an older one and a sheet
+    // showing that older one is turned away by its digest. The old base no longer says which members this device
+    // changed, so the new copy stands against the team's whole, and the store holds the agreed members with the team's
+    // value in each contested one, as a pull leaves a conflict. Each write checks the sign-in just before it lands.
     async fn write_planned(&self, scope: ScopeName, planned: &[Planned]) -> Result<(), SyncError> {
         let open: HashMap<RecordKey, ConflictRow> = begin(&self.state)
             .await?
@@ -87,39 +91,7 @@ impl ServiceSync {
                 _ => None,
             })
             .collect();
-        let mut rows: Vec<Result<Row, RowKey>> = Vec::new();
-        for planned in planned {
-            let item = planned.item();
-            let key = RecordKey::new(scope, KindName::of(kind_of(item.kind)), item.id);
-            let held = open.get(&key);
-            let row = match planned {
-                Planned::Ask { fields, .. } => ConflictRow {
-                    key,
-                    base: None,
-                    mine: Some(fields.clone()),
-                    theirs: None,
-                },
-                Planned::Put { fields, .. } => match held {
-                    Some(held) => ConflictRow {
-                        mine: Some(fields.clone()),
-                        ..held.clone()
-                    },
-                    None => continue,
-                },
-                Planned::Delete { .. } => match held {
-                    Some(held) if held.theirs.is_none() => {
-                        rows.push(Err(RowKey::Conflict(key)));
-                        continue;
-                    }
-                    Some(held) => ConflictRow {
-                        mine: None,
-                        ..held.clone()
-                    },
-                    None => continue,
-                },
-            };
-            rows.push(Ok(Row::Conflict(row)));
-        }
+        let ConflictWrites { rows, stored } = conflict_rows(scope, planned, &open);
         if !rows.is_empty() {
             let mut txn = begin(&self.state).await?;
             for row in rows {
@@ -138,10 +110,17 @@ impl ServiceSync {
                 .filter_map(|planned| match planned {
                     Planned::Put {
                         kind: of, id, fields, ..
-                    } if *of == kind => Some(LocalChange::Put {
-                        record_id: id.clone(),
-                        fields: fields.clone(),
-                    }),
+                    } if *of == kind => match stored.get(id) {
+                        Some(None) => None,
+                        Some(Some(projected)) => Some(LocalChange::Put {
+                            record_id: id.clone(),
+                            fields: projected.clone(),
+                        }),
+                        None => Some(LocalChange::Put {
+                            record_id: id.clone(),
+                            fields: fields.clone(),
+                        }),
+                    },
                     Planned::Delete { kind: of, id } if *of == kind => {
                         Some(LocalChange::Delete { record_id: id.clone() })
                     }
@@ -234,6 +213,58 @@ impl ServiceSync {
         .await
     }
 }
+// What each planned item does to the conflict open on it, or the ask it opens.
+struct ConflictWrites {
+    // A row to put, or the key of one to drop.
+    rows: Vec<Result<Row, RowKey>>,
+    // The copy the store takes of each conflicted item: None while it stands against a deletion.
+    stored: HashMap<String, Option<Value>>,
+}
+
+fn conflict_rows(scope: ScopeName, planned: &[Planned], open: &HashMap<RecordKey, ConflictRow>) -> ConflictWrites {
+    let mut rows: Vec<Result<Row, RowKey>> = Vec::new();
+    let mut stored: HashMap<String, Option<Value>> = HashMap::new();
+    for planned in planned {
+        let item = planned.item();
+        let key = RecordKey::new(scope, KindName::of(kind_of(item.kind)), item.id.clone());
+        let Some(held) = open.get(&key) else {
+            if let Planned::Ask { fields, .. } = planned {
+                rows.push(Ok(Row::Conflict(ConflictRow {
+                    key,
+                    base: None,
+                    mine: Some(fields.clone()),
+                    theirs: None,
+                })));
+            }
+            continue;
+        };
+        let mine = match planned {
+            Planned::Put { fields, .. } | Planned::Ask { fields, .. } => Some(fields.clone()),
+            Planned::Delete { .. } => None,
+        };
+        if mine == held.theirs {
+            rows.push(Err(RowKey::Conflict(key)));
+            continue;
+        }
+        let row = ConflictRow {
+            key,
+            base: if mine.is_some() { None } else { held.base.clone() },
+            mine,
+            theirs: held.theirs.clone(),
+        };
+        if let Some(fields) = &row.mine {
+            // Against a deletion the store holds nothing until the person answers, as an ask leaves it.
+            let projected = row
+                .theirs
+                .as_ref()
+                .map(|theirs| overlay(fields, Some(theirs), &contested(&row)));
+            stored.insert(item.id, projected);
+        }
+        rows.push(Ok(Row::Conflict(row)));
+    }
+    ConflictWrites { rows, stored }
+}
+
 // Each planned item's claim: an own item's copy, or none for a move of someone else's item or a removal.
 fn claims_of(planned: &[Planned]) -> Vec<(TeamLibraryKind, String, Option<TeamLibraryCopy>)> {
     planned

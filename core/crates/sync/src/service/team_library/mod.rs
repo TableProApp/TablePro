@@ -33,6 +33,7 @@ use crate::api::team_library::{
     SignInGuard, TeamConnection, TeamFolder, TeamItem, TeamItemRef, TeamLibraryControl, TeamLibraryError,
     TeamLibraryImport, TeamLibraryPolicy, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentTeamEdit,
 };
+use crate::engine::Fence;
 
 pub(crate) const LIBRARY_KINDS: [TeamLibraryKind; 3] = [
     TeamLibraryKind::Connection,
@@ -167,7 +168,8 @@ impl ServiceSync {
         self.signed_in().map(|_| ())
     }
 
-    // Keep Mine on a team library conflict writes what goes up, so it commits as a publish does.
+    // Keep Mine on a team library conflict writes what goes up, so it commits as a publish does: under the policy read
+    // this answers, with `TeamCommitFence` before each write.
     pub(in crate::service) async fn team_keep_mine(&self) -> Result<tablepro_account::PolicyRead, SyncError> {
         self.signed_in()?;
         self.policy_read().await
@@ -302,6 +304,14 @@ impl ServiceSync {
     }
 }
 
+pub(super) struct TeamCommitFence<'a>(pub(super) &'a ServiceSync);
+
+impl Fence for TeamCommitFence<'_> {
+    fn check(&self) -> Result<(), SyncError> {
+        self.0.team_commit_check()
+    }
+}
+
 fn team_of(scope: ScopeName) -> Option<TeamId> {
     match scope {
         ScopeName::Team(team) => Some(team),
@@ -323,7 +333,7 @@ fn with_writers(
     );
     items
         .into_iter()
-        .filter(|item| !collided.contains(&(item.kind, item.id.to_lowercase())))
+        .filter(|item| !plan::tangled(&collided, item.kind, &item.id, Some(&item.fields)))
         .map(|item| {
             let writer = writers
                 .iter()

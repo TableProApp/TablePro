@@ -90,6 +90,28 @@ impl Planned {
     }
 }
 
+// An item whose own id, or a folder or connection it names, collides.
+pub(super) fn tangled(
+    collided: &HashSet<(TeamLibraryKind, String)>,
+    kind: TeamLibraryKind,
+    id: &str,
+    fields: Option<&Value>,
+) -> bool {
+    let collides = |kind: TeamLibraryKind, id: &str| collided.contains(&(kind, id.to_lowercase()));
+    collides(kind, id)
+        || [
+            ("parent_client_id", TeamLibraryKind::Folder),
+            ("folder_client_id", TeamLibraryKind::Folder),
+            ("connection_client_id", TeamLibraryKind::Connection),
+        ]
+        .into_iter()
+        .any(|(member, of)| {
+            fields
+                .and_then(|fields| text(fields, member))
+                .is_some_and(|named| collides(of, named))
+        })
+}
+
 impl<'a> TeamView<'a> {
     pub(super) fn new(
         items: &'a [TeamLibraryItem],
@@ -114,16 +136,8 @@ impl<'a> TeamView<'a> {
         self.collided.contains(&(kind, id.to_lowercase()))
     }
 
-    // An item whose own id, or a folder or connection it names, collides.
     fn tangled(&self, kind: TeamLibraryKind, id: &str, fields: &Value) -> bool {
-        self.collides(kind, id)
-            || [
-                ("parent_client_id", TeamLibraryKind::Folder),
-                ("folder_client_id", TeamLibraryKind::Folder),
-                ("connection_client_id", TeamLibraryKind::Connection),
-            ]
-            .into_iter()
-            .any(|(member, of)| text(fields, member).is_some_and(|named| self.collides(of, named)))
+        tangled(&self.collided, kind, id, Some(fields))
     }
 
     fn held(&self, kind: TeamLibraryKind, id: &str) -> Option<&TeamLibraryItem> {
@@ -409,6 +423,7 @@ fn removed(view: &TeamView<'_>, local: &HashSet<(TeamLibraryKind, String)>) -> V
         .filter(|published| published.kind != TeamLibraryKind::Connection)
         .filter(|published| !view.collides(published.kind, &published.id))
         .filter_map(|published| view.held(published.kind, &published.id))
+        .filter(|held| !view.tangled(held.kind, &held.id, &held.fields))
         .filter(|held| !local.contains(&(held.kind, held.id.to_lowercase())));
     for item in held {
         let item = TeamItemRef {
@@ -524,7 +539,10 @@ pub(super) fn removals(view: &TeamView<'_>, items: &[TeamItemRef]) -> Vec<Planne
         if view.collides(item.kind, &item.id) {
             continue;
         }
-        let Some(held) = view.held(item.kind, &item.id) else {
+        let Some(held) = view
+            .held(item.kind, &item.id)
+            .filter(|held| !view.tangled(held.kind, &held.id, &held.fields))
+        else {
             continue;
         };
         let delete = Planned::Delete {

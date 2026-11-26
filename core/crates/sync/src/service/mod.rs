@@ -1287,11 +1287,19 @@ impl SyncControl for ServiceSync {
             });
         }
         let mine = self.team_conflict_side(&key).await?;
-        let _read = match (&mine, keep) {
-            (Some(_), ConflictChoice::KeepMine) => Some(self.team_keep_mine().await?),
-            _ => None,
-        };
-        self.conflict_table().resolve(&key, seen, keep).await?;
+        if let (Some(_), ConflictChoice::KeepMine) = (&mine, keep) {
+            let _read = self.team_keep_mine().await?;
+            let fence = team_library::TeamCommitFence(self);
+            Conflicts {
+                state: &self.state,
+                adapters: self.decided_adapters(),
+                fence: &fence,
+            }
+            .resolve(&key, seen, keep)
+            .await?;
+        } else {
+            self.conflict_table().resolve(&key, seen, keep).await?;
+        }
         if let Some(mine) = mine {
             self.team_resolved(&key, keep, mine).await?;
         }

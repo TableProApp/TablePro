@@ -9,8 +9,11 @@ use tablepro_records::record_id::library_ids_match;
 use tablepro_storage::{TeamLibraryCopy, TeamLibraryImported, TeamLibraryKind, TeamLibraryLocal, TeamLibraryRef};
 
 use super::super::{ServiceSync, Session, begin};
-use super::plan::{collisions, kind_of, same_item, with_unknown_members};
+use super::plan::{collisions, kind_of, same_item, tangled, with_unknown_members};
 use super::writes;
+use crate::adapters::approval;
+use crate::adapters::conflict::{contested, overlay};
+use crate::adapters::fields::with_members_of;
 use crate::api::adapter::{LocalChange, LocalRecord};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, KindName, RecordKey, ScopeName};
@@ -108,34 +111,62 @@ impl ServiceSync {
         self.apply_each(scope, local.imports).await
     }
 
-    // Only the imports applied here leave the list, matched whole, so one kept again meanwhile stays.
+    // Only the imports applied here leave the list, matched whole, so one kept again meanwhile stays. A member that
+    // waits for the person keeps the store's value, so an import approves nothing.
     async fn apply_each(&self, scope: ScopeName, imports: Vec<TeamLibraryImported>) -> Result<(), SyncError> {
         let bases = self.team_bases(scope).await?;
+        let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
+        let mut stores = Vec::new();
+        for (kind, adapter) in self.library_adapters(scope) {
+            let records = adapter.records(scope).await?.records;
+            stores.push((kind, adapter, records));
+        }
+        let collided = collisions(
+            stores
+                .iter()
+                .flat_map(|(kind, _, records)| records.iter().map(|record| (*kind, record.record_id.as_str())))
+                .chain(bases.iter().map(|(kind, base)| (*kind, base.key.record_id.as_str()))),
+        );
         let mut done: Vec<TeamLibraryImported> = Vec::new();
         let mut refused: Vec<(TeamLibraryImported, &'static str)> = Vec::new();
         let mut claims = Vec::new();
-        for (kind, adapter) in self.library_adapters(scope) {
-            let records = adapter.records(scope).await?.records;
-            let collided = collisions(
-                records
-                    .iter()
-                    .map(|record| (kind, record.record_id.as_str()))
-                    .chain(bases.iter().map(|(held, base)| (*held, base.key.record_id.as_str()))),
-            );
+        for (kind, adapter, records) in stores {
             let mut changes = Vec::new();
             let mut conflicts = Vec::new();
             for imported in imports
                 .iter()
                 .filter(|imported| imported.kind == kind && imported.refused.is_none())
             {
+                let stored = records
+                    .iter()
+                    .find(|record| library_ids_match(&record.record_id, &imported.id));
                 // Listed with the code until it is discarded.
-                if collided.contains(&(kind, imported.id.to_lowercase())) {
+                if tangled(&collided, kind, &imported.id, imported.fields.as_ref())
+                    || stored.is_some_and(|stored| tangled(&collided, kind, &stored.record_id, Some(&stored.fields)))
+                {
                     refused.push((imported.clone(), TeamLibraryError::IdCaseCollision.code()));
                     continue;
                 }
-                let Some(applied) = self.applied(scope, imported, &records, &bases).await? else {
+                let Some(mut applied) = self.applied(scope, imported, &records, &bases).await? else {
                     continue;
                 };
+                if let Some(LocalChange::Put { record_id, fields }) = &mut applied.change {
+                    let members = held
+                        .get(&(KindName::of(adapter.kind()), record_id.clone()))
+                        .cloned()
+                        .unwrap_or_default();
+                    let kept = with_members_of(
+                        adapter.kind(),
+                        scope,
+                        fields,
+                        stored.map(|stored| &stored.fields),
+                        &members,
+                    );
+                    *fields = kept;
+                    if applied.conflict.is_none() {
+                        applied.claim = Some(fields.clone());
+                    }
+                }
                 changes.extend(applied.change);
                 conflicts.extend(applied.conflict);
                 if let Some(fields) = applied.claim.filter(|_| !imported.moved) {
@@ -222,15 +253,17 @@ impl ServiceSync {
         }
         // A version alone proves nothing: a restored server can reuse it under another epoch (0051), so the team's
         // copy must also read as the facade's base did.
+        // The store must still hold that base too, or the edit would overwrite one of this device's made since.
         let unchanged = match (imported.base_version, live) {
             (Some(version), Some(base)) => {
                 base.version == Some(version)
                     && matches!(
-                        (&base.fields, &imported.base_fields),
-                        (Some(held), Some(facade)) if same_item(imported.kind, held, facade)
+                        (&base.fields, &imported.base_fields, theirs),
+                        (Some(held), Some(facade), Some(stored))
+                            if same_item(imported.kind, held, facade) && same_item(imported.kind, held, stored)
                     )
             }
-            (None, None) => current.is_none(),
+            (None, None) => current.is_none() && stored.is_none(),
             _ => false,
         };
         if unchanged {
@@ -238,8 +271,17 @@ impl ServiceSync {
         }
         // An edit 0.88 sent without a base asks before it brings back what the team deleted, as the facade did.
         let deleted = current.is_some_and(|base| base.deleted == Some(DeletedReason::User));
-        if let (true, None, None, Some(_)) = (deleted, imported.base_version, stored, &mine) {
-            return Ok(Some(asked(key, None, mine)));
+        if let (true, None, None, Some(fields)) = (deleted, imported.base_version, stored, &mine) {
+            return Ok(Some(Applied {
+                change: None,
+                conflict: Some(ConflictRow {
+                    key,
+                    base: None,
+                    mine: Some(fields.clone()),
+                    theirs: None,
+                }),
+                claim: mine,
+            }));
         }
         // A facade version whose fields 0.88 did not keep is a base nobody can rebuild, which is not the same as no
         // record: the person decides.
@@ -250,15 +292,31 @@ impl ServiceSync {
     }
 }
 
+// Mine against the team's copy whole. The store leaves it as a pull leaves a conflict, so a later pull merges against
+// the same sides: a deletion out of the store, an edit as the agreed members with the team's value in each contested
+// one.
 fn asked(key: RecordKey, theirs: Option<Value>, mine: Option<Value>) -> Applied {
-    Applied {
-        change: None,
-        conflict: Some(ConflictRow {
-            key,
-            base: None,
-            mine: mine.clone(),
-            theirs,
+    // A deletion stands against a base with no members, so every member of the team's copy reads as changed since and
+    // a later pull asks again instead of taking the team's copy back.
+    let base = mine.is_none().then(|| Value::Object(Default::default()));
+    let row = ConflictRow {
+        key,
+        base,
+        mine: mine.clone(),
+        theirs,
+    };
+    let record_id = row.key.record_id.clone();
+    let change = match (&row.mine, &row.theirs) {
+        (None, Some(_)) => Some(LocalChange::Delete { record_id }),
+        (Some(fields), Some(theirs)) => Some(LocalChange::Put {
+            record_id,
+            fields: overlay(fields, Some(theirs), &contested(&row)),
         }),
+        _ => None,
+    };
+    Applied {
+        change,
+        conflict: Some(row),
         claim: mine,
     }
 }
@@ -329,9 +387,10 @@ fn merged(key: &RecordKey, imported: &TeamLibraryImported, theirs: Option<&Value
             record_id: key.record_id.clone(),
         }),
     };
+    // What goes up is the merge, which the caller claims; only a conflict's answer can send mine as it is.
     Applied {
         change,
-        claim: mine,
+        claim: settled.conflict.is_some().then_some(mine).flatten(),
         conflict: settled.conflict,
     }
 }

@@ -129,6 +129,9 @@ impl ServiceSync {
         let Some(kind) = key.kind.known().and_then(library_kind) else {
             return Ok(());
         };
+        if keep == ConflictChoice::KeepMine {
+            self.team_commit_check()?;
+        }
         let id = key.record_id.clone();
         self.update_local(key.scope, move |local| {
             let named = |held_kind, held_id: &str| held_kind == kind && library_ids_match(held_id, &id);

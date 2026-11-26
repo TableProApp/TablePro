@@ -2,6 +2,8 @@
 // of each library kind, the server's refusals, the open conflicts and 0.88's edits still to apply. A discard puts the
 // store back at the team's copy, so the diff holds nothing more.
 
+use std::collections::{HashMap, HashSet};
+
 use serde_json::Value;
 use tablepro_storage::TeamLibraryKind;
 
@@ -14,8 +16,9 @@ use crate::api::adapter::LocalChange;
 use crate::api::control::{ConflictChoice, conflict_digest};
 use crate::api::error::SyncError;
 use crate::api::ids::{KindName, RecordKey, ScopeName};
-use crate::api::state::{BaseRow, Row, RowKey, RowRange, Table};
+use crate::api::state::{BaseRow, HeldReason, HeldRow, Row, RowKey, RowRange, Table};
 use crate::api::team_library::{TeamItemRef, UnsentState, UnsentTeamEdit};
+use crate::api::transport::PulledRecord;
 use crate::engine::{PendingOp, diff};
 
 // One record of a team that differs from what the team holds.
@@ -39,9 +42,29 @@ fn name_of(fields: Option<&Value>) -> Option<String> {
 }
 
 impl ServiceSync {
-    // The pending diff and the conflicts of one team scope.
+    // The pending diff and the conflicts of one team scope. A record held back by a pull still lists the edit the store
+    // holds of it, which waits for the hold: only a copy missing because the whole record waits is not an edit.
     pub(super) async fn team_diff(&self, scope: ScopeName) -> Result<Vec<Unsent>, SyncError> {
-        let skip = self.skipped(scope).await?;
+        let mut skip: HashMap<KindName, HashSet<String>> = HashMap::new();
+        let mut held_back: HashSet<RecordKey> = HashSet::new();
+        for row in begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Conflicts, scope))
+            .await?
+        {
+            if let Row::Conflict(row) = row {
+                skip.entry(row.key.kind).or_default().insert(row.key.record_id);
+            }
+        }
+        for row in begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Held, scope))
+            .await?
+        {
+            if let Row::Held(row) = row {
+                held_back.insert(row.key);
+            }
+        }
         let refused = self.refused_in(scope).await?;
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
         let mut out = Vec::new();
@@ -49,7 +72,7 @@ impl ServiceSync {
             let record_kind = adapter.kind();
             let bases = self.bases_in(scope, record_kind).await?;
             let local = going_up(record_kind, scope, adapter.records(scope).await?, &bases, &held);
-            let none: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let none: HashSet<String> = HashSet::new();
             let diffed = diff(
                 scope,
                 record_kind,
@@ -58,9 +81,14 @@ impl ServiceSync {
                 skip.get(&KindName::of(record_kind)).unwrap_or(&none),
             );
             for pending in diffed.pending {
+                let waits = held_back.contains(&pending.key);
+                if waits && matches!(pending.op, PendingOp::Delete) {
+                    continue;
+                }
                 let print = fingerprint(&pending.change());
                 let state = match refused.get(&pending.key) {
                     Some(row) if row.digest == print => UnsentState::Refused { code: row.code.clone() },
+                    _ if waits => UnsentState::Waiting,
                     _ => UnsentState::Pending,
                 };
                 let (deletion, fields) = match &pending.op {
@@ -239,14 +267,26 @@ impl ServiceSync {
                     .get(&(unsent.key.kind.clone(), id.clone()))
                     .cloned()
                     .unwrap_or_default();
-                changes.push(match live.and_then(|base| base.fields.as_ref()) {
-                    Some(base) => LocalChange::Put {
-                        record_id: id.clone(),
-                        fields: with_members_of(adapter.kind(), scope, base, stored, &members),
-                    },
-                    None => LocalChange::Delete { record_id: id.clone() },
-                });
-                reverted.push((kind, id));
+                reverted.push((kind, id.clone()));
+                let Some(base) = live.and_then(|live| live.fields.as_ref().map(|fields| (live, fields))) else {
+                    changes.push(LocalChange::Delete { record_id: id });
+                    continue;
+                };
+                if stored.is_some() {
+                    changes.push(LocalChange::Put {
+                        record_id: id,
+                        fields: with_members_of(adapter.kind(), scope, base.1, stored, &members),
+                    });
+                    continue;
+                }
+                // Nothing here holds the approved values, so the team's copy comes back through the approval queue
+                // and a member still waiting keeps the whole record out of the store.
+                if let Some(fields) = self
+                    .restore_waiting(adapter.kind(), &unsent.key, base.0, base.1)
+                    .await?
+                {
+                    changes.push(LocalChange::Put { record_id: id, fields });
+                }
             }
             if !changes.is_empty() {
                 self.check_stop()?;
@@ -254,6 +294,40 @@ impl ServiceSync {
             }
         }
         Ok(reverted)
+    }
+}
+
+impl ServiceSync {
+    async fn restore_waiting(
+        &self,
+        kind: tablepro_records::Kind,
+        key: &RecordKey,
+        base: &BaseRow,
+        fields: &Value,
+    ) -> Result<Option<Value>, SyncError> {
+        let mut txn = begin(&self.state).await?;
+        let rows = approval::rows_of(txn.as_mut(), key).await?;
+        let split = approval::split(kind, key, None, fields, &rows);
+        approval::write(txn.as_mut(), key, &split).await?;
+        if split.hold {
+            txn.put(Row::Held(HeldRow {
+                key: key.clone(),
+                reason: HeldReason::AwaitingApproval,
+                record: PulledRecord {
+                    kind: key.kind.clone(),
+                    record_id: key.record_id.clone(),
+                    tag: base.tag.clone(),
+                    fields: Some(fields.clone()),
+                    fields_json: None,
+                    deleted: None,
+                    service: None,
+                },
+            }))
+            .await?;
+        }
+        self.check_stop()?;
+        txn.commit().await?;
+        Ok((!split.hold).then_some(split.fields))
     }
 }
 
