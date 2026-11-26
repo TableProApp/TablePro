@@ -32,7 +32,7 @@ use crate::api::cloudkit::{CloudKitField, CloudKitRecord, CloudKitValue};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
 use crate::api::legacy::{LegacyMetadata, LegacyRecordRef, LegacyStanding, LegacyTombstone};
-use crate::api::state::{BaseRow, HeldReason, Row, RowKey, RowRange, Standing, StateStore, Table};
+use crate::api::state::{BaseRow, HeldReason, PushWait, Row, RowKey, RowRange, Standing, StateStore, Table};
 use crate::engine::{JournalIds, PendingOp, diff};
 
 // A record type the previous stable knows: one Production holds.
@@ -165,6 +165,8 @@ fn cached(record_type: &RecordType, base: &BaseRow) -> Option<CloudKitRecord> {
 struct Rows {
     token: Option<Vec<u8>>,
     zone_seen: bool,
+    // The zone's push waits for this device's person to upload again, after a restart too.
+    upload_again: bool,
     bases: BTreeMap<Kind, Vec<BaseRow>>,
     held: BTreeMap<RecordKey, (HeldReason, bool)>,
     deferred: Vec<RecordKey>,
@@ -177,6 +179,7 @@ async fn rows(state: &dyn StateStore) -> Result<Rows, SyncError> {
     let mut rows = Rows::default();
     if let Some(Row::Scope(scope)) = txn.get(&RowKey::Scope(SCOPE)).await? {
         rows.zone_seen = true;
+        rows.upload_again = scope.push_wait == Some(PushWait::UploadAgain);
         if let Some(Cursor::CloudKit(token)) = scope.cursor {
             rows.token = Some(token);
         }
@@ -497,7 +500,7 @@ pub(super) async fn metadata(cx: &Context<'_>, known: &LegacyMetadata) -> Result
             owners_kept_off_sync: known.owners_kept_off_sync.clone(),
             account: Some(cx.account.to_owned()),
             zone_state: Some(
-                if cx.zone_removed {
+                if cx.zone_removed || rows.upload_again {
                     "removed"
                 } else if rows.zone_seen {
                     "confirmed"

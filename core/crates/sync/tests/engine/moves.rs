@@ -12,7 +12,7 @@ use tablepro_sync::api::adapter::RecordAdapter;
 use tablepro_sync::api::cloudkit::CloudKitTransport;
 use tablepro_sync::api::control::{MovePlan, PassReason};
 use tablepro_sync::api::ids::{RecordKey, ScopeName};
-use tablepro_sync::api::state::{Row, RowKey, RowRange, StateFiles, StateIdentity, Table};
+use tablepro_sync::api::state::{MovePhase, Row, RowKey, RowRange, StateFiles, StateIdentity, Table};
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync};
 use tablepro_sync::engine::{Clock, Journal, StopSignal};
@@ -266,9 +266,8 @@ async fn a_move_with_icloud_forbidden_merges_the_unsent_icloud_edit_without_an_i
         .put(&id(1), with(carried(1, "Prod", 1), "icon_name", json!("server")));
     web.sync().await;
     phone.put(1, carried(1, "Prod (phone)", 1));
-    for _ in 0..8 {
-        cloud.fail_next(tablepro_sync::api::cloudkit::CloudKitFailure::Network);
-    }
+    // One failure waits for the first call, so a move that made any reads it.
+    cloud.fail_next(tablepro_sync::api::cloudkit::CloudKitFailure::Network);
 
     phone.mover(true).move_to_service_without_icloud().await.unwrap();
 
@@ -513,6 +512,95 @@ async fn a_move_that_stops_short_keeps_icloud_stopped_and_finishes_when_called_a
     assert_eq!(mac.get(9), Some(carried(9, "Only on the service", 9)));
     assert!(!in_zone(&cloud, 9));
     assert_eq!(mac.device.sync.mode(), ServiceMode::Personal);
+}
+
+// A restart in the middle of a move keeps iCloud from syncing the file it moved, with no CloudKit call, and the move
+// goes on from what its first try committed when called again: the `moves` rows hold it open across the restart.
+#[tokio::test]
+async fn a_move_a_restart_cut_short_keeps_icloud_stopped_and_goes_on_from_its_bases() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let web = on_the_service(&server).await;
+    web.connections.put(&id(9), carried(9, "Only on the service", 9));
+    web.sync().await;
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    mac.device.wire.drop_next_push();
+    let first = mac.mover(true).move_to_service().await;
+
+    let device = DeviceBuilder::new(&server, "dev_mac")
+        .teams_only()
+        .state(Arc::clone(&mac.device.state))
+        .connections(
+            Arc::clone(&mac.device.connections),
+            Arc::clone(&mac.device.connections_file),
+        )
+        .keys(Arc::clone(&mac.device.keys))
+        .seed(Arc::clone(&mac.device.seed))
+        .build()
+        .await;
+    let icloud = Apple::engine(&device, &cloud, &mac.files, Some(USER));
+    cloud.fail_next(tablepro_sync::api::cloudkit::CloudKitFailure::Network);
+    let held_back = icloud.run_pass(PassReason::Poll).await;
+    let called = cloud.account_status().await.is_ok();
+    let restarted = Apple {
+        device,
+        icloud,
+        files: Arc::clone(&mac.files),
+        cloud: Arc::clone(&cloud),
+    };
+    let open = restarted.icloud.open_move().await.unwrap();
+    restarted.mover(true).move_to_service().await.unwrap();
+
+    assert!(first.is_err());
+    assert_eq!(held_back.unwrap_err().code(), "sync.not_allowed");
+    assert!(!called, "the moved file reached CloudKit");
+    assert_eq!(open.map(|row| row.phase), Some(MovePhase::Open));
+    assert_eq!(
+        restarted.icloud.open_move().await.unwrap().map(|row| row.phase),
+        Some(MovePhase::Done)
+    );
+    assert_eq!(restarted.get(9), Some(carried(9, "Only on the service", 9)));
+    assert!(!in_zone(&cloud, 9));
+    assert_eq!(restarted.device.sync.mode(), ServiceMode::Personal);
+    assert!(restarted.device.sync.move_row().await.unwrap().is_none());
+}
+
+// A move back that a restart cut short keeps personal data resting on TablePro Sync until the person moves it again.
+#[tokio::test]
+async fn a_move_back_cut_short_keeps_personal_data_resting_on_the_service() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    mac.mover(true).move_to_service().await.unwrap();
+    let web = on_the_service(&server).await;
+    web.connections.remove(&id(1));
+    web.sync().await;
+    mac.device.sync().await;
+    let plan = mac.mover(false).plan_move_to_icloud().await.unwrap();
+    cloud.fail_record(&record_name(Kind::Connection, &id(1)).unwrap(), 4);
+
+    let back = mac.mover(false).move_to_icloud(plan.icloud_deletions).await;
+    let device = DeviceBuilder::new(&server, "dev_mac")
+        .state(Arc::clone(&mac.device.state))
+        .connections(
+            Arc::clone(&mac.device.connections),
+            Arc::clone(&mac.device.connections_file),
+        )
+        .keys(Arc::clone(&mac.device.keys))
+        .seed(Arc::clone(&mac.device.seed))
+        .build()
+        .await;
+    mac.put(2, carried(2, "Edited while the move back waits", 2));
+    device.sync().await;
+
+    assert_eq!(plan.icloud_deletions, 1);
+    assert!(back.is_err());
+    assert_eq!(device.sync.mode(), ServiceMode::TeamsOnly);
+    assert!(live(&server, 2).is_none());
 }
 
 // Only what the person confirmed leaves the zone: a record the device no longer holds for any other reason, as one
