@@ -67,6 +67,30 @@ impl EngineHooks {
         self.keys_changed();
     }
 
+    // What the key flows hold at the start of a pass, which outlives the process and a flow's own calls here: their
+    // lock, and the scopes whose key version stopped or ended (0054, `key_versions`). A Sign Out or an approval that
+    // cleared them clears them here too. `device_removed` is the server's answer, which only a new sign-in ends.
+    pub fn refresh(
+        &self,
+        lock: Option<LockCause>,
+        stopped: HashMap<ScopeName, StoppedCause>,
+        ended: HashMap<ScopeName, Option<EpochId>>,
+    ) {
+        let mut state = self.state();
+        let lock = match state.lock {
+            Some(LockCause::DeviceRemoved) => Some(LockCause::DeviceRemoved),
+            _ => lock,
+        };
+        let changed = state.lock != lock || state.stopped != stopped || state.ended != ended;
+        state.lock = lock;
+        state.stopped = stopped;
+        state.ended = ended;
+        drop(state);
+        if changed {
+            self.keys_changed();
+        }
+    }
+
     // The scope writes no secret under its key: stopped until what it waits for is back, or ended for good.
     pub fn holds_secrets(&self, scope: ScopeName) -> bool {
         let state = self.state();

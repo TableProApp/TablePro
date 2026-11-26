@@ -2,7 +2,7 @@
 // commit whole, a service transport that answers the scopes body and records stop reports and withdrawals, and hooks
 // that record each call. `tablepro-sync-testing` has fuller fakes, which a unit test of this crate cannot link.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
@@ -166,22 +166,22 @@ impl ServiceTransport for Service {
     }
 }
 
-pub(crate) struct NoDeviceStore;
+#[derive(Default)]
+pub(crate) struct MemoryDeviceStore(Mutex<HashMap<DeviceItem, Zeroizing<Vec<u8>>>>);
 
 #[async_trait]
-impl HostDeviceStore for NoDeviceStore {
+impl HostDeviceStore for MemoryDeviceStore {
     async fn load(&self, item: DeviceItem) -> Result<Option<Zeroizing<Vec<u8>>>, DeviceStoreError> {
-        let _ = item;
-        Ok(None)
+        Ok(lock(&self.0).get(&item).cloned())
     }
 
     async fn store(&self, item: DeviceItem, value: Zeroizing<Vec<u8>>) -> Result<(), DeviceStoreError> {
-        let _ = (item, value);
+        lock(&self.0).insert(item, value);
         Ok(())
     }
 
     async fn delete(&self, item: DeviceItem) -> Result<(), DeviceStoreError> {
-        let _ = item;
+        lock(&self.0).remove(&item);
         Ok(())
     }
 }
@@ -272,7 +272,7 @@ impl Rig {
             account,
             device_row,
             state,
-            device_store: Arc::new(NoDeviceStore),
+            device_store: Arc::new(MemoryDeviceStore::default()),
             transport: Arc::clone(&transport) as Arc<dyn ServiceTransport>,
             hooks: Arc::clone(&hooks) as Arc<dyn KeyHooks>,
             clock: Arc::new(FixedClock),

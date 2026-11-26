@@ -749,7 +749,8 @@ fn version_row(keys: &mut Reader<'_>, read: &mut Reader<'_>) -> Result<KeyVersio
         record: read.fixed("version record digest")?,
         holders: holders(read.present("holders")?)?,
         state: named(&VERSION_STATES, &read.text("version state")?, "version state")?,
-        stopped_cause: read.maybe(|bytes| StoppedCause::parse(&text(bytes)?).ok_or_else(|| malformed("stopped cause")))?,
+        stopped_cause: read
+            .maybe(|bytes| StoppedCause::parse(&text(bytes)?).ok_or_else(|| malformed("stopped cause")))?,
         epoch: read.maybe(|bytes| uuid(bytes).map(EpochId))?,
     })
 }

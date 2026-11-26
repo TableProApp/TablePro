@@ -188,7 +188,9 @@ impl KeyService {
             kept: &kept,
             current: &recovered.current,
         };
-        let av = self.rotate_account(&rotation, &TeamSteps::default(), Some(held)).await?;
+        let av = self
+            .rotate_account(&rotation, &TeamSteps::default(), Some(held))
+            .await?;
         self.clear_unanchored();
         Ok(av)
     }
@@ -508,4 +510,3 @@ fn in_change_set(object: &KeyObject, av: Version) -> bool {
         _ => false,
     }
 }
-

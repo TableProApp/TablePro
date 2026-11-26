@@ -14,22 +14,41 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tablepro_keys::encoding::KeyPurpose;
 
 use crate::api::adapter::StoreStamp;
 use crate::api::control::{HeldRecord, HeldRecordReason, PassReason, SyncControl, SyncPhase, SyncStatus};
+use crate::api::device_store::DeviceStoreError;
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
-use crate::api::state::{KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoreRow, Table};
+use crate::api::state::{
+    KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow, Table,
+};
 use crate::api::transport::{DpopKey, ServiceTransport, TransportError};
 use crate::engine::{AdapterSet, Clock, EngineEvents, EngineHooks, Journal, JournalIds, Pass, StopSignal};
+use crate::keys::KeyService;
 
 // This device's signing key, which every personal and history call and every key-object or envelope write carries
 // (0051, DPoP). None until the device holds keys.
 #[async_trait]
 pub trait ProofSource: Send + Sync {
     async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError>;
+}
+
+// The device keys are made on the first call, since a device proves even its first pull and its genesis or first
+// request certifies them (0056, Approving a device, step 1). With no device store there is no key to prove with, and
+// only team plaintext syncs.
+#[async_trait]
+impl ProofSource for KeyService {
+    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
+        match self.ensure_device_keys().await {
+            Ok(device) => Ok(Some(DpopKey(Arc::new(device.dsk)))),
+            Err(SyncError::DeviceStore(DeviceStoreError::Unavailable { .. })) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 pub struct ServiceParts {
@@ -108,7 +127,6 @@ struct PassCtx {
     // This device's own key state says it holds its keys, whatever the server says: only then is an envelope checked
     // or sealed.
     keys_ready: bool,
-    held_secrets: HashSet<ScopeName>,
     // A journal pass diffs only these records.
     named: Option<JournalIds>,
     report: PassReport,
@@ -221,7 +239,6 @@ impl ServiceSync {
             locked: false,
             approved,
             keys_ready: false,
-            held_secrets: HashSet::new(),
             named,
             report: PassReport::default(),
         };
@@ -269,21 +286,40 @@ impl ServiceSync {
         }
     }
 
-    // What outlives the process: a lock the key flows hold, and the scopes whose key version stopped or ended
-    // (0054, `key_versions`).
+    // What outlives the process: the lock the key flows report and the scopes whose key version stopped or ended
+    // (0054, `key_versions`), which the hooks hold for the pass as the one gate a flow's calls then move. A personal or
+    // history key that stops or ends locks the device, so only a team's row holds a scope's secrets on its own.
     async fn read_key_state(&self, ctx: &mut PassCtx) -> Result<(), SyncError> {
         let state = self.keys.key_state().await;
-        let hooks_locked = self.hooks.locked().is_some();
-        ctx.locked = hooks_locked || matches!(state, Ok(KeyState::Locked { .. }));
-        ctx.keys_ready = !hooks_locked && matches!(state, Ok(KeyState::Approved { .. }));
+        let mut stopped = HashMap::new();
+        let mut ended = HashMap::new();
         let mut txn = begin(&self.state).await?;
         for row in txn.scan(&RowRange::Table(Table::KeyVersions)).await? {
-            if let Row::KeyVersion(row) = row
-                && row.state != KeyVersionState::Ok
-            {
-                ctx.held_secrets.insert(row.scope);
+            let Row::KeyVersion(row) = row else { continue };
+            let scope = match row.purpose {
+                KeyPurpose::History => ScopeName::History,
+                KeyPurpose::Personal | KeyPurpose::Team => row.scope,
+            };
+            match row.state {
+                KeyVersionState::Ok => {}
+                KeyVersionState::Stopped => {
+                    stopped.insert(scope, row.stopped_cause.unwrap_or(StoppedCause::CatchUp));
+                }
+                KeyVersionState::Ended => {
+                    ended.insert(scope, row.epoch);
+                }
             }
         }
+        drop(txn);
+        // A key state that could not be read, as with a locked device store, keeps the lock the hooks hold.
+        let lock = match &state {
+            Ok(KeyState::Locked { cause }) => Some(*cause),
+            Ok(_) => None,
+            Err(_) => self.hooks.locked(),
+        };
+        self.hooks.refresh(lock, stopped, ended);
+        ctx.locked = self.hooks.locked().is_some();
+        ctx.keys_ready = !ctx.locked && matches!(state, Ok(KeyState::Approved { .. }));
         Ok(())
     }
 

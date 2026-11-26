@@ -366,10 +366,10 @@ async fn a_catch_up_stop_clears_only_with_a_re_confirmation_that_is_taken() {
 }
 
 #[tokio::test]
-#[ignore = "resume_withdrawal proves with KeyService::dpop_key, which K7-1 fills"]
 async fn a_withdrawal_whose_answer_was_lost_settles_before_the_report_of_a_second_stop() {
     let world = World::load();
     let rig = stopped_at_6(&world).await;
+    rig.service.ensure_device_keys().await.unwrap();
     rig.put([Row::KeyPending(KeyPendingRow {
         flow: PendingFlow::StopWithdrawal { team: world.team },
         state: Vec::new(),

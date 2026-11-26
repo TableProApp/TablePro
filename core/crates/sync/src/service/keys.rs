@@ -2,6 +2,8 @@
 // envelopes only under the version in force at their place, the push-back after a new epoch, the flows a crash left
 // in `key_pending`, the stop reports and each team's roster once its pull is caught up.
 
+use std::collections::HashSet;
+
 use tablepro_keys::encoding::Version;
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_records::Kind;
@@ -9,13 +11,14 @@ use uuid::Uuid;
 
 use super::{PassCtx, ServiceSync, begin};
 use crate::api::error::SyncError;
-use crate::api::ids::{IdempotencyKey, KindName, ScopeName};
+use crate::api::ids::{EpochId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{
     ArrivalOrder, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction,
 };
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{PendingFlow, Row, RowKey, RowRange, StoppedCause, Table};
-use crate::api::transport::{Proof, PulledRecord, PushBatch};
+use crate::api::transport::{Change, ChangeOutcome, Proof, PulledRecord, PushBatch};
+use crate::engine::key_base;
 
 // Which flow reads a key kind: the account's own objects, an approval session's, a reset's, or a team's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,35 +119,92 @@ impl ServiceSync {
     }
 
     // On a new epoch, before any other record: the key objects this account signed that the server lacks, one change
-    // set per push, each refusal final (0051, After a restore).
+    // set per push in the flows' order, each refusal final (0051, After a restore). An unanswered set ends the pass, so
+    // the next one starts the push-back over; a refused account set stops it, and a scope that ended sends nothing
+    // more. A team waiting on a version another account signed resumes its push-back once that version is back, so the
+    // push-back runs again on every pass while one waits (0062).
     pub(super) async fn push_back(&self, ctx: &mut PassCtx) -> Result<(), SyncError> {
         let epoch = ctx.body.epoch;
-        if !ctx.new_epoch || ctx.pushed_back == Some(epoch) {
+        let due = ctx.pushed_back != Some(epoch) && (ctx.new_epoch || self.restore_waits().await?);
+        if !due {
             return self.adopt_epoch(ctx).await;
         }
+        let mut closed: HashSet<ScopeName> = HashSet::new();
         for set in self.keys.push_back(epoch).await? {
+            if closed.contains(&set.scope) {
+                continue;
+            }
             self.stop.check()?;
+            let scope = set.scope;
             let batch = PushBatch {
-                scope: set.scope,
+                scope,
                 epoch: Some(epoch),
                 idempotency_key: Some(IdempotencyKey(Uuid::new_v4().to_string())),
                 changes: set.changes.clone(),
                 proof: Proof::Dpop(set.proof.clone()),
             };
             let answer = self.transport.push(batch).await?;
-            let scope = set.scope;
+            if answer.outcomes.len() != set.changes.len() {
+                return Err(SyncError::Malformed { what: "push answer" });
+            }
+            self.keep_key_bases(scope, epoch, &set.changes, &answer.outcomes)
+                .await?;
             match self.keys.push_back_answered(set, answer.outcomes).await? {
                 PushBackVerdict::Continue => {}
-                PushBackVerdict::Wait { scope } => self.hooks.stop_scope(scope, StoppedCause::RestoreWait),
-                PushBackVerdict::Ended { scope } => self.hooks.end_scope(scope, Some(epoch)),
+                PushBackVerdict::Wait { scope } => {
+                    self.hooks.stop_scope(scope, StoppedCause::RestoreWait);
+                    closed.insert(scope);
+                }
+                PushBackVerdict::Ended { scope } => {
+                    self.hooks.end_scope(scope, Some(epoch));
+                    closed.insert(scope);
+                }
                 PushBackVerdict::AccountEnded => {
                     tracing::debug!(%scope, "the account's own key objects were refused");
                     self.hooks.lock(LockCause::AccountEnded);
+                    ctx.locked = true;
+                    ctx.keys_ready = false;
+                    break;
                 }
             }
         }
         ctx.pushed_back = Some(epoch);
         self.adopt_epoch(ctx).await
+    }
+
+    // A team row stopped as `restore_wait`.
+    async fn restore_waits(&self) -> Result<bool, SyncError> {
+        let mut txn = begin(&self.state).await?;
+        Ok(txn
+            .scan(&RowRange::Table(Table::KeyVersions))
+            .await?
+            .iter()
+            .any(|row| matches!(row, Row::KeyVersion(row) if row.stopped_cause == Some(StoppedCause::RestoreWait))))
+    }
+
+    // What the server took is what it holds now, so a push-back run again does not judge it lost.
+    async fn keep_key_bases(
+        &self,
+        scope: ScopeName,
+        epoch: EpochId,
+        changes: &[Change],
+        outcomes: &[ChangeOutcome],
+    ) -> Result<(), SyncError> {
+        let bases: Vec<_> = changes
+            .iter()
+            .zip(outcomes)
+            .filter_map(|(change, outcome)| key_base(scope, epoch, change, outcome))
+            .collect();
+        if bases.is_empty() {
+            return Ok(());
+        }
+        self.stop.check()?;
+        let mut txn = begin(&self.state).await?;
+        for base in bases {
+            txn.put(Row::Base(base)).await?;
+        }
+        txn.commit().await?;
+        Ok(())
     }
 
     // The refilled scopes take the epoch and its lineage only now, so a pass cut short before the push-back answered

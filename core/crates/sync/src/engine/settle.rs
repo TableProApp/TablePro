@@ -3,9 +3,9 @@ use tablepro_records::Kind;
 use tablepro_records::merge::{self, Merged, Mode, Sides};
 
 use crate::api::adapter::{LocalChange, LocalRecord};
-use crate::api::ids::{RecordKey, ScopeName};
+use crate::api::ids::{EpochId, RecordKey, ScopeName};
 use crate::api::state::{BaseRow, ConflictRow};
-use crate::api::transport::{DeletedReason, PulledRecord};
+use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DeletedReason, PulledRecord};
 
 // How a pulled copy meets the device's: by the conflict rules, or, in a refill, the provider's copy or the device's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +38,30 @@ pub fn mode(scope: ScopeName) -> Mode {
         ScopeName::Team(_) => Mode::Team,
         ScopeName::Personal | ScopeName::History => Mode::Personal,
     }
+}
+
+// The base an applied create of a key object leaves, in the epoch it was pushed under, so a push-back after a restore
+// judges what the server holds by it as by a pulled one (0051, Lost writes).
+pub fn key_base(scope: ScopeName, epoch: EpochId, change: &Change, outcome: &ChangeOutcome) -> Option<BaseRow> {
+    let ChangeOutcome::Applied {
+        tag: Some(tag),
+        service,
+    } = outcome
+    else {
+        return None;
+    };
+    if !change.kind.is_key() || !matches!(change.op, ChangeOp::Write { .. }) {
+        return None;
+    }
+    Some(BaseRow {
+        key: RecordKey::new(scope, change.kind.clone(), change.record_id.clone()),
+        tag: tag.clone(),
+        version: service.map(|stamp| stamp.version),
+        revision: service.map(|stamp| stamp.revision),
+        epoch: Some(epoch),
+        deleted: None,
+        fields: None,
+    })
 }
 
 // The base a pulled copy leaves: its tag and server columns, and its fields unless the kind is created once.

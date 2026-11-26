@@ -184,12 +184,7 @@ impl ServiceSync {
     fn seals(&self, ctx: &PassCtx, row: &ScopeRow) -> bool {
         let scope = row.scope;
         let rotation_due = matches!(scope, ScopeName::Team(_)) && row.rotation_due;
-        !ctx.locked
-            && ctx.approved
-            && ctx.keys_ready
-            && !rotation_due
-            && !ctx.held_secrets.contains(&scope)
-            && !self.hooks.holds_secrets(scope)
+        !ctx.locked && ctx.approved && ctx.keys_ready && !rotation_due && !self.hooks.holds_secrets(scope)
     }
 
     async fn skipped(&self, scope: ScopeName) -> Result<HashMap<KindName, HashSet<String>>, SyncError> {

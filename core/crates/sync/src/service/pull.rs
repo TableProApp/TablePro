@@ -247,6 +247,8 @@ impl ServiceSync {
                 continue;
             }
             if let Some(next) = family(pull.scope, &record.kind) {
+                // What the server holds now, which a push-back after a restore judges by (0051, After a restore).
+                writes.bases.push(base_of(&key, true, &record));
                 if pull.snapshot {
                     pull.keep(record)?;
                 } else {

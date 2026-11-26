@@ -38,6 +38,7 @@ use crate::api::ids::{DeviceRowId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId, Roster};
 use crate::api::state::{KeyObjectRow, KeyTrust, Row, RowKey, RowRange, StateStore, StateTxn, Table};
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PushBatch, ServiceTransport};
+use crate::engine::key_base;
 
 pub use account::{AccountObjectsPlan, HeldDeviceKeys, KeptDevice, OwnAccount, ResetKeys};
 pub use personal::{CurrentPersonal, ScopeKeyPlan};
@@ -312,6 +313,8 @@ impl KeyService {
     }
 
     // One change set as one push, applied whole or not at all (0051, Change sets), under the epoch the scope holds.
+    // What applied keeps its base, so a push-back after a restore judges what the server holds by it (0051, After a
+    // restore).
     pub async fn push_change_set(
         &self,
         scope: ScopeName,
@@ -328,17 +331,28 @@ impl KeyService {
         .ok_or(SyncError::NotAllowed {
             what: "push before the scope is read",
         })?;
-        let sent = changes.len();
         let batch = PushBatch {
             scope,
             epoch: Some(epoch),
             idempotency_key: Some(IdempotencyKey::parse(&random_uuid()?.to_string())?),
-            changes,
+            changes: changes.clone(),
             proof: Proof::Dpop(proof),
         };
         let answer = self.transport.push(batch).await?;
-        if answer.outcomes.len() != sent {
+        if answer.outcomes.len() != changes.len() {
             return Err(SyncError::Malformed { what: "push answer" });
+        }
+        let bases: Vec<_> = changes
+            .iter()
+            .zip(&answer.outcomes)
+            .filter_map(|(change, outcome)| key_base(scope, epoch, change, outcome))
+            .collect();
+        if !bases.is_empty() {
+            let mut txn = self.begin().await?;
+            for base in bases {
+                txn.put(Row::Base(base)).await?;
+            }
+            txn.commit().await?;
         }
         Ok(answer.outcomes)
     }
