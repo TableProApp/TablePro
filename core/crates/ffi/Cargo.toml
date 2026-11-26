@@ -45,6 +45,7 @@ tablepro-driver-postgres = { workspace = true, optional = true }
 tablepro-driver-redis = { workspace = true, optional = true }
 tablepro-driver-sqlite = { workspace = true, optional = true }
 tablepro-foreign-import.workspace = true
+tablepro-keys.workspace = true
 tablepro-mcp.workspace = true
 tablepro-net.workspace = true
 tablepro-session = { workspace = true, features = ["in-process-ssh"] }
@@ -55,6 +56,7 @@ tablepro-sync.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
+hex.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -72,7 +74,6 @@ windows-sys.workspace = true
 [dev-dependencies]
 tablepro-account = { workspace = true, features = ["fakes"] }
 tablepro-session = { workspace = true, features = ["fakes", "in-process-ssh"] }
-tablepro-keys.workspace = true
 tablepro-sync-testing.workspace = true
 tablepro-test-support.workspace = true
 csbindgen.workspace = true

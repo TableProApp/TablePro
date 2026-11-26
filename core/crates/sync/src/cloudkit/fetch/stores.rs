@@ -81,7 +81,7 @@ pub(super) fn overlay(local: &Value, carried: &Value, merged: &Value) -> Value {
 }
 
 // A record new to the store whose id is a digest takes the id its fields name, as the store keeps it (0052, Long ids).
-fn stored_id(kind: Kind, wire: &str, fields: &Value) -> String {
+pub(in crate::cloudkit) fn stored_id(kind: Kind, wire: &str, fields: &Value) -> String {
     if kind.is_settings() && wire.starts_with(DIGEST_PREFIX) {
         let named = fields.get("category").and_then(Value::as_str);
         if let Some(category) = named.filter(|category| shortened(kind, (*category).to_owned()) == wire) {

@@ -9,7 +9,7 @@ use tablepro_keys::encoding::{AccountId, Version};
 use tablepro_keys::fingerprint::{fingerprint, fingerprint_words, qr_text};
 use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced, replace_point};
 
 use super::KeyService;
 use crate::api::error::SyncError;
@@ -42,11 +42,16 @@ pub enum PinChange {
     Alert,
 }
 
+// Whether a pin's replaced list holds `ik`, which is never current again (0056, Pins, Replace).
+pub(crate) fn seen_replaced(replaced: &[Replaced], ik: &Ed25519Public) -> bool {
+    replace_point(replaced, ik).is_some()
+}
+
 // A walk up an account's certificates from its pin: where the pin can move, and what stopped it.
 pub(crate) struct Walk {
     pub(crate) ik: Ed25519Public,
     pub(crate) av: Version,
-    pub(crate) replaced: Vec<Ed25519Public>,
+    pub(crate) replaced: Vec<Replaced>,
     pub(crate) endorsed: bool,
     pub(crate) stop: Option<KeysError>,
 }
@@ -112,14 +117,14 @@ impl KeyService {
                     }
                 }
             };
-            if certificate.ik != walk.ik && walk.replaced.contains(&certificate.ik) {
+            if certificate.ik != walk.ik && seen_replaced(&walk.replaced, &certificate.ik) {
                 walk.stop = Some(KeysError::RetiredIk);
                 break;
             }
             match certificate.ik_change(&self.origin, &walk.ik) {
                 Ok(IkChange::Same) => {}
                 Ok(IkChange::Endorsed) => {
-                    walk.replaced.push(walk.ik);
+                    walk.replaced.push(Replaced { ik: walk.ik, av: next });
                     walk.ik = certificate.ik;
                     walk.endorsed = true;
                 }
@@ -175,7 +180,7 @@ impl KeyService {
         }
         // An IK seen replaced verifies only certificates from before its replace (0056, `keys.retired_ik`). Where the
         // scope does not show the replace, nothing under it counts.
-        if pin.replaced.contains(&certificate.ik) {
+        if seen_replaced(&pin.replaced, &certificate.ik) {
             let replaced_at = self
                 .replaced_at(txn, scope, certificate.account, &certificate.ik, pin.av)
                 .await?;
@@ -242,7 +247,7 @@ impl KeyService {
             self.verify_certificate(txn, scope, certificate).await?;
             return Ok(PinChange::Unchanged);
         }
-        if certificate.ik != pin.ik && pin.replaced.contains(&certificate.ik) {
+        if certificate.ik != pin.ik && seen_replaced(&pin.replaced, &certificate.ik) {
             return Err(KeysError::RetiredIk.into());
         }
         let walk = self.walk(txn, scope, &pin, certificate).await?;

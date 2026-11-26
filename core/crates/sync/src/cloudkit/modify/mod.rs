@@ -17,7 +17,7 @@ use tablepro_records::Kind;
 use tablepro_records::cloudkit::{CloudValue, RecordType, from_wire, record_name, record_type_of};
 use tablepro_records::record_id::shortened;
 
-pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync};
+pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync, IcloudCopy};
 
 use super::codes;
 use super::fetch::{Categories, Fetcher, PROFILES, SCOPE, ServerChanged, carried};
@@ -175,7 +175,7 @@ fn unwritable(kind: Kind, record: &LocalRecord) -> &'static str {
 }
 
 // The diff's copy and the save's both take the base's value in each member the approval queue holds.
-fn at_base(
+pub(in crate::cloudkit) fn at_base(
     kind: &KindName,
     waiting: &BTreeMap<(KindName, String), BTreeSet<String>>,
     bases: &[BaseRow],
@@ -415,7 +415,7 @@ impl<'p> Pusher<'p> {
     // The store's copies by the id the zone names them with (0052, Long ids), each as what iCloud carries of it, so a
     // field the zone never holds reads as no edit. A copy the projection cannot take stays in the set, so its base
     // does not read as a deletion, and is left out with its code.
-    fn carried_copies(
+    pub(in crate::cloudkit) fn carried_copies(
         kind: Kind,
         stored: LocalRecords,
     ) -> (LocalRecords, BTreeMap<String, LocalRecord>, Vec<(String, &'static str)>) {
