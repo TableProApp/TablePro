@@ -39,6 +39,9 @@ pub struct ErrorInfo {
     // What an `ai.*` error is about; the provider's own words are in `server`.
     #[uniffi(default = None)]
     pub ai: Option<AiFailureInfo>,
+    // What a `sync.*` refusal carries beyond its code: a step-up challenge, a wait, a change's code, a lock.
+    #[uniffi(default = None)]
+    pub sync: Option<crate::sync::SyncFailureInfo>,
 }
 
 // Error details stay off the stack while bindings keep the same record values.
@@ -120,6 +123,7 @@ impl CoreError {
                 host_key: None,
                 tls_failure: None,
                 ai: None,
+                sync: None,
             }),
         }
     }
@@ -162,6 +166,7 @@ impl ErrorInfo {
                 _ => None,
             },
             ai: None,
+            sync: None,
         }
     }
 
@@ -176,6 +181,7 @@ impl ErrorInfo {
             host_key: None,
             tls_failure: None,
             ai: None,
+            sync: None,
         }
     }
 }

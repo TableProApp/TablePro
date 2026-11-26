@@ -2,8 +2,9 @@
 //  SchemaLeasingLoadTests.swift
 //  TableProTests
 //
-//  The first load of a catalog takes one lease per read, the tables first, so a column read asked
-//  for while it runs goes before the rest of the catalog instead of after all of it.
+//  The first load of a catalog reads its tables on a lease of their own, then every other kind on
+//  one more lease, which the driver may answer in one round trip (#4543). A column read asked for
+//  meanwhile waits for that one read, not for one round trip per kind.
 //
 
 import Foundation
@@ -138,21 +139,21 @@ struct SchemaLeasingLoadTests {
         SerialLeaseProvider(driver: PluginDriverAdapter(connection: connection, pluginDriver: plugin))
     }
 
-    @Test("The tables are read first, on a lease of their own, and every other kind on one lease each")
-    func tablesFirstThenOneLeasePerKind() async throws {
+    @Test("The tables are read first, on a lease of their own, and every other kind on one more lease")
+    func tablesFirstThenOneLeaseForTheSideKinds() async throws {
         let service = SchemaService()
         let provider = makeProvider()
 
         try await load(service, from: provider)
 
         #expect(plugin.reads == ["tables", "routines", "triggers"])
-        #expect(provider.leases > 2)
+        #expect(provider.leases == 2)
         #expect(service.state(for: connection.id) == .loaded(service.tables(for: connection.id)))
         #expect(service.tables(for: connection.id).map(\.name) == ["orders"])
     }
 
-    @Test("A column read asked for while the routines are read runs before the triggers")
-    func aColumnReadPassesTheRestOfTheCatalog() async throws {
+    @Test("A column read asked for during the side kinds runs right after their one read")
+    func aColumnReadWaitsForOneSideRead() async throws {
         let service = SchemaService()
         let provider = makeProvider()
         let routines = AsyncGate()
@@ -167,7 +168,7 @@ struct SchemaLeasingLoadTests {
         await routines.open()
         _ = try await (loading, column)
 
-        #expect(plugin.reads == ["tables", "routines", "columns", "triggers"])
+        #expect(plugin.reads == ["tables", "routines", "triggers", "columns"])
     }
 
     @Test("Completion gets the tables before any other kind is read")
@@ -245,7 +246,7 @@ struct SchemaLeasingLoadTests {
         #expect(service.triggersLoadState(for: connection.id).erased != .loading)
     }
 
-    @Test("A side lease that cannot be had settles its kind and every later one as failed")
+    @Test("A side lease that cannot be had settles every side kind as failed")
     func sideLeaseFailureSettlesTheRest() async throws {
         let service = SchemaService()
         let provider = makeProvider()
@@ -262,7 +263,7 @@ struct SchemaLeasingLoadTests {
         #expect(!service.isRefreshing(connectionId: connection.id))
     }
 
-    @Test("A side lease that is cancelled settles the kinds not yet read as cancelled")
+    @Test("A side lease that is cancelled settles every side kind")
     func cancelledSideLeaseSettlesTheRestCancelled() async throws {
         let service = SchemaService()
         let provider = makeProvider()

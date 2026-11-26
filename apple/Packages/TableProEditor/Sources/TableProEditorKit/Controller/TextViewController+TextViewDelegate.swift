@@ -11,6 +11,9 @@ import TextStory
 
 extension TextViewController: TextViewDelegate {
     public func textView(_ textView: TextView, willReplaceContentsIn range: NSRange, with string: String) {
+        pendingEditRemovesLineBreak = range.length > 0
+            && (textView.textStorage.string as NSString)
+                .rangeOfCharacter(from: .newlines, options: [], range: range).location != NSNotFound
         for coordinator in self.textCoordinators.values() {
             if let coordinator = coordinator as? TextViewDelegate {
                 coordinator.textView(textView, willReplaceContentsIn: range, with: string)
@@ -19,7 +22,12 @@ extension TextViewController: TextViewDelegate {
     }
 
     public func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
-        gutterView.needsDisplay = true
+        gutterView.setNeedsDisplayForEdit(
+            at: range.location,
+            movesLinesBelow: wrapLines || pendingEditRemovesLineBreak
+                || (string as NSString).rangeOfCharacter(from: .newlines).location != NSNotFound
+        )
+        pendingEditRemovesLineBreak = false
         snippetTextDidReplace(in: range, with: string)
         for coordinator in self.textCoordinators.values() {
             if let coordinator = coordinator as? TextViewDelegate {

@@ -20,12 +20,13 @@ struct SyncedWriteFailureTests {
         fixture.metadata.userDefaults.data(forKey: tokenKey)
     }
 
-    // A directory the app cannot write into makes every library save fail the way a full disk does.
+    // Folders the app cannot write into make every library save fail the way a full disk does. The core resets the
+    // mode of its own folder before a write, so the immutable flag refuses it, and reads still work.
     private func setLibraryWritable(_ writable: Bool) throws {
-        try FileManager.default.setAttributes(
-            [.posixPermissions: writable ? 0o755 : 0o555],
-            ofItemAtPath: fixture.libraryDirectory.path
-        )
+        let folders = [fixture.libraryDirectory, fixture.libraryDirectory.appendingPathComponent("Core", isDirectory: true)]
+        for folder in folders where FileManager.default.fileExists(atPath: folder.path) {
+            try FileManager.default.setAttributes([.immutable: !writable], ofItemAtPath: folder.path)
+        }
     }
 
     private func makeSyncedState(transport: RecordingSyncTransport) -> AppState {

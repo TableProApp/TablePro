@@ -8,12 +8,24 @@
 import AppKit
 import SwiftUI
 
-struct CodeSuggestionLabelView: View {
+// Equal when it draws the same, so a row a re-rank only moved is not built again.
+struct CodeSuggestionLabelView: View, Equatable {
     static let horizontalPadding: CGFloat = 13
 
     let suggestion: CodeSuggestionEntry
     let font: NSFont
     var isSelected: Bool = false
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.isSelected == rhs.isSelected
+            && lhs.font == rhs.font
+            && lhs.suggestion.label == rhs.suggestion.label
+            && lhs.suggestion.detail == rhs.suggestion.detail
+            && lhs.suggestion.matchedRanges == rhs.suggestion.matchedRanges
+            && lhs.suggestion.deprecated == rhs.suggestion.deprecated
+            && lhs.suggestion.image == rhs.suggestion.image
+            && lhs.suggestion.imageColor == rhs.suggestion.imageColor
+    }
 
     private var effectiveLabelColor: Color {
         if isSelected {

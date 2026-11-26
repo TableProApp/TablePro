@@ -26,4 +26,8 @@ pub enum SshDestinationProblem {
 
     #[error("an IPv6 host is missing its closing ']'")]
     UnclosedBracket,
+
+    // OpenSSH's -J signs in to every jump host with the agent and the ssh_config, never a key named for one hop.
+    #[error("the jump host {host} signs in with a key of its own, which a jump through OpenSSH cannot use")]
+    JumpHostKey { host: String },
 }

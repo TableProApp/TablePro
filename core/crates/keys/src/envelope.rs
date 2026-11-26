@@ -143,13 +143,17 @@ pub struct EnvelopeId {
 
 impl EnvelopeId {
     pub fn new(parent_kind: ParentKind, parent_id: &str, secret_kind: SecretKind) -> Result<Self, KeysError> {
+        check_record_id(parent_id)?;
+        if let SecretKind::Plugin(field) | SecretKind::AiKey(field) = &secret_kind {
+            check_record_id(field)?;
+        }
+        check_record_id(&secret_kind.name())?;
         let id = Self {
             parent_kind,
             parent_id: parent_id.to_owned(),
             secret_kind,
         };
         check_record_id(&id.to_wire())?;
-        check_record_id(parent_id)?;
         // ADR 0052, Ids per kind: these parents are named by their UUID; a team library item keeps
         // the client id its library stores.
         if matches!(
@@ -171,6 +175,7 @@ impl EnvelopeId {
 
     // The parent's id is what lies between the first and the last `/`.
     pub fn parse(text: &str) -> Result<Self, KeysError> {
+        check_record_id(text)?;
         let (parent_kind, rest) = text
             .split_once('/')
             .ok_or(KeysError::encoding("envelope id has no `/`"))?;
@@ -248,9 +253,9 @@ pub fn envelope_plaintext(secret: &str, dest: &JsonValue) -> Result<Zeroizing<St
     let len = HEAD.len() + json::string_len(secret) + MIDDLE.len() + dest.encoded_len() + 1;
     let mut out = Zeroizing::new(String::with_capacity(len));
     out.push_str(HEAD);
-    push_string(&mut out, secret);
+    push_string(&mut *out, secret);
     out.push_str(MIDDLE);
-    dest.write(&mut out);
+    dest.write(&mut *out);
     out.push('}');
     Ok(out)
 }
@@ -277,7 +282,7 @@ pub fn seal_envelope(
     )
 }
 
-pub fn seal_envelope_plaintext(
+pub(crate) fn seal_envelope_plaintext(
     key: &ScopeKey,
     origin: &Origin,
     scope: Scope,
@@ -380,7 +385,7 @@ pub fn history_plaintext(entry: &JsonValue) -> Result<Zeroizing<String>, KeysErr
     const HEAD: &str = "{\"v\":1,\"entry\":";
     let mut out = Zeroizing::new(String::with_capacity(HEAD.len() + entry.encoded_len() + 1));
     out.push_str(HEAD);
-    entry.write(&mut out);
+    entry.write(&mut *out);
     out.push('}');
     Ok(out)
 }
@@ -406,7 +411,7 @@ pub fn seal_history(
     )
 }
 
-pub fn seal_history_plaintext(
+pub(crate) fn seal_history_plaintext(
     key: &ScopeKey,
     origin: &Origin,
     account: AccountId,
@@ -515,6 +520,21 @@ mod tests {
             .is_err()
         );
         assert!(EnvelopeId::parse("connection//password").is_err());
+        assert!(
+            EnvelopeId::new(
+                ParentKind::LibraryConnection,
+                "x",
+                SecretKind::Plugin("x".repeat(1 << 20))
+            )
+            .is_err()
+        );
+        let long = format!("library_connection/{}/password", "x".repeat(1 << 20));
+        assert_eq!(
+            EnvelopeId::parse(&long).unwrap_err(),
+            KeysError::Encoding {
+                what: "record id is empty, too long or holds U+0000"
+            }
+        );
         assert_eq!(
             EnvelopeId::new(ParentKind::Settings(Platform::Ios), "ai", SecretKind::AiKey("x".into()))
                 .unwrap()
