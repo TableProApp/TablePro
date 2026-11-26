@@ -31,6 +31,7 @@ use crate::api::transport::{RejectedCode, TransportError};
 impl ApprovalFlows for KeyService {
     async fn request_approval(&self) -> Result<RequestId, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         // A locked device asks again: left out, stopped on its personal key, its own account reset or its anchor lost.
         if !self.may_ask_again(txn.as_mut()).await? {
@@ -102,6 +103,7 @@ impl ApprovalFlows for KeyService {
 
     async fn choose_request(&self, request: RequestId) -> Result<ApprovalSession, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let own = {
             let mut txn = self.begin().await?;
             self.approved_device_account(txn.as_mut(), "approve a device").await?

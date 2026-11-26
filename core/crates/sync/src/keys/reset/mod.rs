@@ -53,6 +53,7 @@ impl ResetFlows for KeyService {
 
     async fn begin_reset(&self, kind: ResetKind) -> Result<RecoveryKeyDraft, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         self.reset_may_start(kind).await?;
         let draft = self.drafts().put(ResetDraft {
             kind,
@@ -64,6 +65,7 @@ impl ResetFlows for KeyService {
 
     async fn finish_reset_proposal(&self, draft: DraftId, typed: TypedBack) -> Result<PendingReset, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let (kind, recovery, typed_back) = self.drafts().with(draft, |held: &mut ResetDraft| {
             (held.kind, held.shown.key.clone(), held.shown.check_typed_back(&typed))
         })?;
@@ -121,6 +123,7 @@ impl ResetFlows for KeyService {
 
     async fn cancel_reset(&self, reset: ResetId, with: CancelWith) -> Result<(), SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut record = self
             .settled_resets()
             .await?
@@ -173,6 +176,7 @@ impl ResetFlows for KeyService {
     async fn activate_reset(&self, reset: ResetId) -> Result<(), SyncError> {
         let mut record = {
             let _serial = self.serialized().await;
+            self.finish_cut_off_sign_out().await?;
             self.activate(reset).await?
         };
         self.publish_after_reset(&mut record).await
@@ -329,18 +333,7 @@ impl KeyService {
         let Some(record) = self.reset_record(txn.as_mut(), reset).await? else {
             return Ok(None);
         };
-        let id = KeyRecordId::Account {
-            account: self.account(),
-            av: record.av,
-        };
-        let held = self
-            .held_object(txn.as_mut(), ScopeName::Personal, KeyKind::Account, &id.to_wire())
-            .await?;
-        if !held.is_some_and(|held| !held.applied) {
-            return Ok(None);
-        }
-        drop(txn);
-        self.change_set_candidates(record.av).await.map(Some)
+        self.rotation_candidates(txn.as_mut(), record.av).await
     }
 
     async fn activate(&self, reset: ResetId) -> Result<ResetRecord, SyncError> {

@@ -404,3 +404,56 @@ async fn a_rotation_another_device_won_runs_no_team_step_of_this_one() {
     });
     assert!(!stored_in_team(&server, team, "key.version", &version.to_wire()));
 }
+
+// A removal whose answer was lost applied on the server. Asked again, the device sends the same objects first, finds
+// them applied, and starts no second rotation that would stand in for it.
+#[tokio::test]
+async fn a_removal_after_one_whose_answer_was_lost_sends_that_one_again_first() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    a.wire.lose_next_answer();
+    let review = a.service.begin_removal(r.clone(), Vec::new()).await.unwrap();
+    a.service
+        .finish_removal(review.review, Vec::new(), Vec::new())
+        .await
+        .unwrap_err();
+    let first = a.wire.last_push_by_id();
+
+    let review = a.service.begin_removal(r, Vec::new()).await.unwrap();
+    let again = a
+        .service
+        .finish_removal(review.review, Vec::new(), Vec::new())
+        .await
+        .unwrap_err();
+    let second = a.wire.last_push_by_id();
+    a.service
+        .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(again.code(), "sync.not_allowed");
+    assert_eq!(first, second);
+    assert_eq!(a.av().await, 2);
+}
+
+#[tokio::test]
+async fn a_recovery_asked_again_after_a_lost_answer_sends_the_first_one_again() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    d.wire.lose_next_answer();
+    d.service.recover(r.clone()).await.unwrap_err();
+    let first = d.wire.last_push_by_id();
+
+    d.service.recover(r).await.unwrap();
+    let second = d.wire.last_push_by_id();
+    d.server_approves().await;
+
+    assert_eq!(first, second);
+    assert_eq!(d.av().await, 2);
+}
