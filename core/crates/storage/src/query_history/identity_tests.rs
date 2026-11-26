@@ -300,3 +300,41 @@ async fn every_favourite_and_table_folder_write_tells_the_journal_its_kind() {
         ]
     );
 }
+
+#[tokio::test]
+async fn each_history_db_write_names_the_records_it_wrote_and_deleted() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let (history, journal) = journaled(&root).await;
+    let connection = Uuid::new_v4();
+    let queries = history.saved_queries();
+    let folders = history.saved_query_folders();
+    let rows = |ids: &[Uuid]| ids.iter().copied().map(RecordRef::Id).collect::<Vec<_>>();
+
+    let ran = run("SELECT 1", connection);
+    let ran_id = ran.record_id;
+    let entry = history.record(ran).await.expect("record");
+    let query = queries.save(saved("a", connection)).await.expect("save");
+    let folder = folders.create(Some(connection), "Reports", None).await.expect("folder");
+    let inner = folders
+        .create(Some(connection), "Monthly", Some(folder))
+        .await
+        .expect("subfolder");
+    queries.move_to_folder(query.id, Some(inner), None).await.expect("file");
+    journal.take_entries();
+    folders.delete(folder).await.expect("delete folder");
+    history.delete_returning(&[entry]).await.expect("delete");
+
+    let calls = journal.take_entries();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(
+        calls[0],
+        vec![
+            JournalEntry::new(RecordKind::SavedQuery).wrote(rows(&[query.id])),
+            JournalEntry::new(RecordKind::SavedQueryFolder).deleted(rows(&[folder, inner])),
+        ]
+    );
+    assert_eq!(
+        calls[1],
+        vec![JournalEntry::new(RecordKind::HistoryEntry).deleted(rows(&[ran_id]))]
+    );
+}

@@ -55,7 +55,7 @@ mod tests {
             database: "shop".into(),
             username: "app".into(),
             tls: tablepro_core::TlsConfig::verify_full(),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
@@ -82,6 +82,12 @@ mod tests {
                 username: username.map(str::to_owned),
                 jump_hosts: Vec::new(),
                 auth,
+                enabled: true,
+                kept_key_path: None,
+                agent_socket: None,
+                totp: Default::default(),
+                remote_file: Default::default(),
+                unknown: Default::default(),
             }),
             ..connection()
         }

@@ -40,8 +40,8 @@ impl ClientTls {
         let roots = match tls.mode {
             TlsMode::VerifyFull => Some(tablepro_net::tls::ca_bundle_pem(tls).map_err(crate::endpoint::setup_error)?),
             TlsMode::Disable | TlsMode::Require => None,
-            // TLS is a property of the port, so there is nothing to prefer.
-            TlsMode::Prefer | TlsMode::Strict => {
+            // TLS is a property of the port, so there is nothing to prefer; the driver checks no chain without the name.
+            TlsMode::Prefer | TlsMode::VerifyCa | TlsMode::Strict => {
                 return Err(DriverError::Config(tablepro_core::ConfigError::UnsupportedTlsMode));
             }
         };

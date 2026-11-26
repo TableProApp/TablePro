@@ -1,8 +1,11 @@
 use tablepro_core::AiPolicy;
 
+// This app has no AI default of its own, so it offers no App Default and shows one as Ask Each Time.
+pub(crate) const OFFERED: [AiPolicy; 3] = [AiPolicy::Ask, AiPolicy::Allow, AiPolicy::Never];
+
 pub(crate) fn label(policy: AiPolicy) -> String {
     match policy {
-        AiPolicy::Ask => crate::i18n::gettext("Ask Each Time"),
+        AiPolicy::Ask | AiPolicy::AppDefault => crate::i18n::gettext("Ask Each Time"),
         AiPolicy::Allow => crate::i18n::gettext("Allow"),
         AiPolicy::Never => crate::i18n::gettext("Never"),
     }
@@ -10,7 +13,7 @@ pub(crate) fn label(policy: AiPolicy) -> String {
 
 pub(crate) fn subtitle(policy: AiPolicy) -> String {
     match policy {
-        AiPolicy::Ask => crate::i18n::gettext(
+        AiPolicy::Ask | AiPolicy::AppDefault => crate::i18n::gettext(
             "The assistant asks before it first sends this connection’s structure, and your answer lasts until the window disconnects.",
         ),
         AiPolicy::Allow => crate::i18n::gettext(
@@ -30,10 +33,10 @@ mod tests {
 
     #[test]
     fn each_policy_has_its_own_label_and_subtitle() {
-        let labels: HashSet<String> = AiPolicy::ALL.into_iter().map(label).collect();
-        let subtitles: HashSet<String> = AiPolicy::ALL.into_iter().map(subtitle).collect();
+        let labels: HashSet<String> = OFFERED.into_iter().map(label).collect();
+        let subtitles: HashSet<String> = OFFERED.into_iter().map(subtitle).collect();
 
-        assert_eq!(labels.len(), AiPolicy::ALL.len());
-        assert_eq!(subtitles.len(), AiPolicy::ALL.len());
+        assert_eq!(labels.len(), OFFERED.len());
+        assert_eq!(subtitles.len(), OFFERED.len());
     }
 }
