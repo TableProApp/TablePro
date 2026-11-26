@@ -25,6 +25,7 @@ use tablepro_storage::{
 };
 use uuid::Uuid;
 
+pub use connection::DriverNames;
 pub use folders::TableFolderAdapter;
 pub use reads::at_base;
 
@@ -52,16 +53,18 @@ const KINDS: [Kind; 5] = [
 pub struct LibraryAdapter {
     store: ConnectionStore,
     kind: Kind,
+    names: DriverNames,
 }
 
 impl LibraryAdapter {
-    pub fn all(store: &ConnectionStore) -> Vec<Arc<dyn RecordAdapter>> {
+    pub fn all(store: &ConnectionStore, names: DriverNames) -> Vec<Arc<dyn RecordAdapter>> {
         KINDS
             .into_iter()
             .map(|kind| {
                 Arc::new(Self {
                     store: store.clone(),
                     kind,
+                    names,
                 }) as Arc<dyn RecordAdapter>
             })
             .collect()
@@ -72,8 +75,9 @@ impl LibraryAdapter {
 pub fn adapters(
     store: &ConnectionStore,
     history: Option<&QueryHistory>,
+    names: DriverNames,
 ) -> Vec<Arc<dyn RecordAdapter>> {
-    let mut all = LibraryAdapter::all(store);
+    let mut all = LibraryAdapter::all(store, names);
     if let Some(history) = history {
         all.extend(TableFolderAdapter::all(history, store));
     }
@@ -135,7 +139,8 @@ impl LibraryAdapter {
                 list.connections
                     .iter()
                     .map(|saved| {
-                        let fields = connection::to_wire(saved, list.is_favorite(saved.id), followed(list, saved));
+                        let favorite = list.is_favorite(saved.id);
+                        let fields = connection::to_wire(saved, favorite, followed(list, saved), self.names);
                         record(saved.id, fields, connection_standing(saved))
                     })
                     .collect(),
@@ -181,7 +186,7 @@ impl LibraryAdapter {
 
 // What the pulled records write, read against the list as it is under the store's write lock: a member a record
 // carries as the store's copy reads keeps the store's value (`connection::model`).
-fn settled(kind: Kind, list: &ConnectionList, changes: Vec<LocalChange>) -> Vec<LibraryChange> {
+fn settled(kind: Kind, names: DriverNames, list: &ConnectionList, changes: Vec<LocalChange>) -> Vec<LibraryChange> {
     changes
         .into_iter()
         .filter_map(|change| {
@@ -195,7 +200,7 @@ fn settled(kind: Kind, list: &ConnectionList, changes: Vec<LocalChange>) -> Vec<
             };
             Some(match fields {
                 None => gone(kind, id),
-                Some(fields) => put(kind, list, id, &fields),
+                Some(fields) => put(kind, names, list, id, &fields),
             })
         })
         .collect()
@@ -211,7 +216,7 @@ fn gone(kind: Kind, id: Uuid) -> LibraryChange {
     }
 }
 
-fn put(kind: Kind, list: &ConnectionList, id: Uuid, fields: &Value) -> LibraryChange {
+fn put(kind: Kind, names: DriverNames, list: &ConnectionList, id: Uuid, fields: &Value) -> LibraryChange {
     match kind {
         Kind::Connection => {
             let held = list.connections.iter().find(|saved| saved.id == id).map(|saved| connection::Held {
@@ -219,7 +224,7 @@ fn put(kind: Kind, list: &ConnectionList, id: Uuid, fields: &Value) -> LibraryCh
                 favorite: list.is_favorite(id),
                 profile: followed(list, saved),
             });
-            let (connection, favorite) = connection::model(id, fields, held);
+            let (connection, favorite) = connection::model(id, fields, held, names);
             LibraryChange::Connection { connection, favorite }
         }
         Kind::Group => {
@@ -278,8 +283,8 @@ impl RecordAdapter for LibraryAdapter {
         if scope != ScopeName::Personal || changes.is_empty() {
             return self.identity().await;
         }
-        let (store, kind) = (self.store.clone(), self.kind);
-        let identity = blocking(move || store.apply_synced_blocking(move |list| settled(kind, list, changes)))
+        let (store, kind, names) = (self.store.clone(), self.kind, self.names);
+        let identity = blocking(move || store.apply_synced_blocking(move |list| settled(kind, names, list, changes)))
             .await?
             .map_err(store_error)?;
         Ok(stamp(identity))

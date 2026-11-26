@@ -3,7 +3,9 @@
 // device holds stays there, and a Local only connection never reaches the server.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use async_trait::async_trait;
 use serde_json::{Value, json};
 use tablepro_records::Kind;
 use tablepro_records::record_id::uuid_id;
@@ -12,14 +14,14 @@ use tablepro_storage::{
     QueryHistory, SavedConnection, SshProfile, StoragePaths, TableRef, TableScope,
 };
 use tablepro_sync::adapters::library;
-use tablepro_sync::api::RecordAdapter;
 use tablepro_sync::api::ids::ScopeName;
+use tablepro_sync::api::{AdapterError, LocalChange, LocalRecords, RecordAdapter, StoreStamp};
 use tablepro_sync::api::control::SyncControl;
 use tablepro_sync_testing::FakeServer;
 use tempfile::TempDir;
 use uuid::Uuid;
 
-use super::harness::{Device, DeviceBuilder, personal};
+use super::harness::{Device, DeviceBuilder, personal, write};
 
 struct Library {
     _dir: TempDir,
@@ -41,7 +43,7 @@ impl Library {
     }
 
     fn adapters(&self) -> Vec<Arc<dyn RecordAdapter>> {
-        library::adapters(&self.store, Some(&self.history))
+        library::adapters(&self.store, Some(&self.history), library::DriverNames::Mac)
     }
 
     async fn device(&self, server: &Arc<FakeServer>, row: &str) -> Device {
@@ -286,4 +288,115 @@ async fn a_copy_kept_local_only_takes_neither_a_pulled_edit_nor_a_pulled_deletio
 
     assert_eq!(after_edit, "Shop");
     assert_eq!(mini_library.store.list_blocking().unwrap().connections.len(), 1);
+}
+
+// The connection adapter, with the person renaming the connection after the pull read the store and before it writes.
+struct RenamedMidPull {
+    inner: Arc<dyn RecordAdapter>,
+    store: ConnectionStore,
+    read: AtomicBool,
+    armed: AtomicBool,
+}
+
+#[async_trait]
+impl RecordAdapter for RenamedMidPull {
+    fn kind(&self) -> Kind {
+        self.inner.kind()
+    }
+
+    fn store(&self) -> &str {
+        self.inner.store()
+    }
+
+    async fn identity(&self) -> Result<StoreStamp, AdapterError> {
+        if self.read.swap(false, Ordering::SeqCst) && self.armed.swap(false, Ordering::SeqCst) {
+            self.store
+                .update_blocking(Uuid::from_u128(CONNECTION), |saved| saved.name = "Mine".to_owned())
+                .unwrap();
+        }
+        self.inner.identity().await
+    }
+
+    async fn records(&self, scope: ScopeName) -> Result<LocalRecords, AdapterError> {
+        let records = self.inner.records(scope).await;
+        self.read.store(true, Ordering::SeqCst);
+        records
+    }
+
+    async fn apply(&self, scope: ScopeName, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
+        self.inner.apply(scope, changes).await
+    }
+
+    async fn tombstones_pushed(&self, scope: ScopeName, record_ids: Vec<String>) -> Result<(), AdapterError> {
+        self.inner.tombstones_pushed(scope, record_ids).await
+    }
+}
+
+#[tokio::test]
+async fn a_pull_never_writes_over_an_edit_made_while_it_merged() {
+    let server = FakeServer::new();
+    let (mac_library, mini_library) = (Library::new().await, Library::new().await);
+    let mac = mac_library.device(&server, "dev_mac").await;
+    mac_library.store.upsert_blocking(connection(CONNECTION, "Shop")).unwrap();
+    mac.sync().await;
+    let racing = Arc::new(RenamedMidPull {
+        inner: mini_library.adapters().remove(0),
+        store: mini_library.store.clone(),
+        read: AtomicBool::new(false),
+        armed: AtomicBool::new(false),
+    });
+    let mut adapters: Vec<Arc<dyn RecordAdapter>> = vec![Arc::clone(&racing) as Arc<dyn RecordAdapter>];
+    adapters.extend(mini_library.adapters().into_iter().skip(1));
+    let mini = DeviceBuilder::new(&server, "dev_mini").core_stores(adapters).build().await;
+    take_everything(&mini).await;
+
+    mac_library
+        .store
+        .update_blocking(Uuid::from_u128(CONNECTION), |saved| saved.color = Some(ConnectionColor::Red))
+        .unwrap();
+    mac.sync().await;
+    racing.read.store(false, Ordering::SeqCst);
+    racing.armed.store(true, Ordering::SeqCst);
+    let raced = mini.pass().await;
+    take_everything(&mini).await;
+    mac.sync().await;
+
+    let mine = mini_library.store.list_blocking().unwrap().connections[0].clone();
+    let theirs = mac_library.store.list_blocking().unwrap().connections[0].clone();
+    assert!(raced.is_err());
+    assert_eq!((mine.name.as_str(), mine.color), ("Mine", Some(ConnectionColor::Red)));
+    assert_eq!((theirs.name.as_str(), theirs.color), ("Mine", Some(ConnectionColor::Red)));
+}
+
+#[tokio::test]
+async fn a_folder_no_store_can_hold_is_held_by_id_and_never_deleted() {
+    let server = FakeServer::new();
+    let mac_library = Library::new().await;
+    let mac = mac_library.device(&server, "dev_mac").await;
+    let other = Device::new(&server, "dev_other").await;
+    let folder = uuid_id(Uuid::from_u128(9));
+    let item = tablepro_records::record_id::table_folder_item(Uuid::from_u128(CONNECTION), "shop", None, "orders");
+    other
+        .push_raw(
+            ScopeName::Personal,
+            vec![
+                write("table_folder", &folder, None, json!({"name": "Billing", "database": "shop"})),
+                write(
+                    "table_folder_item",
+                    &item,
+                    None,
+                    json!({"connection_id": uuid_id(Uuid::from_u128(CONNECTION)), "database": "shop",
+                        "name": "invoices", "folder_id": folder}),
+                ),
+            ],
+        )
+        .await;
+
+    mac.sync().await;
+    mac.sync().await;
+
+    let folders = mac_library.history.table_folders().contents().await.unwrap();
+    assert!(folders.folders.is_empty() && folders.items.is_empty());
+    assert!(server.stored(personal(), "table_folder", &folder).unwrap().deleted.is_none());
+    assert!(server.stored(personal(), "table_folder_item", &item).unwrap().deleted.is_none());
 }

@@ -38,7 +38,7 @@ impl Shelf {
     }
 
     fn adapters(&self) -> Vec<Arc<dyn RecordAdapter>> {
-        library::adapters(&self.store, Some(&self.history))
+        library::adapters(&self.store, Some(&self.history), library::DriverNames::Mac)
     }
 
     fn fetcher<'a>(&'a self, adapters: &'a [Arc<dyn RecordAdapter>]) -> Fetcher<'a> {
@@ -205,4 +205,21 @@ async fn a_rename_goes_up_as_the_one_member_it_changed() {
     assert_eq!(after["name"], json!("Shop 2"));
     after["name"] = before["name"].clone();
     assert_eq!(after, before);
+}
+
+#[tokio::test]
+async fn a_folder_without_its_connection_is_held_by_id_and_the_zone_keeps_it() {
+    let shelf = Shelf::new().await;
+    shelf.rig.save_elsewhere(
+        Kind::TableFolder,
+        D,
+        &json!({"database": "shop", "name": "Billing", "created_at": 1_000, "updated_at": 2_000, "schema_version": 1}),
+    );
+
+    shelf.fetch().await;
+    let pushed = shelf.push().await;
+
+    assert!(shelf.history.table_folders().contents().await.unwrap().folders.is_empty());
+    assert_eq!(pushed.queued, 0, "{pushed:?}");
+    assert!(shelf.rig.zone_fields(Kind::TableFolder, D).is_some());
 }

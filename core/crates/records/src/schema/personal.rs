@@ -45,6 +45,37 @@ pub const EXTERNAL_ACCESS: &[&str] = &["blocked", "readOnly", "readWrite"];
 
 pub const SSL_MODES: &[&str] = &["Disabled", "Preferred", "Required", "Verify CA", "Verify Identity"];
 
+// A connection's `type` is the Mac's `DatabaseType` name; these are the names of the engines the core links, by the
+// core's driver id, as the Linux app's usage data names them. MariaDB runs on the MySQL driver and ScyllaDB on
+// Cassandra's, so each reads as its driver's name.
+pub const DRIVER_TYPES: &[(&str, &str)] = &[
+    ("cassandra", "Cassandra"),
+    ("clickhouse", "ClickHouse"),
+    ("duckdb", "DuckDB"),
+    ("mongodb", "MongoDB"),
+    ("mssql", "SQL Server"),
+    ("mysql", "MySQL"),
+    ("postgres", "PostgreSQL"),
+    ("redis", "Redis"),
+    ("sqlite", "SQLite"),
+];
+
+// The wire's name for a core driver id; another id goes as it is.
+pub fn wire_type(driver: &str) -> &str {
+    DRIVER_TYPES
+        .iter()
+        .find(|(id, _)| *id == driver)
+        .map_or(driver, |(_, name)| name)
+}
+
+// The core driver id for a wire name; a name no linked engine has stays as it is.
+pub fn core_driver(name: &str) -> &str {
+    DRIVER_TYPES
+        .iter()
+        .find(|(_, known)| *known == name)
+        .map_or(name, |(id, _)| id)
+}
+
 const SSH_AUTH_METHODS: &[&str] = &["Password", "Private Key", "SSH Agent", "Keyboard Interactive", "None"];
 const JUMP_AUTH_METHODS: &[&str] = &["Private Key", "SSH Agent"];
 const TOTP_MODES: &[&str] = &["none", "auto_generate", "prompt_at_connect"];

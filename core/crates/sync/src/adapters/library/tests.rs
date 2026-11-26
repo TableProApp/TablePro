@@ -8,7 +8,7 @@ fn store(dir: &std::path::Path) -> ConnectionStore {
 }
 
 fn adapter(store: &ConnectionStore, kind: Kind) -> Arc<dyn RecordAdapter> {
-    LibraryAdapter::all(store)
+    LibraryAdapter::all(store, DriverNames::Mac)
         .into_iter()
         .find(|adapter| adapter.kind() == kind)
         .expect("an adapter for the kind")
@@ -125,7 +125,7 @@ async fn groups_and_tags_round_trip_through_the_store_in_one_write_each() {
 async fn a_new_store_starts_its_generation_and_every_kind_names_the_one_file() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
-    let adapters = LibraryAdapter::all(&store);
+    let adapters = LibraryAdapter::all(&store, DriverNames::Mac);
 
     let first = adapters[0].identity().await.unwrap();
     let again = adapters[1].identity().await.unwrap();
@@ -174,11 +174,11 @@ fn id() -> Uuid {
 }
 
 fn stored(fields: &Value) -> (tablepro_storage::SavedConnection, bool) {
-    connection::model(id(), fields, None)
+    connection::model(id(), fields, None, DriverNames::Mac)
 }
 
 fn wire(saved: &tablepro_storage::SavedConnection, favorite: bool) -> Value {
-    connection::to_wire(saved, favorite, None)
+    connection::to_wire(saved, favorite, None, DriverNames::Mac)
 }
 
 #[test]
@@ -269,10 +269,10 @@ fn a_strict_tls_mode_and_a_teal_colour_survive_a_pull_that_leaves_them_alone() {
         favorite,
         profile: None,
     };
-    let (after, _) = connection::model(id(), &pulled, Some(held));
+    let (after, _) = connection::model(id(), &pulled, Some(held), DriverNames::Mac);
     let mut stricter = pulled.clone();
     stricter["ssl_config"]["mode"] = json!("Verify CA");
-    let (changed, _) = connection::model(id(), &stricter, Some(held));
+    let (changed, _) = connection::model(id(), &stricter, Some(held), DriverNames::Mac);
 
     assert_eq!(after.name, "Shop 2");
     assert_eq!(after.tls.mode, tablepro_core::TlsMode::Strict);
@@ -339,9 +339,9 @@ fn a_linked_tunnel_goes_up_with_the_profile_s_settings_and_the_link_only_while_i
         None,
     );
 
-    let linked = connection::to_wire(&saved, favorite, Some(&profile));
+    let linked = connection::to_wire(&saved, favorite, Some(&profile), DriverNames::Mac);
     saved.ssh.as_mut().unwrap().enabled = false;
-    let off = connection::to_wire(&saved, favorite, Some(&profile));
+    let off = connection::to_wire(&saved, favorite, Some(&profile), DriverNames::Mac);
 
     assert_eq!(linked["ssh_profile_id"], json!(PROFILE));
     assert_eq!(linked["ssh_config"]["host"], json!("jump.example.com"));
@@ -474,4 +474,43 @@ async fn a_pull_keeps_what_only_this_device_holds_and_a_local_only_connection_re
     assert_eq!(records[0].standing, Standing::LocalOnly);
     assert_eq!(StoreStanding(store.clone()).standing(id()), Standing::LocalOnly);
     assert_eq!(StoreStanding(store).standing(Uuid::nil()), Standing::Unknown);
+}
+
+#[test]
+fn a_store_that_names_drivers_by_the_core_s_ids_sends_the_mac_s_names_and_reads_them_back() {
+    let (mut saved, favorite) = stored(&mac_connection());
+    saved.driver_id = "postgres".to_owned();
+    let mut plugin = saved.clone();
+    plugin.driver_id = "Oracle".to_owned();
+
+    let sent = connection::to_wire(&saved, favorite, None, DriverNames::Core);
+    let (pulled, _) = connection::model(id(), &sent, None, DriverNames::Core);
+    let (mac, _) = connection::model(id(), &sent, None, DriverNames::Mac);
+
+    assert_eq!(sent["type"], json!("PostgreSQL"));
+    assert_eq!(pulled.driver_id, "postgres");
+    assert_eq!(mac.driver_id, "PostgreSQL");
+    assert_eq!(connection::to_wire(&plugin, favorite, None, DriverNames::Core)["type"], json!("Oracle"));
+}
+
+#[test]
+fn a_pull_that_changes_the_driver_fields_keeps_what_sync_never_carries() {
+    let (mut saved, favorite) = stored(&mac_connection());
+    saved
+        .details
+        .additional_fields
+        .insert("mongoParam_proxyPassword".to_owned(), "hunter2".to_owned());
+    let mut pulled = wire(&saved, favorite);
+    pulled["additional_fields"] = json!([{"id": "connectTimeoutSeconds", "value": "60"}]);
+
+    let held = connection::Held {
+        saved: &saved,
+        favorite,
+        profile: None,
+    };
+    let (after, _) = connection::model(id(), &pulled, Some(held), DriverNames::Mac);
+
+    assert_eq!(after.details.additional_fields["connectTimeoutSeconds"], "60");
+    assert_eq!(after.details.additional_fields["mongoParam_proxyPassword"], "hunter2");
+    assert!(!after.details.additional_fields.contains_key("mongoAuthSource"));
 }

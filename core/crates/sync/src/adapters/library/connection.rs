@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use tablepro_core::{AiPolicy, AuthMode, ClientIdentity, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode};
 use tablepro_records::cloudkit::library::{color_name, icon_for_symbol, symbol_for_icon};
+use tablepro_records::schema::{core_driver, wire_type};
 use tablepro_storage::{
     ConnectionDetails, ConnectionOrigin, DeviceOnly, KnownOrigin, SavedConnection, SavedSshConfig, SshProfile,
 };
@@ -67,6 +68,30 @@ const MEMBERS: &[&str] = &[
     TLS_MODE_UNSETTLED,
     SSH_PROFILE_UNLINKED,
 ];
+
+// How a host's store names a connection's engine: by the Mac's `DatabaseType` on the Apple apps, by the core's driver
+// id on Linux and Windows. The wire always carries the Mac's name (0061, 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriverNames {
+    Mac,
+    Core,
+}
+
+impl DriverNames {
+    fn to_wire(self, driver: &str) -> &str {
+        match self {
+            Self::Mac => driver,
+            Self::Core => wire_type(driver),
+        }
+    }
+
+    fn from_wire(self, name: &str) -> &str {
+        match self {
+            Self::Mac => name,
+            Self::Core => core_driver(name),
+        }
+    }
+}
 
 const CONNECT_TIMEOUT: &str = "connectTimeoutSeconds";
 const QUERY_TIMEOUT: &str = "queryTimeoutSeconds";
@@ -349,12 +374,12 @@ fn non_empty(text: Option<&String>) -> Option<&str> {
     text.map(String::as_str).filter(|text| !text.is_empty())
 }
 
-pub(super) fn to_wire(saved: &SavedConnection, favorite: bool, profile: Option<&SshProfile>) -> Value {
+pub(super) fn to_wire(saved: &SavedConnection, favorite: bool, profile: Option<&SshProfile>, names: DriverNames) -> Value {
     let details = &saved.details;
     let tunnel_on = saved.ssh.as_ref().is_some_and(|ssh| ssh.enabled);
     let mut out = Object::default();
     out.put("name", saved.name.as_str())
-        .put("type", saved.driver_id.as_str())
+        .put("type", names.to_wire(&saved.driver_id))
         .put("host", saved.host.as_str())
         .put("port", saved.port)
         .put("database", saved.database.as_str())
@@ -414,16 +439,16 @@ pub(super) struct Held<'a> {
 }
 
 // A pulled record as the store's model. A member the record carries as the store's copy reads keeps the store's value.
-pub(super) fn model(id: Uuid, fields: &Value, held: Option<Held<'_>>) -> (SavedConnection, bool) {
-    let mut saved = read(id, fields, held.map(|held| held.saved));
+pub(super) fn model(id: Uuid, fields: &Value, held: Option<Held<'_>>, names: DriverNames) -> (SavedConnection, bool) {
+    let mut saved = read(id, fields, held.map(|held| held.saved), names);
     let mut favorite = boolean(fields, "is_favorite").unwrap_or(false);
     if let Some(held) = held {
-        keep(&mut saved, &mut favorite, fields, held);
+        keep(&mut saved, &mut favorite, fields, held, names);
     }
     (saved, favorite)
 }
 
-fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>) -> SavedConnection {
+fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>, names: DriverNames) -> SavedConnection {
     let mut additional_fields = fields_from_wire(fields.get("additional_fields"));
     let legacy_timeout = additional_fields.remove(QUERY_TIMEOUT).and_then(|raw| raw.parse::<i64>().ok());
     let query_timeout_secs = integer(fields, "query_timeout_seconds")
@@ -448,7 +473,7 @@ fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>) -> SavedConn
     let mut saved = SavedConnection {
         id,
         name: text(fields, "name").unwrap_or_default().to_owned(),
-        driver_id: text(fields, "type").unwrap_or_default().to_owned(),
+        driver_id: names.from_wire(text(fields, "type").unwrap_or_default()).to_owned(),
         host: text(fields, "host").unwrap_or("localhost").to_owned(),
         port: integer(fields, "port").map_or(0, clamped),
         database: text(fields, "database").unwrap_or_default().to_owned(),
@@ -485,9 +510,9 @@ fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>) -> SavedConn
 }
 
 // Each member whose pulled value is the one the store's copy writes keeps the store's typed value.
-fn keep(saved: &mut SavedConnection, favorite: &mut bool, fields: &Value, held: Held<'_>) {
+fn keep(saved: &mut SavedConnection, favorite: &mut bool, fields: &Value, held: Held<'_>, names: DriverNames) {
     let stored = held.saved;
-    let written = to_wire(stored, held.favorite, held.profile);
+    let written = to_wire(stored, held.favorite, held.profile, names);
     let same = |key: &str| fields.get(key) == written.get(key);
     let details = &mut saved.details;
     let kept = &stored.details;
@@ -537,8 +562,12 @@ fn keep(saved: &mut SavedConnection, favorite: &mut bool, fields: &Value, held: 
     if same("ssl_config") {
         saved.tls.clone_from(&stored.tls);
     }
+    // What sync never carries of the driver's fields stays as this device holds it, whatever the pull changed.
     if same("additional_fields") {
         details.additional_fields.clone_from(&kept.additional_fields);
+    } else {
+        let pulled = std::mem::take(&mut details.additional_fields);
+        details.additional_fields = tablepro_storage::field_trust::with_device_fields(pulled, &kept.additional_fields);
     }
     if same("external_access") {
         saved.external_access = stored.external_access;

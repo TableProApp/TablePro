@@ -19,9 +19,10 @@ use crate::api::ids::ScopeName;
 fn read_back(kind: Kind, base: &Value) -> Option<Value> {
     let id = Uuid::nil();
     match kind {
+        // Both namings of a driver write the name they read, so the Mac's stands for either.
         Kind::Connection => {
-            let (saved, favorite) = connection::model(id, base, None);
-            Some(connection::to_wire(&saved, favorite, None))
+            let (saved, favorite) = connection::model(id, base, None, connection::DriverNames::Mac);
+            Some(connection::to_wire(&saved, favorite, None, connection::DriverNames::Mac))
         }
         Kind::Group => Some(groups::group_to_wire(&groups::group(id, base, None))),
         Kind::Tag => Some(groups::tag_to_wire(&groups::tag(id, base, None))),
