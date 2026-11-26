@@ -611,3 +611,30 @@ async fn a_provider_change_runs_its_own_move_and_refuses_the_ones_that_need_the_
     assert_eq!(code(&zone), "sync.not_allowed");
     assert!(same.is_ok(), "{same:?}");
 }
+
+// The previous stable marks every write whatever the switch says, so a deletion with iCloud off still reaches the Swift
+// metadata by the time the quit returns.
+#[tokio::test]
+async fn with_icloud_off_a_deletion_still_marks_the_swift_metadata_by_the_quit() {
+    let tasks = runtime::tasks().unwrap();
+    let mirror = Arc::new(tablepro_sync_testing::FakeLegacyMirror::new());
+    let opened = open(&tasks, |parts| OpenParts {
+        legacy_mirror: Some(mirror.clone() as Arc<dyn tablepro_sync::api::LegacyMirror>),
+        ..parts
+    })
+    .await;
+    let id = "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_owned();
+
+    opened
+        .service
+        .record_host_changes("connection".to_owned(), Vec::new(), vec![id.clone()])
+        .await
+        .unwrap();
+    opened.service.flush_legacy_marks().await.unwrap();
+
+    let tombstones = mirror.metadata().tombstones;
+    assert!(
+        tombstones.iter().any(|tombstone| tombstone.record.id == id),
+        "{tombstones:?}"
+    );
+}

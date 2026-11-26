@@ -16,6 +16,7 @@ use tablepro_sync::api::{
     CloudKitTransport, DeviceRowId, DeviceStoreError, HostDeviceStore, HostSettings, LegacyMirror, RecordAdapter,
     ServiceTransport, StateError, StateFiles, TransportError,
 };
+use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync};
 use tablepro_sync::engine::{
@@ -341,9 +342,19 @@ impl ServiceSlot {
 }
 
 // A store the app keeps wrote, after the write landed (core ADR 0060). Each engine's diff decides what goes up.
-pub(crate) fn journal(journals: &[&Journal], kind: Kind, written: Vec<String>, deleted: Vec<String>) {
+// The downgrade mirror's marks, when no iCloud engine carries them, take the same signal.
+pub(crate) fn journal(
+    journals: &[&Journal],
+    marks: Option<&LegacyMarks>,
+    kind: Kind,
+    written: Vec<String>,
+    deleted: Vec<String>,
+) {
     let entry = JournalEntry { kind, written, deleted };
     for journal in journals {
         journal.changed(std::slice::from_ref(&entry));
+    }
+    if let Some(marks) = marks {
+        marks.changed(std::slice::from_ref(&entry));
     }
 }
