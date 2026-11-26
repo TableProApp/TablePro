@@ -42,8 +42,7 @@ async fn a_connection_new_to_a_device_waits_whole_until_its_destination_is_appro
     let held = mini.connections.get(&id(1));
     let waiting = mini.sync.approvals().await.unwrap();
     let status = mini.sync.status();
-    mini.sync
-        .decide_approval(key(&id(1)), "/host".to_owned(), true)
+    mini.decide(key(&id(1)), "/host", true)
         .await
         .unwrap();
     mini.sync().await;
@@ -69,8 +68,7 @@ async fn a_pulled_host_change_waits_and_the_device_never_pushes_its_own_back_ove
         .put(&id(1), json!({"name": "Prod", "host": "db.internal"}));
     mini.sync().await;
     mac.sync().await;
-    mac.sync
-        .decide_approval(key(&id(1)), "/host".to_owned(), true)
+    mac.decide(key(&id(1)), "/host", true)
         .await
         .unwrap();
 
@@ -102,8 +100,7 @@ async fn a_rejection_keeps_the_device_s_value_and_a_newer_pulled_value_asks_agai
         .put(&id(1), json!({"name": "Prod", "startup_commands": "SET a = 1"}));
     mini.sync().await;
     mac.sync().await;
-    mac.sync
-        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), true)
+    mac.decide(key(&id(1)), "/startup_commands", true)
         .await
         .unwrap();
     mac.connections
@@ -111,8 +108,7 @@ async fn a_rejection_keeps_the_device_s_value_and_a_newer_pulled_value_asks_agai
     mac.sync().await;
     mini.sync().await;
 
-    mini.sync
-        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), false)
+    mini.decide(key(&id(1)), "/startup_commands", false)
         .await
         .unwrap();
     mini.sync().await;
@@ -246,8 +242,7 @@ async fn a_team_member_both_sides_changed_waits_for_keep_mine_and_decide_later_k
     let later = mini.sync.conflicts().await.unwrap();
     let team_owner = ScopeOwner::Team(team());
     let before = server.stored(team_owner, "library_query", "q1").unwrap().fields;
-    mini.sync
-        .resolve_conflict(later[0].key.clone(), ConflictChoice::KeepMine)
+    mini.resolve(later[0].key.clone(), ConflictChoice::KeepMine)
         .await
         .unwrap();
     mini.sync().await;
@@ -284,8 +279,7 @@ async fn keep_theirs_takes_the_server_s_copy_and_sends_nothing() {
     mini.sync().await;
     let key = RecordKey::new(ScopeName::Team(team()), Kind::LibraryQuery, "q1");
 
-    mini.sync
-        .resolve_conflict(key, ConflictChoice::KeepTheirs)
+    mini.resolve(key, ConflictChoice::KeepTheirs)
         .await
         .unwrap();
     let report = mini.sync().await;
@@ -608,8 +602,7 @@ async fn a_record_the_person_deletes_here_leaves_nothing_to_approve() {
     mini.connections.put(&id(1), json!({"name": "Prod", "host": "a"}));
     mini.sync().await;
     mac.sync().await;
-    mac.sync
-        .decide_approval(key(&id(1)), "/host".to_owned(), true)
+    mac.decide(key(&id(1)), "/host", true)
         .await
         .unwrap();
     mac.connections.put(&id(1), json!({"name": "Prod", "host": "b"}));
@@ -661,8 +654,7 @@ async fn a_record_waiting_whole_stays_held_through_a_placement_edit_and_a_refusa
         .put(&id(1), json!({"name": "Prod", "host": "db", "sort_order": 7}));
     mac.sync().await;
     mini.sync().await;
-    mini.sync
-        .decide_approval(key(&id(1)), "/host".to_owned(), false)
+    mini.decide(key(&id(1)), "/host", false)
         .await
         .unwrap();
     mini.sync().await;
@@ -772,8 +764,7 @@ async fn keep_mine_against_a_deletion_sends_the_device_s_own_host_never_the_one_
     mac_items.put("c1", item("Prod", "a"));
     mac.sync().await;
     mini.sync().await;
-    mini.sync
-        .decide_approval(lib_key.clone(), "/host".to_owned(), true)
+    mini.decide(lib_key.clone(), "/host", true)
         .await
         .unwrap();
     mac_items.put("c1", item("Prod", "evil"));
@@ -785,8 +776,7 @@ async fn keep_mine_against_a_deletion_sends_the_device_s_own_host_never_the_one_
     mac.sync().await;
     mini.sync().await;
     let open = mini.sync.conflicts().await.unwrap();
-    mini.sync
-        .resolve_conflict(lib_key, ConflictChoice::KeepMine)
+    mini.resolve(lib_key, ConflictChoice::KeepMine)
         .await
         .unwrap();
     mini.sync().await;
@@ -809,8 +799,7 @@ async fn a_policy_revival_sends_the_device_s_own_value_of_a_member_still_waiting
     mini.connections.put(&id(1), json!({"name": "Prod", "host": "a"}));
     mini.sync().await;
     mac.sync().await;
-    mac.sync
-        .decide_approval(key(&id(1)), "/host".to_owned(), true)
+    mac.decide(key(&id(1)), "/host", true)
         .await
         .unwrap();
     mac.connections.put(&id(1), json!({"name": "Prod", "host": "b"}));
@@ -905,15 +894,13 @@ async fn keep_mine_never_sends_a_value_the_device_refused_as_its_own() {
     mac_items.put("c1", item("P", "a"));
     mac.sync().await;
     mini.sync().await;
-    mini.sync
-        .decide_approval(lib_key.clone(), "/host".to_owned(), true)
+    mini.decide(lib_key.clone(), "/host", true)
         .await
         .unwrap();
     mac_items.put("c1", item("P", "b"));
     mac.sync().await;
     mini.sync().await;
-    mini.sync
-        .decide_approval(lib_key.clone(), "/host".to_owned(), false)
+    mini.decide(lib_key.clone(), "/host", false)
         .await
         .unwrap();
 
@@ -922,8 +909,7 @@ async fn keep_mine_never_sends_a_value_the_device_refused_as_its_own() {
     mac.sync().await;
     mini.sync().await;
     let open = mini.sync.conflicts().await.unwrap();
-    mini.sync
-        .resolve_conflict(lib_key, ConflictChoice::KeepMine)
+    mini.resolve(lib_key, ConflictChoice::KeepMine)
         .await
         .unwrap();
     mini.sync().await;

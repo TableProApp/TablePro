@@ -78,7 +78,7 @@ pub async fn rebuild_shown(
             return Ok(false);
         };
         let shown = pin.av >= anchored.av
-            && !anchored.replaced.contains(&pin.ik)
+            && tablepro_keys::trust::replace_point(&anchored.replaced, &pin.ik).is_none()
             && certificates.get(&(anchored.account, pin.av)) == Some(&pin.ik);
         if !shown {
             return Ok(false);

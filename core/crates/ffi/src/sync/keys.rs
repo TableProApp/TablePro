@@ -12,14 +12,14 @@ use tablepro_keys::envelope::EnvelopeId;
 use tablepro_sync::SyncError;
 use tablepro_sync::api::ScopeName;
 use tablepro_sync::api::key_flows::{
-    AccountFlows, Acceptance, ApprovalFlows, CancelWith, DeviceFlows, LockCause, RemovalReview, ResetFlows,
+    Acceptance, AccountFlows, ApprovalFlows, CancelWith, DeviceFlows, LockCause, RemovalReview, ResetFlows,
     ReviewedMember, TeamFlows, TeamKeys,
 };
 use tablepro_sync::keys::KeyService;
 
+use super::engines::ServiceEngine;
 use super::key_records::{
-    account_arg, draft_arg, ik_arg, key_device_arg, notice_arg, request_arg, reset_arg, team_arg, team_text,
-    typed_arg,
+    account_arg, draft_arg, ik_arg, key_device_arg, notice_arg, request_arg, reset_arg, team_arg, team_text, typed_arg,
 };
 use super::names::Names;
 use super::service::SyncService;
@@ -116,6 +116,8 @@ pub enum KeyNoticeKindTag {
     TeamKeyRestarted { team: String },
     RestartHeld { team: String, signer: String },
     ResetPending { reset: String },
+    // A kind 3 reset a restore lost, proposed again only after a fresh step-up (core ADR 0065).
+    ResetWaitsForStepUp { reset: String },
     ResetEnded { reset: String, state: ResetStateTag },
     DeviceRemoved { device: String },
     SupersededWrap { team: String },
@@ -300,14 +302,27 @@ pub struct KeyChangeInfo {
 }
 
 impl SyncService {
-    // Runs `work` over this sign-in's key flows on the runtime.
-    async fn on_keys<T, F>(&self, work: impl FnOnce(Arc<KeyService>) -> F + Send) -> Result<T, CoreError>
+    // Runs `work` over this sign-in's TablePro Sync engine on the runtime, which starts it again first after a start
+    // that failed for a reason that passes.
+    async fn on_engine<T, F>(&self, work: impl FnOnce(Arc<ServiceEngine>) -> F + Send + 'static) -> Result<T, CoreError>
     where
         T: Send + 'static,
         F: Future<Output = Result<T, SyncError>> + Send + 'static,
     {
-        let future = work(self.key_service()?);
-        on_runtime(&self.tasks, async move { future.await.map_err(CoreError::from) }).await
+        let slot = Arc::clone(&self.service);
+        on_runtime(&self.tasks, async move {
+            let engine = slot.engine().await?;
+            work(engine).await.map_err(CoreError::from)
+        })
+        .await
+    }
+
+    async fn on_keys<T, F>(&self, work: impl FnOnce(Arc<KeyService>) -> F + Send + 'static) -> Result<T, CoreError>
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<T, SyncError>> + Send + 'static,
+    {
+        self.on_engine(move |engine| work(Arc::clone(&engine.keys))).await
     }
 
     fn names_account(&self) -> Option<tablepro_account::Account> {
@@ -398,12 +413,12 @@ fn ids<T>(texts: &[String], parse: fn(&str) -> Result<T, SyncError>) -> Result<V
 #[uniffi::export]
 impl SyncService {
     pub async fn key_state(&self) -> Result<KeyStateInfo, CoreError> {
-        self.on_keys(|keys| async move { keys.key_state().await.map(KeyStateInfo::from) })
+        self.on_keys(move |keys| async move { keys.key_state().await.map(KeyStateInfo::from) })
             .await
     }
 
     pub async fn begin_genesis(&self) -> Result<RecoveryKeyDraftInfo, CoreError> {
-        self.on_keys(|keys| async move { keys.begin_genesis().await.map(RecoveryKeyDraftInfo::from) })
+        self.on_keys(move |keys| async move { keys.begin_genesis().await.map(RecoveryKeyDraftInfo::from) })
             .await
     }
 
@@ -414,18 +429,28 @@ impl SyncService {
         typed: Vec<SecretString>,
     ) -> Result<GenesisOutcomeTag, CoreError> {
         let (draft, typed) = (draft_arg(&draft)?, typed_arg(typed)?);
-        self.on_keys(|keys| async move { keys.finish_genesis(draft, typed).await.map(GenesisOutcomeTag::from) })
+        self.on_keys(move |keys| async move { keys.finish_genesis(draft, typed).await.map(GenesisOutcomeTag::from) })
             .await
     }
 
+    // The person closed a Set Up, Replace, Remove or Reset sheet: its draft goes, and with it any recovery key it held.
+    // A draft already gone, or a service with no engine running, holds nothing to discard.
+    pub fn discard_key_draft(&self, draft: String) -> Result<(), CoreError> {
+        let draft = draft_arg(&draft)?;
+        if let Ok(engine) = self.service.now() {
+            engine.keys.drafts().remove(draft);
+        }
+        Ok(())
+    }
+
     pub async fn sign_out_keys(&self) -> Result<SignOutOutcomeTag, CoreError> {
-        self.on_keys(|keys| async move { keys.sign_out().await.map(SignOutOutcomeTag::from) })
+        self.on_keys(move |keys| async move { keys.sign_out().await.map(SignOutOutcomeTag::from) })
             .await
     }
 
     // R' and the devices the rotation can keep.
     pub async fn begin_replace_recovery_key(&self, recovery_key: SecretString) -> Result<RotationDraftInfo, CoreError> {
-        self.on_keys(|keys| async move {
+        self.on_keys(move |keys| async move {
             let draft = keys.begin_replace(recovery_key).await?;
             Ok(RotationDraftInfo {
                 recovery: draft.recovery.into(),
@@ -443,31 +468,31 @@ impl SyncService {
         keep: Vec<String>,
     ) -> Result<(), CoreError> {
         let (draft, typed, keep) = (draft_arg(&draft)?, typed_arg(typed)?, ids(&keep, key_device_arg)?);
-        self.on_keys(|keys| async move { keys.finish_replace(draft, typed, keep).await })
+        self.on_keys(move |keys| async move { keys.finish_replace(draft, typed, keep).await })
             .await
     }
 
     pub async fn own_fingerprint(&self) -> Result<FingerprintInfo, CoreError> {
-        self.on_keys(|keys| async move { keys.own_fingerprint().await.map(FingerprintInfo::from) })
+        self.on_keys(move |keys| async move { keys.own_fingerprint().await.map(FingerprintInfo::from) })
             .await
     }
 
     pub async fn account_fingerprint(&self, account: String) -> Result<FingerprintInfo, CoreError> {
         let account = account_arg(&account)?;
-        self.on_keys(|keys| async move { keys.fingerprint(account).await.map(FingerprintInfo::from) })
+        self.on_keys(move |keys| async move { keys.fingerprint(account).await.map(FingerprintInfo::from) })
             .await
     }
 
     pub async fn compare_fingerprint_qr(&self, account: String, text: String) -> Result<bool, CoreError> {
         let account = account_arg(&account)?;
-        self.on_keys(|keys| async move { keys.compare_qr(account, text).await })
+        self.on_keys(move |keys| async move { keys.compare_qr(account, text).await })
             .await
     }
 
     // The pinned and the offered identity of an account under a key-change alert, to compare.
     pub async fn account_key_change(&self, account: String) -> Result<Option<KeyChangeInfo>, CoreError> {
         let account = account_arg(&account)?;
-        self.on_keys(|keys| async move { Ok(keys.key_change(account).await?.map(KeyChangeInfo::from)) })
+        self.on_keys(move |keys| async move { Ok(keys.key_change(account).await?.map(KeyChangeInfo::from)) })
             .await
     }
 
@@ -485,12 +510,12 @@ impl SyncService {
         } else {
             Acceptance::WithoutComparing
         };
-        self.on_keys(|keys| async move { keys.accept_key_change(account, offered, how).await })
+        self.on_keys(move |keys| async move { keys.accept_key_change(account, offered, how).await })
             .await
     }
 
     pub async fn key_notices(&self) -> Result<Vec<KeyNoticeInfo>, CoreError> {
-        self.on_keys(|keys| async move {
+        self.on_keys(move |keys| async move {
             let notices = keys.notices().await?;
             Ok(notices.into_iter().map(KeyNoticeInfo::from).collect())
         })
@@ -499,17 +524,17 @@ impl SyncService {
 
     pub async fn dismiss_key_notice(&self, notice: String) -> Result<(), CoreError> {
         let notice = notice_arg(&notice)?;
-        self.on_keys(|keys| async move { keys.dismiss_notice(notice).await })
+        self.on_keys(move |keys| async move { keys.dismiss_notice(notice).await })
             .await
     }
 
     pub async fn request_approval(&self) -> Result<String, CoreError> {
-        self.on_keys(|keys| async move { keys.request_approval().await.map(|request| request.to_wire()) })
+        self.on_keys(move |keys| async move { keys.request_approval().await.map(|request| request.to_wire()) })
             .await
     }
 
     pub async fn approval_requests(&self) -> Result<Vec<ApprovalRequestInfo>, CoreError> {
-        self.on_keys(|keys| async move {
+        self.on_keys(move |keys| async move {
             let requests = keys.approval_requests().await?;
             Ok(requests.into_iter().map(ApprovalRequestInfo::from).collect())
         })
@@ -518,36 +543,36 @@ impl SyncService {
 
     pub async fn choose_approval_request(&self, request: String) -> Result<ApprovalSessionInfo, CoreError> {
         let request = request_arg(&request)?;
-        self.on_keys(|keys| async move { keys.choose_request(request).await.map(ApprovalSessionInfo::from) })
+        self.on_keys(move |keys| async move { keys.choose_request(request).await.map(ApprovalSessionInfo::from) })
             .await
     }
 
     pub async fn approval_session(&self, request: String) -> Result<ApprovalSessionInfo, CoreError> {
         let request = request_arg(&request)?;
-        self.on_keys(|keys| async move { keys.approval_session(request).await.map(ApprovalSessionInfo::from) })
+        self.on_keys(move |keys| async move { keys.approval_session(request).await.map(ApprovalSessionInfo::from) })
             .await
     }
 
     pub async fn confirm_approval_session(&self, request: String) -> Result<ApprovalSessionInfo, CoreError> {
         let request = request_arg(&request)?;
-        self.on_keys(|keys| async move { keys.confirm_session(request).await.map(ApprovalSessionInfo::from) })
+        self.on_keys(move |keys| async move { keys.confirm_session(request).await.map(ApprovalSessionInfo::from) })
             .await
     }
 
     pub async fn approval_words_differ(&self, request: String) -> Result<(), CoreError> {
         let request = request_arg(&request)?;
-        self.on_keys(|keys| async move { keys.words_differ(request).await })
+        self.on_keys(move |keys| async move { keys.words_differ(request).await })
             .await
     }
 
     pub async fn cancel_approval_session(&self, request: String) -> Result<(), CoreError> {
         let request = request_arg(&request)?;
-        self.on_keys(|keys| async move { keys.cancel_session(request).await })
+        self.on_keys(move |keys| async move { keys.cancel_session(request).await })
             .await
     }
 
     pub async fn account_devices(&self) -> Result<Vec<AccountDeviceInfo>, CoreError> {
-        self.on_keys(|keys| async move {
+        self.on_keys(move |keys| async move {
             let devices = keys.account_devices().await?;
             Ok(devices.into_iter().map(AccountDeviceInfo::from).collect())
         })
@@ -557,7 +582,7 @@ impl SyncService {
     // `sync.step_up_required` until the account's step-up is fresh.
     pub async fn remove_device_row(&self, device: String) -> Result<(), CoreError> {
         let device = tablepro_sync::api::DeviceRowId(device);
-        self.on_keys(|keys| async move { keys.remove_device_row(device).await })
+        self.on_keys(move |keys| async move { keys.remove_device_row(device).await })
             .await
     }
 
@@ -568,10 +593,10 @@ impl SyncService {
     ) -> Result<RemovalReviewInfo, CoreError> {
         let lost = ids(&lost, key_device_arg)?;
         let account = self.names_account();
-        self.on_keys(|keys| async move {
-            let review = keys.begin_removal(recovery_key, lost).await?;
+        self.on_engine(move |engine| async move {
+            let review = engine.keys.begin_removal(recovery_key, lost).await?;
             let teams: Vec<TeamId> = review.members.iter().map(|member| member.team).collect();
-            let names = Names::read(account.as_ref(), &teams).await;
+            let names = Names::read(account.as_ref(), engine.binding.as_ref(), &teams).await;
             Ok(removal_review_info(review, &names))
         })
         .await
@@ -585,22 +610,22 @@ impl SyncService {
     ) -> Result<(), CoreError> {
         let (review, keep) = (draft_arg(&review)?, ids(&keep, key_device_arg)?);
         let remove = remove.iter().map(reviewed_member_arg).collect::<Result<Vec<_>, _>>()?;
-        self.on_keys(|keys| async move { keys.finish_removal(review, keep, remove).await })
+        self.on_keys(move |keys| async move { keys.finish_removal(review, keep, remove).await })
             .await
     }
 
     pub async fn recover_with_recovery_key(&self, recovery_key: SecretString) -> Result<(), CoreError> {
-        self.on_keys(|keys| async move { keys.recover(recovery_key).await })
+        self.on_keys(move |keys| async move { keys.recover(recovery_key).await })
             .await
     }
 
     pub async fn pending_reset(&self) -> Result<Option<PendingResetInfo>, CoreError> {
-        self.on_keys(|keys| async move { Ok(keys.pending_reset().await?.map(PendingResetInfo::from)) })
+        self.on_keys(move |keys| async move { Ok(keys.pending_reset().await?.map(PendingResetInfo::from)) })
             .await
     }
 
     pub async fn begin_reset(&self, kind: ResetKindTag) -> Result<RecoveryKeyDraftInfo, CoreError> {
-        self.on_keys(|keys| async move { keys.begin_reset(kind.into()).await.map(RecoveryKeyDraftInfo::from) })
+        self.on_keys(move |keys| async move { keys.begin_reset(kind.into()).await.map(RecoveryKeyDraftInfo::from) })
             .await
     }
 
@@ -610,7 +635,7 @@ impl SyncService {
         typed: Vec<SecretString>,
     ) -> Result<PendingResetInfo, CoreError> {
         let (draft, typed) = (draft_arg(&draft)?, typed_arg(typed)?);
-        self.on_keys(|keys| async move {
+        self.on_keys(move |keys| async move {
             keys.finish_reset_proposal(draft, typed)
                 .await
                 .map(PendingResetInfo::from)
@@ -622,22 +647,22 @@ impl SyncService {
     pub async fn cancel_reset(&self, reset: String, recovery_key: Option<SecretString>) -> Result<(), CoreError> {
         let reset = reset_arg(&reset)?;
         let with = recovery_key.map_or(CancelWith::ThisDevice, CancelWith::RecoveryKey);
-        self.on_keys(|keys| async move { keys.cancel_reset(reset, with).await })
+        self.on_keys(move |keys| async move { keys.cancel_reset(reset, with).await })
             .await
     }
 
     pub async fn activate_reset(&self, reset: String) -> Result<(), CoreError> {
         let reset = reset_arg(&reset)?;
-        self.on_keys(|keys| async move { keys.activate_reset(reset).await })
+        self.on_keys(move |keys| async move { keys.activate_reset(reset).await })
             .await
     }
 
     pub async fn team_keys(&self, team: String) -> Result<TeamKeysInfo, CoreError> {
         let team = team_arg(&team)?;
         let account = self.names_account();
-        self.on_keys(|keys| async move {
-            let team_keys = keys.team_keys(team).await?;
-            let names = Names::read(account.as_ref(), &[team]).await;
+        self.on_engine(move |engine| async move {
+            let team_keys = engine.keys.team_keys(team).await?;
+            let names = Names::read(account.as_ref(), engine.binding.as_ref(), &[team]).await;
             Ok(team_keys_info(team_keys, &names))
         })
         .await
@@ -645,46 +670,46 @@ impl SyncService {
 
     pub async fn create_team_keys(&self, team: String) -> Result<(), CoreError> {
         let team = team_arg(&team)?;
-        self.on_keys(|keys| async move { keys.create_team_keys(team).await })
+        self.on_keys(move |keys| async move { keys.create_team_keys(team).await })
             .await
     }
 
     pub async fn confirm_member(&self, team: String, account: String) -> Result<(), CoreError> {
         let (team, account) = (team_arg(&team)?, account_arg(&account)?);
-        self.on_keys(|keys| async move { keys.confirm_member(team, account).await })
+        self.on_keys(move |keys| async move { keys.confirm_member(team, account).await })
             .await
     }
 
     pub async fn rotate_team_key(&self, team: String, remove: Vec<String>) -> Result<(), CoreError> {
         let (team, remove) = (team_arg(&team)?, ids(&remove, account_arg)?);
-        self.on_keys(|keys| async move { keys.rotate_team(team, remove).await })
+        self.on_keys(move |keys| async move { keys.rotate_team(team, remove).await })
             .await
     }
 
     pub async fn restart_team_key(&self, team: String, confirm: Vec<String>) -> Result<(), CoreError> {
         let (team, confirm) = (team_arg(&team)?, ids(&confirm, account_arg)?);
-        self.on_keys(|keys| async move { keys.restart_team(team, confirm).await })
+        self.on_keys(move |keys| async move { keys.restart_team(team, confirm).await })
             .await
     }
 
     // A restart this device holds until the person compares the restarting owner's words.
     pub async fn held_team_restart(&self, team: String) -> Result<Option<HeldRestartInfo>, CoreError> {
         let team = team_arg(&team)?;
-        self.on_keys(|keys| async move { Ok(keys.held_restart(team).await?.map(HeldRestartInfo::from)) })
+        self.on_keys(move |keys| async move { Ok(keys.held_restart(team).await?.map(HeldRestartInfo::from)) })
             .await
     }
 
     // `signer_ik` is the one `held_team_restart` showed, as base64url; there is no accept without comparing.
     pub async fn accept_team_restart(&self, team: String, signer_ik: String) -> Result<(), CoreError> {
         let (team, signer_ik) = (team_arg(&team)?, ik_arg(&signer_ik)?);
-        self.on_keys(|keys| async move { keys.accept_restart(team, signer_ik).await })
+        self.on_keys(move |keys| async move { keys.accept_restart(team, signer_ik).await })
             .await
     }
 
     // The envelope ids a removed party could read, for "Credentials to rotate".
     pub async fn credentials_to_rotate(&self, scope: String) -> Result<Vec<String>, CoreError> {
         let scope = ScopeName::parse(&scope)?;
-        self.on_keys(|keys| async move {
+        self.on_keys(move |keys| async move {
             let envelopes = keys.credentials_to_rotate(scope).await?;
             Ok(envelopes.iter().map(EnvelopeId::to_wire).collect())
         })

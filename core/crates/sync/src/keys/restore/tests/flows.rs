@@ -341,6 +341,7 @@ fn held_row(scope: ScopeName, held: &HeldObject) -> Row {
         record_id: held.object.id.to_wire(),
         fields: held.fields.clone(),
         applied: true,
+        served: None,
     })
 }
 

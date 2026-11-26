@@ -9,6 +9,7 @@ use tablepro_keys::encoding::{Origin, Version};
 use tablepro_keys::keys::Ed25519Public;
 
 use crate::api::state::KeyPinRow;
+use crate::keys::pins::seen_replaced;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Chain {
@@ -64,6 +65,6 @@ pub(crate) fn newest_current(certificates: &BTreeMap<Version, AccountCertificate
     certificates
         .iter()
         .rev()
-        .find(|(_, certificate)| !pin.replaced.contains(&certificate.ik))
+        .find(|(_, certificate)| !seen_replaced(&pin.replaced, &certificate.ik))
         .map(|(av, _)| *av)
 }

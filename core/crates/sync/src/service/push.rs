@@ -310,7 +310,7 @@ impl ServiceSync {
         if matches!(scope, ScopeName::Team(_)) && !keyed {
             return Ok(Proof::None);
         }
-        Ok(self.proofs.dpop_key().await?.map_or(Proof::None, Proof::Dpop))
+        Ok(self.keys.dpop_key().await?.map_or(Proof::None, Proof::Dpop))
     }
 
     async fn send(

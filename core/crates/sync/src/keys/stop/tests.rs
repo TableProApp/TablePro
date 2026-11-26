@@ -18,7 +18,7 @@ use crate::api::state::{
 use crate::keys::restore::tests::fakes::{Hook, Rig, Sent, epoch};
 use crate::keys::restore::tests::world::{World, v};
 use std::collections::BTreeMap;
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 
 fn team_row(world: &World, version: u32, holders: &[(&str, u32)], cause: Option<StoppedCause>) -> KeyVersionRow {
     let mut holders: Vec<Holder> = holders
@@ -95,6 +95,7 @@ fn member_row(world: &World, name: &str, av: u32) -> crate::api::state::KeyObjec
         record_id: held.object.id.to_wire(),
         fields: held.fields,
         applied: true,
+        served: None,
     }
 }
 
@@ -203,6 +204,7 @@ async fn a_stopped_device_takes_a_qualifying_admin_s_wrap_under_the_av_it_rotate
         record_id: at_3.object.id.to_wire(),
         fields: at_3.fields,
         applied: true,
+        served: None,
     })])
     .await;
 
@@ -532,7 +534,10 @@ async fn an_admin_who_reset_since_holding_the_version_is_no_holder_and_the_team_
         av: v(3),
         how: PinHow::FirstUse,
         alert: false,
-        replaced: vec![world.ik("A").public().unwrap()],
+        replaced: vec![Replaced {
+            ik: world.ik("A").public().unwrap(),
+            av: v(3),
+        }],
     })])
     .await;
     let body = tablepro_keys::body::AccountBody::of(&reset);
@@ -549,6 +554,7 @@ async fn an_admin_who_reset_since_holding_the_version_is_no_holder_and_the_team_
         record_id: object.id.to_wire(),
         fields: object.fields_json(),
         applied: true,
+        served: None,
     })])
     .await;
     rig.service.rosters().put(
@@ -580,7 +586,7 @@ async fn a_report_already_sent_needs_nothing_recorded() {
     );
 }
 
-fn alert_pin(world: &World, name: &str, av: u32, replaced: Vec<Ed25519Public>, alert: bool) -> Row {
+fn alert_pin(world: &World, name: &str, av: u32, replaced: Vec<Replaced>, alert: bool) -> Row {
     Row::KeyPin(KeyPinRow {
         account: world.account(name),
         ik: world.ik(name).public().unwrap(),
@@ -606,7 +612,10 @@ async fn a_holder_under_an_open_alert_gives_its_wrap_no_effect_until_the_person_
 async fn a_wrap_under_an_ik_the_pin_saw_replaced_is_refused() {
     let world = World::load();
     let rig = stopped_at_6(&world).await;
-    let replaced = world.ik("A").public().unwrap();
+    let replaced = Replaced {
+        ik: world.ik("A").public().unwrap(),
+        av: v(2),
+    };
     rig.put([alert_pin(&world, "A", 2, vec![replaced], false)]).await;
 
     let retired = reconfirm(&rig, &world, 7, wrapper(&world, "A", 2)).await;
@@ -705,6 +714,7 @@ async fn a_certificate_with_a_bad_signature_counts_as_not_arrived() {
         record_id: object.id.to_wire(),
         fields: object.fields_json(),
         applied: true,
+        served: None,
     })])
     .await;
     rig.service
@@ -751,8 +761,18 @@ async fn a_certificate_under_an_ik_the_pin_saw_replaced_never_raises_the_newest_
             record_id: object.id.to_wire(),
             fields: object.fields_json(),
             applied: true,
+            served: None,
         }),
-        alert_pin(&world, "A", 2, vec![old_ik.public().unwrap()], false),
+        alert_pin(
+            &world,
+            "A",
+            2,
+            vec![Replaced {
+                ik: old_ik.public().unwrap(),
+                av: v(3),
+            }],
+            false,
+        ),
     ])
     .await;
     rig.service

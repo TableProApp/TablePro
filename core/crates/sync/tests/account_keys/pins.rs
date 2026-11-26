@@ -7,7 +7,7 @@ use tablepro_keys::encoding::{AccountId, TeamId, Version, random_uuid};
 use tablepro_keys::fingerprint::{fingerprint, fingerprint_words, qr_text};
 use tablepro_keys::keys::{AccountKeys, Ed25519Public, Ed25519Seed};
 use tablepro_keys::record_id::KeyRecordId;
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 use tablepro_sync::api::ids::{KindName, ScopeName};
 use tablepro_sync::api::key_flows::{Acceptance, AccountFlows, KeyNoticeKind};
 use tablepro_sync::api::state::{KeyObjectRow, KeyPinRow, Row, RowKey};
@@ -80,6 +80,7 @@ fn member_row(scope: ScopeName, certificate: &AccountCertificate) -> Row {
         record_id: object.id.to_wire(),
         fields: object.fields_json(),
         applied: true,
+        served: None,
     })
 }
 
@@ -138,7 +139,7 @@ async fn a_replace_the_pinned_ik_endorsed_is_followed_with_a_notice_and_the_old_
     let pin = device.pin(member.account).await.unwrap();
     assert_eq!(
         (pin.ik, pin.how, pin.replaced.clone()),
-        (next.public().unwrap(), PinHow::Replaced, vec![old])
+        (next.public().unwrap(), PinHow::Replaced, vec![Replaced { ik: old, av: av(2) }])
     );
     assert!(device.service.notices().await.unwrap().iter().any(|notice| notice.kind
         == KeyNoticeKind::RecoveryKeyReplaced {
@@ -204,7 +205,10 @@ async fn an_unendorsed_change_opens_an_alert_that_re_confirming_closes_only_for_
             av(2),
             PinHow::FirstUse,
             false,
-            vec![member.ik.public().unwrap()]
+            vec![Replaced {
+                ik: member.ik.public().unwrap(),
+                av: av(2)
+            }]
         )
     );
     assert!(device.service.key_change(member.account).await.unwrap().is_none());
@@ -397,7 +401,10 @@ async fn an_alert_after_an_endorsed_replace_keeps_the_replace_it_followed() {
             av(2),
             PinHow::Replaced,
             true,
-            vec![member.ik.public().unwrap()]
+            vec![Replaced {
+                ik: member.ik.public().unwrap(),
+                av: av(2)
+            }]
         )
     );
 }

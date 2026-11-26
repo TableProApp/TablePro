@@ -70,6 +70,8 @@ pub enum LocalChange {
 pub trait HostSettings: Send + Sync {
     fn kind(&self) -> Kind;
 
+    // Every category the host holds a value for. One its platform's registry does not name, such as a newer build's,
+    // comes back as it was applied, unchanged, so the diff never reads its absence as a deletion (0066, Rules).
     async fn categories(&self) -> Result<Vec<SettingsDocument>, AdapterError>;
 
     // None removes the category's synced document, as a deleted theme.

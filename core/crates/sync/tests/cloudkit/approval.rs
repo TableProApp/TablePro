@@ -77,7 +77,7 @@ async fn a_connection_new_to_the_device_waits_whole_until_the_pass_s_approval_le
     let status = sync.status();
     let waiting = sync.approvals().await.unwrap();
     for approval in &waiting {
-        sync.decide_approval(approval.key.clone(), approval.field.clone(), true)
+        sync.decide_approval(approval.key.clone(), approval.field.clone(), approval.digest, true)
             .await
             .unwrap();
     }

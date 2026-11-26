@@ -154,9 +154,10 @@ pub use sync::{
     LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo, MoveBackPlanInfo,
     MovePlanInfo, NewIdentityChoiceTag, PassReasonTag, PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo,
     RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo,
-    SessionEndTag, SessionPhaseTag, SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag,
-    StoppedDeviceInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag,
-    SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
+    ScopeStatusInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag,
+    StopCauseTag, StoppedDeviceInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag,
+    SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag,
+    device_item_class,
 };
 pub use syntax::SqlGrammarTag;
 pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};
