@@ -13,7 +13,7 @@ use crate::api::cloudkit::{CloudKitDeletion, CloudKitRecord, CloudKitValue};
 use crate::api::ids::RecordKey;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) enum Incoming {
+pub(in crate::cloudkit) enum Incoming {
     Changed(Copy),
     Deleted(RecordKey),
     // Listed by the zone, but not read: its fetch failed, or this build cannot project the copy.
@@ -35,7 +35,7 @@ impl Incoming {
 
 // The server's copy as wire fields, with the system fields that guard the next save on it.
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct Copy {
+pub(in crate::cloudkit) struct Copy {
     pub key: RecordKey,
     pub kind: Kind,
     pub tag: Vec<u8>,
@@ -50,7 +50,7 @@ fn key_in(record_type: &RecordType, name: &str) -> Option<RecordKey> {
     Some(RecordKey::new(SCOPE, record_type.kind, id))
 }
 
-pub(super) fn key_of_name(name: &str) -> Option<RecordKey> {
+pub(crate) fn key_of_name(name: &str) -> Option<RecordKey> {
     let (record_type, _) = parse_record_name(name)?;
     key_in(record_type, name)
 }
@@ -74,7 +74,7 @@ fn cloud_value(value: &CloudKitValue) -> CloudValue {
     }
 }
 
-pub(super) fn changed(record: &CloudKitRecord) -> Option<Incoming> {
+pub(in crate::cloudkit) fn changed(record: &CloudKitRecord) -> Option<Incoming> {
     let record_type = record_type_named(&record.record_type)?;
     let key = key_in(record_type, &record.name)?;
     let Some(tag) = record.system_fields.clone() else {
@@ -95,6 +95,14 @@ pub(super) fn changed(record: &CloudKitRecord) -> Option<Incoming> {
         }),
         Err(_) => Incoming::Unread { key, tag: Some(tag) },
     })
+}
+
+// A copy fetched by name, as wire fields, or None when this build cannot read it.
+pub(crate) fn wire_fields(record: &CloudKitRecord) -> Option<(RecordKey, Value)> {
+    match changed(record)? {
+        Incoming::Changed(copy) => Some((copy.key, copy.fields)),
+        Incoming::Deleted(_) | Incoming::Unread { .. } => None,
+    }
 }
 
 pub(super) fn deleted(deletion: &CloudKitDeletion) -> Option<Incoming> {

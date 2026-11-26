@@ -8,8 +8,8 @@ use serde_json::json;
 use tablepro_records::Kind;
 use tablepro_sync::api::SyncError;
 use tablepro_sync::api::cloudkit::{CloudKitFailure, CloudKitOutcome, CloudKitTransport};
-use tablepro_sync::api::control::{PassReason, SyncControl, SyncPhase};
-use tablepro_sync::api::state::{Opened, StateFiles, SyncTrust};
+use tablepro_sync::api::control::{HeldRecordReason, PassReason, SyncControl, SyncPhase};
+use tablepro_sync::api::state::{HeldReason, Opened, StateFiles, SyncTrust};
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::engine::{JournalEntry, Pass, StopSignal};
 use tablepro_sync::state::SqliteStateFiles;
@@ -326,4 +326,23 @@ async fn a_state_file_the_open_found_restored_refills_once() {
         rig.zone_fields(Kind::Group, A),
         Some(projected(Kind::Group, A, &json!({"name": "Mine"})))
     );
+}
+
+#[tokio::test]
+async fn the_records_a_pass_held_by_id_are_listed_with_why() {
+    let rig = Rig::new().await;
+    let sync = rig.sync(None);
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.store(Kind::Connection).make_unreadable(A);
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "renamed"}));
+
+    let before = sync.held_records().await.unwrap();
+    sync.run_pass(PassReason::CloudKitPush).await.unwrap();
+    let held = sync.held_records().await.unwrap();
+
+    assert!(before.is_empty(), "{before:?}");
+    assert_eq!(held.len(), 1, "{held:?}");
+    assert_eq!(held[0].key.record_id, A);
+    assert_eq!(held[0].reason, HeldRecordReason::Held(HeldReason::Unreadable));
 }

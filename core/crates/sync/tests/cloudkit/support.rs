@@ -13,6 +13,7 @@ use tablepro_sync::adapters::approval::Queue;
 use tablepro_sync::api::cloudkit::{CloudKitField, CloudKitTransport, CloudKitValue};
 use tablepro_sync::api::control::PendingApproval;
 use tablepro_sync::api::ids::{ChangeTag, KindName};
+use tablepro_sync::api::legacy::LegacyMirror;
 use tablepro_sync::api::state::{
     BaseRow, DeferredRow, HeldRow, Row, RowKey, RowRange, StateFiles, StateIdentity, StateStore, StoreRow, Table,
 };
@@ -25,7 +26,7 @@ use tablepro_sync::api::{
 use tablepro_sync::cloudkit::fetch::{Categories, FetchReport, Fetcher, Rebased, ServerChanged};
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync, PushReport, Pusher, Waits};
 use tablepro_sync::engine::{Adapters, Clock, Journal, StopSignal};
-use tablepro_sync_testing::{FakeCloudKit, MemoryStateFiles};
+use tablepro_sync_testing::{FakeCloudKit, FakeLegacyMirror, MemoryStateFiles};
 use uuid::Uuid;
 
 pub const USER: &str = "_4f1e2d";
@@ -498,6 +499,12 @@ impl Rig {
         })
     }
 
+    // The Mac's pass with the Swift engine's metadata in `mirror`, as a launch opens it.
+    pub fn sync_mirrored(&self, mirror: &Arc<FakeLegacyMirror>) -> CloudKitSync {
+        self.sync(None)
+            .with_legacy_mirror(Arc::clone(mirror) as Arc<dyn LegacyMirror>)
+    }
+
     // The fields of a record the zone holds, as wire fields.
     pub fn zone_fields(&self, kind: Kind, id: &str) -> Option<Value> {
         self.zone_fields_of(USER, kind, id)
@@ -569,6 +576,7 @@ impl Rig {
         let queue = Queue {
             state: &self.state,
             adapters: &adapters,
+            fence: &StopSignal::new(),
         };
         queue.waiting().await.unwrap()
     }
@@ -579,6 +587,7 @@ impl Rig {
         let queue = Queue {
             state: &self.state,
             adapters: &adapters,
+            fence: &StopSignal::new(),
         };
         for approval in queue.waiting().await.unwrap() {
             queue

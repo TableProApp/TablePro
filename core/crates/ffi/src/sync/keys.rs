@@ -3,12 +3,15 @@
 // from the profile and a member's name and email from the team's member list, which the server serves to owners and
 // admins only, so each is None where the account cannot read it.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 
 use secrecy::SecretString;
-use tablepro_keys::encoding::TeamId;
-use tablepro_keys::envelope::EnvelopeId;
+use tablepro_keys::encoding::{AccountId, TeamId};
+use tablepro_keys::envelope::{EnvelopeId, ParentKind};
+use tablepro_session::runtime::Tasks;
+use tablepro_storage::ConnectionStore;
 use tablepro_sync::SyncError;
 use tablepro_sync::api::ScopeName;
 use tablepro_sync::api::key_flows::{
@@ -16,6 +19,7 @@ use tablepro_sync::api::key_flows::{
     ReviewedMember, TeamFlows, TeamKeys,
 };
 use tablepro_sync::keys::KeyService;
+use uuid::Uuid;
 
 use super::engines::ServiceEngine;
 use super::key_records::{
@@ -201,6 +205,8 @@ pub struct ReviewedMemberInfo {
     pub account: String,
     pub name: Option<String>,
     pub email: Option<String>,
+    // This account's own row.
+    pub is_self: bool,
     pub confirmed_under_av: u32,
 }
 
@@ -250,6 +256,7 @@ pub struct MemberKeysInfo {
     pub account: String,
     pub name: Option<String>,
     pub email: Option<String>,
+    pub is_self: bool,
     pub role: TeamRoleTag,
     pub status: MemberKeyStatusTag,
 }
@@ -281,10 +288,26 @@ pub struct StoppedDeviceInfo {
     pub account: String,
     pub name: Option<String>,
     pub email: Option<String>,
+    pub is_self: bool,
     pub device: String,
     pub version: u32,
     // This account held that version, so the app offers to confirm the device again by rotating.
     pub can_reconfirm: bool,
+}
+
+// One envelope a removed party could read (core ADR 0056, Old data). `connection` is the parent's id when the parent is
+// a connection, and `connection_name` and `connection_driver` its name and driver id in this Core's connection store,
+// None once it is gone; `field` is the secret's key, as `password` or `plugin.<field>`, which the app words with that
+// driver's label.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CredentialToRotateInfo {
+    pub envelope: String,
+    pub parent_kind: String,
+    pub parent_id: String,
+    pub connection: Option<String>,
+    pub connection_name: Option<String>,
+    pub connection_driver: Option<String>,
+    pub field: String,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -330,7 +353,7 @@ impl SyncService {
     }
 }
 
-pub(crate) fn team_keys_info(keys: TeamKeys, names: &Names) -> TeamKeysInfo {
+pub(crate) fn team_keys_info(keys: TeamKeys, names: &Names, me: AccountId) -> TeamKeysInfo {
     let team = keys.team;
     TeamKeysInfo {
         team: team_text(team),
@@ -349,6 +372,7 @@ pub(crate) fn team_keys_info(keys: TeamKeys, names: &Names) -> TeamKeysInfo {
                     account: member.account.to_wire(),
                     name: person.name,
                     email: person.email,
+                    is_self: member.account == me,
                     role: member.role.into(),
                     status: member.status.into(),
                 }
@@ -363,6 +387,7 @@ pub(crate) fn team_keys_info(keys: TeamKeys, names: &Names) -> TeamKeysInfo {
                     account: stopped.account.to_wire(),
                     name: person.name,
                     email: person.email,
+                    is_self: stopped.account == me,
                     device: stopped.device.0,
                     version: stopped.version.get(),
                     can_reconfirm: stopped.can_reconfirm,
@@ -372,7 +397,7 @@ pub(crate) fn team_keys_info(keys: TeamKeys, names: &Names) -> TeamKeysInfo {
     }
 }
 
-pub(crate) fn reviewed_member_info(member: ReviewedMember, names: &Names) -> ReviewedMemberInfo {
+pub(crate) fn reviewed_member_info(member: ReviewedMember, names: &Names, me: AccountId) -> ReviewedMemberInfo {
     let person = names.person(member.team, member.account);
     ReviewedMemberInfo {
         team: team_text(member.team),
@@ -380,18 +405,19 @@ pub(crate) fn reviewed_member_info(member: ReviewedMember, names: &Names) -> Rev
         account: member.account.to_wire(),
         name: person.name,
         email: person.email,
+        is_self: member.account == me,
         confirmed_under_av: member.confirmed_under_av.get(),
     }
 }
 
-fn removal_review_info(review: RemovalReview, names: &Names) -> RemovalReviewInfo {
+fn removal_review_info(review: RemovalReview, names: &Names, me: AccountId) -> RemovalReviewInfo {
     RemovalReviewInfo {
         review: tablepro_keys::encoding::uuid_to_wire(review.review.0),
         devices: review.devices.into_iter().map(ReviewedDeviceInfo::from).collect(),
         members: review
             .members
             .into_iter()
-            .map(|member| reviewed_member_info(member, names))
+            .map(|member| reviewed_member_info(member, names, me))
             .collect(),
     }
 }
@@ -404,6 +430,46 @@ pub(crate) fn reviewed_member_arg(member: &ReviewedMemberInfo) -> Result<Reviewe
         confirmed_under_av: tablepro_keys::encoding::Version::new(member.confirmed_under_av)
             .map_err(|_| SyncError::Malformed { what: "version" })?,
     })
+}
+
+// The name and driver id of this Core's connections, by id; a store that cannot be read names none.
+async fn connection_names(tasks: &Tasks, store: ConnectionStore) -> HashMap<Uuid, (String, String)> {
+    let loaded = tasks.spawn_blocking_task(move || store.load_blocking()).await;
+    match loaded {
+        Ok(Ok(connections)) => connections
+            .iter()
+            .map(|connection| (connection.id, (connection.name.clone(), connection.driver_id.clone())))
+            .collect(),
+        Ok(Err(error)) => {
+            tracing::debug!(%error, "the connection store gave no names");
+            HashMap::new()
+        }
+        Err(error) => {
+            tracing::debug!(%error, "the connection store gave no names");
+            HashMap::new()
+        }
+    }
+}
+
+pub(crate) fn credential_info(
+    envelope: &EnvelopeId,
+    names: &HashMap<Uuid, (String, String)>,
+) -> CredentialToRotateInfo {
+    let connection = (envelope.parent_kind == ParentKind::Connection).then(|| envelope.parent_id.clone());
+    let stored = connection
+        .as_deref()
+        .and_then(|id| tablepro_keys::encoding::uuid_from_wire(id).ok())
+        .and_then(|id| names.get(&id).cloned());
+    let (connection_name, connection_driver) = stored.map_or((None, None), |(name, driver)| (Some(name), Some(driver)));
+    CredentialToRotateInfo {
+        envelope: envelope.to_wire(),
+        parent_kind: envelope.parent_kind.name(),
+        parent_id: envelope.parent_id.clone(),
+        connection,
+        connection_name,
+        connection_driver,
+        field: envelope.secret_kind.name(),
+    }
 }
 
 fn ids<T>(texts: &[String], parse: fn(&str) -> Result<T, SyncError>) -> Result<Vec<T>, SyncError> {
@@ -597,7 +663,7 @@ impl SyncService {
             let review = engine.keys.begin_removal(recovery_key, lost).await?;
             let teams: Vec<TeamId> = review.members.iter().map(|member| member.team).collect();
             let names = Names::read(account.as_ref(), engine.binding.as_ref(), &teams).await;
-            Ok(removal_review_info(review, &names))
+            Ok(removal_review_info(review, &names, engine.keys.account()))
         })
         .await
     }
@@ -663,7 +729,7 @@ impl SyncService {
         self.on_engine(move |engine| async move {
             let team_keys = engine.keys.team_keys(team).await?;
             let names = Names::read(account.as_ref(), engine.binding.as_ref(), &[team]).await;
-            Ok(team_keys_info(team_keys, &names))
+            Ok(team_keys_info(team_keys, &names, engine.keys.account()))
         })
         .await
     }
@@ -707,12 +773,34 @@ impl SyncService {
     }
 
     // The envelope ids a removed party could read, for "Credentials to rotate".
-    pub async fn credentials_to_rotate(&self, scope: String) -> Result<Vec<String>, CoreError> {
+    pub async fn credentials_to_rotate(&self, scope: String) -> Result<Vec<CredentialToRotateInfo>, CoreError> {
         let scope = ScopeName::parse(&scope)?;
+        let (store, tasks) = (self.connections.clone(), self.tasks.clone());
         self.on_keys(move |keys| async move {
             let envelopes = keys.credentials_to_rotate(scope).await?;
-            Ok(envelopes.iter().map(EnvelopeId::to_wire).collect())
+            let names = match store {
+                Some(store)
+                    if envelopes
+                        .iter()
+                        .any(|envelope| envelope.parent_kind == ParentKind::Connection) =>
+                {
+                    connection_names(&tasks, store).await
+                }
+                _ => HashMap::new(),
+            };
+            Ok(envelopes
+                .iter()
+                .map(|envelope| credential_info(envelope, &names))
+                .collect())
         })
         .await
+    }
+
+    // A kind 3 reset of this device that a restore lost, proposed again after a fresh step-up, as the
+    // `ResetWaitsForStepUp` notice asks; `sync.step_up_required` carries the challenge until then.
+    pub async fn resume_reset(&self, reset: String) -> Result<(), CoreError> {
+        let reset = reset_arg(&reset)?;
+        self.on_keys(move |keys| async move { keys.resume_reset(reset).await })
+            .await
     }
 }
