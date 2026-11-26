@@ -321,7 +321,7 @@ final class PaginationCoordinator: ObservableObject {
         let owner = TabQueryTaskOwner.unclaimedWork(tabId: tabId, token: workToken)
         let lease = DriverLeaseOwner()
         let isTableTab = parent.tabManager.tabs[idx].tabType == .table
-        let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: parent.tabManager.tabs[idx], sql: baseQuery) : []
+        let unloadedLayout = isTableTab ? parent.unloadedValueLayout(for: parent.tabManager.tabs[idx], sql: baseQuery) : nil
         let failureOutput = ServerOutputBox()
         let safeModeIsReadOnly = parent.runsAtReadOnly
 
@@ -371,14 +371,15 @@ final class PaginationCoordinator: ObservableObject {
                         }
                         return try await driver.executeUserQuery(query: baseQuery, rowCap: nil, parameters: parameters)
                     }
-                    let result: QueryResult
+                    var result: QueryResult
                     if isTableTab {
                         // A table tab's own reads print nothing, as on its first page.
                         result = try await rerun()
                     } else {
                         result = try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput, rerun)
                     }
-                    return result.foldingUnloadedValues(lengthColumns: lengthColumns)
+                    result.foldUnloadedValues(unloadedLayout)
+                    return result
                 }
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")

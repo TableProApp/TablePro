@@ -639,6 +639,22 @@ struct DataGridResponderCommandTests {
         #expect(item.string(forType: DataGridViewController.rowDragType) == nil)
     }
 
+    @Test("A row dragged out names a value left on the server instead of dropping its first characters")
+    func rowDragNamesCutValue() throws {
+        let rows = TableRows.from(
+            queryRows: [[.text("1"), .text("lorem ipsum"), .null]],
+            columns: ["id", "body", "data"],
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "LONGTEXT"), .blob(rawType: "LONGBLOB")],
+            unloadedCells: [0: [1: 5_242_880, 2: 70_000]]
+        )
+        let grid = CommandGrid(rows)
+        let item = try #require(grid.controller.rowDragPasteboardItem(forRow: 0))
+
+        let text = UnloadedValueText.notLoaded(byteCount: 5_242_880)
+        let binary = UnloadedValueText.notLoaded(byteCount: 70_000)
+        #expect(item.string(forType: .string) == "1\t\(text)\t\(binary)")
+    }
+
     @Test("A focused grid answers Find itself; Find Next waits for a term")
     func findOpensTheGridsOwnBar() {
         let grid = CommandGrid(CommandRows.people)

@@ -59,9 +59,10 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
         return coordinator.tabManager.tabs[index].pagination.currentOffset
     }
 
+    // A cut value holds only its first characters, so a find over it covers part of the page, as over a page of more.
     var gridHasUnloadedRows: Bool {
         guard let tab else { return false }
-        return tab.pagination.hasUnloadedRows(loadedRowCount: gridRows.rows.count)
+        return tab.pagination.hasUnloadedRows(loadedRowCount: gridRows.rows.count) || gridRows.hasUnloadedValues
     }
 
     var gridHighlightRules: [HighlightRule] {

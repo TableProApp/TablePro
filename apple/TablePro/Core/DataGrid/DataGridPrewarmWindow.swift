@@ -68,6 +68,8 @@ struct DataGridPrewarmBatch: Sendable {
     static let rowLimit = 32
 
     let rows: [Row]
+    // A cut text holds NULL in its row and shows its first characters, which the rows keep beside their values.
+    var unloadedHeads: [RowID: [Int: String]] = [:]
     let columnCount: Int
     let columnTypes: [ColumnType]
     let formats: [ValueDisplayFormat?]
@@ -86,16 +88,18 @@ struct DataGridPrewarmBatch: Sendable {
         formatted.reserveCapacity(rows.count)
         for row in rows where !Task.isCancelled {
             let box = RowDisplayBox(ContiguousArray<String?>(repeating: nil, count: columnCount))
+            let heads = unloadedHeads[row.id] ?? [:]
             for dataIndex in 0..<min(row.values.count, columnCount) {
+                let shown = heads[dataIndex].map(PluginCellValue.text) ?? row.values[dataIndex]
                 let display = CellDisplayFormatter.display(
-                    row.values[dataIndex],
+                    shown,
                     columnType: dataIndex < columnTypes.count ? columnTypes[dataIndex] : nil,
                     displayFormat: dataIndex < formats.count ? formats[dataIndex] : nil,
                     databaseType: databaseType,
                     dates: dates,
                     keepsLineBreaks: keepsLineBreaks
                 )
-                box.setText(display.text ?? row.values[dataIndex].asText ?? "", at: dataIndex, isFormatted: display.isFormatted)
+                box.setText(display.text ?? shown.asText ?? "", at: dataIndex, isFormatted: display.isFormatted)
             }
             formatted.append((row.id, box, wrap?.lineCount(of: row, texts: box.values)))
         }

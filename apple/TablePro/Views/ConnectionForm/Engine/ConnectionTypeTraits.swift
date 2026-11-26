@@ -136,7 +136,7 @@ struct ConnectionTypeTraits: Sendable {
         traits.ssl = sslTraits(for: type, pluginManager: pluginManager)
         traits.isEngineReadOnly = pluginManager.isEngineReadOnly(for: type)
         traits.manualCommitAvailable = ManualCommit.isAvailable(for: type)
-        traits.supportsBinaryInlineLimit = pluginManager.binaryLengthFunction(for: type) != nil
+        traits.supportsBinaryInlineLimit = pluginManager.largeValueFunctions(for: type) != nil
         traits.supportsIdentifierCase = type.identifierRules != nil
         traits.storedSecureFieldIds = pluginManager.secureConnectionFieldIds(for: type)
         return traits
