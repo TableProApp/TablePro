@@ -345,6 +345,51 @@ async fn a_certificate_the_server_made_up_at_a_far_av_does_not_stretch_sign_out(
     assert!(device.store.is_empty());
 }
 
+// A stolen recovery key and the server together can plant a certificate under the account's own IK at a far `av`,
+// which verifies under the device's pin. Sign Out erases the account keys at the `av`s the key tables name, never by
+// counting up to the highest, so it still ends.
+#[tokio::test]
+async fn a_certificate_under_the_account_s_own_ik_at_a_far_av_does_not_stretch_sign_out() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    let recovery = device.genesis().await;
+    let ik = tablepro_keys::recovery::RecoveryKey::parse(secrecy::ExposeSecret::expose_secret(&recovery))
+        .unwrap()
+        .identity_seed(&origin(), account)
+        .unwrap();
+    let far = tablepro_keys::cert::AccountCertificate::sign(
+        &origin(),
+        account,
+        Version::new(100_000).unwrap(),
+        tablepro_keys::cert::CertKind::GenesisOrRotation,
+        &ik,
+        AccountKeys::generate().unwrap().public().unwrap(),
+        None,
+    )
+    .unwrap();
+    device
+        .feed(
+            vec![crate::harness::record_of(&tablepro_keys::body::KeyObject {
+                id: tablepro_keys::record_id::KeyRecordId::Account { account, av: far.av },
+                body: tablepro_keys::body::KeyBody::Account(tablepro_keys::body::AccountBody::of(&far)),
+            })],
+            tablepro_sync::api::key_flows::ArrivalOrder::InOrder,
+        )
+        .await;
+    let watched = std::sync::Arc::new(crate::harness::Watched {
+        store: device.store.clone(),
+        away: false,
+        deletes: std::sync::Mutex::new(0),
+    });
+    let counting = device.restarted_over(watched.clone());
+
+    counting.service.sign_out().await.unwrap();
+
+    assert!(*watched.deletes.lock().unwrap() < 10);
+    assert!(device.store.is_empty());
+}
+
 #[tokio::test]
 async fn no_reset_key_is_readable_while_a_sign_out_is_under_way() {
     let server = FakeServer::new();
