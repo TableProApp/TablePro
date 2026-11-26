@@ -1,8 +1,9 @@
 use serde_json::json;
 use tablepro_records::Kind;
 use tablepro_sync::api::ids::ScopeName;
-use tablepro_sync::api::state::{Row, RowKey, ScopeRow, Standing};
+use tablepro_sync::api::state::{Row, RowKey, ScopeRow, Standing, StoreRow};
 use tablepro_sync::cloudkit::fetch::read_everything_again;
+use uuid::Uuid;
 
 use crate::faults::Unreliable;
 use crate::support::{A, B, C, D, Rig, USER, name, projected};
@@ -213,6 +214,50 @@ async fn a_store_restored_while_its_category_is_off_refills_once_the_category_is
     );
 }
 
+// A file schema 1 wrote keeps a `stores` row per kind. The kind whose row is behind its store still owes its refill,
+// its sibling in the same file does not, and both rows give way to the file's one row.
+#[tokio::test]
+async fn a_schema_1_kind_row_behind_its_store_still_owes_its_refill() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::SavedQuery, A, &json!({"name": "a"}));
+    rig.save_elsewhere(Kind::FavouriteTable, B, &json!({"name": "b"}));
+    rig.fetch().await.unwrap();
+    let library = rig.store(Kind::SavedQuery);
+    let legacy = |kind: Kind| format!("{}/{}", library.store_name(), kind.as_str());
+    let mut txn = rig.state.begin().await.unwrap();
+    txn.delete(&RowKey::Store(library.store_name().to_owned()))
+        .await
+        .unwrap();
+    for (kind, generation, sequence) in [
+        (Kind::SavedQuery, library.generation(), library.sequence()),
+        (Kind::FavouriteTable, Uuid::nil(), 0),
+    ] {
+        txn.put(Row::Store(StoreRow {
+            store: legacy(kind),
+            generation,
+            sequence,
+        }))
+        .await
+        .unwrap();
+    }
+    txn.commit().await.unwrap();
+
+    let report = rig.fetch().await.unwrap();
+    let next = rig.fetch().await.unwrap();
+
+    assert_eq!(report.refilled, [Kind::FavouriteTable]);
+    assert!(!next.full && next.refilled.is_empty());
+    let mut txn = rig.state.begin().await.unwrap();
+    for kind in [Kind::SavedQuery, Kind::FavouriteTable] {
+        assert_eq!(txn.get(&RowKey::Store(legacy(kind))).await.unwrap(), None);
+    }
+    drop(txn);
+    assert_eq!(
+        rig.store_row(Kind::SavedQuery).await.unwrap().generation,
+        library.generation()
+    );
+}
+
 #[tokio::test]
 async fn a_scope_in_refill_reads_the_whole_zone_and_leaves_refill_once_it_did() {
     let rig = Rig::new().await;
@@ -302,6 +347,117 @@ async fn kinds_that_share_a_restored_store_each_refill_when_their_category_is_on
     assert_eq!(
         rig.store(Kind::FavouriteTable).fields(&favourite),
         Some(projected(Kind::FavouriteTable, &favourite, &table("public")))
+    );
+}
+
+// 0066, `deferred` and `stores_kinds`: favourites off while their shared file refills keep the copy the restore left,
+// so once on they merge against it. An edit made here meanwhile stays, and what was not edited takes the zone's copy.
+#[tokio::test]
+async fn a_kind_off_while_its_store_refills_merges_its_later_edits_against_the_restored_copy() {
+    let rig = Rig::new().await;
+    let favourite =
+        |name: &str| tablepro_records::record_id::favourite_table(uuid::Uuid::nil(), Some("shop"), None, name).id;
+    let (edited, untouched) = (favourite("orders"), favourite("users"));
+    let table =
+        |name: &str, schema: &str| json!({"connection_id": A, "database": "shop", "name": name, "schema": schema});
+    rig.save_elsewhere(Kind::SavedQuery, B, &json!({"name": "top", "query": "SELECT 1"}));
+    rig.save_elsewhere(Kind::FavouriteTable, &edited, &table("orders", "public"));
+    rig.save_elsewhere(Kind::FavouriteTable, &untouched, &table("users", "public"));
+    rig.fetch().await.unwrap();
+    rig.turn_off(Kind::FavouriteTable);
+    rig.store(Kind::FavouriteTable).restore(vec![
+        (
+            &edited,
+            projected(Kind::FavouriteTable, &edited, &table("orders", "public")),
+        ),
+        (
+            &untouched,
+            projected(Kind::FavouriteTable, &untouched, &table("users", "stale")),
+        ),
+    ]);
+    let sibling = rig.fetch().await.unwrap();
+    let kept = rig.deferred(Kind::FavouriteTable, &edited).await.is_some();
+    rig.store(Kind::FavouriteTable).put(
+        &edited,
+        projected(Kind::FavouriteTable, &edited, &table("orders", "mine")),
+    );
+
+    rig.turn_on(Kind::FavouriteTable);
+    let on = rig.fetch().await.unwrap();
+
+    assert_eq!(sibling.refilled, [Kind::SavedQuery]);
+    assert!(kept);
+    assert_eq!(on.refilled, [Kind::FavouriteTable]);
+    assert_eq!(
+        rig.store(Kind::FavouriteTable).fields(&edited),
+        Some(projected(Kind::FavouriteTable, &edited, &table("orders", "mine")))
+    );
+    assert_eq!(
+        rig.store(Kind::FavouriteTable).fields(&untouched),
+        Some(projected(Kind::FavouriteTable, &untouched, &table("users", "public")))
+    );
+    assert!(rig.deferred(Kind::FavouriteTable, &edited).await.is_none());
+}
+
+// A kept copy is no deletion: a full fetch that lists nothing proves none, whatever the refill kept.
+#[tokio::test]
+async fn a_copy_kept_while_off_deletes_nothing_on_a_full_fetch_that_lists_nothing() {
+    let rig = Rig::new().await;
+    let favourite = tablepro_records::record_id::favourite_table(uuid::Uuid::nil(), Some("shop"), None, "orders").id;
+    rig.save_elsewhere(
+        Kind::FavouriteTable,
+        &favourite,
+        &json!({"connection_id": A, "database": "shop", "name": "orders"}),
+    );
+    rig.fetch().await.unwrap();
+    rig.turn_off(Kind::FavouriteTable);
+    let mut txn = rig.state.begin().await.unwrap();
+    let Some(Row::Scope(scope)) = txn.get(&RowKey::Scope(ScopeName::Personal)).await.unwrap() else {
+        panic!("no scope row");
+    };
+    txn.put(Row::Scope(ScopeRow { refill: true, ..scope })).await.unwrap();
+    txn.commit().await.unwrap();
+    rig.fetch().await.unwrap();
+    let kept = rig.deferred(Kind::FavouriteTable, &favourite).await.is_some();
+    rig.delete_elsewhere(Kind::FavouriteTable, &favourite);
+
+    rig.turn_on(Kind::FavouriteTable);
+    let on = rig.fetch().await.unwrap();
+
+    assert!(kept);
+    assert!(on.full);
+    assert!(rig.store(Kind::FavouriteTable).holds(&favourite));
+}
+
+// The copy stands for the store the restore left: a later refill of another store never takes it again, so an edit made
+// meanwhile still reads as an edit once the kind is on (Codex review round 2).
+#[tokio::test]
+async fn a_copy_kept_while_off_is_not_taken_again_when_another_store_refills() {
+    let rig = Rig::new().await;
+    let favourite = tablepro_records::record_id::favourite_table(uuid::Uuid::nil(), Some("shop"), None, "orders").id;
+    let table = |schema: &str| json!({"connection_id": A, "database": "shop", "name": "orders", "schema": schema});
+    rig.save_elsewhere(Kind::FavouriteTable, &favourite, &table("public"));
+    rig.save_elsewhere(Kind::Group, B, &json!({"name": "Work"}));
+    rig.fetch().await.unwrap();
+    rig.turn_off(Kind::FavouriteTable);
+    rig.store(Kind::FavouriteTable).restore(vec![(
+        &favourite,
+        projected(Kind::FavouriteTable, &favourite, &table("public")),
+    )]);
+    rig.fetch().await.unwrap();
+    rig.store(Kind::FavouriteTable)
+        .put(&favourite, projected(Kind::FavouriteTable, &favourite, &table("mine")));
+    rig.store(Kind::Group)
+        .restore(vec![(B, projected(Kind::Group, B, &json!({"name": "Work"})))]);
+    let other = rig.fetch().await.unwrap();
+
+    rig.turn_on(Kind::FavouriteTable);
+    rig.fetch().await.unwrap();
+
+    assert_eq!(other.refilled, [Kind::Group]);
+    assert_eq!(
+        rig.store(Kind::FavouriteTable).fields(&favourite),
+        Some(projected(Kind::FavouriteTable, &favourite, &table("mine")))
     );
 }
 

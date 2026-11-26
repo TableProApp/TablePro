@@ -520,7 +520,30 @@ fn scope_columns(out: &mut Writer, row: &ScopeRow) {
         .flag(row.refill)
         .flag(row.rotation_due)
         .flag(row.caught_up)
-        .maybe(row.push_wait, |out, wait| out.text(wait.as_str()));
+        .maybe(row.push_wait, |out, wait| out.bytes(&push_wait_bytes(wait)));
+}
+
+// The wait's name, then for an account choice the count of changes left unsent.
+fn push_wait_bytes(wait: PushWait) -> Vec<u8> {
+    let mut out = Writer::default();
+    out.text(wait.name());
+    if let PushWait::AccountChoice { unsent } = wait {
+        out.int(unsent);
+    }
+    out.finish()
+}
+
+fn push_wait(bytes: &[u8]) -> Result<PushWait, StateError> {
+    let mut read = Reader::new(bytes);
+    let wait = match read.text("push wait")?.as_str() {
+        "account_choice" => PushWait::AccountChoice {
+            unsent: read.int("unsent changes")?,
+        },
+        "upload_again" => PushWait::UploadAgain,
+        _ => return Err(malformed("push wait")),
+    };
+    read.end()?;
+    Ok(wait)
 }
 
 fn base_columns(out: &mut Writer, row: &BaseRow) {
@@ -633,6 +656,43 @@ fn served(bytes: &[u8]) -> Result<Served, StateError> {
     }
 }
 
+// Schema 1 kept no replace point, and the replace certificate that sets one is not in the pin (0066, Replace points).
+// At 1 no certificate under the IK verifies as history, which refuses rather than guesses.
+const SCHEMA_1_REPLACE_POINT: u32 = 1;
+
+// A row's columns as schema 1 stored them, in this schema's encoding: a scope and a key object end in a null
+// `push_wait` and `served`, and each replaced IK of a pin gains its replace point.
+pub(crate) fn schema_1_columns(table: Table, columns: &[u8]) -> Result<Vec<u8>, StateError> {
+    match table {
+        Table::Scopes | Table::KeyObjects => {
+            let mut out = Writer(columns.to_vec());
+            out.null();
+            Ok(out.finish())
+        }
+        Table::KeyPins => {
+            let mut read = Reader::new(columns);
+            for what in ["IK", "av", "pin how", "alert"] {
+                read.present(what)?;
+            }
+            let kept = columns.len() - read.rest.len();
+            let replaced = read.bytes("replaced")?;
+            read.end()?;
+            let (chunks, rest) = replaced.as_chunks::<32>();
+            if !rest.is_empty() {
+                return Err(malformed("replaced IKs"));
+            }
+            let entries: Vec<u8> = chunks
+                .iter()
+                .flat_map(|ik| [&ik[..], &SCHEMA_1_REPLACE_POINT.to_be_bytes()].concat())
+                .collect();
+            let mut out = Writer(columns[..kept].to_vec());
+            out.bytes(&entries);
+            Ok(out.finish())
+        }
+        _ => Ok(columns.to_vec()),
+    }
+}
+
 // The row a table's stored key and columns hold.
 pub(crate) fn decode(table: Table, key: &[u8], columns: &[u8]) -> Result<Row, StateError> {
     let mut keys = Reader::new(key);
@@ -729,7 +789,7 @@ fn scope_row(scope: ScopeName, read: &mut Reader<'_>) -> Result<ScopeRow, StateE
         refill: read.flag("refill")?,
         rotation_due: read.flag("rotation due")?,
         caught_up: read.flag("caught up")?,
-        push_wait: read.maybe(|bytes| PushWait::parse(&text(bytes)?).ok_or_else(|| malformed("push wait")))?,
+        push_wait: read.maybe(push_wait)?,
     })
 }
 

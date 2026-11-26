@@ -7,10 +7,9 @@ use serde_json::Value;
 use tablepro_records::Kind;
 use tablepro_records::cloudkit::{CloudFields, from_wire, record_name, record_type_of, to_wire};
 use tablepro_records::record_id::{DIGEST_PREFIX, shortened};
-use uuid::Uuid;
 
+use super::SCOPE;
 use super::settle::{Settle, View};
-use super::{SCOPE, identity_row};
 use crate::adapters::{apply_keeping, approval};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
@@ -318,15 +317,12 @@ impl Settle<'_, '_> {
         self.hold(&key, HeldReason::Unreadable, undo.record).await
     }
 
-    // Each identity of a store this fetch sees moves the rows of the kinds it keeps, so a later rollback of the file
-    // below it shows for every kind, written by this pull or not. A kind in refill moves its row only once the refill
-    // ends, so a fetch stopped midway refills again.
+    // Each identity of a store this fetch sees moves its row, so a later rollback of the file below it shows for every
+    // kind it keeps, written by this pull or not. A kind in refill keeps its mark until the refill ends, so a fetch
+    // stopped midway refills it again.
     pub(super) async fn note_store(&mut self, store: &str, stamp: StoreStamp) -> Result<(), SyncError> {
-        let fetcher = self.fetcher;
-        for (kind, adapter) in &fetcher.adapters {
-            if adapter.store() == store && !self.pull_wins.contains(kind) {
-                self.note_stamp(&identity_row(*kind, store), stamp, false).await?;
-            }
+        if self.fetcher.adapters.values().any(|adapter| adapter.store() == store) {
+            self.note_stamp(store, stamp, false).await?;
         }
         Ok(())
     }
@@ -353,18 +349,5 @@ impl Settle<'_, '_> {
             }))
             .await?;
         Ok(())
-    }
-
-    // A kind whose category was off while its state file refilled is left with a generation no store has, so it
-    // refills once the category is on.
-    pub(super) async fn refill_later(&mut self, row: &str) -> Result<(), SyncError> {
-        self.put_stamp(
-            row,
-            StoreStamp {
-                generation: Uuid::nil(),
-                sequence: 0,
-            },
-        )
-        .await
     }
 }

@@ -11,19 +11,72 @@ use tablepro_records::record_id::parse_uuid;
 use uuid::Uuid;
 
 use super::scopes::kind_off;
-use super::{PassCtx, ServiceSync, Session, begin};
+use super::{PassCtx, ServiceSync, begin};
 use crate::adapters::{approval, local_view};
 use crate::api::adapter::LocalRecords;
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, EpochId, IdempotencyKey, KindName, RecordKey, ScopeName};
 use crate::api::scopes::ScopeInfo;
-use crate::api::state::{BaseRow, DeletedHistoryRow, OutboxRow, Row, RowKey, RowRange, ScopeRow, Table};
+use crate::api::state::{BaseRow, DeletedHistoryRow, OutboxRow, RefusedRow, Row, RowKey, RowRange, ScopeRow, Table};
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DeletedReason, Proof, PushBatch, TransportError};
 use crate::engine::{KeptOff, Pending, PendingOp, change_bytes, diff, hold_kept_off, split};
 
 enum Sent {
     Answered { conflicts: bool },
     EpochChanged,
+}
+
+// One push answer's writes, committed with the outbox cleared.
+struct Answer {
+    puts: Vec<BaseRow>,
+    drops: Vec<RecordKey>,
+    deleted_history: Vec<String>,
+    gone: Vec<RecordKey>,
+    refusals: Refusals,
+}
+
+// The `refused` rows a diff or an answer writes and removes.
+#[derive(Default)]
+struct Refusals {
+    puts: Vec<RefusedRow>,
+    drops: Vec<RecordKey>,
+}
+
+impl Refusals {
+    fn is_empty(&self) -> bool {
+        self.puts.is_empty() && self.drops.is_empty()
+    }
+
+    fn keep(&mut self, held: &HashMap<RecordKey, RefusedRow>, key: RecordKey, digest: [u8; 32], code: &str) {
+        let row = RefusedRow {
+            key,
+            digest,
+            code: code.to_owned(),
+        };
+        if held.get(&row.key) != Some(&row) {
+            self.puts.push(row);
+        }
+    }
+
+    // A refusal of a record of `kind` the diff read and no longer stands by: the change it refused went, or what the
+    // pass would send of it is new. A journal pass read only what it was told of.
+    fn drop_unless(
+        &mut self,
+        held: &HashMap<RecordKey, RefusedRow>,
+        scope: ScopeName,
+        kind: Kind,
+        named: Option<&HashSet<String>>,
+        standing: &HashSet<RecordKey>,
+    ) {
+        let name = KindName::of(kind);
+        self.drops.extend(
+            held.keys()
+                .filter(|key| key.scope == scope && key.kind == name)
+                .filter(|key| named.is_none_or(|ids| ids.contains(&key.record_id)))
+                .filter(|key| !standing.contains(*key))
+                .cloned(),
+        );
+    }
 }
 
 // What a scope needs after its push: nothing, a pull for the stored copies of its conflicts, or a new scopes body and
@@ -70,7 +123,7 @@ fn request_digest(epoch: EpochId, changes: &[Change]) -> [u8; 32] {
 
 // What a store's copy sends: with the members the store cannot hold from the base, and at the base's value each
 // member the device keeps to itself or that waits for the person (0054, Dirty state is a diff).
-fn going_up(
+pub(super) fn going_up(
     kind: Kind,
     scope: ScopeName,
     mut local: LocalRecords,
@@ -98,13 +151,17 @@ fn fingerprint(change: &Change) -> [u8; 32] {
 }
 
 impl ServiceSync {
-    pub(super) async fn push_scope(
-        &self,
-        ctx: &mut PassCtx,
-        session: &mut Session,
-        info: &ScopeInfo,
-    ) -> Result<AfterPush, SyncError> {
+    pub(super) async fn push_scope(&self, ctx: &mut PassCtx, info: &ScopeInfo) -> Result<AfterPush, SyncError> {
         let scope = info.scope;
+        // Nothing of the person's own goes up before they chose for a new account or server (0054, Another account or
+        // server).
+        if !matches!(scope, ScopeName::Team(_)) {
+            let wait = self.own_push_wait().await?;
+            if wait.is_some() {
+                ctx.report.push_wait = wait;
+                return Ok(AfterPush::Done);
+            }
+        }
         let Some(row) = self.scope_row(scope).await? else {
             return Ok(AfterPush::Done);
         };
@@ -123,7 +180,7 @@ impl ServiceSync {
         if !matches!(scope, ScopeName::Team(_)) && (info.approved != Some(true) || self.hooks.locked().is_some()) {
             return Ok(AfterPush::Done);
         }
-        let mut pending = self.pending(ctx, session, &row).await?;
+        let mut pending = self.pending(ctx, &row).await?;
         if let Some(arrival) = ctx.arrival.as_deref().filter(|_| scope == ScopeName::Personal) {
             arrival.mark(&mut pending);
         }
@@ -135,7 +192,7 @@ impl ServiceSync {
         let mut after = AfterPush::Done;
         let limits = ctx.body.limits;
         for batch in split(pending, &limits, |pending: &Pending| change_bytes(&pending.change())) {
-            match self.send(ctx, session, scope, epoch, &batch).await? {
+            match self.send(ctx, scope, epoch, &batch).await? {
                 Sent::Answered { conflicts: true } => after = AfterPush::Pull,
                 Sent::Answered { conflicts: false } => {}
                 Sent::EpochChanged => return Ok(AfterPush::NewEpoch),
@@ -145,19 +202,16 @@ impl ServiceSync {
     }
 
     // What the held, contested and refused records leave of each kind's diff.
-    async fn pending(
-        &self,
-        ctx: &mut PassCtx,
-        session: &mut Session,
-        row: &ScopeRow,
-    ) -> Result<Vec<Pending>, SyncError> {
+    async fn pending(&self, ctx: &mut PassCtx, row: &ScopeRow) -> Result<Vec<Pending>, SyncError> {
         let scope = row.scope;
         let skip = self.skipped(scope).await?;
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
+        let refused = self.refused_in(scope).await?;
         let categories = ctx.categories_in(scope);
         let none = HashSet::new();
         let mut out = Vec::new();
         let mut pruned = Vec::new();
+        let mut refusals = Refusals::default();
         let kept_off = self.kept_off(scope).await;
         for adapter in self.adapters.in_scope(scope) {
             let kind = adapter.kind();
@@ -184,25 +238,44 @@ impl ServiceSync {
                 &bases,
                 skip.get(&KindName::of(kind)).unwrap_or(&none),
             );
-            hold_kept_off(&mut diffed, kind, &kept_off);
+            let kept_back = hold_kept_off(&mut diffed, kind, &kept_off);
             if let Some(ids) = named {
                 diffed.pending.retain(|pending| ids.contains(&pending.key.record_id));
                 diffed.pruned.retain(|key| ids.contains(&key.record_id));
                 diffed.refused.retain(|(key, _)| ids.contains(&key.record_id));
             }
             pruned.extend(diffed.pruned);
+            // Each refusal this diff still stands by: a change it would send as it was refused, or one it refuses
+            // itself, which no digest stands for. Any other refusal of what it read is gone with the change.
+            // A change kept back while its connection stays on the device was not sent either.
+            let mut standing: HashSet<RecordKey> = kept_back.into_iter().collect();
             for (key, code) in diffed.refused {
                 ctx.report.refused.push((key.clone(), code.to_owned()));
-                session.refused.insert(key, ([0; 32], code.to_owned()));
+                standing.insert(key.clone());
+                refusals.keep(&refused, key, [0; 32], code);
             }
             let pending: Vec<Pending> = diffed
                 .pending
                 .into_iter()
                 .filter(|pending| {
                     let print = fingerprint(&pending.change());
-                    session.refused.get(&pending.key).is_none_or(|(held, _)| *held != print)
+                    let held = refused.get(&pending.key).filter(|held| held.digest == print);
+                    if held.is_some() {
+                        standing.insert(pending.key.clone());
+                    }
+                    held.is_none()
                 })
                 .collect();
+            // A record a conflict, a hold or its store's failure to read it keeps out of the diff keeps its refusal
+            // for when it comes back: nothing different was seen of it.
+            standing.extend(
+                skip.get(&KindName::of(kind))
+                    .into_iter()
+                    .flatten()
+                    .chain(&local.unreadable)
+                    .map(|id| RecordKey::new(scope, kind, id.clone())),
+            );
+            refusals.drop_unless(&refused, scope, kind, named, &standing);
             if kind == Kind::HistoryEntry {
                 out.extend(self.sealed(ctx, pending).await?);
             } else {
@@ -218,11 +291,17 @@ impl ServiceSync {
                     .await?;
             }
         }
-        if !pruned.is_empty() {
+        if !pruned.is_empty() || !refusals.is_empty() {
             self.check_stop()?;
             let mut txn = begin(&self.state).await?;
             for key in pruned {
                 txn.delete(&RowKey::Base(key)).await?;
+            }
+            for row in refusals.puts {
+                txn.put(Row::Refused(row)).await?;
+            }
+            for key in refusals.drops {
+                txn.delete(&RowKey::Refused(key)).await?;
             }
             self.check_stop()?;
             txn.commit().await?;
@@ -230,14 +309,16 @@ impl ServiceSync {
         Ok(out)
     }
 
-    // What the diff would still send of a scope, refused records aside: a move is done only once this is nothing, so no
-    // record goes up later without the marker its move owes it.
-    pub(super) async fn unsent(&self, session: &Session, scope: ScopeName) -> Result<usize, SyncError> {
+    // What the diff would still send of a scope, refused and kept-back records aside: a move is done only once this
+    // is nothing, so no record goes up later without the marker its move owes it.
+    pub(super) async fn unsent(&self, scope: ScopeName) -> Result<usize, SyncError> {
         let Some(row) = self.scope_row(scope).await? else {
             return Ok(0);
         };
         let skip = self.skipped(scope).await?;
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
+        let refused = self.refused_in(scope).await?;
+        let kept_off = self.kept_off(scope).await;
         let categories = self.categories();
         let none = HashSet::new();
         let mut unsent = 0;
@@ -248,20 +329,39 @@ impl ServiceSync {
             }
             let bases = self.bases_in(scope, kind).await?;
             let local = going_up(kind, scope, adapter.records(scope).await?, &bases, &held);
-            let diffed = diff(
+            let mut diffed = diff(
                 scope,
                 kind,
                 &local,
                 &bases,
                 skip.get(&KindName::of(kind)).unwrap_or(&none),
             );
+            hold_kept_off(&mut diffed, kind, &kept_off);
             unsent += diffed
                 .pending
                 .iter()
-                .filter(|pending| !session.refused.contains_key(&pending.key))
+                .filter(|pending| {
+                    let print = fingerprint(&pending.change());
+                    refused.get(&pending.key).is_none_or(|held| held.digest != print)
+                })
                 .count();
         }
         Ok(unsent)
+    }
+
+    // The changes the server refused in `scope`, by record (0066, `refused`).
+    async fn refused_in(&self, scope: ScopeName) -> Result<HashMap<RecordKey, RefusedRow>, SyncError> {
+        let rows = begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Refused, scope))
+            .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Refused(row) => Some((row.key.clone(), row)),
+                _ => None,
+            })
+            .collect())
     }
 
     // History entries go up sealed under the newest history key, at push time (0056, Envelopes and history). A refusal
@@ -374,7 +474,6 @@ impl ServiceSync {
     async fn send(
         &self,
         ctx: &mut PassCtx,
-        session: &mut Session,
         scope: ScopeName,
         epoch: EpochId,
         batch: &[Pending],
@@ -394,7 +493,7 @@ impl ServiceSync {
                 proof: proof.clone(),
             };
             match self.transport.push(request).await {
-                Ok(answer) => return self.answered(ctx, session, scope, epoch, batch, answer.outcomes).await,
+                Ok(answer) => return self.answered(ctx, scope, epoch, batch, answer.outcomes).await,
                 // Refill before any write of this device applies (0051, Push).
                 Err(TransportError::EpochChanged) => {
                     self.epoch_changed(scope).await?;
@@ -467,7 +566,6 @@ impl ServiceSync {
     async fn answered(
         &self,
         ctx: &mut PassCtx,
-        session: &mut Session,
         scope: ScopeName,
         epoch: EpochId,
         batch: &[Pending],
@@ -478,6 +576,7 @@ impl ServiceSync {
         }
         let mut puts = Vec::new();
         let mut drops = Vec::new();
+        let mut refusals = Refusals::default();
         let mut conflicts = false;
         let mut tombstones: HashMap<Kind, Vec<String>> = HashMap::new();
         let applied: Vec<bool> = outcomes
@@ -489,7 +588,7 @@ impl ServiceSync {
             match outcome {
                 ChangeOutcome::Applied { tag, service } => {
                     ctx.report.pushed += 1;
-                    session.refused.remove(&pending.key);
+                    refusals.drops.push(pending.key.clone());
                     let create_once = kind.is_some_and(Kind::is_create_once);
                     match (&pending.op, tag) {
                         (PendingOp::Write { fields, .. }, Some(tag)) => puts.push(BaseRow {
@@ -535,7 +634,11 @@ impl ServiceSync {
                         .get(&pending.key)
                         .copied()
                         .unwrap_or_else(|| fingerprint(&pending.change()));
-                    session.refused.insert(pending.key.clone(), (print, code));
+                    refusals.puts.push(RefusedRow {
+                        key: pending.key.clone(),
+                        digest: print,
+                        code,
+                    });
                 }
                 ChangeOutcome::Gone | ChangeOutcome::Failed { .. } => {}
             }
@@ -547,19 +650,29 @@ impl ServiceSync {
             .filter(|(pending, applied)| **applied && pending.op == PendingOp::Delete)
             .map(|(pending, _)| pending.key.clone())
             .collect();
-        self.commit_answer(scope, puts, drops, deleted_history, gone).await?;
+        self.commit_answer(
+            scope,
+            Answer {
+                puts,
+                drops,
+                deleted_history,
+                gone,
+                refusals,
+            },
+        )
+        .await?;
         self.tombstones_pushed(scope, tombstones).await?;
         Ok(Sent::Answered { conflicts })
     }
 
-    async fn commit_answer(
-        &self,
-        scope: ScopeName,
-        puts: Vec<BaseRow>,
-        drops: Vec<RecordKey>,
-        deleted_history: Vec<String>,
-        gone: Vec<RecordKey>,
-    ) -> Result<(), SyncError> {
+    async fn commit_answer(&self, scope: ScopeName, answer: Answer) -> Result<(), SyncError> {
+        let Answer {
+            puts,
+            drops,
+            deleted_history,
+            gone,
+            refusals,
+        } = answer;
         self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         // A record the person deleted here has nothing left to approve.
@@ -577,6 +690,13 @@ impl ServiceSync {
         }
         for key in drops {
             txn.delete(&RowKey::Base(key)).await?;
+        }
+        // The answer and what the server refused land together, so a refusal outlives a restart (0066, `refused`).
+        for row in refusals.puts {
+            txn.put(Row::Refused(row)).await?;
+        }
+        for key in refusals.drops {
+            txn.delete(&RowKey::Refused(key)).await?;
         }
         txn.delete(&RowKey::Outbox(scope)).await?;
         self.check_stop()?;

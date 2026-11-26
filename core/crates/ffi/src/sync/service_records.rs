@@ -3,15 +3,15 @@
 
 use tablepro_sync::SyncError;
 use tablepro_sync::api::control::{
-    ConflictChoice, HeldRecord, HeldRecordReason, MoveBackPlan, MovePlan, NewIdentityChoice, PassReason,
-    PendingApproval, ProviderChoice, SyncCategories, SyncPhase, SyncStatus, TeamConflict,
+    ConflictChoice, HeldRecord, HeldRecordReason, MoveBackPlan, MovePlan, NewIdentityChoice, NewIdentityPlan,
+    PassReason, PendingApproval, ProviderChoice, SyncCategories, SyncPhase, SyncStatus, TeamConflict,
 };
 use tablepro_sync::api::state::{HeldReason, Provider};
 use tablepro_sync::api::{KindName, RecordKey, ScopeName};
 
 use super::service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncPhaseTag, SyncRecordRef,
+    NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncPhaseTag, SyncRecordRef,
     SyncStatusInfo, TeamConflictInfo,
 };
 use crate::account::SyncProviderTag;
@@ -151,6 +151,15 @@ impl From<MoveBackPlan> for MoveBackPlanInfo {
     fn from(plan: MoveBackPlan) -> Self {
         Self {
             icloud_deletions: plan.icloud_deletions,
+        }
+    }
+}
+
+impl From<NewIdentityPlan> for NewIdentityPlanInfo {
+    fn from(plan: NewIdentityPlan) -> Self {
+        Self {
+            unsent: plan.unsent,
+            account: plan.account,
         }
     }
 }

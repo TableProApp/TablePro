@@ -7,7 +7,8 @@ use tablepro_sync::api::device_store::{DeviceItem, HostDeviceStore};
 use tablepro_sync::api::error::StateError;
 use tablepro_sync::api::ids::{Cursor, ScopeName};
 use tablepro_sync::api::state::{
-    KeyEnvelopeRow, KeyTrust, KeysSettled, Opened, Row, RowKey, ScopeRow, StateFiles, StoreRow, SyncTrust, Table,
+    KeyEnvelopeRow, KeyTrust, KeysSettled, Opened, PushWait, Row, RowKey, ScopeRow, StateFiles, StoreRow, SyncTrust,
+    Table,
 };
 use tablepro_sync::state::state_name;
 use uuid::Uuid;
@@ -336,6 +337,33 @@ async fn a_row_whose_key_a_writer_stored_as_text_is_refused() {
     disk.tamper(
         &identity(),
         "UPDATE key_envelopes SET key = CAST(key AS TEXT)",
+        Vec::new(),
+    )
+    .await;
+
+    assert_eq!(disk.files.open(identity()).await.err(), Some(StateError::Integrity));
+}
+
+// The digests frame values, not where a row's key ends: a byte moved from a row's columns onto its key keeps the MAC,
+// yet no lookup finds the row, so a wait the person owes would read as none. A file with one is refused (Codex
+// security round 2).
+#[tokio::test]
+async fn a_row_whose_key_took_a_byte_of_its_columns_is_refused() {
+    let disk = Disk::new();
+    let state = disk.open().await;
+    put(
+        &state,
+        vec![Row::Scope(ScopeRow {
+            push_wait: Some(PushWait::UploadAgain),
+            ..ScopeRow::new(ScopeName::Personal)
+        })],
+    )
+    .await;
+    drop(state);
+
+    disk.tamper(
+        &identity(),
+        "UPDATE scopes SET key = CAST(key || substr(columns, 1, 1) AS BLOB), columns = CAST(substr(columns, 2) AS BLOB)",
         Vec::new(),
     )
     .await;

@@ -43,6 +43,17 @@ pub(super) struct Batch {
     pub started: BTreeMap<String, StoreStamp>,
     // Held changes to drop: the zone holds no such record any more.
     pub release: Vec<RecordKey>,
+    // Kinds that owe a refill while their category is off, during a refill of others: each keeps the copy its store
+    // holds, which it merges against once it is on (0066, `deferred`).
+    pub keep_copies: BTreeSet<Kind>,
+}
+
+// What a pulled copy merges against: the base, nothing as the pull wins in a refill, or the copy a refill kept while
+// the kind was off.
+pub(super) enum Against {
+    Base,
+    Pull,
+    Copy(Value),
 }
 
 // The last page of a full fetch.
@@ -53,12 +64,8 @@ pub(super) struct Finish {
     // The oldest creation date among the records the fetch returned, in milliseconds; None when it returned none.
     pub oldest_created_ms: Option<i64>,
     pub refill: BTreeSet<Kind>,
-    // The identities the refilling stores had when the fetch started, by identity row.
+    // The identities the stores had when the fetch started.
     pub started: BTreeMap<String, StoreStamp>,
-    // Identity rows of kinds whose category is off while the whole state file refills.
-    pub refill_later: Vec<String>,
-    // The state file as a whole refilled.
-    pub scope_refilled: bool,
 }
 
 pub(super) enum View {
@@ -82,6 +89,7 @@ pub(super) struct Settle<'s, 'f> {
     pub started: BTreeMap<String, StoreStamp>,
     // For each record the batch plans a store change for, what holds it if its store refuses the change.
     pub(super) undo: BTreeMap<RecordKey, Undo>,
+    pub keep_copies: BTreeSet<Kind>,
 }
 
 // A record's rows as the batch found them, and the pulled copy or deletion it is held with if its store refuses it.
@@ -183,6 +191,7 @@ impl Fetcher<'_> {
         let txn = self.state.begin().await?;
         let mut settle = Settle::new(self, txn, batch.pull_wins);
         settle.started = batch.started;
+        settle.keep_copies = batch.keep_copies;
         for item in batch.items {
             settle.take(item).await?;
         }
@@ -233,7 +242,46 @@ impl<'s, 'f> Settle<'s, 'f> {
             moved: None,
             started: BTreeMap::new(),
             undo: BTreeMap::new(),
+            keep_copies: BTreeSet::new(),
         }
+    }
+
+    // The copy a refill kept for `key` while its kind was off, if any; a deferred deletion is no copy.
+    async fn kept_copy(&mut self, key: &RecordKey) -> Result<Option<Value>, SyncError> {
+        Ok(match self.txn.get(&RowKey::Deferred(key.clone())).await? {
+            Some(Row::Deferred(row)) if row.record.deleted.is_none() => row.record.fields,
+            _ => None,
+        })
+    }
+
+    fn against(&self, kind: Kind, kept: Option<Value>) -> Against {
+        match (self.pull_wins.contains(&kind), kept) {
+            (true, Some(copy)) => Against::Copy(copy),
+            (true, None) => Against::Pull,
+            (false, _) => Against::Base,
+        }
+    }
+
+    // A refill of the kind's siblings while it is off keeps the copy its store holds now, the one the restore left.
+    async fn keep_copy(&mut self, key: &RecordKey, kind: Kind, tag: &[u8]) -> Result<(), SyncError> {
+        let View::Stored(record) = self.view(key, kind).await? else {
+            return Ok(());
+        };
+        self.txn
+            .put(Row::Deferred(DeferredRow {
+                key: key.clone(),
+                record: PulledRecord {
+                    kind: KindName::of(kind),
+                    record_id: key.record_id.clone(),
+                    tag: ChangeTag::CloudKit(tag.to_vec()),
+                    fields: Some(record.fields),
+                    fields_json: None,
+                    deleted: None,
+                    service: None,
+                },
+            }))
+            .await?;
+        Ok(())
     }
 
     async fn take(&mut self, item: Incoming) -> Result<(), SyncError> {
@@ -246,12 +294,18 @@ impl<'s, 'f> Settle<'s, 'f> {
 
     async fn changed(&mut self, copy: Copy) -> Result<(), SyncError> {
         let key = copy.key.clone();
-        // A save after a deletion that waited for its category was made after it.
-        self.txn.delete(&RowKey::Deferred(key.clone())).await?;
+        let kept = self.kept_copy(&key).await?;
         if !self.fetcher.categories.syncs(copy.kind) {
+            if self.keep_copies.contains(&copy.kind) {
+                self.keep_copy(&key, copy.kind, &copy.tag).await?;
+            } else if kept.is_none() {
+                // A save after a deletion that waited for its category was made after it.
+                self.txn.delete(&RowKey::Deferred(key.clone())).await?;
+            }
             self.counts.skipped += 1;
             return Ok(());
         }
+        self.txn.delete(&RowKey::Deferred(key.clone())).await?;
         let record = match self.view(&key, copy.kind).await? {
             View::NoAdapter => return self.hold(&key, HeldReason::UnknownKind, held_change(&copy)).await,
             View::Unreadable(Some(Standing::LocalOnly)) => return self.release(&key).await,
@@ -260,10 +314,10 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Stored(record) => Some(record),
             View::Missing => None,
         };
-        let pull_wins = self.pull_wins.contains(&copy.kind);
+        let against = self.against(copy.kind, kept);
         let read = self.read(copy.kind, &key, record.as_ref()).await?;
         let merged = self
-            .merged(copy.kind, &key, read.as_ref(), Some(&copy.fields), pull_wins)
+            .merged(copy.kind, &key, read.as_ref(), Some(&copy.fields), against)
             .await?;
         let found = self.found(&key).await?;
         let undecided: BTreeSet<String> = found
@@ -307,31 +361,36 @@ impl<'s, 'f> Settle<'s, 'f> {
 
     // What a pulled copy, or a deletion when `server` is None, leaves of the store's copy: the merge of what iCloud
     // carries of it against the base, put back on the local copy with what iCloud does not carry. In refill the pull
-    // wins. The approval queue's sides keep a value that waits or was refused out of the device's side, as the
-    // service's pull does; a caller that writes the result passes it through `approval::gate` first.
+    // wins, unless the refill kept the copy the restore left while the kind was off: then it merges against that copy,
+    // so what was edited since goes up. The approval queue's sides keep a value that waits or was refused out of the
+    // device's side, as the service's pull does; a caller that writes the result passes it through `approval::gate`
+    // first.
     pub(super) async fn merged(
         &mut self,
         kind: Kind,
         key: &RecordKey,
         record: Option<&LocalRecord>,
         server: Option<&Value>,
-        pull_wins: bool,
+        against: Against,
     ) -> Result<Merged, SyncError> {
         let local = record.map(|record| &record.fields);
         let in_icloud = local.and_then(|local| carried(kind, &key.record_id, local));
-        let merged = if pull_wins {
-            server.map_or(Merged::Deleted, |server| Merged::Record(server.clone()))
-        } else {
-            let base = self.base(key).await?;
-            let base = base.as_ref().and_then(|base| base.fields.as_ref());
+        let kept = match against {
+            Against::Pull => None,
+            Against::Base => Some(self.base(key).await?.and_then(|base| base.fields)),
+            Against::Copy(copy) => Some(carried(kind, &key.record_id, &copy).or(Some(copy))),
+        };
+        let merged = if let Some(base) = kept {
             let (base, mine) =
-                approval::merge_sides(&mut self.txn, key, kind, base, in_icloud.as_ref().or(local)).await?;
+                approval::merge_sides(&mut self.txn, key, kind, base.as_ref(), in_icloud.as_ref().or(local)).await?;
             let sides = Sides {
                 base: base.as_ref(),
                 local: mine.as_ref(),
                 server,
             };
             merge::merge(kind, Mode::Personal, sides)
+        } else {
+            server.map_or(Merged::Deleted, |server| Merged::Record(server.clone()))
         };
         Ok(match (merged, local, &in_icloud) {
             (Merged::Record(fields), Some(local), Some(carried)) => Merged::Record(overlay(local, carried, &fields)),
@@ -395,6 +454,7 @@ impl<'s, 'f> Settle<'s, 'f> {
                 .await?;
             return Ok(());
         }
+        let kept = self.kept_copy(key).await?;
         self.txn.delete(&RowKey::Deferred(key.clone())).await?;
         let record = match self.view(key, kind).await? {
             View::NoAdapter => return self.hold(key, HeldReason::UnknownKind, held_deletion(key)).await,
@@ -405,9 +465,9 @@ impl<'s, 'f> Settle<'s, 'f> {
         };
         // Otherwise a content edit here revives the record: it stays, and with no base it goes up as a create. A
         // store in refill went back in time, so what differs from the base there is no edit.
-        let pull_wins = self.pull_wins.contains(&kind);
+        let against = self.against(kind, kept);
         let record = self.read(kind, key, record.as_ref()).await?;
-        let merged = self.merged(kind, key, record.as_ref(), None, pull_wins).await?;
+        let merged = self.merged(kind, key, record.as_ref(), None, against).await?;
         let stored = record.as_ref().map(|record| &record.fields);
         let found = self.found(key).await?;
         let goes = matches!(

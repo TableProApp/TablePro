@@ -210,6 +210,14 @@ pub struct MoveBackPlanInfo {
     pub icloud_deletions: u64,
 }
 
+// The changes the last account's file held unsent, for the Move my data or Start empty prompt, and the account the
+// prompt is for, which the answer names back.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NewIdentityPlanInfo {
+    pub unsent: u64,
+    pub account: String,
+}
+
 // Values are JSON text. `digest` names the pulled value the person is shown, as lower-case hex, and goes back with the
 // decision: a value a pull changed since is not decided (core ADR 0066).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -442,8 +450,18 @@ impl SyncService {
         Ok(())
     }
 
-    pub async fn choose_for_new_identity(&self, choice: NewIdentityChoiceTag) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.choose_for_new_identity(choice.into()).await })
+    pub async fn plan_new_identity(&self) -> Result<NewIdentityPlanInfo, CoreError> {
+        self.on_control(move |control| async move { control.plan_new_identity().await.map(NewIdentityPlanInfo::from) })
+            .await
+    }
+
+    // `account` is the plan's; an answer for another account than the one signed in now answers `sync.changed`.
+    pub async fn choose_for_new_identity(
+        &self,
+        choice: NewIdentityChoiceTag,
+        account: String,
+    ) -> Result<(), CoreError> {
+        self.on_control(move |control| async move { control.choose_for_new_identity(choice.into(), account).await })
             .await
     }
 

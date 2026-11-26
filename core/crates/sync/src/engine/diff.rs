@@ -178,17 +178,24 @@ fn owner(kind: Kind, fields: &Value) -> Option<Uuid> {
 }
 
 // Each change of a record whose connection stays on the device waits, a deletion by the owner its base names, since the
-// store no longer holds it. It stays dirty against its base, so it goes once the connection syncs again.
-pub fn hold_kept_off(diffed: &mut Diffed, kind: Kind, kept_off: &KeptOff) {
+// store no longer holds it. It stays dirty against its base, so it goes once the connection syncs again. Returns the
+// records it kept back.
+pub fn hold_kept_off(diffed: &mut Diffed, kind: Kind, kept_off: &KeptOff) -> Vec<RecordKey> {
+    let mut kept = Vec::new();
     diffed.pending.retain(|pending| {
         let fields = match &pending.op {
             PendingOp::Write { fields, .. } => Some(fields),
             PendingOp::Delete => pending.base.as_ref().and_then(|base| base.fields.as_ref()),
         };
-        !fields
+        let held = fields
             .and_then(|fields| owner(kind, fields))
-            .is_some_and(|owner| kept_off.holds(owner))
+            .is_some_and(|owner| kept_off.holds(owner));
+        if held {
+            kept.push(pending.key.clone());
+        }
+        !held
     });
+    kept
 }
 
 fn written(kind: Kind, base: Option<&BaseRow>, record: &LocalRecord) -> Option<PendingOp> {

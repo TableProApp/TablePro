@@ -875,6 +875,73 @@ async fn a_pending_reset_the_server_lost_in_a_restore_is_proposed_again() {
     assert_eq!(a.pending_reset_state().await, Some(ResetState::Pending));
 }
 
+// A kind 3 reset a restore lost goes up again only after a fresh step-up, and the person is told it waits (0065).
+#[tokio::test]
+async fn a_kind_3_reset_a_restore_lost_waits_for_a_fresh_step_up_and_says_so() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    let backup = server.backup();
+    let proposed = propose_reset(&d, ResetKind::StartEmpty).await;
+    let id = reset_id(account, proposed.reset);
+    server.restore(&backup);
+    d.pull().await;
+    let challenge = || {
+        TransportError::StepUpRequired(StepUpChallenge {
+            acr_values: vec!["urn:tablepro:acr:passkey".to_owned()],
+            max_age_secs: 300,
+        })
+    };
+
+    d.wire.fail_next_push(challenge());
+    let waiting = d.service.resume_reset(proposed.reset).await;
+    let lost = stored(&server, account, "key.reset", &id).is_none();
+    d.wire.fail_next_push(challenge());
+    d.service.resume_reset(proposed.reset).await.unwrap();
+    let told = d
+        .service
+        .notices()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|notice| notice.kind == KeyNoticeKind::ResetWaitsForStepUp { reset: proposed.reset })
+        .count();
+    d.service.resume_reset(proposed.reset).await.unwrap();
+
+    assert!(waiting.is_ok());
+    assert!(lost);
+    assert_eq!(told, 1);
+    assert!(stored(&server, account, "key.reset", &id).is_some());
+}
+
+// 0066, `key_objects.served`: another device's reset keeps the server's times in its row, so a restart reads them
+// instead of 0, which would never end it as overdue before its tombstone.
+#[tokio::test]
+async fn another_device_s_reset_keeps_the_server_s_times_across_a_restart() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    propose_reset(&b, ResetKind::KeepScopeKeys).await;
+    a.pull().await;
+    let before = a.service.pending_reset().await.unwrap().unwrap();
+
+    let a = a.reopen(tablepro_sync::api::state::Opened::FRESH).await;
+    let after = a.service.pending_reset().await.unwrap().unwrap();
+
+    assert!(!before.mine);
+    assert_ne!(before.held_until_us, 0);
+    assert_eq!(
+        (after.reset, after.taken_at_us, after.held_until_us),
+        (before.reset, before.taken_at_us, before.held_until_us)
+    );
+}
+
 // Another device's reset lives in `key_objects` as served; `key_pending` holds only this device's own (0064).
 #[tokio::test]
 async fn another_device_s_reset_is_shown_from_key_objects_and_never_kept_in_key_pending() {

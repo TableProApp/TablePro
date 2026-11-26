@@ -238,6 +238,7 @@ impl ServiceEngine {
             events: Some(Arc::clone(&hosts.events)),
             categories,
             mode,
+            follows: None,
         }));
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,

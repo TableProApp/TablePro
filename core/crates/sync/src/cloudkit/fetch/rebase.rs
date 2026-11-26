@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use tablepro_records::merge::Merged;
 
 use super::copy::{self, Incoming, kind_of};
-use super::settle::{Batch, Settle, View};
+use super::settle::{Against, Batch, Settle, View};
 use super::{Fetcher, PROFILES};
 use crate::api::cloudkit::{CloudKitFetched, CloudKitRecord};
 use crate::api::error::SyncError;
@@ -149,7 +149,7 @@ impl Fetcher<'_> {
             if record.standing != Standing::Syncs {
                 continue;
             }
-            if settle.merged(kind, key, Some(&record), None, false).await? != Merged::Deleted {
+            if settle.merged(kind, key, Some(&record), None, Against::Base).await? != Merged::Deleted {
                 settle.txn.delete(&RowKey::Base(key.clone())).await?;
                 revived.push(key.clone());
             }

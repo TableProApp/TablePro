@@ -61,7 +61,7 @@ fn binding(identity: &StateIdentity) -> BindingRow {
         origin,
         account,
         device,
-        schema_version: 1,
+        schema_version: tablepro_sync::state::SCHEMA_VERSION,
         file_id: FileId(*Uuid::new_v4().as_bytes()),
         counter: 0,
         state_mac: [0; 32],

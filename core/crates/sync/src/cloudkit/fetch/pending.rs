@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use tablepro_records::merge::Merged;
 
 use super::copy::kind_of;
-use super::settle::{Settle, View};
+use super::settle::{Against, Settle, View};
 use super::{Fetcher, SCOPE};
 use crate::adapters::approval;
 use crate::api::adapter::LocalRecord;
@@ -211,7 +211,9 @@ impl Settle<'_, '_> {
             (None, Some(fields)) => Some(fields),
             (None, None) => return Ok(false),
         };
-        let merged = self.merged(kind, &pending.key, record.as_ref(), server, false).await?;
+        let merged = self
+            .merged(kind, &pending.key, record.as_ref(), server, Against::Base)
+            .await?;
         let (Merged::Record(fields) | Merged::Contested { record: fields, .. }) = &merged else {
             return Ok(holds(record.as_ref(), &merged));
         };

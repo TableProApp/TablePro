@@ -264,6 +264,19 @@ impl<'p> Pusher<'p> {
                 .is_none_or(|live| live.lock().unwrap_or_else(PoisonError::into_inner).syncs(kind))
     }
 
+    // What a push would send now, counted and sent nowhere.
+    pub(super) async fn unsent(&self) -> Result<u64, SyncError> {
+        let (failed, waits) = (BTreeSet::new(), Waits::default());
+        let leave = Leave {
+            failed: &failed,
+            waits: &waits,
+            named: None,
+            only: None,
+        };
+        let items = self.pending(&mut PushReport::default(), &leave).await?;
+        Ok(u64::try_from(items.len()).unwrap_or(u64::MAX))
+    }
+
     pub async fn push(&self, waits: &mut Waits, named: Option<&JournalIds>) -> Result<PushReport, SyncError> {
         self.fetcher.settle_pending().await?;
         waits.prune(self.now_ms);

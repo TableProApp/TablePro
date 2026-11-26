@@ -8,7 +8,7 @@ use tablepro_keys::KeysError;
 use tablepro_keys::encoding::{AccountId, KeyPurpose, TeamId, Version};
 use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::sas::SasDevice;
-use tablepro_keys::trust::{Replaced, TrustPin, TrustPlaintext, TrustVersion, merge_replaced};
+use tablepro_keys::trust::{Replaced, TrustPin, TrustPlaintext, TrustVersion, merge_replaced, replace_point};
 
 use crate::api::ids::ScopeName;
 use crate::api::state::{KeyDevicePinRow, KeyPinRow, KeyVersionRow, KeyVersionState};
@@ -251,7 +251,11 @@ fn follow(
         let Some((next, av)) = facts.endorsed_by(account, &current) else {
             break;
         };
-        if next == from || seen_replaced(&passed, &next) {
+        // A retired IK endorses only the replace at its point, never one past it (Codex security round 2).
+        if next == from
+            || seen_replaced(&passed, &next)
+            || replace_point(retired, &current).is_some_and(|point| av > point)
+        {
             break;
         }
         passed.push(Replaced { ik: current, av });

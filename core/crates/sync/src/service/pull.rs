@@ -116,10 +116,12 @@ pub(super) struct PageWrites {
     approvals: Vec<(RecordKey, Split)>,
     deferred: Vec<DeferredRow>,
     undeferred: Vec<RecordKey>,
-    // Rows of other tables that settle in the same commit, as a refilled store's identity.
+    // Rows of other tables that settle in the same commit.
     rows: Vec<Row>,
     // Records the store refused to keep, held by id with the server's copy.
     pub(super) refused: Vec<RecordKey>,
+    // The refills this commit ends, as their `stores_kinds` marks.
+    refilled: Vec<RowKey>,
 }
 
 impl PageWrites {
@@ -135,6 +137,7 @@ impl PageWrites {
             && self.deferred.is_empty()
             && self.undeferred.is_empty()
             && self.rows.is_empty()
+            && self.refilled.is_empty()
     }
 
     // The store refused the record's value: it is held by id with the server's copy, as a record this build cannot
@@ -219,16 +222,24 @@ impl ServiceSync {
         let arrival = ctx.arrival.clone().filter(|_| scope == ScopeName::Personal);
         // A first upload from no provider is a refill of the device's personal records: the server's copy wins, and
         // what the server lacks goes up as a create. A move from iCloud merges against the copy both providers last
-        // shared instead, whatever the service file saw of the stores.
+        // shared instead, whatever the service file saw of the stores. Otherwise the kinds whose category is on take
+        // the refill they owe. One that is off is read only by the pass that marked its store, for the copies the store
+        // holds then, which it merges against once it is on; a later refill of others never takes them again. It keeps
+        // its mark (0066, Per-kind refills; `deferred`).
+        let categories = ctx.categories_in(scope);
         let wins = arrival.as_deref().map(Arrival::pull_wins);
         let pull_wins: HashSet<Kind> = adapters
             .iter()
-            .filter(|adapter| wins.unwrap_or_else(|| ctx.refills(adapter.store())))
+            .filter(|adapter| {
+                wins.unwrap_or_else(|| {
+                    ctx.owes(adapter.store(), adapter.kind())
+                        && (categories.syncs(adapter.kind()) || ctx.marked(adapter.store()))
+                })
+            })
             .map(|adapter| adapter.kind())
             .collect();
         let can_open = ctx.keys_ready;
         let rebuilding = self.keys.rebuilding();
-        let categories = ctx.categories_in(scope);
         let sealed = match scope {
             ScopeName::History => Kind::HistoryEntry,
             ScopeName::Personal | ScopeName::Team(_) => Kind::SecretEnvelope,
@@ -595,7 +606,16 @@ impl ServiceSync {
             let moved = arrival.and_then(|arrival| arrival.icloud_base(&key));
             let marker = arrival.and_then(|arrival| arrival.marker(&key));
             let base = stored_base.or(moved.as_ref());
-            let judgement = pull.judge(kind, base, &record);
+            let mut judgement = pull.judge(kind, base, &record);
+            // A copy a refill kept while the kind was off stands for the store the restore left: once the kind is on,
+            // its refill merges against that copy, so what was edited since goes up (0066, `deferred`).
+            let kept_copy = inputs
+                .deferred
+                .get(&key)
+                .is_some_and(|deferred| deferred.fields.is_some());
+            if judgement == Judgement::PullWins && kept_copy && pull.categories.syncs(kind) {
+                judgement = Judgement::Merge;
+            }
             let stored = local.and_then(|local| local.records.get(&key.record_id));
             if !pull.categories.syncs(kind) {
                 Self::while_off(&key, kind, judgement, base, stored, &record, writes);
@@ -931,6 +951,9 @@ impl ServiceSync {
         for row in writes.rows {
             txn.put(row).await?;
         }
+        for key in writes.refilled {
+            txn.delete(&key).await?;
+        }
         if let Some(row) = row {
             txn.put(Row::Scope(row.clone())).await?;
         }
@@ -1002,7 +1025,7 @@ impl ServiceSync {
                 .find(|adapter| adapter.kind() == Kind::SecretEnvelope)
                 .map(|adapter| adapter.store().to_owned());
             let except = envelopes.filter(|_| unchecked);
-            writes.rows = self.settled_stores(ctx, pull.scope, except.as_deref()).await?;
+            writes.refilled = self.settled_refills(ctx, pull.scope, except.as_deref()).await?;
             // In a history snapshot that stopped at its window this also lets go of older entries kept for the keys;
             // paging back serves them again and opens them then.
             if pull.can_open {

@@ -107,7 +107,7 @@ impl KeyService {
             return Ok((false, None));
         };
         let object = KeyObject::parse(pulled.kind.as_str(), &pulled.record_id, fields.as_bytes())?;
-        self.hold_object(txn, ScopeName::Personal, &object, true).await?;
+        self.hold_served(txn, ScopeName::Personal, &object, pulled).await?;
         let mut record = self.session_record(txn, request).await?;
         let moved = match (&object.body, record.as_mut()) {
             (KeyBody::Request(body), None) => {

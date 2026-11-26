@@ -12,7 +12,9 @@ use crate::api::ids::{FileId, StateName};
 use crate::api::state::{Checkpoint, KeysSettled, Row, Table};
 
 const ROOT_FORMAT: u8 = 1;
-const CHECKPOINT_FORMAT: u8 = 1;
+// Format 2 takes each replaced IK of a pin with its replace point (0066, The state file); format 1, which state file
+// schema 1 wrote, still reads.
+const CHECKPOINT_FORMAT: u8 = 2;
 
 // Windows Credential Manager keeps at most 2,560 bytes in one item (0054, Windows).
 pub(crate) const PART_BYTES: usize = if cfg!(windows) { 2560 } else { 64 * 1024 };
@@ -311,9 +313,11 @@ pub(crate) fn checkpoint_bytes(checkpoint: &Checkpoint) -> Vec<u8> {
 
 pub(crate) fn decode_checkpoint(bytes: &[u8]) -> Option<Checkpoint> {
     let mut read = Bytes(bytes);
-    if read.take::<1>()? != [CHECKPOINT_FORMAT] {
-        return None;
-    }
+    let schema_1 = match read.take::<1>()? {
+        [CHECKPOINT_FORMAT] => false,
+        [1] => true,
+        _ => return None,
+    };
     let mut checkpoint = Checkpoint::default();
     for table in CHECKPOINT_TABLES {
         if read.lp()? != table.name().as_bytes() {
@@ -322,7 +326,10 @@ pub(crate) fn decode_checkpoint(bytes: &[u8]) -> Option<Checkpoint> {
         let count = u32::from_be_bytes(read.take()?);
         for _ in 0..count {
             let key = read.lp()?;
-            let columns = read.lp()?;
+            let mut columns = read.lp()?;
+            if schema_1 {
+                columns = codec::schema_1_columns(table, &columns).ok()?;
+            }
             match codec::decode(table, &key, &columns).ok()? {
                 Row::KeyPin(row) => checkpoint.pins.push(row),
                 Row::KeyVersion(row) => checkpoint.versions.push(row),

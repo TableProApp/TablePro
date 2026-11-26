@@ -315,12 +315,16 @@ impl Queue<'_> {
         Ok(out)
     }
 
+    // `seen` names the value the person was shown. A pull that changed it since leaves nothing decided, and the person
+    // is asked about the new value (0066, Rules).
     pub async fn decide(&self, key: &RecordKey, field: &str, seen: [u8; 32], approve: bool) -> Result<(), SyncError> {
-        let _ = seen;
         let mut txn = self.state.begin().await?;
         let Some(Row::Approval(mut row)) = txn.get(&RowKey::Approval(key.clone(), field.to_owned())).await? else {
             return Err(SyncError::Unknown { what: "approval" });
         };
+        if approval_digest(&row.pulled) != seen {
+            return Err(SyncError::Changed { what: "approval" });
+        }
         let held = match txn.get(&RowKey::Held(key.clone())).await? {
             Some(Row::Held(held)) if held.reason == HeldReason::AwaitingApproval => Some(held),
             _ => None,

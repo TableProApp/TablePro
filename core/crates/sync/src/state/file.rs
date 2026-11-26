@@ -22,7 +22,9 @@ use crate::api::state::{
     StateTxn, Table,
 };
 
-pub const SCHEMA_VERSION: u32 = 1;
+// 2 since 0066: `stores_kinds` and `refused`, a scope's `push_wait`, a key object's `served` and a replace point per
+// replaced IK. An open reads a schema 1 file and upgrades it (`integrity::upgrade`).
+pub const SCHEMA_VERSION: u32 = 2;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/state");
 
@@ -255,10 +257,16 @@ async fn check_schema(pool: &SqlitePool) -> Result<(), StateError> {
 // by this code, and is refused.
 async fn bind(tx: &mut Transaction<'static, Sqlite>, identity: &StateIdentity) -> Result<Bound, StateError> {
     match read(tx, &RowKey::Binding).await? {
-        Some(Row::Binding(binding)) if bound_to(&binding, identity) => Ok(Bound {
-            binding,
-            new_file: false,
-        }),
+        // A newer build's file is not read, and never started over (0012).
+        Some(Row::Binding(binding)) if bound_to(&binding, identity) => {
+            if !(1..=SCHEMA_VERSION).contains(&binding.schema_version) {
+                return Err(StateError::Integrity);
+            }
+            Ok(Bound {
+                binding,
+                new_file: false,
+            })
+        }
         Some(_) => Err(StateError::WrongIdentity),
         None => {
             for table in Table::SYNC.into_iter().chain(Table::KEY) {

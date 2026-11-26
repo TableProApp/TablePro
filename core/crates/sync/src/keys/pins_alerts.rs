@@ -98,11 +98,13 @@ impl KeyService {
             .await?
             .filter(|certificate| certificate.ik == offered)
             .ok_or(SyncError::Unknown { what: "key change" })?;
+        // No replace certificate retired the old IK, so its point is the first `av` past what this device pinned under
+        // it: nothing the old IK signed after that verifies (0066, Replace points; orchestrator ruling).
         let mut replaced = pin.replaced;
         if !seen_replaced(&replaced, &pin.ik) {
             replaced.push(Replaced {
                 ik: pin.ik,
-                av: certificate.av,
+                av: pin.av.next()?,
             });
         }
         txn.put(Row::KeyPin(KeyPinRow {

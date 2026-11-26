@@ -102,6 +102,8 @@ impl StoreFile {
 struct Held {
     records: BTreeMap<String, (Value, Standing)>,
     unreadable: Vec<String>,
+    // What `hide` took out of `records`, given back by `show`.
+    hidden: BTreeMap<String, (Value, Standing)>,
     tombstones: Vec<String>,
     applies: Vec<Vec<LocalChange>>,
 }
@@ -225,6 +227,23 @@ impl MemoryAdapter {
 
     pub fn get(&self, id: &str) -> Option<Value> {
         lock(&self.held).records.get(id).map(|(fields, _)| fields.clone())
+    }
+
+    // The store can no longer read the record, as a newer build's, until `show` gives it back unchanged.
+    pub fn hide(&self, id: &str) {
+        let mut held = lock(&self.held);
+        if let Some(record) = held.records.remove(id) {
+            held.hidden.insert(id.to_owned(), record);
+            held.unreadable.push(id.to_owned());
+        }
+    }
+
+    pub fn show(&self, id: &str) {
+        let mut held = lock(&self.held);
+        if let Some(record) = held.hidden.remove(id) {
+            held.unreadable.retain(|unreadable| unreadable != id);
+            held.records.insert(id.to_owned(), record);
+        }
     }
 
     pub fn applies(&self) -> usize {
@@ -831,6 +850,7 @@ pub struct DeviceBuilder {
     memory_connections: bool,
     keys: Option<Arc<KeyLog>>,
     seed: Option<Arc<Ed25519Seed>>,
+    follows: Option<u64>,
 }
 
 impl DeviceBuilder {
@@ -847,6 +867,7 @@ impl DeviceBuilder {
             memory_connections: true,
             keys: None,
             seed: None,
+            follows: None,
         }
     }
 
@@ -854,6 +875,12 @@ impl DeviceBuilder {
     pub fn core_stores(mut self, adapters: Vec<Arc<dyn RecordAdapter>>) -> Self {
         self.memory_connections = false;
         self.others.extend(adapters);
+        self
+    }
+
+    // This account follows another account or server on the device, whose file held `unsent` changes.
+    pub fn follows(mut self, unsent: u64) -> Self {
+        self.follows = Some(unsent);
         self
     }
 
@@ -947,6 +974,7 @@ impl DeviceBuilder {
                 passwords: true,
             },
             mode: self.mode,
+            follows: self.follows,
         }));
         Device {
             server: self.server,

@@ -1,9 +1,10 @@
 // The iCloud pass (0054, The CloudKit transport; Scheduling): the account signed in now, its state file, the zone, the
 // fetch and then the push. Another iCloud account deletes the last account's state file and starts its own from a full
-// fetch. A call that finds the account changed ends the pass with nothing of its results kept and drops the state
-// file, so the next pass reads the account again. A removed zone clears the state and nothing goes up until the person
-// asks to upload again. On the Mac, the Swift engine's metadata is imported at the first pass over a state file and
-// written back after every pass while the previous stable runs that engine (0054, Downgrade mirror).
+// fetch, and nothing goes up until the person picks Move my data or Start empty (0066, Rules). A call that finds the
+// account changed ends the pass with nothing of its results kept and drops the state file, so the next pass reads the
+// account again. A removed zone clears the state and nothing goes up until the person asks to upload again, even once
+// another device made the zone again. On the Mac, the Swift engine's metadata is imported at the first pass over a
+// state file and written back after every pass while the previous stable runs that engine (0054, Downgrade mirror).
 
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,21 +12,27 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tablepro_records::cloudkit::record_type_of;
 
 use super::{PushReport, Pusher, Waits, zone};
 use crate::adapters::approval::Queue;
+use crate::adapters::categories::DeviceCategories;
+use crate::api::adapter::LocalChange;
 use crate::api::adapter::RecordAdapter;
 use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{
-    HeldRecord, HeldRecordReason, PassReason, PendingApproval, SyncControl, SyncPhase, SyncStatus,
+    HeldRecord, HeldRecordReason, NewIdentityChoice, NewIdentityPlan, PassReason, PendingApproval, SyncCategories,
+    SyncControl, SyncPhase, SyncStatus,
 };
 use crate::api::error::SyncError;
-use crate::api::ids::RecordKey;
+use crate::api::ids::{KindName, RecordKey};
 use crate::api::legacy::LegacyMirror;
-use crate::api::state::{BaseRow, Provider, Row, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
+use crate::api::state::{
+    BaseRow, Provider, PushWait, Row, RowRange, Standing, StateFiles, StateIdentity, StateStore, SyncTrust, Table,
+};
 use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, listed_key, read_everything_again};
 use crate::cloudkit::legacy::{Context, LegacyLink};
-use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalIds, Pass, StopSignal};
+use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalEntry, JournalIds, Pass, StopSignal};
 
 // The Swift engine's fallback timer, for changes no CloudKit push announced.
 const FALLBACK: Duration = Duration::from_secs(15 * 60);
@@ -65,6 +72,8 @@ pub struct CloudKitReport {
     pub push: PushReport,
     // How long until the first record CloudKit asked to wait may go again, while one waits.
     pub waiting_ms: Option<u64>,
+    // What held the push back: the fetch ran, and nothing went up.
+    pub push_wait: Option<PushWait>,
 }
 
 impl CloudKitReport {
@@ -93,6 +102,9 @@ struct Session {
     stale_handled: bool,
     // The Swift engine's metadata was read for this state file.
     legacy_checked: bool,
+    // This account's file came from a switch, and its zone row does not hold the wait for the person's choice yet:
+    // the count of changes the last account's file held unsent.
+    choice_owed: Option<u64>,
 }
 
 pub struct CloudKitSync {
@@ -290,11 +302,15 @@ impl CloudKitSync {
     }
 
     // After a removed zone, the person's answer: the zone is made again and everything this device holds goes up.
-    // Refused unless a pass found the zone removed.
+    // Refused unless a pass found the zone removed, whether or not another device made it again since.
     pub async fn run_upload_again(&self) -> Result<CloudKitReport, SyncError> {
         let mut session = self.session.lock().await;
-        let state = match (&session.state, session.zone_removed) {
-            (Some(state), true) => Arc::clone(state),
+        let state = match &session.state {
+            Some(state)
+                if session.zone_removed || zone::push_wait(state.as_ref()).await? == Some(PushWait::UploadAgain) =>
+            {
+                Arc::clone(state)
+            }
             _ => return Err(SyncError::NotAllowed { what: "upload again" }),
         };
         self.stop.check()?;
@@ -459,10 +475,13 @@ impl CloudKitSync {
         session.state = None;
         if let Some(last) = &switched_from {
             self.stop.check()?;
+            let unsent = self.unsent_in(last).await?;
+            self.stop.check()?;
             self.files.delete(identity(last)).await?;
             self.files.delete(identity(account)).await?;
             session.zone_removed = false;
             session.waits = Waits::default();
+            session.choice_owed = Some(unsent);
         }
         let state = self.files.open(identity(account)).await?;
         session.stale_handled = false;
@@ -471,7 +490,11 @@ impl CloudKitSync {
             legacy.forget();
         }
         session.account = Some(account.to_owned());
-        *lock(&self.account) = Some(account.to_owned());
+        // After a switch the host learns the new account only once its file holds the wait for the person's choice,
+        // so a crash before that switches again at the next launch rather than pushing unasked.
+        if session.choice_owed.is_none() {
+            *lock(&self.account) = Some(account.to_owned());
+        }
         session.state = Some(Arc::clone(&state));
         Ok((state, switched_from))
     }
@@ -488,6 +511,12 @@ impl CloudKitSync {
             self.transport.ensure_zone(report.account.clone()).await?;
             zone::saw(state).await?;
             report.zone_made = true;
+        }
+        if let Some(unsent) = session.choice_owed {
+            self.stop.check()?;
+            zone::wait(state, Some(PushWait::AccountChoice { unsent })).await?;
+            session.choice_owed = None;
+            *lock(&self.account) = Some(report.account.clone());
         }
         // After the zone's row exists, so a file that lost it to the restore refills too.
         if !session.stale_handled {
@@ -515,10 +544,94 @@ impl CloudKitSync {
         for (key, wait) in &report.fetch.waits {
             session.waits.hold(key.clone(), now_ms, *wait);
         }
+        // Download only while the push waits for the person (0066, Rules).
+        report.push_wait = zone::push_wait(state).await?;
+        if report.push_wait.is_some() {
+            return Ok(());
+        }
         self.stop.check()?;
         let pusher = Pusher::new(&fetcher, &self.stop, self.clock.now_ms()).following(&self.categories);
         report.push = pusher.push(&mut session.waits, named).await?;
         report.waiting_ms = session.waits.next_in(self.clock.now_ms());
+        Ok(())
+    }
+
+    // The changes the last account's file holds that never went up, counted before it goes. A file that never saw its
+    // zone holds no account's changes.
+    async fn unsent_in(&self, account: &str) -> Result<u64, SyncError> {
+        let state = self.files.open(identity(account)).await?;
+        if !zone::seen(state.as_ref()).await? {
+            return Ok(0);
+        }
+        let categories = lock(&self.categories).clone();
+        let fetcher = Fetcher::new(self.transport.as_ref(), state.as_ref(), &self.adapters, categories)?;
+        Pusher::new(&fetcher, &self.stop, self.clock.now_ms()).unsent().await
+    }
+
+    // The account choice the session's file waits for: its file, the count and the account it is for.
+    async fn account_choice(&self, session: &Session) -> Result<(Arc<dyn StateStore>, u64, String), SyncError> {
+        if let (Some(state), Some(account)) = (&session.state, &session.account)
+            && let Some(PushWait::AccountChoice { unsent }) = zone::push_wait(state.as_ref()).await?
+        {
+            return Ok((Arc::clone(state), unsent, account.clone()));
+        }
+        Err(SyncError::NotAllowed {
+            what: "choose for a new account",
+        })
+    }
+
+    // Move my data clears the wait an account switch left, and the next pass sends what this device holds. Start empty
+    // first takes the synced records off this device, where the last account's zone keeps them, keeps the Local only
+    // ones, and forgets what the new account's file knew of its zone, so the pass fills the device from a full fetch.
+    // The wait clears last, so a crash before asks again. Refused unless the zone's push waits for that choice, and
+    // an answer shown for another account than the one signed in now changes nothing.
+    pub async fn run_new_identity_choice(
+        &self,
+        choice: NewIdentityChoice,
+        shown_for: &str,
+    ) -> Result<CloudKitReport, SyncError> {
+        let mut session = self.session.lock().await;
+        let (state, _, waiting_for) = self.account_choice(&session).await?;
+        self.stop.check()?;
+        let signed_in = match self.transport.account_status().await {
+            Ok(status) => status.user_record_name,
+            Err(failure) => return Err(self.ended(&mut session, failure)),
+        };
+        if shown_for != waiting_for || signed_in != waiting_for {
+            return Err(SyncError::Changed { what: "account" });
+        }
+        if choice == NewIdentityChoice::StartEmpty {
+            self.stop.check()?;
+            zone::forget(state.as_ref()).await?;
+            self.leave_synced_records().await?;
+        }
+        self.stop.check()?;
+        zone::wait(state.as_ref(), None).await?;
+        self.run_locked(&mut session, PassReason::Person).await
+    }
+
+    // Every record that syncs leaves its store. Local only records stay, and so does what a store cannot read, whose
+    // standing it cannot tell.
+    async fn leave_synced_records(&self) -> Result<(), SyncError> {
+        for adapter in self
+            .adapters
+            .iter()
+            .filter(|adapter| record_type_of(adapter.kind()).is_some())
+        {
+            let held = adapter.records(SCOPE).await?;
+            let leaving: Vec<LocalChange> = held
+                .records
+                .into_iter()
+                .filter(|record| record.standing == Standing::Syncs)
+                .map(|record| LocalChange::Delete {
+                    record_id: record.record_id,
+                })
+                .collect();
+            if !leaving.is_empty() {
+                self.stop.check()?;
+                adapter.apply(SCOPE, leaving).await?;
+            }
+        }
         Ok(())
     }
 
@@ -554,7 +667,11 @@ impl CloudKitSync {
                 if !journal_only {
                     status.queued_changes = u32::try_from(report.push.queued).unwrap_or(u32::MAX);
                 }
-                status.phase = SyncPhase::Idle;
+                status.phase = match report.push_wait {
+                    None => SyncPhase::Idle,
+                    Some(PushWait::AccountChoice { .. }) => SyncPhase::NewIdentity,
+                    Some(PushWait::UploadAgain) => SyncPhase::ZoneRemoved,
+                };
             }
             Err(error) => {
                 status.problem = Some(error.code());
@@ -609,8 +726,39 @@ impl SyncControl for CloudKitSync {
         self.run_pass(why).await.map(|_| ())
     }
 
+    // An off kind sends nothing and takes nothing; one turned on is read whole by the pass this asks for (0054, Rules
+    // for both providers). The password switch is the Keychain's on iCloud, which syncs secrets itself.
+    async fn set_categories(&self, categories: SyncCategories) -> Result<(), SyncError> {
+        let on = Categories::new(DeviceCategories::from(&categories).on());
+        let changed = *lock(&self.categories) != on;
+        CloudKitSync::set_categories(self, on);
+        if changed {
+            self.journal.pass_soon(PassReason::Person);
+        }
+        Ok(())
+    }
+
+    // A store the app still keeps tells what its write changed, as a core store's journal does (0060).
+    async fn host_changed(&self, kind: KindName, written: Vec<String>, deleted: Vec<String>) -> Result<(), SyncError> {
+        let Some(kind) = kind.known() else {
+            return Err(SyncError::Unknown { what: "kind" });
+        };
+        self.journal.changed(&[JournalEntry { kind, written, deleted }]);
+        Ok(())
+    }
+
     async fn upload_again(&self) -> Result<(), SyncError> {
         self.run_upload_again().await.map(|_| ())
+    }
+
+    async fn plan_new_identity(&self) -> Result<NewIdentityPlan, SyncError> {
+        let session = self.session.lock().await;
+        let (_, unsent, account) = self.account_choice(&session).await?;
+        Ok(NewIdentityPlan { unsent, account })
+    }
+
+    async fn choose_for_new_identity(&self, choice: NewIdentityChoice, account: String) -> Result<(), SyncError> {
+        self.run_new_identity_choice(choice, &account).await.map(|_| ())
     }
 
     async fn approvals(&self) -> Result<Vec<PendingApproval>, SyncError> {

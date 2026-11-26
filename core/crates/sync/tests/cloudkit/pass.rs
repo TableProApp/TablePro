@@ -8,7 +8,8 @@ use serde_json::json;
 use tablepro_records::Kind;
 use tablepro_sync::api::SyncError;
 use tablepro_sync::api::cloudkit::{CloudKitFailure, CloudKitOutcome, CloudKitTransport};
-use tablepro_sync::api::control::{HeldRecordReason, PassReason, SyncControl, SyncPhase};
+use tablepro_sync::api::control::{HeldRecordReason, PassReason, SyncCategories, SyncControl, SyncPhase};
+use tablepro_sync::api::ids::KindName;
 use tablepro_sync::api::state::{HeldReason, Opened, StateFiles, SyncTrust};
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::engine::{JournalEntry, Pass, StopSignal};
@@ -86,6 +87,45 @@ async fn a_category_turned_on_is_read_whole_on_the_next_pass() {
     assert!(skipped);
     assert!(report.fetch.full);
     assert!(rig.store(Kind::Group).holds(B));
+}
+
+// The app's own calls: a kind it turns off sends nothing, turning it back on reads the zone whole, and a store it keeps
+// names what it wrote for a journal pass.
+#[tokio::test]
+async fn the_categories_and_host_changes_the_app_reports_steer_the_pass() {
+    let rig = Rig::new().await;
+    let sync = rig.sync(None);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    let group_off = SyncCategories {
+        off: vec![KindName::of(Kind::Group)],
+        passwords: true,
+    };
+    SyncControl::set_categories(&sync, group_off).await.unwrap();
+    rig.store(Kind::Group)
+        .put(A, projected(Kind::Group, A, &json!({"name": "Work"})));
+    let off = sync.run_pass(PassReason::Poll).await.unwrap();
+    let sent_while_off = rig.zone_fields(Kind::Group, A).is_some();
+    SyncControl::set_categories(&sync, SyncCategories::default())
+        .await
+        .unwrap();
+    let on = sync.run_pass(PassReason::Person).await.unwrap();
+    rig.store(Kind::Group)
+        .put(B, projected(Kind::Group, B, &json!({"name": "Home"})));
+    sync.host_changed(KindName::of(Kind::Group), vec![B.to_owned()], Vec::new())
+        .await
+        .unwrap();
+    let journal = sync.run_pass(PassReason::Journal).await.unwrap();
+    let unknown = sync
+        .host_changed(KindName::parse("future_kind").unwrap(), vec![B.to_owned()], Vec::new())
+        .await;
+
+    assert_eq!(off.push.saved, 0);
+    assert!(!sent_while_off);
+    assert!(on.fetch.full);
+    assert_eq!(on.push.saved, 1);
+    assert_eq!(journal.push.saved, 1);
+    assert!(rig.zone_fields(Kind::Group, B).is_some());
+    assert_eq!(unknown.unwrap_err().code(), "sync.unknown");
 }
 
 // The state file on disk keeps one connection, so a batch's two commits around its store write, the push's commits and

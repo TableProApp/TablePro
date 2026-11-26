@@ -8,6 +8,7 @@
 mod anchor;
 mod digest;
 mod rebuild;
+mod upgrade;
 
 pub use digest::{key_digest, sync_digest};
 pub use rebuild::{Reading, rebuild_shown};
@@ -28,7 +29,7 @@ use self::anchor::{
     checkpoint_ref_of, unsettled,
 };
 use super::codec;
-use super::file::{read, sql, write};
+use super::file::{SCHEMA_VERSION, read, sql, write};
 use super::name::state_name;
 use crate::api::device_store::{DeviceStoreError, HostDeviceStore};
 use crate::api::error::StateError;
@@ -210,6 +211,21 @@ fn found(binding: &BindingRow, root: &RootItem) -> Found {
     }
 }
 
+// Whether each stored row decodes, and its key and columns are what encoding that row writes again.
+async fn canonical_rows(tx: &mut Transaction<'static, Sqlite>) -> Result<bool, StateError> {
+    for table in Table::SYNC.into_iter().chain(Table::KEY) {
+        for (key, columns) in digest::read_table(tx, table).await? {
+            let Ok(row) = codec::decode(table, &key, &columns) else {
+                return Ok(false);
+            };
+            if row.key().encoded() != key || codec::columns(&row) != columns {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
 async fn holds_key_rows(tx: &mut Transaction<'static, Sqlite>) -> Result<bool, StateError> {
     for table in Table::KEY {
         let statement = format!("SELECT EXISTS (SELECT 1 FROM {})", table.name());
@@ -311,6 +327,7 @@ async fn start_over(tx: &mut Transaction<'static, Sqlite>, binding: &BindingRow)
             .map_err(sql)?;
     }
     let fresh = BindingRow {
+        schema_version: SCHEMA_VERSION,
         file_id: FileId(*uuid::Uuid::new_v4().as_bytes()),
         counter: 0,
         state_mac: UNSEALED,
@@ -344,7 +361,8 @@ pub(crate) async fn open(
         // A file no store ever sealed goes on unsealed; a sealed one waits for its store to come back, since commits
         // it could not seal would leave it unable to verify once the store is back.
         Err(DeviceStoreError::Unavailable { .. }) if bound.new_file || bound.binding.state_mac == UNSEALED => {
-            return unsealed(tx, bound, store, name, party).await;
+            let upgraded = upgrade::rows(&mut tx).await?;
+            return unsealed(tx, bound.new_file || upgraded, store, name, party).await;
         }
         Err(error) => return Err(unsettled(&error)),
     };
@@ -372,6 +390,11 @@ pub(crate) async fn open(
         };
         found = checked.find(&mut tx, key.as_ref(), &root).await?;
     }
+    // A file that verified took this schema's rows before its rows were checked. One that could not verify takes them
+    // here, for the repair that refills it.
+    let upgraded = binding.schema_version != SCHEMA_VERSION;
+    upgrade::rows(&mut tx).await?;
+    binding.schema_version = SCHEMA_VERSION;
     let checkpoint = checkpoint_ref_of(&checkpoint_bytes(&checkpoint_in(&mut tx).await?), PART_BYTES);
     // A new file writes its MAC key before its anchor (0054, A new file writes its anchor first): the file exists only
     // once that commit lands. An existing file whose key is gone gets its new key once the commit sealing it landed.
@@ -402,22 +425,23 @@ pub(crate) async fn open(
             checkpoint,
         }),
     });
-    let opened = finish_open(&seal, tx, &binding, new_file, found).await?;
+    let opened = finish_open(&seal, tx, &binding, new_file || upgraded, found).await?;
     Ok((seal, opened))
 }
 
-// Acts on what the open found: a new file's first commit, the second step a crash cut off, or a stale file's repair.
+// Acts on what the open found: the first commit of a new or upgraded file, which also settles a pending entry a crash
+// left, the second step a crash cut off, or a stale file's repair.
 async fn finish_open(
     seal: &Seal,
     tx: Transaction<'static, Sqlite>,
     binding: &BindingRow,
-    new_file: bool,
+    sealing: bool,
     found: Found,
 ) -> Result<Opened, StateError> {
     Ok(match found {
         Found::Foreign => return Err(StateError::Integrity),
         Found::Fresh { pending } => {
-            if new_file {
+            if sealing {
                 commit(
                     seal,
                     tx,
@@ -478,7 +502,7 @@ impl Checked<'_> {
             (None, _) => Found::Restored { keys: Owed::Unanchored },
             (Some(key), root) => {
                 let binding = self.binding;
-                let sync_digest = digest::sync_digest_in(tx).await?;
+                let sync_digest = digest::sync_digest_in(tx, binding.schema_version).await?;
                 let expected =
                     self.party
                         .mac(key, &binding.file_id, binding.counter, &self.key_digest, &sync_digest)?;
@@ -488,6 +512,13 @@ impl Checked<'_> {
                         return Err(StateError::Integrity);
                     }
                     return Ok(Found::Foreign);
+                }
+                upgrade::rows(tx).await?;
+                // The digests frame values, not where a row's key ends and its columns begin, so a writer could move
+                // bytes across that boundary under the same MAC and hide a row from its lookups. Every row has to read
+                // back as itself (Codex security round 2).
+                if !canonical_rows(tx).await? {
+                    return Err(StateError::Integrity);
                 }
                 found(binding, root)
             }
@@ -573,14 +604,15 @@ async fn owed_trust(seal: &Seal) -> Result<KeyTrust, StateError> {
     })
 }
 
+// `writes` when the open made the file or upgraded its rows.
 async fn unsealed(
     tx: Transaction<'static, Sqlite>,
-    bound: Bound,
+    writes: bool,
     store: Arc<dyn HostDeviceStore>,
     name: StateName,
     party: Party,
 ) -> Result<(Arc<Seal>, Opened), StateError> {
-    if bound.new_file {
+    if writes {
         tx.commit().await.map_err(sql)?;
     } else {
         drop(tx);
@@ -647,7 +679,7 @@ pub(crate) async fn commit(
         (anchor.key_digest, anchor.checkpoint, None)
     };
     write(&mut tx, &Row::Binding(binding.clone())).await?;
-    let sync_digest = digest::sync_digest_in(&mut tx).await?;
+    let sync_digest = digest::sync_digest_in(&mut tx, SCHEMA_VERSION).await?;
     binding.state_mac = seal
         .party
         .mac(key, &binding.file_id, binding.counter, &key_digest, &sync_digest)?;

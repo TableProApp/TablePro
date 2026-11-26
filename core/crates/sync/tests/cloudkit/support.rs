@@ -647,8 +647,9 @@ impl Rig {
         }
     }
 
+    // The one row of the file that keeps `kind` (0066, `stores`).
     pub async fn store_row(&self, kind: Kind) -> Option<StoreRow> {
-        let row = format!("{}/{}", self.store(kind).store_name(), kind.as_str());
+        let row = self.store(kind).store_name().to_owned();
         match self.row(RowKey::Store(row)).await {
             Some(Row::Store(row)) => Some(row),
             _ => None,
