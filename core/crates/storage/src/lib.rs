@@ -52,7 +52,10 @@ pub use credentials::{
 pub use document_problem::{DocumentProblem, DocumentProblemKind};
 pub use drafts::{DraftId, DraftScope, DraftStore};
 pub use error::StorageError;
-pub use favourites::{DatabaseEnvironment, FavouriteDatabase, FavouriteTable, Favourites};
+pub use favourites::{
+    DatabaseEnvironment, FavouriteContents, FavouriteDatabase, FavouriteDigests, FavouriteTable, FavouriteWrite,
+    Favourites,
+};
 pub use group_name_error::GroupNameError;
 pub use group_tree::GroupTree;
 pub use journal::{ChangeJournal, JournalEntry, RecordKind, RecordRef};
@@ -60,8 +63,13 @@ pub use library_icon::{LibraryIcon, SymbolName};
 pub use name_rules::shown as shown_name;
 pub use paths::StoragePaths;
 pub use query_history::QueryHistory;
-pub use saved_queries::{SavedQueries, SavedQueriesSnapshot, SavedQueryFolder, SavedQueryFolders};
+pub use saved_queries::{
+    SavedQueries, SavedQueriesSnapshot, SavedQueryContents, SavedQueryFolder, SavedQueryFolders, SavedQuerySettlement,
+    SavedQueryWrite,
+};
 pub use store_identity::{StoreContinuity, StoreIdentity};
-pub use table_folders::{TableFolder, TableFolderItem, TableFolders, TableRef, TableScope};
+pub use table_folders::{
+    TableFolder, TableFolderContents, TableFolderItem, TableFolderWrite, TableFolders, TableRef, TableScope,
+};
 pub use tag_name_error::TagNameError;
 pub use team_library::{TeamLibraryItem, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore, TeamLibraryTeam};
