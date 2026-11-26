@@ -7,7 +7,7 @@ async fn history(root: &tempfile::TempDir) -> QueryHistory {
     QueryHistory::open(&paths).await.expect("open history")
 }
 
-fn places(folders: &[SavedQueryFolder], parent: Option<i64>) -> Vec<(i64, i64)> {
+fn places(folders: &[SavedQueryFolder], parent: Option<Uuid>) -> Vec<(Uuid, i64)> {
     folders
         .iter()
         .filter(|folder| folder.parent_id == parent)
@@ -22,38 +22,38 @@ async fn folder_names_are_visible_normalized_and_unique_within_their_parent() {
     let folders = history.saved_query_folders();
     let connection = Uuid::new_v4();
     let reports = folders
-        .create(connection, "  E\u{301}tat\u{200b}  ", None)
+        .create(Some(connection), "  E\u{301}tat\u{200b}  ", None)
         .await
         .expect("normalized folder");
     assert_eq!(folders.list(connection).await.expect("list")[0].name, "État");
     assert!(matches!(
-        folders.create(connection, "état", None).await,
+        folders.create(Some(connection), "état", None).await,
         Err(StorageError::FolderNameTaken)
     ));
     folders
-        .create(connection, "état", Some(reports))
+        .create(Some(connection), "état", Some(reports))
         .await
         .expect("same name in another parent");
     folders
-        .create(Uuid::new_v4(), "état", None)
+        .create(Some(Uuid::new_v4()), "état", None)
         .await
         .expect("same name on another connection");
     for name in ["", " \t ", "\u{200b}"] {
         assert!(matches!(
-            folders.create(connection, name, None).await,
+            folders.create(Some(connection), name, None).await,
             Err(StorageError::EmptyName)
         ));
     }
     assert!(matches!(
-        folders.create(connection, "bad\nname", None).await,
+        folders.create(Some(connection), "bad\nname", None).await,
         Err(StorageError::FolderNameInvalid)
     ));
     assert!(matches!(
-        folders.create(connection, &"é".repeat(201), None).await,
+        folders.create(Some(connection), &"é".repeat(201), None).await,
         Err(StorageError::TooLarge { got: 201, limit: 200 })
     ));
     folders
-        .create(connection, &"e\u{301}".repeat(200), None)
+        .create(Some(connection), &"e\u{301}".repeat(200), None)
         .await
         .expect("length applies to the normalized name");
 }
@@ -67,8 +67,8 @@ async fn independent_handles_cannot_create_unicode_name_duplicates() {
     let second = second_history.saved_query_folders();
     let connection = Uuid::new_v4();
     let results = tokio::join!(
-        first.create(connection, "État", None),
-        second.create(connection, "e\u{301}tat", None)
+        first.create(Some(connection), "État", None),
+        second.create(Some(connection), "e\u{301}tat", None)
     );
     assert!(matches!(
         results,
@@ -87,8 +87,8 @@ async fn independent_renames_cannot_claim_the_same_unicode_name() {
     let first = first_history.saved_query_folders();
     let second = second_history.saved_query_folders();
     let connection = Uuid::new_v4();
-    let a = first.create(connection, "A", None).await.expect("A");
-    let b = first.create(connection, "B", None).await.expect("B");
+    let a = first.create(Some(connection), "A", None).await.expect("A");
+    let b = first.create(Some(connection), "B", None).await.expect("B");
     let results = tokio::join!(first.rename(a, "État"), second.rename(b, "état"));
     assert!(matches!(
         results,
@@ -103,14 +103,14 @@ async fn moving_a_folder_compacts_its_source_and_appends_to_its_destination() {
     let history = history(&root).await;
     let folders = history.saved_query_folders();
     let connection = Uuid::new_v4();
-    let source = folders.create(connection, "Source", None).await.expect("source");
-    let target = folders.create(connection, "Target", None).await.expect("target");
-    let a = folders.create(connection, "A", Some(source)).await.expect("A");
-    let b = folders.create(connection, "B", Some(source)).await.expect("B");
-    let c = folders.create(connection, "C", Some(source)).await.expect("C");
-    let x = folders.create(connection, "X", Some(target)).await.expect("X");
+    let source = folders.create(Some(connection), "Source", None).await.expect("source");
+    let target = folders.create(Some(connection), "Target", None).await.expect("target");
+    let a = folders.create(Some(connection), "A", Some(source)).await.expect("A");
+    let b = folders.create(Some(connection), "B", Some(source)).await.expect("B");
+    let c = folders.create(Some(connection), "C", Some(source)).await.expect("C");
+    let x = folders.create(Some(connection), "X", Some(target)).await.expect("X");
     let other = Uuid::new_v4();
-    folders.create(other, "Other", None).await.expect("other");
+    folders.create(Some(other), "Other", None).await.expect("other");
     let elsewhere = folders.list(other).await.expect("other folders");
 
     folders.move_to(b, Some(target)).await.expect("move");
@@ -130,13 +130,19 @@ async fn invalid_moves_leave_names_hierarchy_and_positions_unchanged() {
     let history = history(&root).await;
     let folders = history.saved_query_folders();
     let connection = Uuid::new_v4();
-    let parent = folders.create(connection, "Parent", None).await.expect("parent");
-    let child = folders.create(connection, "État", Some(parent)).await.expect("child");
+    let parent = folders.create(Some(connection), "Parent", None).await.expect("parent");
+    let child = folders
+        .create(Some(connection), "État", Some(parent))
+        .await
+        .expect("child");
     folders
-        .create(connection, "état", None)
+        .create(Some(connection), "état", None)
         .await
         .expect("same name at root");
-    let foreign = folders.create(Uuid::new_v4(), "Foreign", None).await.expect("foreign");
+    let foreign = folders
+        .create(Some(Uuid::new_v4()), "Foreign", None)
+        .await
+        .expect("foreign");
     let before = folders.list(connection).await.expect("before");
 
     assert!(matches!(
@@ -154,11 +160,11 @@ async fn invalid_moves_leave_names_hierarchy_and_positions_unchanged() {
         matches!(folders.move_to(parent, Some(parent)).await, Err(StorageError::FolderCycle { id }) if id == parent)
     );
     assert!(matches!(
-        folders.move_to(parent, Some(i64::MAX)).await,
+        folders.move_to(parent, Some(Uuid::new_v4())).await,
         Err(StorageError::NotFound)
     ));
     assert!(matches!(
-        folders.move_to(i64::MAX, None).await,
+        folders.move_to(Uuid::new_v4(), None).await,
         Err(StorageError::NotFound)
     ));
     assert_eq!(folders.list(connection).await.expect("after"), before);
@@ -170,19 +176,19 @@ async fn a_corrupt_ancestor_cycle_is_rejected_instead_of_walked_forever() {
     let history = history(&root).await;
     let folders = history.saved_query_folders();
     let connection = Uuid::new_v4();
-    let a = folders.create(connection, "A", None).await.expect("A");
-    let b = folders.create(connection, "B", Some(a)).await.expect("B");
-    let c = folders.create(connection, "C", None).await.expect("C");
-    sqlx::query("UPDATE saved_query_folders SET parent_id = ? WHERE id = ?")
-        .bind(b)
-        .bind(a)
+    let a = folders.create(Some(connection), "A", None).await.expect("A");
+    let b = folders.create(Some(connection), "B", Some(a)).await.expect("B");
+    let c = folders.create(Some(connection), "C", None).await.expect("C");
+    sqlx::query("UPDATE saved_query_folders SET parent_record_id = ? WHERE record_id = ?")
+        .bind(b.to_string())
+        .bind(a.to_string())
         .execute(&folders.pool)
         .await
         .expect("corrupt cycle");
 
     assert!(matches!(folders.move_to(c, Some(a)).await, Err(StorageError::FolderCycle { id }) if id == c));
     assert!(matches!(
-        folders.create(connection, "D", Some(a)).await,
+        folders.create(Some(connection), "D", Some(a)).await,
         Err(StorageError::FolderCycle { .. })
     ));
 }
@@ -197,7 +203,7 @@ async fn folder_notifications_follow_committed_changes_only() {
     let mut changes = queries.changes();
     let mut folder_changes = folders.changes();
     let connection = Uuid::new_v4();
-    let a = folders.create(connection, "A", None).await.expect("A");
+    let a = folders.create(Some(connection), "A", None).await.expect("A");
     assert_eq!(*changes.borrow_and_update(), 1);
     assert_eq!(*folder_changes.borrow_and_update(), 1);
     assert_eq!(
@@ -226,12 +232,12 @@ async fn folder_notifications_follow_committed_changes_only() {
     assert!(!changes.has_changed().expect("open sender"));
     assert!(matches!(folders.rename(a, "").await, Err(StorageError::EmptyName)));
     assert!(matches!(
-        folders.rename(i64::MAX, "C").await,
+        folders.rename(Uuid::new_v4(), "C").await,
         Err(StorageError::NotFound)
     ));
     assert!(!changes.has_changed().expect("open sender"));
 
-    let parent = folders.create(connection, "Parent", None).await.expect("parent");
+    let parent = folders.create(Some(connection), "Parent", None).await.expect("parent");
     changes.borrow_and_update();
     folders.move_to(a, Some(parent)).await.expect("move");
     assert_eq!(*changes.borrow_and_update(), 4);
@@ -265,7 +271,7 @@ async fn a_failed_database_write_emits_no_revision() {
     .expect("failure trigger");
 
     assert!(matches!(
-        folders.create(connection, "A", None).await,
+        folders.create(Some(connection), "A", None).await,
         Err(StorageError::Database(_))
     ));
     assert!(!changes.has_changed().expect("open sender"));

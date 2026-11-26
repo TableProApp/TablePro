@@ -36,6 +36,10 @@ impl<T> Lenient<T> {
         self.held.len()
     }
 
+    pub(crate) fn held_entries(&self) -> impl Iterator<Item = (Uuid, &Value)> {
+        self.held.iter().filter_map(|entry| Some((entry_id(entry)?, entry)))
+    }
+
     /// Drop the held copies of `id`, once a readable one takes its place or the entry is deleted.
     /// Returns whether there was one.
     pub(crate) fn release(&mut self, id: Uuid) -> bool {

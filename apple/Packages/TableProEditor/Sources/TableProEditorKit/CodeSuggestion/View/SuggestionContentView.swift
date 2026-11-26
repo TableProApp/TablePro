@@ -19,19 +19,17 @@ struct SuggestionContentView: View {
                 noCompletionsView
             } else {
                 suggestionList
-                if let item = model.selectedItem,
-                   item.documentation != nil || item.sourcePreview != nil
-                       || (item.pathComponents != nil && !(item.pathComponents?.isEmpty ?? true)) {
+                if let item = model.selectedItem, Self.hasPreview(item) {
                     Divider()
                     SuggestionPreviewView(
                         item: item,
                         syntaxHighlight: model.syntaxHighlights(forIndex: model.selectedIndex),
-                        font: model.activeTextView?.font ?? .systemFont(ofSize: 12)
+                        font: font
                     )
                 }
             }
         }
-        .frame(width: contentWidth)
+        .frame(width: Self.contentWidth(for: model.items, font: font))
         .background(SuggestionPanelBackground())
         .clipShape(RoundedRectangle(cornerRadius: 8.5))
         .contentShape(Rectangle())
@@ -49,17 +47,19 @@ struct SuggestionContentView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(model.items.enumerated()), id: \.offset) { index, item in
-                        suggestionRow(index: index, item: item)
+                    ForEach(model.rows) { row in
+                        suggestionRow(index: row.index, item: row.item)
                     }
                 }
             }
             .padding(.vertical, SuggestionController.windowPadding)
-            .frame(height: listMaxHeight)
+            .frame(height: Self.listHeight(for: model.items))
             // Scrolls only as far as the row needs, so a clicked row stays under the pointer for the second click.
             .onChange(of: model.selectedIndex) { newIndex in
                 withAnimation(.easeInOut(duration: 0.1)) {
-                    proxy.scrollTo(newIndex)
+                    if model.rowIDs.indices.contains(newIndex) {
+                        proxy.scrollTo(model.rowIDs[newIndex])
+                    }
                 }
             }
         }
@@ -71,6 +71,7 @@ struct SuggestionContentView: View {
             font: model.activeTextView?.font ?? .systemFont(ofSize: 12),
             isSelected: index == model.selectedIndex
         )
+        .equatable()
         .lineLimit(1)
         .truncationMode(.tail)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -97,11 +98,15 @@ struct SuggestionContentView: View {
         .accessibilityAddTraits(index == model.selectedIndex ? .isSelected : [])
     }
 
-    private var contentWidth: CGFloat {
-        let font = model.activeTextView?.font ?? NSFont.systemFont(ofSize: 12)
+    private var font: NSFont {
+        model.activeTextView?.font ?? NSFont.systemFont(ofSize: 12)
+    }
+
+    // The panel's size reads these too, so the window is sized from the items without a layout pass.
+    static func contentWidth(for items: [CodeSuggestionEntry], font: NSFont) -> CGFloat {
         let iconWidth = font.pointSize + 6
         let maxLabelLength = min(
-            model.items.reduce(0) { current, item in
+            items.reduce(0) { current, item in
                 let labelLen = (item.label as NSString).length
                 let detailLen = ((item.detail ?? "") as NSString).length
                 return max(current, labelLen + detailLen)
@@ -112,9 +117,13 @@ struct SuggestionContentView: View {
         return max(iconWidth + textWidth + CodeSuggestionLabelView.horizontalPadding * 2, 280)
     }
 
-    private var listMaxHeight: CGFloat {
-        let visibleRows = min(CGFloat(model.items.count), SuggestionController.maxVisibleRows)
-        return Self.rowHeight * visibleRows + SuggestionController.windowPadding * 2
+    static func listHeight(for items: [CodeSuggestionEntry]) -> CGFloat {
+        let visibleRows = min(CGFloat(items.count), SuggestionController.maxVisibleRows)
+        return rowHeight * visibleRows + SuggestionController.windowPadding * 2
+    }
+
+    static func hasPreview(_ item: CodeSuggestionEntry) -> Bool {
+        item.documentation != nil || item.sourcePreview != nil || !(item.pathComponents?.isEmpty ?? true)
     }
 
     private var noCompletionsView: some View {

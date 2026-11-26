@@ -122,6 +122,9 @@ pub fn config_message(error: &ConfigError) -> String {
         ConfigError::TlsOverLocalSocket => crate::i18n::gettext(
             "This connection asks for TLS over a socket on this computer, which takes none. Edit the connection and save it to turn TLS off.",
         ),
+        ConfigError::RemoteFileOverSsh => crate::i18n::gettext(
+            "This connection opens a database file on the SSH host, which only TablePro for macOS can do.",
+        ),
     }
 }
 

@@ -287,7 +287,7 @@ pub(super) fn encoding() -> JsonValue {
 
     file(
         "encoding",
-        "LP framing, ids, scopes, purposes, labels, origins, base64url, Base32, versions and padding (ADR 0056, Suite and encoding)",
+        "LP framing, ids, scopes, purposes, labels, origins, base64url, Base32, versions and padding (ADR 0056, Suite and encoding). The LP cases at 65,535 and 65,536 bytes frame `repeat_count` copies of `repeat_byte_hex` and give the frame's first 4 bytes and the SHA-256 of the whole frame.",
         vec![
             ("lp", arr(lps)),
             ("uuids", arr(ids.to_vec())),

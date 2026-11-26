@@ -281,12 +281,13 @@ async fn a_license_for_another_server_or_none_admits_no_entitlement() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn past_the_license_s_grace_only_the_team_library_works() {
+async fn past_the_license_s_grace_only_the_sync_features_work() {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let base = company(&LICENSED, |origin, method, path, _| {
         ((method, path) == ("GET", "/v2/license")).then(|| {
             let issued = Utc::now() - TimeDelta::days(365 + 31);
-            (200, license_answer(origin, issued, TimeDelta::days(365), &LICENSED))
+            let features = ["team_library", "service_sync", "env_var_references"];
+            (200, license_answer(origin, issued, TimeDelta::days(365), &features))
         })
     });
     let items = Arc::new(Items::default());
@@ -301,13 +302,17 @@ async fn past_the_license_s_grace_only_the_team_library_works() {
     signed.expect("signed in");
 
     let status = account.status().borrow().clone();
-    assert_eq!(status.features(Utc::now()), ["team_library"]);
+    assert_eq!(status.features(Utc::now()), LICENSED);
     assert_eq!(
         status.feature_access("team_library", Utc::now()),
         FeatureAccess::Available
     );
     assert_eq!(
         status.feature_access("service_sync", Utc::now()),
+        FeatureAccess::Available
+    );
+    assert_eq!(
+        status.feature_access("env_var_references", Utc::now()),
         FeatureAccess::Expired
     );
 }

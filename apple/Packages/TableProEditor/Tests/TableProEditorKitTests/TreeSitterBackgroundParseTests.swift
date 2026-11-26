@@ -65,7 +65,12 @@ struct TreeSitterBackgroundParseTests {
         let finished = DispatchSemaphore(value: 0)
         // A thread of its own: the run's other suites can hold every worker of a global queue.
         Thread {
-            _ = unsafeLayer.findChangedByteRanges(edits: [edit], timeout: 0.05, readBlock: edited.readBlock)
+            _ = unsafeLayer.findChangedByteRanges(
+                edits: [edit],
+                revision: 1,
+                budget: nil,
+                readBlock: edited.readBlock
+            )
             finished.signal()
         }.start()
 
@@ -113,7 +118,7 @@ struct TreeSitterBackgroundParseTests {
             Issue.record("The last edit did not commit")
             return
         }
-        #expect(client.pendingEdits.value().isEmpty)
+        #expect(client.pendingEdits.isEmpty)
         #expect(client.state?.layers.first?.tree?.rootNode?.sExpressionString == (try freshSyntax(of: textView.string)))
     }
 
@@ -133,6 +138,6 @@ struct TreeSitterBackgroundParseTests {
         try await waitUntil(timeout: .seconds(30)) {
             client.state?.layers.first?.tree?.rootNode?.sExpressionString == expected
         }
-        #expect(client.pendingEdits.value().isEmpty)
+        #expect(client.pendingEdits.isEmpty)
     }
 }
