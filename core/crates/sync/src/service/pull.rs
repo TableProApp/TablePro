@@ -448,6 +448,36 @@ impl ServiceSync {
         Ok(())
     }
 
+    // A history entry settles in the clear once it opens; one that cannot open yet is held.
+    async fn open_history_entry(
+        &self,
+        pull: &mut Pull,
+        writes: &mut PageWrites,
+        key: RecordKey,
+        mut record: PulledRecord,
+    ) -> Result<Option<PulledRecord>, SyncError> {
+        if !pull.can_open {
+            writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
+            return Ok(None);
+        }
+        match self.history_opens(&record).await? {
+            HistoryOpens::Plain(fields) => {
+                pull.sealed.insert(key, record.clone());
+                record.fields = Some(fields);
+                record.fields_json = None;
+                Ok(Some(record))
+            }
+            HistoryOpens::Refused => {
+                writes.held.push(held(HeldReason::Unreadable, key, record));
+                Ok(None)
+            }
+            HistoryOpens::Waits => {
+                writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
+                Ok(None)
+            }
+        }
+    }
+
     // In revision order on a delta page: runs of key objects go to their flow, each envelope is checked under the
     // version in force at its place, and every other record settles against its base.
     async fn take_page(
@@ -543,25 +573,10 @@ impl ServiceSync {
                 && record.kind.known() == Some(Kind::HistoryEntry)
                 && record.deleted.is_none()
             {
-                if !pull.can_open {
-                    writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
-                    continue;
+                if let Some(opened) = self.open_history_entry(pull, &mut writes, key, record).await? {
+                    to_settle.push(opened);
                 }
-                match self.history_opens(&record).await? {
-                    HistoryOpens::Plain(fields) => {
-                        pull.sealed.insert(key.clone(), record.clone());
-                        record.fields = Some(fields);
-                        record.fields_json = None;
-                    }
-                    HistoryOpens::Refused => {
-                        writes.held.push(held(HeldReason::Unreadable, key, record));
-                        continue;
-                    }
-                    HistoryOpens::Waits => {
-                        writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
-                        continue;
-                    }
-                }
+                continue;
             }
             to_settle.push(record);
         }
