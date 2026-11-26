@@ -12,8 +12,7 @@ pub(crate) use arrival::Arrival;
 use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{MoveBackPlan, MovePlan};
 use crate::api::error::SyncError;
-use crate::api::ids::ScopeName;
-use crate::api::state::{MovePhase, MoveRow, Provider, Row, RowKey, RowRange, StateFiles, StateIdentity, Table};
+use crate::api::state::{MovePhase, MoveRow, Provider, Row, RowKey, StateFiles, StateIdentity};
 use crate::cloudkit::modify::{CloudKitSync, IcloudCopy, copy_rows};
 use crate::service::ServiceSync;
 
