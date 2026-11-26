@@ -349,6 +349,8 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Stored(record) if record.standing == Standing::LocalOnly => return self.release(key).await,
             View::Unreadable(Some(Standing::LocalOnly)) => return self.release(key).await,
             View::NoAdapter => HeldReason::UnknownKind,
+            // A record held whole stays held for the person, so it still merges as new to the device once it reads.
+            View::Missing if approval::awaits(&mut self.txn, key).await? => HeldReason::AwaitingApproval,
             View::Stored(_) | View::Unreadable(_) | View::Missing => HeldReason::Unreadable,
         };
         let record = PulledRecord {

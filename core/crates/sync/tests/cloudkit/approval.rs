@@ -7,7 +7,8 @@ use tablepro_records::Kind;
 use tablepro_sync::api::control::{PassReason, SyncControl};
 use tablepro_sync::api::state::HeldReason;
 
-use crate::support::{A, Rig, key, projected};
+use crate::faults::Unreliable;
+use crate::support::{A, Rig, key, name, projected};
 
 #[tokio::test]
 async fn a_pulled_host_waits_and_the_push_never_sends_the_device_s_own_back_over_it() {
@@ -126,4 +127,38 @@ async fn a_record_deleted_elsewhere_or_here_leaves_nothing_to_approve() {
     assert_eq!(waited, 2);
     assert!(rig.waiting().await.is_empty());
     assert!(!rig.store(Kind::Connection).holds(A));
+}
+
+// A connection new to the device waits whole for its host when its next copy, a placement-only change, fails to read.
+// It stays held for the person, not as a copy to read again, so the approval given meanwhile stands, and the copy that
+// reads on the next fetch goes into the store with it.
+#[tokio::test]
+async fn a_connection_held_whole_whose_next_copy_fails_to_read_stays_held_for_the_person() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "db.example.com"}));
+    rig.fetch().await.unwrap();
+    let placed = json!({"name": "prod", "host": "db.example.com", "sort_order": 2});
+    rig.save_elsewhere(Kind::Connection, A, &placed);
+    let transport = Unreliable::new(&rig.cloud);
+    transport.leave_unfetched(&name(Kind::Connection, A));
+    transport.fail_reads(&name(Kind::Connection, A), 1);
+
+    rig.fetch_through(&transport).await.unwrap();
+    let held = rig.held(Kind::Connection, A).await.map(|row| row.reason);
+    rig.approve_everything().await;
+    rig.fetch().await.unwrap();
+    let pushed = rig.push().await.unwrap();
+
+    assert_eq!(held, Some(HeldReason::AwaitingApproval));
+    assert_eq!(
+        rig.store(Kind::Connection).fields(A),
+        Some(projected(Kind::Connection, A, &placed))
+    );
+    assert!(rig.held(Kind::Connection, A).await.is_none());
+    assert!(rig.waiting().await.is_empty());
+    assert_eq!((pushed.saved, pushed.deleted), (0, 0));
+    assert_eq!(
+        rig.zone_fields(Kind::Connection, A),
+        Some(projected(Kind::Connection, A, &placed))
+    );
 }

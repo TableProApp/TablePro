@@ -1,6 +1,7 @@
 // What waits by id (0054, Rules for both providers). A change held while the copy could not be read is fetched by
 // name once it reads: a delta never sends it again, and starting the pull over would drop the deletions a delta still
-// carries. A held deletion applies under the rules a readable record has.
+// carries. A held deletion applies under the rules a readable record has. A record held whole for the person whose
+// last copy did not read is fetched the same way, and one gone from the zone leaves nothing to approve.
 
 use std::collections::BTreeSet;
 
@@ -22,6 +23,8 @@ struct Recovery {
     names: Vec<String>,
     deletions: Vec<RecordKey>,
     release: Vec<RecordKey>,
+    // Records held whole whose copy is asked for again.
+    awaiting: BTreeSet<RecordKey>,
 }
 
 const fn answer_name(answer: &CloudKitFetched) -> &String {
@@ -94,8 +97,17 @@ impl Fetcher<'_> {
                         items.push(item);
                     }
                 }
-                // Gone from the zone with no deletion a delta brought: the change no longer stands.
-                CloudKitFetched::Missing { name } => release.extend(copy::key_of_name(&name)),
+                // Gone from the zone with no deletion a delta brought: the change no longer stands, and a record held
+                // whole is gone with it.
+                CloudKitFetched::Missing { name } => {
+                    if let Some(key) = copy::key_of_name(&name) {
+                        if recovery.awaiting.contains(&key) {
+                            items.push(Incoming::Deleted(key));
+                        } else {
+                            release.push(key);
+                        }
+                    }
+                }
                 CloudKitFetched::Failed {
                     name,
                     code,
@@ -124,7 +136,8 @@ impl Fetcher<'_> {
             let Row::Held(held) = row else {
                 continue;
             };
-            if held.reason == HeldReason::AwaitingApproval || unprojectable(&held) {
+            let awaiting = held.reason == HeldReason::AwaitingApproval;
+            if (awaiting && held.record.fields.is_some()) || unprojectable(&held) {
                 continue;
             }
             // One of a category this device does not sync now stays held.
@@ -137,7 +150,12 @@ impl Fetcher<'_> {
                 View::Stored(record) if record.standing == Standing::LocalOnly => recovery.release.push(held.key),
                 // CloudKit asked to wait before this record is asked for again.
                 View::Stored(_) | View::Missing if self.waiting.contains(&held.key) => {}
-                View::Stored(_) | View::Missing => recovery.names.extend(name_of(&held.key)),
+                View::Stored(_) | View::Missing => {
+                    recovery.names.extend(name_of(&held.key));
+                    if awaiting {
+                        recovery.awaiting.insert(held.key);
+                    }
+                }
             }
         }
         Ok(recovery)
