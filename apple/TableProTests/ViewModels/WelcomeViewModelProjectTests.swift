@@ -25,8 +25,7 @@ struct WelcomeViewModelProjectTests {
             groupExpansionStore: WelcomeGroupExpansionStore(defaults: fixture.defaults),
             recentConnections: recents,
             listPreferences: preferences,
-            scope: fixture.scope,
-            isUITestSandbox: true
+            scope: fixture.scope
         )
     }
 
@@ -169,10 +168,10 @@ struct WelcomeViewModelProjectTests {
         viewModel.loadConnections()
 
         #expect(viewModel.availableTags.map(\.id) == [inside.id])
-        #expect(viewModel.suggestedTokens.map(\.id) == [inside.id])
+        #expect(viewModel.tagSuggestions(matching: "-").map(\.id) == [inside.id])
     }
 
-    @Test("A tag token of a tag the project does not use is dropped on a switch")
+    @Test("A tag filter on a tag the project does not use is dropped on a switch")
     func tokenOutsideTheProjectIsDropped() throws {
         let elsewhere = ConnectionTag(name: "elsewhere-\(UUID().uuidString)")
         try tags.addTag(elsewhere)
@@ -180,12 +179,12 @@ struct WelcomeViewModelProjectTests {
         add("mine", projectId: acme.id)
         add("other", tagIds: [elsewhere.id])
         viewModel.loadConnections()
-        viewModel.searchTokens = [WelcomeViewModel.token(for: elsewhere)]
+        viewModel.tagFilterIds = [elsewhere.id]
 
         fixture.scope.setActiveProject(acme.id)
         viewModel.loadConnections()
 
-        #expect(viewModel.searchTokens.isEmpty)
+        #expect(viewModel.tagFilterIds.isEmpty)
         #expect(viewModel.listState == .content)
     }
 
