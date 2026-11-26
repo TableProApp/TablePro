@@ -685,7 +685,10 @@ async fn a_move_back_revoked_between_its_steps_commits_nothing_more() {
     let row = mac.device.sync.move_row().await.unwrap();
 
     assert_eq!(back.unwrap_err().code(), "sync.not_allowed");
-    assert_eq!(row.map(|row| (row.target, row.phase)), Some((tablepro_sync::api::state::Provider::ICloud, MovePhase::Open)));
+    assert_eq!(
+        row.map(|row| (row.target, row.phase)),
+        Some((tablepro_sync::api::state::Provider::ICloud, MovePhase::Open))
+    );
     assert_eq!(mac.device.sync.mode(), ServiceMode::TeamsOnly);
 }
 

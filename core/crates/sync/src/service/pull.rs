@@ -423,8 +423,9 @@ impl ServiceSync {
             return Ok(());
         }
         // What a refill held takes the pull as the refill would have; the rest merges as any pull does.
-        let (refilled, merged): (Vec<HeldRow>, Vec<HeldRow>) =
-            held.into_iter().partition(|row| row.reason == HeldReason::RefusedInRefill);
+        let (refilled, merged): (Vec<HeldRow>, Vec<HeldRow>) = held
+            .into_iter()
+            .partition(|row| row.reason == HeldReason::RefusedInRefill);
         for (batch, refill) in [(refilled, true), (merged, false)] {
             if batch.is_empty() {
                 continue;

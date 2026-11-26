@@ -284,7 +284,10 @@ impl<'s, 'f> Settle<'s, 'f> {
     }
 
     fn against(&self, kind: Kind, key: &RecordKey, kept: Option<Value>) -> Against {
-        match (self.pull_wins.contains(&kind) || self.pull_wins_keys.contains(key), kept) {
+        match (
+            self.pull_wins.contains(&kind) || self.pull_wins_keys.contains(key),
+            kept,
+        ) {
             (true, Some(copy)) => Against::Copy(copy),
             (true, None) => Against::Pull,
             (false, _) => Against::Base,

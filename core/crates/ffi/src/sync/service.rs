@@ -482,7 +482,13 @@ impl SyncService {
         account: String,
     ) -> Result<(), CoreError> {
         let (slot, personal) = (Arc::clone(&self.service), self.control_now());
-        let last = (self.files.clone(), self.config.service_account.as_deref().and_then(super::engines::identity_of));
+        let last = (
+            self.files.clone(),
+            self.config
+                .service_account
+                .as_deref()
+                .and_then(super::engines::identity_of),
+        );
         on_runtime(&self.tasks, async move {
             if let Ok(engine) = slot.engine().await
                 && engine.sync.plan_new_identity().await.is_ok()
