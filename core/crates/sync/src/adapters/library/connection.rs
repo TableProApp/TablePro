@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 use tablepro_core::{AiPolicy, AuthMode, ClientIdentity, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode};
-use tablepro_records::cloudkit::library::{color_name, color_named, icon_for_symbol, symbol_for_icon};
+use tablepro_records::cloudkit::library::{color_name, icon_for_symbol, symbol_for_icon};
 use tablepro_storage::{
     ConnectionDetails, ConnectionOrigin, DeviceOnly, KnownOrigin, SavedConnection, SavedSshConfig, SshProfile,
 };
@@ -165,6 +165,13 @@ fn auth_mode_named(raw: Option<&str>) -> AuthMode {
     }
 }
 
+// `ConnectionColor(storedValue:)`: a connection's colour name in any case.
+fn connection_color(raw: &str) -> Option<tablepro_storage::ConnectionColor> {
+    tablepro_storage::ConnectionColor::ALL
+        .into_iter()
+        .find(|color| color_name(Some(*color)).eq_ignore_ascii_case(raw))
+}
+
 fn path_text(path: &std::path::Path) -> Option<&std::path::Path> {
     (!path.as_os_str().is_empty()).then_some(path)
 }
@@ -225,8 +232,9 @@ fn tunnel_to_wire(saved: &SavedConnection, profile: Option<&SshProfile>) -> Valu
         .put("jump_hosts", hops_to_wire(&settings.jump_hosts, owner))
         .put("remote_file_path", own.remote_file.path.clone().unwrap_or_default())
         .put("remote_file_access", remote_access(own.remote_file.access));
-    if keeps_passphrase(Some(settings)) {
-        out.put("passphrase_stored", true);
+    // TablePro Sync's alone: the CloudKit projection leaves it out (0061, 4).
+    if let tablepro_storage::SavedSshAuth::PrivateKey { has_passphrase, .. } = settings.auth {
+        out.put("passphrase_stored", has_passphrase);
     }
     out.done()
 }
@@ -453,7 +461,7 @@ fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>) -> SavedConn
         auth_mode: auth_mode_named(text(fields, "auth_mode")),
         ssh: None,
         last_opened_at: None,
-        color: text(fields, "color").and_then(color_named),
+        color: text(fields, "color").and_then(connection_color),
         group_id: uuid_at(fields, "group_id"),
         order: integer(fields, "sort_order").map_or(0, clamped),
         tags: fields

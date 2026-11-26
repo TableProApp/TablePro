@@ -186,9 +186,14 @@ fn a_mac_connection_reads_into_the_store_and_goes_up_as_the_mac_wrote_it() {
     let mac = mac_connection();
 
     let (saved, favorite) = stored(&mac);
+    let mut service = mac.clone();
+    service["ssh_config"]["passphrase_stored"] = json!(false);
 
-    assert_eq!(wire(&saved, favorite), mac);
-    assert!(at_base(Kind::Connection, &wire(&saved, favorite), Some(&mac)).is_empty());
+    assert_eq!(wire(&saved, favorite), service);
+    assert_eq!(
+        at_base(Kind::Connection, &wire(&saved, favorite), Some(&mac)),
+        ["/ssh_config/passphrase_stored"]
+    );
     assert_eq!(saved.driver_id, "PostgreSQL");
     assert_eq!(saved.tls.mode, tablepro_core::TlsMode::VerifyFull);
     assert_eq!(saved.safe_mode, tablepro_core::SafeModeLevel::AlertFull);

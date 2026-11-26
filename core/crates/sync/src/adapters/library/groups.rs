@@ -1,6 +1,6 @@
 // Groups and tags as the Mac's mapper writes them (`SyncRecordMapper`, Connection Group and Connection Tag): a group's
 // colour is always named, "None" for none, and its icon and parent only when it has one; a tag's colour is always
-// named, and one with none reads as Gray, as the Mac reads it.
+// named, and one with none or one this build does not know reads as Gray, as the Mac reads it.
 
 use serde_json::Value;
 use tablepro_records::cloudkit::library::{color_name, color_named, icon_for_symbol, symbol_for_icon};
@@ -51,7 +51,11 @@ pub(super) fn tag(id: Uuid, fields: &Value, stored: Option<&ConnectionTag>) -> C
     ConnectionTag {
         id,
         name,
-        color: text(fields, "color").map_or(Some(ConnectionColor::Slate), color_named),
+        color: match text(fields, "color") {
+            Some("None") => None,
+            Some(name) => color_named(name).or(Some(ConnectionColor::Slate)),
+            None => Some(ConnectionColor::Slate),
+        },
         is_preset: boolean(fields, "is_preset").unwrap_or(false),
     }
 }
