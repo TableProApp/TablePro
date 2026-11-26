@@ -63,7 +63,14 @@ pub trait SyncControl: Send + Sync {
         unimplemented("sync.move_to_icloud")
     }
 
-    // Another account or server: Move my data or Start empty. Nothing goes up without this choice.
+    // What the choice after another account weighs: the changes the last account's file held unsent.
+    async fn plan_new_identity(&self) -> Result<NewIdentityPlan, SyncError> {
+        unimplemented("sync.plan_new_identity")
+    }
+
+    // Another account or server: Move my data or Start empty. Nothing goes up without this choice. Start empty takes
+    // the synced records off this device, where the last account keeps them, keeps the Local only ones, and fills
+    // from the new account (orchestrator ruling on 0066).
     async fn choose_for_new_identity(&self, choice: NewIdentityChoice) -> Result<(), SyncError> {
         let _ = choice;
         unimplemented("sync.choose_for_new_identity")
@@ -207,6 +214,12 @@ pub struct MovePlan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MoveBackPlan {
     pub icloud_deletions: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NewIdentityPlan {
+    // Changes the last account's file held that never went up; Start empty leaves them behind.
+    pub unsent: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

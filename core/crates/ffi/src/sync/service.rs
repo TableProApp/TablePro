@@ -249,6 +249,12 @@ pub struct MoveBackPlanInfo {
     pub icloud_deletions: u64,
 }
 
+// The changes the last account's file held unsent, for the Move my data or Start empty prompt.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NewIdentityPlanInfo {
+    pub unsent: u64,
+}
+
 // Values are JSON text. `digest` names the pulled value the person is shown, as lower-case hex, and goes back with the
 // decision: a value a pull changed since is not decided (core ADR 0066).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -343,6 +349,10 @@ impl SyncService {
     pub async fn move_to_icloud(&self, confirmed_deletions: u64) -> Result<(), CoreError> {
         let _ = confirmed_deletions;
         unfilled("sync.move_to_icloud")
+    }
+
+    pub async fn plan_new_identity(&self) -> Result<NewIdentityPlanInfo, CoreError> {
+        unfilled("sync.plan_new_identity")
     }
 
     pub async fn choose_for_new_identity(&self, choice: NewIdentityChoiceTag) -> Result<(), CoreError> {

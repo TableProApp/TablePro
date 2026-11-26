@@ -520,7 +520,30 @@ fn scope_columns(out: &mut Writer, row: &ScopeRow) {
         .flag(row.refill)
         .flag(row.rotation_due)
         .flag(row.caught_up)
-        .maybe(row.push_wait, |out, wait| out.text(wait.as_str()));
+        .maybe(row.push_wait, |out, wait| out.bytes(&push_wait_bytes(wait)));
+}
+
+// The wait's name, then for an account choice the count of changes left unsent.
+fn push_wait_bytes(wait: PushWait) -> Vec<u8> {
+    let mut out = Writer::default();
+    out.text(wait.name());
+    if let PushWait::AccountChoice { unsent } = wait {
+        out.int(unsent);
+    }
+    out.finish()
+}
+
+fn push_wait(bytes: &[u8]) -> Result<PushWait, StateError> {
+    let mut read = Reader::new(bytes);
+    let wait = match read.text("push wait")?.as_str() {
+        "account_choice" => PushWait::AccountChoice {
+            unsent: read.int("unsent changes")?,
+        },
+        "upload_again" => PushWait::UploadAgain,
+        _ => return Err(malformed("push wait")),
+    };
+    read.end()?;
+    Ok(wait)
 }
 
 fn base_columns(out: &mut Writer, row: &BaseRow) {
@@ -729,7 +752,7 @@ fn scope_row(scope: ScopeName, read: &mut Reader<'_>) -> Result<ScopeRow, StateE
         refill: read.flag("refill")?,
         rotation_due: read.flag("rotation due")?,
         caught_up: read.flag("caught up")?,
-        push_wait: read.maybe(|bytes| PushWait::parse(&text(bytes)?).ok_or_else(|| malformed("push wait")))?,
+        push_wait: read.maybe(push_wait)?,
     })
 }
 

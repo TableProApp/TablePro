@@ -279,25 +279,20 @@ pub struct ScopeRow {
 // What an iCloud zone's push waits for, kept so a restart waits the same way (0066, Rules).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PushWait {
-    // Another iCloud account: the person picks Move my data or Start empty.
-    AccountChoice,
+    // Another iCloud account: the person picks Move my data or Start empty, told how many changes the last account's
+    // file held unsent.
+    AccountChoice { unsent: u64 },
     // This device saw the zone removed, and nothing goes up until its own person asks to upload again, even after
     // another device made the zone again.
     UploadAgain,
 }
 
 impl PushWait {
-    pub const fn as_str(self) -> &'static str {
+    pub const fn name(self) -> &'static str {
         match self {
-            Self::AccountChoice => "account_choice",
+            Self::AccountChoice { .. } => "account_choice",
             Self::UploadAgain => "upload_again",
         }
-    }
-
-    pub fn parse(text: &str) -> Option<Self> {
-        [Self::AccountChoice, Self::UploadAgain]
-            .into_iter()
-            .find(|wait| wait.as_str() == text)
     }
 }
 

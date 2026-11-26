@@ -9,10 +9,11 @@ use tablepro_records::Kind;
 use tablepro_sync::api::SyncError;
 use tablepro_sync::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use tablepro_sync::api::control::{NewIdentityChoice, PassReason, SyncControl, SyncPhase};
-use tablepro_sync::api::state::{PushWait, StateFiles, StateIdentity};
+use tablepro_records::cloudkit::record_type_of;
+use tablepro_sync::api::state::{PushWait, Standing, StateFiles, StateIdentity};
 
 use crate::faults::Flaky;
-use crate::support::{A, B, Rig, USER, name, projected};
+use crate::support::{A, B, C, D, Rig, USER, cloud_fields, name, projected};
 
 const OTHER: &str = "_9a8b7c";
 
@@ -28,31 +29,49 @@ async fn another_account_deletes_the_last_account_s_state_file_and_starts_from_a
     rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
     let sync = rig.sync(None);
     sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.store(Kind::Group)
+        .put(B, projected(Kind::Group, B, &json!({"name": "Work"})));
     rig.cloud.switch_account(Some(OTHER));
 
     let switched = sync.run_pass(PassReason::AccountChanged).await.unwrap();
     let phase = sync.status().phase;
+    let plan = sync.plan_new_identity().await.unwrap();
     let sent_unasked = rig.zone_fields_of(OTHER, Kind::Connection, A).is_some();
     sync.choose_for_new_identity(NewIdentityChoice::MoveMyData).await.unwrap();
 
     assert_eq!(switched.switched_from.as_deref(), Some(USER));
     assert!(switched.zone_made && switched.fetch.full);
-    assert_eq!(switched.push_wait, Some(PushWait::AccountChoice));
+    assert_eq!(switched.push_wait, Some(PushWait::AccountChoice { unsent: 1 }));
+    assert_eq!(plan.unsent, 1);
     assert_eq!(phase, SyncPhase::NewIdentity);
     assert!(!sent_unasked);
     assert!(!rig.files.exists(&icloud(USER)));
     assert!(rig.files.exists(&icloud(OTHER)));
     assert!(rig.zone_fields_of(OTHER, Kind::Connection, A).is_some());
+    assert!(rig.zone_fields_of(OTHER, Kind::Group, B).is_some());
     assert_eq!(sync.account().as_deref(), Some(OTHER));
     assert_eq!(sync.status().phase, SyncPhase::Idle);
 }
 
+// Start empty: the synced records leave this device, where the last account's zone keeps them, Local only ones stay,
+// and the device fills from the new account. The wait and its count outlive a restart (orchestrator ruling on 0066).
 #[tokio::test]
-async fn the_wait_for_the_person_s_choice_outlives_a_restart_and_start_empty_sends_nothing_yet() {
+async fn start_empty_leaves_the_synced_records_behind_keeps_local_only_ones_and_fills_from_the_new_account() {
     let rig = Rig::new().await;
     rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
     let sync = rig.sync(None);
     sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.store(Kind::Connection).put_with(
+        C,
+        projected(Kind::Connection, C, &json!({"name": "laptop only"})),
+        Standing::LocalOnly,
+    );
+    rig.cloud.save_elsewhere(
+        OTHER,
+        record_type_of(Kind::Group).unwrap().name,
+        &name(Kind::Group, D),
+        cloud_fields(Kind::Group, D, &json!({"name": "Theirs"})),
+    );
     rig.cloud.switch_account(Some(OTHER));
     sync.run_pass(PassReason::AccountChanged).await.unwrap();
     let kept = sync.account();
@@ -60,15 +79,25 @@ async fn the_wait_for_the_person_s_choice_outlives_a_restart_and_start_empty_sen
 
     let relaunched = rig.sync(kept.as_deref());
     let after_restart = relaunched.run_pass(PassReason::Launch).await.unwrap();
-    let start_empty = relaunched.choose_for_new_identity(NewIdentityChoice::StartEmpty).await;
-    let again = relaunched.run_pass(PassReason::Poll).await.unwrap();
+    let plan = relaunched.plan_new_identity().await.unwrap();
+    relaunched
+        .choose_for_new_identity(NewIdentityChoice::StartEmpty)
+        .await
+        .unwrap();
+    let next = relaunched.run_pass(PassReason::Poll).await.unwrap();
 
     assert_eq!(after_restart.switched_from, None);
-    assert_eq!(after_restart.push_wait, Some(PushWait::AccountChoice));
-    assert_eq!(start_empty.unwrap_err().code(), "sync.unimplemented");
-    assert_eq!(again.push_wait, Some(PushWait::AccountChoice));
+    assert_eq!(after_restart.push_wait, Some(PushWait::AccountChoice { unsent: 0 }));
+    assert_eq!(plan.unsent, 0);
+    assert!(!rig.store(Kind::Connection).holds(A));
+    assert!(rig.store(Kind::Connection).holds(C));
+    assert!(rig.store(Kind::Group).holds(D));
     assert!(rig.zone_fields_of(OTHER, Kind::Connection, A).is_none());
-    assert_eq!(relaunched.status().phase, SyncPhase::NewIdentity);
+    assert!(rig.zone_fields_of(OTHER, Kind::Connection, C).is_none());
+    assert!(rig.zone_fields(Kind::Connection, A).is_some());
+    assert_eq!(next.push_wait, None);
+    assert_eq!(next.push.saved, 0);
+    assert_eq!(relaunched.status().phase, SyncPhase::Idle);
 }
 
 #[tokio::test]
