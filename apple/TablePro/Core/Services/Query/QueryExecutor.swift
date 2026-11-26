@@ -148,12 +148,15 @@ final class QueryExecutor {
         )
     }
 
-    // MARK: - Driver fetch (nonisolated, runs on background)
+    // MARK: - Driver fetch
 
+    // `@concurrent` is what moves these off the main actor: a plain nonisolated async function runs on its caller's
+    // actor under NonisolatedNonsendingByDefault (SE-0461), and every caller here is on the main actor.
     /// Bounding a fetch abandons the rest of it, which for some drivers cancels the statement on the
     /// server, so it is only ever offered a cap that `resolveRowCap` produced. That gate excludes
     /// writes and DDL; a caller computing its own cap (the MCP bridge caps a write that RETURNs)
     /// must not route here.
+    @concurrent
     nonisolated static func fetchBoundedQueryData(
         driver: DatabaseDriver,
         sql: String,
@@ -192,6 +195,7 @@ final class QueryExecutor {
         )
     }
 
+    @concurrent
     nonisolated static func fetchExplainPlan(
         driver: DatabaseDriver,
         statement: String,
@@ -212,6 +216,7 @@ final class QueryExecutor {
     }
 
     // A non-nil context is Read-Only's, which the bounded read and its fallback both carry.
+    @concurrent
     nonisolated static func fetchQueryData(
         driver: DatabaseDriver,
         sql: String,
@@ -248,6 +253,8 @@ final class QueryExecutor {
         )
     }
 
+    // `[Any?]` is not Sendable, so this one stays on its caller's actor; the driver call it makes leaves it at
+    // `PluginDriverAdapter`, which converts the parameters first.
     nonisolated static func fetchQueryDataParameterized(
         driver: DatabaseDriver,
         sql: String,
