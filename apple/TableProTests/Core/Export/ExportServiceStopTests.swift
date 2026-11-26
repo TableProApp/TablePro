@@ -34,24 +34,21 @@ private final class RecordingFormat: ExportFormatPlugin, @unchecked Sendable {
     }
 }
 
-private final class CountingDriver: DatabaseDriver, @unchecked Sendable {
+private final class EstimatingDriver: DatabaseDriver, @unchecked Sendable {
     let connection = TestFixtures.makeConnection(type: .postgresql)
     var status: ConnectionStatus = .connected
     var serverVersion: String? { nil }
-    var onCount: (@MainActor () -> Void)?
-    private(set) var countQueries = 0
+    var onEstimate: (@MainActor () -> Void)?
+    private(set) var estimateReads = 0
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        estimateReads += 1
+        if let onEstimate { await onEstimate() }
+        return 10
+    }
 
     func execute(query: String) async throws -> QueryResult {
-        let isCount = query.contains("COUNT(")
-        if isCount {
-            countQueries += 1
-            if let onCount { await onCount() }
-        }
-        return QueryResult(
-            columns: ["c"], columnTypes: [.integer(rawType: "BIGINT")],
-            rows: isCount ? [[.text("10")]] : [],
-            rowsAffected: 0, executionTime: 0, error: nil
-        )
+        QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
@@ -91,7 +88,7 @@ private final class CountingDriver: DatabaseDriver, @unchecked Sendable {
     func rollbackTransaction() async throws {}
 }
 
-// The progress a Stop cancels did not exist until the row count finished, so a Stop pressed during the count was lost.
+// The progress a Stop cancels does not exist until the row estimate is read, so a Stop pressed during it must still end the export.
 @MainActor
 struct ExportServiceStopTests {
     private let objects = [
@@ -107,25 +104,25 @@ struct ExportServiceStopTests {
         try await service.export(objects: objects, config: config, to: url)
     }
 
-    @Test("A Stop during the row count ends the export before the format writes anything")
-    func stopDuringTheCount() async throws {
-        let driver = CountingDriver()
+    @Test("A Stop during the row estimate ends the export before the format writes anything")
+    func stopDuringTheEstimate() async throws {
+        let driver = EstimatingDriver()
         let format = RecordingFormat()
         let service = ExportService(driver: driver, databaseType: .postgresql) { _ in format }
-        driver.onCount = { service.cancelExport() }
+        driver.onEstimate = { service.cancelExport() }
 
         await #expect(throws: PluginExportCancellationError.self) {
             try await self.export(with: service)
         }
 
-        #expect(driver.countQueries == 1)
+        #expect(driver.estimateReads == 1)
         #expect(!format.wasAskedToWrite)
         #expect(!service.state.isExporting)
     }
 
-    @Test("A Stop before the export starts counts nothing")
+    @Test("A Stop before the export starts reads no estimate")
     func stopBeforeTheExport() async throws {
-        let driver = CountingDriver()
+        let driver = EstimatingDriver()
         let format = RecordingFormat()
         let service = ExportService(driver: driver, databaseType: .postgresql) { _ in format }
         service.cancelExport()
@@ -134,7 +131,7 @@ struct ExportServiceStopTests {
             try await self.export(with: service)
         }
 
-        #expect(driver.countQueries == 0)
+        #expect(driver.estimateReads == 0)
         #expect(!format.wasAskedToWrite)
     }
 }

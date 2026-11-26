@@ -185,6 +185,7 @@ impl Session {
     /// Move to `level` on the connection as it is. False when `level` is
     /// on the other side of Read-Only, which takes a new connection.
     pub fn set_safe_mode(&self, level: SafeModeLevel) -> bool {
+        let level = level.enforced();
         if level.blocks_writes() != self.read_only() {
             return false;
         }
@@ -563,7 +564,7 @@ mod tests {
             },
         );
 
-        assert!(session.set_safe_mode(SafeModeLevel::ConfirmWrites));
+        assert!(session.set_safe_mode(SafeModeLevel::Alert));
 
         let sibling = session
             .open_in_database("analytics", CancellationToken::new())
@@ -572,7 +573,7 @@ mod tests {
 
         assert_eq!(
             sibling.safe_mode(),
-            SafeModeLevel::ConfirmWrites,
+            SafeModeLevel::Alert,
             "the sibling dropped the level"
         );
         assert_eq!(session.database(), Some("shop"));
@@ -605,7 +606,7 @@ mod tests {
 
         assert!(session.read_only());
         assert_eq!(session.safe_mode(), SafeModeLevel::ReadOnly);
-        assert!(!session.set_safe_mode(SafeModeLevel::ConfirmWrites));
+        assert!(!session.set_safe_mode(SafeModeLevel::Alert));
         assert_eq!(session.safe_mode(), SafeModeLevel::ReadOnly);
         assert!(session.current_dialect().is_some());
         assert_eq!(session.reachability(), ReachabilityTarget::Local);
@@ -617,11 +618,11 @@ mod tests {
     async fn a_writable_connection_moves_between_the_levels_that_write() {
         let (session, _) = start(ConnectionScript::default());
 
-        assert_eq!(session.safe_mode(), SafeModeLevel::Off);
-        assert!(session.set_safe_mode(SafeModeLevel::ConfirmWrites));
-        assert_eq!(session.safe_mode(), SafeModeLevel::ConfirmWrites);
+        assert_eq!(session.safe_mode(), SafeModeLevel::Silent);
+        assert!(session.set_safe_mode(SafeModeLevel::Alert));
+        assert_eq!(session.safe_mode(), SafeModeLevel::Alert);
         assert!(!session.set_safe_mode(SafeModeLevel::ReadOnly));
-        assert_eq!(session.safe_mode(), SafeModeLevel::ConfirmWrites);
+        assert_eq!(session.safe_mode(), SafeModeLevel::Alert);
     }
 
     #[tokio::test(start_paused = true)]

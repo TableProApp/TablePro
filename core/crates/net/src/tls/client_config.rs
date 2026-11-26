@@ -55,7 +55,8 @@ fn verifier(
     Ok(Some(match tls.mode {
         TlsMode::Disable => return Ok(None),
         TlsMode::Prefer | TlsMode::Require => Arc::new(UnverifiedServerCertVerifier::new(Arc::clone(provider))),
-        TlsMode::VerifyFull | TlsMode::Strict => {
+        // A connect refuses Verify CA before it gets here; reached anyway, it checks the name too rather than less.
+        TlsMode::VerifyCa | TlsMode::VerifyFull | TlsMode::Strict => {
             let extra_roots = match &tls.ca_file {
                 Some(path) => read_certificates(path)?,
                 None => Vec::new(),

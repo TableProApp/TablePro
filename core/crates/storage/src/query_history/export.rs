@@ -118,6 +118,7 @@ mod tests {
     fn failed(connection_name: &str, error: &str) -> Entry {
         Entry {
             id: 1,
+            record_id: Uuid::nil(),
             query: "SELECT 1".to_owned(),
             driver_id: "postgres".to_owned(),
             connection_id: Uuid::nil(),

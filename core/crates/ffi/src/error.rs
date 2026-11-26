@@ -39,6 +39,12 @@ pub struct ErrorInfo {
     // What an `ai.*` error is about; the provider's own words are in `server`.
     #[uniffi(default = None)]
     pub ai: Option<AiFailureInfo>,
+    // What a `sync.*` refusal carries beyond its code: a step-up challenge, a wait, a change's code, a lock.
+    #[uniffi(default = None)]
+    pub sync: Option<crate::sync::SyncFailureInfo>,
+    // The challenge `account.step_up_required` carries, which `AccountService::step_up` takes.
+    #[uniffi(default = None)]
+    pub step_up: Option<crate::account::StepUpChallengeInfo>,
 }
 
 // Error details stay off the stack while bindings keep the same record values.
@@ -120,6 +126,8 @@ impl CoreError {
                 host_key: None,
                 tls_failure: None,
                 ai: None,
+                sync: None,
+                step_up: None,
             }),
         }
     }
@@ -162,6 +170,8 @@ impl ErrorInfo {
                 _ => None,
             },
             ai: None,
+            sync: None,
+            step_up: None,
         }
     }
 
@@ -176,6 +186,8 @@ impl ErrorInfo {
             host_key: None,
             tls_failure: None,
             ai: None,
+            sync: None,
+            step_up: None,
         }
     }
 }
@@ -329,7 +341,8 @@ impl From<ConnectError> for CoreError {
     }
 }
 
-// A cancelled sign-in is a cancel. A problem the account service answered keeps its own code in `server`.
+// A cancelled sign-in is a cancel. A problem the account service answered keeps its own code in `server`, and a
+// step-up its challenge in `step_up`.
 impl From<AccountError> for CoreError {
     fn from(error: AccountError) -> Self {
         let server = match &error {
@@ -340,9 +353,14 @@ impl From<AccountError> for CoreError {
             }),
             _ => None,
         };
+        let step_up = match &error {
+            AccountError::StepUpRequired(challenge) => Some(challenge.clone().into()),
+            _ => None,
+        };
         Self::Failed {
             info: Box::new(ErrorInfo {
                 server,
+                step_up,
                 ..ErrorInfo::plain(&[error.code()], error.to_string())
             }),
         }
@@ -559,6 +577,28 @@ mod tests {
         assert_eq!(server.code.as_deref(), Some("offline_file_active"));
         assert_eq!(server.message, "The device holds an offline file");
         assert_eq!(CoreError::from(AccountError::SignInCanceled), CoreError::Cancelled);
+    }
+
+    #[test]
+    fn a_step_up_error_carries_its_challenge_for_the_step_up_call() {
+        let challenge = tablepro_account::StepUpChallenge {
+            acr_values: vec![
+                "urn:tablepro:acr:passkey".to_owned(),
+                "urn:tablepro:acr:email-code".to_owned(),
+            ],
+            max_age_secs: Some(300),
+        };
+
+        let required = info(AccountError::StepUpRequired(challenge.clone()).into());
+        let other = info(AccountError::StepUpOtherAccount.into());
+
+        assert_eq!(required.code, "account.step_up_required");
+        let carried = required.step_up.expect("the challenge");
+        assert_eq!(carried.acr_values, challenge.acr_values);
+        assert_eq!(carried.max_age_secs, Some(300));
+        assert_eq!(tablepro_account::StepUpChallenge::from(carried), challenge);
+        assert_eq!(other.code, "account.step_up_other_account");
+        assert_eq!(other.step_up, None);
     }
 
     #[test]

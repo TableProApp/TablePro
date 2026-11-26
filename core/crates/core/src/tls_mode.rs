@@ -9,6 +9,8 @@ pub enum TlsMode {
     /// `PREFERRED`.
     Prefer,
     Require,
+    // libpq's verify-ca: the chain is checked and the name is not. No engine offers it yet, so a connect refuses it.
+    VerifyCa,
     VerifyFull,
     /// TLS before the first protocol byte, as SQL Server's TDS 8.0 strict
     /// encryption does, with the certificate checked as in `VerifyFull`.
@@ -20,6 +22,10 @@ impl TlsMode {
     /// Whether the server's certificate must chain to a trusted root and
     /// carry the server's name.
     pub fn verifies_certificate(self) -> bool {
+        matches!(self, Self::VerifyCa | Self::VerifyFull | Self::Strict)
+    }
+
+    pub fn verifies_host_name(self) -> bool {
         matches!(self, Self::VerifyFull | Self::Strict)
     }
 
@@ -32,6 +38,43 @@ impl TlsMode {
     /// reached in the clear.
     pub fn requires_tls(self) -> bool {
         !matches!(self, Self::Disable | Self::Prefer)
+    }
+
+    // Weakest first: each one checks at least what the one before it does.
+    pub const BY_STRICTNESS: [TlsMode; 6] = [
+        Self::Disable,
+        Self::Prefer,
+        Self::Require,
+        Self::VerifyCa,
+        Self::VerifyFull,
+        Self::Strict,
+    ];
+
+    pub fn strictness(self) -> usize {
+        Self::BY_STRICTNESS
+            .iter()
+            .position(|mode| *mode == self)
+            .unwrap_or(Self::BY_STRICTNESS.len())
+    }
+
+    // Never weaker while an offered mode is at least as strict; the strictest offered when none is.
+    pub fn at_least_in(self, offered: &[TlsMode]) -> TlsMode {
+        offered
+            .iter()
+            .copied()
+            .filter(|mode| mode.strictness() >= self.strictness())
+            .min_by_key(|mode| mode.strictness())
+            .or_else(|| offered.iter().copied().max_by_key(|mode| mode.strictness()))
+            .unwrap_or(self)
+    }
+
+    // A form shows a stored mode it does not offer as `at_least_in`, and sending that back keeps it.
+    pub fn edited(stored: TlsMode, picked: TlsMode, offered: &[TlsMode]) -> TlsMode {
+        if picked == stored.at_least_in(offered) {
+            stored
+        } else {
+            picked
+        }
     }
 }
 
@@ -50,6 +93,51 @@ mod tests {
             serde_json::to_string(&TlsMode::Strict).ok().as_deref(),
             Some("\"strict\"")
         );
+    }
+
+    #[test]
+    fn a_form_save_keeps_a_mode_it_shows_rounded_up() {
+        let offered = [TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull];
+        assert_eq!(
+            TlsMode::edited(TlsMode::VerifyCa, TlsMode::VerifyFull, &offered),
+            TlsMode::VerifyCa
+        );
+        assert_eq!(
+            TlsMode::edited(TlsMode::VerifyCa, TlsMode::Require, &offered),
+            TlsMode::Require
+        );
+        assert_eq!(
+            TlsMode::edited(TlsMode::Require, TlsMode::VerifyFull, &offered),
+            TlsMode::VerifyFull
+        );
+        assert_eq!(
+            TlsMode::edited(TlsMode::VerifyFull, TlsMode::VerifyFull, &offered),
+            TlsMode::VerifyFull
+        );
+    }
+
+    #[test]
+    fn verify_ca_checks_the_chain_and_not_the_name() {
+        assert!(TlsMode::VerifyCa.verifies_certificate());
+        assert!(!TlsMode::VerifyCa.verifies_host_name());
+        assert!(TlsMode::VerifyFull.verifies_host_name());
+        assert!(TlsMode::VerifyCa.requires_tls());
+        assert_eq!(
+            serde_json::to_string(&TlsMode::VerifyCa).ok().as_deref(),
+            Some("\"verify_ca\"")
+        );
+    }
+
+    #[test]
+    fn a_mode_an_engine_does_not_offer_rounds_up() {
+        let postgres = [TlsMode::Disable, TlsMode::Prefer, TlsMode::Require, TlsMode::VerifyFull];
+        let mssql = [TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull, TlsMode::Strict];
+
+        assert_eq!(TlsMode::VerifyCa.at_least_in(&postgres), TlsMode::VerifyFull);
+        assert_eq!(TlsMode::Prefer.at_least_in(&mssql), TlsMode::Require);
+        assert_eq!(TlsMode::Strict.at_least_in(&postgres), TlsMode::VerifyFull);
+        assert_eq!(TlsMode::Require.at_least_in(&postgres), TlsMode::Require);
+        assert_eq!(TlsMode::VerifyCa.at_least_in(&[]), TlsMode::VerifyCa);
     }
 
     #[test]

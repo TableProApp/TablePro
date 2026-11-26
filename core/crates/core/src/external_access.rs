@@ -89,18 +89,14 @@ mod tests {
         let write = Confirm { destructive: false };
         let drop = Confirm { destructive: true };
         let table = [
-            (ExternalAccess::Blocked, SafeModeLevel::Off, [Refuse(Blocked); 3]),
+            (ExternalAccess::Blocked, SafeModeLevel::Silent, [Refuse(Blocked); 3]),
             (
                 ExternalAccess::ReadOnly,
-                SafeModeLevel::Off,
+                SafeModeLevel::Silent,
                 [Run, Refuse(ReadOnlyAccess), Refuse(ReadOnlyAccess)],
             ),
-            (ExternalAccess::ReadWrite, SafeModeLevel::Off, [Run, write, drop]),
-            (
-                ExternalAccess::ReadWrite,
-                SafeModeLevel::ConfirmWrites,
-                [Run, write, drop],
-            ),
+            (ExternalAccess::ReadWrite, SafeModeLevel::Silent, [Run, write, drop]),
+            (ExternalAccess::ReadWrite, SafeModeLevel::Alert, [Run, write, drop]),
             (
                 ExternalAccess::ReadWrite,
                 SafeModeLevel::ReadOnly,

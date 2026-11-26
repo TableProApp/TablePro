@@ -72,6 +72,7 @@ impl LibraryOutline {
     pub(crate) fn new(list: &ConnectionList) -> Self {
         let tree = list.group_tree();
         let walked = tree.walk();
+        let by_group = list.connections_by_group();
         let mut children = HashMap::with_capacity(walked.len() + 1);
         let mut parents = HashMap::with_capacity(walked.len() + list.connections.len());
         for parent in std::iter::once(None).chain(walked.iter().map(|group| Some(group.id))) {
@@ -80,8 +81,10 @@ impl LibraryOutline {
                 .into_iter()
                 .map(|group| LibraryItem::Group(group.id))
                 .chain(
-                    list.connections_in(parent)
+                    by_group
+                        .get(&parent)
                         .into_iter()
+                        .flatten()
                         .map(|saved| LibraryItem::Connection(saved.id)),
                 )
                 .collect();

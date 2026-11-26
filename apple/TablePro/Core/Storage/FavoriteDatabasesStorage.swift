@@ -13,20 +13,26 @@ extension Notification.Name {
 // One key for every connection, so a sync push resolves a dirty id without knowing the connections. `FavoriteTablesStorage` is the same shape.
 @MainActor
 internal final class FavoriteDatabasesStorage {
-    internal static let shared = FavoriteDatabasesStorage()
+    internal static let shared = FavoriteDatabasesStorage(core: .shared)
 
     private static let storageKey = JSONDefaultsKey<Set<FavoriteDatabaseEntry>>("com.TablePro.favoriteDatabases")
 
     private let defaults: UserDefaults
     private let syncTracker: SyncChangeTracker
     private var cache: Set<FavoriteDatabaseEntry>?
+    // Nil keeps the favourites out of the core, for a store nothing else reads.
+    internal private(set) var coreMirror: CoreMirror<FavoriteDatabasesCoreAdapter>?
 
     internal init(
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared
+        syncTracker: SyncChangeTracker = .shared,
+        core: CoreHistoryDatabase? = nil
     ) {
         self.defaults = defaults
         self.syncTracker = syncTracker
+        if let core {
+            coreMirror = CoreMirror(adapter: FavoriteDatabasesCoreAdapter(store: self, database: core), defaults: defaults)
+        }
     }
 
     internal func loadFavorites() -> Set<FavoriteDatabaseEntry> {
@@ -136,6 +142,24 @@ internal final class FavoriteDatabasesStorage {
         case .discard:
             syncTracker.discardDirty(.favoriteDatabase, ids: removed.map(Self.syncId(for:)))
         }
+        coreMirror?.schedulePush()
+        postChangeNotification()
+    }
+
+    // False when favourites are stored and do not decode, which reads as none and must not read as none removed.
+    internal var storedFavoritesRead: Bool {
+        !defaults.read(Self.storageKey).isUnreadable
+    }
+
+    // The core's copy written back, marking nothing: it came from this Mac or a pull, never a new edit here.
+    internal func applyCoreFavorites(puts: [FavoriteDatabaseEntry], removals: [String]) {
+        let removed = Set(removals)
+        var favorites = loadFavorites().filter { !removed.contains($0.id) }
+        for entry in puts {
+            Self.upsert(entry, into: &favorites)
+        }
+        guard favorites != loadFavorites() else { return }
+        persist(favorites)
         postChangeNotification()
     }
 

@@ -117,8 +117,12 @@ impl std::fmt::Debug for Comparison {
 }
 
 impl Comparison {
-    // N, having fixed its view and drawn r_N; the request carries `commit`.
-    pub fn new_device(transcript: Transcript, n: SasDevice, r_n: [u8; 32]) -> Result<Self, KeysError> {
+    // N, having fixed its view. It draws r_N here, and the request carries `commit`.
+    pub fn new_device(transcript: Transcript, n: SasDevice) -> Result<Self, KeysError> {
+        Self::new_device_with(transcript, n, crypto::random_array()?)
+    }
+
+    pub(crate) fn new_device_with(transcript: Transcript, n: SasDevice, r_n: [u8; 32]) -> Result<Self, KeysError> {
         let commit = transcript.commitment(&n, &r_n)?;
         Ok(Self {
             role: Role::NewDevice,
@@ -131,8 +135,18 @@ impl Comparison {
         })
     }
 
-    // A, having written its `nonce` step for the request it read.
-    pub fn approver(transcript: Transcript, n: SasDevice, commit: [u8; 32], a: SasDevice, r_a: [u8; 32]) -> Self {
+    // A, for the request it read. It draws r_A here, which its `nonce` step carries (`nonce`).
+    pub fn approver(transcript: Transcript, n: SasDevice, commit: [u8; 32], a: SasDevice) -> Result<Self, KeysError> {
+        Ok(Self::approver_with(transcript, n, commit, a, crypto::random_array()?))
+    }
+
+    pub(crate) fn approver_with(
+        transcript: Transcript,
+        n: SasDevice,
+        commit: [u8; 32],
+        a: SasDevice,
+        r_a: [u8; 32],
+    ) -> Self {
         Self {
             role: Role::Approver,
             state: SessionState::Chosen,
@@ -146,6 +160,14 @@ impl Comparison {
 
     pub fn role(&self) -> Role {
         self.role
+    }
+
+    // A's r_A, for its `nonce` step.
+    pub fn nonce(&self) -> Result<[u8; 32], KeysError> {
+        match (self.role, self.a) {
+            (Role::Approver, Some((_, r_a))) => Ok(r_a),
+            _ => Err(KeysError::Session),
+        }
     }
 
     pub fn state(&self) -> SessionState {
@@ -267,8 +289,8 @@ mod tests {
         let ik = Ed25519Seed::generate().unwrap();
         let n_keys = DeviceKeys::generate().unwrap();
         let a_keys = DeviceKeys::generate().unwrap();
-        let mut n = Comparison::new_device(transcript(&ik), device(&n_keys), [3; 32]).unwrap();
-        let mut a = Comparison::approver(transcript(&ik), device(&n_keys), n.commit(), device(&a_keys), [4; 32]);
+        let mut n = Comparison::new_device_with(transcript(&ik), device(&n_keys), [3; 32]).unwrap();
+        let mut a = Comparison::approver_with(transcript(&ik), device(&n_keys), n.commit(), device(&a_keys), [4; 32]);
         assert_eq!(
             n.reveal().unwrap_err(),
             KeysError::Session,
@@ -287,12 +309,27 @@ mod tests {
     }
 
     #[test]
+    fn sessions_that_draw_their_own_randoms_agree() {
+        let ik = Ed25519Seed::generate().unwrap();
+        let n_keys = DeviceKeys::generate().unwrap();
+        let a_keys = DeviceKeys::generate().unwrap();
+        let mut n = Comparison::new_device(transcript(&ik), device(&n_keys)).unwrap();
+        let other = Comparison::new_device(transcript(&ik), device(&n_keys)).unwrap();
+        assert_ne!(n.commit(), other.commit(), "each request draws its own r_N");
+        assert_eq!(n.nonce().unwrap_err(), KeysError::Session, "only A has a nonce");
+        let mut a = Comparison::approver(transcript(&ik), device(&n_keys), n.commit(), device(&a_keys)).unwrap();
+        n.receive_nonce(device(&a_keys), a.nonce().unwrap()).unwrap();
+        a.receive_reveal(n.reveal().unwrap()).unwrap();
+        assert_eq!(n.words().unwrap(), a.words().unwrap());
+    }
+
+    #[test]
     fn a_reveal_that_does_not_open_the_commitment_ends_the_session() {
         let ik = Ed25519Seed::generate().unwrap();
         let n_keys = DeviceKeys::generate().unwrap();
         let a_keys = DeviceKeys::generate().unwrap();
-        let n = Comparison::new_device(transcript(&ik), device(&n_keys), [3; 32]).unwrap();
-        let mut a = Comparison::approver(transcript(&ik), device(&n_keys), n.commit(), device(&a_keys), [4; 32]);
+        let n = Comparison::new_device_with(transcript(&ik), device(&n_keys), [3; 32]).unwrap();
+        let mut a = Comparison::approver_with(transcript(&ik), device(&n_keys), n.commit(), device(&a_keys), [4; 32]);
         assert_eq!(a.receive_reveal([5; 32]).unwrap_err(), KeysError::Commitment);
         assert_eq!(a.state(), SessionState::Cancelled);
     }
@@ -326,7 +363,7 @@ mod tests {
     fn a_session_after_its_end_refuses_every_step() {
         let ik = Ed25519Seed::generate().unwrap();
         let n_keys = DeviceKeys::generate().unwrap();
-        let mut n = Comparison::new_device(transcript(&ik), device(&n_keys), [3; 32]).unwrap();
+        let mut n = Comparison::new_device_with(transcript(&ik), device(&n_keys), [3; 32]).unwrap();
         assert_eq!(n.check_live(599, 600), Ok(()));
         assert_eq!(n.check_live(600, 600), Err(KeysError::Session));
         assert_eq!(

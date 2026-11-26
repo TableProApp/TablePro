@@ -494,6 +494,64 @@ class DetectChangedPathsTests(unittest.TestCase):
                 with self.subTest(path=path, suite=suite):
                     self.assertEqual(self.verdict_after(suite, path), "false")
 
+    def test_every_app_runs_on_the_sync_crates_the_core_builds(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        for path in [
+            "core/crates/sync/src/api/transport.rs",
+            "core/crates/sync/Cargo.toml",
+            "core/crates/keys/src/lib.rs",
+            "core/crates/records/src/lib.rs",
+            "core/crates/cloud-api/src/lib.rs",
+        ]:
+            for suite in ["macos", "ios", "release", "shipped", "linux", "core", "windows"]:
+                with self.subTest(path=path, suite=suite):
+                    self.assertEqual(self.verdict_after(suite, path), "true")
+
+    def test_the_apple_apps_skip_the_sync_fakes_and_the_key_vectors(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        for path in [
+            "core/crates/sync/testing/src/lib.rs",
+            "core/crates/sync/testing/Cargo.toml",
+            "core/crates/keys/vectors/encoding.json",
+            "core/crates/keys/fuzz/fuzz_targets/bodies.rs",
+            "core/crates/keys/scripts/update-vectors.sh",
+            "core/crates/records/fixtures/merge.json",
+        ]:
+            for suite in ["macos", "ios", "release", "shipped"]:
+                with self.subTest(path=path, suite=suite):
+                    self.assertEqual(self.verdict_after(suite, path), "false")
+            for suite in ["linux", "core", "windows"]:
+                with self.subTest(path=path, suite=suite):
+                    self.assertEqual(self.verdict_after(suite, path), "true")
+
+    def test_the_package_builds_skip_the_keys_fuzz_project(self):
+        for path in ["core/crates/keys/fuzz/Cargo.toml", "core/crates/keys/fuzz/Cargo.lock"]:
+            for suite in ["linux-deps", "packages"]:
+                with self.subTest(path=path, suite=suite):
+                    self.assertEqual(self.verdict_after(suite, path), "false")
+        for suite in ["linux-deps", "packages"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, "core/crates/sync/Cargo.toml"), "true")
+
+    def test_the_sync_swift_folders_run_their_apps(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        transport = "apple/Packages/TableProCore/Sources/TableProSyncTransport/CloudKitTransport.swift"
+        for suite in ["macos", "ios", "release"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, transport), "true")
+        self.assertEqual(self.verdict_after("macos", "apple/TablePro/Views/Sync/Keys/AccountKeysView.swift"), "true")
+        self.assertEqual(self.verdict_after("ios", "apple/TableProMobile/TableProMobile/Sync/Keys/KeysView.swift"), "true")
+        self.assertEqual(self.verdict_after("core", "apple/Packages/TableProFFI/Tests/SyncTransportTests.swift"), "true")
+
     def test_the_mac_app_runs_on_the_ai_model_catalog_it_bundles(self):
         catalog = "core/crates/ai/ai-models.json"
         for suite in ["macos", "release", "shipped", "linux", "core", "windows"]:

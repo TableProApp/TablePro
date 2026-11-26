@@ -5,12 +5,12 @@ use uuid::Uuid;
 use crate::ConnectionGroup;
 use crate::error::StorageError;
 
-/// The walks stop at a group they met before, so a list built by hand
-/// with a cycle cannot hang one; the store never hands out such a list.
+// A missing parent or a cycle reads as the top level, as macOS reads one; a pull can bring a group before its parent.
 #[derive(Debug, Clone)]
 pub struct GroupTree<'a> {
     groups: &'a [ConnectionGroup],
     at: HashMap<Uuid, usize>,
+    parents: HashMap<Uuid, Option<Uuid>>,
     children: HashMap<Option<Uuid>, Vec<usize>>,
 }
 
@@ -22,16 +22,39 @@ impl<'a> GroupTree<'a> {
         for (index, group) in groups.iter().enumerate() {
             at.entry(group.id).or_insert(index);
         }
+        let mut parents: HashMap<Uuid, Option<Uuid>> = at
+            .iter()
+            .map(|(id, index)| {
+                let parent = groups[*index]
+                    .parent_id
+                    .filter(|parent| parent != id && at.contains_key(parent));
+                (*id, parent)
+            })
+            .collect();
+        for id in cyclic(&parents) {
+            parents.insert(id, None);
+        }
         let mut children: HashMap<Option<Uuid>, Vec<usize>> = HashMap::new();
-        for (index, group) in groups.iter().enumerate() {
-            if at.get(&group.id) == Some(&index) {
-                children.entry(group.parent_id).or_default().push(index);
-            }
+        for (id, index) in &at {
+            children
+                .entry(parents.get(id).copied().flatten())
+                .or_default()
+                .push(*index);
         }
         for siblings in children.values_mut() {
             siblings.sort_by_key(|index| (groups[*index].order, *index));
         }
-        Self { groups, at, children }
+        Self {
+            groups,
+            at,
+            parents,
+            children,
+        }
+    }
+
+    // The parent the tree files the group under.
+    pub fn parent(&self, id: Uuid) -> Option<Uuid> {
+        self.parents.get(&id).copied().flatten()
     }
 
     pub fn get(&self, id: Uuid) -> Option<&'a ConnectionGroup> {
@@ -59,7 +82,7 @@ impl<'a> GroupTree<'a> {
                 break;
             }
             path.push(group);
-            current = group.parent_id;
+            current = self.parent(group.id);
         }
         path.reverse();
         path
@@ -69,7 +92,7 @@ impl<'a> GroupTree<'a> {
         let path = self.path(id);
         (!path.is_empty()).then(|| {
             path.iter()
-                .map(|group| group.name.as_str())
+                .map(|group| group.name.shown())
                 .collect::<Vec<_>>()
                 .join(Self::PATH_SEPARATOR)
         })
@@ -155,6 +178,30 @@ impl<'a> GroupTree<'a> {
         }
         found
     }
+}
+
+fn cyclic(parents: &HashMap<Uuid, Option<Uuid>>) -> HashSet<Uuid> {
+    let mut cyclic = HashSet::new();
+    let mut settled = HashSet::new();
+    for start in parents.keys() {
+        let mut path: Vec<Uuid> = Vec::new();
+        let mut on_path: HashMap<Uuid, usize> = HashMap::new();
+        let mut current = Some(*start);
+        while let Some(id) = current {
+            if settled.contains(&id) || cyclic.contains(&id) {
+                break;
+            }
+            if let Some(&from) = on_path.get(&id) {
+                cyclic.extend(path[from..].iter().copied());
+                break;
+            }
+            on_path.insert(id, path.len());
+            path.push(id);
+            current = parents.get(&id).copied().flatten();
+        }
+        settled.extend(path.into_iter().filter(|id| !cyclic.contains(id)));
+    }
+    cyclic
 }
 
 #[cfg(test)]
@@ -265,17 +312,34 @@ mod tests {
     }
 
     #[test]
-    fn a_cycle_built_by_hand_does_not_hang_a_walk() {
+    fn a_cycle_reads_at_the_top_and_keeps_its_stored_parents() {
         let mut first = group("First", None, 0);
-        let second = group("Second", Some(&first), 0);
+        let second = group("Second", Some(&first), 1);
         first.parent_id = Some(second.id);
-        let groups = vec![first.clone(), second.clone()];
+        let child = group("Child", Some(&second), 0);
+        let groups = vec![first.clone(), second.clone(), child.clone()];
 
         let tree = GroupTree::new(&groups);
 
-        assert_eq!(names(&tree.path(first.id)), ["Second", "First"]);
-        assert_eq!(tree.descendants(first.id), [second.id]);
-        assert_eq!(tree.height(first.id), 1);
-        assert!(tree.walk().is_empty(), "a cycle has no way in from the top");
+        assert_eq!(names(&tree.children(None)), ["First", "Second"]);
+        assert_eq!(names(&tree.path(child.id)), ["Second", "Child"]);
+        assert_eq!(tree.parent(first.id), None);
+        assert_eq!(tree.get(first.id).and_then(|group| group.parent_id), Some(second.id));
+        assert_eq!(names(&tree.walk()), ["First", "Second", "Child"]);
+    }
+
+    #[test]
+    fn a_parent_the_list_lacks_reads_as_the_top_level() {
+        let missing = group("Missing", None, 0);
+        let orphan = group("Orphan", Some(&missing), 0);
+        let mut itself = group("Itself", None, 1);
+        itself.parent_id = Some(itself.id);
+        let groups = vec![orphan.clone(), itself.clone()];
+
+        let tree = GroupTree::new(&groups);
+
+        assert_eq!(names(&tree.walk()), ["Orphan", "Itself"]);
+        assert_eq!(tree.depth(Some(orphan.id)), 1);
+        assert_eq!(tree.get(orphan.id).and_then(|group| group.parent_id), Some(missing.id));
     }
 }
