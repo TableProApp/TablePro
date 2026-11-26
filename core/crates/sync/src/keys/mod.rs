@@ -9,10 +9,13 @@ mod account_flows;
 mod account_genesis;
 mod account_replace;
 mod account_sign_out;
+mod approval;
 pub mod personal;
 mod personal_envelopes;
 pub mod pins;
 mod pins_alerts;
+mod reset;
+mod rotation;
 
 use std::any::Any;
 use std::collections::HashMap;
