@@ -40,10 +40,10 @@ pub use connections::{
     CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionList,
     ConnectionListSnapshot, ConnectionListState, ConnectionOrigin, ConnectionStore, CredentialPassword,
     CredentialProfile, CredentialReference, DeviceOnly, ImportChange, ImportEntry, ImportPreview, ImportReport,
-    ImportedConnection, KnownOrigin, LibraryChange, LibraryRead, LibraryWrite, LocalPasswordSource, RemoteFileAccess,
-    RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig, SocksProxy, SshJumpAuth, SshJumpHost, SshProfile,
-    SshRemoteFile, SshRoute, SshRouteHop, SshRouteTarget, SshTotp, SshTotpAlgorithm, SshTotpMode, SyncedLibrary,
-    TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
+    ImportedConnection, KnownOrigin, LibraryChange, LibraryRead, LibraryWrite, LocalPasswordSource, Rebuilt,
+    RemoteFileAccess, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig, SocksProxy, SshJumpAuth, SshJumpHost,
+    SshProfile, SshRemoteFile, SshRoute, SshRouteHop, SshRouteTarget, SshTotp, SshTotpAlgorithm, SshTotpMode,
+    SyncedLibrary, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
 };
 pub use credentials::{
     CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretItemLabeler,

@@ -773,7 +773,8 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         ptr: UnsafePointer<BYTE>,
         srcToken: Int32,
         srcLen: DBINT,
-        type: MSSQLColumnType
+        type: MSSQLColumnType,
+        buffer: UnsafeMutableBufferPointer<BYTE>
     ) -> String? {
         if type.isNarrowString {
             return String(bytes: UnsafeBufferPointer(start: ptr, count: Int(srcLen)), encoding: .utf8)
@@ -783,13 +784,12 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             return String(bytes: UnsafeBufferPointer(start: ptr, count: Int(srcLen)), encoding: .utf8)
                 ?? String(data: Data(bytes: ptr, count: Int(srcLen)), encoding: .utf16LittleEndian)
         }
-        let bufSize: DBINT = 256
-        var buf = [BYTE](repeating: 0, count: Int(bufSize))
-        let converted = buf.withUnsafeMutableBufferPointer { bufPtr in
-            dbconvert(proc, srcToken, ptr, srcLen, Int32(SYBCHAR), bufPtr.baseAddress, bufSize)
+        if let native = MSSQLNativeCellText.text(UnsafeRawBufferPointer(start: ptr, count: Int(srcLen)), type: type) {
+            return native
         }
+        let converted = dbconvert(proc, srcToken, ptr, srcLen, Int32(SYBCHAR), buffer.baseAddress, DBINT(buffer.count))
         guard converted > 0,
-              let raw = String(bytes: buf.prefix(Int(converted)), encoding: .utf8)
+              let raw = String(bytes: UnsafeBufferPointer(rebasing: buffer[..<Int(converted)]), encoding: .utf8)
         else { return nil }
         if type == .dateTimeOffset {
             var parts = DBDATEREC2()
@@ -904,6 +904,9 @@ nonisolated private enum FreeTDSRowSink {
 /// its error, and a conversion error cuts a scan short with `dbnextrow` answering `NO_MORE_ROWS`, so both would
 /// otherwise read as a successful result with too few rows.
 nonisolated private struct FreeTDSBatchReader {
+    // Wide enough for every type `dbconvert` still spells: a decimal of 38 digits, money, a float and a datetimeoffset.
+    private static let conversionBufferSize = 256
+
     private enum ResultSetEnd {
         case readToEnd
         case stoppedEarly
@@ -1005,7 +1008,11 @@ nonisolated private struct FreeTDSBatchReader {
     }
 
     private mutating func readResultSet(columnCount: Int, errorsBefore: Int) throws -> ResultSetEnd {
-        let descriptors = (1...columnCount).map(describeColumn)
+        let described = (1...columnCount).map(describeColumn)
+        let descriptors = described.map(\.descriptor)
+        let tokens = described.map(\.token)
+        let buffer = UnsafeMutableBufferPointer<BYTE>.allocate(capacity: Self.conversionBufferSize)
+        defer { buffer.deallocate() }
         if case .stream(let continuation) = sink {
             _ = PluginRowStream.deliverBlocking(.header(columns: descriptors), to: continuation, stops: readerStopped)
             headerStreamed = true
@@ -1040,7 +1047,7 @@ nonisolated private struct FreeTDSBatchReader {
                 try skipRows()
                 break
             }
-            rows.append(readRow(descriptors))
+            rows.append(readRow(descriptors, tokens: tokens, buffer: buffer))
             rowCount += 1
             rowsKept += 1
             streamIfFull(&rows)
@@ -1096,37 +1103,55 @@ nonisolated private struct FreeTDSBatchReader {
         rowsAffected += count
     }
 
-    private func describeColumn(_ index: Int) -> MSSQLColumnDescriptor {
+    private func describeColumn(_ index: Int) -> (descriptor: MSSQLColumnDescriptor, token: Int32) {
         let column = Int32(index)
         let name = dbcolname(proc, column).map { String(cString: $0) } ?? "col\(index)"
-        return MSSQLColumnDescriptor(name: name, type: FreeTDSConnection.columnType(fromFreeTDSToken: dbcoltype(proc, column)))
+        let token = dbcoltype(proc, column)
+        return (MSSQLColumnDescriptor(name: name, type: FreeTDSConnection.columnType(fromFreeTDSToken: token)), token)
     }
 
-    private func readRow(_ descriptors: [MSSQLColumnDescriptor]) -> [MSSQLRawCell] {
-        descriptors.indices.map { offset in
-            let column = Int32(offset + 1)
-            let pointer = dbdata(proc, column)
-            let length = dbdatlen(proc, column)
-            let type = descriptors[offset].type
-            let reading = MSSQLCellReading(type: type, hasData: pointer != nil, length: Int(length))
-            guard let pointer else { return .null }
-            switch reading {
-            case .null, .unreadable:
-                return .null
-            case .emptyText:
-                return .string("")
-            case .bytes:
-                return .bytes(Data(bytes: pointer, count: Int(length)))
-            case .text:
-                guard let text = FreeTDSConnection.columnValueAsString(
-                    proc: proc,
-                    ptr: pointer,
-                    srcToken: dbcoltype(proc, column),
-                    srcLen: length,
-                    type: type
-                ) else { return .null }
-                return .string(text)
-            }
+    // The column types are the result set's, read once in `readResultSet`, and one conversion buffer serves every cell.
+    private func readRow(
+        _ descriptors: [MSSQLColumnDescriptor],
+        tokens: [Int32],
+        buffer: UnsafeMutableBufferPointer<BYTE>
+    ) -> [MSSQLRawCell] {
+        var row: [MSSQLRawCell] = []
+        row.reserveCapacity(descriptors.count)
+        for offset in descriptors.indices {
+            row.append(readCell(offset, type: descriptors[offset].type, token: tokens[offset], buffer: buffer))
+        }
+        return row
+    }
+
+    private func readCell(
+        _ offset: Int,
+        type: MSSQLColumnType,
+        token: Int32,
+        buffer: UnsafeMutableBufferPointer<BYTE>
+    ) -> MSSQLRawCell {
+        let column = Int32(offset + 1)
+        let pointer = dbdata(proc, column)
+        let length = dbdatlen(proc, column)
+        let reading = MSSQLCellReading(type: type, hasData: pointer != nil, length: Int(length))
+        guard let pointer else { return .null }
+        switch reading {
+        case .null, .unreadable:
+            return .null
+        case .emptyText:
+            return .string("")
+        case .bytes:
+            return .bytes(Data(bytes: pointer, count: Int(length)))
+        case .text:
+            guard let text = FreeTDSConnection.columnValueAsString(
+                proc: proc,
+                ptr: pointer,
+                srcToken: token,
+                srcLen: length,
+                type: type,
+                buffer: buffer
+            ) else { return .null }
+            return .string(text)
         }
     }
 

@@ -1,11 +1,12 @@
 use std::collections::HashMap;
+use std::time::SystemTime;
 
 use chrono::DateTime;
 use tablepro_core::{AuthMode, ExternalAccess, NetworkOptions};
 use tablepro_records::cloudkit::library::{icon_for_symbol, symbol_for_icon};
 use tablepro_storage::{
     ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionTag, ConnectionTagName, DeviceOnly,
-    LibraryWrite, SavedConnection,
+    LibraryWrite, SavedConnection, StorageError,
 };
 use uuid::Uuid;
 
@@ -33,7 +34,7 @@ pub struct LibraryContents {
     pub favorites: Vec<String>,
     // Connections this build cannot read. The file keeps them, and a library write leaves them unless it names one.
     pub unreadable: Vec<String>,
-    // SHA-256 in hex of the exact bytes this was decoded from, for the host to tag; None while there is no file.
+    // SHA-256 in hex of the exact bytes this came from, to check the host's tag against; a read vouches for nothing.
     pub digest: Option<String>,
 }
 
@@ -43,12 +44,16 @@ pub struct LibraryWriteRecord {
     pub groups: Vec<GroupRecord>,
     pub tags: Vec<TagRecord>,
     pub favorites: Vec<String>,
+    // Ids of connections this build cannot read that the write takes out, with their secrets.
+    pub removing: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct LibraryWritten {
-    // SHA-256 in hex of the exact bytes the file holds after the write; None when there is still no file.
+    // SHA-256 in hex of the exact bytes the file holds after the write, the ones the host tags; None with no file.
     pub digest: Option<String>,
+    // Where a rebuild put a file this build could not read.
+    pub set_aside: Option<String>,
 }
 
 #[uniffi::export]
@@ -69,16 +74,36 @@ impl ConnectionLibrary {
         .await
     }
 
-    // Values as given, unlike a save; a newer build's keys stay; secrets are the app's to keep or delete.
-    pub async fn replace_library(&self, library: LibraryWriteRecord) -> Result<LibraryWritten, CoreError> {
+    // Values as given, unlike a save; `over` is the digest of the file the host vouched for, None for no file.
+    pub async fn replace_library(
+        &self,
+        library: LibraryWriteRecord,
+        over: Option<String>,
+    ) -> Result<LibraryWritten, CoreError> {
         let _held = self.hold_writes().await;
+        let removing = parse_ids(&library.removing)?;
+        // Before any secret goes, so a connection the write also keeps never loses its own.
+        if let Some(id) = removing.iter().find(|id| {
+            library
+                .connections
+                .iter()
+                .any(|record| parse_id(&record.connection.id).ok() == Some(**id))
+        }) {
+            return Err(StorageError::RepeatedId { id: *id }.into());
+        }
+        // Their secrets go first, as a delete's do; a write refused after leaves entries already on their way out.
+        if !removing.is_empty() {
+            self.delete_secrets(removing).await?;
+        }
         self.blocking(move |store| {
-            let list = store.list_blocking()?;
-            let stored: HashMap<Uuid, &SavedConnection> =
-                list.connections.iter().map(|saved| (saved.id, saved)).collect();
-            let write = library_write(library, |id| stored.get(&id).copied())?;
+            let digest = store.replace_library_blocking(over.as_deref(), |list| {
+                let stored: HashMap<Uuid, &SavedConnection> =
+                    list.connections.iter().map(|saved| (saved.id, saved)).collect();
+                library_write(library, |id| stored.get(&id).copied())
+            })?;
             Ok(LibraryWritten {
-                digest: store.replace_library_blocking(write)?,
+                digest,
+                set_aside: None,
             })
         })
         .await
@@ -89,8 +114,10 @@ impl ConnectionLibrary {
         let _held = self.hold_writes().await;
         self.blocking(move |store| {
             let write = library_write(library, |_| None)?;
+            let rebuilt = store.rebuild_library_blocking(write, SystemTime::now())?;
             Ok(LibraryWritten {
-                digest: store.rebuild_library_blocking(write)?,
+                digest: rebuilt.digest,
+                set_aside: rebuilt.set_aside.map(|path| path.display().to_string()),
             })
         })
         .await
@@ -117,6 +144,7 @@ fn library_write<'a>(
             .collect::<Result<_, CoreError>>()?,
         tags: library.tags.iter().map(stored_tag).collect::<Result<_, CoreError>>()?,
         favorites: parse_ids(&library.favorites)?,
+        removing: parse_ids(&library.removing)?,
     })
 }
 
@@ -193,7 +221,13 @@ fn stored_connection(
             .ssh
             .map(|settings| stored_ssh(&settings, ssh_unknown))
             .transpose()?,
-        last_opened_at: connection.last_opened_ms.and_then(DateTime::from_timestamp_millis),
+        last_opened_at: connection
+            .last_opened_ms
+            .map(|ms| {
+                DateTime::from_timestamp_millis(ms)
+                    .ok_or_else(|| CoreError::failed("library.invalid_time", format!("{ms} is not a time")))
+            })
+            .transpose()?,
         color: connection.color.as_deref().map(tag_color).transpose()?,
         group_id: optional_id(connection.group_id.as_deref())?,
         order: connection.order,

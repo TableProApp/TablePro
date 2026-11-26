@@ -32,8 +32,6 @@ struct ImportDialog: View {
     @State private var fileURL: URL?
     @State private var filePreview: String = ""
     @State private var fileSize: Int64 = 0
-    @State private var statementCount: Int = 0
-    @State private var isCountingStatements = false
     @State private var selectedEncoding: ImportEncoding
     @State private var detectedEncoding: ImportEncoding?
     @State private var selectedFormatId: String = "sql"
@@ -44,9 +42,7 @@ struct ImportDialog: View {
     @State private var hostWindow: NSWindow?
 
     @State private var hasPreviewError = false
-    @State private var tempPreviewURL: URL?
     @State private var loadFileTask: Task<Void, Never>?
-    @State private var countStatementsTask: Task<Void, Never>?
     @State private var importTask: Task<Void, Never>?
 
     // MARK: - Import Service
@@ -117,7 +113,7 @@ struct ImportDialog: View {
         }
         .task {
             if let initialURL = initialFileURL, fileURL == nil {
-                // Tracked like a picked file, so a pick made during a long decompression cancels this load.
+                // Tracked like a picked file, so a pick made during a slow preview read cancels this load.
                 let load = Task { await loadFile(initialURL) }
                 loadFileTask = load
                 await load.value
@@ -133,9 +129,7 @@ struct ImportDialog: View {
         }
         .onDisappear {
             loadFileTask?.cancel()
-            countStatementsTask?.cancel()
             importTask?.cancel()
-            cleanupTempFiles()
             if !importSucceeded {
                 restoreSettingsSnapshot()
             }
@@ -206,28 +200,12 @@ struct ImportDialog: View {
                     .font(.callout)
                 }
 
-                HStack(spacing: 16) {
-                    Label(
-                        ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file),
-                        systemImage: "chart.bar.doc.horizontal"
-                    )
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                    if isCountingStatements {
-                        HStack(spacing: 4) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Counting…")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if statementCount > 0 {
-                        Label("\(statementCount) statements", systemImage: "list.bullet")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Label(
+                    ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file),
+                    systemImage: "chart.bar.doc.horizontal"
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -376,12 +354,6 @@ struct ImportDialog: View {
 
     @MainActor
     private func loadFile(_ url: URL) async {
-        // The previous file's count must not land under this one, even when this one fails before counting.
-        countStatementsTask?.cancel()
-        countStatementsTask = nil
-        statementCount = 0
-        isCountingStatements = false
-        cleanupTempFiles()
         hasPreviewError = false
 
         var isDirectory: ObjCBool = false
@@ -403,49 +375,24 @@ struct ImportDialog: View {
             fileSize = 0
         }
 
-        let urlToRead: URL
+        // A `.gz` is previewed from its first inflated bytes; the import inflates it as it reads, so no expanded copy is
+        // written and no up-front pass lexes the whole file.
         do {
-            urlToRead = try await FileDecompressor.decompressIfNeeded(url)
-            // A newer pick owns the dialog now; its import must not read this file's copy.
-            guard !Task.isCancelled else {
-                if urlToRead != url {
-                    try? FileManager.default.removeItem(at: urlToRead)
-                }
-                return
-            }
-            if urlToRead != url {
-                tempPreviewURL = urlToRead
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            filePreview = String(format: String(localized: "Failed to decompress file: %@"), error.localizedDescription)
-            hasPreviewError = true
-            return
-        }
-
-        do {
-            let handle = try FileHandle(forReadingFrom: urlToRead)
-            defer {
-                do {
-                    try handle.close()
-                } catch {
-                    Self.logger.warning("Failed to close file handle for preview: \(error.publicLogShape, privacy: .public)")
-                }
-            }
-
             let maxPreviewSize = 5 * 1_024 * 1_024
-            let previewData = try handle.read(upToCount: maxPreviewSize) ?? Data()
+            let leading = try await Self.leadingBytes(of: url, limit: maxPreviewSize)
+            // A newer pick owns the dialog now.
+            guard !Task.isCancelled else { return }
+            let previewData = leading.data
 
             if let preview = SQLDumpEncodingChoice.decodedPreview(
-                previewData, as: selectedEncoding.encoding, isWholeFile: previewData.count < maxPreviewSize
+                previewData, as: selectedEncoding.encoding, isWholeFile: leading.isWholeFile
             ) {
                 filePreview = preview
                 hasPreviewError = false
             } else if let detected = SQLDumpEncodingChoice.encoding(
                 replacing: selectedEncoding.encoding,
                 forPreview: previewData,
-                isWholeFile: previewData.count < maxPreviewSize,
+                isWholeFile: leading.isWholeFile,
                 family: TransactionEngineFamily.of(connection.type).dumpFamily,
                 grammar: sessionGrammar
             ).flatMap({ found in ImportEncoding.allCases.first { $0.encoding == found } }) {
@@ -461,11 +408,12 @@ struct ImportDialog: View {
             filePreview = String(format: String(localized: "Failed to load preview: %@"), error.localizedDescription)
             hasPreviewError = true
         }
+    }
 
-        countStatementsTask?.cancel()
-        countStatementsTask = Task {
-            await countStatements(url: urlToRead)
-        }
+    // Off the main actor: inflating the first 5 MB of a `.gz` takes a moment.
+    @concurrent
+    nonisolated private static func leadingBytes(of url: URL, limit: Int) async throws -> (data: Data, isWholeFile: Bool) {
+        try SQLFileByteReader.leadingBytes(of: url, limit: limit)
     }
 
     @MainActor
@@ -473,38 +421,11 @@ struct ImportDialog: View {
         SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id)
     }
 
-    @MainActor
-    private func countStatements(url: URL) async {
-        isCountingStatements = true
-        statementCount = 0
-
-        do {
-            let count = try await ImportStatementCount.count(
-                url,
-                encoding: selectedEncoding.encoding,
-                grammar: sessionGrammar
-            )
-            // A new file or encoding cancelled this count and started its own, which owns the result.
-            guard !Task.isCancelled else { return }
-            statementCount = count
-        } catch {
-            guard !Task.isCancelled else { return }
-            Self.logger.warning("Failed to count statements: \(error.publicLogShape, privacy: .public)")
-            statementCount = 0
-        }
-
-        isCountingStatements = false
-    }
-
     private func performImport() {
         guard let url = fileURL else { return }
 
         let service = ImportService(connection: connection)
         importService = service
-
-        let decompressedURL = tempPreviewURL
-        let ownsDecompressedFile = decompressedURL != nil
-        tempPreviewURL = nil
 
         phase = .running
 
@@ -517,10 +438,7 @@ struct ImportDialog: View {
                     from: url,
                     formatId: selectedFormatId,
                     encoding: selectedEncoding.encoding,
-                    scope: scope,
-                    decompressedURL: decompressedURL,
-                    ownsDecompressedFile: ownsDecompressedFile,
-                    knownStatementCount: statementCount > 0 ? statementCount : nil
+                    scope: scope
                 )
 
                 await MainActor.run {
@@ -546,38 +464,6 @@ struct ImportDialog: View {
                 }
             }
             CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
-        }
-    }
-
-    private func cleanupTempFiles() {
-        if let tempURL = tempPreviewURL {
-            do {
-                try FileManager.default.removeItem(at: tempURL)
-            } catch {
-                Self.logger.error(
-                    "cleanupTempFiles: Failed to remove tempPreviewURL at \(tempURL.path(percentEncoded: false), privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
-                )
-            }
-            tempPreviewURL = nil
-        }
-    }
-}
-
-enum ImportStatementCount {
-    // Detached keeps the scan off the main actor but ignores the caller's cancel, so the cancel is passed on.
-    static func count(
-        _ url: URL,
-        encoding: String.Encoding,
-        grammar: SQLLexicalGrammar,
-        parser: SQLFileParser = SQLFileParser()
-    ) async throws -> Int {
-        let counting = Task.detached {
-            try await parser.countStatements(url: url, encoding: encoding, grammar: grammar)
-        }
-        return try await withTaskCancellationHandler {
-            try await counting.value
-        } onCancel: {
-            counting.cancel()
         }
     }
 }
