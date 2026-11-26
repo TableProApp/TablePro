@@ -35,6 +35,10 @@ fn held(kind: Kind) -> Option<Held> {
             Target::Id | Target::DeviceOnly => {}
         }
     }
+    // An object the model names with members of its own, as `ssh_config` with its fields, holds only those: a member
+    // a newer build adds inside it rides on the base.
+    let all = targets.clone();
+    targets.retain(|target| !all.iter().any(|other| other.starts_with(&format!("{target}."))));
     Some(Held { targets, unknown })
 }
 
