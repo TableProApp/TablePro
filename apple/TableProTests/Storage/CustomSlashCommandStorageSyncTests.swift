@@ -6,16 +6,14 @@ import TableProSyncTransport
 @MainActor
 struct CustomSlashCommandStorageSyncTests {
     private let commands: EphemeralDefaults
-    private let metadata: EphemeralDefaults
 
     init() throws {
         commands = try EphemeralDefaults()
-        metadata = try EphemeralDefaults()
     }
 
-    private func makeStorage() -> (CustomSlashCommandStorage, SyncChangeTracker) {
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: metadata.defaults))
-        let storage = CustomSlashCommandStorage(defaults: commands.defaults, syncTracker: tracker)
+    private func makeStorage() -> (CustomSlashCommandStorage, SyncJournalRecorder) {
+        let tracker = SyncJournalRecorder()
+        let storage = CustomSlashCommandStorage(defaults: commands.defaults, syncJournal: tracker.journal)
         return (storage, tracker)
     }
 
@@ -23,7 +21,7 @@ struct CustomSlashCommandStorageSyncTests {
     func addMarksDirty() throws {
         let (storage, tracker) = makeStorage()
         try storage.add(CustomSlashCommand(name: "explain", promptTemplate: "Explain {{query}}"))
-        #expect(tracker.dirtyRecords(for: .settings).contains(CustomSlashCommandStorage.syncCategory))
+        #expect(tracker.dirtyIds(for: .settings).contains(CustomSlashCommandStorage.syncCategory))
     }
 
     @Test("Deleting a command marks it dirty for sync")
@@ -31,9 +29,9 @@ struct CustomSlashCommandStorageSyncTests {
         let (storage, tracker) = makeStorage()
         let command = CustomSlashCommand(name: "explain", promptTemplate: "Explain {{query}}")
         try storage.add(command)
-        tracker.clearAllDirty(.settings)
+        tracker.clearDirty(type: .settings)
         storage.delete(id: command.id)
-        #expect(tracker.dirtyRecords(for: .settings).contains(CustomSlashCommandStorage.syncCategory))
+        #expect(tracker.dirtyIds(for: .settings).contains(CustomSlashCommandStorage.syncCategory))
     }
 
     @Test("Applying remote commands replaces the list without marking dirty")
@@ -41,6 +39,6 @@ struct CustomSlashCommandStorageSyncTests {
         let (storage, tracker) = makeStorage()
         storage.applyRemote([CustomSlashCommand(name: "remote", promptTemplate: "{{query}}")])
         #expect(storage.commands.map(\.name) == ["remote"])
-        #expect(tracker.dirtyRecords(for: .settings).contains(CustomSlashCommandStorage.syncCategory) == false)
+        #expect(tracker.dirtyIds(for: .settings).contains(CustomSlashCommandStorage.syncCategory) == false)
     }
 }

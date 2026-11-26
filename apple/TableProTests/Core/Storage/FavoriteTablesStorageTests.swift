@@ -8,19 +8,16 @@ struct FavoriteTablesStorageTests {
     private static let storageKey = "com.TablePro.favoriteTables"
     private let pool = EphemeralDefaultsPool()
 
-    private func makeFixture() throws -> (storage: FavoriteTablesStorage, defaults: UserDefaults, metadata: SyncMetadataStorage) {
+    private func makeFixture() throws -> (storage: FavoriteTablesStorage, defaults: UserDefaults, tracker: SyncJournalRecorder) {
         let favoritesDefaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
-
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
-        let storage = FavoriteTablesStorage(userDefaults: favoritesDefaults, syncTracker: tracker)
-        return (storage, favoritesDefaults, metadata)
+        let tracker = SyncJournalRecorder()
+        let storage = FavoriteTablesStorage(userDefaults: favoritesDefaults, syncJournal: tracker.journal)
+        return (storage, favoritesDefaults, tracker)
     }
 
-    private func makeStorage() throws -> (FavoriteTablesStorage, SyncMetadataStorage) {
+    private func makeStorage() throws -> (FavoriteTablesStorage, SyncJournalRecorder) {
         let fixture = try makeFixture()
-        return (fixture.storage, fixture.metadata)
+        return (fixture.storage, fixture.tracker)
     }
 
     private func countingChanges(of storage: FavoriteTablesStorage, during body: () -> Void) -> Int {
@@ -105,7 +102,7 @@ struct FavoriteTablesStorageTests {
 
     @Test("Dropping a container tombstones each removed favorite so the deletion syncs")
     func removeFavoritesTombstonesEachEntry() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         storage.addFavorite(name: "orders", schema: "public", database: "shop", connectionId: connId)
         let entry = FavoriteTablesStorage.FavoriteEntry(
@@ -115,26 +112,26 @@ struct FavoriteTablesStorageTests {
         storage.removeFavorites(inDatabase: "shop", schema: nil, connectionId: connId)
 
         #expect(
-            metadata.tombstones(for: .tableFavorite)
+            tracker.tombstones(for: .tableFavorite)
                 .contains { $0.id == FavoriteTablesStorage.syncId(for: entry) }
         )
     }
 
     @Test("Add favorite marks stable sync ID dirty")
     func addMarksDirty() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         storage.addFavorite(name: "users", schema: nil, database: nil, connectionId: connId)
 
         let entry = FavoriteTablesStorage.FavoriteEntry(connectionId: connId, database: nil, schema: nil, name: "users")
         let id = FavoriteTablesStorage.syncId(for: entry)
         #expect(storage.loadFavorites() == [entry])
-        #expect(metadata.dirtyIds(for: .tableFavorite) == [id])
+        #expect(tracker.dirtyIds(for: .tableFavorite) == [id])
     }
 
     @Test("Remove favorite creates sync tombstone")
     func removeCreatesTombstone() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         storage.addFavorite(name: "users", schema: nil, database: nil, connectionId: connId)
         storage.removeFavorite(name: "users", schema: nil, database: nil, connectionId: connId)
@@ -142,24 +139,8 @@ struct FavoriteTablesStorageTests {
         let entry = FavoriteTablesStorage.FavoriteEntry(connectionId: connId, database: nil, schema: nil, name: "users")
         let id = FavoriteTablesStorage.syncId(for: entry)
         #expect(storage.loadFavorites().isEmpty)
-        #expect(metadata.dirtyIds(for: .tableFavorite).isEmpty)
-        #expect(metadata.tombstones(for: .tableFavorite).contains { $0.id == id })
-    }
-
-    @Test("Remote apply does not track local sync changes")
-    func remoteApplyDoesNotTrackChanges() throws {
-        let (storage, metadata) = try makeStorage()
-        let connId = UUID()
-        let entry = FavoriteTablesStorage.FavoriteEntry(connectionId: connId, database: nil, schema: nil, name: "orders")
-        let id = FavoriteTablesStorage.syncId(for: entry)
-        storage.applyRemote(saved: [entry], deletedIds: [])
-        #expect(storage.loadFavorites() == [entry])
-
-        storage.applyRemote(saved: [], deletedIds: [id])
-
-        #expect(storage.loadFavorites().isEmpty)
-        #expect(metadata.dirtyIds(for: .tableFavorite).isEmpty)
-        #expect(metadata.tombstones(for: .tableFavorite).isEmpty)
+        #expect(tracker.dirtyIds(for: .tableFavorite).isEmpty)
+        #expect(tracker.tombstones(for: .tableFavorite).contains { $0.id == id })
     }
 
     @Test("Favorites scoped per connection: same name in different connections are distinct")
@@ -205,24 +186,24 @@ struct FavoriteTablesStorageTests {
 
     @Test("Toggle on then off leaves no dirty entries")
     func toggleOnThenOffNoDirty() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         storage.toggle(name: "orders", schema: nil, database: nil, connectionId: connId)
         storage.toggle(name: "orders", schema: nil, database: nil, connectionId: connId)
 
         #expect(storage.favorites(for: connId).isEmpty)
-        #expect(metadata.dirtyIds(for: .tableFavorite).isEmpty)
+        #expect(tracker.dirtyIds(for: .tableFavorite).isEmpty)
     }
 
     @Test("Moving a database's favorites to its new name writes one change for all of them")
     func retargetingManyFavoritesIsOneChange() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         let names = (0..<200).map { "table_\($0)" }
         for name in names {
             storage.addFavorite(name: name, schema: "public", database: "shop", connectionId: connId)
         }
-        metadata.clearDirty(type: .tableFavorite)
+        tracker.clearDirty(type: .tableFavorite)
 
         let notifications = countingChanges(of: storage) {
             storage.retarget(connectionId: connId) { favorite in
@@ -234,36 +215,36 @@ struct FavoriteTablesStorageTests {
         let original = Set(names.map { entry($0, database: "shop", schema: "public", connectionId: connId) })
         #expect(notifications == 1)
         #expect(storage.favorites(for: connId) == moved)
-        #expect(metadata.dirtyIds(for: .tableFavorite) == Set(moved.map(FavoriteTablesStorage.syncId(for:))))
-        #expect(Set(metadata.tombstones(for: .tableFavorite).map(\.id)) == Set(original.map(FavoriteTablesStorage.syncId(for:))))
+        #expect(tracker.dirtyIds(for: .tableFavorite) == Set(moved.map(FavoriteTablesStorage.syncId(for:))))
+        #expect(Set(tracker.tombstones(for: .tableFavorite).map(\.id)) == Set(original.map(FavoriteTablesStorage.syncId(for:))))
     }
 
     @Test("Moving one connection's favorites leaves another connection's alone")
     func retargetIsScopedToItsConnection() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         let other = UUID()
         storage.addFavorite(name: "orders", schema: nil, database: "shop", connectionId: connId)
         storage.addFavorite(name: "orders", schema: nil, database: "shop", connectionId: other)
-        metadata.clearDirty(type: .tableFavorite)
+        tracker.clearDirty(type: .tableFavorite)
 
         storage.retarget(connectionId: connId) { entry($0.name, database: "archive", connectionId: connId) }
 
         #expect(storage.favorites(for: other) == [entry("orders", connectionId: other)])
         #expect(storage.favorites(for: connId) == [entry("orders", database: "archive", connectionId: connId)])
-        #expect(!metadata.tombstones(for: .tableFavorite).contains {
+        #expect(!tracker.tombstones(for: .tableFavorite).contains {
             $0.id == FavoriteTablesStorage.syncId(for: entry("orders", connectionId: other))
         })
     }
 
     @Test("Renaming a table and renaming it back leaves the original to save and the detour to delete")
     func renameRoundTripLeavesTheOriginalDirty() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         let original = entry("orders", connectionId: connId)
         let detour = entry("orders_old", connectionId: connId)
         storage.addFavorite(name: "orders", schema: nil, database: "shop", connectionId: connId)
-        metadata.clearDirty(type: .tableFavorite)
+        tracker.clearDirty(type: .tableFavorite)
 
         storage.retarget(connectionId: connId) { $0 == original ? detour : $0 }
         storage.retarget(connectionId: connId) { $0 == detour ? original : $0 }
@@ -271,33 +252,33 @@ struct FavoriteTablesStorageTests {
         let originalId = FavoriteTablesStorage.syncId(for: original)
         let detourId = FavoriteTablesStorage.syncId(for: detour)
         #expect(storage.favorites(for: connId) == [original])
-        #expect(metadata.dirtyIds(for: .tableFavorite) == [originalId])
-        #expect(Set(metadata.tombstones(for: .tableFavorite).map(\.id)) == [originalId, detourId])
+        #expect(tracker.dirtyIds(for: .tableFavorite) == [originalId])
+        #expect(Set(tracker.tombstones(for: .tableFavorite).map(\.id)) == [originalId, detourId])
     }
 
     @Test("Moving a favorite onto one that already exists merges the two")
     func retargetOntoAnExistingFavoriteMerges() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         let source = entry("orders", connectionId: connId)
         let target = entry("orders_v2", connectionId: connId)
         storage.addFavorite(name: "orders", schema: nil, database: "shop", connectionId: connId)
         storage.addFavorite(name: "orders_v2", schema: nil, database: "shop", connectionId: connId)
-        metadata.clearDirty(type: .tableFavorite)
+        tracker.clearDirty(type: .tableFavorite)
 
         storage.retarget(connectionId: connId) { $0 == source ? target : $0 }
 
         #expect(storage.favorites(for: connId) == [target])
-        #expect(metadata.dirtyIds(for: .tableFavorite).isEmpty)
-        #expect(metadata.tombstones(for: .tableFavorite).map(\.id) == [FavoriteTablesStorage.syncId(for: source)])
+        #expect(tracker.dirtyIds(for: .tableFavorite).isEmpty)
+        #expect(tracker.tombstones(for: .tableFavorite).map(\.id) == [FavoriteTablesStorage.syncId(for: source)])
     }
 
     @Test("A change that changes nothing writes nothing and posts nothing")
     func noOpChangesPostNothing() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         storage.addFavorite(name: "orders", schema: nil, database: "shop", connectionId: connId)
-        metadata.clearDirty(type: .tableFavorite)
+        tracker.clearDirty(type: .tableFavorite)
 
         let notifications = countingChanges(of: storage) {
             storage.removeFavorite(name: "missing", schema: nil, database: "shop", connectionId: connId)
@@ -307,13 +288,13 @@ struct FavoriteTablesStorageTests {
         }
 
         #expect(notifications == 0)
-        #expect(metadata.dirtyIds(for: .tableFavorite).isEmpty)
-        #expect(metadata.tombstones(for: .tableFavorite).isEmpty)
+        #expect(tracker.dirtyIds(for: .tableFavorite).isEmpty)
+        #expect(tracker.tombstones(for: .tableFavorite).isEmpty)
     }
 
     @Test("Dropping a schema posts one change for every favorite it held")
     func droppingAContainerIsOneChange() throws {
-        let (storage, metadata) = try makeStorage()
+        let (storage, tracker) = try makeStorage()
         let connId = UUID()
         for name in ["orders", "invoices", "customers"] {
             storage.addFavorite(name: name, schema: "public", database: "shop", connectionId: connId)
@@ -325,7 +306,7 @@ struct FavoriteTablesStorageTests {
 
         #expect(notifications == 1)
         #expect(storage.favorites(for: connId).isEmpty)
-        #expect(metadata.tombstones(for: .tableFavorite).count == 3)
+        #expect(tracker.tombstones(for: .tableFavorite).count == 3)
     }
 
     @Test("Dropping a database named by an empty string removes the favorites stored without one")
@@ -376,7 +357,7 @@ struct FavoriteTablesStorageTests {
 
     @Test("Re-keying at launch marks only the favorites whose id changed, under both ids, and tombstones nothing")
     func migrationMarksOnlyChangedIds() throws {
-        let (storage, defaults, metadata) = try makeFixture()
+        let (storage, defaults, tracker) = try makeFixture()
         let connId = UUID()
         let piped = entry("orders", schema: "a|b", connectionId: connId)
         let slashed = entry("back\\slash", connectionId: connId)
@@ -388,37 +369,19 @@ struct FavoriteTablesStorageTests {
         let expected = Set([piped, slashed].map(FavoriteTablesStorage.syncId(for:)))
             .union([piped, slashed].compactMap(FavoriteTablesStorage.legacyAlias(of:)))
         #expect(expected.count == 4)
-        #expect(metadata.dirtyIds(for: .tableFavorite) == expected)
-        #expect(metadata.tombstones(for: .tableFavorite).isEmpty)
+        #expect(tracker.dirtyIds(for: .tableFavorite) == expected)
+        #expect(tracker.tombstones(for: .tableFavorite).isEmpty)
         #expect(storage.favorites(for: connId) == [piped, slashed, plain])
 
-        metadata.clearDirty(type: .tableFavorite)
+        tracker.clearDirty(type: .tableFavorite)
         storage.migrateSyncIdentityIfNeeded()
 
-        #expect(metadata.dirtyIds(for: .tableFavorite).isEmpty)
-    }
-
-    @Test("An old-build deletion that two re-keyed favorites could both answer to removes neither")
-    func ambiguousLegacyDeletionRemovesNothing() throws {
-        let (storage, defaults, metadata) = try makeFixture()
-        let connId = UUID()
-        let first = entry("t", database: "a|b", schema: "c", connectionId: connId)
-        let second = entry("t", database: "a", schema: "b|c", connectionId: connId)
-        let legacyId = try #require(FavoriteTablesStorage.legacyAlias(of: first))
-        #expect(FavoriteTablesStorage.legacyAlias(of: second) == legacyId)
-        defaults.set(try JSONEncoder().encode([first, second]), forKey: Self.storageKey)
-        storage.migrateSyncIdentityIfNeeded()
-        metadata.clearDirty(type: .tableFavorite)
-
-        let retired = storage.applyRemote(saved: [], deletedIds: [legacyId])
-
-        #expect(retired.isEmpty)
-        #expect(storage.favorites(for: connId) == [first, second])
+        #expect(tracker.dirtyIds(for: .tableFavorite).isEmpty)
     }
 
     @Test("Removing one of two favorites that shared an old id keeps the old record for the other")
     func sharedLegacyIdOutlivesOneRemoval() throws {
-        let (storage, defaults, metadata) = try makeFixture()
+        let (storage, defaults, tracker) = try makeFixture()
         let connId = UUID()
         let first = entry("t", database: "a|b", schema: "c", connectionId: connId)
         let second = entry("t", database: "a", schema: "b|c", connectionId: connId)
@@ -428,11 +391,11 @@ struct FavoriteTablesStorageTests {
         let sharedAlias = try #require(FavoriteTablesStorage.legacyAlias(of: first))
 
         storage.removeFavorite(name: "t", schema: "c", database: "a|b", connectionId: connId)
-        #expect(metadata.tombstones(for: .tableFavorite).map(\.id) == [FavoriteTablesStorage.syncId(for: first)])
+        #expect(tracker.tombstones(for: .tableFavorite).map(\.id) == [FavoriteTablesStorage.syncId(for: first)])
 
         storage.removeFavorite(name: "t", schema: "b|c", database: "a", connectionId: connId)
         #expect(
-            Set(metadata.tombstones(for: .tableFavorite).map(\.id))
+            Set(tracker.tombstones(for: .tableFavorite).map(\.id))
                 == [FavoriteTablesStorage.syncId(for: first), FavoriteTablesStorage.syncId(for: second), sharedAlias]
         )
     }

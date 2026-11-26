@@ -25,6 +25,15 @@ pub trait StateStore: Send + Sync {
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError>;
 }
 
+// What ends the distrust an open found of the key tables (0054, A stale file).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeysSettled {
+    // A stale file's rebuild saw every anchored pin and version on the server.
+    Rebuilt,
+    // An approval, a recovery or a genesis gave a file with no anchor keys and key tables it can trust.
+    Reapproved,
+}
+
 // Rows read and written in one commit. Dropping it uncommitted writes nothing.
 #[async_trait]
 pub trait StateTxn: Send {
@@ -38,7 +47,12 @@ pub trait StateTxn: Send {
     async fn delete(&mut self, key: &RowKey) -> Result<(), StateError>;
 
     // Erases every key table in this commit: Sign Out, or another account on this row (0054, The device's key state).
+    // The device then joins again as a new device would, so nothing an open found of the key tables stays owed.
     async fn clear_key_tables(&mut self) -> Result<(), StateError>;
+
+    // This commit settles what the open found of the key tables. Until a commit that carries it lands, every open
+    // reports the same distrust, so a restart does not launder it.
+    fn settle_keys(&mut self, _settled: KeysSettled) {}
 
     async fn commit(self: Box<Self>) -> Result<Committed, StateError>;
 }

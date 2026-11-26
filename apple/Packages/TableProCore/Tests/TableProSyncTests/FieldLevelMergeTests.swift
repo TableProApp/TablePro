@@ -48,6 +48,46 @@ struct SyncRecordCacheTests {
         #expect(cache.record(for: record.recordID)?["name"] as? String == "Production")
     }
 
+    @Test("Replacing the whole cache keeps exactly the records handed in, rewriting only what changed")
+    func replaceAllKeepsOnlyTheRecordsHandedIn() throws {
+        let cache = try makeCache()
+        let kept = makeRecord("Connection_Kept")
+        let dropped = makeRecord("Connection_Dropped")
+        cache.store([kept, dropped])
+        let edited = makeRecord("Connection_Kept")
+        edited["name"] = "Staging" as CKRecordValue
+        let added = makeRecord("Connection_Added")
+
+        #expect(cache.replaceAll(with: [edited, added]))
+
+        #expect(cache.record(named: "Connection_Kept")?["name"] as? String == "Staging")
+        #expect(cache.record(named: "Connection_Added") != nil)
+        #expect(cache.record(named: "Connection_Dropped") == nil)
+        #expect(cache.allRecords().map(\.recordID.recordName).sorted() == ["Connection_Added", "Connection_Kept"])
+    }
+
+    @Test("A cache whose folder cannot be listed reports a replace as failed instead of empty")
+    func replaceAllFailsWhenTheFolderCannotBeListed() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SyncRecordCacheTests/\(UUID().uuidString)", isDirectory: true)
+        let cache = SyncRecordCache(directory: directory, defaults: nil, storageKey: "recordCache")
+        cache.store([makeRecord("Connection_Old")])
+        try FileManager.default.setAttributes([.posixPermissions: 0o333], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path) }
+
+        #expect(!cache.replaceAll(with: []))
+    }
+
+    @Test("Replacing the cache with nothing empties it")
+    func replaceAllWithNothingEmptiesIt() throws {
+        let cache = try makeCache()
+        cache.store([makeRecord("Connection_A")])
+
+        #expect(cache.replaceAll(with: []))
+
+        #expect(cache.allRecords().isEmpty)
+    }
+
     @Test("A removed record is gone")
     func removedRecordIsGone() throws {
         let cache = try makeCache()

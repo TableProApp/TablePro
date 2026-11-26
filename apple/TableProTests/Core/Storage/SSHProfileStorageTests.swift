@@ -3,7 +3,6 @@
 //  TableProTests
 //
 
-import CloudKit
 import Foundation
 import TableProSSHConfig
 import TableProSyncTransport
@@ -17,7 +16,8 @@ struct SSHProfileStorageTests {
     private let storage: SSHProfileStorage
     private let connections: ConnectionStorage
     private let keychain: InMemoryKeychain
-    private let metadata: SyncMetadataStorage
+
+    private let tracker = SyncJournalRecorder()
 
     init() throws {
         let unique = UUID().uuidString
@@ -32,22 +32,19 @@ struct SSHProfileStorageTests {
 
         let connectionDefaults = try pool.make().defaults
         let profileDefaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
 
         keychain = InMemoryKeychain()
-        metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
         let connectionStorage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: connectionDefaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain
         )
         connections = connectionStorage
         storage = SSHProfileStorage(
             userDefaults: profileDefaults,
             keychain: keychain,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage
         )
     }
@@ -149,11 +146,11 @@ struct SSHProfileStorageTests {
     func deleteRecordsTombstoneAfterPersisting() {
         let profile = makeProfile()
         #expect(storage.addProfile(profile))
-        #expect(metadata.tombstones(for: .sshProfile).isEmpty)
+        #expect(tracker.tombstones(for: .sshProfile).isEmpty)
 
         #expect(storage.deleteProfile(profile))
 
-        #expect(metadata.tombstones(for: .sshProfile).contains { $0.id == profile.id.uuidString })
+        #expect(tracker.tombstones(for: .sshProfile).contains { $0.id == profile.id.uuidString })
     }
 
     @Test("A save that cannot run reports the failure instead of returning silently")
@@ -163,7 +160,7 @@ struct SSHProfileStorageTests {
         let corrupted = SSHProfileStorage(
             userDefaults: profileDefaults,
             keychain: InMemoryKeychain(),
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: connections
         )
 
@@ -215,7 +212,7 @@ struct SSHProfileStorageTests {
         let lockedStorage = SSHProfileStorage(
             userDefaults: try pool.make().defaults,
             keychain: lockedKeychain,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: lockedConnections
         )
 
@@ -232,22 +229,6 @@ struct SSHProfileStorageTests {
     }
 
     // iPhone and iPad send the profile's password to the server the record names.
-    @Test("A linked connection goes up to sync with the server its profile names, not an imported copy of it")
-    func syncedTunnelIsTheProfiles() throws {
-        let profile = makeProfile()
-        #expect(storage.addProfile(profile))
-        var imported = profile.toSSHConfiguration()
-        imported.host = "bastion.attacker.example"
-        var connection = TestFixtures.makeConnection()
-        connection.sshTunnelMode = .profile(id: profile.id, snapshot: imported)
-        connection.sshConfig = imported
-
-        let synced = SyncCoordinator.syncedTunnel(of: connection, profiles: storage)
-        let record = SyncRecordMapper.toCKRecord(synced, in: CKRecordZone.default().zoneID)
-
-        #expect(try SyncRecordMapper.toConnection(record).sshConfig.host == "bastion.example.com")
-    }
-
     @Test("Resolving a linked profile answers with the profile's current values")
     func refreshingLinkedProfileReadsThroughToTheProfile() {
         var profile = makeProfile()

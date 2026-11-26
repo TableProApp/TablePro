@@ -1,6 +1,6 @@
 // The app's sides of sync that only the app can do: its settings, kept its own way (0054, Adapters), and its device
-// store, for the keys and the state file's anchor (0054, Integrity and freshness). Each call may block, so the core
-// makes it on a blocking thread, never under a lock.
+// store, for the keys and the state file's anchor (0054, Integrity and freshness). The core never calls either under
+// a lock. A device store call may block, so the core makes it on a blocking thread.
 
 use std::sync::Arc;
 
@@ -12,13 +12,16 @@ use zeroize::Zeroizing;
 
 use crate::host::HostSecretError;
 
-#[uniffi::export(callback_interface)]
+// Async, so the app writes into the state its own thread owns without blocking a core thread on it.
+#[uniffi::export(with_foreign)]
+#[async_trait]
 pub trait HostSettings: Send + Sync {
     // Every category of the platform's registry that holds a value, each as one JSON document.
-    fn categories(&self) -> Result<Vec<SettingsCategoryArg>, HostSecretError>;
+    async fn categories(&self) -> Result<Vec<SettingsCategoryArg>, HostSecretError>;
 
-    // None removes the category, as a deleted theme.
-    fn apply(&self, category: String, document: Option<String>) -> Result<(), HostSecretError>;
+    // None removes the category, as a deleted theme. Returns once the write is on disk: the engine commits the base
+    // after it, so a write still in memory would be lost to a quit.
+    async fn apply(&self, category: String, document: Option<String>) -> Result<(), HostSecretError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -191,7 +194,6 @@ impl sync::HostDeviceStore for HostDeviceStoreBridge {
 pub(crate) struct HostSettingsBridge {
     pub(crate) host: Arc<dyn HostSettings>,
     pub(crate) kind: Kind,
-    pub(crate) tasks: Tasks,
 }
 
 fn host_error(failure: impl std::fmt::Display) -> AdapterError {
@@ -207,13 +209,9 @@ impl sync::HostSettings for HostSettingsBridge {
     }
 
     async fn categories(&self) -> Result<Vec<SettingsDocument>, AdapterError> {
-        let host = Arc::clone(&self.host);
-        let categories = self
-            .tasks
-            .spawn_blocking_task(move || host.categories())
+        self.host
+            .categories()
             .await
-            .map_err(host_error)?;
-        categories
             .map_err(host_error)?
             .into_iter()
             .map(|category| {
@@ -227,14 +225,8 @@ impl sync::HostSettings for HostSettingsBridge {
     }
 
     async fn apply(&self, category: String, document: Option<serde_json::Value>) -> Result<(), AdapterError> {
-        let host = Arc::clone(&self.host);
         let document = document.map(|document| document.to_string());
-        let applied = self
-            .tasks
-            .spawn_blocking_task(move || host.apply(category, document))
-            .await
-            .map_err(host_error)?;
-        applied.map_err(host_error)
+        self.host.apply(category, document).await.map_err(host_error)
     }
 }
 
@@ -246,6 +238,53 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
+
+    // An app whose write reaches its disk only after its own thread had a turn.
+    #[derive(Default)]
+    struct Settings {
+        on_disk: std::sync::Mutex<Vec<(String, Option<String>)>>,
+    }
+
+    #[async_trait]
+    impl HostSettings for Settings {
+        async fn categories(&self) -> Result<Vec<SettingsCategoryArg>, HostSecretError> {
+            Ok(vec![SettingsCategoryArg {
+                category: "general".to_owned(),
+                document: r#"{"language":"en"}"#.to_owned(),
+            }])
+        }
+
+        async fn apply(&self, category: String, document: Option<String>) -> Result<(), HostSecretError> {
+            tokio::task::yield_now().await;
+            self.on_disk.lock().unwrap().push((category, document));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_settings_write_has_landed_when_the_bridge_returns() {
+        let host = Arc::new(Settings::default());
+        let bridge = HostSettingsBridge {
+            host: host.clone(),
+            kind: Kind::MacosSettings,
+        };
+
+        let dark: serde_json::Value = serde_json::from_str(r#"{"name":"dark"}"#).unwrap();
+        let read = sync::HostSettings::categories(&bridge).await.unwrap();
+        sync::HostSettings::apply(&bridge, "theme".to_owned(), Some(dark)).await.unwrap();
+        sync::HostSettings::apply(&bridge, "editor".to_owned(), None)
+            .await
+            .unwrap();
+
+        assert_eq!(read[0].document.to_string(), r#"{"language":"en"}"#);
+        assert_eq!(
+            *host.on_disk.lock().unwrap(),
+            vec![
+                ("theme".to_owned(), Some(r#"{"name":"dark"}"#.to_owned())),
+                ("editor".to_owned(), None)
+            ]
+        );
+    }
 
     #[test]
     fn an_item_keeps_its_class_across_the_boundary() {

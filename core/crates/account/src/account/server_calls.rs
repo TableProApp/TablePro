@@ -501,18 +501,38 @@ pub(super) fn audience_check(server: &Server, access: &SecretString) -> Result<(
     if !server.is_company() {
         return Ok(());
     }
-    let claims = access
-        .expose_secret()
-        .split('.')
-        .nth(1)
-        .and_then(|payload| URL_SAFE_NO_PAD.decode(payload).ok())
-        .and_then(|json| serde_json::from_slice::<Claims>(&json).ok());
     let origin = server.target.origin.as_str();
-    match claims.map(|claims| claims.aud) {
+    match claims::<Claims>(access).map(|claims| claims.aud) {
         Some(Audience::One(aud)) if aud == origin => Ok(()),
         Some(Audience::Many(auds)) if auds.iter().any(|aud| aud == origin) => Ok(()),
         _ => Err(ServerError::Mismatch("access token audience").into()),
     }
+}
+
+// A step-up's tokens must be for the account signed in: the browser may hold another account's session. tablepro-cloud
+// names the account in `sub` (its api.md, OAuth).
+pub(super) fn subject_check(access: &SecretString, account_id: &str) -> Result<(), AccountError> {
+    #[derive(Deserialize)]
+    struct Claims {
+        sub: String,
+    }
+    match claims::<Claims>(access) {
+        Some(claims) if claims.sub == account_id => Ok(()),
+        Some(_) => Err(AccountError::StepUpOtherAccount),
+        None => Err(AccountError::Protocol(
+            "the step-up's access token names no account".to_owned(),
+        )),
+    }
+}
+
+// Read without checking the signature: the token came straight from the token endpoint over TLS, and the API checks it.
+fn claims<T: serde::de::DeserializeOwned>(access: &SecretString) -> Option<T> {
+    access
+        .expose_secret()
+        .split('.')
+        .nth(1)
+        .and_then(|payload| URL_SAFE_NO_PAD.decode(payload).ok())
+        .and_then(|json| serde_json::from_slice(&json).ok())
 }
 
 async fn read_legacy(path: &std::path::Path) -> Option<String> {

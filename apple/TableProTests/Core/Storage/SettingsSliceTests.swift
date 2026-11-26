@@ -39,6 +39,7 @@ private final class OutsideEffects {
 private final class DefaultsWriteLog {
     private let entries = OSAllocatedUnfairLock(initialState: [String]())
     private var tokens: [NSObjectProtocol] = []
+    private var subscriptions: [AnyCancellable] = []
 
     var all: [String] { entries.withLock { $0 } }
 
@@ -54,21 +55,29 @@ private final class DefaultsWriteLog {
         tokens.append(token)
     }
 
+    @MainActor
+    func watch(_ journal: SyncHostJournal, as label: String) {
+        let entries = entries
+        subscriptions.append(journal.listen { _ in
+            entries.withLock { $0.append(label) }
+        })
+    }
+
     func stop() {
         for token in tokens {
             NotificationCenter.default.removeObserver(token)
         }
         tokens.removeAll()
+        subscriptions.removeAll()
     }
 }
 
 @MainActor
 private final class ManagerFixture {
     let storageSuite: EphemeralDefaults
-    let metadataSuite: EphemeralDefaults
     let localSuite: EphemeralDefaults
     let root: URL
-    let tracker: SyncChangeTracker
+    let tracker: SyncJournalRecorder
     let effects: OutsideEffects
     let manager: AppSettingsManager
 
@@ -76,27 +85,27 @@ private final class ManagerFixture {
 
     init() throws {
         storageSuite = try EphemeralDefaults()
-        metadataSuite = try EphemeralDefaults()
         localSuite = try EphemeralDefaults()
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SettingsSliceTests-\(UUID().uuidString)", isDirectory: true)
-        tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: metadataSuite.defaults))
+        tracker = SyncJournalRecorder()
         let catalog = ThemeCatalog(
             userDirectory: root.appendingPathComponent("Themes", isDirectory: true),
             bundleDirectory: nil,
             fileTrash: .folder(root.appendingPathComponent("Trash", isDirectory: true)),
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
         let effects = OutsideEffects()
         self.effects = effects
         manager = AppSettingsManager(
             storage: AppSettingsStorage(userDefaults: storageSuite.defaults),
             themeEngine: ThemeEngine(catalog: catalog),
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             appEvents: AppEvents(),
             connectionListPreferences: ConnectionListPreferences(defaults: localSuite.defaults, appEvents: AppEvents()),
             passwordSyncDefaults: localSuite.defaults,
             switchSync: { _ in },
+            changeSyncCategories: {},
             applyHistoryRetention: { effects.historyRetentionApplies += 1 },
             resetOutsideSettings: { effects.outsideResets += 1 }
         )
@@ -201,14 +210,14 @@ struct SettingsSliceTests {
         let fixture = try ManagerFixture()
         let log = DefaultsWriteLog()
         log.watch(fixture.storageSuite.defaults, as: "save")
-        log.watch(fixture.metadataSuite.defaults, as: "mark")
+        log.watch(fixture.tracker.journal, as: "mark")
         defer { log.stop() }
 
         fixture.manager.editor.showLineNumbers.toggle()
 
         #expect(log.all == ["save", "mark"])
         #expect(fixture.storage.loadEditor() == fixture.manager.editor)
-        #expect(fixture.tracker.dirtyRecords(for: .settings) == [AppSettingsCategory.editor])
+        #expect(fixture.tracker.dirtyIds(for: .settings) == [AppSettingsCategory.editor])
     }
 
     @Test("History retention is reapplied only when a retention setting changes")
@@ -220,7 +229,7 @@ struct SettingsSliceTests {
 
         #expect(fixture.effects.historyRetentionApplies == 0)
         #expect(fixture.storage.loadHistory().keepRewindHistory == manager.history.keepRewindHistory)
-        #expect(fixture.tracker.dirtyRecords(for: .settings) == [AppSettingsCategory.history])
+        #expect(fixture.tracker.dirtyIds(for: .settings) == [AppSettingsCategory.history])
 
         manager.history.maxDays = 30
         manager.history.maxDays = 30
@@ -242,9 +251,9 @@ struct SettingsSliceTests {
         manager.notifications = NotificationSettings(isEnabled: false, thresholdSeconds: 120)
         manager.tabs.enablePreviewTabs.toggle()
         manager.editor.showLineNumbers.toggle()
-        fixture.tracker.clearAllDirty(.settings)
+        fixture.tracker.clearDirty(type: .settings)
         let log = DefaultsWriteLog()
-        log.watch(fixture.metadataSuite.defaults, as: "mark")
+        log.watch(fixture.tracker.journal, as: "mark")
         defer { log.stop() }
 
         manager.resetToDefaults()
@@ -258,7 +267,7 @@ struct SettingsSliceTests {
         #expect(manager.tabs == .default)
         #expect(manager.editor == .default)
         #expect(log.all == ["mark"])
-        #expect(fixture.tracker.dirtyRecords(for: .settings) == [
+        #expect(fixture.tracker.dirtyIds(for: .settings) == [
             AppSettingsCategory.general,
             AppSettingsCategory.notifications,
             AppSettingsCategory.tabs,
@@ -273,6 +282,6 @@ struct SettingsSliceTests {
 
         fixture.manager.resetToDefaults()
 
-        #expect(fixture.tracker.dirtyRecords(for: .settings).isEmpty)
+        #expect(fixture.tracker.dirtyIds(for: .settings).isEmpty)
     }
 }
