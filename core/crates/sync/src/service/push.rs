@@ -410,7 +410,7 @@ impl ServiceSync {
     }
 
     // The changes the server refused in `scope`, by record (0066, `refused`).
-    async fn refused_in(&self, scope: ScopeName) -> Result<HashMap<RecordKey, RefusedRow>, SyncError> {
+    pub(super) async fn refused_in(&self, scope: ScopeName) -> Result<HashMap<RecordKey, RefusedRow>, SyncError> {
         let rows = begin(&self.state)
             .await?
             .scan(&RowRange::Scope(Table::Refused, scope))

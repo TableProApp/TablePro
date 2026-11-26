@@ -1,5 +1,4 @@
 use tablepro_storage::TeamLibraryKind;
-use tablepro_sync::api::control::SyncControl;
 use tablepro_sync::api::scopes::Role;
 use tablepro_sync::api::team_library::{TeamLibraryControl, UnsentState};
 

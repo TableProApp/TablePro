@@ -52,6 +52,7 @@ async fn the_history_database_s_kinds_sync_its_writes_reach_the_engine_and_histo
         history: Some(history.clone()),
         standing,
         store_journal: Arc::clone(&store_journal),
+        team_library: None,
     };
     let journal = Journal::new(Wake::new());
     let id = Uuid::new_v4();
@@ -108,6 +109,7 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
         history: Some(history),
         standing: Some(Arc::new(tablepro_sync::adapters::library::StoreStanding(store.clone()))),
         store_journal,
+        team_library: None,
     };
     let journal = Journal::new(Wake::new());
 
@@ -163,6 +165,7 @@ async fn an_engine_s_journal_hears_the_stores_once_and_leaves_with_its_engine() 
         history: Some(history),
         standing: Some(Arc::new(Syncs)),
         store_journal: Arc::clone(&store_journal),
+        team_library: None,
     };
     let transport: Arc<dyn tablepro_sync::api::CloudKitTransport> =
         Arc::new(tablepro_sync_testing::FakeCloudKit::signed_in("_a"));

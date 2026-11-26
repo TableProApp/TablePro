@@ -7,21 +7,17 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use tablepro_keys::encoding::{AccountId, Origin};
-use tablepro_records::Kind;
-use tablepro_storage::{
-    ChangeJournal, JournalEntry as StoreEntry, RecordKind, RecordRef, StoragePaths, TeamLibraryKind, TeamLibraryOwner,
-    TeamLibraryStore,
-};
+use tablepro_storage::{ChangeJournal, StoragePaths, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore};
 use tablepro_sync::SyncError;
+use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::ids::{ScopeName, typeid_uuid};
 use tablepro_sync::api::scopes::Role;
-use tablepro_sync::engine::{Journal, JournalEntry};
-use tablepro_sync::service::ServiceSync;
 use tablepro_sync::api::team_library::{
-    FacadeBase, ImportedEdit, SignInGuard, TeamConnection, TeamFolder, TeamId, TeamItem, TeamItemRef, TeamLibraryControl,
-    TeamLibraryError, TeamLibraryImport, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentState,
-    UnsentTeamEdit,
+    FacadeBase, ImportedEdit, SignInGuard, TeamConnection, TeamFolder, TeamId, TeamItem, TeamItemRef,
+    TeamLibraryControl, TeamLibraryError, TeamLibraryImport, TeamLibraryPolicy, TeamLibraryTeam, TeamPublish,
+    TeamQuery, TeamScopeStatus, UnsentState, UnsentTeamEdit,
 };
+use tablepro_sync::service::ServiceSync;
 use uuid::Uuid;
 
 use super::keys::TeamRoleTag;
@@ -394,8 +390,9 @@ pub(crate) struct TeamLibraryHost {
 }
 
 impl TeamLibraryHost {
-    // The owner's store, which the engine's adapters read and write and whose writes wake the engine (core ADR 0060).
-    pub(crate) fn store(&self, origin: &Origin, account: AccountId, journal: &Journal) -> TeamLibraryStore {
+    // The owner's store, which the engine's adapters read and write, and whose writes the engines that listen to this
+    // Core's stores hear (core ADR 0060).
+    pub(crate) fn store(&self, origin: &Origin, account: AccountId, journal: &Arc<StoreJournal>) -> TeamLibraryStore {
         let store = TeamLibraryStore::new(
             &self.paths,
             TeamLibraryOwner {
@@ -403,17 +400,29 @@ impl TeamLibraryHost {
                 account_id: account.to_wire(),
             },
         );
-        store.set_journal(Some(Arc::new(StoreJournal(journal.clone()))));
+        store.set_journal(Some(Arc::clone(journal) as Arc<dyn ChangeJournal>));
         store
     }
 
-    // A delete a crash cut off finishes here; until it does, Team Library stays off and the engine runs on.
-    pub(crate) async fn attach(&self, sync: &ServiceSync, store: TeamLibraryStore, session: Option<String>) {
+    // A delete a crash cut off finishes here; until it does, Team Library stays off and the engine runs on. A publish
+    // commits only while the managed policy allows this sign-in's server, under the account's gate (core ADR 0055).
+    pub(crate) async fn attach(
+        &self,
+        sync: &ServiceSync,
+        store: TeamLibraryStore,
+        session: Option<String>,
+        origin: Origin,
+    ) {
         let guard = SessionGuard {
             account: Arc::clone(&self.account),
             session,
         };
-        if let Err(error) = sync.attach_team_library(store, Arc::new(guard)).await {
+        let account = self.account.account.clone();
+        let policy = TeamLibraryPolicy {
+            gate: account.policy_gate(),
+            allowed: Arc::new(move || account.policy().allows_server(origin.as_str())),
+        };
+        if let Err(error) = sync.attach_team_library(store, Arc::new(guard), policy).await {
             tracing::warn!(code = error.code(), "team library is off for this sign-in");
         }
     }
@@ -428,41 +437,6 @@ struct SessionGuard {
 impl SignInGuard for SessionGuard {
     fn holds(&self) -> bool {
         self.session.is_some() && self.account.status().session_id == self.session
-    }
-}
-
-struct StoreJournal(Journal);
-
-impl ChangeJournal for StoreJournal {
-    fn changed(&self, entries: &[StoreEntry]) {
-        let ids = |records: &[RecordRef]| -> Vec<String> {
-            records
-                .iter()
-                .filter_map(|record| match record {
-                    RecordRef::TeamItem { id, .. } => Some(id.clone()),
-                    _ => None,
-                })
-                .collect()
-        };
-        let entries: Vec<JournalEntry> = entries
-            .iter()
-            .filter_map(|entry| {
-                let kind = match entry.kind {
-                    RecordKind::LibraryConnection => Kind::LibraryConnection,
-                    RecordKind::LibraryFolder => Kind::LibraryFolder,
-                    RecordKind::LibraryQuery => Kind::LibraryQuery,
-                    _ => return None,
-                };
-                Some(JournalEntry {
-                    kind,
-                    written: ids(&entry.written),
-                    deleted: ids(&entry.deleted),
-                })
-            })
-            .collect();
-        if !entries.is_empty() {
-            self.0.changed(&entries);
-        }
     }
 }
 
@@ -535,7 +509,9 @@ impl SyncService {
         let folders = folders.into_iter().map(folder).collect::<Result<Vec<_>, _>>()?;
         let queries = queries.into_iter().map(query).collect::<Result<Vec<_>, _>>()?;
         let publish = self
-            .on_team_library(move |control| async move { control.publish_team_saved_queries(team, folders, queries).await })
+            .on_team_library(
+                move |control| async move { control.publish_team_saved_queries(team, folders, queries).await },
+            )
             .await?;
         Ok(publish_info(publish))
     }
@@ -598,7 +574,9 @@ impl Core {
     // owner's next sync service reads them, and until then Team Library stays off for it.
     pub async fn delete_other_team_library_data(&self, keep: Option<TeamLibraryOwnerArg>) -> Result<(), CoreError> {
         let keep = match keep {
-            Some(owner) => Some(team_library_owner(&owner.api_origin, &owner.account_id).ok_or_else(|| malformed("owner"))?),
+            Some(owner) => {
+                Some(team_library_owner(&owner.api_origin, &owner.account_id).ok_or_else(|| malformed("owner"))?)
+            }
             None => None,
         };
         let paths = self

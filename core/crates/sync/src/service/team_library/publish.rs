@@ -30,7 +30,7 @@ impl ServiceSync {
         self.signed_in()?;
         let session = self.session.lock().await;
         let info = self.writable_team(&session, scope, first.as_ref().err()).await?;
-        self.settle_claims(&session, scope).await?;
+        self.settle_claims(scope).await?;
         let items = self.team_items(scope).await?;
         let bases = self.team_bases(scope).await?;
         let local = self.team_local(scope).await?;
@@ -40,14 +40,16 @@ impl ServiceSync {
             local: &local,
         });
         self.signed_in()?;
+        let read = self.policy_read().await?;
         self.write_planned(scope, &planned).await?;
+        drop(read);
         drop(session);
         if planned.is_empty() {
             return Ok(TeamPublish::default());
         }
         let second = self.run_pass(PassReason::Person).await;
-        let session = self.session.lock().await;
-        let unsent = self.team_diff(&session, scope).await?;
+        let _session = self.session.lock().await;
+        let unsent = self.team_diff(scope).await?;
         Ok(outcome(&planned, &unsent, &info, second.err()))
     }
 
@@ -69,7 +71,11 @@ impl ServiceSync {
         if !writes(info.role) {
             return Err(TeamLibraryError::NotWritable.into());
         }
-        let pulled = self.scope_row(scope).await?.is_some_and(|row| row.cursor.is_some());
+        // An empty team's pull ends caught up with no cursor, which is pulled all the same.
+        let pulled = self
+            .scope_row(scope)
+            .await?
+            .is_some_and(|row| row.epoch.is_some() && row.caught_up && !row.refill);
         if !pulled {
             return Err(failure().unwrap_or_else(|| TeamLibraryError::NotPulled.into()));
         }
@@ -133,12 +139,12 @@ impl ServiceSync {
 
     // A claim stands until the team holds the item as sent, which makes it this device's, or until nothing of it is
     // left to send without the team holding it: Keep Theirs, a discard, or the team deleting it.
-    pub(super) async fn settle_claims(&self, session: &Session, scope: ScopeName) -> Result<(), SyncError> {
+    pub(super) async fn settle_claims(&self, scope: ScopeName) -> Result<(), SyncError> {
         let local = self.team_local(scope).await?;
         if local.claims.is_empty() {
             return Ok(());
         }
-        let unsent = self.team_diff(session, scope).await?;
+        let unsent = self.team_diff(scope).await?;
         let bases = self.team_bases(scope).await?;
         let mut taken = Vec::new();
         let mut gone = Vec::new();

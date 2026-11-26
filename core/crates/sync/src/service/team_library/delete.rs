@@ -4,7 +4,7 @@
 
 use std::sync::atomic::Ordering;
 
-use super::super::{ServiceSync, Session, begin};
+use super::super::{ServiceSync, begin};
 use super::{library_kind, team_of};
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
@@ -13,12 +13,13 @@ use crate::api::team_library::TeamLibraryError;
 
 // The tables that hold a record's data or what waits on it. Scope rows keep their cursor and key version, which hold
 // nothing of the library: a store that starts over refills from a snapshot.
-const LIBRARY_TABLES: [Table; 7] = [
+const LIBRARY_TABLES: [Table; 8] = [
     Table::Bases,
     Table::PendingBases,
     Table::Standing,
     Table::Held,
     Table::Deferred,
+    Table::Refused,
     Table::Approvals,
     Table::Conflicts,
 ];
@@ -38,6 +39,7 @@ fn library_row(row: &Row, only: &[ScopeName]) -> bool {
         Row::Standing(row) => &row.key,
         Row::Held(row) => &row.key,
         Row::Deferred(row) => &row.key,
+        Row::Refused(row) => &row.key,
         Row::Approval(row) => &row.key,
         Row::Conflict(row) => &row.key,
         _ => return false,
@@ -48,7 +50,7 @@ fn library_row(row: &Row, only: &[ScopeName]) -> bool {
 }
 
 impl ServiceSync {
-    pub(super) async fn delete_all(&self, session: &mut Session) -> Result<(), SyncError> {
+    pub(super) async fn delete_all(&self) -> Result<(), SyncError> {
         self.team_library.off.store(true, Ordering::SeqCst);
         let marked = self
             .store_call(|store| {
@@ -57,9 +59,6 @@ impl ServiceSync {
             })
             .await;
         marked.map_err(|error| failed(&error))?;
-        session
-            .refused
-            .retain(|key, _| team_of(key.scope).is_none() || key.kind.known().and_then(library_kind).is_none());
         self.finish_delete().await
     }
 

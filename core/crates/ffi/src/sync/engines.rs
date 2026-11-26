@@ -293,6 +293,11 @@ impl ServiceEngine {
         let journal = Journal::new(wake.clone());
         let stop = StopSignal::new();
         let hooks = Arc::new(EngineHooks::new(wake.clone(), Some(Arc::clone(&hosts.events))));
+        let team_library = hosts
+            .team_library
+            .as_ref()
+            .map(|host| host.store(&link.origin, link.account, &hosts.store_journal));
+        let origin = link.origin.clone();
         let keys = Arc::new(KeyService::new(KeyServiceParts {
             origin: link.origin,
             account: link.account,
@@ -303,10 +308,6 @@ impl ServiceEngine {
             hooks: Arc::clone(&hooks) as _,
             clock: Arc::new(tablepro_sync::keys::SystemClock),
         }));
-        let team_library = hosts
-            .team_library
-            .as_ref()
-            .map(|host| host.store(&link.origin, link.account, &hosts.store_journal));
         let mut adapters = hosts.adapters(Provider::TableproSync);
         adapters.extend(team_library.iter().flat_map(TeamLibraryAdapter::all));
         let sync = Arc::new(ServiceSync::new(ServiceParts {
@@ -324,8 +325,10 @@ impl ServiceEngine {
             follows,
         }));
         if let (Some(host), Some(store)) = (&hosts.team_library, team_library) {
-            host.attach(&sync, store, binding.as_ref().and_then(|binding| binding.session_id().map(str::to_owned)))
-                .await;
+            let session = binding
+                .as_ref()
+                .and_then(|binding| binding.session_id().map(str::to_owned));
+            host.attach(&sync, store, session, origin).await;
         }
         // The wait comes from the sign-in the app kept, outside the file, on every open until the person chooses, so a
         // file put back from a backup cannot lose it. The last file stays until then, for the count.

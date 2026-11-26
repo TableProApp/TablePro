@@ -24,8 +24,8 @@ use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSett
 use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
 use super::moves::{PolicyFenced, allowed, hold_to_policy, resume_open_move};
 use super::service::{SyncConfig, SyncListener, SyncPlatformTag, SyncService};
-use super::team_library::TeamLibraryHost;
 use super::service_records::categories_arg;
+use super::team_library::TeamLibraryHost;
 use crate::account::{AccountService, SyncProviderTag};
 use crate::core_handle::Core;
 use crate::error::CoreError;

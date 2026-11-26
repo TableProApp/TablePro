@@ -270,3 +270,21 @@ async fn each_item_names_who_last_changed_it_as_the_server_names_them() {
     assert_eq!(item.updated_by.as_deref(), Some("Ada Lovelace"));
     assert!(item.updated_at_ms.is_some_and(|at| at > 0));
 }
+
+#[tokio::test]
+async fn a_server_the_managed_policy_no_longer_allows_takes_no_publish_and_nothing_is_written() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    let mac = Mac::new(&server, "dev_mac", dir.path()).await;
+    mac.policy_allows.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    let refused = mac
+        .device
+        .sync
+        .publish_team_saved_queries(team(), Vec::new(), vec![query(3, "Q", None)])
+        .await;
+
+    assert_eq!(refused.unwrap_err().code(), "sync.not_allowed");
+    assert!(mac.items(TeamLibraryKind::Query).is_empty());
+    assert!(server.stored(owner(), "library_query", &lower(3)).is_none());
+}

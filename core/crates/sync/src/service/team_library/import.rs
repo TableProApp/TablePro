@@ -103,10 +103,11 @@ impl ServiceSync {
         let pulled = self
             .scope_row(scope)
             .await?
-            .is_some_and(|row| row.caught_up && row.cursor.is_some() && !row.refill);
+            .is_some_and(|row| row.epoch.is_some() && row.caught_up && !row.refill);
         if !pulled || !self.team_sign_in_holds() {
             return Ok(());
         }
+        let _read = self.policy_read().await?;
         self.apply_each(scope, local.imports).await
     }
 

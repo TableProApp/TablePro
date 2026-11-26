@@ -30,8 +30,8 @@ use crate::api::ids::ScopeName;
 use crate::api::scopes::Role;
 use crate::api::state::{BaseRow, Row, RowRange, StateIdentity, Table};
 use crate::api::team_library::{
-    SignInGuard, TeamConnection, TeamFolder, TeamItem, TeamItemRef, TeamLibraryControl, TeamLibraryError, TeamLibraryImport,
-    TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentTeamEdit,
+    SignInGuard, TeamConnection, TeamFolder, TeamItem, TeamItemRef, TeamLibraryControl, TeamLibraryError,
+    TeamLibraryImport, TeamLibraryPolicy, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentTeamEdit,
 };
 
 pub(crate) const LIBRARY_KINDS: [TeamLibraryKind; 3] = [
@@ -52,6 +52,7 @@ pub(crate) fn library_kind(kind: Kind) -> Option<TeamLibraryKind> {
 struct Attached {
     store: TeamLibraryStore,
     sign_in: Arc<dyn SignInGuard>,
+    policy: TeamLibraryPolicy,
 }
 
 // Team Library's part of the service: the store and sign-in it was given, whether a delete left it off, and the code
@@ -96,6 +97,7 @@ impl ServiceSync {
         &self,
         store: TeamLibraryStore,
         sign_in: Arc<dyn SignInGuard>,
+        policy: TeamLibraryPolicy,
     ) -> Result<(), SyncError> {
         if !same_owner(self.state.identity(), &store) {
             return Err(StateError::WrongIdentity.into());
@@ -104,7 +106,12 @@ impl ServiceSync {
             let store = store.clone();
             blocking(move || store.delete_pending_blocking()).await?
         };
-        if self.team_library.attached.set(Attached { store, sign_in }).is_err() {
+        if self
+            .team_library
+            .attached
+            .set(Attached { store, sign_in, policy })
+            .is_err()
+        {
             return Err(SyncError::NotAllowed {
                 what: "attach a second team library",
             });
@@ -138,6 +145,19 @@ impl ServiceSync {
             return Err(TeamLibraryError::SignedInChanged.into());
         }
         Ok(attached)
+    }
+
+    // Held by a commit that writes what goes up, from its check until it lands.
+    async fn policy_read(&self) -> Result<tablepro_account::PolicyRead, SyncError> {
+        let policy = &self.attached()?.policy;
+        let read = policy.gate.read().await;
+        if (policy.allowed)() {
+            Ok(read)
+        } else {
+            Err(SyncError::NotAllowed {
+                what: "send Team Library edits to a server the managed policy does not allow",
+            })
+        }
     }
 
     // A delete that did not finish, here or by another sign-in's call, keeps every team scope out of the pass, so
@@ -383,14 +403,14 @@ impl TeamLibraryControl for ServiceSync {
 
     async fn discard_team_edits(&self, team: Option<TeamId>) -> Result<(), SyncError> {
         self.readable()?;
-        let mut session = self.session.lock().await;
-        self.discard(&mut session, team.map(ScopeName::Team)).await
+        let session = self.session.lock().await;
+        self.discard(&session, team.map(ScopeName::Team)).await
     }
 
     async fn delete_team_library_data(&self) -> Result<(), SyncError> {
         self.attached()?;
-        let mut session = self.session.lock().await;
-        self.delete_all(&mut session).await
+        let _session = self.session.lock().await;
+        self.delete_all().await
     }
 
     async fn team_scope_status(&self) -> Result<Vec<TeamScopeStatus>, SyncError> {

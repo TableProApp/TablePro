@@ -34,8 +34,8 @@ pub use scopes::{ScopeInfo, ScopesAnswer, ScopesBody};
 pub use state::{Row, RowKey, RowRange, StateFiles, StateStore, StateTxn, Table};
 pub use team_library::{
     FacadeBase, ImportedEdit, SignInGuard, TeamConnection, TeamFolder, TeamItem, TeamItemRef, TeamLibraryControl,
-    TeamLibraryError, TeamLibraryImport, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentState,
-    UnsentTeamEdit,
+    TeamLibraryError, TeamLibraryImport, TeamLibraryPolicy, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus,
+    UnsentState, UnsentTeamEdit,
 };
 pub use transport::{
     Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PullRequest, PulledPage, PulledRecord, PushAnswer, PushBatch,

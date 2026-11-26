@@ -12,7 +12,7 @@ use tablepro_sync::api::control::{ConflictChoice, SyncControl};
 use tablepro_sync::api::ids::{RecordKey, ScopeName};
 use tablepro_sync::api::scopes::Role;
 use tablepro_sync::api::state::StateStore;
-use tablepro_sync::api::team_library::{SignInGuard, TeamFolder, TeamItemRef, TeamQuery};
+use tablepro_sync::api::team_library::{SignInGuard, TeamFolder, TeamItemRef, TeamLibraryPolicy, TeamQuery};
 use tablepro_sync_testing::FakeServer;
 use tablepro_sync_testing::service::ScopeOwner;
 use uuid::Uuid;
@@ -51,6 +51,8 @@ pub struct Mac {
     pub device: Device,
     pub store: TeamLibraryStore,
     pub sign_in: Arc<Toggle>,
+    // What the managed policy says of this sign-in's server.
+    pub policy_allows: Arc<AtomicBool>,
     pub paths: StoragePaths,
 }
 
@@ -99,15 +101,22 @@ impl Mac {
         }
         let device = builder.build().await;
         let sign_in = Arc::new(Toggle(AtomicBool::new(true)));
+        let policy_allows = Arc::new(AtomicBool::new(true));
+        let allows = Arc::clone(&policy_allows);
+        let policy = TeamLibraryPolicy {
+            gate: Arc::default(),
+            allowed: Arc::new(move || allows.load(Ordering::SeqCst)),
+        };
         device
             .sync
-            .attach_team_library(store.clone(), Arc::clone(&sign_in) as Arc<dyn SignInGuard>)
+            .attach_team_library(store.clone(), Arc::clone(&sign_in) as Arc<dyn SignInGuard>, policy)
             .await
             .unwrap();
         Self {
             device,
             store,
             sign_in,
+            policy_allows,
             paths,
         }
     }

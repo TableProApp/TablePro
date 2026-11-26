@@ -1,5 +1,4 @@
 use tablepro_storage::{TeamLibraryKind, delete_other_team_library_owners_blocking};
-use tablepro_sync::api::control::SyncControl;
 use tablepro_sync::api::scopes::Role;
 use tablepro_sync::api::state::{Row, RowRange, Table};
 use tablepro_sync::api::team_library::TeamLibraryControl;

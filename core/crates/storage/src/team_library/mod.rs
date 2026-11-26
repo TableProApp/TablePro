@@ -325,7 +325,8 @@ impl TeamLibraryStore {
         items: &[(TeamLibraryKind, String)],
     ) -> Result<(), StorageError> {
         self.write(|document| {
-            let named = |kind: TeamLibraryKind, id: &str| items.iter().any(|(held, held_id)| *held == kind && held_id == id);
+            let named =
+                |kind: TeamLibraryKind, id: &str| items.iter().any(|(held, held_id)| *held == kind && held_id == id);
             if let Some(local) = document.local.iter_mut().find(|local| local.team_id == team_id) {
                 local.writers.retain(|writer| !named(writer.kind, &writer.id));
             }
@@ -525,18 +526,27 @@ pub fn delete_other_owners_blocking(paths: &StoragePaths, keep: Option<&TeamLibr
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(source) => return Err(StorageError::Io { path: folder, source }),
     };
-    for entry in entries {
-        let path = entry.path();
-        let named = path.extension().is_some_and(|extension| extension == "json")
-            && path.file_stem().is_some_and(|stem| stem.len() == 64);
-        if !named || kept.as_deref() == Some(path.as_path()) {
-            continue;
-        }
-        crate::fs::write_private_blocking(&marker_for(&path), b"")?;
-        let _file = crate::fs::lock_beside_blocking(&path);
-        delete_file_blocking(&path)?;
+    let targets: Vec<PathBuf> = entries
+        .into_iter()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension().is_some_and(|extension| extension == "json")
+                && path.file_stem().is_some_and(|stem| stem.len() == 64)
+                && kept.as_deref() != Some(path.as_path())
+        })
+        .collect();
+    // Every owner is marked before any file goes, so one delete that fails leaves every owner it was meant for unread.
+    for path in &targets {
+        crate::fs::write_private_blocking(&marker_for(path), b"")?;
     }
-    Ok(())
+    let mut failed = None;
+    for path in &targets {
+        let _file = crate::fs::lock_beside_blocking(path);
+        if let Err(error) = delete_file_blocking(path) {
+            failed.get_or_insert(error);
+        }
+    }
+    failed.map_or(Ok(()), Err)
 }
 
 fn item_record(team_id: &str, id: &str) -> RecordRef {

@@ -77,7 +77,7 @@ impl ServiceSync {
     // A team the account lost its seat in goes with what this device held of it, once nothing of it is left unsent.
     async fn drop_unreached(&self, session: &Session, reached: &[ScopeName]) -> Result<(), SyncError> {
         for scope in self.known_teams(session).await? {
-            if reached.contains(&scope) || !self.team_diff(session, scope).await?.is_empty() {
+            if reached.contains(&scope) || !self.team_diff(scope).await?.is_empty() {
                 continue;
             }
             if !self.team_local(scope).await?.imports.is_empty() {

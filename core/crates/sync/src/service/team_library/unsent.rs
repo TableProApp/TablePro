@@ -14,7 +14,7 @@ use crate::api::adapter::LocalChange;
 use crate::api::control::{ConflictChoice, conflict_digest};
 use crate::api::error::SyncError;
 use crate::api::ids::{KindName, RecordKey, ScopeName};
-use crate::api::state::{BaseRow, Row, RowRange, Table};
+use crate::api::state::{BaseRow, Row, RowKey, RowRange, Table};
 use crate::api::team_library::{TeamItemRef, UnsentState, UnsentTeamEdit};
 use crate::engine::{PendingOp, diff};
 
@@ -40,8 +40,9 @@ fn name_of(fields: Option<&Value>) -> Option<String> {
 
 impl ServiceSync {
     // The pending diff and the conflicts of one team scope.
-    pub(super) async fn team_diff(&self, session: &Session, scope: ScopeName) -> Result<Vec<Unsent>, SyncError> {
+    pub(super) async fn team_diff(&self, scope: ScopeName) -> Result<Vec<Unsent>, SyncError> {
         let skip = self.skipped(scope).await?;
+        let refused = self.refused_in(scope).await?;
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
         let mut out = Vec::new();
         for (kind, adapter) in self.library_adapters(scope) {
@@ -58,8 +59,8 @@ impl ServiceSync {
             );
             for pending in diffed.pending {
                 let print = fingerprint(&pending.change());
-                let state = match session.refused.get(&pending.key) {
-                    Some((held, code)) if *held == print => UnsentState::Refused { code: code.clone() },
+                let state = match refused.get(&pending.key) {
+                    Some(row) if row.digest == print => UnsentState::Refused { code: row.code.clone() },
                     _ => UnsentState::Pending,
                 };
                 let (deletion, fields) = match &pending.op {
@@ -130,7 +131,7 @@ impl ServiceSync {
                 .body
                 .as_ref()
                 .is_none_or(|body| body.scopes.iter().any(|info| info.scope == scope));
-            for unsent in self.team_diff(session, scope).await? {
+            for unsent in self.team_diff(scope).await? {
                 let name = name_of(unsent.fields.as_ref())
                     .or_else(|| name_of(unsent.base.as_ref().and_then(|base| base.fields.as_ref())));
                 out.push(UnsentTeamEdit {
@@ -166,7 +167,7 @@ impl ServiceSync {
 
     // Every unsent edit of `only`, or of every team, goes: the store takes the team's copy back, a conflict keeps
     // theirs, a refusal is forgotten and 0.88's edits still waiting are dropped. Nothing is sent.
-    pub(super) async fn discard(&self, session: &mut Session, only: Option<ScopeName>) -> Result<(), SyncError> {
+    pub(super) async fn discard(&self, session: &Session, only: Option<ScopeName>) -> Result<(), SyncError> {
         let scopes = match only {
             Some(scope) => vec![scope],
             None => self.known_teams(session).await?,
@@ -180,10 +181,8 @@ impl ServiceSync {
                     .await?;
                 reverted.push((row.kind, row.key.record_id));
             }
-            reverted.extend(self.revert(session, scope).await?);
-            session
-                .refused
-                .retain(|key, _| key.scope != scope || key.kind.known().and_then(library_kind).is_none());
+            reverted.extend(self.revert(scope).await?);
+            self.forget_refusals(scope).await?;
             self.update_local(scope, move |local| {
                 local.imports.clear();
                 local.claims.retain(|claim| {
@@ -198,11 +197,30 @@ impl ServiceSync {
         Ok(())
     }
 
+    // A library record's refusal goes with what it refused, here and after a restart (0066, `refused`).
+    pub(super) async fn forget_refusals(&self, scope: ScopeName) -> Result<(), SyncError> {
+        let rows = self.refused_in(scope).await?;
+        let keys: Vec<RecordKey> = rows
+            .into_keys()
+            .filter(|key| key.kind.known().and_then(library_kind).is_some())
+            .collect();
+        if keys.is_empty() {
+            return Ok(());
+        }
+        self.check_stop()?;
+        let mut txn = begin(&self.state).await?;
+        for key in keys {
+            txn.delete(&RowKey::Refused(key)).await?;
+        }
+        txn.commit().await?;
+        Ok(())
+    }
+
     // The store's copy of each pending record back at its base, with the members that wait for the person kept as the
     // store holds them, so a discard approves nothing.
-    async fn revert(&self, session: &Session, scope: ScopeName) -> Result<Vec<(TeamLibraryKind, String)>, SyncError> {
+    async fn revert(&self, scope: ScopeName) -> Result<Vec<(TeamLibraryKind, String)>, SyncError> {
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
-        let pending = self.team_diff(session, scope).await?;
+        let pending = self.team_diff(scope).await?;
         let mut reverted = Vec::new();
         for (kind, adapter) in self.library_adapters(scope) {
             let records = adapter.records(scope).await?.records;
