@@ -22,20 +22,25 @@ impl Account {
     ) -> Result<(), AccountError> {
         let attempt = self.inner.attempts.load(Ordering::SeqCst);
         let mut cancelled = std::pin::pin!(cancelled);
-        // The server and the account the tokens must come back for are known before any page opens.
-        let preparing = async {
+        // A slow company server's discovery holds the session, so a cancel ends it too, as at a sign-in.
+        let discovering = async {
             let mut session = self.inner.session.lock().await;
             if session.refresh.is_none() {
                 return Err(AccountError::SignedOut);
             }
             let server = self.connection(&mut session, true).await?;
             server_calls::same_issuer(&session, &server)?;
-            let account_id = self.account_id(&mut session).await?;
-            Ok((server, account_id))
+            Ok(server)
         };
-        let (server, account_id) = tokio::select! {
-            prepared = preparing => prepared?,
+        let server = tokio::select! {
+            discovered = discovering => discovered?,
             () = &mut cancelled => return Err(AccountError::SignInCanceled),
+        };
+        // The account the tokens must come back for, before any page opens. Not cancelled: finding it can refresh the
+        // token, and a rotated refresh token dropped before it is kept would end the sign-in at its next use.
+        let account_id = {
+            let mut session = self.inner.session.lock().await;
+            self.account_id(&mut session).await?
         };
         let oauth = &server.connection()?.oauth;
         let issuer = server.expected_issuer()?;

@@ -128,7 +128,7 @@ impl Server {
     }
 
     fn answer(&self, request: &Request) -> (u16, String, String) {
-        let claims = request.bearer.as_deref().and_then(claims).unwrap_or_default();
+        let claims = request.bearer.as_deref().and_then(Claims::of).unwrap_or_default();
         let fields = form(&request.body);
         let entry = match (request.method.as_str(), request.path.as_str()) {
             ("POST", "/oauth/token") => format!(
@@ -141,7 +141,7 @@ impl Server {
                 "{} {} {}",
                 request.method,
                 request.path,
-                claims.get("family").and_then(|it| it.as_str()).unwrap_or("-")
+                claims.family.as_deref().unwrap_or("-")
             ),
         };
         self.log.lock().expect("the log").push(entry);
@@ -153,12 +153,12 @@ impl Server {
                 (200, String::new(), String::new())
             }
             ("POST", "/v2/devices") => {
-                let family = claims.get("family").and_then(|it| it.as_str()).unwrap_or_default();
-                self.bound.lock().expect("the families").push(family.to_owned());
+                let family = claims.family.unwrap_or_default();
+                self.bound.lock().expect("the families").push(family);
                 (200, String::new(), device_answer())
             }
             ("DELETE", path) if path == format!("/v2/devices/{LOST_DEVICE}") => {
-                let stepped = claims.get("acr").is_some() && claims.get("dev").is_some();
+                let stepped = claims.acr.is_some() && claims.dev.is_some();
                 match stepped && self.takes_step_up {
                     true => (204, String::new(), String::new()),
                     false => (
@@ -194,16 +194,18 @@ impl Server {
             }
             _ => return (400, String::new(), r#"{"error":"unsupported_grant_type"}"#.to_owned()),
         };
-        let mut claims = serde_json::json!({ "sub": subject, "family": family });
-        if family == "stepped" {
-            claims["acr"] = PASSKEY.into();
-            claims["auth_time"] = Utc::now().timestamp().into();
-        }
-        let bound = family == "old" || self.bound.lock().expect("the families").iter().any(|it| it == family);
-        if bound && fields.get("grant_type").map(String::as_str) == Some("refresh_token") {
-            claims["dev"] = DEVICE.into();
-        }
-        let access = format!("e30.{}.c2ln", URL_SAFE_NO_PAD.encode(claims.to_string()));
+        let stepped = family == "stepped";
+        let bound = !stepped || self.bound.lock().expect("the families").iter().any(|it| it == family);
+        let claims = Claims {
+            sub: subject.to_owned(),
+            family: Some(family.to_owned()),
+            acr: stepped.then(|| PASSKEY.to_owned()),
+            auth_time: stepped.then(|| Utc::now().timestamp()),
+            dev: (bound && fields.get("grant_type").map(String::as_str) == Some("refresh_token"))
+                .then(|| DEVICE.to_owned()),
+            ..Claims::default()
+        };
+        let access = claims.token();
         let tokens = format!(
             r#"{{"access_token":"{access}","token_type":"Bearer","expires_in":900,"refresh_token":"{refresh}"}}"#
         );
@@ -211,9 +213,33 @@ impl Server {
     }
 }
 
-fn claims(token: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
-    let payload = token.split('.').nth(1)?;
-    serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).ok()?).ok()
+// An access token's claims, as tablepro-cloud signs them; the stub signs nothing.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct Claims {
+    sub: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aud: Option<Vec<String>>,
+    // The stub's own: which refresh family the token is of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    acr: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    auth_time: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dev: Option<String>,
+}
+
+impl Claims {
+    fn of(token: &str) -> Option<Self> {
+        let payload = token.split('.').nth(1)?;
+        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).ok()?).ok()
+    }
+
+    fn token(&self) -> String {
+        let json = serde_json::to_string(self).expect("the claims");
+        format!("e30.{}.c2ln", URL_SAFE_NO_PAD.encode(json))
+    }
 }
 
 // Stands in for ASWebAuthenticationSession: keeps each page it opened and answers it, once the test lets it when a
@@ -527,10 +553,6 @@ async fn a_loopback_client_steps_up_through_the_system_browser() {
     assert_eq!(held(&keyring).await.as_deref(), Some("stepped-refresh+"));
 }
 
-fn jwt(claims: &serde_json::Value) -> String {
-    format!("e30.{}.c2ln", URL_SAFE_NO_PAD.encode(claims.to_string()))
-}
-
 // Signs in to a company server, then steps up with tokens whose `aud` `audience` gives for the server's origin. Answers
 // the step-up, what the server was asked, the refresh tokens it revoked and the sign-in's keyring item.
 async fn company_step_up(
@@ -551,8 +573,8 @@ async fn company_step_up(
         move |origin, method, path, body| {
             requests.lock().expect("the requests").push(format!("{method} {path}"));
             let fields = form(body);
-            let tokens = |claims: serde_json::Value, refresh: &str| {
-                let access = jwt(&claims);
+            let tokens = |claims: &Claims, refresh: &str| {
+                let access = claims.token();
                 Some((
                     200,
                     format!(
@@ -560,17 +582,21 @@ async fn company_step_up(
                     ),
                 ))
             };
-            let stepped = serde_json::json!({
-                "aud": [audience(origin)], "sub": ACCOUNT, "acr": PASSKEY, "auth_time": Utc::now().timestamp(),
-            });
+            let stepped = Claims {
+                sub: ACCOUNT.to_owned(),
+                aud: Some(vec![audience(origin)]),
+                acr: Some(PASSKEY.to_owned()),
+                auth_time: Some(Utc::now().timestamp()),
+                ..Claims::default()
+            };
             match (method, path) {
                 ("POST", "/oauth/token") if fields.get("code").map(String::as_str) == Some("step-code") => {
-                    tokens(stepped, "company-stepped")
+                    tokens(&stepped, "company-stepped")
                 }
                 ("POST", "/oauth/token")
                     if fields.get("refresh_token").map(String::as_str) == Some("company-stepped") =>
                 {
-                    tokens(stepped, "company-stepped+")
+                    tokens(&stepped, "company-stepped+")
                 }
                 ("POST", "/oauth/revoke") => {
                     revoked

@@ -11,7 +11,7 @@ mod sync_scopes;
 
 pub use api_error::{ApiError, http_text};
 pub use bearer::Bearer;
-pub use challenge::StepUpChallenge;
+pub use challenge::{StepUpChallenge, dpop_nonce, dpop_nonce_challenge};
 pub use http::{CONNECT_TIMEOUT, REQUEST_TIMEOUT, http_client, read_capped};
 pub use problem::{answer_error, rate_limited, refusal, schema_mismatch};
 pub use snapshot::{PublicSnapshot, SnapshotBody, SnapshotColumnBody};

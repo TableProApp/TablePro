@@ -1,7 +1,10 @@
-use reqwest::header::{HeaderMap, WWW_AUTHENTICATE};
+use reqwest::header::{HeaderMap, HeaderName, WWW_AUTHENTICATE};
 
 // RFC 9470 section 3: the error a resource server names when the token's authentication is too old or too weak.
 const INSUFFICIENT_USER_AUTHENTICATION: &str = "insufficient_user_authentication";
+// RFC 9449 section 9: the error a resource server names when the DPoP proof lacks the nonce it wants.
+const USE_DPOP_NONCE: &str = "use_dpop_nonce";
+const DPOP_NONCE: HeaderName = HeaderName::from_static("dpop-nonce");
 
 // What a call that needs a fresh step-up asks the next authorization request for (RFC 9470 section 4).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,34 +19,17 @@ impl StepUpChallenge {
     // that does not parse, or a challenge with a parameter twice or a `max_age` that is not whole seconds, asks for
     // nothing.
     pub fn from_headers(headers: &HeaderMap) -> Option<Self> {
-        headers
-            .get_all(WWW_AUTHENTICATE)
-            .iter()
-            .filter_map(|field| field.to_str().ok())
-            .filter_map(challenges)
-            .flatten()
-            .filter(|challenge| {
-                challenge.scheme.eq_ignore_ascii_case("bearer") || challenge.scheme.eq_ignore_ascii_case("dpop")
-            })
-            .find_map(|challenge| Self::from_params(&challenge.params))
+        all_challenges(headers)
+            .filter(|challenge| challenge.is("bearer") || challenge.is("dpop"))
+            .find_map(|challenge| Self::from_challenge(&challenge))
     }
 
-    fn from_params(params: &[(String, String)]) -> Option<Self> {
-        let param = |name: &str| -> Result<Option<&str>, ()> {
-            let mut named = params
-                .iter()
-                .filter(|(param, _)| param == name)
-                .map(|(_, value)| value.as_str());
-            let first = named.next();
-            match named.next() {
-                Some(_) => Err(()),
-                None => Ok(first),
-            }
-        };
-        if param("error").ok()?? != INSUFFICIENT_USER_AUTHENTICATION {
+    fn from_challenge(challenge: &Challenge) -> Option<Self> {
+        if challenge.param("error").ok()?? != INSUFFICIENT_USER_AUTHENTICATION {
             return None;
         }
-        let acr_values = param("acr_values")
+        let acr_values = challenge
+            .param("acr_values")
             .ok()?
             .map(|values| {
                 values
@@ -53,7 +39,7 @@ impl StepUpChallenge {
                     .collect()
             })
             .unwrap_or_default();
-        let max_age_secs = match param("max_age").ok()? {
+        let max_age_secs = match challenge.param("max_age").ok()? {
             Some(seconds) if !seconds.is_empty() && seconds.bytes().all(|byte| byte.is_ascii_digit()) => {
                 Some(seconds.parse().ok()?)
             }
@@ -67,11 +53,64 @@ impl StepUpChallenge {
     }
 }
 
+// RFC 9449 section 9: an answer whose DPoP challenge names `use_dpop_nonce` carries the nonce the retried proof must
+// hold. None when no challenge asks for one or the nonce is missing.
+pub fn dpop_nonce_challenge(headers: &HeaderMap) -> Option<String> {
+    all_challenges(headers)
+        .any(|challenge| challenge.is("dpop") && challenge.param("error") == Ok(Some(USE_DPOP_NONCE)))
+        .then(|| dpop_nonce(headers))
+        .flatten()
+}
+
+// The `DPoP-Nonce` a server may send on any answer, as RFC 9449 section 8.1 spells a nonce: printable ASCII but `"`
+// and `\`.
+pub fn dpop_nonce(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(DPOP_NONCE)
+        .and_then(|value| value.to_str().ok())
+        .filter(|nonce| {
+            !nonce.is_empty()
+                && nonce
+                    .bytes()
+                    .all(|byte| matches!(byte, 0x21 | 0x23..=0x5B | 0x5D..=0x7E))
+        })
+        .map(str::to_owned)
+}
+
+fn all_challenges(headers: &HeaderMap) -> impl Iterator<Item = Challenge> {
+    headers
+        .get_all(WWW_AUTHENTICATE)
+        .iter()
+        .filter_map(|field| field.to_str().ok())
+        .filter_map(challenges)
+        .flatten()
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct Challenge {
     scheme: String,
     // Names in lower case, values unquoted.
     params: Vec<(String, String)>,
+}
+
+impl Challenge {
+    fn is(&self, scheme: &str) -> bool {
+        self.scheme.eq_ignore_ascii_case(scheme)
+    }
+
+    // RFC 9110 section 11.2: a name occurs once per challenge, so a second one makes the challenge unreadable.
+    fn param(&self, name: &str) -> Result<Option<&str>, ()> {
+        let mut named = self
+            .params
+            .iter()
+            .filter(|(param, _)| param == name)
+            .map(|(_, value)| value.as_str());
+        let first = named.next();
+        match named.next() {
+            Some(_) => Err(()),
+            None => Ok(first),
+        }
+    }
 }
 
 // RFC 9110 section 11.6.1: `#challenge`, each `auth-scheme [ 1*SP ( token68 / #auth-param ) ]`. A comma separates both
@@ -290,6 +329,32 @@ mod tests {
         for field in [unquoted_end, twice, negative, fraction, past_u64, param_first, stray] {
             assert_eq!(read(&[field]), None, "{field}");
         }
+    }
+
+    fn nonce(fields: &[&str], nonce: Option<&str>) -> Option<String> {
+        let mut headers = HeaderMap::new();
+        for field in fields {
+            headers.append(WWW_AUTHENTICATE, HeaderValue::from_str(field).expect("a header value"));
+        }
+        if let Some(nonce) = nonce {
+            headers.insert(DPOP_NONCE, HeaderValue::from_str(nonce).expect("a header value"));
+        }
+        dpop_nonce_challenge(&headers)
+    }
+
+    #[test]
+    fn a_dpop_challenge_for_its_nonce_gives_the_nonce_the_answer_sent() {
+        let asked = r#"DPoP error="use_dpop_nonce", error_description="Resource server requires nonce in DPoP proof""#;
+
+        assert_eq!(
+            nonce(&[asked], Some("eyJ7S_zG.eyJH0-Z.HX4w-7v")),
+            Some("eyJ7S_zG.eyJH0-Z.HX4w-7v".to_owned())
+        );
+        assert_eq!(nonce(&[asked], None), None);
+        assert_eq!(nonce(&[asked], Some("has space")), None);
+        assert_eq!(nonce(&[r#"Bearer error="use_dpop_nonce""#], Some("n-1")), None);
+        assert_eq!(nonce(&[r#"DPoP error="invalid_dpop_proof""#], Some("n-1")), None);
+        assert_eq!(nonce(&[], Some("n-1")), None);
     }
 
     #[test]

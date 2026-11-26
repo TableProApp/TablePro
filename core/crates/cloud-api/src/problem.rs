@@ -5,13 +5,13 @@ use reqwest::StatusCode;
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 
 use crate::api_error::{ApiError, http_text};
-use crate::challenge::StepUpChallenge;
+use crate::challenge::{StepUpChallenge, dpop_nonce_challenge};
 use crate::http::read_capped;
 use crate::v2;
 
 pub async fn answer_error(error: Error<v2::types::Problem>) -> ApiError {
-    if let Some(challenge) = step_up_challenge(&error) {
-        return ApiError::StepUpRequired(challenge);
+    if let Some(challenged) = challenged(&error) {
+        return challenged;
     }
     match error {
         Error::ErrorResponse(answer) if answer.status() == StatusCode::TOO_MANY_REQUESTS => {
@@ -43,17 +43,20 @@ pub async fn answer_error(error: Error<v2::types::Problem>) -> ApiError {
     }
 }
 
-// RFC 9470 section 3: the challenge comes on a 401, whatever problem code the body names.
-fn step_up_challenge(error: &Error<v2::types::Problem>) -> Option<StepUpChallenge> {
+// A 401 whose challenge asks for something the caller can give, whatever problem code the body names: a step-up
+// (RFC 9470 section 3) or a DPoP proof with the server's nonce (RFC 9449 section 9).
+fn challenged(error: &Error<v2::types::Problem>) -> Option<ApiError> {
     let (status, headers) = match error {
         Error::ErrorResponse(answer) => (answer.status(), answer.headers()),
         Error::UnexpectedResponse(response) => (response.status(), response.headers()),
         _ => return None,
     };
-    match status {
-        StatusCode::UNAUTHORIZED => StepUpChallenge::from_headers(headers),
-        _ => None,
+    if status != StatusCode::UNAUTHORIZED {
+        return None;
     }
+    StepUpChallenge::from_headers(headers)
+        .map(ApiError::StepUpRequired)
+        .or_else(|| dpop_nonce_challenge(headers).map(|nonce| ApiError::UseDpopNonce { nonce }))
 }
 
 const LONGEST_RETRY_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
@@ -214,6 +217,27 @@ mod tests {
         assert!(
             matches!(&bare, ApiError::Refused { status: 401, code, .. } if code == "step_up_required"),
             "{bare:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_401_asking_for_the_dpop_nonce_keeps_the_nonce_for_the_retry() {
+        let page = http::Response::builder()
+            .status(401)
+            .header(reqwest::header::WWW_AUTHENTICATE, r#"DPoP error="use_dpop_nonce""#)
+            .header("dpop-nonce", "n-2")
+            .body(r#"{"type":"about:blank","title":"Use dpop nonce","status":401,"code":"use_dpop_nonce"}"#)
+            .expect("an answer");
+        let response = reqwest::Response::from(page);
+        let answer = v2::ResponseValue::<v2::types::Problem>::from_response::<()>(response)
+            .await
+            .expect("a problem");
+
+        let answered = answer_error(Error::ErrorResponse(answer)).await;
+
+        assert!(
+            matches!(&answered, ApiError::UseDpopNonce { nonce } if nonce == "n-2"),
+            "{answered:?}"
         );
     }
 

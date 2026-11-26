@@ -113,6 +113,12 @@ impl From<ApiError> for AccountError {
             },
             ApiError::Refused { status, code, detail } => Self::Refused { status, code, detail },
             ApiError::StepUpRequired(challenge) => Self::StepUpRequired(challenge),
+            // The account signs no DPoP proof, so it has no retry to make.
+            ApiError::UseDpopNonce { .. } => Self::Refused {
+                status: 401,
+                code: "use_dpop_nonce".to_owned(),
+                detail: "the server wants a DPoP proof with its nonce".to_owned(),
+            },
             // Only a share's snapshot gets that large.
             ApiError::TooLarge => Self::Refused {
                 status: 413,

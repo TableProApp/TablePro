@@ -18,6 +18,9 @@ pub enum ApiError {
     // too old or too weak for the call.
     #[error("the call needs a fresh step-up")]
     StepUpRequired(StepUpChallenge),
+    // RFC 9449 section 9: a 401 asking for a DPoP proof that carries this nonce, which a retry signs.
+    #[error("the server wants a DPoP proof with its nonce")]
+    UseDpopNonce { nonce: String },
     // A 413 from the framework or a proxy, which carries no problem code of the server's.
     #[error("the request is larger than the server takes")]
     TooLarge,

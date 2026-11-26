@@ -1,22 +1,23 @@
 use progenitor_client::Error;
 use reqwest::StatusCode;
-use reqwest::header::{ETAG, HeaderMap, HeaderName};
+use reqwest::header::ETAG;
 
 use crate::api_error::ApiError;
+use crate::challenge::dpop_nonce;
 use crate::problem::answer_error;
 use crate::v2;
 
-const DPOP_NONCE: HeaderName = HeaderName::from_static("dpop-nonce");
-
 // A poll of `GET /v2/sync/scopes` (core ADR 0051, Protocol): 304 while the body's strong ETag is the one the poll named.
+// Either answer may carry the nonce the next DPoP proof holds (RFC 9449 section 9).
 #[derive(Debug)]
 pub enum SyncScopesPoll {
-    NotModified,
+    NotModified {
+        dpop_nonce: Option<String>,
+    },
     Changed {
         scopes: Box<v2::types::SyncScopes>,
         // What the next poll names in `If-None-Match`.
         etag: Option<String>,
-        // RFC 9449 section 9: the nonce the next DPoP proof carries.
         dpop_nonce: Option<String>,
     },
 }
@@ -30,13 +31,19 @@ pub async fn poll_sync_scopes(
 ) -> Result<SyncScopesPoll, ApiError> {
     match api.list_sync_scopes(dpop, if_none_match).await {
         Ok(answer) => Ok(SyncScopesPoll::Changed {
-            etag: text(answer.headers(), &ETAG),
-            dpop_nonce: text(answer.headers(), &DPOP_NONCE),
+            etag: answer
+                .headers()
+                .get(ETAG)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned),
+            dpop_nonce: dpop_nonce(answer.headers()),
             scopes: Box::new(answer.into_inner()),
         }),
         Err(Error::UnexpectedResponse(response)) if response.status() == StatusCode::NOT_MODIFIED => {
             match if_none_match {
-                Some(_) => Ok(SyncScopesPoll::NotModified),
+                Some(_) => Ok(SyncScopesPoll::NotModified {
+                    dpop_nonce: dpop_nonce(response.headers()),
+                }),
                 None => Err(ApiError::Protocol(
                     "the server answered 304 to a poll that named no ETag".to_owned(),
                 )),
@@ -44,13 +51,6 @@ pub async fn poll_sync_scopes(
         }
         Err(error) => Err(answer_error(error).await),
     }
-}
-
-fn text(headers: &HeaderMap, name: &HeaderName) -> Option<String> {
-    headers
-        .get(name)
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_owned)
 }
 
 #[cfg(test)]
@@ -90,7 +90,9 @@ mod tests {
                 asked.lock().expect("the polls").push(if_none_match);
                 let mut stream = stream;
                 let answer = match current {
-                    true => format!("HTTP/1.1 304 Not Modified\r\netag: {ETAG_NOW}\r\nconnection: close\r\n\r\n"),
+                    true => format!(
+                        "HTTP/1.1 304 Not Modified\r\netag: {ETAG_NOW}\r\ndpop-nonce: n-2\r\nconnection: close\r\n\r\n"
+                    ),
                     false => format!(
                         "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\netag: {ETAG_NOW}\r\ndpop-nonce: n-1\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{BODY}",
                         BODY.len()
@@ -131,7 +133,10 @@ mod tests {
         assert_eq!(dpop_nonce.as_deref(), Some("n-1"));
         assert_eq!(scopes.scopes.len(), 1);
         assert_eq!(scopes.poll_interval, 60);
-        assert!(matches!(idle, SyncScopesPoll::NotModified), "{idle:?}");
+        assert!(
+            matches!(&idle, SyncScopesPoll::NotModified { dpop_nonce } if dpop_nonce.as_deref() == Some("n-2")),
+            "{idle:?}"
+        );
         assert!(
             matches!(&stale, SyncScopesPoll::Changed { etag, .. } if etag.as_deref() == Some(ETAG_NOW)),
             "{stale:?}"
