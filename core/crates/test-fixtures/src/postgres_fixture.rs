@@ -144,7 +144,7 @@ impl PostgresFixture {
                 .with_db_name(DATABASE)
                 .with_user(PASSWORD_USER)
                 .with_password(&password)
-                .with_name(image.pull_name())
+                .with_name(image.name)
                 .with_tag(image.tag);
             if let Some(command) = Self::server_command(hba) {
                 request = request.with_cmd(command);

@@ -52,7 +52,7 @@ impl MssqlFixture {
             let request = MssqlServer::default()
                 .with_accept_eula()
                 .with_sa_password(&password)
-                .with_name(image.pull_name())
+                .with_name(image.name)
                 .with_tag(image.tag)
                 .with_startup_timeout(STARTUP_TIMEOUT)
                 // SQL Server otherwise takes 80% of the host's memory, and a

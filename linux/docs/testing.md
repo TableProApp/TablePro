@@ -438,7 +438,7 @@ Do not bother with `TESTCONTAINERS_RYUK_DISABLED`. That is a testcontainers-java
 
 Every fixture starts its container through `tablepro_test_fixtures::start_container`, which takes a closure that builds the request and, when pulling the image failed, builds and starts it again, up to three times 5 seconds apart. testcontainers pulls once, and Docker Hub sometimes ends a pull early ("bytes remaining on stream"), which failed every test that needed the image. A test that starts a container of its own goes through it too.
 
-`TABLEPRO_TEST_DOCKER_HUB_MIRROR` names a registry that mirrors Docker Hub. Each fixture then pulls its Docker Hub image through it, `postgres` as `<mirror>/library/postgres`, and an image from another registry, such as SQL Server's, as before. CI sets `mirror.gcr.io` (`.claude/rules/ci.md`, Writing workflow and lint code). A test that starts a container of its own takes its image from `FixtureImage`, so the mirror reaches it too.
+`TABLEPRO_TEST_DOCKER_HUB_MIRROR` names a registry that mirrors Docker Hub, as a Docker daemon's `registry-mirrors` does. Before each start, `start_container` pulls a Docker Hub image the machine lacks through it, `postgres:17-alpine` as `<mirror>/library/postgres:17-alpine`, and tags it with its Docker Hub name. When that pull fails, testcontainers pulls from Docker Hub as before. An image from another registry, such as SQL Server's, never goes through it. CI sets `mirror.gcr.io` (`.claude/rules/ci.md`, Writing workflow and lint code).
 
 `curl --unix-socket "${DOCKER_HOST#unix://}" http://localhost/_ping` should print `OK` before you run the suite. `--unix-socket` takes a filesystem path, so the `unix://` prefix has to come off.
 
