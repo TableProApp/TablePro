@@ -19,7 +19,7 @@ use crate::api::control::{PassReason, PendingApproval, SyncControl, SyncPhase, S
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
 use crate::api::state::{BaseRow, Provider, Row, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
-use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, read_everything_again};
+use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, listed_key, read_everything_again};
 use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalIds, Pass, StopSignal};
 
 // The Swift engine's fallback timer, for changes no CloudKit push announced.
@@ -187,29 +187,31 @@ impl CloudKitSync {
         self.run_locked(&mut session, why).await
     }
 
-    // What a move to TablePro Sync takes from iCloud (0054, Moving between providers, step 1): a last pass, so what
-    // waited goes up, then a full fetch, so the move knows each record the zone still lists, then the engine stops. A
-    // zone that is gone lists nothing the move can trust, so it infers no deletion.
-    pub async fn last_pass_before_move(&self) -> Result<IcloudCopy, SyncError> {
+    // A move to TablePro Sync begins (0054, Moving between providers, step 1): a last pass sends what waited, then the
+    // engine stops for good, so nothing of what the move then brings into the stores goes to iCloud. A move called
+    // again after it stopped short finds the engine stopped and runs no pass.
+    pub async fn stop_for_move(&self) -> Result<(), SyncError> {
         let mut session = self.session.lock().await;
-        let listed = match self.run_locked(&mut session, PassReason::Person).await {
-            Ok(_) => {
-                let state = session.state.clone().ok_or(SyncError::NotAllowed {
-                    what: "move without an iCloud state file",
-                })?;
-                read_everything_again(state.as_ref()).await?;
-                let report = self.run_locked(&mut session, PassReason::Person).await?;
-                Some(report.fetch.listed.ok_or(SyncError::Malformed {
-                    what: "full fetch with no listing",
-                })?)
-            }
+        if self.stop.is_stopped() {
+            return Ok(());
+        }
+        match self.run_locked(&mut session, PassReason::Person).await {
+            Ok(_) => {}
+            // A zone that is gone has nothing to send to; the move goes on without it.
             Err(SyncError::CloudKit(CloudKitFailure::ZoneNotFound | CloudKitFailure::ZoneDeletedByUser))
-                if session.zone_removed =>
-            {
-                None
-            }
+                if session.zone_removed => {}
             Err(error) => return Err(error),
-        };
+        }
+        self.stop.stop();
+        Ok(())
+    }
+
+    // What the move meets the service's copies with, once the engine stopped: this device's CloudKit bases, and every
+    // record the zone lists now, read from a full fetch that writes nothing, so a deletion made on iCloud after another
+    // device moved still shows. A zone that is gone, or another account signed in, lists nothing the move can trust,
+    // and no deletion is inferred.
+    pub async fn copy_for_move(&self) -> Result<IcloudCopy, SyncError> {
+        let session = self.session.lock().await;
         let mut bases = Vec::new();
         if let Some(state) = &session.state {
             let mut txn = state.begin().await?;
@@ -219,12 +221,44 @@ impl CloudKitSync {
                 }
             }
         }
-        self.stop.stop();
+        let signed_in = self.transport.account_status().await?.user_record_name;
+        let listed = match &session.account {
+            Some(account) if *account == signed_in && !session.zone_removed => self.listing(account).await?,
+            _ => None,
+        };
         Ok(IcloudCopy {
             account: session.account.clone(),
             bases,
             listed,
         })
+    }
+
+    async fn listing(&self, account: &str) -> Result<Option<BTreeSet<RecordKey>>, SyncError> {
+        let mut listed = BTreeSet::new();
+        let mut token = None;
+        let mut seen = BTreeSet::new();
+        loop {
+            let changes = match self.transport.fetch_changes(account.to_owned(), token).await {
+                Ok(changes) => changes,
+                Err(CloudKitFailure::ZoneNotFound | CloudKitFailure::ZoneDeletedByUser) => return Ok(None),
+                Err(failure) => return Err(failure.into()),
+            };
+            listed.extend(
+                changes
+                    .changed
+                    .iter()
+                    .map(|record| record.name.as_str())
+                    .chain(changes.unfetched.iter().map(String::as_str))
+                    .filter_map(listed_key),
+            );
+            if !changes.more {
+                return Ok(Some(listed));
+            }
+            if !seen.insert(changes.token.clone()) {
+                return Err(SyncError::Malformed { what: "change token" });
+            }
+            token = Some(changes.token);
+        }
     }
 
     // After a removed zone, the person's answer: the zone is made again and everything this device holds goes up.

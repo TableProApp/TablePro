@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub(crate) use arrival::Arrival;
 
 use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
-use crate::api::control::{MoveBackPlan, MovePlan, PassReason};
+use crate::api::control::{MoveBackPlan, MovePlan};
 use crate::api::error::SyncError;
 use crate::api::state::{StateFiles, StateIdentity};
 use crate::cloudkit::modify::CloudKitSync;
@@ -47,23 +47,19 @@ impl Mover {
         self.parts.service.personal_plan().await
     }
 
-    // A last iCloud pass and a full fetch, then iCloud stops and the service's snapshot meets each local record against
-    // the copy both providers last shared: the move marker's, else this device's CloudKit base. A record gone from the
-    // zone since another device moved it is deleted on the service unless its content changed there. Should the
-    // service side fail, iCloud runs on as the provider.
+    // A last iCloud pass, then iCloud stops for good on this device, and the service's snapshot meets each local record
+    // against the copy both providers last shared: the move marker's, else this device's CloudKit base. A record the
+    // zone no longer lists since another device moved it is deleted on the service unless its content changed there.
+    // A move that stops short (`sync.move_incomplete` or any other error once iCloud stopped) leaves iCloud stopped,
+    // since the stores may already hold what the service brought; calling it again goes on from there.
     pub async fn move_to_service(&self) -> Result<(), SyncError> {
         let icloud = self.parts.icloud.as_ref().ok_or(SyncError::NotAllowed {
             what: "move to TablePro Sync while iCloud is not the provider",
         })?;
-        let copy = icloud.last_pass_before_move().await?;
-        match self.parts.service.run_arrival(Arrival::from_icloud(copy)).await {
-            Ok(_) => Ok(()),
-            Err(error) => {
-                icloud.stop_signal().resume();
-                icloud.journal().pass_soon(PassReason::Person);
-                Err(error)
-            }
-        }
+        icloud.stop_for_move().await?;
+        let copy = icloud.copy_for_move().await?;
+        self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
+        Ok(())
     }
 
     // A device on no provider turning TablePro Sync on (0055, choices): no base to merge against, so the server's copy

@@ -50,7 +50,7 @@ fn key_in(record_type: &RecordType, name: &str) -> Option<RecordKey> {
     Some(RecordKey::new(SCOPE, record_type.kind, id))
 }
 
-pub(super) fn key_of_name(name: &str) -> Option<RecordKey> {
+pub(crate) fn key_of_name(name: &str) -> Option<RecordKey> {
     let (record_type, _) = parse_record_name(name)?;
     key_in(record_type, name)
 }

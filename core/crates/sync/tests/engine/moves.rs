@@ -370,3 +370,73 @@ async fn a_first_upload_from_off_takes_the_server_s_copy_and_sends_what_the_serv
     assert!(!mac.files.exists(&icloud_file()));
     assert_eq!(mac.device.sync.mode(), ServiceMode::Personal);
 }
+
+// A value the move took from the service is the device's base from then on: a change made on the service while the
+// move ran, which a conflict pulls in the same pass, wins over it rather than meeting the marker again.
+#[tokio::test]
+async fn a_service_change_pulled_again_during_the_move_merges_against_what_the_move_took() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    let phone = Apple::on_icloud(&server, &cloud, "dev_phone").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    phone.icloud_pass().await;
+    mac.mover(true).move_to_service().await.unwrap();
+    let web = on_the_service(&server).await;
+    web.connections
+        .put(&id(1), with(carried(1, "Prod", 1), "icon_name", json!("server")));
+    web.sync().await;
+    phone.put(1, carried(1, "Prod (phone)", 1));
+    phone.icloud_pass().await;
+    let (reached, release) = phone.device.wire.hold_next_pull(ScopeName::Personal);
+
+    let meanwhile = async {
+        reached.notified().await;
+        web.connections
+            .put(&id(1), with(carried(1, "Prod", 1), "icon_name", json!("cloud")));
+        web.sync().await;
+        release.notify_one();
+    };
+    let (moved, ()) = tokio::join!(phone.mover(true).move_to_service(), meanwhile);
+
+    moved.unwrap();
+    let merged = with(carried(1, "Prod (phone)", 1), "icon_name", json!("cloud"));
+    assert_eq!(phone.get(1), Some(merged.clone()));
+    assert_eq!(
+        live(&server, 1).map(|fields| with(fields, MEMBER, Value::Null)),
+        Some(with(merged, MEMBER, Value::Null))
+    );
+}
+
+// A move that stops short leaves iCloud stopped, so nothing the service brought reaches the zone, and the next call
+// finishes it.
+#[tokio::test]
+async fn a_move_that_stops_short_keeps_icloud_stopped_and_finishes_when_called_again() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let web = on_the_service(&server).await;
+    web.connections.put(&id(9), carried(9, "Only on the service", 9));
+    web.sync().await;
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    mac.device.wire.drop_next_push();
+
+    let first = mac.mover(true).move_to_service().await;
+    let held_back = mac.icloud.run_pass(PassReason::Poll).await;
+    let after_the_failure = (in_zone(&cloud, 9), mac.device.sync.mode());
+    mac.mover(true).move_to_service().await.unwrap();
+
+    assert!(first.is_err());
+    assert_eq!(held_back.unwrap_err().code(), "sync.cancelled");
+    assert_eq!(after_the_failure, (false, ServiceMode::TeamsOnly));
+    assert!(
+        live(&server, 1)
+            .and_then(|fields| fields.get(MEMBER).cloned())
+            .is_some()
+    );
+    assert_eq!(mac.get(9), Some(carried(9, "Only on the service", 9)));
+    assert!(!in_zone(&cloud, 9));
+    assert_eq!(mac.device.sync.mode(), ServiceMode::Personal);
+}

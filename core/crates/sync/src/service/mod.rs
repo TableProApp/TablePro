@@ -10,7 +10,7 @@ mod scopes;
 use push::AfterPush;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -126,6 +126,8 @@ pub struct ServiceSync {
     mode: Mutex<ServiceMode>,
     // What the last full pass found to send, per scope, so the count shown leaves out the scopes that rest.
     queued: Mutex<HashMap<ScopeName, usize>>,
+    // A move to this provider began and has not finished.
+    arriving: AtomicBool,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -250,6 +252,7 @@ impl ServiceSync {
             events: parts.events,
             mode: Mutex::new(parts.mode),
             queued: Mutex::default(),
+            arriving: AtomicBool::new(false),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),
@@ -411,15 +414,33 @@ impl ServiceSync {
     pub(crate) async fn run_arrival(&self, arrival: Arrival) -> Result<PassReport, SyncError> {
         let mut session = self.session.lock().await;
         self.check_stop()?;
-        self.let_go_of_personal().await?;
+        // A move called again after it stopped short goes on from the bases its first try committed, so a record merged
+        // then never meets the marker again.
+        if !self.arriving.swap(true, Ordering::SeqCst) {
+            self.let_go_of_personal().await?;
+        }
         let before = std::mem::replace(
             &mut *self.mode.lock().unwrap_or_else(PoisonError::into_inner),
             ServiceMode::Personal,
         );
-        let outcome = self
+        let outcome = match self
             .pass_locked(&mut session, PassReason::Person, Some(Arc::new(arrival)))
-            .await;
-        if outcome.is_err() {
+            .await
+        {
+            Ok(report) => {
+                let reached =
+                    !report.pull_only && !report.skipped.iter().any(|(scope, _)| *scope == ScopeName::Personal);
+                if reached && self.unsent(&session, ScopeName::Personal).await? == 0 {
+                    Ok(report)
+                } else {
+                    Err(SyncError::MoveIncomplete)
+                }
+            }
+            Err(error) => Err(error),
+        };
+        if outcome.is_ok() {
+            self.arriving.store(false, Ordering::SeqCst);
+        } else {
             *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = before;
             self.refresh_counts().await;
         }
@@ -434,29 +455,22 @@ impl ServiceSync {
             .await?
             .scan(&RowRange::Scope(Table::Bases, scope))
             .await?;
-        let mut deleted = Vec::new();
         let mut held: HashMap<Kind, HashSet<String>> = HashMap::new();
+        for adapter in self.adapters.in_scope(scope) {
+            let ids = adapter
+                .records(scope)
+                .await?
+                .records
+                .into_iter()
+                .map(|record| record.record_id);
+            held.entry(adapter.kind()).or_default().extend(ids);
+        }
+        let mut deleted = Vec::new();
         for row in rows {
             let Row::Base(base) = row else { continue };
             let Some(kind) = base.key.kind.known() else { continue };
             if base.deleted != Some(crate::api::transport::DeletedReason::User) || kind.is_key() {
                 continue;
-            }
-            if !held.contains_key(&kind) {
-                let mut ids = HashSet::new();
-                for adapter in self.adapters.in_scope(scope) {
-                    if adapter.kind() == kind {
-                        ids.extend(
-                            adapter
-                                .records(scope)
-                                .await?
-                                .records
-                                .into_iter()
-                                .map(|record| record.record_id),
-                        );
-                    }
-                }
-                held.insert(kind, ids);
             }
             if !held.get(&kind).is_some_and(|ids| ids.contains(&base.key.record_id)) {
                 deleted.push(base.key);

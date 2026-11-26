@@ -6,7 +6,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use tablepro_keys::encoding::Version;
-use tablepro_records::{Kind, move_marker};
+use tablepro_records::Kind;
+use tablepro_records::move_marker::{self, MoveMarker};
 
 use super::keys::{Family, HistoryOpens, KeyMark, Opens, family, key_mark};
 use super::refill::Cut;
@@ -492,10 +493,14 @@ impl ServiceSync {
                 writes.held.push(held(HeldReason::Unreadable, key, record));
                 continue;
             }
-            // Arriving from iCloud, the copy this device and iCloud last agreed is the base (0054, Moving between
-            // providers).
-            let moved = pull.arrival.as_deref().and_then(|arrival| arrival.icloud_base(&key));
-            let base = inputs.bases.get(&key).or(moved.as_ref());
+            // Arriving from iCloud, the record's first meet with the service is against the copy both providers last
+            // shared: the move marker's, else this device's CloudKit base (0054, Moving between providers). Once a base
+            // is committed, a later pull in the same move merges against it as any pull does.
+            let stored_base = inputs.bases.get(&key);
+            let arrival = pull.arrival.as_deref().filter(|_| stored_base.is_none());
+            let moved = arrival.and_then(|arrival| arrival.icloud_base(&key));
+            let marker = arrival.and_then(|arrival| arrival.marker(&key));
+            let base = stored_base.or(moved.as_ref());
             let judgement = pull.judge(kind, base, &record);
             let stored = local.and_then(|local| local.records.get(&key.record_id));
             if !pull.categories.syncs(kind) {
@@ -525,7 +530,9 @@ impl ServiceSync {
                 (Some(refill), Judgement::Merge) => refill.as_ref(),
                 _ => base,
             };
-            self.settle_one(pull, &inputs, key, kind, index, judgement, base, stored, record, writes);
+            self.settle_one(
+                pull, &inputs, key, kind, index, judgement, base, stored, record, marker, writes,
+            );
         }
         // A conflict is kept before the store takes the server's side of it, so a crash between the two never loses
         // the device's side (0044, Conflict rules).
@@ -585,6 +592,7 @@ impl ServiceSync {
         base: Option<&BaseRow>,
         stored: Option<&LocalRecord>,
         record: PulledRecord,
+        marker: Option<MoveMarker>,
         writes: &mut PageWrites,
     ) {
         let rows = inputs.approvals.get(&key).map_or(&[][..], Vec::as_slice);
@@ -618,7 +626,6 @@ impl ServiceSync {
             fields: local_view(kind, pull.scope, &mine.fields, base_fields, &held_members),
             ..mine
         });
-        let marker = pull.arrival.as_deref().and_then(|arrival| arrival.marker(&key));
         let mut settled = match (marker, stored) {
             (Some(marker), Some(_)) => settle_moved(&key, kind, &marker, mine.as_ref(), &record),
             // Gone from the zone since another device moved it: deleted on iCloud, unless its content changed here

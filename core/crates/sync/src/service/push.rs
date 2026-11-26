@@ -228,6 +228,40 @@ impl ServiceSync {
         Ok(out)
     }
 
+    // What the diff would still send of a scope, refused records aside: a move is done only once this is nothing, so no
+    // record goes up later without the marker its move owes it.
+    pub(super) async fn unsent(&self, session: &Session, scope: ScopeName) -> Result<usize, SyncError> {
+        let Some(row) = self.scope_row(scope).await? else {
+            return Ok(0);
+        };
+        let skip = self.skipped(scope).await?;
+        let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
+        let categories = self.categories();
+        let none = HashSet::new();
+        let mut unsent = 0;
+        for adapter in self.adapters.in_scope(scope) {
+            let kind = adapter.kind();
+            if kind_off(row.policies, scope, kind) || !categories.syncs(kind) {
+                continue;
+            }
+            let bases = self.bases_in(scope, kind).await?;
+            let local = going_up(kind, scope, adapter.records(scope).await?, &bases, &held);
+            let diffed = diff(
+                scope,
+                kind,
+                &local,
+                &bases,
+                skip.get(&KindName::of(kind)).unwrap_or(&none),
+            );
+            unsent += diffed
+                .pending
+                .iter()
+                .filter(|pending| !session.refused.contains_key(&pending.key))
+                .count();
+        }
+        Ok(unsent)
+    }
+
     // History entries go up sealed under the newest history key, at push time (0056, Envelopes and history). A refusal
     // is remembered by the plaintext it sealed, so the same entry is not sealed and sent again each pass. Entries wait
     // for a pass whose keys can seal them; a deletion carries no fields and goes as it is.

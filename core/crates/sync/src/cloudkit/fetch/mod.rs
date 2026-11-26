@@ -29,7 +29,7 @@ mod rebase;
 mod settle;
 mod stores;
 
-pub(crate) use copy::wire_fields;
+pub(crate) use copy::{key_of_name as listed_key, wire_fields};
 pub use rebase::{RebaseFailure, Rebased, ServerChanged};
 pub(in crate::cloudkit) use stores::carried;
 
@@ -106,8 +106,6 @@ pub struct FetchReport {
     pub waits: Vec<(RecordKey, u64)>,
     // CloudKit asked to be tried again later, or the network dropped, for a record it named no wait for.
     pub throttled: bool,
-    // A full fetch: every record the zone listed, read or not. A move from iCloud tells by it what was deleted there.
-    pub listed: Option<BTreeSet<RecordKey>>,
 }
 
 pub struct Fetcher<'a> {
@@ -169,8 +167,6 @@ struct Pass {
     seen: BTreeSet<Vec<u8>>,
     start: Start,
     stamps: BTreeMap<String, StoreStamp>,
-    // What the last page of a full fetch found the zone listing.
-    finished: Option<BTreeSet<RecordKey>>,
 }
 
 impl Pass {
@@ -186,7 +182,6 @@ impl Pass {
             seen: start.token.iter().filter(|_| !full).cloned().collect(),
             start,
             stamps,
-            finished: None,
         }
     }
 
@@ -214,9 +209,6 @@ impl Pass {
                 _ => None,
             });
             self.oldest_created_ms = created.chain(self.oldest_created_ms).min();
-        }
-        if self.full && last {
-            self.finished = Some(self.listed.clone());
         }
         let finish = (self.full && last).then(|| Finish {
             listed: std::mem::take(&mut self.listed),
@@ -321,7 +313,6 @@ impl<'a> Fetcher<'a> {
             pass.next = Some(token);
         }
         report.full = pass.full;
-        report.listed = pass.finished.take();
         report.counts.add(self.recover(pass.refill(), &mut waited).await?);
         report.retry_after_ms = waited.keys.values().max().copied();
         report.waits = waited.keys.into_iter().collect();
