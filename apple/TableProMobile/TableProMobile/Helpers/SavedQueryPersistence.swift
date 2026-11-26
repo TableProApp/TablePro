@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // The records of deleted connections, removed once the saved queries can be written.
@@ -22,6 +23,12 @@ nonisolated struct SavedQueryPersistence {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try JSONEncoder().encode(contents)
         try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
+    // Of the file's bytes as they are on disk; nil when there is no file.
+    func digest() -> String? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     func load() throws -> SavedQueryContents {

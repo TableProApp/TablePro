@@ -20,6 +20,8 @@ final class CoreLibraryStore {
         case repeatedId
         case heldByUnreadableRecord(UUID)
         case noAnswer
+        // The sync engine wrote the store since this build last read it.
+        case changedSinceRead
     }
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CoreLibraryStore")
@@ -34,14 +36,16 @@ final class CoreLibraryStore {
 
     let coreFileURL: URL
     let mirror: LegacyLibraryMirror
+    let host: MobileCoreHost
 
     private let storageDirectory: URL
     private let defaults: UserDefaults
     private let secureStore: any SecureStore
-    private let clientVersion: String
 
     private var library: ConnectionLibrary?
     private var loaded = false
+    // The digest of what this store last read or wrote, so a write made over a pull it has not read yet is refused.
+    private var lastDigest: String?
     // The records as the core last held them, for the values iOS has no field for.
     private var stored: [UUID: LibraryConnectionRecord] = [:]
     private var storedGroups: [UUID: GroupRecord] = [:]
@@ -67,7 +71,9 @@ final class CoreLibraryStore {
         mirror = LegacyLibraryMirror(directory: directory, defaults: defaults)
         self.defaults = defaults
         self.secureStore = secureStore
-        self.clientVersion = clientVersion
+        host = MobileCoreHost(directory: storageDirectory, clientVersion: clientVersion) {
+            ConnectionKeychainSecrets(secureStore: secureStore)
+        }
     }
 
     nonisolated static var appVersion: String {
@@ -138,6 +144,13 @@ final class CoreLibraryStore {
             }
         }
         return image
+    }
+
+    // Whether the core's store moved since this store last read or wrote it, as a pass that pulled moves it.
+    func changedSinceRead() throws -> Bool {
+        guard loaded, let library else { return false }
+        let current = try Self.blocking { try await library.libraryContents() }
+        return current.digest != lastDigest
     }
 
     private func importLegacy(_ legacy: LegacyLibraryMirror.Contents, into library: ConnectionLibrary) throws -> Library {
@@ -229,6 +242,11 @@ final class CoreLibraryStore {
         )
         do {
             try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
+            // The core writes the library whole, so a pull the engine wrote since the last read would be lost under it.
+            if loaded, let lastDigest {
+                let current = try Self.blocking { try await library.libraryContents() }
+                guard current.digest == lastDigest else { throw Failure.changedSinceRead }
+            }
             let written = try Self.blocking { try await library.replaceLibrary(library: write) }
             let contents = try Self.blocking { try await library.libraryContents() }
             remember(contents)
@@ -321,6 +339,7 @@ final class CoreLibraryStore {
         )
         storedFavorites = contents.favorites.compactMap(UUID.init(uuidString:))
         heldByCore = Set(contents.unreadable.compactMap(UUID.init(uuidString:)))
+        lastDigest = contents.digest
     }
 
     // Until every copy is gone each later write tries again.
@@ -339,6 +358,7 @@ final class CoreLibraryStore {
         storedFavorites = []
         heldByCore = []
         legacyCopiesOfHeld = []
+        lastDigest = nil
     }
 
     // The damaged file is kept beside the store, as the library files keep theirs; the next one replaces it.
@@ -358,12 +378,7 @@ final class CoreLibraryStore {
 
     private func openedLibrary() throws -> ConnectionLibrary {
         if let library { return library }
-        try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
-        let core = try Core(
-            config: HostConfig(clientVersion: clientVersion, storageDir: storageDirectory.path),
-            secrets: ConnectionKeychainSecrets(secureStore: secureStore)
-        )
-        let opened = try core.library()
+        let opened = try host.core().library()
         library = opened
         return opened
     }
@@ -380,7 +395,7 @@ final class CoreLibraryStore {
 
     // The library's API is synchronous on the main actor, as the files it replaces were; the core's calls are async and
     // never reach the main actor, so the wait cannot deadlock.
-    nonisolated private static func blocking<Value: Sendable>(
+    nonisolated static func blocking<Value: Sendable>(
         _ work: @escaping @Sendable () async throws -> Value
     ) throws -> Value {
         let outcome = OSAllocatedUnfairLock<Result<Value, any Error>?>(initialState: nil)

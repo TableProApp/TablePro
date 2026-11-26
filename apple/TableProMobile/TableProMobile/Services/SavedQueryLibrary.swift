@@ -14,19 +14,13 @@ final class SavedQueryLibrary {
     var status: LoadStatus { state.status }
     var contents: SavedQueryContents { state.value ?? SavedQueryContents() }
 
-    // Nil while the file is not loaded, so sync never merges into or pushes from an empty stand-in.
-    var syncContents: SavedQueryContents? { state.value }
-
-    // Whether records owned by this connection leave the device; the sample's never do.
-    @ObservationIgnored var syncsOwner: (UUID) -> Bool = { _ in true }
-
     @ObservationIgnored private let persistence: SavedQueryPersistence
-    @ObservationIgnored private let syncCoordinator: IOSSyncCoordinator
+    @ObservationIgnored private let store: CoreSavedQueryStore
     @ObservationIgnored private var deferredPurges: [SavedQueryPurge] = []
 
-    init(directory: URL, syncCoordinator: IOSSyncCoordinator) {
+    init(directory: URL, store: CoreSavedQueryStore) {
         persistence = SavedQueryPersistence(directory: directory)
-        self.syncCoordinator = syncCoordinator
+        self.store = store
         do {
             deferredPurges = try persistence.loadPurges()
         } catch {
@@ -53,7 +47,7 @@ final class SavedQueryLibrary {
 
     private func load() {
         do {
-            state = .loaded(try persistence.load())
+            state = .loaded(try store.load())
         } catch {
             state = .failed(error)
             Self.logger.error("Saved queries load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
@@ -69,7 +63,6 @@ final class SavedQueryLibrary {
         guard var updated = writableContents(), updated.query(query.id) == nil else { return false }
         updated.queries.append(query)
         guard commit(updated) else { return false }
-        markDirty(queries: [query])
         return true
     }
 
@@ -85,7 +78,6 @@ final class SavedQueryLibrary {
         query.updatedAt = Date()
         updated.queries[index] = query
         guard commit(updated) else { return false }
-        markDirty(queries: [query])
         return true
     }
 
@@ -95,7 +87,6 @@ final class SavedQueryLibrary {
               let index = updated.queries.firstIndex(where: { $0.id == id }) else { return false }
         let removed = updated.queries.remove(at: index)
         guard commit(updated) else { return false }
-        markDeleted(queries: [removed])
         return true
     }
 
@@ -115,7 +106,6 @@ final class SavedQueryLibrary {
         if let parentId = folder.parentId, updated.isFolder(parentId, insideOrEqualTo: folder.id) { return false }
         updated.folders.append(folder)
         guard commit(updated) else { return false }
-        markDirty(folders: [folder])
         return true
     }
 
@@ -131,7 +121,6 @@ final class SavedQueryLibrary {
         folder.updatedAt = Date()
         updated.folders[index] = folder
         guard commit(updated) else { return false }
-        markDirty(folders: [folder])
         return true
     }
 
@@ -140,8 +129,6 @@ final class SavedQueryLibrary {
         guard var updated = writableContents() else { return false }
         guard let deletion = updated.removeFolder(id) else { return false }
         guard commit(updated) else { return false }
-        markDeleted(folders: [deletion.removed])
-        markDirty(queries: deletion.moved.queries, folders: deletion.moved.folders)
         return true
     }
 
@@ -154,26 +141,14 @@ final class SavedQueryLibrary {
         deferPurges(purge(pending) ? [] : pending)
     }
 
+    // The engine sends what the store no longer holds, so a purge is a store write alone.
     private func purge(_ purges: [SavedQueryPurge]) -> Bool {
         guard var updated = writableContents() else { return false }
-        var deleted = SavedQueryContents()
-        var detachedIds: (queries: Set<UUID>, folders: Set<UUID>) = ([], [])
         for purge in purges {
-            let change = updated.removeRecords(scopedTo: purge.connectionIds)
-            guard purge.tombstoning else { continue }
-            deleted.queries += change.removed.queries
-            deleted.folders += change.removed.folders
-            detachedIds.queries.formUnion(change.detached.queries.map(\.id))
-            detachedIds.folders.formUnion(change.detached.folders.map(\.id))
+            _ = updated.removeRecords(scopedTo: purge.connectionIds)
         }
         guard updated != state.value else { return true }
-        guard write(updated) else { return false }
-        markDeleted(queries: deleted.queries, folders: deleted.folders)
-        markDirty(
-            queries: updated.queries.filter { detachedIds.queries.contains($0.id) },
-            folders: updated.folders.filter { detachedIds.folders.contains($0.id) }
-        )
-        return true
+        return write(updated)
     }
 
     private func runDeferredPurges() {
@@ -202,21 +177,21 @@ final class SavedQueryLibrary {
         let write = updated.importing(planned, now: now)
         guard !write.insertedIds.isEmpty || !write.createdFolderIds.isEmpty else { return write }
         guard commit(updated) else { return nil }
-        let inserted = Set(write.insertedIds)
-        let created = Set(write.createdFolderIds)
-        markDirty(
-            queries: updated.queries.filter { inserted.contains($0.id) },
-            folders: updated.folders.filter { created.contains($0.id) }
-        )
         return write
     }
 
     // MARK: - Sync
 
-    func applySynced(_ merged: SavedQueryContents) -> Bool {
-        guard let current = state.value else { return false }
-        guard merged != current else { return true }
-        return commit(merged)
+    // After a pass: what the engine wrote to the store, read only when the store moved.
+    func reloadAfterSync() {
+        guard state.value != nil else { return }
+        do {
+            if let reloaded = try store.reloadIfChanged() {
+                state = .loaded(reloaded)
+            }
+        } catch {
+            Self.logger.error("Saved queries did not reload after a sync pass: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+        }
     }
 
     // MARK: - Writing
@@ -237,36 +212,13 @@ final class SavedQueryLibrary {
     }
 
     private func write(_ updated: SavedQueryContents) -> Bool {
+        guard let current = state.value else { return false }
         do {
-            try persistence.save(updated)
+            state = .loaded(try store.write(from: current, to: updated))
         } catch {
             Self.logger.error("Failed to save saved queries: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return false
         }
-        state = .loaded(updated)
         return true
-    }
-
-    // MARK: - Sync Marks
-
-    private func syncs(_ owner: UUID?) -> Bool {
-        owner.map(syncsOwner) ?? true
-    }
-
-    // A record moved to a connection that never syncs is held, as on the Mac: its iCloud copy stays as it was.
-    private func markDirty(queries: [SavedQuery] = [], folders: [SavedQueryFolder] = []) {
-        let queryIds = queries.filter { syncs($0.connectionId) }.map(\.id)
-        let folderIds = folders.filter { syncs($0.connectionId) }.map(\.id)
-        guard !queryIds.isEmpty || !folderIds.isEmpty else { return }
-        syncCoordinator.markDirty(savedQueries: queryIds, folders: folderIds)
-        syncCoordinator.scheduleSyncAfterChange()
-    }
-
-    private func markDeleted(queries: [SavedQuery] = [], folders: [SavedQueryFolder] = []) {
-        let queryIds = queries.filter { syncs($0.connectionId) }.map(\.id)
-        let folderIds = folders.filter { syncs($0.connectionId) }.map(\.id)
-        guard !queryIds.isEmpty || !folderIds.isEmpty else { return }
-        syncCoordinator.markDeleted(savedQueries: queryIds, folders: folderIds)
-        syncCoordinator.scheduleSyncAfterChange()
     }
 }
