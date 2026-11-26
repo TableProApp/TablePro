@@ -250,6 +250,49 @@ struct CoreLibraryStoreTests {
         #expect(!fixture.launch().unreadableConnectionIds.contains(heldId))
     }
 
+    @Test("A connection a pull leaves unreadable here keeps its copy in the previous stable's file")
+    func aConnectionMadeUnreadableKeepsItsLegacyCopy() throws {
+        let storage = fixture.launch()
+        let alpha = connection("alpha")
+        #expect(storage.saveConnections([alpha, connection("beta")]))
+        try makeCoreEntryUnreadable(id: alpha.id)
+
+        storage.readCoreWrites()
+
+        #expect(storage.unreadableConnectionIds.contains(alpha.id))
+        #expect(try fixture.legacyConnections().map(\.name).sorted() == ["alpha", "beta"])
+    }
+
+    @Test("A favourite connections.json holds unread keeps its place in the order after a relaunch")
+    func anUnreadFavouriteKeepsItsPlace() throws {
+        let kept = connection("kept", favorite: true)
+        let unreadableId = UUID()
+        let keptJSON = String(decoding: try JSONEncoder().encode(StoredConnection(from: kept)), as: UTF8.self)
+        try Data(#"[\#(keptJSON),{"id":"\#(unreadableId.uuidString)","name":"From a newer build"}]"#.utf8)
+            .write(to: fixture.legacyURL)
+        fixture.defaults.set(
+            [unreadableId.uuidString, kept.id.uuidString],
+            forKey: PreferenceKeys.connectionListFavoritesOrder.name
+        )
+        _ = fixture.launch().loadConnections()
+
+        let relaunched = fixture.launch()
+        _ = relaunched.loadConnections()
+
+        #expect(fixture.preferences(relaunched).favoritesOrder == [unreadableId, kept.id])
+        #expect(fixture.legacyFavoritesOrder == [unreadableId, kept.id])
+    }
+
+    private func makeCoreEntryUnreadable(id: UUID) throws {
+        let data = try Data(contentsOf: fixture.coreURL)
+        var document = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var connections = try #require(document["connections"] as? [[String: Any]])
+        let index = try #require(connections.firstIndex { ($0["id"] as? String)?.lowercased() == id.uuidString.lowercased() })
+        connections[index]["safe_mode"] = "paranoid"
+        document["connections"] = connections
+        try JSONSerialization.data(withJSONObject: document).write(to: fixture.coreURL, options: .atomic)
+    }
+
     // A value a newer build wrote: a Safe Mode level no build knows yet. A newer TablePro tags its write; anything else
     // leaves the tag as it was.
     private func appendUnreadableCoreEntry(id: UUID, taggedByTablePro: Bool = false) throws {
