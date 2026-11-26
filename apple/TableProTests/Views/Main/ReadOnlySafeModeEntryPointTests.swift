@@ -447,7 +447,7 @@ struct ReadOnlySafeModeEntryPointTests {
         FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).txt")
     }
 
-    @Test("A filtered export at Read-Only asks the gate with its filter before any count or row is read")
+    @Test("A filtered export at Read-Only asks the gate with its filter before any row is read")
     func filteredExportAsksTheGateFirst() async throws {
         let (connection, driver, adapter) = installReadOnlySession()
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
@@ -474,8 +474,8 @@ struct ReadOnlySafeModeEntryPointTests {
         #expect(!format.wasAskedToWrite)
     }
 
-    @Test("An export at Read-Only counts and reads its rows in the read-only mode")
-    func exportCountAndRowsCarryTheMode() async throws {
+    @Test("An export at Read-Only reads its rows in the read-only mode and runs no count first")
+    func exportRowsCarryTheMode() async throws {
         let (connection, driver, adapter) = installReadOnlySession()
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let format = ReadingExportFormat()
@@ -488,9 +488,8 @@ struct ReadOnlySafeModeEntryPointTests {
 
         try await service.export(objects: [ExportObjectItem(name: "order_cleanup", kind: .table)], config: config, to: url)
 
-        let count = try #require(driver.call(containing: "COUNT("))
         let rows = try #require(driver.calls.first { $0.entry == "streamRows" })
-        #expect(count.context?.enforcesReadOnly == true)
+        #expect(driver.call(containing: "COUNT(") == nil)
         #expect(rows.context?.enforcesReadOnly == true)
     }
 

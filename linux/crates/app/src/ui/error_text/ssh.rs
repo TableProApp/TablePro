@@ -241,5 +241,9 @@ pub fn ssh_destination_problem_text(problem: &SshDestinationProblem) -> String {
             crate::i18n::gettext_f("“{text}” is not a port number", &[("text", text)])
         }
         SshDestinationProblem::UnclosedBracket => crate::i18n::gettext("an IPv6 address is missing its closing “]”"),
+        SshDestinationProblem::JumpHostKey { host } => crate::i18n::gettext_f(
+            "the jump host {host} signs in with a key of its own, which this app cannot pass to a jump host",
+            &[("host", host)],
+        ),
     }
 }

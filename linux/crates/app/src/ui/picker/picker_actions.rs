@@ -512,7 +512,7 @@ fn ask_for_rename(
 
 fn ask_for_delete(root: gtk::Widget, group: ConnectionGroup, subgroups: bool, sender: InputSender<SessionWindowInput>) {
     glib::spawn_future_local(async move {
-        if super::delete_group_dialog::ask_delete_group(&root, group.name.as_str(), subgroups).await {
+        if super::delete_group_dialog::ask_delete_group(&root, &group.name.shown(), subgroups).await {
             sender.deliver(SessionWindowInput::Library(LibraryEdit::DeleteGroup(group.id)));
         }
     });

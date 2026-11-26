@@ -61,7 +61,8 @@
         "r_n_hex": "01e1c4406c9f048da80dd759f482ddb9bfbb0fee128cde6a0d2271aaef4a0be6"
       },
       "error": "keys.commitment",
-      "server": null
+      "server": null,
+      "clause": "An `r_N` that does not open `c`"
     },
     {
       "name": "a commitment over other keys",
@@ -87,7 +88,8 @@
         "commit_hex": "f7877f1d53d8f9d39b372bec48552af5d0a0a0f86efd156b7558f907ccb3662e"
       },
       "error": "keys.commitment",
-      "server": null
+      "server": null,
+      "clause": "a commitment over other keys"
     }
   ],
   "words_differ": [
@@ -135,7 +137,8 @@
         "other_words": ["upcountry","liquid","stretch","flaccid","broker"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "N's DEK changed on one side",
@@ -181,7 +184,8 @@
         "other_words": ["silenced","asparagus","overdraft","partner","eastcoast"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "N's DSK changed on one side",
@@ -227,7 +231,8 @@
         "other_words": ["pueblo","petroleum","chihuahua","omen","grant"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "r_N changed on one side",
@@ -273,7 +278,8 @@
         "other_words": ["fountain","emotion","upgrade","ample","strategy"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "the IK changed on one side",
@@ -319,7 +325,8 @@
         "other_words": ["bakeshop","jugular","security","chatty","jukebox"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "A's key device id changed on one side",
@@ -365,7 +372,8 @@
         "other_words": ["glitter","sycamore","venture","levitate","scale"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "A's DEK changed on one side",
@@ -411,7 +419,8 @@
         "other_words": ["recall","gains","saloon","discuss","stitch"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "A's DSK changed on one side",
@@ -457,7 +466,8 @@
         "other_words": ["error","worrisome","refill","unfixed","raisin"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "r_A changed on one side",
@@ -503,7 +513,8 @@
         "other_words": ["lethargy","catchy","dividers","cavalry","mom"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "the request changed on one side",
@@ -549,7 +560,8 @@
         "other_words": ["irate","repeated","bony","underuse","bakery"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "the account changed on one side",
@@ -595,7 +607,8 @@
         "other_words": ["unfrozen","navy","superjet","online","sitter"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "the origin changed on one side",
@@ -641,7 +654,8 @@
         "other_words": ["haziness","recreate","ascend","buddy","busboy"]
       },
       "error": "keys.sas_mismatch",
-      "server": null
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     }
   ],
   "session": [
@@ -672,7 +686,8 @@
         "steps": ["reveal"]
       },
       "error": "keys.session",
-      "server": "request_closed"
+      "server": "request_closed",
+      "clause": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`"
     },
     {
       "name": "A reads a reveal after a cancel",
@@ -701,7 +716,8 @@
         "steps": ["receive_cancel","receive_reveal"]
       },
       "error": "keys.session",
-      "server": "request_closed"
+      "server": "request_closed",
+      "clause": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`"
     },
     {
       "name": "N reads a nonce after its request expired",
@@ -730,7 +746,8 @@
         "steps": ["expire","receive_nonce"]
       },
       "error": "keys.session",
-      "server": "request_closed"
+      "server": "request_closed",
+      "clause": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`"
     },
     {
       "name": "A compares a second time",
@@ -759,7 +776,8 @@
         "steps": ["receive_reveal","words","words"]
       },
       "error": "keys.session",
-      "server": "request_closed"
+      "server": "request_closed",
+      "clause": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`"
     },
     {
       "name": "A reads a reveal after its approval",
@@ -788,7 +806,46 @@
         "steps": ["receive_reveal","words","confirm","receive_reveal"]
       },
       "error": "keys.session",
-      "server": "request_closed"
+      "server": "request_closed",
+      "clause": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`"
+    },
+    {
+      "name": "the person says the words differ: the session ends with a mismatch cancel",
+      "op": "sas_session",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "role": "approver",
+        "steps": ["receive_reveal","words","words_differ"],
+        "cancel_record": {
+          "kind": "key.sas",
+          "id": "E1289739-0129-4A80-889D-E042F745DB57/cancel",
+          "fields": {
+            "suite": "tp1",
+            "reason": "mismatch"
+          }
+        }
+      },
+      "error": "keys.sas_mismatch",
+      "server": null,
+      "clause": "Words that differ, with one field changed on one side, N's key device id included"
     },
     {
       "name": "the whole session in order, on N's side",
