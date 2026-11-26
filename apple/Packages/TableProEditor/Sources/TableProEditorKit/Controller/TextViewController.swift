@@ -193,6 +193,9 @@ public class TextViewController: NSViewController {
     var textFilters: [TextFormation.Filter] = []
     var isApplyingUnfilteredEdits = false
 
+    // Whether the edit in flight removes a line break, read before the text it removes is gone.
+    var pendingEditRemovesLineBreak = false
+
     var cancellables = Set<AnyCancellable>()
 
     var snippetSession: SnippetSession?

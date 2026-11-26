@@ -11,6 +11,8 @@ public protocol TextSelectionManagerDelegate: AnyObject {
     var visibleTextRange: NSRange? { get }
 
     func setNeedsDisplay()
+    /// Redraws one part of the view, as `NSView.setNeedsDisplay(_:)` does.
+    func setNeedsDisplay(_ invalidRect: NSRect)
     func estimatedLineHeight() -> CGFloat
 }
 
@@ -73,6 +75,9 @@ public class TextSelectionManager: NSObject {
     weak var textView: TextView?
     weak var delegate: TextSelectionManagerDelegate?
     var cursorTimer: CursorTimer
+    // Where the selections last drew their caret line band or their fill, so a move redraws only there and where
+    // they are now, the way `NSTextView` redraws only the lines an insertion point leaves and enters.
+    private var drawnSelectionRects: [CGRect] = []
 
     public init(
         layoutManager: TextLayoutManager,
@@ -102,7 +107,7 @@ public class TextSelectionManager: NSObject {
         selection.suggestedXPos = layoutManager?.rectForOffset(range.location)?.minX
         textSelections = [selection]
         updateSelectionViews()
-        delegate?.setNeedsDisplay()
+        setNeedsDisplayForSelections()
         notifySelectionChanged()
     }
 
@@ -125,7 +130,7 @@ public class TextSelectionManager: NSObject {
                 return selection
             }
         updateSelectionViews()
-        delegate?.setNeedsDisplay()
+        setNeedsDisplayForSelections()
 
         if oldRanges != textSelections.map(\.range) {
             notifySelectionChanged()
@@ -156,7 +161,7 @@ public class TextSelectionManager: NSObject {
 
         updateSelectionViews()
         notifySelectionChanged()
-        delegate?.setNeedsDisplay()
+        setNeedsDisplayForSelections()
     }
 
     /// The single place a selection change is announced, to observers and to assistive clients alike.
@@ -185,7 +190,10 @@ public class TextSelectionManager: NSObject {
         for textSelection in textSelections {
             if textSelection.range.isEmpty {
                 if showsInsertionPoint {
-                    didUpdate = didUpdate || repositionCursorSelection(textSelection: textSelection)
+                    // Repositioned before the result is folded in, or every caret after the first that moved would
+                    // keep its old place.
+                    let didReposition = repositionCursorSelection(textSelection: textSelection)
+                    didUpdate = didUpdate || didReposition
                 } else if textSelection.view != nil {
                     textSelection.view?.removeFromSuperview()
                     textSelection.view = nil
@@ -199,7 +207,7 @@ public class TextSelectionManager: NSObject {
         }
 
         if didUpdate || force {
-            delegate?.setNeedsDisplay()
+            setNeedsDisplayForSelections()
             if !skipTimerReset {
                 cursorTimer.resetTimer()
                 resetSystemCursorTimers()
@@ -290,6 +298,53 @@ public class TextSelectionManager: NSObject {
     /// The view reference is cleared as well as detached: `updateSelectionViews` only
     /// re-adds a cursor on the `view == nil` branch, so leaving a dangling reference here
     /// meant the caret never came back after the text view resigned first responder.
+    /// Redraws where the selections drew last time and where they draw now, and nothing else.
+    ///
+    /// A caret draws the band behind its whole line and a range fills the lines it covers, so each is bounded by the
+    /// full width of those lines. The text under them is drawn by the line fragment views, which a move leaves alone.
+    func setNeedsDisplayForSelections() {
+        let current = selectionRects()
+        guard let delegate else {
+            drawnSelectionRects = current
+            return
+        }
+        let dirty = drawnSelectionRects + current
+        drawnSelectionRects = current
+        guard dirty.count <= Self.separatelyInvalidatedRectLimit else {
+            delegate.setNeedsDisplay(dirty.reduce(CGRect.null) { $0.union($1) })
+            return
+        }
+        for rect in dirty {
+            delegate.setNeedsDisplay(rect)
+        }
+    }
+
+    // Past this many carets one rect covering them all costs AppKit less than tracking each one.
+    private static let separatelyInvalidatedRectLimit = 64
+
+    /// Remembers where a draw pass put the selections, which is not always where the last change left them: a layout
+    /// pass can move their lines and redraw them there without any selection changing.
+    func noteSelectionsDrawn(in rect: NSRect) {
+        for drawn in selectionRects() where drawn.intersects(rect) && !drawnSelectionRects.contains(drawn) {
+            drawnSelectionRects.append(drawn)
+        }
+        if drawnSelectionRects.count > Self.separatelyInvalidatedRectLimit {
+            drawnSelectionRects = [drawnSelectionRects.reduce(CGRect.null) { $0.union($1) }]
+        }
+    }
+
+    private func selectionRects() -> [CGRect] {
+        guard let layoutManager else { return [] }
+        let width = max(textView?.frame.width ?? 0, layoutManager.maxLineWidth + layoutManager.edgeInsets.horizontal)
+        return textSelections.compactMap { selection in
+            guard let first = layoutManager.textLineForOffset(selection.range.location) else { return nil }
+            let last = selection.range.isEmpty
+                ? first
+                : layoutManager.textLineForOffset(selection.range.max) ?? first
+            return CGRect(x: 0, y: first.yPos, width: width, height: last.yPos + last.height - first.yPos)
+        }
+    }
+
     func removeCursors() {
         cursorTimer.stopTimer()
         for textSelection in textSelections {
