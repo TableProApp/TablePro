@@ -81,6 +81,15 @@ public struct PublishedSSHRoute: Codable, Hashable, Sendable {
         self.target = target
     }
 
+    // A route as another store kept it, basis included, so reading it back never re-derives what was published.
+    public init(version: Int, publisher: UUID, basis: String, hops: [Hop], target: Target) {
+        self.version = version
+        self.publisher = publisher
+        self.basis = basis
+        self.hops = hops
+        self.target = target
+    }
+
     public static let defaultPort = 22
 
     public func describes(_ input: Input) -> Bool {

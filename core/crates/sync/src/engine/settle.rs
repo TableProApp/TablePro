@@ -1,7 +1,6 @@
 use serde_json::Value;
 use tablepro_records::Kind;
 use tablepro_records::merge::{self, Merged, Mode, Sides};
-use tablepro_records::move_marker::MoveMarker;
 
 use crate::api::adapter::{LocalChange, LocalRecord};
 use crate::api::ids::{EpochId, RecordKey, ScopeName};
@@ -149,32 +148,6 @@ pub fn settle(
     }
 }
 
-// The first meet after a move from iCloud with a service copy that carries a move marker: the merge's base is the copy
-// the marker names (0054, Moving between providers).
-pub fn settle_moved(
-    key: &RecordKey,
-    kind: Kind,
-    marker: &MoveMarker,
-    local: Option<&LocalRecord>,
-    pulled: &PulledRecord,
-) -> Settled {
-    let next = Some(base_of(key, kind.is_create_once(), pulled));
-    if pulled.deleted == Some(DeletedReason::Policy) {
-        return Settled {
-            base: next,
-            ..Settled::NOTHING
-        };
-    }
-    let server = if pulled.deleted.is_some() {
-        None
-    } else {
-        pulled.fields.as_ref()
-    };
-    let mine = local.map(|local| &local.fields);
-    let merge = merge::merge_against_marker(kind, mode(key.scope), marker, mine, server);
-    outcome(key, kind, None, local, pulled, server, merge)
-}
-
 fn merged(
     key: &RecordKey,
     kind: Kind,
@@ -183,6 +156,7 @@ fn merged(
     pulled: &PulledRecord,
     server: Option<&Value>,
 ) -> Settled {
+    let id = key.record_id.as_str();
     let mine = local.map(|local| &local.fields);
     // A created-once base keeps no fields: only that it exists counts.
     let held = base.and_then(|base| {
@@ -199,21 +173,6 @@ fn merged(
         local: mine,
         server,
     };
-    let merge = merge::merge(kind, mode(key.scope), sides);
-    outcome(key, kind, held, local, pulled, server, merge)
-}
-
-fn outcome(
-    key: &RecordKey,
-    kind: Kind,
-    held: Option<&Value>,
-    local: Option<&LocalRecord>,
-    pulled: &PulledRecord,
-    server: Option<&Value>,
-    merge: Merged,
-) -> Settled {
-    let id = key.record_id.as_str();
-    let mine = local.map(|local| &local.fields);
     let next = Some(base_of(key, kind.is_create_once(), pulled));
     let conflict = || ConflictRow {
         key: key.clone(),
@@ -221,7 +180,7 @@ fn outcome(
         mine: mine.cloned(),
         theirs: server.cloned(),
     };
-    match merge {
+    match merge::merge(kind, mode(key.scope), sides) {
         Merged::Record(record) => Settled {
             store: put_if_changed(local, id, &record),
             base: next,

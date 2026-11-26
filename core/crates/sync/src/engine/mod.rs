@@ -17,7 +17,7 @@ pub use batch::{change_bytes, split};
 pub use diff::{Diffed, Pending, PendingOp, diff};
 pub use hooks::{EngineEvents, EngineHooks};
 pub use scheduler::{Journal, JournalEntry, JournalIds, JournalObserver, Pass, SchedulerHandle, Wake, spawn};
-pub use settle::{Judgement, Settled, base_of, key_base, mode, settle, settle_moved};
+pub use settle::{Judgement, Settled, base_of, key_base, mode, settle};
 pub use stop::{Fence, StopSignal};
 
 use crate::api::adapter::RecordAdapter;

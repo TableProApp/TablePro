@@ -206,6 +206,10 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
         try await base.fetchAllIndexDDL(databaseName: databaseName)
     }
 
+    func fetchAllTableDDL(databaseName: String) async throws -> [String: String] {
+        try await base.fetchAllTableDDL(databaseName: databaseName)
+    }
+
     func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]] {
         try await base.fetchAllCommentDDL(databaseName: databaseName)
     }

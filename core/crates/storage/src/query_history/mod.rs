@@ -9,6 +9,7 @@ mod history_connection;
 mod history_cursor;
 mod history_page;
 mod history_query;
+mod host_entries;
 #[cfg(test)]
 mod identity_tests;
 mod new_entry;

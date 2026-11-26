@@ -337,6 +337,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch the source of one trigger.
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
 
+    /// Mirrors `PluginDatabaseDriver.fetchCatalogSideObjects(_:)`: the side kinds of a catalog load in as few round
+    /// trips as the engine allows.
+    func fetchCatalogSideObjects(_ request: CatalogSideRequest) async -> CatalogSideObjects
+
     // Mirrors `PluginDatabaseDriver.serverObjectKinds`: asked of the live driver, never of the type.
     var serverObjectKinds: [PluginServerObjectKind] { get }
     func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo]
@@ -1018,6 +1022,10 @@ extension DatabaseDriver {
 
     func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String? {
         nil
+    }
+
+    func fetchCatalogSideObjects(_ request: CatalogSideRequest) async -> CatalogSideObjects {
+        await fetchCatalogSideObjectsSideBySide(request)
     }
 
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)

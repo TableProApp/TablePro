@@ -6,5 +6,3 @@ mod codes;
 pub mod fetch;
 mod legacy;
 pub mod modify;
-
-pub use legacy::LegacyMarks;

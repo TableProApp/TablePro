@@ -203,6 +203,11 @@ impl SshJumpHost {
         self.id.is_none() && self.auth.is_none() && self.key_path.is_none()
     }
 
+    // Text only while it reads back as this hop, so a host or user with a comma, a bracket or a blank in it stays whole.
+    fn reads_back_as_text(&self) -> bool {
+        self.is_plain() && Self::parse_list(&self.destination()) == std::slice::from_ref(self)
+    }
+
     pub fn same_place(&self, other: &Self) -> bool {
         self.host == other.host && self.port == other.port && self.username == other.username
     }
@@ -323,7 +328,7 @@ mod jump_list {
     pub(super) fn serialize<S: Serializer>(hops: &[SshJumpHost], serializer: S) -> Result<S::Ok, S::Error> {
         let mut seq = serializer.serialize_seq(Some(hops.len()))?;
         for hop in hops {
-            if hop.is_plain() {
+            if hop.reads_back_as_text() {
                 seq.serialize_element(&hop.destination())?;
             } else {
                 seq.serialize_element(&Hop {
@@ -416,6 +421,23 @@ mod tests {
                 "plain"
             ])
         );
+    }
+
+    #[test]
+    fn a_hop_the_text_form_would_change_is_written_whole() {
+        let mut ssh = SavedSshConfig::new("bastion", SavedSshAuth::Agent);
+        ssh.jump_hosts = vec![
+            SshJumpHost::new(" edge ", Some(22), Some("ops".to_owned())),
+            SshJumpHost::new("a,b", None, None),
+            SshJumpHost::new("jump", None, Some("me@corp".to_owned())),
+            SshJumpHost::new("plain", Some(2222), None),
+        ];
+
+        let written = serde_json::to_value(&ssh).expect("json");
+        let read: SavedSshConfig = serde_json::from_value(written.clone()).expect("ssh settings");
+
+        assert_eq!(read.jump_hosts, ssh.jump_hosts);
+        assert_eq!(written["jump_hosts"][3], json!("plain:2222"));
     }
 
     #[test]

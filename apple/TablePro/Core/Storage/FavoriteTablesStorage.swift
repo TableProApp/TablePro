@@ -8,7 +8,7 @@ extension Notification.Name {
 }
 
 final class FavoriteTablesStorage: @unchecked Sendable {
-    static let shared = FavoriteTablesStorage()
+    static let shared = FavoriteTablesStorage(core: .shared)
     private static let logger = Logger(subsystem: "com.TablePro", category: "FavoriteTablesStorage")
     private static let currentSyncIdentityVersion = 1
     private static let escapedPathDomain = "escaped"
@@ -57,10 +57,19 @@ final class FavoriteTablesStorage: @unchecked Sendable {
     private let syncIdentityVersionKey = "com.TablePro.favoriteTables.syncIdentityVersion"
     private var cache: Set<FavoriteEntry>?
     private let lock = NSLock()
+    // Nil keeps the favourites out of the core, for a store nothing else reads.
+    private(set) var coreMirror: CoreMirror<FavoriteTablesCoreAdapter>?
 
-    init(userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncJournal: SyncHostJournal = .shared) {
+    init(
+        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
+        syncJournal: SyncHostJournal = .shared,
+        core: CoreHistoryDatabase? = nil
+    ) {
         self.defaults = userDefaults
         self.syncJournal = syncJournal
+        if let core {
+            coreMirror = CoreMirror(adapter: FavoriteTablesCoreAdapter(store: self, database: core), defaults: userDefaults)
+        }
     }
 
     func loadFavorites() -> Set<FavoriteEntry> {
@@ -149,6 +158,24 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         Self.logger.info("Re-keyed \(rekeyed.count, privacy: .public) favorite tables to escaped sync ids")
     }
 
+    // False when favourites are stored and do not decode, which reads as none and must not read as none removed.
+    var storedFavoritesRead: Bool {
+        guard let data = defaults.data(forKey: key) else { return true }
+        return (try? JSONDecoder().decode([FavoriteEntry].self, from: data)) != nil
+    }
+
+    // The core's copy written back, marking nothing: it came from this Mac or a pull, never a new edit here.
+    @MainActor
+    func applyCoreFavorites(puts: [FavoriteEntry], removals: [FavoriteEntry]) {
+        let change = mutateState { favorites in
+            favorites.subtract(removals)
+            favorites.formUnion(puts)
+        }
+        if change.changesEntries {
+            NotificationCenter.default.post(name: .favoriteTablesDidChange, object: self)
+        }
+    }
+
     static func syncId(for entry: FavoriteEntry) -> String {
         let path = IdentityPath.joined(identityComponents(of: entry), separator: "|")
         guard path != legacyPath(of: entry) else { return path.sha256 }
@@ -188,6 +215,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
             written: Array(Self.recordIds(of: change.added).union(reclaimedAliases)),
             deleted: Array(Self.recordIds(ofRemoved: change.removed, keepingAliasesOf: remaining))
         )
+        coreMirror?.schedulePush()
         NotificationCenter.default.post(name: .favoriteTablesDidChange, object: self)
         return change
     }

@@ -293,7 +293,7 @@ final class SQLEditorController {
     // The caret arrives before its text, so it waits; one from a document the binding does not hold is dropped.
     private func passPendingCaretOn() {
         guard let positions = pendingCaret else { return }
-        let editorLength = (textViewController.textView.string as NSString).length
+        let editorLength = textViewController.textView.textStorage.length
         guard editorLength == (input.text.wrappedValue as NSString).length else { return }
         pendingCaret = nil
         input.cursorPositions.wrappedValue = positions

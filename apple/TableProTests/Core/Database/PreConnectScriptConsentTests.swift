@@ -195,7 +195,8 @@ struct PreConnectScriptEntryPointTests {
         FakeMSSQLPluginRegistration.registerIfNeeded()
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tablepro-preconnect-consent-\(unique).json")
+            .appendingPathComponent("tablepro-preconnect-consent-\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         let marker = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-preconnect-ran-\(unique)")
         let suite = try EphemeralDefaults()
@@ -228,7 +229,7 @@ struct PreConnectScriptEntryPointTests {
                 manager.removeSession(for: connectionId)
                 FakeMSSQLPlugin.clearConfigurations(for: connectionId)
                 suite.defaults.removePersistentDomain(forName: suite.suiteName)
-                try? FileManager.default.removeItem(at: fileURL)
+                try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
                 try? FileManager.default.removeItem(at: marker)
             }
         )

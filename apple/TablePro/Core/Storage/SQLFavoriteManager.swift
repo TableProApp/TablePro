@@ -12,7 +12,8 @@ import TableProUtilities
 
 internal final class SQLFavoriteManager: @unchecked Sendable {
     static let shared = SQLFavoriteManager(
-        storage: SQLFavoriteStorage(onSetAside: { DamagedStoreNotice.savedQueriesSetAside($0) })
+        storage: SQLFavoriteStorage(onSetAside: { DamagedStoreNotice.savedQueriesSetAside($0) }),
+        core: .shared
     )
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFavoriteManager")
 
@@ -20,15 +21,35 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     private let syncJournal: SyncHostJournal
     private let appEvents: @MainActor @Sendable () -> AppEvents
     private let operations = MainActorSerialQueue()
+    // Nil keeps the saved queries out of the core, for a store nothing else reads.
+    internal let coreMirror: CoreMirror<SavedQueryCoreAdapter>?
 
     init(
         storage: SQLFavoriteStorage = SQLFavoriteStorage(),
         syncJournal: SyncHostJournal = .shared,
-        appEvents: @escaping @MainActor @Sendable @autoclosure () -> AppEvents = .shared
+        appEvents: @escaping @MainActor @Sendable @autoclosure () -> AppEvents = .shared,
+        core: CoreHistoryDatabase? = nil,
+        mirrorDefaults: UserDefaults = AppStorageEnvironment.shared.defaults
     ) {
         self.storage = storage
         self.syncJournal = syncJournal
         self.appEvents = appEvents
+        coreMirror = core.map { database in
+            let adapter = SavedQueryCoreAdapter(storage: storage, database: database) { queries, folders in
+                await MainActor.run {
+                    syncJournal.recorded(.favorite, written: queries.map(\.uuidString))
+                    syncJournal.recorded(.favoriteFolder, written: folders.map(\.uuidString))
+                    appEvents().sqlFavoritesDidUpdate.send(nil)
+                }
+            }
+            return CoreMirror(adapter: adapter, defaults: mirrorDefaults)
+        }
+    }
+
+    // At launch, and after a write: the core takes what the store holds.
+    @discardableResult
+    func pushToCore() async -> Bool {
+        await coreMirror?.push() ?? true
     }
 
     // MARK: - Favorites
@@ -52,13 +73,16 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         }
     }
 
+    // A delete waits for the core's copy and reports a failure while the core still holds the SQL.
     func deleteFavorite(id: UUID) async -> Bool {
-        await operations.run { [self] in
+        let deleted = await operations.run { [self] in
             guard await storage.deleteFavorites(ids: [id]) != nil else { return false }
             syncJournal.recorded(.favorite, deleted: [id.uuidString])
             postUpdateNotification(connectionId: nil)
             return true
         }
+        guard deleted else { return false }
+        return await pushToCore()
     }
 
     func deleteFavorites(ids: [UUID]) async {
@@ -67,6 +91,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
             syncJournal.recorded(.favorite, deleted: ids.map(\.uuidString))
             postUpdateNotification(connectionId: nil)
         }
+        await pushToCore()
     }
 
     /// Journals every record it removed, the same as the other delete paths, so a deleted
@@ -80,6 +105,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
             recordDetached(removed.detached)
             postUpdateNotification(connectionId: nil)
         }
+        await pushToCore()
     }
 
     /// A row that survived the delete holding a reference the delete had to clear is a local edit
@@ -173,7 +199,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     /// to sync. The moved records kept the id of the deleted folder on the wire, so a device
     /// fetching the account fresh stored a `folderId` matching no folder.
     func deleteFolder(id: UUID) async -> Bool {
-        await operations.run { [self] in
+        let deleted = await operations.run { [self] in
             guard let deletion = await storage.deleteFolder(id: id) else { return false }
             syncJournal.recorded(.favoriteFolder, deleted: [id.uuidString])
             syncJournal.recorded(.favorite, written: deletion.movedFavorites.map(\.uuidString))
@@ -181,6 +207,8 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
             postUpdateNotification(connectionId: nil)
             return true
         }
+        guard deleted else { return false }
+        return await pushToCore()
     }
 
     func fetchFolders(connectionId: UUID? = nil) async -> [SQLFavoriteFolder] {
@@ -308,6 +336,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     // MARK: - Notifications
 
     private func postUpdateNotification(connectionId: UUID?) {
+        coreMirror?.schedulePush()
         let appEvents = appEvents
         Task { @MainActor in
             appEvents().sqlFavoritesDidUpdate.send(connectionId)
@@ -340,6 +369,7 @@ extension SQLFavoriteManager: SavedQueryImportStore {
             syncJournal.recorded(.favoriteFolder, written: write.createdFolderIds.map(\.uuidString))
             syncJournal.recorded(.favorite, written: write.insertedIds.map(\.uuidString))
             if !write.insertedIds.isEmpty || !write.createdFolderIds.isEmpty {
+                coreMirror?.schedulePush()
                 appEvents().sqlFavoritesDidUpdate.send(nil)
             }
             return write

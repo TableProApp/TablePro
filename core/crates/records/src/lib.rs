@@ -12,7 +12,6 @@ pub mod kind;
 pub mod limits;
 pub mod merge;
 pub mod merge_patch;
-pub mod move_marker;
 pub mod order;
 pub mod record_id;
 pub mod schema;

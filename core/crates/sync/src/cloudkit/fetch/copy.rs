@@ -50,7 +50,7 @@ fn key_in(record_type: &RecordType, name: &str) -> Option<RecordKey> {
     Some(RecordKey::new(SCOPE, record_type.kind, id))
 }
 
-pub(crate) fn key_of_name(name: &str) -> Option<RecordKey> {
+pub(in crate::cloudkit) fn key_of_name(name: &str) -> Option<RecordKey> {
     let (record_type, _) = parse_record_name(name)?;
     key_in(record_type, name)
 }
@@ -95,14 +95,6 @@ pub(in crate::cloudkit) fn changed(record: &CloudKitRecord) -> Option<Incoming> 
         }),
         Err(_) => Incoming::Unread { key, tag: Some(tag) },
     })
-}
-
-// A copy fetched by name, as wire fields, or None when this build cannot read it.
-pub(crate) fn wire_fields(record: &CloudKitRecord) -> Option<(RecordKey, Value)> {
-    match changed(record)? {
-        Incoming::Changed(copy) => Some((copy.key, copy.fields)),
-        Incoming::Deleted(_) | Incoming::Unread { .. } => None,
-    }
 }
 
 pub(super) fn deleted(deletion: &CloudKitDeletion) -> Option<Incoming> {

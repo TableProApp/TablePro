@@ -130,6 +130,12 @@ final class ScopeRecordingKeychain: KeychainStoring, @unchecked Sendable {
         }
     }
 
+    func deviceOnlyKeys(endingWith suffix: String) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return local.keys.filter { $0.hasSuffix(suffix) }
+    }
+
     // As the real keychain does, refused while no local value exists, so the secret is never lost on this Mac.
     @discardableResult
     func removeSyncedCopy(forKey key: String) -> Bool {

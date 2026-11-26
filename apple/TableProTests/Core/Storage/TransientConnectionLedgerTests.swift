@@ -19,7 +19,9 @@ struct TransientConnectionLedgerTests {
         suite = try EphemeralDefaults()
         ledger = TransientConnectionLedger(defaults: suite.defaults)
         fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("transient-ledger-\(UUID().uuidString).json")
+            .appendingPathComponent("transient-ledger-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("connections.json")
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         library = ConnectionStorage(fileURL: fileURL, userDefaults: suite.defaults, keychain: InMemoryKeychain())
     }
 

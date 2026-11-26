@@ -11,8 +11,8 @@ use crate::runtime::on_runtime;
 // The tables and databases a user marked, per connection, in the query history's database (core ADR 0017).
 #[derive(uniffi::Object)]
 pub struct FavouriteStore {
-    favourites: Favourites,
-    tasks: Tasks,
+    pub(crate) favourites: Favourites,
+    pub(crate) tasks: Tasks,
 }
 
 // A table by its database and schema, None where the engine has neither.
