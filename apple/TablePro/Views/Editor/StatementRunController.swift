@@ -138,7 +138,7 @@ final class StatementRunController {
         pendingRefresh?.cancel()
         guard let controller else { return }
 
-        if (controller.textView?.string as NSString?)?.length ?? 0 <= Self.synchronousRefreshLimit {
+        if controller.textView?.textStorage.length ?? 0 <= Self.synchronousRefreshLimit {
             refreshControls(in: controller)
             return
         }
@@ -361,13 +361,12 @@ final class StatementRunController {
         guard isHighlightEnabled,
               let textView = controller.textView,
               let selection = controller.cursorPositions.first,
-              selection.range.length == 0 else {
+              selection.range.length == 0,
+              textView.textStorage.length <= sizeLimit else {
             return nil
         }
 
         let text = textView.string
-        guard (text as NSString).length <= sizeLimit else { return nil }
-
         let located = statement(at: selection.range.location, in: text, storage: textView.textStorage)
         guard located.hasContent, located.contentRange.length > 0 else { return nil }
         return located.contentRange

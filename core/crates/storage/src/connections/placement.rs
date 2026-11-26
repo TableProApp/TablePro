@@ -20,18 +20,10 @@ impl ConnectionsDocument {
         for (rank, (_, index)) in ranked.into_iter().enumerate() {
             self.projects[index].order = u32::try_from(rank).unwrap_or(u32::MAX);
         }
+        // A project id no project holds stays as stored and reads as no project: a pull can bring a member before its
+        // project, and the iOS app keeps its projects in a file of its own.
         let mut seen = HashSet::with_capacity(self.groups.len());
         self.groups.retain(|group| seen.insert(group.id));
-        for group in &mut self.groups {
-            if group.project_id.is_some_and(|id| !projects.contains(&id)) {
-                group.project_id = None;
-            }
-        }
-        for connection in self.connections.iter_mut() {
-            if connection.project_id.is_some_and(|id| !projects.contains(&id)) {
-                connection.project_id = None;
-            }
-        }
         let saved = self.connection_ids();
         let mut listed = HashSet::with_capacity(self.favorites.len());
         self.favorites.retain(|id| saved.contains(id) && listed.insert(*id));

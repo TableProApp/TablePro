@@ -28,6 +28,17 @@ struct IntentProjectScopeTests {
         try JSONEncoder().encode(elements).write(to: directory.appendingPathComponent(name))
     }
 
+    // The project list lives in the core's store, as the app writes it.
+    private var coreFile: URL {
+        directory.appendingPathComponent("Core", isDirectory: true).appendingPathComponent("connections.json")
+    }
+
+    private func writeCoreProjects(_ projects: [ConnectionProject]) throws {
+        try FileManager.default.createDirectory(at: coreFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let entries = projects.map { #"{"id":"\#($0.id.uuidString.lowercased())","name":"\#($0.name)","order":0}"# }
+        try Data(#"{"version":1,"connections":[],"projects":[\#(entries.joined(separator: ","))]}"#.utf8).write(to: coreFile)
+    }
+
     private func activate(_ id: UUID) {
         defaults.set(id.uuidString, forKey: ConnectionLibraryPreferences.activeProjectKey)
     }
@@ -35,7 +46,7 @@ struct IntentProjectScopeTests {
     @Test("The Shortcuts picker offers the active project's connections, through the group that carries the project")
     func suggestionsFollowTheActiveProject() throws {
         try write([group], to: "groups.json")
-        try write([project], to: "projects.json")
+        try writeCoreProjects([project])
         activate(project.id)
 
         let suggested = IntentConnectionLoader.suggested(in: directory, defaults: defaults)
@@ -46,7 +57,7 @@ struct IntentProjectScopeTests {
     @Test("A connection named by id resolves whatever its project")
     func lookupByIdIsUnscoped() throws {
         try write([group], to: "groups.json")
-        try write([project], to: "projects.json")
+        try writeCoreProjects([project])
         activate(project.id)
 
         #expect(IntentConnectionLoader.load(in: directory).map(\.id).contains(outside.id))
@@ -55,22 +66,22 @@ struct IntentProjectScopeTests {
     @Test("With no active project, or one no project holds, the picker offers every connection")
     func noActiveProjectOffersEverything() throws {
         try write([group], to: "groups.json")
-        try write([project], to: "projects.json")
+        try writeCoreProjects([project])
         #expect(IntentConnectionLoader.suggested(in: directory, defaults: defaults).count == 3)
 
         activate(UUID())
         #expect(IntentConnectionLoader.suggested(in: directory, defaults: defaults).count == 3)
     }
 
-    @Test("A groups or projects file that cannot be read hides nothing")
+    @Test("A groups file or a core store that cannot be read hides nothing")
     func unreadableFilesOfferEverything() throws {
-        try write([project], to: "projects.json")
+        try writeCoreProjects([project])
         try Data("not json".utf8).write(to: directory.appendingPathComponent("groups.json"))
         activate(project.id)
         #expect(IntentConnectionLoader.suggested(in: directory, defaults: defaults).count == 3)
 
         try write([group], to: "groups.json")
-        try Data("not json".utf8).write(to: directory.appendingPathComponent("projects.json"))
+        try Data("not json".utf8).write(to: coreFile)
         #expect(IntentConnectionLoader.suggested(in: directory, defaults: defaults).count == 3)
     }
 }

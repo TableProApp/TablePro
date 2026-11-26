@@ -18,10 +18,6 @@ struct AppStateProjectTests {
         fixture = try AppStateFixture()
     }
 
-    private var projectsFile: URL {
-        fixture.libraryDirectory.appendingPathComponent("projects.json")
-    }
-
     private func makeState() -> AppState {
         let recorder = recorder
         return fixture.makeState(syncEnabled: false, libraryPublisher: ConnectionLibraryPublisher(
@@ -52,32 +48,20 @@ struct AppStateProjectTests {
         #expect(state.scopedConnections.map(\.name) == ["Orders"])
     }
 
-    @Test("A damaged projects file reads as no projects, refuses project writes and leaves the library usable")
-    func damagedProjectsFileDoesNotLockTheList() throws {
-        try Data("not json".utf8).write(to: projectsFile)
-        let state = makeState()
-
-        #expect(state.loadStatus == .ready)
-        #expect(state.projects.isEmpty)
-        #expect(!state.areProjectsWritable)
-        #expect(state.addProject(named: "Acme") == .refused)
-        #expect(state.addConnection(DatabaseConnection(name: "Orders", type: .mysql)))
-        #expect(state.scopedConnections.count == 1)
-        #expect(try Data(contentsOf: projectsFile) == Data("not json".utf8))
-    }
-
-    @Test("Projects survive a relaunch, and a record this build cannot read stays in the file")
+    @Test("Projects and a connection's project survive a relaunch, in the core's store with the rest of the library")
     func projectsPersist() throws {
-        let unreadableId = UUID()
-        try Data(#"[{"id":"\#(unreadableId.uuidString)","shape":2}]"#.utf8).write(to: projectsFile)
         let state = makeState()
         let id = try addProject("Acme", to: state)
         #expect(state.renameProject(id, to: "Acme Corp") == .applied(id))
+        var orders = DatabaseConnection(name: "Orders", type: .mysql)
+        orders.projectId = id
+        #expect(state.addConnection(orders))
 
         let relaunched = makeState()
 
         #expect(relaunched.projects.map(\.name) == ["Acme Corp"])
-        #expect(relaunched.unreadableCopies.projects == [unreadableId])
+        #expect(relaunched.connections.first { $0.id == orders.id }?.projectId == id)
+        #expect(!FileManager.default.fileExists(atPath: fixture.libraryDirectory.appendingPathComponent("projects.json").path))
     }
 
     @Test("The active project scopes the lists, and storage and lookups by id keep everything")

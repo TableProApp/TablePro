@@ -1171,8 +1171,23 @@
   <data name="Error_library_import_unreadable" xml:space="preserve">
     <value>The file couldn't be read.</value>
   </data>
-  <data name="Error_storage_document_unavailable" xml:space="preserve">
-    <value>The file isn't a TablePro connections file.</value>
+  <data name="Error_storage_document_unreadable" xml:space="preserve">
+    <value>The file couldn't be read.</value>
+  </data>
+  <data name="Error_storage_document_corrupt" xml:space="preserve">
+    <value>The file is damaged: it isn't valid JSON.</value>
+  </data>
+  <data name="Error_storage_document_missing_version" xml:space="preserve">
+    <value>The file isn't a TablePro connections file: it has no version.</value>
+  </data>
+  <data name="Error_storage_document_unsupported_version" xml:space="preserve">
+    <value>An earlier TablePro wrote this file, in a format this version no longer reads.</value>
+  </data>
+  <data name="Error_storage_document_newer_version" xml:space="preserve">
+    <value>A newer TablePro wrote this file. Update TablePro to open it.</value>
+  </data>
+  <data name="Error_storage_document_upgrade_failed" xml:space="preserve">
+    <value>An earlier TablePro wrote this file, and it couldn't be brought up to date.</value>
   </data>
   <data name="Error_storage_group_name_taken" xml:space="preserve">
     <value>Another group here has this name.</value>

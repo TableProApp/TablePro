@@ -63,7 +63,6 @@ extension ExportState {
         let subject = currentTable.isEmpty
             ? (fileName.isEmpty ? String(localized: "Query results") : fileName)
             : currentTable
-        let status = statusMessage.isEmpty ? estimateNote : statusMessage
         guard readsRows else {
             return TransferProgress(
                 job: .export,
@@ -71,7 +70,7 @@ extension ExportState {
                 completed: Int64(min(currentTableIndex, totalTables)),
                 total: Int64(totalTables),
                 unit: .objects,
-                note: status
+                note: statusMessage
             )
         }
         return TransferProgress(
@@ -82,7 +81,7 @@ extension ExportState {
             total: Int64(totalRows),
             unit: .rows,
             isEstimate: rowTotalIsEstimate,
-            note: status
+            note: statusMessage
         )
     }
 }

@@ -3,9 +3,13 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use super::placement::{placed, unique};
-use super::{ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome, SavedConnection};
+use super::{ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome, SavedConnection, StoreState};
 use crate::error::StorageError;
-use crate::{ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionTag, GroupTree, LibraryIcon};
+use crate::lenient::Lenient;
+use crate::store_identity::StoreIdentity;
+use crate::{
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionProject, ConnectionTag, GroupTree, LibraryIcon,
+};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LibraryWrite {
@@ -13,6 +17,7 @@ pub struct LibraryWrite {
     pub groups: Vec<ConnectionGroup>,
     pub tags: Vec<ConnectionTag>,
     pub favorites: Vec<Uuid>,
+    pub projects: Vec<ConnectionProject>,
 }
 
 mod projects;
@@ -30,34 +35,79 @@ fn place(parent: Option<Uuid>, project: Option<Uuid>) -> Place {
     (parent, project.filter(|_| parent.is_none()))
 }
 
+#[derive(Debug, Clone)]
+pub struct LibraryRead {
+    pub list: ConnectionList,
+    // SHA-256 in hex of the bytes the list was decoded from, so a host can tag those bytes; None while there is no file.
+    pub digest: Option<String>,
+}
+
 impl ConnectionStore {
     pub fn list_blocking(&self) -> Result<ConnectionList, StorageError> {
         let mut state = self.lock();
         Ok(self.ensure_loaded(&mut state)?.list())
     }
 
+    pub fn read_library_blocking(&self) -> Result<LibraryRead, StorageError> {
+        let mut state = self.lock();
+        let list = self.ensure_loaded(&mut state)?.list();
+        Ok(LibraryRead {
+            list,
+            digest: digest_of(&state),
+        })
+    }
+
     // Another app's library moving in reads back the same, so nothing is checked or cleaned as an edit does.
-    pub fn replace_library_blocking(&self, write: LibraryWrite) -> Result<(), StorageError> {
+    pub fn replace_library_blocking(&self, write: LibraryWrite) -> Result<Option<String>, StorageError> {
+        write.refuse_repeats()?;
         let LibraryWrite {
             connections,
             groups,
             tags,
             favorites,
+            projects,
         } = write;
-        first_repeat(connections.iter().map(|connection| connection.id))
-            .or_else(|| first_repeat(groups.iter().map(|group| group.id)))
-            .or_else(|| first_repeat(tags.iter().map(|tag| tag.id)))
-            .map_or(Ok(()), |id| Err(StorageError::RepeatedId { id }))?;
-        self.edit(|document| {
-            for connection in &connections {
-                document.connections.release(connection.id);
-            }
-            *document.connections = connections;
-            document.groups = groups;
-            document.tags = tags;
-            document.favorites = favorites;
-            Ok(())
-        })
+        let mut state = self.lock_to_write();
+        let before = self.ensure_current(&mut state)?;
+        let mut document = before.clone();
+        for connection in &connections {
+            document.connections.release(connection.id);
+        }
+        *document.connections = connections;
+        document.groups = groups;
+        document.tags = tags;
+        document.favorites = favorites;
+        document.projects = projects;
+        document.tidy();
+        if document != before {
+            self.commit(&mut state, document)?;
+        }
+        Ok(digest_of(&state))
+    }
+
+    // For a file its host cannot vouch for: nothing it held goes on, and a new generation starts, as a restore's does.
+    pub fn rebuild_library_blocking(&self, write: LibraryWrite) -> Result<Option<String>, StorageError> {
+        write.refuse_repeats()?;
+        let LibraryWrite {
+            connections,
+            groups,
+            tags,
+            favorites,
+            projects,
+        } = write;
+        let mut state = self.lock_to_write();
+        self.ensure_current(&mut state)?;
+        let document = ConnectionsDocument {
+            connections: Lenient::from(connections),
+            groups,
+            tags,
+            favorites,
+            projects,
+            store: Some(StoreIdentity::fresh()),
+            ..ConnectionsDocument::default()
+        };
+        self.commit(&mut state, document)?;
+        Ok(digest_of(&state))
     }
 
     pub fn create_group_blocking(&self, group: ConnectionGroup) -> Result<ConnectionGroup, StorageError> {
@@ -360,6 +410,24 @@ impl ConnectionsDocument {
                 connection.order = rank_of(*rank);
             }
         }
+    }
+}
+
+impl LibraryWrite {
+    fn refuse_repeats(&self) -> Result<(), StorageError> {
+        first_repeat(self.connections.iter().map(|connection| connection.id))
+            .or_else(|| first_repeat(self.groups.iter().map(|group| group.id)))
+            .or_else(|| first_repeat(self.tags.iter().map(|tag| tag.id)))
+            .or_else(|| first_repeat(self.projects.iter().map(|project| project.id)))
+            .map_or(Ok(()), |id| Err(StorageError::RepeatedId { id }))
+    }
+}
+
+fn digest_of(state: &StoreState) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    match state {
+        StoreState::Ready(_, Some(bytes)) => Some(hex::encode(Sha256::digest(bytes))),
+        StoreState::Ready(_, None) | StoreState::Unloaded | StoreState::Unavailable(..) => None,
     }
 }
 

@@ -161,7 +161,9 @@ extension DatabaseManager {
 
         let maxAttempts = ConnectionRecoveryProgress.maxAttempts
         var lastFailure: ConnectionFailureInfo?
-        for attempt in 1...maxAttempts {
+        var attempt = 0
+        while attempt < maxAttempts {
+            attempt += 1
             guard ownsRecovery(token, for: connectionId) else { return }
             guard holdsRecoveringSession(connectionId, driver: driver) else {
                 await yieldRecovery(connectionId, outcome: .success)
@@ -175,12 +177,16 @@ extension DatabaseManager {
                 ? 0
                 : ExponentialBackoff.delay(for: attempt, maxDelay: Self.maxRecoveryDelay)
             Self.logger.info("Reconnect attempt \(attempt)/\(maxAttempts) in \(delay)s for \(connectionId, privacy: .public)")
-            if delay > 0 {
-                do {
-                    try await recoveryClock.sleep(for: .seconds(delay))
-                } catch {
-                    return
+            do {
+                if delay > 0 {
+                    try await waitBeforeRetry(delay)
                 }
+                // With no route out, an attempt can only fail, so the loop waits for the path instead of spending one.
+                while !isNetworkPathSatisfied, dialsThroughNetwork(connectionId) {
+                    try await waitForNetworkChange()
+                }
+            } catch {
+                return
             }
             guard ownsRecovery(token, for: connectionId) else { return }
             guard holdsRecoveringSession(connectionId, driver: driver) else {
@@ -219,6 +225,8 @@ extension DatabaseManager {
             if case .retry(let failure) = outcome {
                 lastFailure = failure
                 resumeRecoveryWaiters(connectionId, with: outcome)
+                // The path went down under the attempt, which says nothing about the server.
+                if !isNetworkPathSatisfied, dialsThroughNetwork(connectionId) { attempt -= 1 }
                 continue
             }
             giveUpRecovery(

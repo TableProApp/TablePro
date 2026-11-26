@@ -213,7 +213,7 @@ fn unknown_keys_survive_a_rewrite_at_every_level() {
         "connections": [{
             "id": id, "name": "n", "driver_id": "postgres", "host": "h", "port": 5432, "database": "d",
             "username": "u", "tls": {"mode": "disable"}, "safe_mode": "off", "external_access": "read_only",
-            "ai_policy": "ask", "workspace_id": "CBCAF15E-97D4-4B75-8D5D-01D586CADC97",
+            "ai_policy": "ask", "project_id": "CBCAF15E-97D4-4B75-8D5D-01D586CADC97", "workspace_id": "w1",
             "ssh_route": {"version": 1, "publisher": id, "basis": "b", "hops": [],
                 "target": {"alias": "a", "host": "h", "port": 22, "username": "u"}, "signed_by": "newer"},
             "origin": "shared_vault"
@@ -230,7 +230,9 @@ fn unknown_keys_survive_a_rewrite_at_every_level() {
 
     let entry = &raw["connections"][0];
     assert_eq!(entry["name"], "renamed");
-    assert_eq!(entry["workspace_id"], "CBCAF15E-97D4-4B75-8D5D-01D586CADC97");
+    assert_eq!(entry["workspace_id"], "w1");
+    // A known key now, kept as stored though no project holds it, in the form a write gives a UUID.
+    assert_eq!(entry["project_id"], "cbcaf15e-97d4-4b75-8d5d-01d586cadc97");
     assert_eq!(entry["ssh_route"]["signed_by"], "newer");
     assert_eq!(entry["origin"], "shared_vault");
     assert_eq!(raw["ssh_profiles"][0]["totp_mode"], "prompt_at_connect");
@@ -847,6 +849,7 @@ fn library_as_another_app_holds_it() -> LibraryWrite {
         connections: vec![first, second],
         groups: vec![blank],
         tags: vec![preset, long],
+        projects: Vec::new(),
     }
 }
 
@@ -864,6 +867,7 @@ fn a_library_write_keeps_every_id_and_value_as_given() {
             groups: list.groups.to_vec(),
             tags: list.tags.to_vec(),
             favorites: list.favorites.to_vec(),
+            projects: Vec::new(),
         }
     };
 
@@ -950,6 +954,44 @@ fn a_library_write_refuses_an_id_named_twice_and_writes_nothing() {
         "{refused:?}"
     );
     assert!(store.list_blocking().expect("list").connections.is_empty());
+}
+
+#[test]
+fn a_library_write_holds_its_projects_and_the_project_each_member_names() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let acme = crate::ConnectionProject::new(crate::ConnectionProjectName::new("Acme").expect("a project name"));
+    let mut library = library_as_another_app_holds_it();
+    library.projects = vec![acme.clone(), acme.clone()];
+
+    let repeated = store.replace_library_blocking(library.clone());
+    assert!(
+        matches!(repeated, Err(StorageError::RepeatedId { id }) if id == acme.id),
+        "{repeated:?}"
+    );
+
+    library.projects = vec![acme.clone()];
+    library.connections[0].group_id = None;
+    library.connections[0].project_id = Some(acme.id);
+    store.replace_library_blocking(library.clone()).expect("write");
+    let list = store.list_blocking().expect("list");
+    assert_eq!(
+        list.projects.iter().map(|project| project.id).collect::<Vec<_>>(),
+        [acme.id]
+    );
+    assert_eq!(list.connections[0].project_id, Some(acme.id));
+    assert_eq!(list.membership().of_connection(&list.connections[0]), Some(acme.id));
+
+    library.projects = Vec::new();
+    store.replace_library_blocking(library).expect("write");
+    let list = store.list_blocking().expect("list");
+    assert!(list.projects.is_empty());
+    assert_eq!(
+        list.connections[0].project_id,
+        Some(acme.id),
+        "kept as written, read as no project"
+    );
+    assert_eq!(list.membership().of_connection(&list.connections[0]), None);
 }
 
 #[test]
@@ -1152,4 +1194,94 @@ fn an_import_files_into_a_group_that_reads_at_the_top_by_its_name() {
         .find(|saved| saved.name == "api")
         .expect("the import");
     assert_eq!(api.group_id, Some(waiting.id));
+}
+
+fn sha256_of(path: &std::path::Path) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(std::fs::read(path).expect("the file")))
+}
+
+#[test]
+fn a_library_read_and_write_give_the_digest_of_the_bytes_on_disk() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    assert_eq!(store.read_library_blocking().expect("read").digest, None, "no file yet");
+
+    let written = store
+        .replace_library_blocking(library_as_another_app_holds_it())
+        .expect("write");
+
+    let path = paths(&root).connections_file();
+    assert_eq!(written.as_deref(), Some(sha256_of(&path).as_str()));
+    let edited = std::fs::read_to_string(&path)
+        .expect("the file")
+        .replace("Prod", "Staging");
+    std::fs::write(&path, edited).expect("an edit outside the store");
+    let read = store.read_library_blocking().expect("read");
+    assert_eq!(read.digest.as_deref(), Some(sha256_of(&path).as_str()));
+    assert_ne!(read.digest, written);
+    assert_eq!(
+        store
+            .replace_library_blocking(LibraryWrite {
+                connections: read.list.connections.to_vec(),
+                groups: read.list.groups.to_vec(),
+                tags: read.list.tags.to_vec(),
+                favorites: read.list.favorites.to_vec(),
+                projects: Vec::new(),
+            })
+            .expect("a write that changes nothing"),
+        read.digest
+    );
+}
+
+#[test]
+fn a_rebuild_keeps_only_what_it_names_and_starts_a_new_generation() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, held) = seeded_with_unreadable(&root, false);
+    let journal = Arc::new(Recording::default());
+    store.save_ssh_profile_blocking(ssh_profile()).expect("a profile");
+    let mut kept = plain("kept");
+    kept.unknown = BTreeMap::from([("from_a_newer_build".to_owned(), json!(true))]);
+    store.upsert_blocking(kept.clone()).expect("save");
+    let before = store.identity_blocking().expect("identity").expect("stamped");
+    store.set_journal(Some(journal.clone()));
+
+    let written = store
+        .rebuild_library_blocking(LibraryWrite {
+            connections: vec![SavedConnection {
+                unknown: BTreeMap::new(),
+                ..kept.clone()
+            }],
+            ..LibraryWrite::default()
+        })
+        .expect("rebuild");
+
+    let list = store.list_blocking().expect("list");
+    assert!(list.unreadable.is_empty(), "{:?}", list.unreadable);
+    assert!(list.ssh_profiles.is_empty());
+    assert!(list.connections[0].unknown.is_empty());
+    let after = list.store.expect("stamped");
+    assert_ne!(after.generation, before.generation);
+    assert_eq!(
+        written.as_deref(),
+        Some(sha256_of(&paths(&root).connections_file()).as_str())
+    );
+    let calls = journal.take_entries();
+    assert_eq!(calls.len(), 1);
+    let gone: Vec<RecordRef> = calls[0].iter().flat_map(|entry| entry.deleted.clone()).collect();
+    assert!(gone.contains(&RecordRef::Id(held.id)), "{gone:?}");
+}
+
+#[test]
+fn a_rebuild_refuses_an_id_named_twice() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let connection = plain("a");
+
+    let refused = store.rebuild_library_blocking(LibraryWrite {
+        connections: vec![connection.clone(), connection],
+        ..LibraryWrite::default()
+    });
+
+    assert!(matches!(refused, Err(StorageError::RepeatedId { .. })), "{refused:?}");
 }

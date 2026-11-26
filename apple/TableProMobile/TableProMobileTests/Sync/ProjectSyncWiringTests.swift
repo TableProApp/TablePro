@@ -447,18 +447,4 @@ struct ProjectSyncWiringTests {
         let deleted = await transport.pushedDeletions.map(\.recordName)
         #expect(deleted == [SyncRecordType.project.recordName(for: project.id.uuidString)])
     }
-
-    @Test("Pulled projects wait, with the change token, while the projects file cannot be read")
-    func unreadableProjectsFileHoldsThePull() async throws {
-        try Data("not json".utf8).write(to: fixture.libraryDirectory.appendingPathComponent("projects.json"))
-        let token = try RecordingSyncTransport.makeChangeToken()
-        let transport = RecordingSyncTransport(remoteRecords: [projectRecord(project)], newToken: token)
-        let state = makeState(transport: transport, writable: true)
-
-        await state.syncCoordinator.sync()
-
-        #expect(state.projects.isEmpty)
-        #expect(state.loadStatus == .ready)
-        #expect(fixture.metadata.loadToken() == nil)
-    }
 }

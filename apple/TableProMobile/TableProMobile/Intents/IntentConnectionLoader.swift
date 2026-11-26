@@ -28,7 +28,7 @@ nonisolated enum IntentConnectionLoader {
         let connections = load(in: directory)
         guard let activeProjectId = ConnectionLibraryPreferences.activeProjectId(in: defaults),
               let groups: [ConnectionGroup] = list("groups.json", in: directory),
-              let projects: [ConnectionProject] = list("projects.json", in: directory)
+              let projects = projects(in: directory)
         else { return connections }
         return LibraryProjectScope.scoped(
             connections: connections,
@@ -48,6 +48,23 @@ nonisolated enum IntentConnectionLoader {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? LibraryFileRecords<Element>(decoding: data).elements
+    }
+
+    // The project list lives only in the core's store, so its ids are read from there; nil when that file cannot be read.
+    private static func projects(in directory: URL) -> [ConnectionProject]? {
+        let url = directory.appendingPathComponent("Core", isDirectory: true).appendingPathComponent("connections.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        guard let data = try? Data(contentsOf: url),
+              let stored = try? JSONDecoder().decode(StoredProjects.self, from: data) else { return nil }
+        return (stored.projects ?? []).compactMap { UUID(uuidString: $0.id).map { ConnectionProject(id: $0) } }
+    }
+
+    private struct StoredProjects: Decodable {
+        struct Entry: Decodable {
+            let id: String
+        }
+
+        let projects: [Entry]?
     }
 
     private static var directory: URL? {

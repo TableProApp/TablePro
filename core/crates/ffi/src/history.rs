@@ -22,8 +22,8 @@ use crate::table_folders::TableFolderStore;
 
 #[derive(uniffi::Object)]
 pub struct QueryHistoryStore {
-    history: QueryHistory,
-    tasks: Tasks,
+    pub(crate) history: QueryHistory,
+    pub(crate) tasks: Tasks,
     // Read to turn a project into its connections; None for a core with no library.
     connections: Option<ConnectionStore>,
 }
@@ -185,16 +185,6 @@ impl QueryHistoryStore {
         on_runtime(&self.tasks, async move {
             history.delete_returning(&ids).await?;
             Ok(())
-        })
-        .await
-    }
-
-    // Every run of one connection, pinned ones too, for a connection deleted with its history. Gives how many went.
-    pub async fn delete_for_connection(&self, connection_id: String) -> Result<u64, CoreError> {
-        let connection = parse_id(&connection_id)?;
-        let history = self.history.clone();
-        on_runtime(&self.tasks, async move {
-            Ok(history.delete_for_connection(connection).await?)
         })
         .await
     }
@@ -364,7 +354,7 @@ impl From<HistoryOutcomeTag> for Outcome {
 }
 
 // A time past what the clock holds lands on the epoch rather than panicking.
-fn from_millis(millis: i64) -> SystemTime {
+pub(crate) fn from_millis(millis: i64) -> SystemTime {
     from_epoch(Duration::from_millis(millis.unsigned_abs()), millis < 0)
 }
 

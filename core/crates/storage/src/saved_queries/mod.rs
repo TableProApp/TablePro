@@ -11,6 +11,7 @@ macro_rules! folder_columns {
     };
 }
 
+mod batch;
 mod deletion;
 mod folders;
 mod new_saved_query;
@@ -34,6 +35,7 @@ use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::stored_id::{optional_uuid_column, uuid_column};
 use crate::unix_time::{from_unix_millis, to_unix_millis};
 
+pub use batch::{SavedQueryContents, SavedQuerySettlement, SavedQueryWrite};
 pub use folders::{SavedQueryFolder, SavedQueryFolders};
 pub use new_saved_query::NewSavedQuery;
 pub(crate) use put::free_name;

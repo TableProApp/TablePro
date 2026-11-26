@@ -587,7 +587,7 @@ fn a_copy_saved_after_its_original_is_in_the_originals_project() {
 }
 
 #[test]
-fn a_read_drops_a_project_no_project_holds_and_numbers_the_projects() {
+fn a_project_id_no_project_holds_stays_stored_and_reads_as_no_project() {
     let acme = ConnectionProject {
         order: 7,
         ..ConnectionProject::new(project_name("Acme"))
@@ -622,9 +622,13 @@ fn a_read_drops_a_project_no_project_holds_and_numbers_the_projects() {
     });
 
     assert_eq!(library.projects(), ["Globex", "Acme"]);
-    assert_eq!(library.stored_group(group.id).project_id, None);
-    assert_eq!(library.saved(dangling.id).project_id, None);
-    assert_eq!(library.saved(kept.id).project_id, Some(acme.id));
+    assert_eq!(library.stored_group(group.id).project_id, Some(gone));
+    assert_eq!(library.saved(dangling.id).project_id, Some(gone));
+    let list = library.list();
+    let membership = list.membership();
+    assert_eq!(membership.of_group(group.id), None);
+    assert_eq!(membership.of_connection(&library.saved(dangling.id)), None);
+    assert_eq!(membership.of_connection(&library.saved(kept.id)), Some(acme.id));
 }
 
 #[test]

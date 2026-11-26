@@ -60,6 +60,16 @@ impl ConnectionStore {
             if document.projects.len() == before {
                 return Ok(RemoveOutcome::NotPresent);
             }
+            for group in &mut document.groups {
+                if group.project_id == Some(id) {
+                    group.project_id = None;
+                }
+            }
+            for connection in document.connections.iter_mut() {
+                if connection.project_id == Some(id) {
+                    connection.project_id = None;
+                }
+            }
             Ok(RemoveOutcome::Removed)
         })
     }

@@ -13,10 +13,11 @@ use tablepro_ffi::{
     AiPolicyTag, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord, ConnectionRecord,
     ConnectionSecrets, Core, CredentialPasswordRecord, CredentialProfileRecord, CredentialReferenceRecord,
     DeviceSettingsRecord, ExternalAccessTag, GroupRecord, HostConfig, HostSecretError, HostSecrets,
-    LibraryConnectionRecord, LibraryWriteRecord, LocalPasswordSourceRecord, RemoteFileAccessTag, SafeModeTag,
-    SecretItemTag, SecretKindTag, SshAuthTag, SshJumpAuthTag, SshJumpHostRecord, SshOptionsRecord, SshProfileRecord,
-    SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TableFolderItemRecord, TableRefRecord, TagRecord,
-    TlsModeTag, TlsSettings, VaultAuthRecord, library_icon_for_symbol, library_icon_symbol, parse_jump_hosts,
+    LibraryConnectionRecord, LibraryWriteRecord, LocalPasswordSourceRecord, ProjectRecord, RemoteFileAccessTag,
+    SafeModeTag, SecretItemTag, SecretKindTag, SshAuthTag, SshJumpAuthTag, SshJumpHostRecord, SshOptionsRecord,
+    SshProfileRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TableFolderItemRecord,
+    TableRefRecord, TagRecord, TlsModeTag, TlsSettings, VaultAuthRecord, library_icon_for_symbol, library_icon_symbol,
+    parse_jump_hosts,
 };
 
 struct NoSecrets;
@@ -468,7 +469,129 @@ fn mac_library() -> LibraryWriteRecord {
             is_preset: true,
         }],
         favorites: vec!["6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44".to_owned()],
+        projects: Vec::new(),
     }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write;
+    Sha256::digest(bytes).iter().fold(String::new(), |mut text, byte| {
+        let _ = write!(text, "{byte:02x}");
+        text
+    })
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_read_and_write_give_the_digest_of_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let file = dir.path().join("connections.json");
+    assert_eq!(library.library_contents().await.unwrap().digest, None);
+
+    let written = library.replace_library(mac_library()).await.unwrap();
+
+    let on_disk = sha256_hex(&std::fs::read(&file).unwrap());
+    assert_eq!(written.digest.as_deref(), Some(on_disk.as_str()));
+    assert_eq!(library.library_contents().await.unwrap().digest, written.digest);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_keeps_every_path_and_host_as_given() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let mut written = mac_library();
+    let connection = &mut written.connections[0].connection;
+    connection.tls.ca_file = Some(" ca.pem ".to_owned());
+    connection.tls.client_certificate = Some(" client.pem ".to_owned());
+    connection.tls.client_key = Some(" client.key ".to_owned());
+    if let Some(ssh) = connection.ssh.as_mut() {
+        ssh.host = " bastion ".to_owned();
+        ssh.auth = SshAuthTag::PrivateKey {
+            path: Some(" ~/.ssh/id_rsa ".to_owned()),
+            has_passphrase: true,
+        };
+        ssh.jump_hosts[0].key_path = Some(" ~/.ssh/hop ".to_owned());
+        ssh.jump_hosts.push(SshJumpHostRecord {
+            id: None,
+            host: "edge,inner".to_owned(),
+            port: None,
+            username: Some(" ops".to_owned()),
+            auth: None,
+            key_path: None,
+        });
+        if let Some(options) = ssh.options.as_mut() {
+            options.kept_key_path = Some(" ~/.ssh/kept ".to_owned());
+            options.agent_socket = Some(" agent.sock ".to_owned());
+            options.remote_file_path = Some(" ~/app.db ".to_owned());
+        }
+    }
+
+    library.replace_library(written.clone()).await.unwrap();
+
+    assert_eq!(
+        library.library_contents().await.unwrap().connections,
+        written.connections
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_refuses_a_hop_id_that_does_not_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let mut written = mac_library();
+    if let Some(ssh) = written.connections[0].connection.ssh.as_mut() {
+        ssh.jump_hosts[0].id = Some("not an id".to_owned());
+    }
+
+    let refused = library.replace_library(written).await;
+
+    assert!(refused.is_err(), "{refused:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rebuild_keeps_only_what_the_write_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let written = mac_library();
+    library.replace_library(written.clone()).await.unwrap();
+    library
+        .save_ssh_profile(SshProfileRecord {
+            id: String::new(),
+            name: "jump".to_owned(),
+            ssh: SshSettings {
+                host: "jump.example".to_owned(),
+                port: None,
+                username: None,
+                jump_hosts: Vec::new(),
+                auth: SshAuthTag::Agent,
+                enabled: None,
+                options: None,
+            },
+        })
+        .await
+        .unwrap();
+    let file = dir.path().join("connections.json");
+    let mut stored: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    stored["connections"][0]["from_a_newer_build"] = serde_json::json!(true);
+    stored["connections"][0]["tls"]["pinned"] = serde_json::json!("sha256/abc");
+    std::fs::write(&file, serde_json::to_vec(&stored).unwrap()).unwrap();
+
+    let rebuilt = library.rebuild_library(written.clone()).await.unwrap();
+
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(!text.contains("from_a_newer_build"), "{text}");
+    assert!(!text.contains("pinned"), "{text}");
+    assert!(!text.contains("jump.example"), "{text}");
+    assert_eq!(rebuilt.digest.as_deref(), Some(sha256_hex(text.as_bytes()).as_str()));
+    assert_eq!(
+        library.library_contents().await.unwrap().connections,
+        written.connections
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -496,6 +619,44 @@ async fn a_library_written_whole_reads_back_as_it_was_written() {
     assert_eq!(
         snapshot.groups[0].parent_id, None,
         "a parent the library lacks reads as the top"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_holds_its_projects_and_what_each_member_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let acme = "cbcaf15e-97d4-4b75-8d5d-01d586cadc97".to_owned();
+    let mut written = mac_library();
+    written.projects = vec![ProjectRecord {
+        id: acme.clone(),
+        name: "Acme".to_owned(),
+        order: 0,
+        color: Some("blue".to_owned()),
+        icon: library_icon_for_symbol("star".to_owned()),
+    }];
+    written.groups[0].parent_id = None;
+    written.groups[0].project_id = Some(acme.clone());
+    written.connections[0].connection.group_id = None;
+    written.connections[0].connection.project_id = Some(acme.clone());
+
+    library.replace_library(written.clone()).await.unwrap();
+    let read = library.library_contents().await.unwrap();
+
+    assert_eq!(read.projects, written.projects);
+    assert_eq!(read.groups[0].project_id.as_deref(), Some(acme.as_str()));
+    assert_eq!(
+        read.connections[0].connection.project_id.as_deref(),
+        Some(acme.as_str())
+    );
+    let shown = library.snapshot_in(Some(acme.clone())).await.unwrap();
+    assert_eq!(shown.scope.as_deref(), Some(acme.as_str()));
+    assert!(
+        shown
+            .connections
+            .iter()
+            .any(|record| record.project_id.as_deref() == Some(acme.as_str()))
     );
 }
 

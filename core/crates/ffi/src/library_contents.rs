@@ -4,15 +4,15 @@ use chrono::DateTime;
 use tablepro_core::{AuthMode, ExternalAccess, NetworkOptions};
 use tablepro_records::cloudkit::library::{icon_for_symbol, symbol_for_icon};
 use tablepro_storage::{
-    ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionTag, ConnectionTagName, DeviceOnly,
-    LibraryWrite, SavedConnection,
+    ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionProject, ConnectionTag, ConnectionTagName,
+    DeviceOnly, LibraryWrite, SavedConnection,
 };
 use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::library::{
-    ConnectionLibrary, ConnectionRecord, GroupRecord, LibraryIconRecord, TagRecord, library_icon, optional_id,
-    parse_id, parse_ids, stored_ssh, stored_tls, tag_color,
+    ConnectionLibrary, ConnectionRecord, GroupRecord, LibraryIconRecord, ProjectRecord, TagRecord, library_icon,
+    optional_id, parse_id, parse_ids, project_name, stored_ssh, stored_tls, tag_color,
 };
 use crate::library_details::{ConnectionDetailsRecord, DeviceSettingsRecord};
 
@@ -31,8 +31,11 @@ pub struct LibraryContents {
     pub groups: Vec<GroupRecord>,
     pub tags: Vec<TagRecord>,
     pub favorites: Vec<String>,
+    pub projects: Vec<ProjectRecord>,
     // Connections this build cannot read. The file keeps them, and a library write leaves them unless it names one.
     pub unreadable: Vec<String>,
+    // SHA-256 in hex of the exact bytes this was decoded from, for the host to tag; None while there is no file.
+    pub digest: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -41,52 +44,99 @@ pub struct LibraryWriteRecord {
     pub groups: Vec<GroupRecord>,
     pub tags: Vec<TagRecord>,
     pub favorites: Vec<String>,
+    // The whole list: a project this leaves out is deleted, and its members stay in no project.
+    pub projects: Vec<ProjectRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct LibraryWritten {
+    // SHA-256 in hex of the exact bytes the file holds after the write; None when there is still no file.
+    pub digest: Option<String>,
 }
 
 #[uniffi::export]
 impl ConnectionLibrary {
     pub async fn library_contents(&self) -> Result<LibraryContents, CoreError> {
         self.blocking(|store| {
-            let list = store.list_blocking()?;
+            let read = store.read_library_blocking()?;
+            let list = read.list;
             Ok(LibraryContents {
                 connections: list.connections.iter().map(LibraryConnectionRecord::from).collect(),
                 groups: list.groups.iter().map(GroupRecord::from).collect(),
                 tags: list.tags.iter().map(TagRecord::from).collect(),
                 favorites: list.favorites.iter().map(Uuid::to_string).collect(),
+                projects: list.projects.iter().map(ProjectRecord::from).collect(),
                 unreadable: list.unreadable.iter().map(Uuid::to_string).collect(),
+                digest: read.digest,
             })
         })
         .await
     }
 
     // Values as given, unlike a save; a newer build's keys stay; secrets are the app's to keep or delete.
-    pub async fn replace_library(&self, library: LibraryWriteRecord) -> Result<(), CoreError> {
+    pub async fn replace_library(&self, library: LibraryWriteRecord) -> Result<LibraryWritten, CoreError> {
         let _held = self.hold_writes().await;
         self.blocking(move |store| {
             let list = store.list_blocking()?;
             let stored: HashMap<Uuid, &SavedConnection> =
                 list.connections.iter().map(|saved| (saved.id, saved)).collect();
-            let write = LibraryWrite {
-                connections: library
-                    .connections
-                    .into_iter()
-                    .map(|record| {
-                        let id = parse_id(&record.connection.id)?;
-                        stored_connection(id, record, stored.get(&id).copied())
-                    })
-                    .collect::<Result<_, CoreError>>()?,
-                groups: library
-                    .groups
-                    .iter()
-                    .map(stored_group)
-                    .collect::<Result<_, CoreError>>()?,
-                tags: library.tags.iter().map(stored_tag).collect::<Result<_, CoreError>>()?,
-                favorites: parse_ids(&library.favorites)?,
-            };
-            Ok(store.replace_library_blocking(write)?)
+            let write = library_write(library, |id| stored.get(&id).copied())?;
+            Ok(LibraryWritten {
+                digest: store.replace_library_blocking(write)?,
+            })
         })
         .await
     }
+
+    // For a file its host cannot vouch for: the store holds only what this write names (rebuild_library_blocking).
+    pub async fn rebuild_library(&self, library: LibraryWriteRecord) -> Result<LibraryWritten, CoreError> {
+        let _held = self.hold_writes().await;
+        self.blocking(move |store| {
+            let write = library_write(library, |_| None)?;
+            Ok(LibraryWritten {
+                digest: store.rebuild_library_blocking(write)?,
+            })
+        })
+        .await
+    }
+}
+
+fn library_write<'a>(
+    library: LibraryWriteRecord,
+    stored: impl Fn(Uuid) -> Option<&'a SavedConnection>,
+) -> Result<LibraryWrite, CoreError> {
+    Ok(LibraryWrite {
+        connections: library
+            .connections
+            .into_iter()
+            .map(|record| {
+                let id = parse_id(&record.connection.id)?;
+                stored_connection(id, record, stored(id))
+            })
+            .collect::<Result<_, CoreError>>()?,
+        groups: library
+            .groups
+            .iter()
+            .map(stored_group)
+            .collect::<Result<_, CoreError>>()?,
+        tags: library.tags.iter().map(stored_tag).collect::<Result<_, CoreError>>()?,
+        favorites: parse_ids(&library.favorites)?,
+        projects: library
+            .projects
+            .iter()
+            .map(stored_project)
+            .collect::<Result<_, CoreError>>()?,
+    })
+}
+
+fn stored_project(record: &ProjectRecord) -> Result<ConnectionProject, CoreError> {
+    Ok(ConnectionProject {
+        id: parse_id(&record.id)?,
+        name: project_name(&record.name)?,
+        order: record.order,
+        color: record.color.as_deref().map(tag_color).transpose()?,
+        icon: record.icon.as_ref().map(library_icon).transpose()?,
+    })
 }
 
 // The icon a macOS SF Symbol name stands for, None for a name that is not one.
@@ -158,7 +208,10 @@ fn stored_connection(
             true => AuthMode::Kerberos,
             false => AuthMode::Password,
         },
-        ssh: connection.ssh.map(|settings| stored_ssh(&settings, ssh_unknown)),
+        ssh: connection
+            .ssh
+            .map(|settings| stored_ssh(&settings, ssh_unknown))
+            .transpose()?,
         last_opened_at: connection.last_opened_ms.and_then(DateTime::from_timestamp_millis),
         color: connection.color.as_deref().map(tag_color).transpose()?,
         group_id: optional_id(connection.group_id.as_deref())?,

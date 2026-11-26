@@ -29,6 +29,10 @@ struct AppStateFixture {
         libraryDirectory.appendingPathComponent("connections.json")
     }
 
+    var coreConnectionsFile: URL {
+        libraryDirectory.appendingPathComponent("Core/connections.json")
+    }
+
     init() throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("app-state-\(UUID().uuidString)", isDirectory: true)
