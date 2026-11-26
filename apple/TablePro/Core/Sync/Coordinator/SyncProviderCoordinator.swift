@@ -375,8 +375,8 @@ final class SyncProviderCoordinator: ObservableObject {
             deliverJournal()
         }
         await journalDelivery?.value
-        // Only iCloud's engine writes the mirror.
-        guard let engine = await host.existingEngine(for: .icloud) else { return }
+        // Whichever service is open, since the one that writes the mirror can be any.
+        guard let engine = await host.existingEngine(for: nil) else { return }
         do {
             try await engine.flushLegacyMarks()
         } catch {

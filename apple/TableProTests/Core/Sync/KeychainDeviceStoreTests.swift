@@ -216,6 +216,38 @@ struct KeychainDeviceStoreTests {
         #expect(throws: HostSecretError.Failed(detail: "the device item holds no data")) { try store.load(item: item) }
     }
 
+    @Test("Under a sandbox the device items stay in its file, never the Keychain the installation reads")
+    func sandboxKeepsItsOwnItems() {
+        let environment = AppStorageEnvironment.shared
+        #expect(environment.isIsolated == (environment.deviceItems is SandboxDeviceKeychainItems))
+    }
+
+    @Test("The sandbox's items read back, are replaced and deleted, and a file that does not read is an error")
+    func sandboxItems() throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KeychainDeviceStoreTests-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let store = KeychainDeviceStore(items: SandboxDeviceKeychainItems(fileURL: file), accessGroup: nil, passcodeIsSet: { true })
+        let root = DeviceItemTag.anchorRoot(state: "STATE")
+        let key = DeviceItemTag.stateMacKey(state: "STATE")
+
+        #expect(try store.load(item: root) == nil)
+        try store.store(item: root, value: Data([1]))
+        try store.store(item: root, value: Data([2]))
+        try store.store(item: key, value: Data([3]))
+        #expect(try store.load(item: root) == Data([2]))
+        try store.delete(item: root)
+        #expect(try store.load(item: root) == nil)
+        #expect(try store.load(item: key) == Data([3]))
+
+        try Data("not json".utf8).write(to: file)
+        #expect(throws: HostSecretError.Failed(detail: "Keychain error \(errSecDecode)")) { try store.load(item: key) }
+        #expect(throws: HostSecretError.Failed(detail: "Keychain error \(errSecDecode)")) {
+            try store.store(item: key, value: Data([4]))
+        }
+        #expect(try Data(contentsOf: file) == Data("not json".utf8))
+    }
+
     @Test("Each item has a name of its own, whatever its parts hold")
     func namesDoNotCollide() {
         let items: [DeviceItemTag] = Self.keys + Self.anchor + [

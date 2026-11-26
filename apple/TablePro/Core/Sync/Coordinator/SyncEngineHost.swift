@@ -79,12 +79,12 @@ final class SyncEngineHost {
         }
     }
 
-    // The service opened for this provider, once an open of one in flight ends. It never opens one.
-    func existingEngine(for provider: SyncProviderTag) async -> (any SyncEngine)? {
-        if let opening, opening.provider == provider {
+    // The service opened for this provider, or for any with nil, once an open of one in flight ends. It never opens one.
+    func existingEngine(for provider: SyncProviderTag?) async -> (any SyncEngine)? {
+        if let opening, provider == nil || opening.provider == provider {
             _ = await opening.task.result
         }
-        guard let opened, opened.provider == provider else { return nil }
+        guard let opened, provider == nil || opened.provider == provider else { return nil }
         return opened.engine
     }
 
@@ -118,7 +118,10 @@ final class SyncEngineHost {
             recordCache: SyncProviderCoordinator.makeRecordCache()
         )
         let defaults = AppStorageEnvironment.shared.defaults
-        let deviceStore = KeychainDeviceStore(accessGroup: KeychainHelper.resolveAccessGroup())
+        let deviceStore = KeychainDeviceStore(
+            items: AppStorageEnvironment.shared.deviceItems,
+            accessGroup: KeychainHelper.resolveAccessGroup()
+        )
         return SyncEngineHost(
             transport: transport,
             keepICloudAccount: { account in

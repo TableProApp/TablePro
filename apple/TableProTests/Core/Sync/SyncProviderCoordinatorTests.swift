@@ -445,6 +445,21 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.engine.read { $0.flushes } == [1])
     }
 
+    @Test("A quit flushes the service that is open, whichever provider it was opened for")
+    func quitFlushesAnOffService() async throws {
+        let fixture = try Fixture()
+        let off = FakeSyncEngine()
+        fixture.offEngine = off
+        fixture.enabled = false
+        fixture.coordinator.start()
+
+        fixture.journal.recorded(.connection, deleted: ["A"])
+        await fixture.coordinator.flushBeforeQuit()
+
+        #expect(fixture.opened == [.off])
+        #expect(off.read { $0.flushes } == [1])
+    }
+
     @Test("A flush that does not answer holds the quit only for the limit")
     func quitFlushIsBounded() async throws {
         let fixture = try Fixture()
