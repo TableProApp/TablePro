@@ -112,7 +112,8 @@ private final class Fixture {
     let notifications = NotificationCenter()
     let journal = SyncHostJournal()
     var opening: AsyncGate?
-    // The provider each open was for, and the engine an open for Off gives when one is set.
+    // The provider each open was asked for and each that opened, and the engine an open for Off gives when one is set.
+    private(set) var openAttempts: [SyncProviderTag] = []
     private(set) var opened: [SyncProviderTag] = []
     var offEngine: FakeSyncEngine?
     var enabled = true
@@ -133,6 +134,7 @@ private final class Fixture {
             transport: transport,
             keepICloudAccount: { [unowned self] in keptAccounts.append($0) },
             open: { [unowned self] provider, listener in
+                openAttempts.append(provider)
                 await opening?.wait()
                 guard opens else { throw AccountError.network("the account did not open") }
                 opened.append(provider)
@@ -400,6 +402,26 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.transport.isClosed)
     }
 
+    @Test("A stop with no service open for iCloud opens none to tell it Off")
+    func stopOpensNothingToTellOff() async throws {
+        let fixture = try Fixture()
+        fixture.opens = false
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.enabled = false
+        fixture.coordinator.disableSync()
+        // Choices run in order, so this pass's runs after the stop's.
+        fixture.opens = true
+        fixture.enabled = true
+        fixture.coordinator.enableSync()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.openAttempts == [.icloud, .icloud])
+        #expect(fixture.providers == [.icloud])
+        #expect(fixture.passes == [.person])
+    }
+
     @Test("A CloudKit notice asks the engine for a pass")
     func noticeAsksForAPass() async throws {
         let fixture = try Fixture()
@@ -648,6 +670,53 @@ struct SyncProviderCoordinatorTests {
 
         try await waitUntil { fixture.coordinator.syncStatus == .disabled(.userDisabled) }
         #expect(fixture.transport.isClosed)
+    }
+}
+
+@MainActor
+struct SyncEngineHostTests {
+    private let icloud = FakeSyncEngine()
+    private let service = FakeSyncEngine()
+
+    private func host(opening: AsyncGate? = nil, opens: @escaping @MainActor (SyncProviderTag) -> Void = { _ in }) -> SyncEngineHost {
+        SyncEngineHost(
+            transport: CloudKitCoreTransport(database: FakeCloudKitDatabase()),
+            open: { [icloud, service] provider, _ in
+                opens(provider)
+                await opening?.wait()
+                return provider == .icloud ? icloud : service
+            }
+        )
+    }
+
+    @Test("Off reaches iCloud's service only: with another provider's open, iCloud has none, though Off is served")
+    func iCloudsServiceIsNamedExplicitly() async throws {
+        let host = host()
+
+        #expect(try await host.engine(for: .icloud) === icloud)
+        #expect(await host.existingEngine(for: .icloud) === icloud)
+        #expect(try await host.engine(for: .tableproSync) === service)
+
+        #expect(await host.existingEngine(for: .icloud) == nil)
+        #expect(try await host.engine(for: .off) === service)
+    }
+
+    @Test("Asking for iCloud's service waits for its open in flight and never opens one itself")
+    func existingWaitsAndNeverOpens() async throws {
+        let opened = OSAllocatedUnfairLock<[SyncProviderTag]>(initialState: [])
+        let gate = AsyncGate()
+        let host = host(opening: gate) { provider in opened.withLock { $0.append(provider) } }
+        #expect(await host.existingEngine(for: .icloud) == nil)
+        #expect(opened.withLock { $0 }.isEmpty)
+
+        let opening = Task { try await host.engine(for: .icloud) }
+        await gate.arrived(1)
+        let existing = Task { await host.existingEngine(for: .icloud) }
+        await gate.open()
+
+        #expect(await existing.value === icloud)
+        #expect(try await opening.value === icloud)
+        #expect(opened.withLock { $0 } == [.icloud])
     }
 }
 

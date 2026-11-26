@@ -78,6 +78,15 @@ final class SyncEngineHost {
         }
     }
 
+    // The service opened for this provider, once an open of one in flight ends. It never opens one.
+    func existingEngine(for provider: SyncProviderTag) async -> (any SyncEngine)? {
+        if let opening, opening.provider == provider {
+            _ = await opening.task.result
+        }
+        guard let opened, opened.provider == provider else { return nil }
+        return opened.engine
+    }
+
     private func startOpening(_ provider: SyncProviderTag) -> Opening {
         let task = Task { [weak self, open, listener = SyncEngineListener(host: self)] in
             let engine = try await open(provider, listener)

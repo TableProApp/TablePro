@@ -263,7 +263,8 @@ final class SyncProviderCoordinator: ObservableObject {
     }
 
     // Queued behind every earlier choice when it is made, not when it runs. The engine is asked only when it does not
-    // hold the provider already, and a choice whose turn is over by then is dropped.
+    // hold the provider already, and a choice whose turn is over by then is dropped. Off goes to the service iCloud
+    // runs on, whatever else is open, and opens none: a service opened Off is off already.
     private func choose(
         _ provider: SyncProviderTag,
         while isCurrent: @escaping @MainActor () -> Bool = { true }
@@ -273,8 +274,13 @@ final class SyncProviderCoordinator: ObservableObject {
         let choice = Task<Result<Void, any Error>, Never> {
             await previous?.value
             do {
-                let engine = try await host.engine(for: provider)
-                guard isCurrent() else { return .success(()) }
+                let engine: (any SyncEngine)?
+                if provider == .off {
+                    engine = await host.existingEngine(for: .icloud)
+                } else {
+                    engine = try await host.engine(for: provider)
+                }
+                guard let engine, isCurrent() else { return .success(()) }
                 if engine.status().provider != provider {
                     try await engine.chooseProvider(provider: provider)
                 }
