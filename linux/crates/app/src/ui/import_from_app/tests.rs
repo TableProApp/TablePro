@@ -264,9 +264,9 @@ fn what_another_app_adds_lands_in_the_active_project_and_what_is_saved_keeps_its
         ))
         .expect("the project");
     wait_until(WAIT, || harness.sources_shown()).expect("the apps to be looked for");
-    harness.dialog.imp().continue_button.emit_clicked();
-    wait_until(WAIT, || harness.page().as_deref() == Some("review")).expect("the review");
-    harness.dialog.imp().import_button.emit_clicked();
+    harness.pages().continue_button().emit_clicked();
+    wait_until(WAIT, || harness.page().as_deref() == Some(pages::REVIEW)).expect("the review");
+    harness.pages().import_button().emit_clicked();
     let (review, plan) = harness.imported.borrow_mut().take().expect("the plan handed over");
     let added: Vec<String> = plan
         .connections()
