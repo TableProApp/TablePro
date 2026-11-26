@@ -40,6 +40,13 @@ use crate::api::state::Standing;
 
 const STORE: &str = "connections.json";
 
+// The provider the adapters sync with: iCloud also carries a favourite table's legacy alias (0052, Long ids).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Provider {
+    ICloud,
+    TableproSync,
+}
+
 // The same name for every kind the history database holds, so a restored file refills them together (0060).
 pub const HISTORY_STORE: &str = "history.db";
 
@@ -80,11 +87,12 @@ pub fn adapters(
     store: &ConnectionStore,
     history: Option<&QueryHistory>,
     names: DriverNames,
+    provider: Provider,
 ) -> Vec<Arc<dyn RecordAdapter>> {
     let mut all = LibraryAdapter::all(store, names);
     if let Some(history) = history {
         all.extend(TableFolderAdapter::all(history, store));
-        all.extend(FavouriteAdapter::all(history, store));
+        all.extend(FavouriteAdapter::all(history, store, provider));
     }
     all
 }

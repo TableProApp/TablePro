@@ -43,7 +43,12 @@ impl Library {
     }
 
     fn adapters(&self) -> Vec<Arc<dyn RecordAdapter>> {
-        library::adapters(&self.store, Some(&self.history), library::DriverNames::Mac)
+        library::adapters(
+            &self.store,
+            Some(&self.history),
+            library::DriverNames::Mac,
+            library::Provider::TableproSync,
+        )
     }
 
     async fn device(&self, server: &Arc<FakeServer>, row: &str) -> Device {

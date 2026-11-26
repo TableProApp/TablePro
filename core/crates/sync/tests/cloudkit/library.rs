@@ -38,7 +38,12 @@ impl Shelf {
     }
 
     fn adapters(&self) -> Vec<Arc<dyn RecordAdapter>> {
-        library::adapters(&self.store, Some(&self.history), library::DriverNames::Mac)
+        library::adapters(
+            &self.store,
+            Some(&self.history),
+            library::DriverNames::Mac,
+            library::Provider::ICloud,
+        )
     }
 
     fn fetcher<'a>(&'a self, adapters: &'a [Arc<dyn RecordAdapter>]) -> Fetcher<'a> {
@@ -253,4 +258,24 @@ async fn a_folder_without_its_connection_is_held_by_id_and_the_zone_keeps_it() {
     );
     assert_eq!(pushed.queued, 0, "{pushed:?}");
     assert!(shelf.rig.zone_fields(Kind::TableFolder, D).is_some());
+}
+
+#[tokio::test]
+async fn a_favourite_the_mac_keeps_under_its_alias_too_meets_both_records_and_its_alias_deletion() {
+    let shelf = Shelf::new().await;
+    let ids = favourite_table(Uuid::parse_str(A).unwrap(), Some("shop"), None, "a|b");
+    let alias = ids.alias.clone().unwrap();
+    let fields = json!({"connection_id": A, "database": "shop", "name": "a|b", "schema_version": 1});
+    shelf.rig.save_elsewhere(Kind::FavouriteTable, &ids.id, &fields);
+    shelf.rig.save_elsewhere(Kind::FavouriteTable, &alias, &fields);
+
+    shelf.fetch().await;
+    let pushed = shelf.push().await;
+    let held = shelf.history.favourites().contents().await.unwrap().tables.len();
+    shelf.rig.delete_elsewhere(Kind::FavouriteTable, &alias);
+    shelf.fetch().await;
+
+    assert_eq!(pushed.queued, 0, "{pushed:?}");
+    assert_eq!(held, 1);
+    assert!(shelf.history.favourites().contents().await.unwrap().tables.is_empty());
 }

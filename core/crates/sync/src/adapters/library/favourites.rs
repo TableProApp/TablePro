@@ -1,6 +1,6 @@
 // Favourite tables and databases (`SyncRecordMapper`, Table Favorite and Favorite Database), in the history database.
-// Each is named by a digest of what it names (0052, Long ids); a favourite table a Mac before 0.77 saved may still go
-// by the alias its name's `|` or `\` gave it. A table's database and schema go only when set, a database's
+// Each is named by a digest of what it names (0052, Long ids). On iCloud a favourite table whose names hold `|` or `\`
+// also goes by the alias Macs before 0.77 wrote, as the Mac keeps both; TablePro Sync carries the escaped id only. A table's database and schema go only when set, a database's
 // environment always, and one a newer build named reads as unassigned, as the Mac reads it. A favourite of a connection
 // that does not sync stays on the device.
 
@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use super::folders::connection_standing_map;
 use super::values::{Object, text, uuid_at, uuid_value};
-use super::{HISTORY_STORE, Seen, changed_since, lock, record_of, seen, stale};
+use super::{HISTORY_STORE, Provider, Seen, changed_since, lock, record_of, seen, stale};
 use crate::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
 use crate::api::error::AdapterError;
 use crate::api::ids::ScopeName;
@@ -30,11 +30,16 @@ pub struct FavouriteAdapter {
     favourites: Favourites,
     connections: ConnectionStore,
     kind: Kind,
+    provider: Provider,
     seen: Mutex<Option<HashMap<String, Seen>>>,
 }
 
 impl FavouriteAdapter {
-    pub fn all(history: &QueryHistory, connections: &ConnectionStore) -> Vec<Arc<dyn RecordAdapter>> {
+    pub fn all(
+        history: &QueryHistory,
+        connections: &ConnectionStore,
+        provider: Provider,
+    ) -> Vec<Arc<dyn RecordAdapter>> {
         [Kind::FavouriteTable, Kind::FavouriteDatabase]
             .into_iter()
             .map(|kind| {
@@ -43,6 +48,7 @@ impl FavouriteAdapter {
                     favourites: history.favourites(),
                     connections: connections.clone(),
                     kind,
+                    provider,
                     seen: Mutex::new(None),
                 }) as Arc<dyn RecordAdapter>
             })
@@ -67,15 +73,32 @@ pub(super) fn table_id(table: &FavouriteTable) -> String {
     .id
 }
 
-// Whether a record id names the table: its id, or the alias a Mac before 0.77 wrote.
-fn names_table(table: &FavouriteTable, record_id: &str) -> bool {
-    let id = favourite_table(
+fn alias_of(table: &FavouriteTable) -> Option<String> {
+    favourite_table(
         table.connection_id,
         table.database.as_deref(),
         table.schema.as_deref(),
         &table.name,
-    );
-    id.id == record_id || id.alias.as_deref() == Some(record_id)
+    )
+    .alias
+}
+
+// The alias of each table that alone claims its alias. On iCloud the Mac writes and deletes such a table under both
+// ids, and two tables whose names join alike share no alias (0052, Long ids).
+fn sole_aliases(tables: &[FavouriteTable]) -> HashMap<String, &FavouriteTable> {
+    let mut claimed: HashMap<String, Vec<&FavouriteTable>> = HashMap::new();
+    for table in tables {
+        if let Some(alias) = alias_of(table) {
+            claimed.entry(alias).or_default().push(table);
+        }
+    }
+    claimed
+        .into_iter()
+        .filter_map(|(alias, claimants)| match claimants.as_slice() {
+            [table] => Some((alias, *table)),
+            _ => None,
+        })
+        .collect()
 }
 
 pub(super) fn database_id(database: &FavouriteDatabase) -> String {
@@ -128,15 +151,29 @@ impl FavouriteAdapter {
     fn read(&self, contents: &FavouriteContents, standing: &HashMap<Uuid, Standing>) -> LocalRecords {
         let standing = |connection: Uuid| standing.get(&connection).copied().unwrap_or(Standing::Unknown);
         let records = match self.kind {
-            Kind::FavouriteTable => contents
-                .tables
-                .iter()
-                .map(|table| LocalRecord {
-                    record_id: table_id(table),
-                    fields: table_to_wire(table),
-                    standing: standing(table.connection_id),
-                })
-                .collect(),
+            Kind::FavouriteTable => {
+                let mut records: Vec<LocalRecord> = contents
+                    .tables
+                    .iter()
+                    .map(|table| LocalRecord {
+                        record_id: table_id(table),
+                        fields: table_to_wire(table),
+                        standing: standing(table.connection_id),
+                    })
+                    .collect();
+                if self.provider == Provider::ICloud {
+                    records.extend(
+                        sole_aliases(&contents.tables)
+                            .into_iter()
+                            .map(|(alias, table)| LocalRecord {
+                                record_id: alias,
+                                fields: table_to_wire(table),
+                                standing: standing(table.connection_id),
+                            }),
+                    );
+                }
+                records
+            }
             _ => contents
                 .databases
                 .iter()
@@ -171,15 +208,18 @@ impl FavouriteAdapter {
                         LocalChange::Delete { .. } => None,
                     })
                     .collect();
+                // A deletion under an alias removes the table only when it alone claims the alias.
+                let aliases = sole_aliases(&contents.tables);
+                let deleted = |table: &FavouriteTable| {
+                    gone(&table_id(table))
+                        || aliases
+                            .iter()
+                            .any(|(alias, claimant)| *claimant == table && gone(alias))
+                };
                 let mut tables: Vec<FavouriteTable> = contents
                     .tables
                     .iter()
-                    .filter(|table| {
-                        let deleted = changes.iter().any(|change| {
-                            matches!(change, LocalChange::Delete { .. }) && names_table(table, record_of(change))
-                        });
-                        !deleted && !puts.contains(table)
-                    })
+                    .filter(|table| !deleted(table) && !puts.contains(table))
                     .cloned()
                     .collect();
                 tables.extend(puts);

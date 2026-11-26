@@ -9,7 +9,7 @@ use tablepro_storage::{ConnectionStore, QueryHistory};
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
 use tablepro_sync::adapters::history::HistoryAdapter;
-use tablepro_sync::adapters::library::{self, DriverNames};
+use tablepro_sync::adapters::library::{self, DriverNames, Provider};
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
 use tablepro_sync::adapters::settings::{ConnectionStanding, SettingsAdapter};
 use tablepro_sync::adapters::store_journal::StoreJournal;
@@ -57,7 +57,7 @@ pub(crate) struct Hosts {
 
 impl Hosts {
     // The adapters over this Core's stores and the app's settings; the stores' writes now also tell `journal`.
-    fn adapters(&self, journal: &Journal) -> Vec<Arc<dyn RecordAdapter>> {
+    fn adapters(&self, journal: &Journal, provider: Provider) -> Vec<Arc<dyn RecordAdapter>> {
         let mut adapters: Vec<Arc<dyn RecordAdapter>> = self
             .settings
             .iter()
@@ -71,7 +71,7 @@ impl Hosts {
         // The table folders and favourites the history database holds come with the library, which says which of
         // their connections sync.
         if let Some(store) = &self.library {
-            adapters.extend(library::adapters(store, self.history.as_ref(), self.names));
+            adapters.extend(library::adapters(store, self.history.as_ref(), self.names, provider));
         }
         if let Some(history) = &self.history {
             adapters.extend(SavedQueryAdapter::all(history, self.standing.clone()));
@@ -110,7 +110,7 @@ impl IcloudEngine {
         let sync = Arc::new(CloudKitSync::new(CloudKitParts {
             transport,
             files: Arc::clone(&hosts.files),
-            adapters: hosts.adapters(&journal),
+            adapters: hosts.adapters(&journal, Provider::ICloud),
             categories: icloud_categories(categories),
             clock: Arc::new(SystemClock),
             stop: stop.clone(),
@@ -175,7 +175,7 @@ impl ServiceEngine {
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
             state,
-            adapters: Adapters::new(hosts.adapters(&journal)),
+            adapters: Adapters::new(hosts.adapters(&journal, Provider::TableproSync)),
             keys: Arc::clone(&keys) as Arc<dyn KeyFlows>,
             hooks,
             clock: Arc::new(SystemClock),

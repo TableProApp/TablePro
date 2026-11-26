@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime};
 use tablepro_records::Kind;
 use tablepro_storage::saved_queries::SavedQuery;
 use tablepro_storage::{ChangeJournal, QueryHistory, SavedQueryWrite, StoragePaths};
+use tablepro_sync::adapters::library::Provider;
 use tablepro_sync::adapters::settings::ConnectionStanding;
 use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::state::Standing;
@@ -54,8 +55,8 @@ async fn the_history_database_s_kinds_sync_its_writes_reach_the_engine_and_histo
     let journal = Journal::new(Wake::new());
     let id = Uuid::new_v4();
 
-    let unknown = kinds(&hosts(None).adapters(&journal));
-    let known = kinds(&hosts(Some(Arc::new(Syncs))).adapters(&journal));
+    let unknown = kinds(&hosts(None).adapters(&journal, Provider::TableproSync));
+    let known = kinds(&hosts(Some(Arc::new(Syncs))).adapters(&journal, Provider::TableproSync));
     history
         .saved_queries()
         .write(&SavedQueryWrite {
@@ -107,7 +108,7 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
     };
     let journal = Journal::new(Wake::new());
 
-    let found = kinds(&hosts.adapters(&journal));
+    let found = kinds(&hosts.adapters(&journal, Provider::ICloud));
     let tag = store
         .create_tag_blocking(
             tablepro_storage::ConnectionTagName::new("prod").unwrap(),
