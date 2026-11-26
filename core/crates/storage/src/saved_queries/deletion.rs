@@ -37,7 +37,8 @@ pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: Uuid) -> R
     let owner: Option<String> = row.try_get("connection_id")?;
     let parent: Option<String> = row.try_get("parent_record_id")?;
     let subtree: Vec<(i64, String)> = sqlx::query_as(AssertSqlSafe(format!(
-        "{SUBTREE} SELECT folder.id, folder.record_id FROM saved_query_folders folder JOIN subtree USING (record_id)"
+        "{SUBTREE} SELECT folder.id, folder.record_id FROM saved_query_folders folder JOIN subtree USING (record_id) \
+         ORDER BY folder.id"
     )))
     .bind(rowid)
     .fetch_all(&mut *transaction)
