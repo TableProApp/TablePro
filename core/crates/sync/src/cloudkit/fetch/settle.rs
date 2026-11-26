@@ -41,6 +41,8 @@ pub(super) struct Batch {
 pub(super) struct Finish {
     // Every record the zone listed.
     pub listed: BTreeSet<RecordKey>,
+    // The oldest creation date among the records the fetch returned, in milliseconds; None when it returned none.
+    pub oldest_created_ms: Option<i64>,
     pub refill: BTreeSet<Kind>,
     // The identities the refilling stores had when the fetch started, by identity row.
     pub started: BTreeMap<String, StoreStamp>,

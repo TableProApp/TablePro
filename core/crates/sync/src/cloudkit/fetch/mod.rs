@@ -123,6 +123,7 @@ struct Pass {
     full: bool,
     started_over: bool,
     listed: BTreeSet<RecordKey>,
+    oldest_created_ms: Option<i64>,
     // Tokens this pass was given, so a transport that never ends a fetch is refused.
     seen: BTreeSet<Vec<u8>>,
     start: Start,
@@ -138,6 +139,7 @@ impl Pass {
             full,
             started_over: false,
             listed: BTreeSet::new(),
+            oldest_created_ms: None,
             seen: start.token.iter().filter(|_| !full).cloned().collect(),
             start,
             stamps,
@@ -151,6 +153,7 @@ impl Pass {
         self.full = true;
         self.started_over = true;
         self.listed.clear();
+        self.oldest_created_ms = None;
         self.seen.clear();
     }
 
@@ -162,9 +165,15 @@ impl Pass {
         if self.full {
             self.listed
                 .extend(items.iter().filter(|item| item.listed()).map(|item| item.key().clone()));
+            let created = items.iter().filter_map(|item| match item {
+                Incoming::Changed(copy) => copy.created_ms,
+                _ => None,
+            });
+            self.oldest_created_ms = created.chain(self.oldest_created_ms).min();
         }
         let finish = (self.full && last).then(|| Finish {
             listed: std::mem::take(&mut self.listed),
+            oldest_created_ms: self.oldest_created_ms.take(),
             refill: self.refill(),
             started: self.start.started.clone(),
             refill_later: self.start.refill_later.clone(),

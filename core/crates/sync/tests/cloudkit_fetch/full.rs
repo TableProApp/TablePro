@@ -81,6 +81,8 @@ async fn a_profile_deleted_while_its_category_was_off_is_never_deleted_late() {
 #[tokio::test]
 async fn a_full_fetch_treats_a_record_it_did_not_return_as_deleted() {
     let rig = Rig::new().await;
+    // A record older than the deleted ones that the zone still holds: this is the zone the bases came from.
+    rig.save_elsewhere(Kind::Group, A, &json!({"name": "oldest"}));
     for id in [A, B, C] {
         rig.save_elsewhere(Kind::Connection, id, &json!({"name": id}));
     }
@@ -111,6 +113,28 @@ async fn a_full_fetch_treats_a_record_it_did_not_return_as_deleted() {
     assert!(rig.store(Kind::SshProfile).holds(D));
     assert!(rig.store(Kind::Tag).holds(A));
     assert!(rig.base(Kind::Tag, A).await.is_some());
+}
+
+// A zone deleted and made again holds only records created after it was made: the copies this device had, all
+// older than any record the fetch returned, are not proven deleted (Swift's `SyncFullFetchDeletions`).
+#[tokio::test]
+async fn a_full_fetch_of_a_zone_made_again_proves_no_older_record_deleted() {
+    let rig = Rig::new().await;
+    for id in [A, B] {
+        rig.save_elsewhere(Kind::Connection, id, &json!({"name": id}));
+    }
+    rig.fetch().await.unwrap();
+    for id in [A, B] {
+        rig.delete_elsewhere(Kind::Connection, id);
+    }
+    rig.save_elsewhere(Kind::Group, D, &json!({"name": "made after"}));
+    rig.cloud.expire_tokens(USER);
+
+    let report = rig.fetch().await.unwrap();
+
+    assert!(report.full);
+    assert_eq!(report.counts.inferred, 0);
+    assert!(rig.store(Kind::Connection).holds(A) && rig.store(Kind::Connection).holds(B));
 }
 
 #[tokio::test]

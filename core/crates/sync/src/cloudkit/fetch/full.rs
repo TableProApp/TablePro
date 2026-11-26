@@ -36,17 +36,19 @@ impl Settle<'_, '_> {
         Ok(())
     }
 
-    // A fetch that listed nothing proves nothing: it is as likely a zone made again elsewhere, or a short answer, as
-    // a zone emptied record by record.
+    // A zone deleted and made again holds only records created after it was made, so a base created no earlier than
+    // the oldest record the fetch returned belongs to the zone this fetch read, and its absence proves it was deleted
+    // there. A fetch that returned no dated record proves nothing: it is as likely a zone made again elsewhere, or a
+    // short answer, as a zone emptied record by record. A base with no creation date is never inferred deleted.
     async fn unlisted(&mut self, finish: &Finish) -> Result<(), SyncError> {
-        if finish.listed.is_empty() {
+        let Some(oldest) = finish.oldest_created_ms else {
             return Ok(());
-        }
+        };
         for row in self.txn.scan(&RowRange::Scope(Table::Bases, SCOPE)).await? {
             let Row::Base(base) = row else {
                 continue;
             };
-            if finish.listed.contains(&base.key) {
+            if finish.listed.contains(&base.key) || base.created_ms.is_none_or(|created| created < oldest) {
                 continue;
             }
             let Some(kind) = kind_of(&base.key) else {
