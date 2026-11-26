@@ -2,7 +2,6 @@
 
 use reqwest::StatusCode;
 use reqwest::header::{HeaderMap, RETRY_AFTER};
-use tablepro_cloud_api::v2::types::Problem;
 
 use crate::api::transport::{StepUpChallenge, TransportError};
 
@@ -34,10 +33,18 @@ pub(super) fn malformed(status: StatusCode) -> TransportError {
     }
 }
 
+// Only the code decides the error, so a problem that leaves out another member still names it.
+#[derive(serde::Deserialize)]
+struct ProblemCode {
+    code: String,
+}
+
 // Every status but a 401, which the call's own retries settle first.
 pub(super) fn refusal(status: StatusCode, headers: &HeaderMap, body: &[u8]) -> TransportError {
     let retry_after_ms = retry_after_ms(headers);
-    let code = serde_json::from_slice::<Problem>(body).ok().map(|problem| problem.code);
+    let code = serde_json::from_slice::<ProblemCode>(body)
+        .ok()
+        .map(|problem| problem.code);
     if status == StatusCode::TOO_MANY_REQUESTS {
         return TransportError::RateLimited { retry_after_ms };
     }

@@ -66,9 +66,13 @@ impl Binding {
     fn of(signed_in: &SignedIn) -> Result<Self, TransportError> {
         let account = signed_in.account_id.as_deref().and_then(wire::account);
         let device_row = signed_in.device_id.clone().map(DeviceRowId);
-        let origin = Origin::parse(&signed_in.origin).ok();
-        match (account, device_row, origin) {
-            (Some(account), Some(device_row), Some(origin)) if wire::device_row_ok(&device_row) => Ok(Self {
+        let origin = Origin::parse(&signed_in.origin).map_err(|_| TransportError::Server {
+            status: 0,
+            code: "sync.bad_origin".to_owned(),
+            retry_after_ms: None,
+        })?;
+        match (account, device_row) {
+            (Some(account), Some(device_row)) if wire::device_row_ok(&device_row) => Ok(Self {
                 api: signed_in.api.trim_end_matches('/').to_owned(),
                 origin,
                 sign_in: signed_in.sign_in.clone(),
@@ -167,8 +171,10 @@ impl HttpTransport {
                     nonce: nonce.as_deref(),
                 },
             )
-            .map_err(|error| TransportError::Network {
-                detail: format!("the DPoP proof could not be made: {}", error.code()),
+            .map_err(|error| TransportError::Server {
+                status: 0,
+                code: error.code().to_owned(),
+                retry_after_ms: None,
             })?;
             request = request.header(DPOP, signed);
         }
