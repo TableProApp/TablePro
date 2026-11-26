@@ -1,7 +1,7 @@
 import Foundation
 
 nonisolated enum FirstRunPage: Hashable, Sendable {
-    case welcome
+    case origin
     case iCloud
     case usageData
 }
@@ -13,9 +13,14 @@ nonisolated enum LaunchPresentation: Hashable, Sendable {
 }
 
 nonisolated struct FirstRunPlan: Sendable {
-    let hasSeenWelcome: Bool
+    let hasSeenOrigin: Bool
+    // nil while the library is not loaded or failed to: the count is unknown, so the origin waits.
+    let hasConnections: Bool?
     let syncChoice: Bool?
     let usageDataChoice: Bool?
+    // False when the organization's managed configuration answers the question for the person.
+    var iCloudSyncAllowed = true
+    var usageDataAllowed = true
     let lastSeenVersion: String?
     let currentVersion: String
     let hasHighlightsForCurrentVersion: Bool
@@ -29,15 +34,22 @@ nonisolated struct FirstRunPlan: Sendable {
         return .whatsNew(version: currentVersion)
     }
 
+    // Connections already answer where they come from, so the origin counts as seen; otherwise the tips would never start.
+    var leavesOutOriginForConnections: Bool {
+        !hasSeenOrigin && hasConnections == true
+    }
+
     private var firstRunPages: [FirstRunPage] {
         var pages: [FirstRunPage] = []
-        if !hasSeenWelcome {
-            pages.append(.welcome)
-            if syncChoice == nil {
+        if !hasSeenOrigin {
+            if hasConnections == false {
+                pages.append(.origin)
+            }
+            if syncChoice == nil, iCloudSyncAllowed {
                 pages.append(.iCloud)
             }
         }
-        if usageDataChoice == nil {
+        if usageDataChoice == nil, usageDataAllowed {
             pages.append(.usageData)
         }
         return pages

@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "the source with the most connections is preselected over an empty one listed first",
+      "platform": "macos",
+      "rows": [
+        { "app": "tableplus", "availability": "available", "connections": 0, "picksFile": false },
+        { "app": "dbeaver", "availability": "available", "connections": 12, "picksFile": false },
+        { "app": "datagrip", "availability": "unreadable", "connections": 0, "picksFile": false },
+        { "app": "navicat", "availability": "available", "connections": 0, "picksFile": true }
+      ],
+      "ticked": ["dbeaver"],
+      "preselected": "dbeaver"
+    },
+    {
+      "name": "a tie keeps the earlier row and every source with connections starts ticked",
+      "platform": "linux",
+      "rows": [
+        { "app": "tableplus", "availability": "available", "connections": 5, "picksFile": false },
+        { "app": "dbeaver", "availability": "available", "connections": 5, "picksFile": false },
+        { "app": "datagrip", "availability": "available", "connections": 3, "picksFile": false },
+        { "app": "navicat", "availability": "available", "connections": 0, "picksFile": true }
+      ],
+      "ticked": ["tableplus", "dbeaver", "datagrip"],
+      "preselected": "tableplus"
+    },
+    {
+      "name": "with every count at zero the earliest available source is preselected and none is ticked",
+      "platform": "windows",
+      "rows": [
+        { "app": "tableplus", "availability": "notFound", "connections": 0, "picksFile": false },
+        { "app": "dbeaver", "availability": "available", "connections": 0, "picksFile": false },
+        { "app": "datagrip", "availability": "available", "connections": 0, "picksFile": false },
+        { "app": "navicat", "availability": "available", "connections": 0, "picksFile": true }
+      ],
+      "ticked": [],
+      "preselected": "dbeaver"
+    },
+    {
+      "name": "an app imported from a picked file is preselected when it is the only one but never ticked",
+      "platform": "windows",
+      "rows": [
+        { "app": "tableplus", "availability": "notFound", "connections": 0, "picksFile": false },
+        { "app": "dbeaver", "availability": "notFound", "connections": 0, "picksFile": false },
+        { "app": "beekeeperstudio", "availability": "notFound", "connections": 0, "picksFile": false },
+        { "app": "navicat", "availability": "available", "connections": 0, "picksFile": true }
+      ],
+      "ticked": [],
+      "preselected": "navicat"
+    },
+    {
+      "name": "an unreadable source is never ticked or preselected, whatever its count",
+      "platform": "macos",
+      "rows": [
+        { "app": "tableplus", "availability": "unreadable", "connections": 9, "picksFile": false },
+        { "app": "sequelace", "availability": "available", "connections": 2, "picksFile": false },
+        { "app": "beekeeperstudio", "availability": "available", "connections": 0, "picksFile": false }
+      ],
+      "ticked": ["sequelace"],
+      "preselected": "sequelace"
+    },
+    {
+      "name": "with nothing available nothing is ticked or preselected",
+      "platform": "linux",
+      "rows": [
+        { "app": "tableplus", "availability": "notFound", "connections": 0, "picksFile": false },
+        { "app": "dbeaver", "availability": "notFound", "connections": 0, "picksFile": false },
+        { "app": "beekeeperstudio", "availability": "unreadable", "connections": 0, "picksFile": false },
+        { "app": "dbx", "availability": "notFound", "connections": 0, "picksFile": false }
+      ],
+      "ticked": [],
+      "preselected": null
+    },
+    {
+      "name": "a later source with more connections wins over an earlier one with fewer",
+      "platform": "macos",
+      "rows": [
+        { "app": "tableplus", "availability": "available", "connections": 1, "picksFile": false },
+        { "app": "sequelace", "availability": "notFound", "connections": 0, "picksFile": false },
+        { "app": "dbeaver", "availability": "available", "connections": 0, "picksFile": false },
+        { "app": "datagrip", "availability": "available", "connections": 4, "picksFile": false },
+        { "app": "beekeeperstudio", "availability": "available", "connections": 4, "picksFile": false }
+      ],
+      "ticked": ["tableplus", "datagrip", "beekeeperstudio"],
+      "preselected": "datagrip"
+    }
+  ]
+}

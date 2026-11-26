@@ -48,14 +48,21 @@ struct KeyboardSettingsView: View {
             }
         } bar: {
             SettingsListBar {
-                Text(Self.summary(customized: settings.customizedCount))
+                Text(Self.summary(customized: settings.customizedCount, preset: appliedPresetName(settings)))
                     .foregroundStyle(.secondary)
             } trailing: {
-                Button(String(localized: "Restore Defaults…")) {
-                    confirmsRestore = true
+                HStack(spacing: 8) {
+                    KeyboardPresetPullDown(presets: Self.catalog?.listing(first: nil) ?? []) { choice in
+                        Task {
+                            _ = await KeyboardPresetActions.choose(choice, in: keyboard, window: nil)
+                        }
+                    }
+                    Button(String(localized: "Restore Defaults…")) {
+                        confirmsRestore = true
+                    }
+                    .disabled(settings.shortcuts.isEmpty)
+                    .accessibilityIdentifier("shortcut-restore-defaults")
                 }
-                .disabled(settings.shortcuts.isEmpty)
-                .accessibilityIdentifier("shortcut-restore-defaults")
             }
         }
         .accessibilityElement(children: .contain)
@@ -122,6 +129,18 @@ struct KeyboardSettingsView: View {
         count == 0
             ? String(localized: "No custom shortcuts")
             : String(format: String(localized: "%lld customized"), count)
+    }
+
+    static func summary(customized count: Int, preset name: String?) -> String {
+        guard let name else { return summary(customized: count) }
+        return String(format: String(localized: "%@ shortcuts"), name)
+    }
+
+    private static let catalog = KeyboardPresetCatalog.bundled()
+
+    private func appliedPresetName(_ settings: KeyboardSettings) -> String? {
+        guard let catalog = Self.catalog, let id = settings.appliedPreset(in: catalog) else { return nil }
+        return catalog.presets.first { $0.id == id }?.name
     }
 }
 

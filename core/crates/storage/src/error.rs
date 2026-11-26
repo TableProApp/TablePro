@@ -100,6 +100,9 @@ pub enum StorageError {
 
     #[error("groups nest at most {max} levels deep")]
     GroupTooDeep { max: usize },
+
+    #[error("{} belongs to another account", .path.display())]
+    StoreOwnerMismatch { path: std::path::PathBuf },
 }
 
 impl StorageError {
@@ -136,6 +139,7 @@ impl StorageError {
             Self::GroupNameTaken { .. } => "storage.group_name_taken",
             Self::GroupCycle { .. } => "storage.group_cycle",
             Self::GroupTooDeep { .. } => "storage.group_too_deep",
+            Self::StoreOwnerMismatch { .. } => "storage.store_owner_mismatch",
         }
     }
 }

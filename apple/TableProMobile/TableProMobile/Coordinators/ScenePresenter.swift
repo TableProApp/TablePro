@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TableProImport
 import TableProModels
 
 enum SceneSheet: Identifiable {
@@ -51,6 +52,11 @@ nonisolated struct PendingDataImport: Hashable, Sendable {
     let fileURL: URL
 }
 
+nonisolated enum SheetHandoff: Hashable, Sendable {
+    case open(UUID)
+    case reveal([UUID])
+}
+
 @MainActor @Observable
 final class ScenePresenter {
     /// Why the stored connection is not being restored yet. Each reason is inserted and removed by
@@ -81,6 +87,10 @@ final class ScenePresenter {
     @ObservationIgnored private var hasBegunLaunch = false
     @ObservationIgnored private var presentedLaunchSheet = false
     @ObservationIgnored private var presentedFirstRunPages: [FirstRunPage] = []
+    // Run after the first run closes: one sheet at a time, so the form or the import review never opens over it.
+    @ObservationIgnored private(set) var recordedStartAction: LibraryStartAction?
+    // Run once the sheet that saved or imported them has gone: a cover cannot come up over a sheet, and a link that came in meanwhile wins.
+    @ObservationIgnored private var handoffAfterSheet: SheetHandoff?
 
     init(isLockedAtLaunch: Bool = false) {
         guard isLockedAtLaunch else { return }
@@ -112,13 +122,49 @@ final class ScenePresenter {
         }
     }
 
-    func sheetDidDismiss(appState: AppState) {
-        guard presentedLaunchSheet, sheet == nil else { return }
+    @discardableResult
+    func sheetDidDismiss(appState: AppState) -> LibraryStartAction? {
+        guard presentedLaunchSheet, sheet == nil else { return nil }
         presentedLaunchSheet = false
         restoreHolds.remove(.firstRun)
         appState.finishFirstRun(pages: presentedFirstRunPages)
         presentedFirstRunPages = []
         appState.releaseLaunchPresentation(for: sceneId)
+        let action = recordedStartAction
+        recordedStartAction = nil
+        // A file or link the app was opened with already says what to do.
+        return pendingIntent == nil ? action : nil
+    }
+
+    func recordStartAction(_ action: LibraryStartAction) {
+        recordedStartAction = action
+    }
+
+    func openAfterSheet(_ connectionId: UUID) {
+        handoffAfterSheet = .open(connectionId)
+    }
+
+    // Opens only what the handoff opens from a clean import; anything else stays on the list, shows what it wrote and says what happened.
+    func finishImport(_ outcome: ImportOutcome, from origin: ImportOrigin) -> MobileImportOutcomeMessage? {
+        let keptEverything = outcome.failure == nil && outcome.passwordsNotKept == 0 && outcome.savedQueriesNotImported == 0
+        if case .open(let connectionId) = outcome.handoff(from: origin), keptEverything {
+            handoffAfterSheet = .open(connectionId)
+            return nil
+        }
+        handoffAfterSheet = outcome.connectionIds.isEmpty ? nil : .reveal(outcome.connectionIds)
+        return MobileImportOutcomeMessage(outcome)
+    }
+
+    // A link or file that came in while the sheet was up owns its dismissal, the same as for the start action.
+    func takeHandoffAfterSheet() -> SheetHandoff? {
+        let handoff = handoffAfterSheet
+        handoffAfterSheet = nil
+        return pendingIntent == nil ? handoff : nil
+    }
+
+    func presentSetupGuide() {
+        presentedFirstRunPages = [.origin]
+        present(.firstRun([.origin]))
     }
 
     func releaseLaunchClaim(appState: AppState) {
@@ -211,6 +257,9 @@ final class ScenePresenter {
         }
         self.pendingIntent = nil
         restoreHolds.remove(.pendingIntent)
+        // Delivered between the save and the sheet's dismissal, the link still owns that dismissal.
+        handoffAfterSheet = nil
+        recordedStartAction = nil
         return pendingIntent
     }
 

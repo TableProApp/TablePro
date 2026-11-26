@@ -5,8 +5,10 @@ import PackageDescription
 // Keep generated bindings and their binary together so their UniFFI checksums agree.
 let package = Package(
     name: "TableProFFI",
+    // The apps' floors: project.yml and TableProMobile/project.yml, which build-core.sh builds the slices for.
     platforms: [
-        .macOS(.v13)
+        .macOS(.v13),
+        .iOS(.v18)
     ],
     products: [
         .library(name: "TableProFFI", targets: ["TableProFFI"])

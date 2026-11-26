@@ -4,13 +4,14 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 
 | Data | Backend | API |
 |---|---|---|
-| Saved connections | JSON file | `ConnectionStore` |
+| Saved connections, with their SSH and credential profiles | JSON file | `ConnectionStore` |
 | Database passwords, SSH passwords and key passphrases | `oo7`: the host's Secret Service, or the Secret portal inside Flatpak | `SecretStore`, read at each connect by `KeyringCredentials` |
 | The TablePro account's refresh token | the same keyring, or memory alone when none answers | `SecretStore` through the app's `KeyringRefreshToken`, a `tablepro_account::RefreshTokenVault` |
 | The account's device ID and last entitlement, or an imported offline file | JSON file | `tablepro-account` ([core ADR 0016](../../core/docs/decisions/0016-tablepro-accounts.md), [ADR 0038](decisions/0038-account-page-and-license-ask.md)) |
 | The usage data's anonymous ID and what it sent once | JSON file | `Telemetry` in the app crate ([ADR 0039](decisions/0039-usage-data.md)) |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
-| Query history, saved queries with their folders and keywords, and favourite tables and databases | SQLite, one database ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `QueryHistory`, `SavedQueries`, `SavedQueryFolders`, `Favourites` |
+| Query history, saved queries with their folders and keywords, favourite tables and databases, and table folders | SQLite, one database ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `QueryHistory`, `SavedQueries`, `SavedQueryFolders`, `Favourites`, `TableFolders` |
+| Team Library items, one file per server and account | JSON file | `TeamLibraryStore` |
 | Editor tab text | one file per tab | `DraftStore` |
 | Open tabs, open sessions, column layouts, filters, highlight rules | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
 
@@ -44,6 +45,12 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 - On import, a tag is matched by id, then by name in any case, and added only when neither matches, so importing a file twice leaves one tag of each name. A tag matched by id takes the file's colour, and its name unless another tag has it. A connection updated by an import takes the file's tags and icon.
 - On import, a group is matched by id, then by the exact name under the same parent, then by that name in any case among the groups the list had before the import, and otherwise added last in its place. So a file's own `Work` and `work` stay two groups, as a read of that file gives. A group matched by id keeps its place and takes the file's colour, icon, and name unless a sibling has it. Those renames come first, so a name one of them frees or takes decides how the rest match, whatever order the file lists them in. A group the file nests below the third level is not added: it and the groups under it map to the third-level group above them, so their connections land there, as macOS cuts the path. A connection updated by an import takes the file's group, going last there when the group changed; an added one keeps the file's order after the list's own. The file's favourites are added, and an import never removes one.
 - An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A copy is saved with `insert_after_blocking`, right after its original, as on macOS. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again. Edits and copies run one at a time, so two windows editing one connection never leave the host of one with the password of the other.
+
+- An entry of `connections`, `groups`, `tags`, `ssh_profiles` or `credential_profiles` that this build cannot read, such as one with a value a newer build wrote or without a field that has no default, is held: it is left out of the list, written back as it was after the entries the list holds, and replaced by a readable entry with its id. The rest of the file stays usable. `ConnectionList::unreadable` names the held connections. A connection also keeps the keys it does not know (`SavedConnection::unknown`) and writes them back.
+- Beyond the form's fields, a connection carries `details` (`ConnectionDetails`: `startup_sql`, `ai_rules`, `ai_allowed_tools`, `ssh_profile_id`, `ssh_route`, `credential_profile_id`, `credential_reference`, `redis_database` and the plugin's `additional_fields`) and `device` (`DeviceOnly`: `local_only`, `is_sample`, `origin`, the `password_source` file or command, and the Cloudflare, Cloud SQL proxy, SOCKS and tunnel command settings). Both sit flat in the entry. `field_trust` classes each additional field as the macOS app's `ConnectionFieldTrust` does, and `apple/scripts/ci/check-connection-field-trust.py` fails when the two tables differ.
+- An export carries the connections as `SavedConnection::portable` gives them: no `device`, no unknown key, no detail that runs, sends or signs in on the reader's device, and only portable additional fields. An import takes the same from the file and keeps an updated entry's own. Neither carries the profiles.
+- `ssh_profiles` holds `SshProfile`s (a name and an SSH setting) and `credential_profiles` holds `CredentialProfile`s (a name, a user, where the password comes from, the secure plugin fields and an order). `save_*_profile_blocking` adds one or replaces the one with its id; deleting one leaves the connections that name it naming it.
+- `store` is the file's `StoreIdentity` ([Store identity and the change journal](#store-identity-and-the-change-journal)).
 
 ### SSH settings
 
@@ -123,6 +130,23 @@ and a menu still open on it finds no connection and does nothing.
 The purge waits for the drafts a just-closed workspace is still writing
 (`WorkspaceStore::writes_in_flight`). The window holds the process until the
 delete ends, as it does for every other write to the connection list.
+
+## Store identity and the change journal
+
+Each store carries a `StoreIdentity`, a `generation` and a `sequence` ([core ADR 0054](../../core/docs/decisions/0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md), The engine), which sync keeps beside its bases:
+
+- `connections.json` and a Team Library file keep it as `store`. A file without one, as an older build writes it, gets a new generation at its next write.
+- `history.db` keeps it in the one row of `store_identity`, made when the database opens. A trigger on each table that syncs (`history`, `saved_queries`, `saved_query_folders`, `favourite_tables`, `favourite_databases`, `table_folders`, `table_folder_items`) raises the sequence on every insert, update and delete, whichever process makes it. Trimming an upgrade copy puts its sequence back.
+- Every write keeps the generation and raises the sequence. `StoreIdentity::compared_with` tells sync whether the store continues, is another generation (restored, replaced or copied in) or went back (an older copy). Both of the last two put its kinds into refill. A host that restores a store from a backup of its own calls `start_new_generation`; Reset of an unreadable connection list starts one with the next write.
+- Each store's write path tells a `ChangeJournal` the `RecordKind`s a write changed, after the write and outside every lock the store holds. `set_journal` on `ConnectionStore`, `QueryHistory` (for every handle it gives out) and `TeamLibraryStore` sets it. A write that changes nothing tells nothing.
+
+## Table folders
+
+`QueryHistory::table_folders` gives the folders a person files a connection's tables in, per database and schema (`table_folders`), and the table each file names (`table_folder_items`, one folder per table). Ids are UUIDs, times whole milliseconds. No foreign key joins them: an item whose folder is missing reads as unfiled. `put` keeps a folder's own id and times, deleting a folder takes its items with it, and `SavedQueries::delete_for_connection` takes a deleted connection's folders and items with its saved queries and favourites.
+
+## Team Library
+
+`TeamLibraryStore` keeps one account's Team Library items, per team, at `$XDG_STATE_HOME/<dir>/team-library/<digest>.json`, the digest a SHA-256 over a fixed label, the server's API origin and the account id, so a server's id never names a path. The file records its owner, and a file bound to another one is refused with `StoreOwnerMismatch`. An item is its kind (`connection`, `folder` or `query`), the client id the team stores, byte for byte, and its fields as a JSON object the store does not read.
 
 ## Where files go
 

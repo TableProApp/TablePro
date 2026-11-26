@@ -102,7 +102,10 @@ impl ApplicationImpl for TableProApplication {
         sourceview5::init();
         let app = self.obj();
         install_app_actions(&app);
-        install_application_accelerators(&*app);
+        match self.services.get() {
+            Some(services) => super::keymap::follow(app.upcast_ref(), services.settings.gio()),
+            None => install_application_accelerators(&*app),
+        }
         app.follow_activity();
         if let Some(services) = self.services.get() {
             services.start();

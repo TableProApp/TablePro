@@ -133,9 +133,10 @@ impl DataGrid {
             // The item shows Ctrl+J but acts on the key it offered, as a key
             // read while the menu is open leaves the menu as it was.
             [index] => {
-                let item = crate::application::menu_item(&open_label, &format!("grid.{FOLLOW}"));
+                let item = gio::MenuItem::new(Some(&open_label), None);
                 let target = u32::try_from(*index).unwrap_or(u32::MAX);
                 item.set_action_and_target_value(Some(&format!("grid.{OPEN_CHOICE}")), Some(&target.to_variant()));
+                crate::application::keymap::show_key_of(&item, &format!("grid.{FOLLOW}"));
                 section.append_item(&item);
             }
             _ => section.append_submenu(Some(&open_label), &choices),
