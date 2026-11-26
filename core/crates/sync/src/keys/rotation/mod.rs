@@ -156,7 +156,7 @@ impl KeyService {
             kept: &kept,
             current: &current,
         };
-        self.rotate(&rotation, &steps, None).await
+        self.rotate_account(&rotation, &steps, None).await
     }
 
     async fn recovery_rotation(&self, recovery_key_text: &SecretString) -> Result<Version, SyncError> {
@@ -188,7 +188,7 @@ impl KeyService {
             kept: &kept,
             current: &recovered.current,
         };
-        let av = self.rotate(&rotation, &TeamSteps::default(), Some(held)).await?;
+        let av = self.rotate_account(&rotation, &TeamSteps::default(), Some(held)).await?;
         self.clear_unanchored();
         Ok(av)
     }
@@ -237,7 +237,7 @@ impl KeyService {
 
     // Pushes one rotation change set and adopts it once applied. The new account keys go to the device store and the
     // set to `key_objects` as candidates before the push, so a retry resends the same objects.
-    async fn rotate(
+    async fn rotate_account(
         &self,
         rotation: &Rotation<'_>,
         steps: &TeamSteps,
