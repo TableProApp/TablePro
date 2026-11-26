@@ -103,15 +103,16 @@ impl Arrival {
         }
     }
 
-    // The first device that moves a record writes the marker of the CloudKit base it moved from, into the patch only,
-    // so the base this device keeps never holds it. A copy the service already holds with a marker keeps that one.
+    // The first device that moves a record creates it on the service with the marker of the CloudKit base it moved
+    // from, in the patch only, so the base this device keeps never holds it. A copy the service already holds keeps the
+    // marker it has, or none, so no later mover replaces the first one's.
     pub(crate) fn mark(&self, pending: &mut [Pending]) {
         let Some(icloud) = self.icloud() else {
             return;
         };
         let markers = icloud.markers.lock().unwrap_or_else(PoisonError::into_inner);
         for change in pending.iter_mut() {
-            if markers.contains_key(&change.key) {
+            if change.base.is_some() || markers.contains_key(&change.key) {
                 continue;
             }
             let PendingOp::Write { patch, .. } = &mut change.op else {

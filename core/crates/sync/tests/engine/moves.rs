@@ -398,7 +398,8 @@ async fn a_service_change_pulled_again_during_the_move_merges_against_what_the_m
         web.sync().await;
         release.notify_one();
     };
-    let (moved, ()) = tokio::join!(phone.mover(true).move_to_service(), meanwhile);
+    let mover = phone.mover(true);
+    let (moved, ()) = tokio::join!(mover.move_to_service(), meanwhile);
 
     moved.unwrap();
     let merged = with(carried(1, "Prod (phone)", 1), "icon_name", json!("cloud"));
@@ -439,4 +440,32 @@ async fn a_move_that_stops_short_keeps_icloud_stopped_and_finishes_when_called_a
     assert_eq!(mac.get(9), Some(carried(9, "Only on the service", 9)));
     assert!(!in_zone(&cloud, 9));
     assert_eq!(mac.device.sync.mode(), ServiceMode::Personal);
+}
+
+// Only what the person confirmed leaves the zone: a record the device no longer holds for any other reason, as one
+// deleted here while a policy kept the service from taking the deletion, stays on iCloud and comes back.
+#[tokio::test]
+async fn the_move_back_deletes_on_icloud_nothing_the_person_did_not_confirm() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    mac.mover(true).move_to_service().await.unwrap();
+    server.set_policies(Policies {
+        personal_sync: false,
+        ..Policies::default()
+    });
+    mac.device.sync().await;
+    mac.device.connections.remove(&id(1));
+    mac.device.sync().await;
+
+    let plan = mac.mover(false).plan_move_to_icloud().await.unwrap();
+    mac.mover(false).move_to_icloud(0).await.unwrap();
+    let resumed = Apple::engine(&mac.device, &cloud, &mac.files, Some(USER));
+    resumed.run_pass(PassReason::Launch).await.unwrap();
+
+    assert_eq!(plan.icloud_deletions, 0);
+    assert!(in_zone(&cloud, 1));
+    assert_eq!(mac.get(1), Some(carried(1, "Prod", 1)));
 }

@@ -95,6 +95,7 @@ impl Mover {
             });
         }
         back.delete().await?;
+        back.keep_the_rest().await?;
         drop(back);
         self.parts
             .service

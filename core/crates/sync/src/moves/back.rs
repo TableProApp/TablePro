@@ -3,7 +3,7 @@
 // there when its content still equals that base. A `policy` tombstone deletes nothing, since the device keeps its copy
 // of what a policy removed (0051), and a copy another device changed on iCloud stays, as a content edit wins.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use tablepro_records::merge::changes_content;
@@ -15,8 +15,8 @@ use crate::api::cloudkit::{CloudKitFailure, CloudKitFetched, CloudKitOutcome, Cl
 use crate::api::control::PassReason;
 use crate::api::error::SyncError;
 use crate::api::ids::{RecordKey, ScopeName};
-use crate::api::state::{Row, RowKey, StateStore};
-use crate::cloudkit::fetch::wire_fields;
+use crate::api::state::{Row, RowKey, RowRange, StateStore, Table};
+use crate::cloudkit::fetch::{read_everything_again, wire_fields};
 use tablepro_records::cloudkit::record_name;
 
 pub(super) struct MoveBack {
@@ -25,6 +25,8 @@ pub(super) struct MoveBack {
     state: Option<Arc<dyn StateStore>>,
     // The zone's record names to delete, with the key of each one's CloudKit base.
     deletions: Vec<(String, RecordKey)>,
+    // The ids the device's personal stores hold, as the zone names them.
+    held: HashSet<RecordKey>,
 }
 
 impl MoveBack {
@@ -64,6 +66,25 @@ impl MoveBack {
             None => Ok(()),
         }
     }
+
+    // Nothing but what the person confirmed may go from the zone: any other CloudKit base the device's stores lack,
+    // whatever the service did meanwhile, loses its base, so the iCloud engine sends no deletion for it, and the next
+    // fetch reads the zone whole and brings the record back.
+    pub(super) async fn keep_the_rest(&self) -> Result<(), SyncError> {
+        let Some(state) = &self.state else {
+            return Ok(());
+        };
+        let mut txn = state.begin().await?;
+        for row in txn.scan(&RowRange::Scope(Table::Bases, ScopeName::Personal)).await? {
+            if let Row::Base(base) = row
+                && !self.held.contains(&base.key)
+            {
+                txn.delete(&RowKey::Base(base.key)).await?;
+            }
+        }
+        txn.commit().await?;
+        read_everything_again(state.as_ref()).await
+    }
 }
 
 impl Mover {
@@ -80,6 +101,7 @@ impl Mover {
             account,
             state: None,
             deletions: Vec::new(),
+            held: HashSet::new(),
         };
         let Some(account) = self.parts.icloud_account.clone() else {
             return Ok(nothing(String::new()));
@@ -136,11 +158,23 @@ impl Mover {
                 }
             }
         }
+        let held = self
+            .parts
+            .service
+            .personal_ids()
+            .await?
+            .into_iter()
+            .flat_map(|(kind, ids)| {
+                ids.into_iter()
+                    .map(move |id| RecordKey::new(ScopeName::Personal, kind, shortened(kind, id)))
+            })
+            .collect();
         Ok(MoveBack {
             transport: Some(transport),
             account,
             state: Some(state),
             deletions,
+            held,
         })
     }
 }

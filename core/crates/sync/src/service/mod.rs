@@ -154,6 +154,8 @@ pub struct PassReport {
     pub pushed: usize,
     pub conflicts: usize,
     pub refused: Vec<(RecordKey, String)>,
+    // The scopes this pass reached, as the device's keys and lock let it.
+    pub reached: Vec<ScopeName>,
     pub skipped: Vec<(ScopeName, &'static str)>,
     pub pull_only: bool,
     pub queued: usize,
@@ -428,9 +430,14 @@ impl ServiceSync {
             .await
         {
             Ok(report) => {
-                let reached =
-                    !report.pull_only && !report.skipped.iter().any(|(scope, _)| *scope == ScopeName::Personal);
-                if reached && self.unsent(&session, ScopeName::Personal).await? == 0 {
+                // The personal scope was pulled to the end and nothing personal is left to send, so no record goes up
+                // later without the rules of the move.
+                let personal = ScopeName::Personal;
+                let reached = report.reached.contains(&personal)
+                    && !report.pull_only
+                    && !report.skipped.iter().any(|(scope, _)| *scope == personal)
+                    && self.scope_row(personal).await?.is_some_and(|row| row.caught_up);
+                if reached && self.unsent(&session, personal).await? == 0 {
                     Ok(report)
                 } else {
                     Err(SyncError::MoveIncomplete)
@@ -455,16 +462,7 @@ impl ServiceSync {
             .await?
             .scan(&RowRange::Scope(Table::Bases, scope))
             .await?;
-        let mut held: HashMap<Kind, HashSet<String>> = HashMap::new();
-        for adapter in self.adapters.in_scope(scope) {
-            let ids = adapter
-                .records(scope)
-                .await?
-                .records
-                .into_iter()
-                .map(|record| record.record_id);
-            held.entry(adapter.kind()).or_default().extend(ids);
-        }
+        let held = self.personal_ids().await?;
         let mut deleted = Vec::new();
         for row in rows {
             let Row::Base(base) = row else { continue };
@@ -477,6 +475,22 @@ impl ServiceSync {
             }
         }
         Ok(deleted)
+    }
+
+    // The ids each personal store holds, readable or not.
+    pub(crate) async fn personal_ids(&self) -> Result<HashMap<Kind, HashSet<String>>, SyncError> {
+        let scope = ScopeName::Personal;
+        let mut held: HashMap<Kind, HashSet<String>> = HashMap::new();
+        for adapter in self.adapters.in_scope(scope) {
+            let local = adapter.records(scope).await?;
+            let ids = local
+                .records
+                .into_iter()
+                .map(|record| record.record_id)
+                .chain(local.unreadable);
+            held.entry(adapter.kind()).or_default().extend(ids);
+        }
+        Ok(held)
     }
 
     // What a move of personal data here takes and what stays on the device (0054, Moving between providers).
@@ -598,6 +612,7 @@ impl ServiceSync {
         self.read_stores(&mut ctx, &scopes).await?;
         // Each scope as the newest scopes body says, which a re-read after an expired cursor may have replaced.
         let names: Vec<ScopeName> = scopes.iter().map(|info| info.scope).collect();
+        ctx.report.reached.clone_from(&names);
         for scope in &names {
             if let Some(info) = ctx.body.scopes.iter().find(|info| info.scope == *scope).cloned() {
                 self.pull_or_skip(&mut ctx, session, &info).await?;
