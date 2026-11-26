@@ -379,7 +379,10 @@ impl Device {
             scope,
             role,
             horizon: 0,
-            epochs: Vec::new(),
+            epochs: vec![tablepro_sync::api::scopes::LineageEpoch {
+                id: self.server.epoch(),
+                kept_revision: 0,
+            }],
             writable: true,
             policies: tablepro_sync::api::scopes::ScopePolicies::default(),
             quota: None,

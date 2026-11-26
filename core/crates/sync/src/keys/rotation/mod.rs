@@ -566,9 +566,12 @@ impl KeyService {
                     _ => None,
                 })
                 .collect();
-            let unread = teams
-                .iter()
-                .any(|team| !self.rosters().get(*team).is_some_and(|roster| roster.caught_up()));
+            let unread = teams.iter().any(|team| {
+                !self
+                    .rosters()
+                    .get(*team)
+                    .is_some_and(|roster| roster.caught_up() && roster.epoch() == Some(body.epoch))
+            });
             if !approved || unread {
                 self.hooks().pass_soon();
                 return Ok(());

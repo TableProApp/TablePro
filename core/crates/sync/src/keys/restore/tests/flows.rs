@@ -570,17 +570,23 @@ async fn the_roster_counts_only_once_the_team_s_pull_is_caught_up() {
     let members = body.scopes[0].members.clone();
     rig.service.rosters().put(
         world.team,
-        crate::keys::test_roster(world.team, members.clone(), None, false, false),
+        crate::keys::test_roster(world.team, members.clone(), None, false, false, epoch(2)),
     );
     let read_behind = rig.service.gather(&mut *txn, &body).await.unwrap();
     rig.service.rosters().put(
         world.team,
-        crate::keys::test_roster(world.team, members, None, false, true),
+        crate::keys::test_roster(world.team, members.clone(), None, false, true, epoch(1)),
+    );
+    let earlier_epoch = rig.service.gather(&mut *txn, &body).await.unwrap();
+    rig.service.rosters().put(
+        world.team,
+        crate::keys::test_roster(world.team, members, None, false, true, epoch(2)),
     );
     let caught_up = rig.service.gather(&mut *txn, &body).await.unwrap();
 
     assert_eq!(flag_only.teams[0].roster, None);
     assert_eq!(read_behind.teams[0].roster, None);
+    assert_eq!(earlier_epoch.teams[0].roster, None, "a roster of the epoch before the restore");
     assert_eq!(caught_up.teams[0].roster.as_ref().map(Vec::len), Some(1));
 }
 

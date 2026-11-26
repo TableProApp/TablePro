@@ -410,6 +410,13 @@ impl KeyService {
             return Ok(());
         }
         self.rosters().put(team, roster.clone());
+        let scope = {
+            let mut txn = self.begin().await?;
+            self.scope_row(&mut *txn, ScopeName::Team(team)).await?
+        };
+        if !crate::keys::roster_in_epoch(&roster, &scope) {
+            return Ok(());
+        }
         self.end_unconfirmable_stop(team, &roster).await?;
         if self.own_account_in_team_missing(team).await? {
             self.publish_certificates(team, false).await?;
@@ -507,9 +514,9 @@ impl KeyService {
         book.own_holds(&mut facts).await
     }
 
-    pub(super) fn roster_of(&self, team: TeamId) -> Result<Roster, SyncError> {
-        self.rosters().get(team).ok_or(SyncError::NotAllowed {
-            what: "act on a team before its roster is read",
+    pub(super) async fn roster_of(&self, txn: &mut dyn StateTxn, team: TeamId) -> Result<Roster, SyncError> {
+        self.current_roster(txn, team).await?.ok_or(SyncError::NotAllowed {
+            what: "act on a team before its roster is read in the epoch it syncs in",
         })
     }
 }

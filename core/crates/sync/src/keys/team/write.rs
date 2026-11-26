@@ -168,7 +168,7 @@ impl KeyService {
     pub(super) async fn create_team(&self, team: TeamId) -> Result<(), SyncError> {
         let mut txn = self.begin().await?;
         let own = self.acting(&mut *txn).await?;
-        let roster = self.roster_of(team)?;
+        let roster = self.roster_of(&mut *txn, team).await?;
         if roster.role != Some(Role::Owner) {
             return Err(rejected(RejectedCode::Role));
         }
@@ -217,7 +217,7 @@ impl KeyService {
         team: TeamId,
     ) -> Result<(OwnAccount, Roster, TeamBook, KeyVersionRow), SyncError> {
         let own = self.acting(txn).await?;
-        let roster = self.roster_of(team)?;
+        let roster = self.roster_of(txn, team).await?;
         let book = self.load_team(txn, team).await?;
         book.check_anchor()?;
         let row = book

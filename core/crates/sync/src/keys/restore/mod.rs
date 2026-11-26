@@ -339,11 +339,12 @@ impl KeyService {
                 continue;
             }
             bases.load(txn, info.scope).await?;
-            // The roster a pull that followed its scopes body caught up on, never a stored flag (0051, `members`).
+            // The roster a pull that followed its scopes body caught up on, never a stored flag, and in the epoch it
+            // pushes back for: one of the epoch before the restore speaks for nothing now (0051, `members`).
             let roster = self
                 .rosters()
                 .get(team)
-                .filter(crate::api::key_flows::Roster::caught_up)
+                .filter(|roster| roster.caught_up() && roster.epoch() == Some(body.epoch))
                 .map(|roster| roster.members);
             teams.push(GatheredTeam {
                 team,

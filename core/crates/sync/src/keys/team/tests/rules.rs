@@ -45,7 +45,7 @@ fn members(entries: &[(&Account, Role)]) -> Roster {
             role: *role,
         })
         .collect();
-    crate::keys::test_roster(super::team(), members, None, false, true)
+    crate::keys::test_roster(super::team(), members, None, false, true, crate::api::ids::EpochId(uuid::Uuid::nil()))
 }
 
 struct Team {
@@ -645,7 +645,7 @@ fn a_confirmation_past_five_thousand_members_holding_the_key_is_team_full() {
                 role: Role::Member,
             }))
             .collect();
-        crate::keys::test_roster(super::team(), members, Some(Role::Admin), false, true)
+        crate::keys::test_roster(super::team(), members, Some(Role::Admin), false, true, crate::api::ids::EpochId(uuid::Uuid::nil()))
     };
     let newcomer = account(9_999);
     let team_full = crate::api::error::SyncError::Rejected {
@@ -687,7 +687,7 @@ fn an_envelope_counts_only_under_the_version_in_force_and_never_below_the_copy_h
 
 #[test]
 fn a_team_due_a_rotation_holds_new_envelopes_and_a_plain_member_writes_none() {
-    let due = crate::keys::test_roster(super::team(), Vec::new(), Some(Role::Editor), true, true);
+    let due = crate::keys::test_roster(super::team(), Vec::new(), Some(Role::Editor), true, true, crate::api::ids::EpochId(uuid::Uuid::nil()));
     let mut member = due.clone();
     member.rotation_due = false;
     member.role = Some(Role::Member);

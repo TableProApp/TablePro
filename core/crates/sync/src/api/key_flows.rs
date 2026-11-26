@@ -790,6 +790,9 @@ pub struct Roster {
     // The stop reports, which the server serves to owners and admins only (0051, A stopped device).
     pub stopped: Vec<StopReport>,
     caught_up: bool,
+    // The epoch of the body it came from, the last of the scope's lineage (0051, Epochs). A roster decides nothing
+    // in another epoch than the one the device synced the team in.
+    epoch: Option<EpochId>,
 }
 
 impl Roster {
@@ -802,11 +805,16 @@ impl Roster {
             rotation_due: scope.rotation_due,
             stopped: scope.stopped.clone(),
             caught_up: pull.is_some_and(|pull| pull.scope == scope.scope),
+            epoch: scope.epochs.last().map(|epoch| epoch.id),
         }
     }
 
     pub fn caught_up(&self) -> bool {
         self.caught_up
+    }
+
+    pub fn epoch(&self) -> Option<EpochId> {
+        self.epoch
     }
 }
 

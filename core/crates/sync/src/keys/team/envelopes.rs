@@ -133,7 +133,7 @@ impl KeyService {
             });
         }
         let due = self.scope_row(&mut *txn, scope).await?.rotation_due;
-        check_may_seal(self.rosters().get(team).as_ref(), due)?;
+        check_may_seal(self.current_roster(&mut *txn, team).await?.as_ref(), due)?;
         let book = self.load_team(&mut *txn, team).await?;
         book.check_anchor()?;
         let Some(row) = book.row().filter(|row| row.state == KeyVersionState::Ok).cloned() else {

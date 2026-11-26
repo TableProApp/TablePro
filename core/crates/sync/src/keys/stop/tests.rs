@@ -9,7 +9,7 @@ use tablepro_keys::wrap::Wrapper;
 
 use super::{Chain, Reconfirmation, ended, resumed, same_holder};
 use crate::api::error::SyncError;
-use crate::api::ids::ScopeName;
+use crate::api::ids::{EpochId, ScopeName};
 use crate::api::key_flows::{Roster, StopAction, StopFlows};
 use crate::api::scopes::{Role, TeamMember};
 use crate::api::state::{
@@ -412,6 +412,10 @@ async fn a_resumed_withdrawal_that_is_no_longer_pending_sends_nothing() {
 }
 
 fn roster(world: &World, members: &[(&str, Role)], caught_up: bool) -> Roster {
+    roster_in(world, members, caught_up, epoch(3))
+}
+
+fn roster_in(world: &World, members: &[(&str, Role)], caught_up: bool, read_in: EpochId) -> Roster {
     let members = members
         .iter()
         .map(|(name, role)| TeamMember {
@@ -419,7 +423,38 @@ fn roster(world: &World, members: &[(&str, Role)], caught_up: bool) -> Roster {
             role: *role,
         })
         .collect();
-    crate::keys::test_roster(world.team, members, Some(Role::Member), false, caught_up)
+    crate::keys::test_roster(world.team, members, Some(Role::Member), false, caught_up, read_in)
+}
+
+// A roster comes with the epoch of the scopes body it was read under. One of an epoch before the team's, or one read
+// while the team still refills against a newer epoch, decides nothing, so the stop stays reported (0051, `members`).
+#[tokio::test]
+async fn a_roster_of_another_epoch_than_the_team_s_decides_nothing() {
+    let world = World::load();
+    let rig = stopped_at_6(&world).await;
+    let report = StopAction::Report {
+        team: world.team,
+        version: v(6),
+    };
+    let unconfirmable = |read_in| roster_in(&world, &[("O", Role::Owner), ("P", Role::Member)], true, read_in);
+
+    rig.service.rosters().put(world.team, unconfirmable(epoch(2)));
+    let earlier = rig.service.stop_actions().await.unwrap();
+    rig.put([Row::Scope(ScopeRow {
+        epoch: Some(epoch(3)),
+        refill: true,
+        caught_up: true,
+        ..ScopeRow::new(ScopeName::Team(world.team))
+    })])
+    .await;
+    rig.service.rosters().put(world.team, unconfirmable(epoch(4)));
+    let newer = rig.service.stop_actions().await.unwrap();
+    rig.service.rosters().put(world.team, unconfirmable(epoch(3)));
+    let refilling = rig.service.stop_actions().await.unwrap();
+
+    assert_eq!(earlier, [report]);
+    assert_eq!(newer, [report]);
+    assert_eq!(refilling, [report]);
 }
 
 #[tokio::test]
