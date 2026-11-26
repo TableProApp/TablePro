@@ -280,9 +280,9 @@ fn push_back_change(held: &HeldObject) -> Result<Change, SyncError> {
 }
 
 impl KeyService {
-    // A team version the server holds as another record ends the team only when that record proves a fork beside
-    // the device's own: signed by a holder of the version before it (0051, What cannot go back). Anything else goes
-    // back as lacking, and the server's answer decides.
+    // A team version the server holds as another record ends the team only when this device checked that record: a
+    // version record of the id its signer's certificate in the team verifies, beside the device's own (0051, What
+    // cannot go back).
     async fn check_other_versions(
         &self,
         txn: &mut dyn StateTxn,
@@ -296,7 +296,7 @@ impl KeyService {
             let Some(fields) = view.other_fields(*scope, &object.object.id).cloned() else {
                 continue;
             };
-            if self.proves_fork(txn, key, &fields).await? {
+            if self.signed_team_version(txn, key, &fields).await? {
                 view.checked_other(*scope, &object.object.id);
             }
         }
