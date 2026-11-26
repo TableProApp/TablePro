@@ -63,9 +63,10 @@ impl ServiceSync {
                 code = error.code(),
                 "the team library delete goes ahead without its mark"
             );
+            // With no mark to say the file is owed, this run owes it until it went. A mark that landed says so itself,
+            // and once another database saw the file go it owes only this database's rows.
+            self.team_library.file_owed.store(true, Ordering::SeqCst);
         }
-        // The file goes whether or not the mark landed, and stays owed here until it went.
-        self.team_library.file_owed.store(true, Ordering::SeqCst);
         self.finish_delete().await
     }
 
