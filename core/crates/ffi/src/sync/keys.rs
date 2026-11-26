@@ -1,5 +1,7 @@
 // The end-to-end flows a person starts (core ADR 0056), over `tablepro_sync::api::KeyFlows`. Ids are upper-case
-// UUID text, a team its scope name (`team_...`).
+// UUID text, a team its scope name (`team_...`), which is the id `ProfileInfo.teams` gives it. A team's name comes
+// from the profile and a member's name and email from the team's member list, which the server serves to owners and
+// admins only, so each is None where the account cannot read it.
 
 use secrecy::SecretString;
 use tablepro_sync::api::key_flows::LockCause;
@@ -176,7 +178,10 @@ pub struct ReviewedDeviceInfo {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ReviewedMemberInfo {
     pub team: String,
+    pub team_name: Option<String>,
     pub account: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
     pub confirmed_under_av: u32,
 }
 
@@ -224,6 +229,8 @@ pub enum TeamRoleTag {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MemberKeysInfo {
     pub account: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
     pub role: TeamRoleTag,
     pub status: MemberKeyStatusTag,
 }
@@ -231,6 +238,7 @@ pub struct MemberKeysInfo {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct TeamKeysInfo {
     pub team: String,
+    pub team_name: Option<String>,
     pub version: Option<u32>,
     pub state: KeyVersionStateTag,
     pub stopped_cause: Option<StopCauseTag>,
@@ -252,6 +260,8 @@ pub struct HeldRestartInfo {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct StoppedDeviceInfo {
     pub account: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
     pub device: String,
     pub version: u32,
     // This account held that version, so the app offers to confirm the device again by rotating.

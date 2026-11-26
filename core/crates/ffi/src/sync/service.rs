@@ -77,7 +77,14 @@ pub enum SyncPlatformTag {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SyncConfig {
     pub platform: SyncPlatformTag,
+    // The provider for personal data that the app keeps (core ADR 0054, The provider key). Team scopes and the key
+    // objects always use TablePro Sync.
+    pub provider: SyncProviderTag,
     pub categories: SyncCategoriesArg,
+    // The iCloud account whose state file this device used last, which `SyncService::icloud_account` gives the app to
+    // keep; None on first use. A switch made while the app was closed deletes that account's file.
+    #[uniffi(default = None)]
+    pub icloud_account: Option<String>,
 }
 
 // The kinds turned off on this device, by their wire names, and the password switch.
@@ -98,12 +105,13 @@ pub trait SyncListener: Send + Sync {
     fn keys_changed(&self);
 }
 
-// One per app, over the account it was opened with. Dropping it stops the scheduler.
+// One per app, over the stores of the Core it was opened on and the sign-in it was given. Dropping it stops the
+// scheduler.
 #[derive(uniffi::Object)]
 #[expect(dead_code, reason = "the engine's lanes run the service over these")]
 pub struct SyncService {
     pub(crate) tasks: Tasks,
-    pub(crate) account: Arc<AccountService>,
+    pub(crate) account: Option<Arc<AccountService>>,
     pub(crate) config: SyncConfig,
     pub(crate) cloudkit: Option<Arc<dyn tablepro_sync::api::CloudKitTransport>>,
     pub(crate) settings: Option<Arc<dyn tablepro_sync::api::HostSettings>>,
@@ -122,16 +130,19 @@ impl std::fmt::Debug for SyncService {
 
 #[uniffi::export]
 impl Core {
-    // The Apple apps pass their CloudKit transport and device store, and the Mac its legacy mirror while the previous
-    // stable runs the Swift engine. Windows passes none: the core reaches Credential Manager itself.
+    // The engine keeps its state files in this Core's folders and syncs this Core's stores, so it opens on the Core that
+    // holds them. `account` may come from another Core; with none, as for iCloud alone, TablePro Sync is unavailable and
+    // iCloud runs (core ADR 0054, Providers). The Apple apps pass their CloudKit transport and device store, and the
+    // Mac its legacy mirror while the previous stable runs the Swift engine. Windows passes none: the core reaches
+    // Credential Manager itself. Async, since opening a state file reads its anchor from the device store.
     #[expect(
         clippy::too_many_arguments,
         reason = "a UniFFI record cannot carry callback interfaces, so each host service is its own argument"
     )]
-    pub fn open_sync(
+    pub async fn open_sync(
         &self,
         config: SyncConfig,
-        account: Arc<AccountService>,
+        account: Option<Arc<AccountService>>,
         cloudkit: Option<Arc<dyn CloudKitTransport>>,
         settings: Option<Box<dyn HostSettings>>,
         device_store: Option<Box<dyn HostDeviceStore>>,
@@ -272,6 +283,8 @@ pub enum HeldReasonTag {
     Unreadable,
     UnknownKind,
     AwaitingApproval,
+    // This device is not approved yet, so it holds what it may not apply (core ADR 0056).
+    AwaitingDeviceApproval,
     // Over 1 MiB, or a value the server's rules refuse, with the server's code.
     Refused { code: String },
 }
@@ -380,5 +393,17 @@ impl SyncService {
     // True while older entries remain on the server.
     pub async fn load_older_history(&self) -> Result<bool, CoreError> {
         unfilled("sync.load_older_history")
+    }
+
+    // The history entries this device keeps, its retention setting: a snapshot of the history scope takes that many,
+    // newest first, and `load_older_history` pages back. None keeps every entry.
+    pub fn set_history_window(&self, entries: Option<u32>) {
+        let _ = entries;
+    }
+
+    // The iCloud account whose state file the device uses now, for the app to keep and pass back as
+    // `SyncConfig::icloud_account` at the next launch.
+    pub fn icloud_account(&self) -> Option<String> {
+        None
     }
 }
