@@ -113,28 +113,29 @@ struct SidebarNameFilterTests {
 
     // MARK: - Folding
 
-    // What the locale-aware search answered before ASCII names took the byte search, pinned so neither path drifts.
+    // Each pair has a character outside ASCII, so it takes the locale-aware search and answers what that search answers
+    // in the current locale: Turkish folds `I` to a dotless `ı`, so a fixed answer would hold in one locale only.
     @Test(
         "A name or query outside ASCII keeps the locale-aware answer",
         arguments: [
-            ("strasse", "straße", SidebarNameMatchTier?.some(.exact)),
-            ("STRASSE", "Straße", .exact),
-            ("straße", "strasse", .exact),
-            ("fi", "\u{FB01}le", .prefix),
-            ("file", "\u{FB01}le", .exact),
-            ("\u{FB01}", "file", .prefix),
-            ("i", "İstanbul", .prefix),
-            ("istanbul", "İSTANBUL", .exact),
-            ("I", "ılık", nil),
-            ("cafe", "café", .exact),
-            ("café", "CAFE", .exact),
-            ("cafe", "cafe\u{301}", .exact),
-            ("ae", "æther", nil),
-            ("o", "Ørsted", nil),
+            ("strasse", "straße"),
+            ("STRASSE", "Straße"),
+            ("straße", "strasse"),
+            ("fi", "\u{FB01}le"),
+            ("file", "\u{FB01}le"),
+            ("\u{FB01}", "file"),
+            ("i", "İstanbul"),
+            ("istanbul", "İSTANBUL"),
+            ("I", "ılık"),
+            ("cafe", "café"),
+            ("café", "CAFE"),
+            ("cafe", "cafe\u{301}"),
+            ("ae", "æther"),
+            ("o", "Ørsted"),
         ]
     )
-    func nonASCIIKeepsLocaleAnswer(query: String, candidate: String, tier: SidebarNameMatchTier?) {
-        #expect(SidebarNameQuery(query).tier(of: candidate) == tier)
+    func nonASCIIKeepsLocaleAnswer(query: String, candidate: String) {
+        #expect(SidebarNameQuery(query).tier(of: candidate) == Self.localeAwareTier(query, candidate))
     }
 
     @Test("Every ASCII query ranks every ASCII name as the locale-aware search does")
