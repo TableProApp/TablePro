@@ -7,7 +7,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::journal::{RecordKind, Signals};
+use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::name_rules::{self, NameFault};
 use crate::stored_id::{optional_uuid_column, uuid_column};
 use crate::unix_time::{from_unix_millis, to_unix_millis};
@@ -45,8 +45,8 @@ impl SavedQueryFolders {
         self.signals.subscribe()
     }
 
-    fn changed(&self) {
-        self.signals.changed(&[RecordKind::SavedQueryFolder]);
+    fn wrote(&self, written: impl IntoIterator<Item = Uuid>) {
+        self.signals.changed(&[folders(written, [])]);
     }
 
     pub async fn create(
@@ -64,7 +64,8 @@ impl SavedQueryFolders {
         check_name(&mut transaction, owner.as_deref(), parent.as_deref(), &name, None).await?;
         let now = to_unix_millis(SystemTime::now());
         let id = Uuid::new_v4();
-        let order = ordering::next_folder_order(&mut transaction, owner.as_deref(), parent.as_deref()).await?;
+        let (order, mut moved) =
+            ordering::next_folder_order(&mut transaction, owner.as_deref(), parent.as_deref()).await?;
         sqlx::query(
             "INSERT INTO saved_query_folders \
              (record_id, connection_id, name, parent_record_id, sort_order, created_at, updated_at) \
@@ -81,7 +82,8 @@ impl SavedQueryFolders {
         .await
         .map_err(name_taken)?;
         transaction.commit().await?;
-        self.changed();
+        moved.push(id);
+        self.wrote(moved);
         Ok(id)
     }
 
@@ -116,7 +118,7 @@ impl SavedQueryFolders {
             .await
             .map_err(name_taken)?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id]);
         Ok(())
     }
 
@@ -144,7 +146,8 @@ impl SavedQueryFolders {
             Some(rowid),
         )
         .await?;
-        let order = ordering::next_folder_order(&mut transaction, owner.as_deref(), parent.as_deref()).await?;
+        let (order, mut moved) =
+            ordering::next_folder_order(&mut transaction, owner.as_deref(), parent.as_deref()).await?;
         sqlx::query("UPDATE saved_query_folders SET parent_record_id = ?, updated_at = ?, sort_order = ? WHERE id = ?")
             .bind(&parent)
             .bind(to_unix_millis(SystemTime::now()))
@@ -153,17 +156,16 @@ impl SavedQueryFolders {
             .execute(&mut *transaction)
             .await
             .map_err(name_taken)?;
-        ordering::compact_folders(&mut transaction, owner.as_deref(), previous.as_deref()).await?;
+        moved.push(id);
+        moved.extend(ordering::compact_folders(&mut transaction, owner.as_deref(), previous.as_deref()).await?);
         transaction.commit().await?;
-        self.changed();
+        self.wrote(moved);
         Ok(())
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), StorageError> {
-        super::deletion::delete_folder(&self.pool, &self.path, id).await?;
-        // Its queries move to the top, which changes them too.
-        self.signals
-            .changed(&[RecordKind::SavedQuery, RecordKind::SavedQueryFolder]);
+        let changed = super::deletion::delete_folder(&self.pool, &self.path, id).await?;
+        self.signals.changed(&changed);
         Ok(())
     }
 
@@ -191,7 +193,7 @@ impl SavedQueryFolders {
         let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         let settled = super::put::put_folders(&mut transaction, folders, SystemTime::now()).await?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote(folders.iter().map(|folder| folder.id).chain(settled.iter().copied()));
         Ok(settled)
     }
 }
@@ -275,6 +277,15 @@ pub(super) fn row_to_folder(row: &sqlx::sqlite::SqliteRow) -> Result<SavedQueryF
         created_at: from_unix_millis(row.try_get::<i64, _>("created_at")?),
         updated_at: from_unix_millis(row.try_get::<i64, _>("updated_at")?),
     })
+}
+
+pub(super) fn folders(
+    written: impl IntoIterator<Item = Uuid>,
+    deleted: impl IntoIterator<Item = Uuid>,
+) -> JournalEntry {
+    JournalEntry::new(RecordKind::SavedQueryFolder)
+        .wrote(written.into_iter().map(RecordRef::Id))
+        .deleted(deleted.into_iter().map(RecordRef::Id))
 }
 
 fn checked_name(name: &str) -> Result<String, StorageError> {

@@ -15,7 +15,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use super::account_info::{
     AccessTokenInfo, AccountStatusInfo, AppClientTag, DeviceInfo, FeatureAccessTag, ProfileInfo, ServerInfo,
-    ServerLicenseInfo, SignOutCauseTag,
+    ServerLicenseInfo, SignOutCauseTag, StepUpChallengeInfo,
 };
 use super::host_browser::{HostBrowser, HostBrowserBridge};
 use super::managed_policy::ManagedPolicyArg;
@@ -210,6 +210,25 @@ impl AccountService {
         on_runtime(&self.tasks, async move {
             account
                 .sign_in(async move { cancel.cancelled().await })
+                .await
+                .map_err(CoreError::from)
+        })
+        .await
+    }
+
+    // RFC 9470, after a call failed with `account.step_up_required` or `sync.step_up_required`: the server's sign-in page
+    // opens as for `sign_in`, asking for the challenge's methods and age. Once it returns, the app retries the call.
+    // The cancel ends only the wait for the browser.
+    pub async fn step_up(
+        &self,
+        challenge: StepUpChallengeInfo,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<(), CoreError> {
+        let account = self.account.clone();
+        let cancel = token(cancel);
+        on_runtime(&self.tasks, async move {
+            account
+                .step_up(&challenge.into(), async move { cancel.cancelled().await })
                 .await
                 .map_err(CoreError::from)
         })

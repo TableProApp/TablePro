@@ -15,16 +15,41 @@ import TextStory
 /// - Grouping pasted text
 ///
 /// If needed, the automatic undo grouping can be overridden using the `beginGrouping()` and `endGrouping()` methods.
+///
+/// The undo and redo stacks together hold at most ``maximumHistoryBytes``. A new step that goes over it drops the
+/// oldest steps first, as `levelsOfUndo` does for `UndoManager`, measured in bytes so one whole-document replace cannot
+/// outweigh thousands of keystrokes.
 public class CEUndoManager: UndoManager {
+    /// The default ``maximumHistoryBytes``: enough for several whole-document replaces of a large script.
+    public static let defaultMaximumHistoryBytes = 32 * 1_024 * 1_024
+
     /// Represents a group of mutations that should be treated as one mutation when undoing/redoing.
     struct UndoGroup {
         var mutations: [Mutation]
+        /// What the group's mutations hold, in bytes.
+        var bytes: Int
+
+        init(mutations: [Mutation]) {
+            self.mutations = mutations
+            self.bytes = mutations.reduce(0) { $0 + $1.bytes }
+        }
+
+        mutating func append(_ mutation: Mutation) {
+            mutations.append(mutation)
+            bytes += mutation.bytes
+        }
     }
 
     /// A single undo mutation.
     struct Mutation {
         var mutation: TextMutation
         var inverse: TextMutation
+
+        /// The text both sides keep, as UTF-16, plus the mutation itself, so even an empty one is charged.
+        var bytes: Int {
+            (mutation.string.utf16.count + inverse.string.utf16.count) * MemoryLayout<UInt16>.size
+                + MemoryLayout<Mutation>.stride
+        }
     }
 
     public struct History {
@@ -32,7 +57,21 @@ public class CEUndoManager: UndoManager {
         var redoStack: [UndoGroup]
 
         public var isEmpty: Bool { undoStack.isEmpty && redoStack.isEmpty }
+
+        /// What the history holds, in bytes, charged the way ``CEUndoManager/maximumHistoryBytes`` is.
+        public var bytes: Int {
+            undoStack.reduce(0) { $0 + $1.bytes } + redoStack.reduce(0) { $0 + $1.bytes }
+        }
     }
+
+    /// The most the undo and redo stacks may hold together, in bytes of text. The newest step is kept even when it
+    /// alone is larger, so the edit just made can always be undone. Zero means no limit.
+    public var maximumHistoryBytes = CEUndoManager.defaultMaximumHistoryBytes {
+        didSet { trimToBudget() }
+    }
+
+    /// What the undo and redo stacks hold now, in bytes.
+    public private(set) var historyBytes = 0
 
     private var _isUndoing: Bool = false
     private var _isRedoing: Bool = false
@@ -200,6 +239,7 @@ public class CEUndoManager: UndoManager {
     public func clearStack() {
         undoStack.removeAll()
         redoStack.removeAll()
+        historyBytes = 0
     }
 
     public var history: History {
@@ -210,8 +250,10 @@ public class CEUndoManager: UndoManager {
     public func restore(_ history: History) {
         undoStack = history.undoStack
         redoStack = history.redoStack
+        historyBytes = history.bytes
         isGrouping = false
         shouldBreakNextGroup = true
+        trimToBudget()
     }
 
     // MARK: - Mutations
@@ -268,12 +310,36 @@ public class CEUndoManager: UndoManager {
             let lastMutation = undoStack.last?.mutations.last,
            !shouldBreakNextGroup,
            isGrouping || shouldContinueGroup(newMutation, lastMutation: lastMutation) {
-            undoStack[undoStack.count - 1].mutations.append(newMutation)
+            undoStack[undoStack.count - 1].append(newMutation)
         } else {
             undoStack.append(UndoGroup(mutations: [newMutation]))
             shouldBreakNextGroup = false
         }
+        historyBytes += newMutation.bytes - redoStack.reduce(0) { $0 + $1.bytes }
         redoStack.removeAll()
+        trimToBudget()
+    }
+
+    /// Drops the oldest steps until the history fits ``maximumHistoryBytes``: the bottom of the undo stack, then the
+    /// bottom of the redo stack, which is the step furthest from the text. One step always stays.
+    private func trimToBudget() {
+        guard maximumHistoryBytes > 0, historyBytes > maximumHistoryBytes else { return }
+        var bytes = historyBytes
+        var droppedUndo = 0
+        while bytes > maximumHistoryBytes, droppedUndo < undoStack.count,
+              undoStack.count - droppedUndo + redoStack.count > 1 {
+            bytes -= undoStack[droppedUndo].bytes
+            droppedUndo += 1
+        }
+        var droppedRedo = 0
+        while bytes > maximumHistoryBytes, droppedRedo < redoStack.count,
+              undoStack.count - droppedUndo + redoStack.count - droppedRedo > 1 {
+            bytes -= redoStack[droppedRedo].bytes
+            droppedRedo += 1
+        }
+        undoStack.removeFirst(droppedUndo)
+        redoStack.removeFirst(droppedRedo)
+        historyBytes = bytes
     }
 
     // MARK: - Grouping

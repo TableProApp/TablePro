@@ -103,6 +103,12 @@ pub enum StorageError {
 
     #[error("{} belongs to another account", .path.display())]
     StoreOwnerMismatch { path: std::path::PathBuf },
+
+    #[error("the library names {id} twice")]
+    RepeatedId { id: uuid::Uuid },
+
+    #[error("the connections file changed since the host last checked it")]
+    LibraryChanged,
 }
 
 impl StorageError {
@@ -130,7 +136,7 @@ impl StorageError {
             Self::Encode(..) => "storage.encode",
             Self::HistoryNewerThanApp { .. } => "storage.history_newer_than_app",
             Self::HistoryMigration(..) => "storage.history_migration",
-            Self::DocumentUnavailable(..) => "storage.document_unavailable",
+            Self::DocumentUnavailable(problem) => problem.code(),
             Self::DraftNotUtf8 { .. } => "storage.draft_not_utf8",
             Self::ImportOutdated => "storage.import_outdated",
             Self::ConnectionNotFound { .. } => "storage.connection_not_found",
@@ -140,6 +146,8 @@ impl StorageError {
             Self::GroupCycle { .. } => "storage.group_cycle",
             Self::GroupTooDeep { .. } => "storage.group_too_deep",
             Self::StoreOwnerMismatch { .. } => "storage.store_owner_mismatch",
+            Self::RepeatedId { .. } => "storage.repeated_id",
+            Self::LibraryChanged => "storage.library_changed",
         }
     }
 }
@@ -171,6 +179,8 @@ mod tests {
             .code(),
             StorageError::GroupCycle { id }.code(),
             StorageError::GroupTooDeep { max: 3 }.code(),
+            StorageError::RepeatedId { id }.code(),
+            StorageError::LibraryChanged.code(),
         ];
 
         assert_eq!(
@@ -182,6 +192,8 @@ mod tests {
                 "storage.group_name_taken",
                 "storage.group_cycle",
                 "storage.group_too_deep",
+                "storage.repeated_id",
+                "storage.library_changed",
             ]
         );
     }

@@ -26,10 +26,12 @@ mod foreign_import;
 mod history;
 mod host;
 mod host_key;
+mod host_stores;
 mod import;
 mod key_read;
 mod keymap;
 mod library;
+mod library_contents;
 mod library_details;
 mod masking;
 mod mcp;
@@ -100,6 +102,12 @@ pub use history::{
     QueryHistoryStore,
 };
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
+pub use host_stores::{
+    FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,
+    FavouriteStoreContents, FavouriteTableRecord, HistoryEntryRecord, SavedQueryFolderRecord, SavedQueryRecord,
+    SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome, TableFolderRecordWrite,
+    TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
+};
 pub use import::{
     CsvDelimiterTag, CsvImport, CsvImportCheck, CsvImportOutcome, CsvPreview, CsvReadOptions, CsvRowFault,
     ImportColumnInfo, LineSpan,
@@ -108,7 +116,12 @@ pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use keymap::{KeymapBindingInfo, KeymapPlatformTag, KeymapPresetInfo, keymap_preset, keymap_presets};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
-    LibrarySnapshot, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
+    LibraryIconRecord, LibrarySnapshot, RemoteFileAccessTag, SafeModeTag, SshAuthTag, SshJumpAuthTag,
+    SshJumpHostRecord, SshOptionsRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TagRecord,
+    TlsModeTag, TlsSettings, check_jump_hosts, jump_hosts_text, parse_jump_hosts,
+};
+pub use library_contents::{
+    LibraryConnectionRecord, LibraryContents, LibraryWriteRecord, library_icon_for_symbol, library_icon_symbol,
 };
 pub use library_details::{
     CloudSqlAuthTag, CloudSqlProxyRecord, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord,

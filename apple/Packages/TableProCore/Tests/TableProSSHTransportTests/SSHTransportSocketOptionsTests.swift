@@ -1,5 +1,5 @@
 //
-//  SSHTransportKeepAliveTests.swift
+//  SSHTransportSocketOptionsTests.swift
 //  TableProSSHTransportTests
 //
 
@@ -8,24 +8,25 @@ import Testing
 
 @testable import TableProSSHTransport
 
-struct SSHTransportKeepAliveTests {
-    @Test("A TCP socket gets keepalive with the idle time both apps use")
-    func setsKeepAliveOnTCPSocket() throws {
+struct SSHTransportSocketOptionsTests {
+    @Test("A TCP socket gets no-delay and keepalive with the idle time both apps use")
+    func setsOptionsOnTCPSocket() throws {
         let descriptor = socket(AF_INET, SOCK_STREAM, 0)
         try #require(descriptor >= 0)
         defer { close(descriptor) }
 
-        #expect(SSHTransportKeepAlive.enable(on: descriptor).isEmpty)
+        #expect(SSHTransportSocketOptions.enable(on: descriptor).isEmpty)
+        #expect(option(descriptor, IPPROTO_TCP, TCP_NODELAY) != 0)
         #expect(option(descriptor, SOL_SOCKET, SO_KEEPALIVE) != 0)
-        #expect(option(descriptor, IPPROTO_TCP, TCP_KEEPALIVE) == SSHTransportKeepAlive.idleSeconds)
+        #expect(option(descriptor, IPPROTO_TCP, TCP_KEEPALIVE) == SSHTransportSocketOptions.idleSeconds)
     }
 
     @Test("A descriptor that cannot take the options names each refusal")
     func reportsRefusedOptions() {
-        let refused = SSHTransportKeepAlive.enable(on: -1)
+        let refused = SSHTransportSocketOptions.enable(on: -1)
 
-        #expect(refused.count == 2)
-        #expect(refused.first?.hasPrefix("SO_KEEPALIVE") == true)
+        #expect(refused.count == 3)
+        #expect(refused.first?.hasPrefix("TCP_NODELAY") == true)
     }
 
     private func option(_ descriptor: Int32, _ level: Int32, _ name: Int32) -> Int32 {

@@ -19,7 +19,9 @@ class CheckChangelogEditsTests(unittest.TestCase):
         self.git("-c", "init.defaultBranch=main", "init", "-q")
         (self.repo / "scripts/ci").mkdir(parents=True)
         shutil.copy(SCRIPT, self.repo / "scripts/ci/check-changelog-edits.sh")
-        self.base = self.commit(["apple/CHANGELOG.md", "linux/CHANGELOG.md", "README.md"])
+        self.base = self.commit(
+            ["apple/CHANGELOG.md", "linux/CHANGELOG.md", "windows/CHANGELOG.md", "README.md"]
+        )
 
     def tearDown(self):
         self.temp.cleanup()
@@ -53,7 +55,7 @@ class CheckChangelogEditsTests(unittest.TestCase):
         self.assertEqual(self.check("fix(editor): keep the caret")[0], 0)
 
     def test_a_changelog_edit_fails_outside_a_release_title(self):
-        for path in ["apple/CHANGELOG.md", "linux/CHANGELOG.md"]:
+        for path in ["apple/CHANGELOG.md", "linux/CHANGELOG.md", "windows/CHANGELOG.md"]:
             with self.subTest(path=path):
                 self.git("reset", "-q", "--hard", self.base)
                 self.commit([path])
@@ -61,12 +63,12 @@ class CheckChangelogEditsTests(unittest.TestCase):
                 self.assertEqual(status, 1)
                 self.assertIn(f"::error title=Changelog::Only a chore(release) pull request edits {path}", out)
 
-    def test_both_changelogs_are_named_in_one_line(self):
-        self.commit(["apple/CHANGELOG.md", "linux/CHANGELOG.md"])
+    def test_every_changelog_is_named_in_one_line(self):
+        self.commit(["apple/CHANGELOG.md", "linux/CHANGELOG.md", "windows/CHANGELOG.md"])
         status, out = self.check("docs: notes")
         self.assertEqual(status, 1)
         self.assertEqual(len(out.splitlines()), 1)
-        self.assertIn("apple/CHANGELOG.md or linux/CHANGELOG.md", out)
+        self.assertIn("apple/CHANGELOG.md or linux/CHANGELOG.md or windows/CHANGELOG.md", out)
 
     def test_a_release_title_may_edit_a_changelog(self):
         self.commit(["apple/CHANGELOG.md"])
@@ -75,6 +77,13 @@ class CheckChangelogEditsTests(unittest.TestCase):
     def test_a_title_naming_release_elsewhere_is_not_a_release_title(self):
         self.commit(["apple/CHANGELOG.md"])
         self.assertEqual(self.check("fix: chore(release) notes")[0], 1)
+
+    def test_adding_a_new_changelog_passes_under_any_title(self):
+        self.git("rm", "-q", "windows/CHANGELOG.md")
+        self.git("commit", "-q", "-m", "remove")
+        base = self.git("rev-parse", "HEAD")
+        self.commit(["windows/CHANGELOG.md"])
+        self.assertEqual(self.check("chore(windows): bootstrap changelog", base=base)[0], 0)
 
     def test_an_empty_base_is_a_usage_error(self):
         self.assertEqual(self.check("fix: x", base="")[0], 2)

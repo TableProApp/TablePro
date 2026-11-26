@@ -17,16 +17,31 @@ extension DatabaseManager {
             name: NSWorkspace.didWakeNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidBecomeActive),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
+        startObservingNetworkPath()
     }
 
     @objc private func handleSystemDidWake(_ notification: Notification) {
-        Self.logger.info("System woke from sleep, validating tunneled sessions")
+        Self.logger.info("System woke from sleep, validating sessions")
 
         Task { @MainActor [weak self] in
             guard let self else { return }
             // The clock moved while nothing observed it, so every answer held predates the sleep.
             self.forgetAllVerifications()
             await self.validateTunneledSessions()
+            await self.verifyLiveSessions()
+        }
+    }
+
+    // A monitor stretched its interval while the app was inactive; starting it again puts back the configured one.
+    @objc private func handleAppDidBecomeActive(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            await self?.restartHealthMonitors()
         }
     }
 
