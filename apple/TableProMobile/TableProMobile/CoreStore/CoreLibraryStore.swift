@@ -204,8 +204,16 @@ final class CoreLibraryStore {
         // Taken out by the same write, under its check of the file, rather than by deletes that would not check it.
         let unread = removed.connections.intersection(heldByCore)
         let staying = heldByCore.subtracting(unread)
+        let previousFlags = flags
         flags = ConnectionDeviceFlags(of: next.connections).keeping(staying, from: flags)
-        let digest = try replace(with: next, favoritesOrder: favoritesOrder, removing: unread, keepingHeld: staying, in: library)
+        let digest: String?
+        do {
+            digest = try replace(with: next, favoritesOrder: favoritesOrder, removing: unread, keepingHeld: staying, in: library)
+        } catch {
+            // A write that did not land keeps the flags of the entries it was taking out.
+            flags = previousFlags
+            throw error
+        }
         heldByCore.subtract(unread)
         legacyCopiesOfHeld.removeAll { unread.contains($0.id) }
         pastedSSHKeys = pasted

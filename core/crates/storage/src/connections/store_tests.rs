@@ -1362,6 +1362,16 @@ fn a_library_write_refuses_what_the_store_would_drop() {
         },
     );
 
+    let kept_and_removed = replace(
+        &store,
+        LibraryWrite {
+            connections: vec![connection.clone()],
+            removing: vec![connection.id],
+            ..LibraryWrite::default()
+        },
+    );
+
+    assert!(matches!(kept_and_removed, Err(StorageError::RepeatedId { id }) if id == connection.id));
     assert!(matches!(favourite_twice, Err(StorageError::RepeatedId { id }) if id == connection.id));
     assert!(matches!(tag_twice, Err(StorageError::RepeatedId { id }) if id == tag));
     assert!(matches!(favourite_of_nothing, Err(StorageError::ConnectionNotFound { id }) if id == stray));

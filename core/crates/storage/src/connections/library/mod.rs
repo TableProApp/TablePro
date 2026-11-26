@@ -434,10 +434,12 @@ impl LibraryWrite {
                     .iter()
                     .find_map(|connection| first_repeat(connection.tags.iter().copied()))
             });
-        if let Some(id) = repeated {
+        let saved: HashSet<Uuid> = self.connections.iter().map(|connection| connection.id).collect();
+        // A connection the write both keeps and takes out is named twice.
+        let kept_and_removed = self.removing.iter().copied().find(|id| saved.contains(id));
+        if let Some(id) = repeated.or(kept_and_removed) {
             return Err(StorageError::RepeatedId { id });
         }
-        let saved: HashSet<Uuid> = self.connections.iter().map(|connection| connection.id).collect();
         match self
             .favorites
             .iter()

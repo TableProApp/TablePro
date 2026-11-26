@@ -6,7 +6,7 @@ use tablepro_core::{AuthMode, ExternalAccess, NetworkOptions};
 use tablepro_records::cloudkit::library::{icon_for_symbol, symbol_for_icon};
 use tablepro_storage::{
     ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionTag, ConnectionTagName, DeviceOnly,
-    LibraryWrite, SavedConnection,
+    LibraryWrite, SavedConnection, StorageError,
 };
 use uuid::Uuid;
 
@@ -82,6 +82,15 @@ impl ConnectionLibrary {
     ) -> Result<LibraryWritten, CoreError> {
         let _held = self.hold_writes().await;
         let removing = parse_ids(&library.removing)?;
+        // Before any secret goes, so a connection the write also keeps never loses its own.
+        if let Some(id) = removing.iter().find(|id| {
+            library
+                .connections
+                .iter()
+                .any(|record| parse_id(&record.connection.id).ok() == Some(**id))
+        }) {
+            return Err(StorageError::RepeatedId { id: *id }.into());
+        }
         // Their secrets go first, as a delete's do; a write refused after leaves entries already on their way out.
         if !removing.is_empty() {
             self.delete_secrets(removing).await?;
