@@ -12,12 +12,13 @@ use tablepro_keys::keys::{
 };
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::recovery::RecoveryKey;
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced, merge_replaced};
 use tablepro_keys::wrap::{Wrap, Wrapper, device_target};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use super::KeyService;
+use super::pins::seen_replaced;
 use crate::api::device_store::DeviceItem;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
@@ -411,7 +412,7 @@ impl KeyService {
         &self,
         txn: &mut dyn StateTxn,
         certificate: &AccountCertificate,
-    ) -> Result<Vec<Ed25519Public>, SyncError> {
+    ) -> Result<Vec<Replaced>, SyncError> {
         let mut chain = Vec::new();
         let mut above = certificate.clone();
         while let Some(av) = above.av.previous() {
@@ -423,7 +424,10 @@ impl KeyService {
             }
             if older.ik != above.ik {
                 match above.ik_change(&self.origin, &older.ik) {
-                    Ok(IkChange::Endorsed) => chain.push(older.ik),
+                    Ok(IkChange::Endorsed) => chain.push(Replaced {
+                        ik: older.ik,
+                        av: above.av,
+                    }),
                     _ => break,
                 }
             }
@@ -488,16 +492,15 @@ impl KeyService {
         }
         let held = self.pin(txn, self.account).await?;
         let mut replaced = held.as_ref().map(|pin| pin.replaced.clone()).unwrap_or_default();
-        for older in self.endorsed_chain(txn, &certificate).await? {
-            if !replaced.contains(&older) {
-                replaced.push(older);
-            }
-        }
+        replaced = merge_replaced(&replaced, &self.endorsed_chain(txn, &certificate).await?);
         if let Some(pin) = &held
             && pin.ik != certificate.ik
-            && !replaced.contains(&pin.ik)
+            && !seen_replaced(&replaced, &pin.ik)
         {
-            replaced.push(pin.ik);
+            replaced.push(Replaced {
+                ik: pin.ik,
+                av: certificate.av,
+            });
         }
         let how = match &held {
             Some(pin) if pin.ik == certificate.ik => pin.how,

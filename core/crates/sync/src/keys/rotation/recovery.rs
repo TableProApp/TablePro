@@ -17,6 +17,7 @@ use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::state::StateTxn;
 use crate::keys::KeyService;
+use crate::keys::pins::seen_replaced;
 
 pub(crate) struct Recovered {
     pub certificate: AccountCertificate,
@@ -186,7 +187,7 @@ impl KeyService {
                 }
                 .into());
             }
-            if pin.replaced.contains(&newest.ik) {
+            if seen_replaced(&pin.replaced, &newest.ik) {
                 return Err(KeysError::RetiredIk.into());
             }
         }

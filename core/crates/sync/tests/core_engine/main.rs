@@ -1,5 +1,5 @@
-// The engine and the key flows together, as the apps run them: one `KeyService` is the engine's key flows and the
-// source of its proofs, and its hooks are the engine's, against the fake `/v2/sync` server.
+// The engine and the key flows together, as the apps run them: one `KeyService` is the engine's key flows, its proofs
+// included, and its hooks are the engine's, against the fake `/v2/sync` server.
 
 #![expect(
     clippy::unwrap_used,

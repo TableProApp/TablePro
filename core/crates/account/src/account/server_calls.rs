@@ -287,7 +287,13 @@ impl Account {
             account_id: session.account_id.clone(),
             device_id: session.device_id.clone(),
             session_id: session.id.clone(),
+            sign_in: SignInKey::of(&server.api, &self.inner.settings.account_file).key,
         })
+    }
+
+    // The account's HTTP client, so the app's own /v2 calls share its connections and its User-Agent.
+    pub fn http_client(&self) -> reqwest::Client {
+        self.inner.http.clone()
     }
 
     // The API answered 401 to this token, so the next call refreshes it, whatever its expiry says.

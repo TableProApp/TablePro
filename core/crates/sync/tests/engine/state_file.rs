@@ -4,7 +4,7 @@ use serde_json::json;
 use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, RequestId, TeamId, Version};
 use tablepro_keys::keys::{Ed25519Public, X25519Public};
 use tablepro_keys::sas::{Role as ComparisonRole, SessionState};
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 use tablepro_records::Kind;
 use tablepro_sync::api::error::StateError;
 use tablepro_sync::api::ids::{
@@ -156,6 +156,7 @@ fn key_rows() -> Vec<Row> {
             record_id: format!("{}/1", account().to_wire()),
             fields: r#"{"a":1}"#.to_owned(),
             applied: true,
+            served: None,
         }),
         Row::KeyPin(KeyPinRow {
             account: account(),
@@ -163,7 +164,16 @@ fn key_rows() -> Vec<Row> {
             av: Version::new(2).unwrap(),
             how: PinHow::Compared,
             alert: true,
-            replaced: vec![Ed25519Public([1; 32]), Ed25519Public([2; 32])],
+            replaced: vec![
+                Replaced {
+                    ik: Ed25519Public([1; 32]),
+                    av: Version::new(2).unwrap(),
+                },
+                Replaced {
+                    ik: Ed25519Public([2; 32]),
+                    av: Version::new(3).unwrap(),
+                },
+            ],
         }),
         Row::KeyDevicePin(KeyDevicePinRow {
             key_device: KeyDeviceId(Uuid::new_v4()),

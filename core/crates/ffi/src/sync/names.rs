@@ -5,12 +5,19 @@ use std::collections::HashMap;
 use tablepro_account::Account;
 use tablepro_keys::encoding::{AccountId, TeamId};
 use tablepro_sync::api::ScopeName;
-use uuid::Uuid;
+use tablepro_sync::api::ids::parse_typeid;
+use tablepro_sync::http::{Binding, SignIn};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Person {
     pub(crate) name: Option<String>,
     pub(crate) email: Option<String>,
+}
+
+async fn still_bound(account: &Account, binding: &Binding) -> bool {
+    SignIn::signed_in(account)
+        .await
+        .is_ok_and(|signed_in| binding.holds(&signed_in))
 }
 
 #[derive(Debug, Default)]
@@ -21,12 +28,25 @@ pub(crate) struct Names {
 
 impl Names {
     // A read that fails leaves its names out, as a member list the server keeps from anyone but the team's owners
-    // and admins, or a profile read offline.
-    pub(crate) async fn read(account: Option<&Account>, teams: &[TeamId]) -> Self {
-        let mut names = Self::default();
-        let Some(account) = account else {
-            return names;
+    // and admins, or a profile read offline. Names are read only while the account holds the sign-in the engine is
+    // bound to, and are dropped when it changed during the reads, so another server never names this one's members.
+    pub(crate) async fn read(account: Option<&Account>, binding: Option<&Binding>, teams: &[TeamId]) -> Self {
+        let (Some(account), Some(binding)) = (account, binding) else {
+            return Self::default();
         };
+        if !still_bound(account, binding).await {
+            return Self::default();
+        }
+        let names = Self::read_unchecked(account, teams).await;
+        if still_bound(account, binding).await {
+            names
+        } else {
+            Self::default()
+        }
+    }
+
+    async fn read_unchecked(account: &Account, teams: &[TeamId]) -> Self {
+        let mut names = Self::default();
         match account.profile().await {
             Ok(profile) => {
                 for membership in profile.teams {
@@ -46,7 +66,7 @@ impl Names {
             match account.team_members(&ScopeName::Team(*team).wire()).await {
                 Ok(members) => {
                     for member in members {
-                        let Some(id) = typeid_uuid("acct_", &member.account_id) else {
+                        let Some(id) = parse_typeid("acct_", &member.account_id) else {
                             continue;
                         };
                         let person = Person {
@@ -78,39 +98,5 @@ impl Names {
     #[cfg(test)]
     pub(crate) fn insert_person(&mut self, team: TeamId, account: AccountId, person: Person) {
         self.people.insert((team, account), person);
-    }
-}
-
-const TYPEID_ALPHABET: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";
-
-// A TypeID's suffix is the UUID in 26 lower-case Crockford base32 symbols, the first carrying the two zero bits above
-// 128; the server names accounts `acct_` and that suffix.
-fn typeid_uuid(prefix: &str, text: &str) -> Option<Uuid> {
-    let suffix = text.strip_prefix(prefix)?;
-    if suffix.len() != 26 || !suffix.starts_with(|c: char| ('0'..='7').contains(&c)) {
-        return None;
-    }
-    let mut value: u128 = 0;
-    for byte in suffix.bytes() {
-        let symbol = TYPEID_ALPHABET.iter().position(|candidate| *candidate == byte)?;
-        value = (value << 5) | u128::try_from(symbol).ok()?;
-    }
-    Some(Uuid::from_u128(value))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_account_typeid_reads_as_the_uuid_a_team_scope_name_encodes_the_same_way() {
-        let uuid = Uuid::from_u128(0x0193_a1b2_c3d4_7e5f_8a9b_0c1d_2e3f_4a5b);
-        let team = ScopeName::Team(TeamId(uuid)).wire();
-        let account = format!("acct_{}", team.trim_start_matches("team_"));
-
-        assert_eq!(typeid_uuid("acct_", &account), Some(uuid));
-        assert_eq!(typeid_uuid("acct_", &team), None);
-        assert_eq!(typeid_uuid("acct_", "acct_81k8d6wk00f8xsr79e7x052rkk"), None);
-        assert_eq!(typeid_uuid("acct_", "acct_01k8d6wk00f8xsr79e7x052rk"), None);
     }
 }

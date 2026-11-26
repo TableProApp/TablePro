@@ -771,6 +771,10 @@ async fn each_sign_in_has_its_own_session_id_which_every_bearer_carries_and_a_si
     let _ = account.sign_out().await;
 
     assert_eq!(bearer.session_id.as_deref(), Some(first.as_str()));
+    assert_eq!(
+        bearer.sign_in,
+        SignInKey::of(&bearer.api, &dir.path().join("account.json")).key
+    );
     assert_eq!(first.len(), 32);
     assert_ne!(first, second, "a new sign-in of the same account is another session");
     assert!(matches!(&*account.status().borrow(), AccountStatus::SignedOut));

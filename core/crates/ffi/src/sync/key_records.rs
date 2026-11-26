@@ -193,6 +193,7 @@ impl From<KeyNoticeKind> for KeyNoticeKindTag {
                 signer: signer.to_wire(),
             },
             KeyNoticeKind::ResetPending { reset } => Self::ResetPending { reset: reset.to_wire() },
+            KeyNoticeKind::ResetWaitsForStepUp { reset } => Self::ResetWaitsForStepUp { reset: reset.to_wire() },
             KeyNoticeKind::ResetEnded { reset, state } => Self::ResetEnded {
                 reset: reset.to_wire(),
                 state: state.into(),
