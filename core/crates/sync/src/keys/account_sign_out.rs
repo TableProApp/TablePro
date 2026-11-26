@@ -12,6 +12,7 @@ use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 
 use super::KeyService;
 use super::account::SigningOut;
+use crate::api::device_store::DeviceStoreError;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::SignOutOutcome;
@@ -21,6 +22,11 @@ use crate::api::transport::{DpopKey, TransportError};
 impl KeyService {
     pub(crate) async fn erase_on_sign_out(&self) -> Result<SignOutOutcome, SyncError> {
         let _serial = self.serialized().await;
+        // A device with no store holds no keys: its key tables go, and there is nothing to revoke.
+        if let Err(SyncError::DeviceStore(DeviceStoreError::Unavailable { .. })) = self.signing_out().await {
+            self.clear_key_state().await?;
+            return Ok(SignOutOutcome::Revoked);
+        }
         let signing_out = match self.signing_out().await? {
             Some(signing_out) => signing_out,
             None => {
@@ -34,8 +40,12 @@ impl KeyService {
 
     // A Sign Out a crash cut off finishes before anything else reads the device's keys.
     pub(crate) async fn finish_cut_off_sign_out(&self) -> Result<(), SyncError> {
-        if let Some(signing_out) = self.signing_out().await? {
-            self.finish_signing_out(&signing_out).await?;
+        match self.signing_out().await {
+            Ok(Some(signing_out)) => {
+                self.finish_signing_out(&signing_out).await?;
+            }
+            Ok(None) | Err(SyncError::DeviceStore(DeviceStoreError::Unavailable { .. })) => {}
+            Err(error) => return Err(error),
         }
         Ok(())
     }
@@ -116,6 +126,13 @@ impl KeyService {
         for reset in &signing_out.resets {
             self.erase_reset_keys(*reset).await?;
         }
+        self.clear_key_state().await?;
+        // Last, since it holds the record of what this Sign Out erases.
+        self.erase_device_keys().await?;
+        Ok(outcome)
+    }
+
+    async fn clear_key_state(&self) -> Result<(), SyncError> {
         let mut txn = self.begin().await?;
         txn.clear_key_tables().await?;
         // The device joins again as a new one does, so its next pull of the key kinds starts from a snapshot.
@@ -133,8 +150,6 @@ impl KeyService {
         txn.commit().await?;
         self.drafts().clear();
         self.clear_notices();
-        // Last, since it holds the record of what this Sign Out erases.
-        self.erase_device_keys().await?;
-        Ok(outcome)
+        Ok(())
     }
 }

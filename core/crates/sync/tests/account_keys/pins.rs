@@ -426,3 +426,33 @@ async fn an_ik_seen_replaced_verifies_only_certificates_older_than_the_pin() {
     assert_eq!(older, IkStanding::Replaced);
     assert_eq!(newer.code(), "keys.retired_ik");
 }
+
+#[tokio::test]
+async fn a_certificate_under_a_replaced_ik_counts_only_below_the_av_of_its_replace() {
+    let device = device().await;
+    let scope = team();
+    let member = Member::new();
+    offer(&device, scope, &member.certificate(1)).await.unwrap();
+    let next = Member {
+        account: member.account,
+        ik: Ed25519Seed::generate().unwrap(),
+    };
+    offer(&device, scope, &member.replace(2, &next.ik)).await.unwrap();
+    offer(&device, scope, &next.certificate(3)).await.unwrap();
+    offer(&device, scope, &next.certificate(4)).await.unwrap();
+    let mut txn = device.txn().await;
+
+    let before = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(1))
+        .await
+        .unwrap();
+    let after = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(3))
+        .await
+        .unwrap_err();
+
+    assert_eq!(before, IkStanding::Replaced);
+    assert_eq!(after.code(), "keys.retired_ik");
+}

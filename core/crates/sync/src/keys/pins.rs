@@ -133,6 +133,31 @@ impl KeyService {
         Ok(walk)
     }
 
+    // The `av` where `ik` gave way: the first certificate `scope` holds for the account under another IK right after
+    // one under `ik`, at or below `newest`.
+    async fn replaced_at(
+        &self,
+        txn: &mut dyn StateTxn,
+        scope: ScopeName,
+        account: AccountId,
+        ik: &Ed25519Public,
+        newest: Version,
+    ) -> Result<Option<Version>, SyncError> {
+        let mut previous: Option<Ed25519Public> = None;
+        for av in 1..=newest.get() {
+            let av = Version::new(av)?;
+            let Some(held) = self.held_certificate(txn, scope, account, av).await? else {
+                previous = None;
+                continue;
+            };
+            if previous.as_ref() == Some(ik) && held.ik != *ik {
+                return Ok(Some(av));
+            }
+            previous = Some(held.ik);
+        }
+        Ok(None)
+    }
+
     // Verifying: the certificate's signature, then its IK against the pin, through the replace certificates `scope`
     // holds for the account (`key.account` in the personal scope, `key.member` in a team).
     pub async fn verify_certificate(
@@ -148,12 +173,15 @@ impl KeyService {
         if certificate.ik == pin.ik {
             return Ok(IkStanding::Pinned);
         }
-        // An IK seen replaced verifies only what was signed before the pin moved past it (0056, `keys.retired_ik`).
+        // An IK seen replaced verifies only certificates from before its replace (0056, `keys.retired_ik`). Where the
+        // scope does not show the replace, nothing under it counts.
         if pin.replaced.contains(&certificate.ik) {
-            return if certificate.av < pin.av {
-                Ok(IkStanding::Replaced)
-            } else {
-                Err(KeysError::RetiredIk.into())
+            let replaced_at = self
+                .replaced_at(txn, scope, certificate.account, &certificate.ik, pin.av)
+                .await?;
+            return match replaced_at {
+                Some(at) if certificate.av < at => Ok(IkStanding::Replaced),
+                _ => Err(KeysError::RetiredIk.into()),
             };
         }
         if certificate.av <= pin.av {
