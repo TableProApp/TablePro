@@ -85,6 +85,28 @@ struct SidebarViewModelTests {
         #expect(narrowed.tables.values.flatMap { $0 }.map(\.name) == ["orders"])
     }
 
+    @Test("Clearing the search lets go of the rows a container's verdict held")
+    @MainActor
+    func clearingTheSearchReleasesContainerRows() {
+        let (vm, _, _, _) = makeSUT()
+        var tables = [TestFixtures.makeTableInfo(name: "users"), TestFixtures.makeTableInfo(name: "orders")]
+        vm.searchText = "us"
+        _ = vm.containerBuckets(
+            database: "db",
+            schema: nil,
+            source: DatabaseTreeBucketSource(
+                tables: tables, routines: [], triggers: [], userTypes: [], searchText: "us", database: "db"
+            )
+        )
+
+        vm.searchText = ""
+
+        // A write moves the buffer only while another holder shares it.
+        let shared = tables.withUnsafeBufferPointer { $0.baseAddress }
+        tables[0] = tables[0]
+        #expect(tables.withUnsafeBufferPointer { $0.baseAddress } == shared)
+    }
+
     // MARK: - Batch Toggle Truncate
 
     @Test("batchToggleTruncate asks the window for new tables")

@@ -696,6 +696,10 @@ final class SidebarViewModel: ObservableObject {
         cachedFilteredRoutines = [:]
         cachedFilteredRoutinesKey = nil
         cachedFilteredServerObjects = [:]
+        // Here and not only at the next lookup: once the search is cleared no container asks again, and the memo would
+        // keep the last search's catalog buffers alive.
+        containerBucketMemo = DatabaseTreeBucketMemo()
+        containerBucketQuery = filterQuery
     }
 
     /// Clearing the field, or typing the first character into an empty one, changes what the list
