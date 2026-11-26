@@ -117,22 +117,27 @@ fn decode(bytes: &[u8]) -> Option<TeamSteps> {
 // holder it kept needs that holder's earlier wrap verified under a key the lost device never held; until the team
 // rules give that, every such wrap is listed, so no confirmation the lost device could have made is missed. The person
 // keeps the rest, which is the default.
+#[cfg(test)]
 pub(crate) fn confirmations(account: AccountId, avs: &[Version], wraps: &[Wrap]) -> BTreeMap<AccountId, Version> {
     let mut members: BTreeMap<AccountId, Version> = BTreeMap::new();
     for wrap in wraps {
         let Recipient::Account(recipient) = wrap.target.recipient else {
             continue;
         };
-        let signed_here = wrap.target.purpose == WrapPurpose::Key(KeyPurpose::Team)
-            && wrap.wrapper.account == account
-            && recipient != account
-            && avs.contains(&wrap.wrapper.av);
-        if signed_here {
+        if signed_at(account, avs, wrap) {
             let entry = members.entry(recipient).or_insert(wrap.wrapper.av);
             *entry = (*entry).min(wrap.wrapper.av);
         }
     }
     members
+}
+
+// A team wrap this account made under one of `avs` to another account.
+fn signed_at(account: AccountId, avs: &[Version], wrap: &Wrap) -> bool {
+    wrap.target.purpose == WrapPurpose::Key(KeyPurpose::Team)
+        && wrap.wrapper.account == account
+        && wrap.target.recipient != Recipient::Account(account)
+        && avs.contains(&wrap.wrapper.av)
 }
 
 impl KeyService {
@@ -175,8 +180,30 @@ impl KeyService {
                 .iter()
                 .filter_map(|held| held.object.wrap())
                 .collect();
-            for (member, av) in confirmations(account, &avs, &wraps) {
-                members.insert((team, member), av);
+            // A wrap to an account that held the version before came in a rotation and goes with it; only a
+            // confirmation is reviewed (0056, Removing a device). Where the holders cannot be decided it is listed.
+            let mut holders_before = BTreeMap::new();
+            for wrap in &wraps {
+                let (Recipient::Account(recipient), true) = (wrap.target.recipient, signed_at(account, &avs, wrap))
+                else {
+                    continue;
+                };
+                let held_before = match wrap.target.version.previous() {
+                    None => Some(false),
+                    Some(previous) => {
+                        let holders = match holders_before.entry(previous) {
+                            std::collections::btree_map::Entry::Occupied(known) => known.into_mut(),
+                            std::collections::btree_map::Entry::Vacant(slot) => {
+                                slot.insert(self.team_holders_at(txn, team, previous).await?)
+                            }
+                        };
+                        holders.as_ref().map(|holders| holders.contains(&recipient))
+                    }
+                };
+                if held_before != Some(true) {
+                    let entry = members.entry((team, recipient)).or_insert(wrap.wrapper.av);
+                    *entry = (*entry).min(wrap.wrapper.av);
+                }
             }
         }
         Ok(members

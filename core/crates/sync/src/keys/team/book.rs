@@ -258,6 +258,48 @@ impl TeamBook {
         Ok(progress)
     }
 
+    // The accounts that held `version` by the rules a device advances by: its signer, then each recipient of a wrap a
+    // holder made, until no wrap adds one. None when it cannot be decided yet: the record, a certificate or a pin has not
+    // arrived, or the record does not verify.
+    pub(crate) async fn holders_at(
+        &self,
+        version: Version,
+        facts: &mut dyn TeamFacts,
+    ) -> Result<Option<BTreeSet<AccountId>>, SyncError> {
+        let Some(item) = self.versions.get(&version) else {
+            return Ok(None);
+        };
+        let Check::Pass(signer) = recipient_certificate(facts, item.value.signer, item.value.signer_av).await? else {
+            return Ok(None);
+        };
+        if item.value.verify(&self.origin, &signer.ask).is_err() {
+            return Ok(None);
+        }
+        let mut holders = BTreeSet::from([Holder {
+            account: signer.account,
+            ik: signer.ik,
+        }]);
+        let wraps = self.wraps.get(&version).cloned().unwrap_or_default();
+        let mut open: Vec<&Item<Wrap>> = wraps.iter().collect();
+        loop {
+            let mut added = false;
+            let mut still = Vec::new();
+            for item in open {
+                match wrap_check(&self.origin, facts, &holders, &item.value, true).await? {
+                    WrapCheck::Holder(holder) => added |= holders.insert(holder),
+                    WrapCheck::NotYet => still.push(item),
+                    WrapCheck::Wait => return Ok(None),
+                    WrapCheck::Fail(_) => {}
+                }
+            }
+            open = still;
+            if !added {
+                break;
+            }
+        }
+        Ok(Some(holders.into_iter().map(|holder| holder.account).collect()))
+    }
+
     // A flow that uses the version the device holds checks first that the record it holds there is the anchored one.
     pub(crate) fn check_anchor(&self) -> Result<(), SyncError> {
         if let Some(row) = &self.row

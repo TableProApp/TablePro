@@ -276,7 +276,7 @@ impl KeyService {
         }
     }
 
-    async fn scopes_body(&self) -> Result<ScopesBody, SyncError> {
+    pub(crate) async fn scopes_body(&self) -> Result<ScopesBody, SyncError> {
         let proof = Proof::Dpop(self.dpop_key().await?);
         match self.transport().scopes(None, proof).await? {
             ScopesAnswer::Body { body, .. } => Ok(*body),

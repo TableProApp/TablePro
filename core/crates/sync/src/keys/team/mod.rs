@@ -132,6 +132,36 @@ impl KeyService {
         Ok(book)
     }
 
+    // The accounts that held a team's `version`, by the holder rules; None while that cannot be decided.
+    pub(crate) async fn team_holders_at(
+        &self,
+        txn: &mut dyn StateTxn,
+        team: TeamId,
+        version: Version,
+    ) -> Result<Option<std::collections::BTreeSet<AccountId>>, SyncError> {
+        let book = self.load_team(txn, team).await?;
+        let mut cache = service_facts::FactsCache::default();
+        let mut facts = service_facts::ServiceFacts {
+            service: self,
+            txn,
+            scope: ScopeName::Team(team),
+            cache: &mut cache,
+        };
+        book.holders_at(version, &mut facts).await
+    }
+
+    // Whether the team's version in force is one this account signed at `av` or later: a rotation after the account's
+    // own rotation to `av` is written already, so a resumed flow does not rotate the team a second time.
+    pub(crate) async fn team_rotated_since(&self, team: TeamId, av: Version) -> Result<bool, SyncError> {
+        let _serial = self.serialized().await;
+        let mut txn = self.begin().await?;
+        let book = self.load_team(&mut *txn, team).await?;
+        Ok(book
+            .row()
+            .and_then(|row| book.version_record(row.version))
+            .is_some_and(|record| record.signer == self.account() && record.signer_av >= av))
+    }
+
     async fn scope_row(&self, txn: &mut dyn StateTxn, scope: ScopeName) -> Result<ScopeRow, SyncError> {
         Ok(match txn.get(&RowKey::Scope(scope)).await? {
             Some(Row::Scope(row)) => row,

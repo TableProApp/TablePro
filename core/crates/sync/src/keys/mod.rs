@@ -169,8 +169,19 @@ impl KeyService {
     }
 
     // An approval or a recovery applied, so the device holds keys again under what it verified since.
+    // The lock notices raised before then, as a pull of this device's own activation or recovery that came before its
+    // adoption raises, no longer hold, so they go and the app reads the notices again.
     pub fn clear_unanchored(&self) {
         self.unanchored.store(false, Ordering::SeqCst);
+        let withdrawn = {
+            let mut notices = lock(&self.notices);
+            let before = notices.len();
+            notices.retain(|notice| !matches!(notice.kind, KeyNoticeKind::Locked { .. }));
+            notices.len() != before
+        };
+        if withdrawn {
+            self.hooks.resume_scope(ScopeName::Personal);
+        }
     }
 
     pub fn is_rebuilding(&self) -> bool {

@@ -9,7 +9,7 @@ mod review;
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_keys::body::{KeyBody, KeyObject};
-use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, Version, WrapPurpose};
+use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, TeamId, Version, WrapPurpose};
 use tablepro_keys::keys::{DeviceKeys, Signature};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::recovery::RecoveryKey;
@@ -549,21 +549,38 @@ impl KeyService {
             }
             Standing::Ours => {}
         }
+        // The account's teams are those a scopes body read with this device approved lists, each judged once the
+        // engine's pull of it caught up after such a body and its roster was read. A device that just recovered, or
+        // that was approved, has read none yet, so the steps wait for the engine's next pass (0051, `members`).
         let (teams, held) = {
-            let _serial = self.serialized().await;
-            let mut txn = self.begin().await?;
-            // A team is judged only once its scope is read and its pull caught up.
-            if !self.team_scopes_read(txn.as_mut()).await? {
+            let body = self.scopes_body().await?;
+            let approved = body
+                .scopes
+                .iter()
+                .any(|info| info.scope == ScopeName::Personal && info.approved == Some(true));
+            let teams: Vec<TeamId> = body
+                .scopes
+                .iter()
+                .filter_map(|info| match info.scope {
+                    ScopeName::Team(team) => Some(team),
+                    _ => None,
+                })
+                .collect();
+            let unread = teams
+                .iter()
+                .any(|team| !self.rosters().get(*team).is_some_and(|roster| roster.caught_up()));
+            if !approved || unread {
                 self.hooks().pass_soon();
                 return Ok(());
             }
-            let mut teams = self.team_scopes(txn.as_mut()).await?;
-            let held = self.held_teams(txn.as_mut()).await?;
-            for team in &held {
-                if !teams.contains(team) {
-                    teams.push(*team);
-                }
-            }
+            let _serial = self.serialized().await;
+            let mut txn = self.begin().await?;
+            let held: Vec<TeamId> = self
+                .held_teams(txn.as_mut())
+                .await?
+                .into_iter()
+                .filter(|team| teams.contains(team))
+                .collect();
             (teams, held)
         };
         for team in teams {
@@ -575,7 +592,7 @@ impl KeyService {
                 Err(SyncError::Transport(TransportError::SeatRequired | TransportError::NotFound)) => {}
                 other => {
                     other?;
-                    if held.contains(&team) {
+                    if held.contains(&team) && !self.team_rotated_since(team, av).await? {
                         match self.rotate_team(team, steps.removals_for(team)).await {
                             // Already written, by this flow before a crash or a lost answer, or by another holder
                             // first: the rotation is met, as a holder that meets `create_only` takes it.
@@ -610,19 +627,6 @@ impl KeyService {
             }
             other => other,
         }
-    }
-
-    async fn team_scopes_read(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
-        Ok(txn
-            .scan(&RowRange::Table(Table::Scopes))
-            .await?
-            .iter()
-            .all(|row| match row {
-                Row::Scope(scope) => {
-                    !matches!(scope.scope, ScopeName::Team(_)) || (scope.caught_up && scope.epoch.is_some())
-                }
-                _ => true,
-            }))
     }
 
     // A pending account rotation of this device, which settles before any new rotation or approval starts.
