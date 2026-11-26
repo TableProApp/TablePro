@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import os
 import TableProFFI
 import TableProSyncTransport
 
@@ -30,6 +31,7 @@ final class SyncEngineHost {
     // The iCloud account whose state file the engine used last, handed back at the next open so a switch made while the
     // app was closed removes that account's file. Its own key: `lastAccountId` is the downgrade mirror's.
     nonisolated static let icloudAccountKey = "com.TablePro.sync.engineICloudAccount"
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SyncEngineHost")
 
     let transport: CloudKitCoreTransport
     let statusChanges = PassthroughSubject<Void, Never>()
@@ -42,6 +44,10 @@ final class SyncEngineHost {
     // Each sign-in, sign-out or switch, so an open that began under the one before is never kept.
     private var signIn = 0
     private var signInObserver: AnyCancellable?
+    // The provider the coordinator chose last, which a service opened again takes.
+    private var chosen: SyncProviderTag?
+    // Each closed service's flush of the marks it still held, which a quit waits for.
+    private var retiring: [UUID: Task<Void, Never>] = [:]
 
     func openedEngine(for provider: SyncProviderTag) -> (any SyncEngine)? {
         guard let opened, Self.serves(opened.provider, provider) else { return nil }
@@ -61,14 +67,42 @@ final class SyncEngineHost {
     }
 
     // TablePro Sync and the key flows stay bound to the sign-in the service opened with, and refuse once it ends, so
-    // the service closes and opens again for the same provider. The old one goes once its calls in flight end; the
-    // iCloud engine of the new one waits for its state file meanwhile.
+    // the service closes and opens again for the provider chosen last. The old one goes once its calls in flight and
+    // its flush end; the iCloud engine of the new one waits for its state file meanwhile.
     private func signInChanged() {
         signIn += 1
-        guard let provider = opened?.provider ?? opening?.provider else { return }
+        guard let openFor = opened?.provider ?? opening?.provider else { return }
+        let provider = chosen ?? openFor
+        if let old = opened?.engine {
+            retire(old)
+        }
         opened = nil
         Task { [weak self] in
             _ = try? await self?.engine(for: provider)
+        }
+    }
+
+    // Called as the coordinator makes each choice, in the order it makes them.
+    func providerChosen(_ provider: SyncProviderTag) {
+        chosen = provider
+    }
+
+    // The previous stable's marks for every write the closed services were told.
+    func flushRetired() async {
+        for task in Array(retiring.values) {
+            await task.value
+        }
+    }
+
+    private func retire(_ engine: any SyncEngine) {
+        let id = UUID()
+        retiring[id] = Task { [weak self] in
+            do {
+                try await engine.flushLegacyMarks()
+            } catch {
+                Self.logger.error("A closed service's marks did not flush: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            }
+            self?.retiring[id] = nil
         }
     }
 

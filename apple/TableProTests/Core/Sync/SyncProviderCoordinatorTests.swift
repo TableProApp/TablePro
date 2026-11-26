@@ -35,6 +35,7 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         // How many host changes the engine held at each flush.
         var flushes: [Int] = []
         var flush: (@Sendable () async -> Void)?
+        var recording: (@Sendable () async -> Void)?
         var pass: (@Sendable (PassReasonTag) async -> Void)?
     }
 
@@ -85,6 +86,7 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
     }
 
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws {
+        await read { $0.recording }?()
         let refused = state.withLockUnchecked { state in
             state.hostChangeAttempts += 1
             guard !state.refuseHostChanges else { return true }
@@ -127,6 +129,9 @@ private final class Fixture {
     private(set) var openAttempts: [SyncProviderTag] = []
     private(set) var opened: [SyncProviderTag] = []
     var offEngine: FakeSyncEngine?
+    // The engine iCloud's opens after the first give, when one is set.
+    var reopened: FakeSyncEngine?
+    let signInChanges = PassthroughSubject<Void, Never>()
     var enabled = true
     var settings = SyncSettings.default
     var keptAccounts: [String?] = []
@@ -144,6 +149,7 @@ private final class Fixture {
         let host = SyncEngineHost(
             transport: transport,
             keepICloudAccount: { [unowned self] in keptAccounts.append($0) },
+            signInChanges: signInChanges.eraseToAnyPublisher(),
             open: { [unowned self] provider, listener in
                 openAttempts.append(provider)
                 await opening?.wait()
@@ -152,6 +158,9 @@ private final class Fixture {
                 self.listener = listener
                 if provider == .off, let offEngine {
                     return offEngine
+                }
+                if provider == .icloud, opened.filter({ $0 == .icloud }).count > 1, let reopened {
+                    return reopened
                 }
                 return engine
             }
@@ -458,6 +467,64 @@ struct SyncProviderCoordinatorTests {
 
         #expect(fixture.opened == [.off])
         #expect(off.read { $0.flushes } == [1])
+    }
+
+    @Test("After iCloud stopped, a sign-in change opens the service again Off, as the coordinator chose")
+    func reopenKeepsTheOffChoice() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        fixture.enabled = false
+        fixture.coordinator.disableSync()
+        try await waitUntil { fixture.providers.last == .off }
+
+        fixture.signInChanges.send()
+
+        try await waitUntil { fixture.opened == [.icloud, .off] }
+    }
+
+    @Test("A quit waits for the marks of a service a sign-in change closed")
+    func quitWaitsForAClosedServicesFlush() async throws {
+        let fixture = try Fixture()
+        let gate = AsyncGate()
+        let closed = fixture.engine
+        closed.update { $0.flush = { await gate.wait() } }
+        fixture.reopened = FakeSyncEngine()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.signInChanges.send()
+        await gate.arrived(1)
+        let quitting = Task { await fixture.coordinator.flushBeforeQuit() }
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+        fixture.clock.advance(by: SyncProviderCoordinator.quitFlushLimit)
+        await quitting.value
+
+        #expect(fixture.opened == [.icloud, .icloud])
+        #expect(fixture.reopened?.read { $0.flushes }.isEmpty == true)
+        await gate.open()
+        try await waitUntil { fixture.reopened?.read { $0.flushes } == [0] }
+    }
+
+    @Test("A write told to a service a sign-in change closed meanwhile flushes that service itself")
+    func deliveryToAClosedServiceFlushesIt() async throws {
+        let fixture = try Fixture()
+        let gate = AsyncGate()
+        let closed = fixture.engine
+        let replacement = FakeSyncEngine()
+        fixture.reopened = replacement
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        closed.update { $0.recording = { await gate.wait() } }
+
+        fixture.journal.recorded(.connection, deleted: ["A"])
+        await gate.arrived(1)
+        fixture.signInChanges.send()
+        try await waitUntil { fixture.opened == [.icloud, .icloud] }
+        await gate.open()
+
+        try await waitUntil { closed.read { $0.flushes } == [0, 1] }
+        #expect(replacement.read { $0.hostChanges }.isEmpty)
     }
 
     @Test("A flush that does not answer holds the quit only for the limit")

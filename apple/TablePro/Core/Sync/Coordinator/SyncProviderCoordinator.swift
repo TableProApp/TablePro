@@ -273,6 +273,7 @@ final class SyncProviderCoordinator: ObservableObject {
     ) -> Task<Result<Void, any Error>, Never> {
         let previous = providerChoice
         let host = host
+        host.providerChosen(provider)
         let choice = Task<Result<Void, any Error>, Never> {
             await previous?.value
             do {
@@ -336,8 +337,9 @@ final class SyncProviderCoordinator: ObservableObject {
         let changes = undelivered.takeAll()
         guard !changes.isEmpty else { return }
         var delivered = 0
+        let engine: any SyncEngine
         do {
-            let engine = try await host.engine(for: syncStatus.isEnabled ? .icloud : .off)
+            engine = try await host.engine(for: syncStatus.isEnabled ? .icloud : .off)
             for change in changes {
                 try await engine.recordHostChanges(kind: change.kind, written: change.written, deleted: change.deleted)
                 delivered += 1
@@ -345,6 +347,14 @@ final class SyncProviderCoordinator: ObservableObject {
         } catch {
             undelivered.putBack(Array(changes[delivered...]))
             Self.logger.error("The engine did not take a host change: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            return
+        }
+        // A sign-in change closed it meanwhile, after its own flush may have begun.
+        guard host.openedEngine(for: .off) !== engine else { return }
+        do {
+            try await engine.flushLegacyMarks()
+        } catch {
+            Self.logger.error("A closed service's marks did not flush: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -375,6 +385,7 @@ final class SyncProviderCoordinator: ObservableObject {
             deliverJournal()
         }
         await journalDelivery?.value
+        await host.flushRetired()
         // Whichever service is open, since the one that writes the mirror can be any.
         guard let engine = await host.existingEngine(for: nil) else { return }
         do {
