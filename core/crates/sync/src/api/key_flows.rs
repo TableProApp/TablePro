@@ -15,9 +15,9 @@ use uuid::Uuid;
 
 use super::error::SyncError;
 use super::ids::{DeviceRowId, EpochId, ScopeName};
-use super::scopes::{Role, TeamMember};
-use super::state::{KeyVersionState, PendingFlow};
-use super::transport::{Change, ChangeOutcome, DpopKey, PulledRecord};
+use super::scopes::{Role, ScopeInfo, StopReport, TeamMember};
+use super::state::{KeyVersionState, PendingFlow, StoppedCause};
+use super::transport::{Change, ChangeOutcome, DpopKey, PulledPage, PulledRecord};
 
 pub trait KeyFlows:
     AccountFlows + ApprovalFlows + DeviceFlows + ResetFlows + TeamFlows + RestoreFlows + StopFlows
@@ -337,6 +337,20 @@ pub trait TeamFlows: Send + Sync {
         unimplemented("keys.restart_team")
     }
 
+    // A restart of a team key this device held a version of, which it holds until the person compares the restarting
+    // owner's words (0064).
+    async fn held_restart(&self, team: TeamId) -> Result<Option<HeldRestart>, SyncError> {
+        let _ = team;
+        unimplemented("keys.held_restart")
+    }
+
+    // The person compared the restarting owner's six words and accepts: the restart applies, its signer is the holder
+    // and its pin `compared`. Bound to the IK the person compared; accepting without comparing is not offered.
+    async fn accept_restart(&self, team: TeamId, signer_ik: Ed25519Public) -> Result<(), SyncError> {
+        let _ = (team, signer_ik);
+        unimplemented("keys.accept_restart")
+    }
+
     // "Credentials to rotate": the envelopes a removed party could read (0056, Old data).
     async fn credentials_to_rotate(&self, scope: ScopeName) -> Result<Vec<EnvelopeId>, SyncError> {
         let _ = scope;
@@ -424,8 +438,9 @@ pub trait KeyHooks: Send + Sync {
     // Nothing personal syncs; the device keeps its keys and shows why.
     fn lock(&self, cause: LockCause);
 
-    // The scope writes no secret under its key and holds its envelopes in the queue.
-    fn stop_scope(&self, scope: ScopeName, cause: StopCause);
+    // The scope writes no secret under its key and holds its envelopes in the queue. The cause is the one its
+    // `key_versions` row records (0062); a team due a rotation is the engine's own wait, from the scopes body.
+    fn stop_scope(&self, scope: ScopeName, cause: StoppedCause);
 
     fn resume_scope(&self, scope: ScopeName);
 
@@ -475,15 +490,6 @@ pub enum LockCause {
     PersonalStopped,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StopCause {
-    // A team catch-up it could not verify; an owner or admin who held the version confirms it again.
-    CatchUp,
-    // A version another account signed that a restore lost, until its signer's device pushes it back.
-    AwaitingPushBack,
-    RotationDue,
-}
-
 // R as the person sees it once, and the two of its 14 groups they type back.
 #[derive(Debug, Clone)]
 pub struct RecoveryKeyDraft {
@@ -510,6 +516,16 @@ pub enum SignOutOutcome {
     Revoked,
     // Offline: erased anyway; the row keeps the old certificate until approved again, left out or removed.
     ErasedOffline,
+}
+
+// A held restart: the version, the account that signed it, and the words the person compares before accepting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldRestart {
+    pub team: TeamId,
+    pub version: Version,
+    pub signer: AccountId,
+    pub signer_ik: Ed25519Public,
+    pub words: Fingerprint,
 }
 
 // R' as a draft, with the devices a rotation can keep, ticked by default when compared.
@@ -554,6 +570,8 @@ pub enum KeyNoticeKind {
     // An alert in every team the account is in.
     KeysChanged { account: AccountId },
     TeamKeyRestarted { team: TeamId },
+    // "The team key was started over by Ana. Compare her words before using it." (0064)
+    RestartHeld { team: TeamId, signer: AccountId },
     ResetPending { reset: ResetId },
     ResetEnded { reset: ResetId, state: ResetState },
     DeviceRemoved { device: DeviceRowId },
@@ -561,7 +579,7 @@ pub enum KeyNoticeKind {
     SupersededWrap { team: TeamId },
     // A key object at a held id with other fields, or another record at an anchored version.
     Conflict { scope: ScopeName },
-    ScopeStopped { scope: ScopeName, cause: StopCause },
+    ScopeStopped { scope: ScopeName, cause: StoppedCause },
     ScopeEnded { scope: ScopeName },
     Locked { cause: LockCause },
 }
@@ -726,6 +744,7 @@ pub struct TeamKeys {
     pub team: TeamId,
     pub version: Option<Version>,
     pub state: KeyVersionState,
+    pub stopped_cause: Option<StoppedCause>,
     pub rotation_due: bool,
     // This account holds the current version.
     pub holder: bool,
@@ -761,12 +780,46 @@ pub enum MemberKeyStatus {
     Alert,
 }
 
+// A team scope as one scopes body gives it. A device decides on the roster only after its pull of that team is caught
+// up, and a roster it could not read is no evidence that a member left (0051, `members`; What cannot go back).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Roster {
     pub members: Vec<TeamMember>,
     pub role: Option<Role>,
     pub rotation_due: bool,
-    pub caught_up: bool,
+    // The stop reports, which the server serves to owners and admins only (0051, A stopped device).
+    pub stopped: Vec<StopReport>,
+    caught_up: bool,
+}
+
+impl Roster {
+    // `pull` is the catch-up of this team's pull that followed this body. None, or one of another scope, leaves the
+    // roster undecided, whatever a stored flag says.
+    pub fn of(scope: &ScopeInfo, pull: Option<CaughtUp>) -> Self {
+        Self {
+            members: scope.members.clone(),
+            role: scope.role,
+            rotation_due: scope.rotation_due,
+            stopped: scope.stopped.clone(),
+            caught_up: pull.is_some_and(|pull| pull.scope == scope.scope),
+        }
+    }
+
+    pub fn caught_up(&self) -> bool {
+        self.caught_up
+    }
+}
+
+// A pull page with no records for one scope: the only thing that lets a roster be decided on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CaughtUp {
+    scope: ScopeName,
+}
+
+impl CaughtUp {
+    pub fn from_page(scope: ScopeName, page: &PulledPage) -> Option<Self> {
+        (page.caught_up && page.records.is_empty()).then_some(Self { scope })
+    }
 }
 
 // One change set as one push: only its own key objects, applied whole or not at all.

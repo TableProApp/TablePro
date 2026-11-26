@@ -30,6 +30,7 @@ mod import;
 mod key_read;
 mod keymap;
 mod library;
+mod library_contents;
 mod library_details;
 mod masking;
 mod mcp;
@@ -108,7 +109,12 @@ pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use keymap::{KeymapBindingInfo, KeymapPlatformTag, KeymapPresetInfo, keymap_preset, keymap_presets};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
-    LibrarySnapshot, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
+    LibraryIconRecord, LibrarySnapshot, RemoteFileAccessTag, SafeModeTag, SshAuthTag, SshJumpAuthTag,
+    SshJumpHostRecord, SshOptionsRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TagRecord,
+    TlsModeTag, TlsSettings, check_jump_hosts, jump_hosts_text, parse_jump_hosts,
+};
+pub use library_contents::{
+    LibraryConnectionRecord, LibraryContents, LibraryWriteRecord, library_icon_for_symbol, library_icon_symbol,
 };
 pub use library_details::{
     CloudSqlAuthTag, CloudSqlProxyRecord, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord,
@@ -143,14 +149,14 @@ pub use sync::{
     AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, CloudKitAccount, CloudKitChanges, CloudKitDeletion,
     CloudKitFailure, CloudKitFetched, CloudKitField, CloudKitOutcome, CloudKitRecord, CloudKitTransport, CloudKitValue,
     ConflictChoiceTag, DeviceItemClassTag, DeviceItemTag, FingerprintInfo, GenesisOutcomeTag, HeldReasonTag,
-    HeldRecordInfo, HostDeviceStore, HostLegacyMirror, HostSettings, KeyChangeInfo, KeyNoticeInfo, KeyNoticeKindTag,
-    KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg, LegacyStandingTag,
-    LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo, MoveBackPlanInfo, MovePlanInfo,
-    NewIdentityChoiceTag, PassReasonTag, PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo,
+    HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings, KeyChangeInfo, KeyNoticeInfo,
+    KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg,
+    LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo, MoveBackPlanInfo,
+    MovePlanInfo, NewIdentityChoiceTag, PassReasonTag, PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo,
     RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo,
     SessionEndTag, SessionPhaseTag, SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag,
-    StoppedDeviceInfo, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef,
-    SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
+    StoppedDeviceInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag,
+    SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
 };
 pub use syntax::SqlGrammarTag;
 pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};

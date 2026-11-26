@@ -39,6 +39,8 @@ pub struct CloudKitRecord {
     pub name: String,
     // `CKRecord.encodeSystemFields(with:)`; a create sends none.
     pub system_fields: Option<Vec<u8>>,
+    // `CKRecord.creationDate` in milliseconds, on a record CloudKit returned; None on a save.
+    pub created_ms: Option<i64>,
     pub fields: Vec<CloudKitField>,
 }
 
@@ -283,6 +285,7 @@ impl From<CloudKitRecord> for sync::CloudKitRecord {
             record_type: record.record_type,
             name: record.name,
             system_fields: record.system_fields,
+            created_ms: record.created_ms,
             fields: record
                 .fields
                 .into_iter()
@@ -301,6 +304,7 @@ impl From<sync::CloudKitRecord> for CloudKitRecord {
             record_type: record.record_type,
             name: record.name,
             system_fields: record.system_fields,
+            created_ms: record.created_ms,
             fields: record
                 .fields
                 .into_iter()
@@ -413,6 +417,7 @@ mod tests {
             record_type: "Tag".to_owned(),
             name: "Tag_A".to_owned(),
             system_fields: None,
+            created_ms: None,
             fields: vec![sync::CloudKitField {
                 name: "name".to_owned(),
                 value: Some(sync::CloudKitValue::TextList(vec!["a".to_owned()])),

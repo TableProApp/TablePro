@@ -28,7 +28,7 @@ use secrecy::SecretString;
 use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, FileOpenMode,
+    AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, FileOpenMode,
     LocalSocket, NetworkOption, NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TlsMode, TransportClass,
     WorkspaceSettings, is_local_socket_host,
 };
@@ -142,7 +142,7 @@ impl ConnectDialog {
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         let names: Vec<&str> = drivers.iter().map(|entry| entry.display_name.as_str()).collect();
         imp.driver_names.splice(0, imp.driver_names.n_items(), &names);
-        let levels: Vec<String> = SafeModeLevel::ALL
+        let levels: Vec<String> = SafeModeLevel::ENFORCED
             .into_iter()
             .map(crate::ui::safe_mode::label)
             .collect();
@@ -157,7 +157,10 @@ impl ConnectDialog {
         imp.external_access_names
             .splice(0, imp.external_access_names.n_items(), &access);
         crate::ui::combo_value::show_whole_value(&imp.external_access_row);
-        let policies: Vec<String> = AiPolicy::ALL.into_iter().map(crate::ui::ai_policy::label).collect();
+        let policies: Vec<String> = crate::ui::ai_policy::OFFERED
+            .into_iter()
+            .map(crate::ui::ai_policy::label)
+            .collect();
         let policies: Vec<&str> = policies.iter().map(String::as_str).collect();
         imp.ai_policy_names.splice(0, imp.ai_policy_names.n_items(), &policies);
         crate::ui::combo_value::show_whole_value(&imp.ai_policy_row);
@@ -646,7 +649,7 @@ impl ConnectDialog {
             password: SecretString::from(imp.password_row.text().to_string()),
             remember_password: imp.remember_row.is_active(),
             tls: imp.tls_section.form_state(),
-            safe_mode: SafeModeLevel::ALL
+            safe_mode: SafeModeLevel::ENFORCED
                 .get(imp.safe_mode_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
@@ -654,7 +657,7 @@ impl ConnectDialog {
                 .get(imp.external_access_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
-            ai_policy: AiPolicy::ALL
+            ai_policy: crate::ui::ai_policy::OFFERED
                 .get(imp.ai_policy_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
@@ -782,7 +785,7 @@ impl ConnectDialog {
             imp.password_row
                 .set_text(secrecy::ExposeSecret::expose_secret(&form.password));
         }
-        let level = SafeModeLevel::ALL
+        let level = SafeModeLevel::ENFORCED
             .iter()
             .position(|level| *level == form.safe_mode)
             .unwrap_or_default();
@@ -792,7 +795,7 @@ impl ConnectDialog {
             .position(|access| *access == form.external_access)
             .unwrap_or_default();
         imp.external_access_row.set_selected(access as u32);
-        let policy = AiPolicy::ALL
+        let policy = crate::ui::ai_policy::OFFERED
             .iter()
             .position(|policy| *policy == form.ai_policy)
             .unwrap_or_default();

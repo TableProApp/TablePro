@@ -92,7 +92,7 @@ async fn saved(library: &ConnectionLibrary, name: &str) -> String {
             server_name: None,
         },
         ssh: None,
-        safe_mode: SafeModeTag::Off,
+        safe_mode: SafeModeTag::Silent,
         query_timeout_secs: None,
         color: None,
         group_id: None,
@@ -100,6 +100,8 @@ async fn saved(library: &ConnectionLibrary, name: &str) -> String {
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        icon: None,
+        order: 0,
     };
     library.save(record, ConnectionSecrets::default()).await.unwrap().id
 }

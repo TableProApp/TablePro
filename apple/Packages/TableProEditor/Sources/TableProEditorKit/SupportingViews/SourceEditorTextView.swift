@@ -16,7 +16,13 @@ final class SourceEditorTextView: TextView {
     var statementHighlightRange: NSRange? {
         didSet {
             guard statementHighlightRange != oldValue else { return }
-            needsDisplay = true
+            // Only the lines the band leaves and the lines it covers now change, as a caret move redraws only its
+            // own lines. A band over a 10,000-line statement is two line lookups here, not a walk of every line.
+            for range in [oldValue, statementHighlightRange].compactMap({ $0 }) {
+                if let rect = linesRect(covering: range) {
+                    setNeedsDisplay(rect)
+                }
+            }
         }
     }
 
@@ -123,12 +129,27 @@ final class SourceEditorTextView: TextView {
             return
         }
 
+        // Only the part of the statement on the lines being drawn, so a tile pays for its own lines and not for
+        // every line of a statement that runs far past it.
+        guard let drawnRange = layoutManager.textRange(covering: dirtyRect),
+              let visibleRange = range.intersection(drawnRange),
+              visibleRange.length > 0 else {
+            return
+        }
+
         context.saveGState()
         context.setFillColor(statementHighlightColor.safeCGColor)
-        for rect in layoutManager.rectsFor(range: range) where rect.intersects(dirtyRect) {
+        for rect in layoutManager.rectsFor(range: visibleRange) where rect.intersects(dirtyRect) {
             context.fill(rect.pixelAligned)
         }
         context.restoreGState()
+    }
+
+    // The full-width band of the lines a range starts and ends on, and every line between.
+    private func linesRect(covering range: NSRange) -> CGRect? {
+        guard let first = layoutManager.textLineForOffset(range.location) else { return nil }
+        let last = layoutManager.textLineForOffset(max(range.location, NSMaxRange(range) - 1)) ?? first
+        return CGRect(x: 0, y: first.yPos, width: frame.width, height: last.yPos + last.height - first.yPos)
     }
 
     private func drawExecutionLine(in dirtyRect: NSRect) {

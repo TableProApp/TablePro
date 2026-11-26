@@ -1,4 +1,4 @@
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionIcon, GroupIcon, SymbolName};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionIcon, LibraryIcon, SymbolName};
 use uuid::Uuid;
 
 // Keep unknown raw values until the user changes that field.
@@ -9,7 +9,7 @@ pub(super) fn record_id(raw: &str) -> Option<Uuid> {
 }
 
 pub(super) fn group_name(raw: Option<&str>) -> Option<ConnectionGroupName> {
-    raw.and_then(ConnectionGroupName::from_stored)
+    raw.and_then(ConnectionGroupName::cleaned_from)
 }
 
 // Keep macOS colour spellings so existing readers recognize the records.
@@ -58,22 +58,22 @@ const NAMED_SYMBOLS: [(ConnectionIcon, &str); 15] = [
     (ConnectionIcon::Lock, "lock"),
 ];
 
-pub(super) fn icon(raw: Option<&str>) -> Option<GroupIcon> {
+pub(super) fn icon(raw: Option<&str>) -> Option<LibraryIcon> {
     let symbol = SymbolName::new(raw?)?;
     let named = NAMED_SYMBOLS
         .iter()
         .find(|(_, name)| *name == symbol.as_str())
         .map(|(icon, _)| *icon);
-    Some(named.map_or(GroupIcon::Symbol(symbol), GroupIcon::Named))
+    Some(named.map_or(LibraryIcon::Symbol(symbol), LibraryIcon::Named))
 }
 
-pub(super) fn icon_value(icon: Option<&GroupIcon>) -> Option<String> {
+pub(super) fn icon_value(icon: Option<&LibraryIcon>) -> Option<String> {
     match icon? {
-        GroupIcon::Named(named) => NAMED_SYMBOLS
+        LibraryIcon::Named(named) => NAMED_SYMBOLS
             .iter()
             .find(|(known, _)| known == named)
             .map(|(_, name)| (*name).to_owned()),
-        GroupIcon::Symbol(symbol) => Some(symbol.as_str().to_owned()),
+        LibraryIcon::Symbol(symbol) => Some(symbol.as_str().to_owned()),
     }
 }
 

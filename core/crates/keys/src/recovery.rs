@@ -126,7 +126,7 @@ impl RecoveryKey {
         self.seal_blob_with_nonce(origin, account, av, keys, crypto::random_array()?)
     }
 
-    pub fn seal_blob_with_nonce(
+    pub(crate) fn seal_blob_with_nonce(
         &self,
         origin: &Origin,
         account: AccountId,

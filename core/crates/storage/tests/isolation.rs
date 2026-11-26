@@ -24,6 +24,7 @@ fn paths(root: &Path) -> StoragePaths {
 
 fn entry(query: &str, connection_id: Uuid, connection_name: &str) -> NewEntry {
     NewEntry {
+        record_id: Uuid::new_v4(),
         query: query.to_owned(),
         driver_id: "postgres".to_owned(),
         connection_id,
@@ -45,7 +46,7 @@ fn connection(name: &str) -> SavedConnection {
         database: "app".to_owned(),
         username: "tablepro".to_owned(),
         tls: tablepro_core::TlsConfig::disabled(),
-        safe_mode: tablepro_core::SafeModeLevel::Off,
+        safe_mode: tablepro_core::SafeModeLevel::Silent,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
