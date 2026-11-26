@@ -99,4 +99,21 @@ struct MetadataReadLendingTests {
         defer { cleanUp(manual.id) }
         #expect(!manager.lendsSessionDriver(toMetadataReadOn: scope(manual), workload: .interactive))
     }
+
+    @Test("A session whose transaction state is unknown or open is not lent, and one read as idle is")
+    func sessionOutsideAKnownIdleStateIsNotLent() throws {
+        let (connection, driver) = makeSession()
+        defer { cleanUp(connection.id) }
+        let manager = DatabaseManager.shared
+        let key = try #require(manager.sessionKey(for: scope(connection)))
+
+        manager.sessionTransactions.record(.unknown, on: driver, for: key)
+        #expect(!manager.lendsSessionDriver(toMetadataReadOn: scope(connection), workload: .interactive))
+
+        manager.sessionTransactions.record(.inTransaction, on: driver, for: key)
+        #expect(!manager.lendsSessionDriver(toMetadataReadOn: scope(connection), workload: .interactive))
+
+        manager.sessionTransactions.record(.idle, on: driver, for: key)
+        #expect(manager.lendsSessionDriver(toMetadataReadOn: scope(connection), workload: .interactive))
+    }
 }

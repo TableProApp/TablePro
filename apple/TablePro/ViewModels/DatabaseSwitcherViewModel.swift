@@ -161,11 +161,12 @@ final class DatabaseSwitcherViewModel: ObservableObject {
                let held = services.schemaService.currentSchemas(for: connectionId, database: database) {
                 return held
             }
+            let readAt = services.schemaService.generationToken(for: connectionId)
             let schemas = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
                 try await driver.fetchSchemas()
             }
             if let database {
-                services.schemaService.noteSchemasRead(schemas, for: connectionId, database: database)
+                services.schemaService.noteSchemasRead(schemas, for: connectionId, database: database, readAt: readAt)
             }
             return schemas
         }

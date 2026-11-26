@@ -391,8 +391,8 @@ final class SchemaService: ObservableObject {
     }
 
     /// A schema list read again for the catalog on screen, which every reader of that list then sees.
-    func noteSchemasRead(_ schemas: [String], for connectionId: UUID, database: String) {
-        guard currentSchemas(for: connectionId, database: database) != nil else { return }
+    func noteSchemasRead(_ schemas: [String], for connectionId: UUID, database: String, readAt generation: Int) {
+        guard acceptsSchemasRead(for: connectionId, database: database, readAt: generation) else { return }
         schemasInOrder[shownKey(connectionId)] = schemas
         bumpGeneration(connectionId)
     }

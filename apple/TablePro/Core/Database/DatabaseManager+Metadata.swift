@@ -162,7 +162,8 @@ extension DatabaseManager {
               session.commitMode == .automatic,
               !Self.hasStartupCommands(session.connection.startupCommands),
               (queriesInFlight[connectionId] ?? 0) == (inItsTurn ? 1 : 0),
-              sessionTransactions.holds(for: connectionId).isEmpty,
+              // No hold is not enough: a state check that timed out, or an engine that never says, leaves none.
+              sessionTransactions.standing(of: connectionId) == .none,
               sessionStateLedger.state(heldBy: driver, for: connectionId).isEmpty,
               !holdsProtectedWrite(connectionId),
               !MetadataConnectionPool.shared.isReplacingTransport(for: connectionId),
