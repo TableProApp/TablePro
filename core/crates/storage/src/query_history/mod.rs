@@ -137,15 +137,17 @@ impl QueryHistory {
     // Moves the saved queries out of an older file before its migrations drop their tables (`split`).
     pub async fn open(paths: &StoragePaths) -> Result<Self, StorageError> {
         let path = paths.history_database();
-        let pool = connect(&path).await?;
-        {
+        let pool = {
             let _moving = split::MOVING.lock().await;
+            split::relocate(paths).await?;
+            let pool = connect(&path).await?;
             // The copy keeps the saved queries too, so an older build put back reads them where it left them.
             if let Some(version) = crate::upgrade_copies::pending_upgrade(&pool, &schema::MIGRATOR).await? {
                 crate::upgrade_copies::keep_database(&pool, &path, version).await?;
             }
             split::move_out(&pool, paths).await?;
-        }
+            pool
+        };
         schema::migrate(&pool).await?;
         // A database made before the stamp, or whose row a hand edit removed, starts a generation.
         sqlx::query(

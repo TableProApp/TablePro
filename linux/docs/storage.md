@@ -10,7 +10,7 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 | The account's device ID and last entitlement, or an imported offline file | JSON file | `tablepro-account` ([core ADR 0016](../../core/docs/decisions/0016-tablepro-accounts.md), [ADR 0038](decisions/0038-account-page-and-license-ask.md)) |
 | The usage data's anonymous ID and what it sent once | JSON file | `Telemetry` in the app crate ([ADR 0039](decisions/0039-usage-data.md)) |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
-| Query history | SQLite, `history.db` | `QueryHistory` |
+| Query history | SQLite, `history/history.db` | `QueryHistory` |
 | Saved queries with their folders and keywords, favourite tables and databases, and table folders | SQLite, `saved_queries.db` ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `SavedQueryDatabase`: `SavedQueries`, `SavedQueryFolders`, `Favourites`, `TableFolders` |
 | Team Library items, one file per server and account | JSON file | `TeamLibraryStore` |
 | Editor tab text | one file per tab | `DraftStore` |
@@ -171,7 +171,8 @@ nothing reaches outside it.
 | `column_layouts_file()` | `$XDG_CONFIG_HOME/<dir>/column_layouts.json`: each table's column layout (order, hidden columns, widths the user set) |
 | `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json`, version 2: each table's filter, and the schemas each connection's sidebar lists, per database. Version 1 had no sidebar filters |
 | `highlight_rules_file()` | `$XDG_CONFIG_HOME/<dir>/highlight_rules.json`: ordered rules for each table |
-| `history_database()` | `$XDG_STATE_HOME/<dir>/history.db`: the query history |
+| `history_folder()` | `$XDG_STATE_HOME/<dir>/history`: the query history with its WAL, its shared memory file and its upgrade copies, and nothing else |
+| `history_database()` | `$XDG_STATE_HOME/<dir>/history/history.db`: the query history |
 | `saved_query_database()` | `$XDG_STATE_HOME/<dir>/saved_queries.db`: saved queries, their folders, favourites and table folders |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order of their first recorded session and keys in the order each window adopted them |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
@@ -287,6 +288,16 @@ as amended). The rows move first, once and without loss, whichever of
 - `SavedQueryDatabase::open` reads `history.db` only while it has no file of
   its own or a build waits beside it. `saved_queries.db` starts its own
   generation, and the history's identity does not move.
+- In the same move `history.db` leaves `$XDG_STATE_HOME/<dir>/` for
+  `history/`, so a platform that protects files by folder covers every file
+  made beside it. Before either store opens it there, the upgrade copies move
+  first, then the database, once a rollback journal set while no other
+  connection holds it has folded its WAL in, so the one file renamed carries
+  every commit. A crash leaves each file whole on one side and the next open
+  finishes. Another process holding the old file fails the open and moves
+  nothing. Once the folder holds the history, a file an older release makes
+  where it used to be is left alone. The core makes the folder only when it
+  is missing.
 
 `20261128000001_run_details.sql` adds what the app knew of a run beyond its
 outcome (`RunDetails`): its database and schema, what started it

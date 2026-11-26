@@ -30,8 +30,14 @@ impl StoragePaths {
         self.config.join("connections.json")
     }
 
+    // A folder of its own, so a platform that protects files by folder covers what SQLite and the upgrade copies make
+    // beside the history, such as iOS's complete protection (core ADR 0060 as amended).
+    pub fn history_folder(&self) -> PathBuf {
+        self.state.join("history")
+    }
+
     pub fn history_database(&self) -> PathBuf {
-        self.state.join("history.db")
+        self.history_folder().join("history.db")
     }
 
     // Saved queries, their folders, favourites and table folders, which sync reads in the background: on iOS it keeps
@@ -93,7 +99,8 @@ mod tests {
         assert_eq!(paths.config, root.join("config/tablepro"));
         assert_eq!(paths.state, root.join("state/tablepro"));
         assert_eq!(paths.runtime, root.join("runtime/app/app.tablepro.TablePro"));
-        assert_eq!(paths.history_database(), root.join("state/tablepro/history.db"));
+        assert_eq!(paths.history_folder(), root.join("state/tablepro/history"));
+        assert_eq!(paths.history_database(), root.join("state/tablepro/history/history.db"));
         assert_eq!(
             paths.saved_query_database(),
             root.join("state/tablepro/saved_queries.db")

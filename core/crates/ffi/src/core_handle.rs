@@ -169,6 +169,7 @@ impl Core {
         let paths = self.paths.as_ref().ok_or_else(no_storage)?;
         let text = |path: std::path::PathBuf| path.to_string_lossy().into_owned();
         Ok(StoreFilesInfo {
+            history_folder: text(paths.history_folder()),
             history_database: text(paths.history_database()),
             saved_query_database: text(paths.saved_query_database()),
         })

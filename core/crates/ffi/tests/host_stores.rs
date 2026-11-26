@@ -415,3 +415,79 @@ async fn each_store_names_its_file_and_the_saved_queries_open_without_the_histor
     assert!(Path::new(&files.history_database).is_file());
     assert_ne!(files.history_database, files.saved_query_database);
 }
+
+// The status the macOS pane filters by: Failed holds a cancelled run too, as the pane always read it.
+#[tokio::test]
+async fn the_pane_s_failed_holds_failed_and_cancelled_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = started(dir.path()).history().await.unwrap();
+    let runs = [
+        (RUN, HistoryOutcomeTag::Succeeded),
+        (
+            QUERY,
+            HistoryOutcomeTag::Failed {
+                message: "boom".to_owned(),
+            },
+        ),
+        (FOLDER, HistoryOutcomeTag::Cancelled),
+    ];
+    history
+        .put_entries(
+            runs.iter()
+                .map(|(id, outcome)| HistoryEntryRecord {
+                    outcome: outcome.clone(),
+                    ..moved_in(id, 1_700_000_000_000, HistorySourceTag::Editor)
+                })
+                .collect(),
+        )
+        .await
+        .unwrap();
+
+    let failed = HistoryFilterArg {
+        status: HistoryStatusTag::Failed,
+        ..everything()
+    };
+    let succeeded = HistoryFilterArg {
+        status: HistoryStatusTag::Succeeded,
+        ..everything()
+    };
+    let ids = |page: tablepro_ffi::HistoryPageInfo| {
+        let mut ids: Vec<String> = page
+            .entries
+            .into_iter()
+            .map(|entry| entry.record_id.to_uppercase())
+            .collect();
+        ids.sort();
+        ids
+    };
+    let mut expected = vec![QUERY.to_owned(), FOLDER.to_owned()];
+    expected.sort();
+    assert_eq!(ids(history.search(failed, None, 50).await.unwrap()), expected);
+    assert_eq!(ids(history.search(succeeded, None, 50).await.unwrap()), [RUN]);
+}
+
+// iOS makes the history's folder itself, with the class every file in it then gets, before the core opens anything.
+#[tokio::test]
+async fn store_files_make_nothing_and_the_history_keeps_to_a_folder_made_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+
+    let files = core.store_files().unwrap();
+    assert!(
+        !Path::new(&files.history_folder).exists(),
+        "naming the files made the folder"
+    );
+    std::fs::create_dir_all(&files.history_folder).unwrap();
+    std::fs::write(Path::new(&files.history_folder).join("marker"), b"made by the host").unwrap();
+    core.history().await.unwrap();
+
+    assert_eq!(
+        Path::new(&files.history_database).parent(),
+        Some(Path::new(&files.history_folder))
+    );
+    assert!(Path::new(&files.history_database).is_file());
+    assert!(
+        Path::new(&files.history_folder).join("marker").is_file(),
+        "the core made the folder again"
+    );
+}

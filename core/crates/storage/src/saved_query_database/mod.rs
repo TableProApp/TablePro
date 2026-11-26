@@ -30,11 +30,10 @@ pub struct SavedQueryDatabase {
 }
 
 impl SavedQueryDatabase {
-    // Reads `history.db` only when this store is not there yet or a move out of it was cut short.
+    // Reads `history.db` only when this store is not there yet or a move out of it was cut short; otherwise it only looks
+    // whether the history's files are where an older build kept them.
     pub async fn open(paths: &StoragePaths) -> Result<Self, StorageError> {
-        if crate::query_history::split::pending(paths) {
-            crate::query_history::split::move_out_of(paths).await?;
-        }
+        crate::query_history::split::before_saved_queries_open(paths).await?;
         let path = paths.saved_query_database();
         let pool = prepared_pool(&path).await?;
         let journal = JournalSlot::default();

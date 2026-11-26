@@ -236,3 +236,23 @@ fn every_source_and_statement_type_reads_back_from_its_name() {
     }
     assert_eq!(RunSource::parse("telepathy"), None);
 }
+
+// The macOS pane's Failed: every run that did not succeed, a cancelled one included.
+#[tokio::test]
+async fn unsuccessful_runs_are_the_failed_and_the_cancelled_ones() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let history = QueryHistory::open(&paths(&root)).await.expect("open");
+    for (query, outcome) in [
+        ("SELECT ok", Outcome::Success),
+        ("SELECT bad", Outcome::Error("boom".to_owned())),
+        ("SELECT stopped", Outcome::Cancelled),
+    ] {
+        let mut entry = run(query, Uuid::new_v4(), RunSource::Editor);
+        entry.outcome = outcome;
+        history.record(entry).await.expect("record");
+    }
+    let mut query = HistoryQuery::default();
+    query.status = StatusFilter::Unsuccessful;
+
+    assert_eq!(found(&history, &query).await, ["SELECT bad", "SELECT stopped"]);
+}

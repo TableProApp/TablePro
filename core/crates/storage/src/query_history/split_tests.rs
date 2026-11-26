@@ -8,7 +8,7 @@ use sqlx::{AssertSqlSafe, ConnectOptions, Connection, SqlitePool};
 use uuid::Uuid;
 
 use super::fixtures::old_database;
-use super::split::{MOVE_OUT, MOVED, partial_of};
+use super::split::{MOVE_OUT, MOVED, history_before_move, partial_of};
 use super::{HistoryPageRequest, HistoryQuery, QueryHistory};
 use crate::SavedQueryDatabase;
 use crate::paths::StoragePaths;
@@ -269,7 +269,7 @@ async fn a_build_whose_rows_went_in_before_the_crash_holds_no_row_twice() {
     let scratch = tempfile::tempdir().expect("tempdir");
     let elsewhere = StoragePaths::under(scratch.path(), "tablepro", "app.tablepro.TablePro");
     std::fs::create_dir_all(&elsewhere.state).expect("state");
-    std::fs::copy(old.paths.history_database(), elsewhere.history_database()).expect("a second old file");
+    std::fs::copy(history_before_move(&old.paths), history_before_move(&elsewhere)).expect("a second old file");
     let whole = SavedQueryDatabase::open(&elsewhere).await.expect("a whole build");
     whole.pool().close().await;
     let partial = partial_of(&old.paths.saved_query_database());
@@ -456,6 +456,10 @@ async fn the_saved_queries_open_without_a_history_db() {
             .is_empty()
     );
     assert!(!paths.history_database().exists(), "the saved queries made a history");
+    assert!(
+        !paths.history_folder().exists(),
+        "the saved queries made the history's folder"
+    );
 }
 
 async fn copy_rows(copy: &Path) -> (Vec<Vec<String>>, i64) {
@@ -566,4 +570,144 @@ async fn a_saved_query_deleted_while_the_history_is_locked_away_trims_and_keeps_
         1,
         "the copy from before the move kept a deleted saved query"
     );
+}
+
+// The history leaves the state folder for its own once, with its upgrade copies and the commits its WAL still held.
+#[tokio::test]
+async fn the_history_moves_into_its_folder_with_its_copies_and_its_last_commits() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let old = old_file(&root).await;
+    let before = history_before_move(&old.paths);
+    let kept_copy = old.paths.state.join("history.db.v20261126000000-1764000000");
+    std::fs::copy(&before, &kept_copy).expect("a copy an earlier upgrade kept");
+    // A connection still open keeps the last commit in the WAL; the files as they stand are what a crash leaves.
+    let pool = super::connect(&before).await.expect("the old file");
+    sqlx::query(
+        "INSERT INTO history (record_id, query, query_folded, driver_id, connection_id, connection_name, \
+         executed_at, success) VALUES (?, 'SELECT wal', 'select wal', 'sqlite', ?, 'local', 1800000002, 1)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(old.connection.to_string())
+    .execute(&pool)
+    .await
+    .expect("a commit in the WAL");
+    let crashed = tempfile::tempdir().expect("tempdir");
+    let crashed_paths = StoragePaths::under(crashed.path(), "tablepro", "app.tablepro.TablePro");
+    std::fs::create_dir_all(&crashed_paths.state).expect("state");
+    for suffix in ["", "-wal", "-shm"] {
+        let from = format!("{}{suffix}", before.display());
+        let to = format!("{}{suffix}", history_before_move(&crashed_paths).display());
+        std::fs::copy(&from, &to).expect("the file as a crash leaves it");
+    }
+    std::fs::copy(
+        &kept_copy,
+        crashed_paths.state.join("history.db.v20261126000000-1764000000"),
+    )
+    .expect("the copy");
+    pool.close().await;
+
+    let history = QueryHistory::open(&crashed_paths).await.expect("history");
+
+    assert!(
+        !history_before_move(&crashed_paths).exists(),
+        "the history stayed in the state folder"
+    );
+    assert_eq!(history.path(), crashed_paths.history_database());
+    let queries: Vec<String> = history
+        .entries()
+        .await
+        .expect("entries")
+        .into_iter()
+        .map(|entry| entry.query)
+        .collect();
+    assert!(
+        queries.iter().any(|query| query == "SELECT wal"),
+        "the WAL's commit was lost: {queries:?}"
+    );
+    let copies = crate::upgrade_copies::copies_blocking(&crashed_paths.history_database()).expect("copies");
+    assert!(
+        copies
+            .iter()
+            .any(|copy| copy.path.ends_with("history/history.db.v20261126000000-1764000000")),
+        "the earlier copy stayed behind: {copies:?}"
+    );
+    assert!(
+        crate::upgrade_copies::copies_blocking(&history_before_move(&crashed_paths))
+            .expect("copies")
+            .is_empty()
+    );
+}
+
+// A crash after the copies moved and before the database did: the next open moves the database.
+#[tokio::test]
+async fn a_move_into_the_folder_cut_short_after_the_copies_finishes() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let old = old_file(&root).await;
+    std::fs::create_dir_all(old.paths.history_folder()).expect("the folder");
+    std::fs::copy(
+        history_before_move(&old.paths),
+        old.paths.history_folder().join("history.db.v20261126000000-1764000000"),
+    )
+    .expect("a copy that moved");
+
+    let history = QueryHistory::open(&old.paths).await.expect("history");
+    let saved = SavedQueryDatabase::open(&old.paths).await.expect("saved queries");
+
+    assert!(!history_before_move(&old.paths).exists());
+    assert_moved(&old, &saved).await;
+    assert_history_kept(&old, &history).await;
+}
+
+// Another process holding the old file keeps it where it is, whole: nothing moves until it lets go.
+#[tokio::test]
+async fn a_history_another_process_holds_open_stays_where_it_is() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let old = old_file(&root).await;
+    let holder = super::connect(&history_before_move(&old.paths))
+        .await
+        .expect("another process");
+    sqlx::query("SELECT COUNT(*) FROM history")
+        .execute(&holder)
+        .await
+        .expect("a read");
+
+    let refused = QueryHistory::open(&old.paths).await;
+
+    assert!(refused.is_err(), "the history moved while another process held it");
+    assert!(history_before_move(&old.paths).exists());
+    assert!(!old.paths.history_database().exists());
+    holder.close().await;
+    let history = QueryHistory::open(&old.paths).await.expect("history");
+    assert_history_kept(&old, &history).await;
+}
+
+// A file an older build made where the history used to be, once this build's history is in its folder, is not this
+// build's to move or read.
+#[tokio::test]
+async fn a_history_already_in_its_folder_leaves_one_an_older_build_made_alone() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let old = old_file(&root).await;
+    drop(QueryHistory::open(&old.paths).await.expect("history"));
+    std::fs::write(history_before_move(&old.paths), b"an older build's").expect("a file where the history was");
+
+    let history = QueryHistory::open(&old.paths).await.expect("history");
+
+    assert_history_kept(&old, &history).await;
+    assert_eq!(
+        std::fs::read(history_before_move(&old.paths)).expect("left"),
+        b"an older build's"
+    );
+}
+
+// The saved queries opening first move the history into its folder too, and a new install makes the folder.
+#[tokio::test]
+async fn the_saved_queries_opening_first_move_the_history_into_its_folder() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let old = old_file(&root).await;
+
+    let saved = SavedQueryDatabase::open(&old.paths).await.expect("saved queries");
+
+    assert!(!history_before_move(&old.paths).exists());
+    assert!(old.paths.history_database().is_file());
+    assert_moved(&old, &saved).await;
 }

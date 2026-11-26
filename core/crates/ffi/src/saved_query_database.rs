@@ -50,7 +50,9 @@ impl SavedQueryDatabaseStore {
 // beside each named `<file>.v<version>-<seconds>`.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct StoreFilesInfo {
-    // The query history.
+    // Holds the history with every file made beside it, and nothing else. The core makes it only when it is missing, so
+    // a host that makes it first with a protection class gives that class to each file in it.
+    pub history_folder: String,
     pub history_database: String,
     // Saved queries, their folders, favourites and table folders, which sync reads in the background.
     pub saved_query_database: String,

@@ -74,13 +74,12 @@ pub enum StatementTypeTag {
     Other,
 }
 
-// A cancelled run is neither succeeded nor failed.
+// The History pane's outcomes: Failed is every run that did not succeed, a cancelled one included.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum HistoryStatusTag {
     Any,
     Succeeded,
     Failed,
-    Cancelled,
 }
 
 // What the History pane shows. Every word of `text` appears in the run, in any case. An empty list of connections or
@@ -481,8 +480,7 @@ impl TryFrom<HistoryFilterArg> for HistoryQuery {
         query.status = match filter.status {
             HistoryStatusTag::Any => StatusFilter::Any,
             HistoryStatusTag::Succeeded => StatusFilter::Succeeded,
-            HistoryStatusTag::Failed => StatusFilter::Failed,
-            HistoryStatusTag::Cancelled => StatusFilter::Cancelled,
+            HistoryStatusTag::Failed => StatusFilter::Unsuccessful,
         };
         query.executed_after = filter.executed_after_ms.map(from_millis);
         query.executed_before = filter.executed_before_ms.map(from_millis);
