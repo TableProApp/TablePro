@@ -17,7 +17,7 @@ use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{PassReason, PendingApproval, SyncControl, SyncPhase, SyncStatus};
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
-use crate::api::state::{Provider, RowRange, StateFiles, StateIdentity, StateStore, Table};
+use crate::api::state::{Provider, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
 use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, read_everything_again};
 use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalIds, Pass, StopSignal};
 
@@ -74,6 +74,8 @@ struct Session {
     // The last pass found the zone removed.
     zone_removed: bool,
     waits: Waits,
+    // What the open found of the state file's sync tables was acted on, once per open, as the service's pass does.
+    stale_handled: bool,
 }
 
 pub struct CloudKitSync {
@@ -281,6 +283,7 @@ impl CloudKitSync {
             session.waits = Waits::default();
         }
         let state = self.files.open(identity(account)).await?;
+        session.stale_handled = false;
         session.account = Some(account.to_owned());
         *lock(&self.account) = Some(account.to_owned());
         session.state = Some(Arc::clone(&state));
@@ -299,6 +302,14 @@ impl CloudKitSync {
             self.transport.ensure_zone(report.account.clone()).await?;
             zone::saw(state).await?;
             report.zone_made = true;
+        }
+        // After the zone's row exists, so a file that lost it to the restore refills too.
+        if !session.stale_handled {
+            if state.opened().sync_tables == SyncTrust::Refill {
+                self.stop.check()?;
+                zone::refill(state).await?;
+            }
+            session.stale_handled = true;
         }
         // Taken together under the lock `set_categories` holds as it sets the flag, so a kind turned on is read whole by
         // the pass that has it on.

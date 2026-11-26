@@ -9,7 +9,7 @@ use tablepro_records::Kind;
 use tablepro_sync::api::SyncError;
 use tablepro_sync::api::cloudkit::{CloudKitFailure, CloudKitOutcome, CloudKitTransport};
 use tablepro_sync::api::control::{PassReason, SyncControl, SyncPhase};
-use tablepro_sync::api::state::StateFiles;
+use tablepro_sync::api::state::{Opened, StateFiles, SyncTrust};
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::engine::{JournalEntry, Pass, StopSignal};
 use tablepro_sync::state::SqliteStateFiles;
@@ -290,4 +290,40 @@ async fn a_pass_while_a_record_waits_keeps_it_for_the_journal_pass_after_the_wai
         })
     );
     assert_eq!(after.push.saved, 1);
+}
+
+// The state file went back while the store did not: the open trusts none of its sync tables, so the first fetch after
+// it reads the zone whole and the pull wins, and the next pass of the same open merges as usual (0054, A stale file).
+#[tokio::test]
+async fn a_state_file_the_open_found_restored_refills_once() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Group, A, &json!({"name": "Work"}));
+    rig.sync(None).run_pass(PassReason::Launch).await.unwrap();
+    rig.save_elsewhere(Kind::Group, A, &json!({"name": "Newer"}));
+    rig.store(Kind::Group)
+        .put(A, projected(Kind::Group, A, &json!({"name": "Restored with the file"})));
+    rig.files.set_opened(
+        Rig::identity(),
+        Opened {
+            sync_tables: SyncTrust::Refill,
+            ..Opened::FRESH
+        },
+    );
+    let sync = rig.sync(None);
+
+    let first = sync.run_pass(PassReason::Launch).await.unwrap();
+    let refilled = rig.store(Kind::Group).fields(A);
+    rig.store(Kind::Group)
+        .put(A, projected(Kind::Group, A, &json!({"name": "Mine"})));
+    let second = sync.run_pass(PassReason::Poll).await.unwrap();
+
+    assert!(first.fetch.full);
+    assert!(first.fetch.refilled.contains(&Kind::Group));
+    assert_eq!(refilled, Some(projected(Kind::Group, A, &json!({"name": "Newer"}))));
+    assert!(second.fetch.refilled.is_empty());
+    assert_eq!(second.push.saved, 1);
+    assert_eq!(
+        rig.zone_fields(Kind::Group, A),
+        Some(projected(Kind::Group, A, &json!({"name": "Mine"})))
+    );
 }

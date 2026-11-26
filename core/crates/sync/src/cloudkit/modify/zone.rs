@@ -40,6 +40,20 @@ async fn clear(txn: &mut dyn StateTxn) -> Result<(), SyncError> {
     Ok(())
 }
 
+// A state file the open found restored or uncertain trusts none of its sync tables: the next fetch reads the zone whole
+// and the pull wins (0054, A stale file).
+pub(super) async fn refill(state: &dyn StateStore) -> Result<(), SyncError> {
+    let mut txn = state.begin().await?;
+    if let Some(Row::Scope(mut scope)) = txn.get(&RowKey::Scope(SCOPE)).await?
+        && !scope.refill
+    {
+        scope.refill = true;
+        txn.put(Row::Scope(scope)).await?;
+        txn.commit().await?;
+    }
+    Ok(())
+}
+
 // The zone is gone. Its scope row stays, empty, so the next pass knows it was removed rather than never made.
 pub(super) async fn removed(state: &dyn StateStore) -> Result<(), SyncError> {
     let mut txn = state.begin().await?;
