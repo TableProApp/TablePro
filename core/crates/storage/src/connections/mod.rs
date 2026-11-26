@@ -391,6 +391,7 @@ pub struct ImportPreview {
     entries: Vec<ImportEntry>,
     before: ConnectionsDocument,
     after: ConnectionsDocument,
+    changes: bool,
 }
 
 impl ImportPreview {
@@ -401,7 +402,7 @@ impl ImportPreview {
 
     // A file of projects or groups and no connections still changes the list.
     pub fn changes_library(&self) -> bool {
-        self.after != self.before
+        self.changes
     }
 
     pub fn report(&self) -> ImportReport {
@@ -847,10 +848,15 @@ impl ConnectionStore {
                 document.favorites.push(*id);
             }
         }
+        // Against the list as any write would settle it, so a membership id a pull left in place counts as no change.
+        let mut settled = before.clone();
+        settled.keep_membership(&before);
+        let changes = document != settled;
         Ok(ImportPreview {
             entries,
             before,
             after: document,
+            changes,
         })
     }
 

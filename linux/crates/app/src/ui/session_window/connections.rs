@@ -930,6 +930,10 @@ impl SessionWindow {
                     }
                     return;
                 }
+                Ok(Err(tablepro_storage::StorageError::ProjectNotFound { .. })) => {
+                    input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext("The project was deleted.")));
+                    return;
+                }
                 Ok(Err(error)) => error.to_string(),
                 Err(error) => error.to_string(),
             };
@@ -1218,6 +1222,10 @@ fn applied_import(
     imported: Result<tablepro_storage::ImportReport, tablepro_storage::StorageError>,
 ) -> (String, SetupEnding) {
     match imported {
+        Ok(report) if report.total() == 0 => (
+            crate::i18n::gettext("Imported the projects and groups in that file."),
+            SetupEnding::Stay,
+        ),
         Ok(report) => (
             crate::i18n::ngettext_f(
                 "Imported {n} connection.",
@@ -1376,7 +1384,10 @@ mod tests {
             applied_import(Ok(written)),
             ("Imported 2 connections.".to_owned(), SetupEnding::Select(ids))
         );
-        assert_eq!(applied_import(Ok(ImportReport::default())).1, SetupEnding::Stay);
+        assert_eq!(
+            applied_import(Ok(ImportReport::default())),
+            ("Imported the projects and groups in that file.".to_owned(), SetupEnding::Stay)
+        );
         let (outdated, none) = applied_import(Err(StorageError::ImportOutdated));
         assert_eq!(
             outdated,

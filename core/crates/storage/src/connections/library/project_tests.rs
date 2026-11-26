@@ -893,6 +893,40 @@ fn an_exported_empty_project_is_imported_with_its_groups_and_a_second_import_wri
 }
 
 #[test]
+fn an_empty_file_changes_nothing_after_a_pull_filed_a_connection_in_a_group() {
+    let library = Library::new();
+    let acme = library.project("Acme");
+    let work = library.group_in("Work", &acme);
+    let filed = library.connection_in("filed", &acme);
+    // A pull lays the list out as it arrived, so the connection keeps the project it stored before the move.
+    library
+        .store
+        .lay_out_blocking(&[], |list| {
+            let connections: Vec<SavedConnection> = list
+                .connections
+                .iter()
+                .map(|connection| SavedConnection {
+                    group_id: (connection.id == filed).then_some(work.id).or(connection.group_id),
+                    ..connection.clone()
+                })
+                .collect();
+            ConnectionList {
+                connections: std::sync::Arc::from(connections),
+                ..list.clone()
+            }
+        })
+        .expect("the pull");
+    assert_eq!(library.saved(filed).project_id, Some(acme.id));
+
+    let preview = library
+        .store
+        .preview_import_blocking(Path::new("/tmp/c.json"), &encoded(&ConnectionsDocument::default()))
+        .expect("the preview");
+
+    assert!(!preview.changes_library());
+}
+
+#[test]
 fn a_projects_export_holds_its_members_and_no_other_project() {
     let two = two_projects();
     let bytes = two
