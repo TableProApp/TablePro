@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::time::SystemTime;
 
 use uuid::Uuid;
 
@@ -20,8 +22,16 @@ pub struct LibraryWrite {
 #[derive(Debug, Clone)]
 pub struct LibraryRead {
     pub list: ConnectionList,
-    // SHA-256 in hex of the bytes the list was decoded from, so a host can tag those bytes; None while there is no file.
+    // SHA-256 in hex of the bytes the list came from, to check a host's tag against; a read vouches for nothing.
     pub digest: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rebuilt {
+    // SHA-256 in hex of the bytes the file holds after the rebuild.
+    pub digest: Option<String>,
+    // Where a file this build could not read went, kept for the person to recover from.
+    pub set_aside: Option<PathBuf>,
 }
 
 impl ConnectionStore {
@@ -39,17 +49,32 @@ impl ConnectionStore {
         })
     }
 
-    // Another app's library moving in reads back the same, so nothing is checked or cleaned as an edit does.
-    pub fn replace_library_blocking(&self, write: LibraryWrite) -> Result<Option<String>, StorageError> {
-        write.refuse_repeats()?;
+    // Refused unless the file is still the one `over` names (None: no file), so nothing unchecked goes on; `build` reads it.
+    pub fn replace_library_blocking<E: From<StorageError>>(
+        &self,
+        over: Option<&str>,
+        build: impl FnOnce(&ConnectionList) -> Result<LibraryWrite, E>,
+    ) -> Result<Option<String>, E> {
+        let mut state = self.lock_to_write();
+        let before = self.ensure_current(&mut state)?;
+        if digest_of(&state).as_deref() != over {
+            return Err(StorageError::LibraryChanged.into());
+        }
+        let write = build(&before.list())?;
+        let named: HashSet<Uuid> = write.connections.iter().map(|connection| connection.id).collect();
+        let held: HashSet<Uuid> = before
+            .connections
+            .held_ids()
+            .into_iter()
+            .filter(|id| !named.contains(id))
+            .collect();
+        write.refuse_what_it_would_lose(&held)?;
         let LibraryWrite {
             connections,
             groups,
             tags,
             favorites,
         } = write;
-        let mut state = self.lock_to_write();
-        let before = self.ensure_current(&mut state)?;
         let mut document = before.clone();
         for connection in &connections {
             document.connections.release(connection.id);
@@ -66,8 +91,8 @@ impl ConnectionStore {
     }
 
     // For a file its host cannot vouch for: nothing it held goes on, and a new generation starts, as a restore's does.
-    pub fn rebuild_library_blocking(&self, write: LibraryWrite) -> Result<Option<String>, StorageError> {
-        write.refuse_repeats()?;
+    pub fn rebuild_library_blocking(&self, write: LibraryWrite, now: SystemTime) -> Result<Rebuilt, StorageError> {
+        write.refuse_what_it_would_lose(&HashSet::new())?;
         let LibraryWrite {
             connections,
             groups,
@@ -75,7 +100,13 @@ impl ConnectionStore {
             favorites,
         } = write;
         let mut state = self.lock_to_write();
-        self.ensure_current(&mut state)?;
+        let set_aside = match self.ensure_current(&mut state) {
+            Ok(_) => None,
+            Err(StorageError::DocumentUnavailable(_)) => Some(crate::fs::move_aside_blocking(&self.inner.path, now)?),
+            Err(error) => return Err(error),
+        };
+        // Told against nothing, so no id from the file it replaces is journaled as a deletion to send.
+        *state = StoreState::Unloaded;
         let document = ConnectionsDocument {
             connections: Lenient::from(connections),
             groups,
@@ -85,7 +116,10 @@ impl ConnectionStore {
             ..ConnectionsDocument::default()
         };
         self.commit(&mut state, document)?;
-        Ok(digest_of(&state))
+        Ok(Rebuilt {
+            digest: digest_of(&state),
+            set_aside,
+        })
     }
 
     pub fn create_group_blocking(&self, group: ConnectionGroup) -> Result<ConnectionGroup, StorageError> {
@@ -368,11 +402,29 @@ impl ConnectionsDocument {
 }
 
 impl LibraryWrite {
-    fn refuse_repeats(&self) -> Result<(), StorageError> {
-        first_repeat(self.connections.iter().map(|connection| connection.id))
+    // Refused, not dropped: a repeated id or tag, or a favourite of no connection the file keeps (`held` stays).
+    fn refuse_what_it_would_lose(&self, held: &HashSet<Uuid>) -> Result<(), StorageError> {
+        let repeated = first_repeat(self.connections.iter().map(|connection| connection.id))
             .or_else(|| first_repeat(self.groups.iter().map(|group| group.id)))
             .or_else(|| first_repeat(self.tags.iter().map(|tag| tag.id)))
-            .map_or(Ok(()), |id| Err(StorageError::RepeatedId { id }))
+            .or_else(|| first_repeat(self.favorites.iter().copied()))
+            .or_else(|| {
+                self.connections
+                    .iter()
+                    .find_map(|connection| first_repeat(connection.tags.iter().copied()))
+            });
+        if let Some(id) = repeated {
+            return Err(StorageError::RepeatedId { id });
+        }
+        let saved: HashSet<Uuid> = self.connections.iter().map(|connection| connection.id).collect();
+        match self
+            .favorites
+            .iter()
+            .find(|id| !saved.contains(id) && !held.contains(id))
+        {
+            Some(&id) => Err(StorageError::ConnectionNotFound { id }),
+            None => Ok(()),
+        }
     }
 }
 

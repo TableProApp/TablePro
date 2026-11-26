@@ -3523,7 +3523,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_replace_library(ulong @ptr,RustBuffer @library
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_replace_library(ulong @ptr,RustBuffer @library,RustBuffer @over
     );
 
     #if NET8_0_OR_GREATER
@@ -11556,8 +11556,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_replace_library();
-            if (checksum != 13571) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_replace_library` checksum `13571`, library returned `{checksum}`");
+            if (checksum != 37529) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_replace_library` checksum `37529`, library returned `{checksum}`");
             }
         }
         {
@@ -15346,7 +15346,7 @@ internal interface IConnectionLibrary {
     /// <exception cref="CoreException"></exception>
     Task<LibraryWritten> RebuildLibrary(LibraryWriteRecord @library);
     /// <exception cref="CoreException"></exception>
-    Task<LibraryWritten> ReplaceLibrary(LibraryWriteRecord @library);
+    Task<LibraryWritten> ReplaceLibrary(LibraryWriteRecord @library, string? @over);
     /// <exception cref="CoreException"></exception>
     Task<ConnectionDetailsRecord> ConnectionDetails(string @id);
     /// <exception cref="CoreException"></exception>
@@ -15930,11 +15930,11 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<LibraryWritten> ReplaceLibrary(LibraryWriteRecord @library) {
+    public async Task<LibraryWritten> ReplaceLibrary(LibraryWriteRecord @library, string? @over) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_replace_library(thisPtr, FfiConverterTypeLibraryWriteRecord.INSTANCE.Lower(@library));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_replace_library(thisPtr, FfiConverterTypeLibraryWriteRecord.INSTANCE.Lower(@library), FfiConverterOptionalString.INSTANCE.Lower(@over));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -26478,7 +26478,8 @@ class FfiConverterTypeLibraryWriteRecord: FfiConverterRustBuffer<LibraryWriteRec
 
 
 internal record LibraryWritten (
-    string? Digest
+    string? Digest, 
+    string? SetAside
 ) {
 }
 
@@ -26487,17 +26488,20 @@ class FfiConverterTypeLibraryWritten: FfiConverterRustBuffer<LibraryWritten> {
 
     public override LibraryWritten Read(BigEndianStream stream) {
         return new LibraryWritten(
-            Digest: FfiConverterOptionalString.INSTANCE.Read(stream)
+            Digest: FfiConverterOptionalString.INSTANCE.Read(stream),
+            SetAside: FfiConverterOptionalString.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(LibraryWritten value) {
         return 0
-            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Digest);
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Digest)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.SetAside);
     }
 
     public override void Write(LibraryWritten value, BigEndianStream stream) {
             FfiConverterOptionalString.INSTANCE.Write(value.Digest, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.SetAside, stream);
     }
 }
 
