@@ -59,9 +59,7 @@ final class AppState {
 
     private let sampleInstaller: SampleDatabaseInstaller
     private let libraryPublisher: ConnectionLibraryPublisher
-    private let storage: ConnectionPersistence
-    private let groupStorage: GroupPersistence
-    private let tagStorage: TagPersistence
+    private let library: CoreLibraryStore
 
     init(
         libraryDirectory: URL = LibraryStorage.defaultDirectory,
@@ -83,11 +81,9 @@ final class AppState {
         libraryPreferences = ConnectionLibraryPreferences(defaults: defaults)
         syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
         account = injectedAccount ?? .live(configuration: onboarding.managed)
-        storage = ConnectionPersistence(directory: libraryDirectory)
+        library = CoreLibraryStore(directory: libraryDirectory, defaults: defaults, secureStore: secureStore)
         queryHistory = QueryHistoryStorage(directory: libraryDirectory)
         savedQueries = SavedQueryLibrary(directory: libraryDirectory, syncCoordinator: syncCoordinator)
-        groupStorage = GroupPersistence(directory: libraryDirectory)
-        tagStorage = TagPersistence(directory: libraryDirectory)
         let driverFactory: any DriverFactory = injectedDriverFactory
             ?? IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles, secureStore: secureStore)
         self.secureStore = secureStore
@@ -146,7 +142,7 @@ final class AppState {
 
     // A record this build cannot read still owns its secrets and files.
     private var loadedConnectionIds: Set<UUID>? {
-        loadStatus == .ready ? Set(connections.map(\.id)).union(storage.unreadableIds) : nil
+        loadStatus == .ready ? Set(connections.map(\.id)).union(library.unreadable.connections) : nil
     }
 
     // Separate from init, which skips it under tests, so a test can run the wiring the app runs.
@@ -285,34 +281,24 @@ final class AppState {
         if let connection = connections.first(where: { $0.id == id }) {
             return connection.participatesInSync
         }
-        guard storage.unreadableIds.contains(id) else { return true }
+        guard library.unreadable.connections.contains(id) else { return true }
         return syncCoordinator.metadata.standing(ofConnection: id) == .syncs
     }
 
     private func loadPersistedData() {
         do {
-            let stored = try storage.load()
-            connectionsState = .loaded(stored.connections)
+            let loaded = try library.load()
+            connectionsState = .loaded(loaded.connections)
+            groupsState = .loaded(loaded.groups)
+            tagsState = .loaded(loaded.tags)
             recordConnectionStanding()
-            movePastedSSHKeysToKeychain(from: stored)
-            moveMongoURISecretsToKeychain(from: stored.connections)
+            movePastedSSHKeysToKeychain()
+            moveMongoURISecretsToKeychain(from: loaded.connections)
         } catch {
             connectionsState = .failed(error)
-            Self.logger.error("Connections load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
-        }
-
-        do {
-            groupsState = .loaded(try groupStorage.load())
-        } catch {
             groupsState = .failed(error)
-            Self.logger.error("Groups load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
-        }
-
-        do {
-            tagsState = .loaded(try tagStorage.load())
-        } catch {
             tagsState = .failed(error)
-            Self.logger.error("Tags load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
+            Self.logger.error("Library load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -321,27 +307,45 @@ final class AppState {
         guard cleaned != loaded else { return }
         connectionsState = .loaded(cleaned)
         do {
-            try storage.save(cleaned, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain, removingSecrets: true)
+            try library.write(
+                libraryImage(connections: cleaned),
+                keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain,
+                removingSecrets: true
+            )
         } catch {
             Self.logger.error("Rewriting connections without MongoDB secrets failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
-    private func movePastedSSHKeysToKeychain(from stored: StoredConnections) {
-        guard !stored.pastedSSHKeys.isEmpty else { return }
-        let unstored = ConnectionSecrets(secureStore: secureStore).storeMissingPrivateKeys(stored.pastedSSHKeys)
+    private func movePastedSSHKeysToKeychain() {
+        let pending = library.pastedSSHKeys
+        guard !pending.isEmpty else { return }
+        let unstored = ConnectionSecrets(secureStore: secureStore).storeMissingPrivateKeys(pending)
         pastedSSHKeysAwaitingKeychain = unstored
-        let movedCount = stored.pastedSSHKeys.count - unstored.count
+        let movedCount = pending.count - unstored.count
         guard movedCount > 0 else {
             Self.logger.error("No pasted SSH key reached the Keychain; the connections file keeps them until the next launch")
             return
         }
         Self.logger.info("Moved \(movedCount) pasted SSH keys out of the connections file, \(unstored.count) left for the next launch")
         do {
-            try storage.save(stored.connections, keepingPastedSSHKeys: unstored, removingSecrets: true)
+            try library.write(libraryImage(), keepingPastedSSHKeys: unstored, removingSecrets: true)
         } catch {
             Self.logger.error("Rewriting connections without SSH keys failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
+    }
+
+    // The library is one store, so a write of one part carries the others as this device holds them.
+    private func libraryImage(
+        connections: [DatabaseConnection]? = nil,
+        groups: [ConnectionGroup]? = nil,
+        tags: [ConnectionTag]? = nil
+    ) -> CoreLibraryStore.Library {
+        CoreLibraryStore.Library(
+            connections: connections ?? self.connections,
+            groups: groups ?? self.groups,
+            tags: tags ?? self.tags
+        )
     }
 
     // MARK: - Persistence Bridges
@@ -353,26 +357,15 @@ final class AppState {
         let heldKeys = PastedSSHKeyMigration.keysStillHeld(
             pastedSSHKeysAwaitingKeychain,
             by: connections,
-            orUnreadable: storage.unreadableIds
+            orUnreadable: library.unreadable.connections
         )
-        // Only a copy still kept unread: one a newer build reads now is a live record.
-        let pendingRemovals = pendingUnreadableRemovals.connections
-        let removedUnreadable = pendingRemovals.intersection(storage.unreadableIds)
-        var saved = true
-        do {
-            try storage.save(connections, keepingPastedSSHKeys: heldKeys, removingUnreadable: removedUnreadable)
-        } catch {
-            saved = false
-            Self.logger.error("Failed to save connections: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
-        }
+        let saved = writeLibrary(libraryImage(connections: connections), keepingPastedSSHKeys: heldKeys, part: "connections")
         guard saved || !onlyIfSaved else { return false }
         markLibraryPart(.connections, saved: saved)
         connectionsState = .loaded(connections)
         pastedSSHKeysAwaitingKeychain = heldKeys
         if saved {
             recordConnectionStanding()
-            settleUnreadableRemovals(UnreadableCopies(connections: pendingRemovals))
-            purgeRemovedUnreadable(removedUnreadable)
         }
         pruneLibraryPreferences()
         return saved
@@ -380,15 +373,7 @@ final class AppState {
 
     @discardableResult
     private func persist(groups: [ConnectionGroup], onlyIfSaved: Bool = false) -> Bool {
-        var saved = true
-        do {
-            let pending = pendingUnreadableRemovals.groups
-            try groupStorage.save(groups, removingUnreadable: pending.intersection(groupStorage.unreadableIds))
-            settleUnreadableRemovals(UnreadableCopies(groups: pending))
-        } catch {
-            saved = false
-            Self.logger.error("Failed to save groups: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
-        }
+        let saved = writeLibrary(libraryImage(groups: groups), keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain, part: "groups")
         guard saved || !onlyIfSaved else { return false }
         markLibraryPart(.groups, saved: saved)
         groupsState = .loaded(groups)
@@ -398,23 +383,40 @@ final class AppState {
 
     @discardableResult
     private func persist(tags: [ConnectionTag], onlyIfSaved: Bool = false) -> Bool {
-        var saved = true
-        do {
-            let pending = pendingUnreadableRemovals.tags
-            try tagStorage.save(tags, removingUnreadable: pending.intersection(tagStorage.unreadableIds))
-            settleUnreadableRemovals(UnreadableCopies(tags: pending))
-        } catch {
-            saved = false
-            Self.logger.error("Failed to save tags: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
-        }
+        let saved = writeLibrary(libraryImage(tags: tags), keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain, part: "tags")
         guard saved || !onlyIfSaved else { return false }
         markLibraryPart(.tags, saved: saved)
         tagsState = .loaded(tags)
         return saved
     }
 
+    // Every write carries each removal a pull left waiting, since one write saves every part. Only a copy still kept
+    // unread is removed: one a newer build reads now is a live record.
+    private func writeLibrary(
+        _ image: CoreLibraryStore.Library,
+        keepingPastedSSHKeys heldKeys: [UUID: String],
+        part: String
+    ) -> Bool {
+        let pending = pendingUnreadableRemovals
+        let unreadable = library.unreadable
+        let removed = UnreadableCopies(
+            connections: pending.connections.intersection(unreadable.connections),
+            groups: pending.groups.intersection(unreadable.groups),
+            tags: pending.tags.intersection(unreadable.tags)
+        )
+        do {
+            try library.write(image, keepingPastedSSHKeys: heldKeys, removingUnreadable: removed)
+        } catch {
+            Self.logger.error("Failed to save \(part, privacy: .public): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
+            return false
+        }
+        settleUnreadableRemovals(pending)
+        purgeRemovedUnreadable(removed.connections)
+        return true
+    }
+
     var unreadableCopies: UnreadableCopies {
-        UnreadableCopies(connections: storage.unreadableIds, groups: groupStorage.unreadableIds, tags: tagStorage.unreadableIds)
+        library.unreadable
     }
 
     // Unread copies another device deleted, removed by the next save of their file so their ids stay protected until
@@ -453,13 +455,14 @@ final class AppState {
         syncCoordinator.metadata.recordConnectionStanding(
             syncing: Set(connections.filter(\.participatesInSync).map(\.id)),
             keptOff: Set(connections.filter { !$0.participatesInSync }.map(\.id)),
-            unreadable: storage.unreadableIds
+            unreadable: library.unreadable.connections
         )
     }
 
+    // One write saves every part, so a part an earlier write left unsaved is saved too.
     private func markLibraryPart(_ part: LibraryPart, saved: Bool) {
         if saved {
-            unsavedLibraryParts.remove(part)
+            unsavedLibraryParts.removeAll()
         } else {
             unsavedLibraryParts.insert(part)
         }
@@ -467,11 +470,12 @@ final class AppState {
 
     private func pruneLibraryPreferences() {
         guard loadStatus == .ready else { return }
-        let unreadableConnectionIds = storage.unreadableIds
+        let unreadable = library.unreadable
+        let unreadableConnectionIds = unreadable.connections
         libraryPreferences.prune(
             connectionIds: Set(connections.map(\.id)).union(unreadableConnectionIds),
             favoriteIds: Set(connections.filter(\.isFavorite).map(\.id)).union(unreadableConnectionIds),
-            groupIds: Set(groups.map(\.id)).union(groupStorage.unreadableIds)
+            groupIds: Set(groups.map(\.id)).union(unreadable.groups)
         )
     }
 
@@ -573,7 +577,7 @@ final class AppState {
     private func apply(_ change: ConnectionLibraryChange) -> Bool {
         guard !refuseWriteIfNotReady() else { return false }
         guard !change.changedConnectionIds.isEmpty else { return false }
-        guard storage.unreadableIds.isDisjoint(with: change.changedConnectionIds) else {
+        guard library.unreadable.connections.isDisjoint(with: change.changedConnectionIds) else {
             logUnreadableIdRefusal()
             return false
         }
@@ -600,7 +604,7 @@ final class AppState {
     @discardableResult
     func addGroup(_ group: ConnectionGroup) -> LibraryWriteOutcome {
         guard !refuseWriteIfNotReady() else { return .refused }
-        guard !groupStorage.unreadableIds.contains(group.id) else {
+        guard !library.unreadable.groups.contains(group.id) else {
             logUnreadableIdRefusal()
             return .refused
         }
@@ -658,7 +662,7 @@ final class AppState {
     @discardableResult
     func addTag(_ tag: ConnectionTag) -> LibraryWriteOutcome {
         guard !refuseWriteIfNotReady() else { return .refused }
-        guard !tagStorage.unreadableIds.contains(tag.id) else {
+        guard !library.unreadable.tags.contains(tag.id) else {
             logUnreadableIdRefusal()
             return .refused
         }
