@@ -1,47 +1,23 @@
 import AppKit
 import os
 import SwiftUI
+import TableProFFI
 import TableProSyncTransport
 
-struct SyncPaneLayout: Equatable {
-    let notice: SyncNotice?
-    let isToggleDisabled: Bool
-    let showsManagedNote: Bool
-    let showsLicenseGate: Bool
-    let showsStatus: Bool
-    let showsLastSynced: Bool
-    let offersSyncNow: Bool
-    let showsCategories: Bool
-
-    // `isManaged` when a configuration profile leaves one choice or none, `allowsICloud` while iCloud is one of them.
-    init(
-        enabled: Bool,
-        isLicensed: Bool,
-        presentation: SyncStatusPresentation,
-        isManaged: Bool = false,
-        allowsICloud: Bool = true
-    ) {
-        let showsLive = enabled && isLicensed && allowsICloud
-        notice = presentation.notice
-        // A lapsed license can still turn sync off; the organization's choice cannot be changed here.
-        isToggleDisabled = isManaged || (!isLicensed && !enabled)
-        showsManagedNote = isManaged
-        showsLicenseGate = !isLicensed && allowsICloud
-        showsStatus = showsLive && presentation.notice == nil
-        showsLastSynced = showsLive
-        offersSyncNow = presentation.offersSyncNow
-        // The categories apply before the first upload, so they show while sync is off too.
-        showsCategories = isLicensed && allowsICloud
-    }
-}
-
-// Its own pane: sync runs on the Apple Account, a different identity from the email on a license.
+// One pane for every provider: iCloud runs on the Apple Account, TablePro Sync on the TablePro account.
 struct SyncSettingsView: View {
     @Binding var settings: SyncSettings
 
     @ObservedObject private var coordinator = SyncProviderCoordinator.shared
+    @ObservedObject private var moves = ProviderMoves.shared
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var policy = ManagedPolicyCenter.shared
+
+    @State private var sheet: SyncProviderSheet?
+    @State private var asksICloudDeletion = false
+    @State private var isDeletingICloudData = false
+    @State private var iCloudDataProblem: String?
+    @State private var serviceSyncProblem: String?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncSettingsView")
 
@@ -49,49 +25,65 @@ struct SyncSettingsView: View {
         coordinator.syncStatus.isSyncing
     }
 
+    private var layout: SyncPaneLayout {
+        SyncPaneLayout(SyncPaneInputs(
+            provider: settings.provider,
+            choices: SyncProviderPolicy.choices(policy.snapshot),
+            iCloudAccess: featureAccess.check(.iCloudSync),
+            serviceAccess: featureAccess.check(.serviceSync),
+            iCloudStatus: coordinator.syncStatus,
+            engine: moves.engineStatus,
+            serverLicense: featureAccess.state.serverLicense,
+            offersICloudDataDeletion: moves.offersICloudDataDeletion
+        ))
+    }
+
     var body: some View {
+        let layout = layout
         let presentation = SyncStatusPresentation(status: coordinator.syncStatus)
-        let iCloud = SyncProviderPolicy.iCloud(policy.snapshot)
-        let layout = SyncPaneLayout(
-            enabled: settings.enabled,
-            isLicensed: featureAccess.isAvailable(.iCloudSync),
-            presentation: presentation,
-            isManaged: iCloud.isLocked,
-            allowsICloud: iCloud.isAllowed
-        )
 
         Form {
-            if let notice = layout.notice {
+            if layout.asksNewIdentity {
+                Section {
+                    SyncNewIdentityNotice(moves: moves)
+                }
+            }
+
+            if let notice = layout.iCloudNotice {
                 Section {
                     noticeRow(notice)
                 }
             }
 
-            Section {
-                Toggle(isOn: iCloud.isAllowed ? $settings.enabled : .constant(false)) {
-                    Text("Sync this Mac with iCloud")
-                    if layout.showsManagedNote {
-                        Text("Managed by your organization")
-                            .accessibilityIdentifier("settings-sync-managed")
-                    } else {
-                        Text(
-                            "Keep your connections and the items you choose the same on devices signed in to your Apple Account."
-                        )
+            if let notice = layout.serviceNotice {
+                Section {
+                    SyncServiceNoticeRow(notice: notice) {
+                        sheet = .moveToService
                     }
                 }
-                .disabled(layout.isToggleDisabled)
-                .accessibilityIdentifier("settings-sync-toggle")
+            }
 
-                if layout.showsLicenseGate {
-                    LicenseGateRow(feature: .iCloudSync)
+            Section {
+                providerPicker(layout)
+
+                if let gate = layout.licenseGate {
+                    LicenseGateRow(feature: gate)
                 }
 
-                if layout.showsStatus {
+                if layout.showsICloudStatus {
                     statusRow(presentation)
+                }
+
+                if let status = layout.serviceStatus {
+                    serviceStatusRow(status)
                 }
 
                 if layout.showsLastSynced {
                     lastSyncedRow(offersSyncNow: layout.offersSyncNow)
+                }
+
+                if layout.offersICloudDataDeletion {
+                    iCloudDataRow
                 }
             }
 
@@ -102,40 +94,94 @@ struct SyncSettingsView: View {
         .formStyle(.grouped)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings-pane-sync")
-    }
-
-    private func noticeRow(_ notice: SyncNotice) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(notice.title)
-                        .fontWeight(.semibold)
-                        .accessibilityAddTraits(.isHeader)
-
-                    Text(notice.message)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } icon: {
-                Image(systemName: notice.symbolName)
-                    .font(.title2)
-                    .foregroundStyle(.orange)
-                    .accessibilityHidden(true)
-            }
-
-            if !notice.actions.isEmpty {
-                HStack(spacing: 8) {
-                    Spacer(minLength: 0)
-                    ForEach(notice.actions) { action in
-                        control(for: action)
-                    }
-                }
+        .task {
+            // The engine's status names the provider it is on, which the TablePro Sync rows read.
+            if settings.provider == .tableproSync, moves.engineStatus == nil {
+                await moves.openEngine()
             }
         }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("settings-sync-notice")
+        .sheet(item: $sheet) { sheet in
+            switch sheet {
+            case .moveToService:
+                SyncMoveSheet(moves: moves, fromICloud: settings.provider == .iCloud)
+            case .moveToICloud:
+                SyncMoveBackSheet(moves: moves)
+            }
+        }
+        .alert(String(localized: "Delete TablePro's Data from iCloud?"), isPresented: $asksICloudDeletion) {
+            Button(String(localized: "Delete"), role: .destructive) {
+                Task { await deleteICloudData() }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(
+                "Devices still syncing with iCloud stop syncing until one of them uploads again. What this Mac and TablePro Sync hold stays."
+            )
+        }
+    }
+
+    // MARK: - Provider
+
+    private func providerPicker(_ layout: SyncPaneLayout) -> some View {
+        Picker(selection: providerSelection) {
+            ForEach(layout.options, id: \.self) { option in
+                Text(option.title).tag(option)
+            }
+        } label: {
+            Text("Sync this Mac with")
+            if layout.managedNote != nil {
+                Text("Managed by your organization")
+                    .accessibilityIdentifier("settings-sync-managed")
+            } else {
+                Text(settings.provider.summary)
+            }
+        }
+        .pickerStyle(.menu)
+        .disabled(layout.isPickerLocked || sheet != nil)
+        .accessibilityIdentifier("settings-sync-provider")
+    }
+
+    // The picker shows the stored provider; a move changes it only once the sheet confirms.
+    private var providerSelection: Binding<SyncProviderSetting> {
+        Binding(
+            get: { settings.provider },
+            set: { choose($0) }
+        )
+    }
+
+    private func choose(_ next: SyncProviderSetting) {
+        let current = settings.provider
+        guard next != current else { return }
+        switch next {
+        case .off:
+            Task { await moves.turnOff() }
+        case .iCloud:
+            guard featureAccess.isAvailable(.iCloudSync) else {
+                LicenseGateAlert.present(for: .iCloudSync, in: NSApp.keyWindow)
+                return
+            }
+            if current == .tableproSync {
+                sheet = .moveToICloud
+            } else {
+                settings.provider = .iCloud
+            }
+        case .tableproSync:
+            guard featureAccess.isAvailable(.serviceSync) else {
+                LicenseGateAlert.present(for: .serviceSync, in: NSApp.keyWindow)
+                return
+            }
+            sheet = .moveToService
+        }
+    }
+
+    // MARK: - Rows
+
+    private func noticeRow(_ notice: SyncNotice) -> some View {
+        SyncNoticeRow(symbolName: notice.symbolName, title: notice.title, message: notice.message) {
+            ForEach(notice.actions) { action in
+                control(for: action)
+            }
+        }
     }
 
     @ViewBuilder
@@ -163,7 +209,7 @@ struct SyncSettingsView: View {
         case .turnOffSync:
             // The setting's commit also turns password sync off and stops the coordinator.
             Button(action.title) {
-                settings.enabled = false
+                settings.provider = .off
             }
         }
     }
@@ -193,14 +239,38 @@ struct SyncSettingsView: View {
         }
     }
 
+    private func serviceStatusRow(_ status: SyncServiceStatus) -> some View {
+        LabeledContent {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if status == .syncing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: status.symbolName)
+                        .foregroundStyle(status.isWarning ? Color.orange : Color.secondary)
+                        .accessibilityHidden(true)
+                }
+
+                Text(status.title)
+                    .accessibilityIdentifier("settings-sync-status")
+            }
+        } label: {
+            Text("Status")
+            if let serviceSyncProblem {
+                Text(serviceSyncProblem)
+            }
+        }
+    }
+
     private func lastSyncedRow(offersSyncNow: Bool) -> some View {
         LabeledContent {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                SyncLastSyncedText(date: coordinator.lastSyncDate)
+                SyncLastSyncedText(date: lastSyncDate)
 
                 if offersSyncNow {
                     Button("Sync Now") {
-                        Task { await coordinator.syncNow() }
+                        Task { await syncNow() }
                     }
                     .disabled(isSyncing)
                     .accessibilityIdentifier("settings-sync-now")
@@ -208,6 +278,29 @@ struct SyncSettingsView: View {
             }
         } label: {
             Text("Last synced")
+        }
+    }
+
+    private var lastSyncDate: Date? {
+        guard settings.provider == .tableproSync else { return coordinator.lastSyncDate }
+        return moves.engineStatus?.lastPassMs.map { Date(timeIntervalSince1970: Double($0) / 1_000) }
+    }
+
+    private var iCloudDataRow: some View {
+        LabeledContent {
+            Button(String(localized: "Delete iCloud Data…"), role: .destructive) {
+                iCloudDataProblem = nil
+                asksICloudDeletion = true
+            }
+            .disabled(isDeletingICloudData)
+            .accessibilityIdentifier("settings-sync-delete-icloud-data")
+        } label: {
+            Text("iCloud data")
+            if let iCloudDataProblem {
+                Text(iCloudDataProblem)
+            } else {
+                Text("TablePro's data stays in iCloud after this Mac stops syncing with it.")
+            }
         }
     }
 
@@ -221,9 +314,7 @@ struct SyncSettingsView: View {
 
             Toggle(isOn: $settings.syncPasswords) {
                 Text("Passwords")
-                Text(
-                    "Stored in iCloud Keychain, end-to-end encrypted. Applies to each password the next time you save it."
-                )
+                Text(passwordsDetail)
             }
             .disabled(!settings.syncConnections)
             .accessibilityIdentifier("settings-sync-category-passwords")
@@ -260,12 +351,50 @@ struct SyncSettingsView: View {
         }
     }
 
+    private var passwordsDetail: String {
+        if settings.provider == .tableproSync {
+            return String(
+                localized: "End-to-end encrypted with your account's keys. This Mac also keeps its own copy of each password."
+            )
+        }
+        return String(
+            localized: "Stored in iCloud Keychain, end-to-end encrypted. Applies to each password the next time you save it."
+        )
+    }
+
     private var syncConnections: Binding<Bool> {
         let settings = $settings
         return Binding(
             get: { settings.wrappedValue.syncConnections },
             set: { settings.wrappedValue = settings.wrappedValue.settingConnections($0) }
         )
+    }
+
+    // MARK: - Actions
+
+    private func syncNow() async {
+        guard settings.provider == .tableproSync else {
+            await coordinator.syncNow()
+            return
+        }
+        serviceSyncProblem = nil
+        do {
+            try await moves.syncNow()
+        } catch {
+            Self.logger.error("Sync Now failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            serviceSyncProblem = ProviderMoves.message(for: error)
+        }
+    }
+
+    private func deleteICloudData() async {
+        isDeletingICloudData = true
+        defer { isDeletingICloudData = false }
+        do {
+            try await moves.deleteICloudData()
+        } catch {
+            Self.logger.error("Deleting the iCloud data failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            iCloudDataProblem = String(localized: "TablePro's data could not be deleted from iCloud. Try again later.")
+        }
     }
 
     // Notes and Freeform open these Apple Account panes, but the addresses are not documented.
@@ -279,6 +408,66 @@ struct SyncSettingsView: View {
             return
         }
         NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+}
+
+enum SyncProviderSheet: String, Identifiable {
+    case moveToService
+    case moveToICloud
+
+    var id: String { rawValue }
+}
+
+extension SyncProviderSetting {
+    var title: String {
+        switch self {
+        case .off: String(localized: "Off")
+        case .iCloud: "iCloud"
+        case .tableproSync: "TablePro Sync"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .off:
+            String(localized: "Connections and settings stay on this Mac.")
+        case .iCloud:
+            String(localized: "Keep your connections and the items you choose the same on devices signed in to your Apple Account.")
+        case .tableproSync:
+            String(localized: "Sync through your TablePro account with every device signed in to it, end-to-end encrypted.")
+        }
+    }
+}
+
+extension SyncServiceStatus {
+    var title: String {
+        switch self {
+        case .upToDate: String(localized: "Up to Date")
+        case .syncing: String(localized: "Syncing…")
+        case .waiting: String(localized: "Waiting to Retry")
+        case .downloadOnly: String(localized: "Downloading Only")
+        case .off: String(localized: "Sync Off")
+        case .unavailable: String(localized: "Sync Is Unavailable")
+        }
+    }
+
+    // Every symbol here ships with macOS 13.
+    var symbolName: String {
+        switch self {
+        case .upToDate: "checkmark.circle"
+        case .syncing: "arrow.triangle.2.circlepath"
+        case .waiting: "clock"
+        case .downloadOnly: "arrow.down.circle"
+        case .off: "slash.circle"
+        case .unavailable: "exclamationmark.circle"
+        }
+    }
+
+    var isWarning: Bool {
+        switch self {
+        case .waiting, .downloadOnly, .unavailable: true
+        case .upToDate, .syncing, .off: false
+        }
     }
 }
 

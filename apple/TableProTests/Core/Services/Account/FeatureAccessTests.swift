@@ -29,7 +29,7 @@ struct FeatureAccessTests {
     func rawValuesAreFeatureCodes() {
         #expect(ProFeature.allCases.map { $0.rawValue }.sorted() == [
             "compare_sync", "data_rewind", "encrypted_export", "env_var_references", "icloud_sync",
-            "linked_folders", "query_insights", "result_charts", "team_catalog", "team_library"
+            "linked_folders", "query_insights", "result_charts", "service_sync", "team_catalog", "team_library"
         ])
     }
 

@@ -13,7 +13,7 @@ final class SettingsWindowUITests: UITestCase {
         ("ai", "AI"),
         ("mcp", "MCP"),
         ("plugins", "Extensions"),
-        ("sync", "iCloud Sync"),
+        ("sync", "Sync"),
         ("account", "Account"),
         ("general", "General"),
     ]
@@ -59,7 +59,7 @@ final class SettingsWindowUITests: UITestCase {
 
         // View > Back and View > Forward, through their default key equivalents.
         settings.typeKey("[", modifierFlags: [.command, .control])
-        XCTAssertTrue(waitForPredicate(timeout: 5) { settings.title == "iCloud Sync" }, "View > Back must return to iCloud Sync")
+        XCTAssertTrue(waitForPredicate(timeout: 5) { settings.title == "Sync" }, "View > Back must return to Sync")
         settings.typeKey("]", modifierFlags: [.command, .control])
         XCTAssertTrue(waitForPredicate(timeout: 5) { settings.title == "Account" }, "View > Forward must return to Account")
     }

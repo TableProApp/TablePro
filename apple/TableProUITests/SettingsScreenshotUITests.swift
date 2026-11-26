@@ -68,7 +68,7 @@ final class SettingsScreenshotUITests: UITestCase {
     ]
 
     private static let accountSection: [Location] = [
-        Location("sync", title: "iCloud Sync"),
+        Location("sync", title: "Sync"),
         Location("account", urlPane: "license", title: "Account"),
         Location("account", urlPane: "license", page: "features", title: "Features"),
         Location("account", urlPane: "license", page: "offline", title: "Offline File and License Key"),
