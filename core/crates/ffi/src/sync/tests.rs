@@ -199,9 +199,10 @@ async fn a_pass_finishes_while_the_listener_is_still_running() {
     })
     .await;
     let service = Arc::clone(&opened.service);
-    let pass = tokio::spawn(async move { service.sync_now(PassReasonTag::Person).await });
+    let pass = tasks.spawn_task(async move { service.sync_now(PassReasonTag::Person).await });
 
-    let held = tokio::task::spawn_blocking(move || entered.recv_timeout(Duration::from_secs(30)))
+    let held = tasks
+        .spawn_blocking_task(move || entered.recv_timeout(Duration::from_secs(30)))
         .await
         .unwrap();
     let passed = tokio::time::timeout(Duration::from_secs(30), pass).await;
