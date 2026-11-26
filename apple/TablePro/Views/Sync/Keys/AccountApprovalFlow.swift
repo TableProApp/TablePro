@@ -59,6 +59,9 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
     private let clock: any Clock<Duration>
     private(set) var request: String?
     private var polling: Task<Void, Never>?
+    private var started = false
+    // Closed while a call was out: what it answers is dropped.
+    private var closed = false
 
     init(
         role: Role,
@@ -82,7 +85,8 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
 
     // The new Mac writes its request, or picks up the one it already has open.
     func start() async {
-        guard case .newDevice = role, phase == .starting, polling == nil else { return }
+        guard case .newDevice = role, !started, !closed else { return }
+        started = true
         do {
             let flows = try await flows()
             let request: String
@@ -91,10 +95,17 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
             } else {
                 request = try await flows.requestApproval()
             }
+            guard !closed else {
+                cancelSession(request)
+                return
+            }
             self.request = request
-            apply(try await flows.approvalSession(request: request))
+            let session = try await flows.approvalSession(request: request)
+            guard !closed else { return }
+            apply(session)
             startPolling()
         } catch {
+            guard !closed else { return }
             phase = .failed(AccountKeysText.message(for: error))
         }
     }
@@ -103,11 +114,14 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
     func approve() async {
         guard case .approver(let info) = role, phase == .reviewing else { return }
         phase = .starting
+        request = info.request
         do {
-            request = info.request
-            apply(try await flows().chooseApprovalRequest(request: info.request))
+            let session = try await flows().chooseApprovalRequest(request: info.request)
+            guard !closed else { return }
+            apply(session)
             startPolling()
         } catch {
+            guard !closed else { return }
             phase = .failed(AccountKeysText.message(for: error))
         }
     }
@@ -129,11 +143,16 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
 
     // The sheet closed. A session still running is cancelled with `user`, so the other side stops too.
     func close() {
+        closed = true
         polling?.cancel()
         polling = nil
         let wasRunning = !phase.hasEnded && phase != .reviewing
         guard wasRunning, let request else { return }
         phase = .cancelled(.user)
+        cancelSession(request)
+    }
+
+    private func cancelSession(_ request: String) {
         let flows = flows
         Task {
             try? await flows().cancelApprovalSession(request: request)
