@@ -92,6 +92,8 @@ internal struct AccountSettingsContent: Equatable {
     let isFree: Bool
     let showsDevices: Bool
     let showsTeams: Bool
+    // End-to-end keys belong to a signed-in account (core ADR 0056).
+    let showsEncryption: Bool
     let devices: [DeviceRow]?
     let teams: [TeamRow]?
     let verification: Verification?
@@ -129,6 +131,7 @@ internal struct AccountSettingsContent: Equatable {
             isFree: showsPlan && !isDeviceLimit && entitlement != nil && plans.isEmpty && state.server.isProduction,
             showsDevices: state.isSignedIn,
             showsTeams: state.isSignedIn,
+            showsEncryption: state.isSignedIn,
             devices: state.isSignedIn ? devices.map { deviceRows($0, now: now) } : nil,
             teams: state.isSignedIn ? profile.map { teamRows($0, portal: portal) } : nil,
             verification: entitlement.map {

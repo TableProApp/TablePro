@@ -468,6 +468,8 @@ extension SettingsPage {
         case .mcpApprovals: []
         case .mcpTokens: [String(localized: "Generate Token")]
         case .accountFeatures, .accountDevices, .accountTeams, .accountOffline: []
+        case .accountEncryption:
+            [String(localized: "Recovery key"), String(localized: "Replace…"), String(localized: "Devices With Your Keys")]
         }
     }
 
@@ -488,6 +490,7 @@ extension SettingsPage {
         case .accountFeatures: ["pro features", "plan features"]
         case .accountDevices: ["device", "this mac", "machine", "activation"]
         case .accountTeams: ["team", "organization", "members"]
+        case .accountEncryption: ["e2e", "encryption", "recovery key", "approve device", "keys", "sign out"]
         case .accountOffline: ["license key", "offline", "machine id", "activation file"]
         }
     }

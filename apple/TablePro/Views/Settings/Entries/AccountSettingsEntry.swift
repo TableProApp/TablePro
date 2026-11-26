@@ -23,6 +23,8 @@ internal struct AccountSettingsPageEntry: View {
             AccountDevicesPage(model: context.models.account)
         case .page(.accountTeams):
             AccountTeamsPage(model: context.models.account)
+        case .page(.accountEncryption):
+            AccountKeysPage(model: context.models.accountKeys)
         case .page(.accountOffline):
             AccountOfflinePage(model: context.models.account)
         default:
@@ -42,7 +44,9 @@ internal struct AccountStackPresentations: ViewModifier {
 
 private struct AccountPresentations: ViewModifier {
     private static let offlineFileTypes = [UTType(filenameExtension: "jwt") ?? .data]
-    private static let signedInPages: [SettingsRoute] = [.page(.accountDevices), .page(.accountTeams)]
+    private static let signedInPages: [SettingsRoute] = [
+        .page(.accountDevices), .page(.accountTeams), .page(.accountEncryption),
+    ]
 
     @ObservedObject var model: AccountSettingsModel
     @ObservedObject var visit: SettingsPaneVisit

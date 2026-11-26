@@ -187,6 +187,12 @@ internal final class AccountServices: AccountBackendListener {
         announceSignIn(.interactive)
     }
 
+    // The step-up's tokens replace this sign-in's, for the same account only, so nothing is announced.
+    func stepUp(acrValues: [String], maxAgeSecs: UInt64?, using authenticator: some WebAuthenticating) async throws(AccountError) {
+        try await backend.stepUp(acrValues: acrValues, maxAgeSecs: maxAgeSecs, using: authenticator)
+        publish()
+    }
+
     func signOut() async {
         do throws(AccountError) {
             try await backend.signOut()
