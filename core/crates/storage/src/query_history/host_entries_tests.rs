@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 
 use uuid::Uuid;
 
-use super::super::{HistoryPageRequest, HistoryQuery, NewEntry, Outcome, QueryHistory};
+use super::super::{HistoryPageRequest, HistoryQuery, NewEntry, Outcome, QueryHistory, RunDetails};
 use crate::StoragePaths;
 use crate::journal::recording::Recording;
 use crate::journal::{RecordKind, RecordRef};
@@ -25,6 +25,7 @@ fn entry(query: &str, seconds: u64) -> NewEntry {
         duration_ms: Some(12),
         rows_affected: Some(3),
         outcome: Outcome::Error("syntax".to_owned()),
+        details: RunDetails::default(),
     }
 }
 

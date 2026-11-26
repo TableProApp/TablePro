@@ -15,20 +15,29 @@ use sha2::{Digest, Sha256};
 use tablepro_core::sql_syntax::{HistoryRecording, SqlGrammar};
 use tablepro_records::Kind;
 use tablepro_records::record_id::{self, uuid_id};
-use tablepro_storage::QueryHistory;
-use tablepro_storage::query_history::{Entry, MAX_QUERY_BYTES, NewEntry, Outcome};
+use tablepro_storage::query_history::{
+    Entry, MAX_QUERY_BYTES, NewEntry, Outcome, RunDetails, RunSource, StatementType,
+};
+use tablepro_storage::{QueryHistory, StorageError};
 use uuid::Uuid;
 
 use super::blocking;
-use super::saved_queries::{
-    HISTORY_STORE, from_millis, history_identity, integer, millis, optional, record_uuid, reference, store_error, text,
-    unreadable,
-};
+use super::saved_queries::{from_millis, integer, millis, optional, record_uuid, reference, text, unreadable};
 use super::settings::ConnectionStanding;
 use crate::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
 use crate::api::error::AdapterError;
 use crate::api::ids::ScopeName;
 use crate::api::state::Standing;
+
+// A store of its own, so a restore of it refills the history alone (0060 as amended).
+pub const HISTORY_STORE: &str = "history.db";
+
+fn store_error(error: StorageError) -> AdapterError {
+    AdapterError::Store {
+        store: HISTORY_STORE.to_owned(),
+        detail: error.to_string(),
+    }
+}
 
 pub struct HistoryAdapter {
     history: QueryHistory,
@@ -130,6 +139,23 @@ pub fn entry_fields(entry: &Entry) -> Value {
     if let Some(error) = &entry.error {
         fields["error"] = json!(error);
     }
+    // The fingerprint is the app's reading with its own grammar, so it stays on the device.
+    let details = &entry.details;
+    for (member, value) in [
+        ("database", details.database.as_deref().map(|text| json!(text))),
+        ("schema", details.schema.as_deref().map(|text| json!(text))),
+        ("source", details.source.map(|source| json!(source.as_str()))),
+        (
+            "statement_type",
+            details.statement_type.map(|kind| json!(kind.as_str())),
+        ),
+        ("first_row_ms", details.first_row_ms.map(|millis| json!(millis))),
+        ("server_ms", details.server_ms.map(|millis| json!(millis))),
+    ] {
+        if let Some(value) = value {
+            fields[member] = value;
+        }
+    }
     fields
 }
 
@@ -167,6 +193,18 @@ pub fn entry_from(record_id: &str, fields: &Value) -> Result<Option<NewEntry>, A
         duration_ms: integer(fields, "duration_ms")?,
         rows_affected: integer(fields, "row_count")?,
         outcome,
+        // A source or statement type a newer build named reads as none.
+        details: RunDetails {
+            database: text(fields, "database")?,
+            schema: text(fields, "schema")?,
+            source: text(fields, "source")?.as_deref().and_then(RunSource::parse),
+            statement_type: text(fields, "statement_type")?
+                .as_deref()
+                .and_then(StatementType::parse),
+            first_row_ms: integer(fields, "first_row_ms")?,
+            server_ms: integer(fields, "server_ms")?,
+            fingerprint: None,
+        },
     }))
 }
 
@@ -181,7 +219,11 @@ impl RecordAdapter for HistoryAdapter {
     }
 
     async fn identity(&self) -> Result<StoreStamp, AdapterError> {
-        history_identity(&self.history).await
+        let identity = self.history.identity().await.map_err(store_error)?;
+        Ok(StoreStamp {
+            generation: identity.generation,
+            sequence: identity.sequence,
+        })
     }
 
     async fn records(&self, scope: ScopeName) -> Result<LocalRecords, AdapterError> {

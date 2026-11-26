@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use super::*;
 use crate::journal::recording::Recording;
-use crate::{QueryHistory, StoragePaths};
+use crate::{SavedQueryDatabase, StoragePaths};
 
-async fn open() -> (tempfile::TempDir, QueryHistory) {
+async fn open() -> (tempfile::TempDir, SavedQueryDatabase) {
     let root = tempfile::tempdir().expect("tempdir");
-    let history = QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+    let history = SavedQueryDatabase::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
         .await
         .expect("open");
     (root, history)

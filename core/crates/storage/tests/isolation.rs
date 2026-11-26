@@ -33,6 +33,7 @@ fn entry(query: &str, connection_id: Uuid, connection_name: &str) -> NewEntry {
         duration_ms: Some(3),
         rows_affected: Some(1),
         outcome: Outcome::Success,
+        details: tablepro_storage::query_history::RunDetails::default(),
     }
 }
 
@@ -152,13 +153,31 @@ async fn store_files_are_private_in_both_roots() -> TestResult {
         let paths = paths(root);
         let history = QueryHistory::open(&paths).await?;
         history.record(entry("SELECT 1", Uuid::new_v4(), "one")).await?;
+        let saved = tablepro_storage::SavedQueryDatabase::open(&paths).await?;
+        saved
+            .saved_queries()
+            .save(tablepro_storage::saved_queries::NewSavedQuery {
+                name: "one".to_owned(),
+                query: "SELECT 1".to_owned(),
+                connection_id: None,
+                connection_name: "one".to_owned(),
+            })
+            .await?;
         let store = ConnectionStore::new(&paths);
         store.upsert_blocking(connection("one"))?;
 
         let connections_file = paths.connections_file();
         let database = paths.history_database();
         let write_ahead_log = database.with_extension("db-wal");
-        for file in [&connections_file, &database, &write_ahead_log] {
+        let saved_database = paths.saved_query_database();
+        let saved_log = saved_database.with_extension("db-wal");
+        for file in [
+            &connections_file,
+            &database,
+            &write_ahead_log,
+            &saved_database,
+            &saved_log,
+        ] {
             assert_eq!(mode(file)?, 0o600, "{} is not private", file.display());
         }
         for directory in [paths.config.as_path(), paths.state.as_path()] {

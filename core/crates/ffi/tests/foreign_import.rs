@@ -152,7 +152,7 @@ async fn another_app_s_connection_lands_with_its_password_and_saved_query_once()
     let library = core.library().unwrap().snapshot().await.unwrap();
     let saved = &library.connections[0];
     let queries = core
-        .history()
+        .saved_query_database()
         .await
         .unwrap()
         .saved_queries()

@@ -15,7 +15,7 @@ use tablepro_session::operation::{DeadlinePolicy, DefaultDeadlines};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{ConnectServices, Connector, DriverConnector, SessionRegistry};
 use tablepro_ssh::SshServices;
-use tablepro_storage::{QueryHistory, StoragePaths};
+use tablepro_storage::{QueryHistory, SavedQueryDatabase, StoragePaths};
 
 use crate::config;
 use crate::runtime::GioProcessHold;
@@ -359,9 +359,13 @@ impl AppServices {
     }
 
     /// What deletes a saved connection and everything kept for it, with
-    /// `history` as the history database, or `None` when it did not
-    /// open.
-    pub(crate) fn connection_deletion(&self, history: Option<QueryHistory>) -> ConnectionDeletion {
+    /// the history and the saved queries' store, each `None` when it did
+    /// not open.
+    pub(crate) fn connection_deletion(
+        &self,
+        history: Option<QueryHistory>,
+        saved: Option<SavedQueryDatabase>,
+    ) -> ConnectionDeletion {
         ConnectionDeletion {
             secrets: self.storage.secrets().clone(),
             connections: Arc::new(StoreConnectionWrites::new(
@@ -373,6 +377,7 @@ impl AppServices {
             highlight_rules: self.storage.highlight_rules().clone(),
             workspaces: self.storage.workspaces().clone(),
             history,
+            saved,
             spawner: self.tasks.clone(),
         }
     }

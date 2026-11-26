@@ -74,6 +74,12 @@ pub enum StorageError {
     #[error("could not migrate the query history: {0}")]
     HistoryMigration(#[source] sqlx::migrate::MigrateError),
 
+    #[error("the saved queries were written by a newer version of TablePro (schema {version})")]
+    SavedQueriesNewerThanApp { version: i64 },
+
+    #[error("could not migrate the saved queries: {0}")]
+    SavedQueriesMigration(#[source] sqlx::migrate::MigrateError),
+
     #[error("{0}")]
     DocumentUnavailable(#[source] crate::document_problem::DocumentProblem),
 
@@ -133,6 +139,8 @@ impl StorageError {
             Self::Encode(..) => "storage.encode",
             Self::HistoryNewerThanApp { .. } => "storage.history_newer_than_app",
             Self::HistoryMigration(..) => "storage.history_migration",
+            Self::SavedQueriesNewerThanApp { .. } => "storage.saved_queries_newer_than_app",
+            Self::SavedQueriesMigration(..) => "storage.saved_queries_migration",
             Self::DocumentUnavailable(problem) => problem.code(),
             Self::DraftNotUtf8 { .. } => "storage.draft_not_utf8",
             Self::ImportOutdated => "storage.import_outdated",

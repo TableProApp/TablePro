@@ -29,8 +29,8 @@ pub(super) fn history(tasks: &Tasks) -> (tempfile::TempDir, HistoryService, Quer
     (root, history, store)
 }
 
-fn save(tasks: &Tasks, history: &QueryHistory, connection: Uuid, name: &str, sql: &str) -> Uuid {
-    let saved = history.saved_queries();
+fn save(tasks: &Tasks, history: &HistoryService, connection: Uuid, name: &str, sql: &str) -> Uuid {
+    let saved = history.saved().unwrap().saved_queries();
     let query = NewSavedQuery {
         name: name.into(),
         query: sql.into(),
@@ -57,16 +57,16 @@ fn ready(dialog: &QuickOpen) {
 fn saved_queries_work_when_the_catalog_fails_and_only_for_their_connection() {
     adw::init().unwrap();
     let runtime = test_runtime();
-    let (_root, history, store) = history(&runtime.tasks());
+    let (_root, history, _store) = history(&runtime.tasks());
     let connection = Uuid::new_v4();
     save(
         &runtime.tasks(),
-        &store,
+        &history,
         connection,
         "My orders",
         "SELECT 1;\nSELECT 2;",
     );
-    save(&runtime.tasks(), &store, Uuid::new_v4(), "Other orders", "SELECT 3");
+    save(&runtime.tasks(), &history, Uuid::new_v4(), "Other orders", "SELECT 3");
     let mut script = ConnectionScript::default();
     script.list_objects.always(FakeReply::err(DriverError::Cancelled));
     let fake = FakeSession::start(script, [], runtime.tasks());
@@ -88,18 +88,18 @@ fn saved_queries_work_when_the_catalog_fails_and_only_for_their_connection() {
 fn choosing_a_saved_query_reads_its_current_sql() {
     adw::init().unwrap();
     let runtime = test_runtime();
-    let (_root, history, store) = history(&runtime.tasks());
+    let (_root, history, _store) = history(&runtime.tasks());
     let connection = Uuid::new_v4();
-    save(&runtime.tasks(), &store, connection, "Orders", "SELECT 1");
+    save(&runtime.tasks(), &history, connection, "Orders", "SELECT 1");
     let mut script = ConnectionScript::default();
     script.list_objects.always(FakeReply::ok(vec![]));
     let fake = FakeSession::start(script, [], runtime.tasks());
     let chosen = Rc::new(RefCell::new(Vec::new()));
     let sink = chosen.clone();
     let dialog = QuickOpen::new(fake.session, runtime.tasks(), move |pick| sink.borrow_mut().push(pick));
-    dialog.include_queries(history, connection);
+    dialog.include_queries(history.clone(), connection);
     ready(&dialog);
-    save(&runtime.tasks(), &store, connection, "Orders", "SELECT 42");
+    save(&runtime.tasks(), &history, connection, "Orders", "SELECT 42");
     dialog.activate(false);
     wait_until(WAIT, || !chosen.borrow().is_empty()).unwrap();
     assert_eq!(chosen.borrow()[0], Pick::Query("SELECT 42".into()));
@@ -109,9 +109,9 @@ fn choosing_a_saved_query_reads_its_current_sql() {
 fn closing_during_query_lookup_discards_the_reply() {
     adw::init().unwrap();
     let runtime = test_runtime();
-    let (_root, history, store) = history(&runtime.tasks());
+    let (_root, history, _store) = history(&runtime.tasks());
     let connection = Uuid::new_v4();
-    save(&runtime.tasks(), &store, connection, "Orders", "SELECT 42");
+    save(&runtime.tasks(), &history, connection, "Orders", "SELECT 42");
     let mut script = ConnectionScript::default();
     script.list_objects.always(FakeReply::ok(vec![]));
     let fake = FakeSession::start(script, [], runtime.tasks());
@@ -173,9 +173,9 @@ fn a_successful_catalog_refresh_keeps_a_saved_query_error_visible() {
 fn saved_queries_arrive_before_the_catalog_and_survive_its_commit() {
     adw::init().unwrap();
     let runtime = test_runtime();
-    let (_root, history, store) = history(&runtime.tasks());
+    let (_root, history, _store) = history(&runtime.tasks());
     let connection = Uuid::new_v4();
-    save(&runtime.tasks(), &store, connection, "Saved orders", "SELECT 1");
+    save(&runtime.tasks(), &history, connection, "Saved orders", "SELECT 1");
     let release = tokio_util::sync::CancellationToken::new();
     let mut script = ConnectionScript::default();
     script.list_objects.always(FakeReply::UntilReleased {
@@ -199,18 +199,18 @@ fn saved_queries_arrive_before_the_catalog_and_survive_its_commit() {
 fn a_deleted_saved_query_reports_an_error_without_opening_sql() {
     adw::init().unwrap();
     let runtime = test_runtime();
-    let (_root, history, store) = history(&runtime.tasks());
+    let (_root, history, _store) = history(&runtime.tasks());
     let connection = Uuid::new_v4();
-    let id = save(&runtime.tasks(), &store, connection, "Orders", "SELECT 1");
+    let id = save(&runtime.tasks(), &history, connection, "Orders", "SELECT 1");
     let mut script = ConnectionScript::default();
     script.list_objects.always(FakeReply::ok(vec![]));
     let fake = FakeSession::start(script, [], runtime.tasks());
     let chosen = Rc::new(RefCell::new(Vec::new()));
     let sink = chosen.clone();
     let dialog = QuickOpen::new(fake.session, runtime.tasks(), move |pick| sink.borrow_mut().push(pick));
-    dialog.include_queries(history, connection);
+    dialog.include_queries(history.clone(), connection);
     ready(&dialog);
-    let saved = store.saved_queries();
+    let saved = history.saved().unwrap().saved_queries();
     finish_on_main(WAIT, runtime.tasks().spawn_task(async move { saved.delete(id).await }))
         .unwrap()
         .unwrap()

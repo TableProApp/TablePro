@@ -1,13 +1,12 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 use std::time::SystemTime;
 
 use sqlx::{AssertSqlSafe, Connection, Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use crate::journal::{JournalEntry, RecordKind, RecordRef};
-use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
+use crate::query_history::{Bind, CopyDelete, LiveFiles, trim_saved_copies};
 use crate::unix_time::to_unix_millis;
 use crate::{StorageError, TableRef};
 
@@ -25,7 +24,11 @@ const SUBTREE: &str = "WITH RECURSIVE subtree(record_id) AS ( \
          JOIN subtree ON folder.parent_record_id = subtree.record_id) ";
 
 // The store's own code does what a cascade did, so the change journal sees every row it changes (core ADR 0052).
-pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: Uuid) -> Result<Vec<JournalEntry>, StorageError> {
+pub(super) async fn delete_folder(
+    pool: &SqlitePool,
+    files: &LiveFiles,
+    id: Uuid,
+) -> Result<Vec<JournalEntry>, StorageError> {
     let mut connection = pool.acquire().await?;
     let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
     let row = sqlx::query("SELECT id, connection_id, parent_record_id FROM saved_query_folders WHERE record_id = ?")
@@ -47,7 +50,7 @@ pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: Uuid) -> R
         .iter()
         .map(|(_, record)| record_id(record))
         .collect::<Result<Vec<_>, _>>()?;
-    trim_upgrade_copies(path, &rowid_deletes("saved_query_folders", &doomed)).await?;
+    trim_saved_copies(files, &rowid_deletes("saved_query_folders", &doomed)).await?;
     let filed: Vec<(i64, Option<String>)> = sqlx::query_as(AssertSqlSafe(format!(
         "{SUBTREE} SELECT query.id, query.connection_id FROM saved_queries query \
          JOIN saved_query_folders folder ON folder.record_id = query.folder_record_id \
@@ -70,14 +73,14 @@ pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: Uuid) -> R
 // The number of queries deleted, and what changed.
 pub(super) async fn delete_connection(
     pool: &SqlitePool,
-    path: &Path,
+    files: &LiveFiles,
     connection: Uuid,
 ) -> Result<(usize, Vec<JournalEntry>), StorageError> {
     let mut database = pool.acquire().await?;
     let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
     let owner = connection.to_string();
     let copies = connection_copy_deletes(&mut transaction, &owner).await?;
-    trim_upgrade_copies(path, &copies).await?;
+    trim_saved_copies(files, &copies).await?;
     let removed =
         sqlx::query_scalar::<_, String>("DELETE FROM saved_queries WHERE connection_id = ? RETURNING record_id")
             .bind(&owner)

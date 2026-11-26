@@ -74,6 +74,7 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         legacy_mirror: None,
         library: None,
         history: None,
+        saved_queries: None,
         link: Err(tablepro_sync::api::TransportError::SignedOut.into()),
         listener: Arc::new(Listener::default()),
     });

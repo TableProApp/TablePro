@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StorageError;
 use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
-use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
+use crate::query_history::{Bind, CopyDelete, LiveFiles, trim_saved_copies};
 
 mod batch;
 #[cfg(test)]
@@ -47,19 +47,18 @@ pub struct TableFolderItem {
     pub folder_id: Uuid,
 }
 
-/// The folders a person files a connection's tables in, in the history database. A table sits in at
-/// most one folder; an item whose folder is missing reads as unfiled, since a pull can bring the
-/// item first.
+// The folders a person files a connection's tables in, in the saved queries' database. A table sits in at most one
+// folder; an item whose folder is missing reads as unfiled, since a pull can bring the item first.
 #[derive(Debug, Clone)]
 pub struct TableFolders {
     pool: SqlitePool,
-    path: std::path::PathBuf,
+    files: LiveFiles,
     signals: Signals,
 }
 
 impl TableFolders {
-    pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf, signals: Signals) -> Self {
-        Self { pool, path, signals }
+    pub(crate) fn new(pool: SqlitePool, files: LiveFiles, signals: Signals) -> Self {
+        Self { pool, files, signals }
     }
 
     pub fn changes(&self) -> tokio::sync::watch::Receiver<u64> {
@@ -174,8 +173,8 @@ impl TableFolders {
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         let folder = || vec![Bind::Text(id.to_string())];
-        trim_upgrade_copies(
-            &self.path,
+        trim_saved_copies(
+            &self.files,
             &[
                 CopyDelete {
                     table: "table_folder_items",
@@ -263,7 +262,7 @@ impl TableFolders {
                 ],
             })
             .collect();
-        trim_upgrade_copies(&self.path, &copies).await?;
+        trim_saved_copies(&self.files, &copies).await?;
         let mut unfiled = Vec::new();
         for table in tables {
             let changed = sqlx::query(

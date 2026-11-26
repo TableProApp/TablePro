@@ -13,7 +13,7 @@ use crate::i18n::{gettext, gettext_f};
 impl WorkspaceShell {
     pub(crate) fn move_favorite(&self, id: Uuid, folder: Option<Uuid>) {
         self.change_favorites_with(
-            async move |history| history.saved_queries().set_folder(id, folder).await,
+            async move |saved| saved.saved_queries().set_folder(id, folder).await,
             gettext("Could not move that saved query."),
             move_failure_text,
         );
@@ -28,8 +28,8 @@ impl WorkspaceShell {
 
     fn create_folder_for(&self, connection: Uuid, name: String, parent: Option<Uuid>) {
         self.change_favorites_with(
-            async move |history| {
-                history
+            async move |saved| {
+                saved
                     .saved_query_folders()
                     .create(Some(connection), &name, parent)
                     .await
@@ -42,7 +42,7 @@ impl WorkspaceShell {
 
     fn rename_folder(&self, id: Uuid, name: String) {
         self.change_favorites_with(
-            async move |history| history.saved_query_folders().rename(id, &name).await,
+            async move |saved| saved.saved_query_folders().rename(id, &name).await,
             gettext("Could not rename that folder."),
             folder_failure_text,
         );
@@ -50,7 +50,7 @@ impl WorkspaceShell {
 
     pub(crate) fn delete_folder(&self, id: Uuid) {
         self.change_favorites_with(
-            async move |history| history.saved_query_folders().delete(id).await,
+            async move |saved| saved.saved_query_folders().delete(id).await,
             gettext("Could not delete that folder."),
             folder_failure_text,
         );
@@ -228,15 +228,15 @@ mod tests {
     use crate::ui::session_window::tests::{TestWindow, WAIT};
     use crate::workspace::{answer, visible_alert};
 
-    fn ready(test: &TestWindow) -> tablepro_storage::QueryHistory {
+    fn ready(test: &TestWindow) -> tablepro_storage::SavedQueryDatabase {
         let availability = test.services.history().availability();
         wait_until(WAIT, || availability.borrow().is_ready()).expect("history ready");
         wait_until(WAIT, || test.hold.live() == 0).expect("initial work finished");
-        test.services.history().store().expect("history")
+        test.services.history().saved().expect("saved queries")
     }
 
     fn folders(test: &TestWindow, owner: Uuid) -> Vec<SavedQueryFolder> {
-        let history = test.services.history().store().expect("history");
+        let history = test.services.history().saved().expect("saved queries");
         let task = test
             .services
             .tasks
@@ -255,9 +255,9 @@ mod tests {
         let shell = test.window.shell().expect("shell");
         let (release, released) = tokio::sync::oneshot::channel();
         shell.change_favorites_with(
-            move |history| async move {
+            move |saved| async move {
                 released.await.expect("release write");
-                history
+                saved
                     .saved_query_folders()
                     .create(Some(owner), "Reports", None)
                     .await
@@ -326,7 +326,7 @@ mod tests {
         let favorite = before.queries[0].clone();
         let shell = test.window.shell().expect("shell");
         shell.imp().favorites.get().expect("pane").show(before.clone());
-        let history = test.services.history().store().expect("history");
+        let history = test.services.history().saved().expect("saved queries");
         let changes = history.saved_queries().changes();
         shell.ask_folder_for(favorite.clone());
         let dialog = visible_alert(&test.window).expect("move prompt");
@@ -400,7 +400,7 @@ mod tests {
         assert_eq!(test.hold.live(), 1);
         wait_until(WAIT, || test.hold.live() == 0).expect("deleted");
         assert!(folders(&test, owner).is_empty());
-        let history = test.services.history().store().expect("history");
+        let history = test.services.history().saved().expect("saved queries");
         let task = test
             .services
             .tasks

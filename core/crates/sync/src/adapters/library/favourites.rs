@@ -1,4 +1,4 @@
-// Favourite tables and databases (`SyncRecordMapper`, Table Favorite and Favorite Database), in the history database.
+// Favourite tables and databases (`SyncRecordMapper`, Table Favorite and Favorite Database), in the saved queries' database.
 // Each is named by a digest of what it names (0052, Long ids). On iCloud a favourite table whose names hold `|` or `\`
 // also goes by the alias Macs before 0.77 wrote, as the Mac keeps both; TablePro Sync carries the escaped id only. A table's database and schema go only when set, a database's
 // environment always, and one a newer build named reads as unassigned, as the Mac reads it. A favourite of a connection
@@ -13,20 +13,21 @@ use tablepro_records::Kind;
 use tablepro_records::record_id::{favourite_database, favourite_table};
 use tablepro_storage::favourites::FavouriteContents;
 use tablepro_storage::{
-    ConnectionStore, DatabaseEnvironment, FavouriteDatabase, FavouriteTable, Favourites, QueryHistory, StorageError,
+    ConnectionStore, DatabaseEnvironment, FavouriteDatabase, FavouriteTable, Favourites, SavedQueryDatabase,
+    StorageError,
 };
 use uuid::Uuid;
 
 use super::folders::connection_standing_map;
 use super::values::{Object, text, uuid_at, uuid_value};
-use super::{HISTORY_STORE, Provider, Seen, changed_since, lock, record_of, seen, stale};
+use super::{Provider, SAVED_QUERY_STORE, Seen, changed_since, lock, record_of, seen, stale};
 use crate::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
 use crate::api::error::AdapterError;
 use crate::api::ids::ScopeName;
 use crate::api::state::Standing;
 
 pub struct FavouriteAdapter {
-    history: QueryHistory,
+    database: SavedQueryDatabase,
     favourites: Favourites,
     connections: ConnectionStore,
     kind: Kind,
@@ -36,7 +37,7 @@ pub struct FavouriteAdapter {
 
 impl FavouriteAdapter {
     pub fn all(
-        history: &QueryHistory,
+        database: &SavedQueryDatabase,
         connections: &ConnectionStore,
         provider: Provider,
     ) -> Vec<Arc<dyn RecordAdapter>> {
@@ -44,8 +45,8 @@ impl FavouriteAdapter {
             .into_iter()
             .map(|kind| {
                 Arc::new(Self {
-                    history: history.clone(),
-                    favourites: history.favourites(),
+                    database: database.clone(),
+                    favourites: database.favourites(),
                     connections: connections.clone(),
                     kind,
                     provider,
@@ -58,7 +59,7 @@ impl FavouriteAdapter {
 
 fn store_error(error: StorageError) -> AdapterError {
     AdapterError::Store {
-        store: HISTORY_STORE.to_owned(),
+        store: SAVED_QUERY_STORE.to_owned(),
         detail: error.to_string(),
     }
 }
@@ -252,7 +253,7 @@ impl FavouriteAdapter {
         };
         match outcome {
             Ok(_) => Ok(()),
-            Err(StorageError::ImportOutdated) => Err(stale(HISTORY_STORE)),
+            Err(StorageError::ImportOutdated) => Err(stale(SAVED_QUERY_STORE)),
             Err(error) => Err(store_error(error)),
         }
     }
@@ -265,11 +266,11 @@ impl RecordAdapter for FavouriteAdapter {
     }
 
     fn store(&self) -> &str {
-        HISTORY_STORE
+        SAVED_QUERY_STORE
     }
 
     async fn identity(&self) -> Result<StoreStamp, AdapterError> {
-        let identity = self.history.identity().await.map_err(store_error)?;
+        let identity = self.database.identity().await.map_err(store_error)?;
         Ok(StoreStamp {
             generation: identity.generation,
             sequence: identity.sequence,
@@ -296,7 +297,7 @@ impl RecordAdapter for FavouriteAdapter {
         if let Some(expected) = expected {
             let now = seen(&self.read(&contents, &connection_standing_map(&self.connections).await?));
             if changed_since(&expected, &now, &changes) {
-                return Err(stale(HISTORY_STORE));
+                return Err(stale(SAVED_QUERY_STORE));
             }
         }
         self.write(&contents, &changes).await?;

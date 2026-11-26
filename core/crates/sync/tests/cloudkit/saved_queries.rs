@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 use serde_json::{Value, json};
 use tablepro_records::Kind;
 use tablepro_storage::saved_queries::SavedQuery;
-use tablepro_storage::{QueryHistory, SavedQueryWrite, StoragePaths};
+use tablepro_storage::{SavedQueryDatabase, SavedQueryWrite, StoragePaths};
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
 use tablepro_sync::adapters::settings::ConnectionStanding;
 use tablepro_sync::api::cloudkit::CloudKitTransport;
@@ -62,7 +62,7 @@ impl ConnectionStanding for Syncs {
     }
 }
 
-fn icloud(rig: &Rig, history: &QueryHistory) -> CloudKitSync {
+fn icloud(rig: &Rig, history: &SavedQueryDatabase) -> CloudKitSync {
     CloudKitSync::new(CloudKitParts {
         transport: Arc::clone(&rig.cloud) as Arc<dyn CloudKitTransport>,
         files: Arc::clone(&rig.files) as Arc<dyn StateFiles>,
@@ -76,7 +76,7 @@ fn icloud(rig: &Rig, history: &QueryHistory) -> CloudKitSync {
     })
 }
 
-async fn keyword(history: &QueryHistory, id: &str) -> Option<String> {
+async fn keyword(history: &SavedQueryDatabase, id: &str) -> Option<String> {
     let id = Uuid::parse_str(id).unwrap();
     history
         .saved_queries()
@@ -93,7 +93,7 @@ async fn keyword(history: &QueryHistory, id: &str) -> Option<String> {
 async fn a_fetched_holder_of_a_keyword_settles_it_on_the_query_created_first_and_the_push_sends_the_release() {
     let rig = Rig::new().await;
     let dir = tempfile::tempdir().unwrap();
-    let history = QueryHistory::open(&StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro"))
+    let history = SavedQueryDatabase::open(&StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro"))
         .await
         .unwrap();
     history

@@ -370,6 +370,18 @@ msgid "The query history could not be updated for this version of TablePro."
 msgstr "Không cập nhật được lịch sử truy vấn cho phiên bản TablePro này."
 
 #: crates/app/src/services/history_availability.rs
+msgid ""
+"The saved queries were written by a newer version of TablePro. Update "
+"TablePro to read them."
+msgstr ""
+"Các truy vấn đã lưu được ghi bởi một phiên bản TablePro mới hơn. Hãy cập nhật "
+"TablePro để đọc được chúng."
+
+#: crates/app/src/services/history_availability.rs
+msgid "The saved queries could not be updated for this version of TablePro."
+msgstr "Không cập nhật được các truy vấn đã lưu cho phiên bản TablePro này."
+
+#: crates/app/src/services/history_availability.rs
 #: crates/app/src/ui/error_text/files.rs
 #, rust-format
 msgid "TablePro is not allowed to write {path}."
@@ -386,9 +398,12 @@ msgid "{path} could not be created."
 msgstr "Không tạo được {path}."
 
 #: crates/app/src/services/history_availability.rs
-#: crates/app/src/ui/saved_queries_dialog/mod.rs
 msgid "The query history file could not be read. It may be damaged."
 msgstr "Không đọc được tệp lịch sử truy vấn. Tệp có thể đã bị hỏng."
+
+#: crates/app/src/ui/saved_queries_dialog/mod.rs
+msgid "The saved queries file could not be read. It may be damaged."
+msgstr "Không đọc được tệp truy vấn đã lưu. Tệp có thể đã bị hỏng."
 
 #: crates/app/src/services/secret_labels.rs
 msgid "TablePro MCP access token"

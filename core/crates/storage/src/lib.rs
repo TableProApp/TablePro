@@ -21,6 +21,7 @@ mod name_rules;
 mod paths;
 pub mod query_history;
 pub mod saved_queries;
+mod saved_query_database;
 pub mod store_identity;
 mod stored_id;
 pub mod table_folders;
@@ -67,6 +68,7 @@ pub use saved_queries::{
     SavedQueries, SavedQueriesSnapshot, SavedQueryContents, SavedQueryFolder, SavedQueryFolders, SavedQuerySettlement,
     SavedQueryWrite,
 };
+pub use saved_query_database::SavedQueryDatabase;
 pub use store_identity::{StoreContinuity, StoreIdentity};
 pub use table_folders::{
     TableFolder, TableFolderContents, TableFolderItem, TableFolderWrite, TableFolders, TableRef, TableScope,

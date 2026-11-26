@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::StorageError;
 use crate::journal::JournalEntry;
-use crate::query_history::trim_upgrade_copies;
+use crate::query_history::{LiveFiles, trim_saved_copies};
 use crate::unix_time::to_unix_millis;
 
 use super::deletion::{delete_folder_rows, rowid_deletes};
@@ -112,9 +112,9 @@ impl SavedQueries {
             }
             None => (write.removed_queries.clone(), write.removed_folders.clone()),
         };
-        let removed_queries = remove_rows(&mut transaction, &self.path, "saved_queries", &removed_queries).await?;
+        let removed_queries = remove_rows(&mut transaction, &self.files, "saved_queries", &removed_queries).await?;
         let removed_folders =
-            remove_rows(&mut transaction, &self.path, "saved_query_folders", &removed_folders).await?;
+            remove_rows(&mut transaction, &self.files, "saved_query_folders", &removed_folders).await?;
         let now = SystemTime::now();
         let settled_folders = match write.folders.is_empty() {
             true => Vec::new(),
@@ -229,7 +229,7 @@ fn digest(queries: &[SavedQuery], folders: &[SavedQueryFolder]) -> Result<String
 // Removes the rows these ids name, from the upgrade copies too, and returns the ids that were there.
 async fn remove_rows(
     database: &mut SqliteConnection,
-    path: &std::path::Path,
+    files: &LiveFiles,
     table: &'static str,
     ids: &[Uuid],
 ) -> Result<Vec<Uuid>, StorageError> {
@@ -252,7 +252,7 @@ async fn remove_rows(
     if rowids.is_empty() {
         return Ok(removed);
     }
-    trim_upgrade_copies(path, &rowid_deletes(table, &rowids)).await?;
+    trim_saved_copies(files, &rowid_deletes(table, &rowids)).await?;
     match table {
         "saved_query_folders" => delete_folder_rows(database, &rowids).await?,
         _ => delete_query_rows(database, &rowids).await?,

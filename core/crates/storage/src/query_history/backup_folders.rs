@@ -182,15 +182,27 @@ mod tests {
     use sqlx::{AssertSqlSafe, ConnectOptions, Connection, SqliteConnection, SqlitePool};
     use uuid::Uuid;
 
+    use crate::SavedQueryDatabase;
     use crate::paths::StoragePaths;
     use crate::query_history::fixtures::{BETA_5, old_database};
-    use crate::query_history::{QueryHistory, trim_copy};
+    use crate::query_history::{LiveFiles, QueryHistory, Side, trim_copy};
     use crate::saved_queries::NewSavedQuery;
 
-    async fn history(root: &tempfile::TempDir) -> QueryHistory {
-        QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+    fn paths(root: &tempfile::TempDir) -> StoragePaths {
+        StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro")
+    }
+
+    async fn history(root: &tempfile::TempDir) -> SavedQueryDatabase {
+        SavedQueryDatabase::open(&paths(root))
             .await
-            .expect("open history")
+            .expect("open the saved queries")
+    }
+
+    // The saved queries' side of a trim, as a deletion of theirs runs it.
+    async fn trim(copy: &Path, root: &tempfile::TempDir) {
+        trim_copy(copy, &LiveFiles::of(&paths(root)), Side::Saved, &[])
+            .await
+            .expect("trim copy");
     }
 
     async fn copy_database(path: &Path) -> SqliteConnection {
@@ -202,7 +214,7 @@ mod tests {
             .expect("open copy")
     }
 
-    async fn save(history: &QueryHistory, name: &str, folder: Option<Uuid>) -> Uuid {
+    async fn save(history: &SavedQueryDatabase, name: &str, folder: Option<Uuid>) -> Uuid {
         let store = history.saved_queries();
         let id = store
             .save(NewSavedQuery {
@@ -220,18 +232,18 @@ mod tests {
         id
     }
 
-    async fn rowid(history: &QueryHistory, table: &str, id: Uuid) -> i64 {
+    async fn rowid(history: &SavedQueryDatabase, table: &str, id: Uuid) -> i64 {
         sqlx::query_scalar(AssertSqlSafe(format!("SELECT id FROM {table} WHERE record_id = ?")))
             .bind(id.to_string())
-            .fetch_one(&history.pool)
+            .fetch_one(history.pool())
             .await
             .expect("rowid")
     }
 
-    async fn record_id(history: &QueryHistory, table: &str, rowid: i64) -> Uuid {
+    async fn record_id(history: &SavedQueryDatabase, table: &str, rowid: i64) -> Uuid {
         let id: String = sqlx::query_scalar(AssertSqlSafe(format!("SELECT record_id FROM {table} WHERE id = ?")))
             .bind(rowid)
-            .fetch_one(&history.pool)
+            .fetch_one(history.pool())
             .await
             .expect("record id");
         Uuid::parse_str(&id).expect("a UUID")
@@ -276,16 +288,16 @@ mod tests {
         root: &tempfile::TempDir,
         folders: &[(i64, &str, Option<i64>)],
         queries: &[(i64, &str, Option<i64>, i64)],
-    ) -> (QueryHistory, std::path::PathBuf) {
+    ) -> (SavedQueryDatabase, std::path::PathBuf) {
         let (paths, pool) = old_database(root, BETA_5).await;
         beta_folders(&pool, folders).await;
         beta_queries(&pool, queries).await;
         pool.close().await;
-        let history = QueryHistory::open(&paths).await.expect("upgrade");
-        let copies = crate::upgrade_copies::copies_blocking(&history.path).expect("copies");
+        QueryHistory::open(&paths).await.expect("upgrade");
+        let copies = crate::upgrade_copies::copies_blocking(&paths.history_database()).expect("copies");
         assert_eq!(copies.len(), 1, "the upgrade kept no copy");
         let copy = copies[0].path.clone();
-        (history, copy)
+        (history(root).await, copy)
     }
 
     #[tokio::test]
@@ -381,18 +393,16 @@ mod tests {
         folders.rename(root_folder, "Renamed").await.expect("rename root");
         folders.move_to(child, None).await.expect("reuse the former root name");
         sqlx::query("DELETE FROM saved_query_folders WHERE id = 2")
-            .execute(&history.pool)
+            .execute(history.pool())
             .await
             .expect("simulate a prior committed deletion");
 
-        let mut live = history.pool.acquire().await.expect("live connection");
+        let mut live = history.pool().acquire().await.expect("live connection");
         let transaction = live
             .begin_with(AssertSqlSafe("BEGIN IMMEDIATE"))
             .await
             .expect("hold the live graph");
-        trim_copy(&copy, history.path.to_str().expect("UTF-8 path"), &[])
-            .await
-            .expect("trim copy");
+        trim(&copy, &root).await;
         transaction.commit().await.expect("release live graph");
 
         let mut database = copy_database(&copy).await;
@@ -435,13 +445,11 @@ mod tests {
         sqlx::query("UPDATE saved_query_folders SET parent_record_id = ? WHERE record_id = ?")
             .bind(everywhere.to_string())
             .bind(reports.to_string())
-            .execute(&history.pool)
+            .execute(history.pool())
             .await
             .expect("file it under the shared folder");
 
-        trim_copy(&copy, history.path.to_str().expect("UTF-8 path"), &[])
-            .await
-            .expect("trim copy");
+        trim(&copy, &root).await;
 
         let mut database = copy_database(&copy).await;
         let stored: Vec<(i64, String, Option<i64>)> =
@@ -483,9 +491,7 @@ mod tests {
             folders.move_to(id, Some(parent)).await.expect("into a shared folder");
         }
 
-        trim_copy(&copy, history.path.to_str().expect("UTF-8 path"), &[])
-            .await
-            .expect("trim copy");
+        trim(&copy, &root).await;
 
         assert!(copy.exists(), "a valid copy was deleted");
         let mut database = copy_database(&copy).await;
@@ -556,7 +562,7 @@ mod tests {
             .expect("moving folder");
         let kept = save(&history, "kept", Some(moved_out)).await;
         let filed = save(&history, "filed", Some(child)).await;
-        let copy = crate::upgrade_copies::keep_database(&history.pool, &history.path, 4)
+        let copy = crate::upgrade_copies::keep_database(history.pool(), history.path(), 4)
             .await
             .expect("keep copy");
 
@@ -592,7 +598,7 @@ mod tests {
         let (history, legacy) = upgraded_beta(&root, &[], &[(10, "moved", None, 0)]).await;
         let store = history.saved_queries();
         let moved = record_id(&history, "saved_queries", 10).await;
-        let current = crate::upgrade_copies::keep_database(&history.pool, &history.path, 6)
+        let current = crate::upgrade_copies::keep_database(history.pool(), history.path(), 6)
             .await
             .expect("a copy with record ids");
         let elsewhere = Uuid::new_v4();
@@ -633,10 +639,11 @@ mod tests {
         .await
         .expect("another connection's folders");
         pool.close().await;
-        let history = QueryHistory::open(&paths).await.expect("upgrade");
-        let copy = crate::upgrade_copies::copies_blocking(&history.path).expect("copies")[0]
+        QueryHistory::open(&paths).await.expect("upgrade");
+        let copy = crate::upgrade_copies::copies_blocking(&paths.history_database()).expect("copies")[0]
             .path
             .clone();
+        let history = history(&root).await;
         let folders = history.saved_query_folders();
         let going = record_id(&history, "saved_query_folders", 1).await;
         let reports = record_id(&history, "saved_query_folders", 2).await;
@@ -730,9 +737,7 @@ mod tests {
             .expect("legacy query");
         }
         database.close().await.expect("close fixture");
-        trim_copy(&copy, history.path.to_str().expect("UTF-8 path"), &[])
-            .await
-            .expect("trim legacy copy");
+        trim(&copy, &root).await;
         let mut database = copy_database(&copy).await;
         let names: Vec<String> = sqlx::query_scalar("SELECT name FROM saved_queries")
             .fetch_all(&mut database)

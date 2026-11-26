@@ -98,8 +98,14 @@ public sealed class QueryHistory : IDisposable
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
         cancellationToken.ThrowIfCancellationRequested();
         // A search only reads, so one the caller stopped waiting for is left to finish.
-        var page = await CoreCall.RunAsync(
-                () => _store.Search(text, connectionId?.ToString(), after?.Position, checked((uint)limit)))
+        var filter = new Native.HistoryFilterArg(
+            text,
+            connectionId is { } connection ? [connection.ToString()] : null,
+            null,
+            Native.HistoryStatusTag.Any,
+            null,
+            null);
+        var page = await CoreCall.RunAsync(() => _store.Search(filter, after?.Position, checked((uint)limit)))
             .WaitAsync(cancellationToken)
             .ConfigureAwait(false);
         return new HistoryPage(
@@ -146,11 +152,6 @@ public sealed class QueryHistory : IDisposable
         return CoreCall.RunAsync(() => _store.Export(native, tag, path));
     }
 
-    // The same database, so every store from one QueryHistory sees the others' writes.
-    public SavedQueries OpenSavedQueries() => new(CoreCall.Run(() => _store.SavedQueries()));
-
-    public Favourites OpenFavourites() => new(CoreCall.Run(() => _store.Favourites()));
-
     public void Dispose() => _store.Dispose();
 
     private static Native.HistoryRun Run(HistoryRun run) => new(
@@ -158,7 +159,8 @@ public sealed class QueryHistory : IDisposable
         run.ExecutedAt.ToUnixTimeMilliseconds(),
         run.Duration is { } duration ? checked((long)duration.TotalMilliseconds) : null,
         run.RowsAffected,
-        Outcome(run.Outcome));
+        Outcome(run.Outcome),
+        new Native.HistoryRunDetails(null, null, Native.HistorySourceTag.Editor, null, null, null, null));
 
     private static HistoryEntry Entry(Native.HistoryEntryInfo entry) => new(
         entry.Id,

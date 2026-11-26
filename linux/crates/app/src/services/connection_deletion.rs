@@ -4,7 +4,7 @@ use tablepro_core::credentials::SecretVault;
 use tablepro_session::SessionKey;
 use tablepro_session::connect::ConnectionWrites;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::QueryHistory;
+use tablepro_storage::{QueryHistory, SavedQueryDatabase};
 use uuid::Uuid;
 
 use super::deletion_error::DeletionError;
@@ -35,6 +35,8 @@ pub struct ConnectionDeletion {
     pub workspaces: WorkspaceStore,
     /// `None` when the history database did not open.
     pub history: Option<QueryHistory>,
+    /// `None` when the saved queries' store did not open.
+    pub saved: Option<SavedQueryDatabase>,
     pub spawner: Tasks,
 }
 
@@ -97,32 +99,38 @@ impl ConnectionDeletion {
         if let Err(error) = self.workspaces.purge_databases_of(id).await {
             report.purge_failures.push(PurgeFailure::Workspace(error));
         }
-        let Some(history) = self.history.clone() else {
-            let unavailable = || "the query history did not open".to_owned();
-            report.purge_failures.push(PurgeFailure::SavedQueries(unavailable()));
-            if options.delete_history {
-                report.purge_failures.push(PurgeFailure::History(unavailable()));
-            }
-            return report;
-        };
         // The queries saved under the connection name tables only its
         // database has, so they go with it whatever the history switch
         // says.
-        let saved_queries = history.saved_queries();
-        let removed = self
-            .spawner
-            .spawn_task(async move { saved_queries.delete_for_connection(id).await })
-            .await;
-        if let Some(error) = failure_text(removed) {
-            report.purge_failures.push(PurgeFailure::SavedQueries(error));
+        match self.saved.clone() {
+            Some(saved) => {
+                let saved_queries = saved.saved_queries();
+                let removed = self
+                    .spawner
+                    .spawn_task(async move { saved_queries.delete_for_connection(id).await })
+                    .await;
+                if let Some(error) = failure_text(removed) {
+                    report.purge_failures.push(PurgeFailure::SavedQueries(error));
+                }
+            }
+            None => report
+                .purge_failures
+                .push(PurgeFailure::SavedQueries("the saved queries did not open".to_owned())),
         }
         if options.delete_history {
-            let removed = self
-                .spawner
-                .spawn_task(async move { history.delete_for_connection(id).await })
-                .await;
-            if let Some(error) = failure_text(removed) {
-                report.purge_failures.push(PurgeFailure::History(error));
+            match self.history.clone() {
+                Some(history) => {
+                    let removed = self
+                        .spawner
+                        .spawn_task(async move { history.delete_for_connection(id).await })
+                        .await;
+                    if let Some(error) = failure_text(removed) {
+                        report.purge_failures.push(PurgeFailure::History(error));
+                    }
+                }
+                None => report
+                    .purge_failures
+                    .push(PurgeFailure::History("the query history did not open".to_owned())),
             }
         }
         report
@@ -196,6 +204,7 @@ mod tests {
         workspaces: WorkspaceStore,
         drafts: DraftStore,
         history: QueryHistory,
+        saved: SavedQueryDatabase,
         id: Uuid,
         other: Uuid,
         log: Log,
@@ -257,6 +266,7 @@ mod tests {
             duration_ms: Some(1),
             rows_affected: Some(0),
             outcome: Outcome::Success,
+            details: Default::default(),
         }
     }
 
@@ -273,6 +283,7 @@ mod tests {
         let drafts = DraftStore::new(paths.drafts_dir());
         let workspaces = WorkspaceStore::start(paths.workspaces_dir(), drafts.clone(), &tasks);
         let history = QueryHistory::open(&paths).await.expect("the history");
+        let saved = SavedQueryDatabase::open(&paths).await.expect("the saved queries");
         let (id, other) = (Uuid::new_v4(), Uuid::new_v4());
         for connection_id in [id, other] {
             store.upsert_blocking(connection(connection_id)).expect("the entry");
@@ -319,7 +330,7 @@ mod tests {
                 .record(ran("SELECT * FROM users", connection_id))
                 .await
                 .expect("a history entry");
-            history
+            saved
                 .saved_queries()
                 .save(NewSavedQuery {
                     name: "users".to_owned(),
@@ -341,6 +352,7 @@ mod tests {
             workspaces,
             drafts,
             history,
+            saved,
             id,
             other,
             log: Log::default(),
@@ -362,6 +374,7 @@ mod tests {
                 highlight_rules: self.highlight_rules.clone(),
                 workspaces: self.workspaces.clone(),
                 history: Some(self.history.clone()),
+                saved: Some(self.saved.clone()),
                 spawner: paused_tasks(),
             }
         }
@@ -397,7 +410,7 @@ mod tests {
         }
 
         async fn saved_query_count(&self, id: Uuid) -> usize {
-            self.history
+            self.saved
                 .saved_queries()
                 .list(Some(id))
                 .await
@@ -617,19 +630,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn without_the_history_database_only_the_saved_queries_are_left_unless_history_was_asked_for() {
+    async fn without_the_saved_queries_store_only_the_saved_queries_are_left() {
         let fixture = fixture().await;
         let mut deletion = fixture.deletion();
-        deletion.history = None;
+        deletion.saved = None;
 
         let report = deletion
-            .run(fixture.id, DeletionOptions::default())
+            .run(fixture.id, DeletionOptions { delete_history: true })
             .await
             .expect("the delete");
 
         assert!(
             matches!(report.purge_failures.as_slice(), [PurgeFailure::SavedQueries(_)]),
             "{report:?}"
+        );
+        assert_eq!(fixture.history_count(fixture.id).await, 0);
+    }
+
+    #[tokio::test]
+    async fn without_the_history_database_only_the_history_is_left_and_only_when_it_was_asked_for() {
+        let fixture = fixture().await;
+        let mut deletion = fixture.deletion();
+        deletion.history = None;
+
+        let kept = deletion
+            .run(fixture.id, DeletionOptions::default())
+            .await
+            .expect("the delete");
+        let asked = deletion
+            .run(fixture.other, DeletionOptions { delete_history: true })
+            .await
+            .expect("the delete");
+
+        assert!(kept.is_complete(), "{kept:?}");
+        assert_eq!(fixture.saved_query_count(fixture.id).await, 0);
+        assert!(
+            matches!(asked.purge_failures.as_slice(), [PurgeFailure::History(_)]),
+            "{asked:?}"
         );
     }
 
@@ -643,6 +680,7 @@ mod tests {
         std::fs::write(&drafts, b"not a directory").expect("seed");
         let mut deletion = fixture.deletion();
         deletion.history = None;
+        deletion.saved = None;
 
         let report = deletion
             .run(fixture.id, DeletionOptions { delete_history: true })

@@ -48,7 +48,7 @@ async fn original_schema_upgrade_preserves_queries_and_assigns_connection_scoped
     insert_queries(&pool, connection, other).await;
     pool.close().await;
 
-    let history = QueryHistory::open(&paths).await.expect("upgrade");
+    let history = crate::SavedQueryDatabase::open(&paths).await.expect("upgrade");
     let mut queries = history
         .saved_queries()
         .snapshot(connection)
@@ -125,7 +125,7 @@ async fn favorites_schema_upgrade_preserves_filing_and_metadata_and_normalizes_p
     insert_favorites(&pool, connection, other).await;
     pool.close().await;
 
-    let history = QueryHistory::open(&paths).await.expect("upgrade");
+    let history = crate::SavedQueryDatabase::open(&paths).await.expect("upgrade");
     let snapshot = history.saved_queries().snapshot(connection).await.expect("snapshot");
     let folder = |name: &str| {
         snapshot
@@ -201,7 +201,7 @@ async fn store_identity_and_table_folders_upgrade_keeps_every_row_and_starts_cou
     insert_favorites(&pool, connection, other).await;
     pool.close().await;
 
-    let history = QueryHistory::open(&paths).await.expect("upgrade");
+    let history = crate::SavedQueryDatabase::open(&paths).await.expect("upgrade");
     let stamped = history.identity().await.expect("identity");
     history
         .favourites()

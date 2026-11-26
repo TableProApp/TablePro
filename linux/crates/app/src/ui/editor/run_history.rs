@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 
 use tablepro_session::ConnectionMetadata;
-use tablepro_storage::query_history::{NewEntry, Outcome};
+use tablepro_storage::query_history::{NewEntry, Outcome, RunDetails, RunSource};
 
 use super::run_log::RunLog;
 
@@ -33,6 +33,10 @@ pub fn history_entry(query: String, metadata: &ConnectionMetadata, executed_at: 
         duration_ms,
         rows_affected: log.rows_for_history(),
         outcome,
+        details: RunDetails {
+            source: Some(RunSource::Editor),
+            ..RunDetails::default()
+        },
     }
 }
 

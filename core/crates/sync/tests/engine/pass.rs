@@ -316,8 +316,9 @@ async fn past_grace_the_pass_only_pulls() {
 async fn a_restored_store_refills_every_kind_it_holds() {
     let server = FakeServer::new();
     let history = StoreFile::new();
-    let queries = |file: &Arc<StoreFile>| MemoryAdapter::new(Kind::SavedQuery, "history.db", Arc::clone(file));
-    let folders = |file: &Arc<StoreFile>| MemoryAdapter::new(Kind::SavedQueryFolder, "history.db", Arc::clone(file));
+    let queries = |file: &Arc<StoreFile>| MemoryAdapter::new(Kind::SavedQuery, "saved_queries.db", Arc::clone(file));
+    let folders =
+        |file: &Arc<StoreFile>| MemoryAdapter::new(Kind::SavedQueryFolder, "saved_queries.db", Arc::clone(file));
     let mac_file = StoreFile::new();
     let (mac_queries, mac_folders) = (queries(&mac_file), folders(&mac_file));
     let mac = DeviceBuilder::new(&server, "dev_mac")

@@ -15,7 +15,7 @@ public sealed record FavouriteTable(string? Database, string? Schema, string Nam
 
 public sealed record FavouriteDatabase(string Database, DatabaseEnvironment Environment);
 
-// The tables and databases a user marked, per connection, in the query history's database (core ADR 0017).
+// The tables and databases a user marked, per connection, in the saved queries' database (core ADR 0017).
 public sealed class Favourites : IDisposable
 {
     private readonly Native.FavouriteStore _store;

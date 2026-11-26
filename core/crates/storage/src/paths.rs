@@ -34,6 +34,12 @@ impl StoragePaths {
         self.state.join("history.db")
     }
 
+    // Saved queries, their folders, favourites and table folders, which sync reads in the background: on iOS it keeps
+    // a weaker protection class than the history (core ADR 0060 as amended).
+    pub fn saved_query_database(&self) -> PathBuf {
+        self.state.join("saved_queries.db")
+    }
+
     pub fn workspaces_dir(&self) -> PathBuf {
         self.state.join("workspaces")
     }
@@ -88,6 +94,10 @@ mod tests {
         assert_eq!(paths.state, root.join("state/tablepro"));
         assert_eq!(paths.runtime, root.join("runtime/app/app.tablepro.TablePro"));
         assert_eq!(paths.history_database(), root.join("state/tablepro/history.db"));
+        assert_eq!(
+            paths.saved_query_database(),
+            root.join("state/tablepro/saved_queries.db")
+        );
         assert_eq!(paths.connections_file(), root.join("config/tablepro/connections.json"));
         assert_eq!(
             paths.highlight_rules_file(),
@@ -109,5 +119,6 @@ mod tests {
         assert_ne!(installed.state, devel.state);
         assert_ne!(installed.runtime, devel.runtime);
         assert_ne!(installed.history_database(), devel.history_database());
+        assert_ne!(installed.saved_query_database(), devel.saved_query_database());
     }
 }

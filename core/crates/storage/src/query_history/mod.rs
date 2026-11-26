@@ -14,12 +14,18 @@ mod host_entries;
 mod identity_tests;
 mod new_entry;
 mod outcome;
+#[cfg(test)]
+mod pane_tests;
 mod prune_report;
 #[cfg(test)]
 mod record_ids_migration_tests;
 pub mod retention;
+mod run_details;
 mod schema;
 mod search_fold;
+pub(crate) mod split;
+#[cfg(test)]
+mod split_tests;
 mod status_filter;
 mod synced;
 
@@ -28,12 +34,11 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::{AssertSqlSafe, ConnectOptions, Connection, Row, SqlitePool};
-use tokio::sync::watch;
+use sqlx::{AssertSqlSafe, ConnectOptions, Connection, Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::journal::{ChangeJournal, JournalEntry, JournalSlot, RecordKind, RecordRef, Signals};
+use crate::journal::{ChangeJournal, JournalEntry, JournalSlot, RecordKind, RecordRef};
 use crate::paths::StoragePaths;
 use crate::store_identity::StoreIdentity;
 use crate::unix_time::{from_unix, to_unix};
@@ -46,6 +51,7 @@ pub use history_query::HistoryQuery;
 pub use new_entry::NewEntry;
 pub use outcome::Outcome;
 pub use prune_report::PruneReport;
+pub use run_details::{RunDetails, RunSource, StatementType};
 pub use status_filter::StatusFilter;
 pub use synced::HistoryTombstone;
 
@@ -65,7 +71,51 @@ const MAX_UNPINNED_ENTRIES: i64 = 100_000;
 const IDS_PER_STATEMENT: usize = 500;
 
 const ENTRY_COLUMNS: &str = "h.id, h.record_id, h.query, h.driver_id, h.connection_id, h.connection_name, \
-     h.executed_at, h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error";
+     h.executed_at, h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error, h.database, h.schema, \
+     h.source, h.statement_type, h.first_row_ms, h.server_ms, h.fingerprint";
+
+// The columns a new entry writes, in the order `bind_entry!` binds them.
+const INSERT_COLUMNS: &str = "record_id, query, query_folded, driver_id, connection_id, connection_name, executed_at, \
+     duration_ms, rows_affected, success, cancelled, error, database, schema, source, statement_type, first_row_ms, \
+     server_ms, fingerprint";
+const INSERT_VALUES: &str = "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
+
+// Macros, since sqlx's query and scalar query share no trait for `bind`.
+macro_rules! bind_details {
+    ($statement:expr, $details:expr) => {{
+        let details: &$crate::query_history::RunDetails = $details;
+        $statement
+            .bind(details.database.clone())
+            .bind(details.schema.clone())
+            .bind(details.source.map($crate::query_history::RunSource::as_str))
+            .bind(details.statement_type.map($crate::query_history::StatementType::as_str))
+            .bind(details.first_row_ms)
+            .bind(details.server_ms)
+            .bind(details.fingerprint)
+    }};
+}
+
+macro_rules! bind_entry {
+    ($statement:expr, $entry:expr) => {{
+        let entry: &$crate::query_history::NewEntry = $entry;
+        let (success, cancelled, error) = entry.outcome.columns();
+        let statement = $statement
+            .bind(entry.record_id.to_string())
+            .bind(entry.query.clone())
+            .bind($crate::query_history::search_fold::fold(&entry.query))
+            .bind(entry.driver_id.clone())
+            .bind(entry.connection_id.to_string())
+            .bind(entry.connection_name.clone())
+            .bind($crate::unix_time::to_unix(entry.executed_at))
+            .bind(entry.duration_ms)
+            .bind(entry.rows_affected)
+            .bind(success)
+            .bind(cancelled)
+            .bind(error.map(str::to_owned));
+        $crate::query_history::bind_details!(statement, &entry.details)
+    }};
+}
+pub(crate) use {bind_details, bind_entry};
 
 /// A value for a placeholder of a statement built from parts.
 pub(crate) enum Bind {
@@ -79,31 +129,22 @@ pub(crate) enum Bind {
 pub struct QueryHistory {
     pool: SqlitePool,
     path: PathBuf,
-    // Shared by every handle `saved_queries` gives out, so a write through one reaches the others' followers.
-    signals: Signals,
+    files: LiveFiles,
     journal: JournalSlot,
 }
 
 impl QueryHistory {
-    /// SQLite creates the database, its WAL and its SHM with the umask
-    /// mode. Pre-creating the database at 0600 makes the siblings copy
-    /// that instead, so query text is never world-readable.
+    // Moves the saved queries out of an older file before its migrations drop their tables (`split`).
     pub async fn open(paths: &StoragePaths) -> Result<Self, StorageError> {
         let path = paths.history_database();
-        crate::fs::create_private_file_if_missing(&path)?;
-        let options = SqliteConnectOptions::new()
-            .filename(&path)
-            .create_if_missing(true)
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            // Query text is the user's own SQL, which may carry values
-            // they would not want in a log.
-            .disable_statement_logging();
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await?;
-        if let Some(version) = crate::upgrade_copies::pending_upgrade(&pool, &schema::MIGRATOR).await? {
-            crate::upgrade_copies::keep_database(&pool, &path, version).await?;
+        let pool = connect(&path).await?;
+        {
+            let _moving = split::MOVING.lock().await;
+            // The copy keeps the saved queries too, so an older build put back reads them where it left them.
+            if let Some(version) = crate::upgrade_copies::pending_upgrade(&pool, &schema::MIGRATOR).await? {
+                crate::upgrade_copies::keep_database(&pool, &path, version).await?;
+            }
+            split::move_out(&pool, paths).await?;
         }
         schema::migrate(&pool).await?;
         // A database made before the stamp, or whose row a hand edit removed, starts a generation.
@@ -113,12 +154,11 @@ impl QueryHistory {
         .bind(Uuid::new_v4().to_string())
         .execute(&pool)
         .await?;
-        let journal = JournalSlot::default();
         Ok(Self {
             pool,
             path,
-            signals: Signals::new(Arc::new(watch::channel(0).0), journal.clone()),
-            journal,
+            files: LiveFiles::of(paths),
+            journal: JournalSlot::default(),
         })
     }
 
@@ -159,25 +199,6 @@ impl QueryHistory {
         self.identity().await
     }
 
-    pub fn saved_queries(&self) -> crate::saved_queries::SavedQueries {
-        crate::saved_queries::SavedQueries::new(self.pool.clone(), self.path.clone(), self.signals.clone())
-    }
-
-    /// The folders saved queries are filed in, in the same database.
-    pub fn saved_query_folders(&self) -> crate::saved_queries::SavedQueryFolders {
-        crate::saved_queries::SavedQueryFolders::new(self.pool.clone(), self.path.clone(), self.signals.clone())
-    }
-
-    /// The favourite tables and databases, in the same database.
-    pub fn favourites(&self) -> crate::favourites::Favourites {
-        crate::favourites::Favourites::new(self.pool.clone(), self.path.clone(), self.signals.clone())
-    }
-
-    /// The folders a connection's tables are filed in, in the same database.
-    pub fn table_folders(&self) -> crate::table_folders::TableFolders {
-        crate::table_folders::TableFolders::new(self.pool.clone(), self.path.clone(), self.signals.clone())
-    }
-
     fn history_changed(&self, written: impl IntoIterator<Item = Uuid>, deleted: impl IntoIterator<Item = Uuid>) {
         let entry = JournalEntry::new(RecordKind::HistoryEntry)
             .wrote(written.into_iter().map(RecordRef::Id))
@@ -194,39 +215,14 @@ impl QueryHistory {
                 limit: MAX_QUERY_BYTES,
             });
         }
-        let executed_at = to_unix(entry.executed_at);
-        let (success, cancelled, error_text) = match &entry.outcome {
-            Outcome::Success => (1_i64, 0_i64, None),
-            Outcome::Error(msg) => (0, 0, Some(msg.clone())),
-            Outcome::Cancelled => (0, 1, None),
-        };
         // An entry is written once: one a pull or an import brings again keeps the row it has.
-        let inserted: Option<i64> = sqlx::query_scalar(
-            r#"
-            INSERT INTO history (
-                record_id, query, query_folded, driver_id, connection_id, connection_name,
-                executed_at, duration_ms, rows_affected,
-                success, cancelled, error
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (record_id) DO NOTHING
-            RETURNING id
-            "#,
-        )
-        .bind(entry.record_id.to_string())
-        .bind(&entry.query)
-        .bind(fold(&entry.query))
-        .bind(&entry.driver_id)
-        .bind(entry.connection_id.to_string())
-        .bind(&entry.connection_name)
-        .bind(executed_at)
-        .bind(entry.duration_ms)
-        .bind(entry.rows_affected)
-        .bind(success)
-        .bind(cancelled)
-        .bind(error_text)
-        .fetch_optional(&self.pool)
-        .await?;
+        let sql = format!(
+            "INSERT INTO history ({INSERT_COLUMNS}) VALUES ({INSERT_VALUES}) \
+             ON CONFLICT (record_id) DO NOTHING RETURNING id"
+        );
+        let inserted: Option<i64> = bind_entry!(sqlx::query_scalar(AssertSqlSafe(sql)), &entry)
+            .fetch_optional(&self.pool)
+            .await?;
         match inserted {
             Some(id) => {
                 self.history_changed([entry.record_id], []);
@@ -248,33 +244,9 @@ impl QueryHistory {
         request: HistoryPageRequest,
     ) -> Result<HistoryPage, StorageError> {
         let limit = request.limit.clamp(1, MAX_PAGE_SIZE);
-        let mut clauses: Vec<&'static str> = Vec::new();
-        let mut binds: Vec<Bind> = Vec::new();
-        for term in query.term_matches() {
-            match term {
-                TermMatch::Trigram(phrase) => {
-                    clauses.push("h.id IN (SELECT rowid FROM history_search WHERE history_search MATCH ?)");
-                    binds.push(Bind::Text(phrase));
-                }
-                TermMatch::Substring(text) => {
-                    clauses.push("instr(h.query_folded, ?) > 0");
-                    binds.push(Bind::Text(text));
-                }
-            }
-        }
-        if let Some(connection) = query.connection {
-            clauses.push("h.connection_id = ?");
-            binds.push(Bind::Text(connection.to_string()));
-        }
-        if let Some(predicate) = query.status.predicate() {
-            clauses.push(predicate);
-        }
-        if let Some(after) = query.executed_after {
-            clauses.push("h.executed_at >= ?");
-            binds.push(Bind::Integer(to_unix(after)));
-        }
+        let (mut clauses, mut binds) = filter_clauses(query);
         if let Some(cursor) = request.after {
-            clauses.push("(h.pinned, h.executed_at, h.id) < (?, ?, ?)");
+            clauses.push("(h.pinned, h.executed_at, h.id) < (?, ?, ?)".to_owned());
             binds.push(Bind::Integer(i64::from(cursor.pinned)));
             binds.push(Bind::Integer(cursor.executed_at));
             binds.push(Bind::Integer(cursor.id));
@@ -289,14 +261,9 @@ impl QueryHistory {
         sql.push_str(" ORDER BY h.pinned DESC, h.executed_at DESC, h.id DESC LIMIT ?");
         binds.push(Bind::Integer(limit as i64 + 1));
 
-        let mut statement = sqlx::query(AssertSqlSafe(sql));
-        for bind in binds {
-            statement = match bind {
-                Bind::Text(text) => statement.bind(text),
-                Bind::Integer(value) => statement.bind(value),
-            };
-        }
-        let rows = statement.fetch_all(&self.pool).await?;
+        let rows = bound(sqlx::query(AssertSqlSafe(sql)), binds)
+            .fetch_all(&self.pool)
+            .await?;
         let mut entries = rows
             .into_iter()
             .map(Self::row_to_entry)
@@ -331,6 +298,21 @@ impl QueryHistory {
             cancelled: cancelled_i != 0,
             pinned: pinned_i != 0,
             error: row.try_get::<Option<String>, _>("error")?,
+            details: RunDetails {
+                database: row.try_get("database")?,
+                schema: row.try_get("schema")?,
+                source: row
+                    .try_get::<Option<String>, _>("source")?
+                    .as_deref()
+                    .and_then(RunSource::parse),
+                statement_type: row
+                    .try_get::<Option<String>, _>("statement_type")?
+                    .as_deref()
+                    .and_then(StatementType::parse),
+                first_row_ms: row.try_get("first_row_ms")?,
+                server_ms: row.try_get("server_ms")?,
+                fingerprint: row.try_get("fingerprint")?,
+            },
         })
     }
 
@@ -348,6 +330,69 @@ impl QueryHistory {
     /// Delete the entries and hand back what they held, so the delete
     /// can be undone with `restore`.
     pub async fn delete_returning(&self, ids: &[i64]) -> Result<Vec<Entry>, StorageError> {
+        let mut connection = self.pool.acquire().await?;
+        let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
+        let deleted = self.delete_held(&mut transaction, ids).await?;
+        transaction.commit().await?;
+        self.history_changed([], deleted.iter().map(|entry| entry.record_id));
+        Ok(deleted)
+    }
+
+    // The person's deletion of entries a host names by record id: as with `delete_returning`, each leaves a tombstone
+    // until sync has pushed it. Returns how many were there.
+    pub async fn delete_records(&self, record_ids: &[Uuid]) -> Result<u64, StorageError> {
+        let mut connection = self.pool.acquire().await?;
+        let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
+        let mut ids = Vec::with_capacity(record_ids.len());
+        for chunk in record_ids.chunks(IDS_PER_STATEMENT) {
+            let sql = format!(
+                "SELECT id FROM history WHERE record_id IN ({})",
+                vec!["?"; chunk.len()].join(",")
+            );
+            let mut statement = sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql));
+            for id in chunk {
+                statement = statement.bind(id.to_string());
+            }
+            ids.extend(statement.fetch_all(&mut *transaction).await?);
+        }
+        let deleted = self.delete_held(&mut transaction, &ids).await?;
+        transaction.commit().await?;
+        self.history_changed([], deleted.iter().map(|entry| entry.record_id));
+        Ok(deleted.len() as u64)
+    }
+
+    // The person's deletion of every entry `query` matches, as the History pane clears what it shows. Returns how
+    // many went.
+    pub async fn delete_matching(&self, query: &HistoryQuery) -> Result<u64, StorageError> {
+        let (clauses, binds) = filter_clauses(query);
+        let mut sql = "SELECT h.id FROM history h".to_owned();
+        if !clauses.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&clauses.join(" AND "));
+        }
+        let mut connection = self.pool.acquire().await?;
+        let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
+        let ids = bound(sqlx::query(AssertSqlSafe(sql)), binds)
+            .fetch_all(&mut *transaction)
+            .await?
+            .iter()
+            .map(|row| row.try_get::<i64, _>("id"))
+            .collect::<Result<Vec<_>, _>>()?;
+        let deleted = self.delete_held(&mut transaction, &ids).await?;
+        // As after a prune: the delete triggers leave the queries' words in the index until it is optimized.
+        if !deleted.is_empty() {
+            sqlx::query("INSERT INTO history_search(history_search) VALUES('optimize')")
+                .execute(&mut *transaction)
+                .await?;
+        }
+        transaction.commit().await?;
+        self.history_changed([], deleted.iter().map(|entry| entry.record_id));
+        Ok(deleted.len() as u64)
+    }
+
+    // Under the write lock the caller holds until it commits: from the copies first, then a tombstone for each, then
+    // the rows, which come back in rowid order.
+    async fn delete_held(&self, database: &mut SqliteConnection, ids: &[i64]) -> Result<Vec<Entry>, StorageError> {
         let from_copies: Vec<CopyDelete> = ids
             .chunks(IDS_PER_STATEMENT)
             .map(|chunk| CopyDelete {
@@ -359,31 +404,54 @@ impl QueryHistory {
                 binds: chunk.iter().map(|id| Bind::Integer(*id)).collect(),
             })
             .collect();
-        let mut connection = self.pool.acquire().await?;
-        let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        trim_upgrade_copies(&self.path, &from_copies).await?;
+        trim_history_copies(&self.files, &from_copies).await?;
         let mut deleted = Vec::with_capacity(ids.len());
         for chunk in ids.chunks(IDS_PER_STATEMENT) {
             let placeholders = vec!["?"; chunk.len()].join(",");
             let binds: Vec<Bind> = chunk.iter().map(|id| Bind::Integer(*id)).collect();
-            synced::tombstone(&mut transaction, &format!("WHERE id IN ({placeholders})"), &binds).await?;
+            synced::tombstone(&mut *database, &format!("WHERE id IN ({placeholders})"), &binds).await?;
             let sql = format!(
-                "DELETE FROM history WHERE id IN ({placeholders}) RETURNING id, record_id, query, driver_id, \
-                 connection_id, connection_name, executed_at, duration_ms, rows_affected, success, cancelled, \
-                 pinned, error"
+                "DELETE FROM history WHERE id IN ({placeholders}) RETURNING {}",
+                ENTRY_COLUMNS.replace("h.", "")
             );
             let mut statement = sqlx::query(AssertSqlSafe(sql));
             for id in chunk {
                 statement = statement.bind(id);
             }
-            for row in statement.fetch_all(&mut *transaction).await? {
+            for row in statement.fetch_all(&mut *database).await? {
                 deleted.push(Self::row_to_entry(row)?);
             }
         }
-        transaction.commit().await?;
-        self.history_changed([], deleted.iter().map(|entry| entry.record_id));
         deleted.sort_by_key(|entry| entry.id);
         Ok(deleted)
+    }
+
+    // Entries with no fingerprint, oldest row first: the ones a pull or an older build brought, whose statements the
+    // app reads the shape of with its own grammar.
+    pub async fn without_fingerprint(&self, limit: usize) -> Result<Vec<Entry>, StorageError> {
+        let sql = format!("SELECT {ENTRY_COLUMNS} FROM history h WHERE h.fingerprint IS NULL ORDER BY h.id LIMIT ?");
+        sqlx::query(AssertSqlSafe(sql))
+            .bind(i64::try_from(limit.min(MAX_PAGE_SIZE)).unwrap_or(0))
+            .fetch_all(&self.pool)
+            .await?
+            .into_iter()
+            .map(Self::row_to_entry)
+            .collect()
+    }
+
+    // Each entry's fingerprint by rowid, in one commit. A fingerprint never leaves the device, so the journal hears
+    // nothing.
+    pub async fn set_fingerprints(&self, fingerprints: &[(i64, i64)]) -> Result<(), StorageError> {
+        let mut transaction = self.pool.begin().await?;
+        for (id, fingerprint) in fingerprints {
+            sqlx::query("UPDATE history SET fingerprint = ? WHERE id = ?")
+                .bind(fingerprint)
+                .bind(id)
+                .execute(&mut *transaction)
+                .await?;
+        }
+        transaction.commit().await?;
+        Ok(())
     }
 
     /// Put deleted entries back under their own ids, pinned or not as
@@ -391,29 +459,25 @@ impl QueryHistory {
     pub async fn restore(&self, entries: &[Entry]) -> Result<(), StorageError> {
         let mut transaction = self.pool.begin().await?;
         for entry in entries {
-            sqlx::query(
-                "INSERT INTO history (
-                     id, record_id, query, query_folded, driver_id, connection_id, connection_name,
-                     executed_at, duration_ms, rows_affected, success, cancelled, pinned, error
-                 )
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(entry.id)
-            .bind(entry.record_id.to_string())
-            .bind(&entry.query)
-            .bind(fold(&entry.query))
-            .bind(&entry.driver_id)
-            .bind(entry.connection_id.to_string())
-            .bind(&entry.connection_name)
-            .bind(to_unix(entry.executed_at))
-            .bind(entry.duration_ms)
-            .bind(entry.rows_affected)
-            .bind(i64::from(entry.success))
-            .bind(i64::from(entry.cancelled))
-            .bind(i64::from(entry.pinned))
-            .bind(&entry.error)
-            .execute(&mut *transaction)
-            .await?;
+            let sql = format!("INSERT INTO history (id, pinned, {INSERT_COLUMNS}) VALUES (?, ?, {INSERT_VALUES})");
+            let statement = sqlx::query(AssertSqlSafe(sql))
+                .bind(entry.id)
+                .bind(i64::from(entry.pinned))
+                .bind(entry.record_id.to_string())
+                .bind(&entry.query)
+                .bind(fold(&entry.query))
+                .bind(&entry.driver_id)
+                .bind(entry.connection_id.to_string())
+                .bind(&entry.connection_name)
+                .bind(to_unix(entry.executed_at))
+                .bind(entry.duration_ms)
+                .bind(entry.rows_affected)
+                .bind(i64::from(entry.success))
+                .bind(i64::from(entry.cancelled))
+                .bind(&entry.error);
+            bind_details!(statement, &entry.details)
+                .execute(&mut *transaction)
+                .await?;
         }
         let restored: Vec<Uuid> = entries.iter().map(|entry| entry.record_id).collect();
         synced::untombstone(&mut transaction, &restored).await?;
@@ -425,8 +489,8 @@ impl QueryHistory {
     pub async fn clear_all(&self) -> Result<usize, StorageError> {
         let mut database = self.pool.acquire().await?;
         let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        trim_upgrade_copies(
-            &self.path,
+        trim_history_copies(
+            &self.files,
             &[CopyDelete {
                 table: "history",
                 sql: "DELETE FROM main.history".to_owned(),
@@ -499,7 +563,7 @@ impl QueryHistory {
         // Rows expired here, or unpinned since a copy was made, leave the copies too.
         let mut database = self.pool.acquire().await?;
         let transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        trim_upgrade_copies(&self.path, &[]).await?;
+        trim_history_copies(&self.files, &[]).await?;
         transaction.commit().await?;
         self.history_changed([], record_ids(removed));
         Ok(report)
@@ -519,8 +583,8 @@ impl QueryHistory {
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<u64, StorageError> {
         let mut database = self.pool.acquire().await?;
         let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        trim_upgrade_copies(
-            &self.path,
+        trim_history_copies(
+            &self.files,
             &[CopyDelete {
                 table: "history",
                 sql: "DELETE FROM main.history WHERE connection_id = ?".to_owned(),
@@ -602,6 +666,86 @@ impl QueryHistory {
     }
 }
 
+// One pooled connection in WAL mode. SQLite makes the database, its WAL and its SHM with the umask mode, so the
+// database is made 0600 first and the others copy it: query text is never world-readable. The text is the person's own
+// SQL, which may carry values they would not want in a log.
+pub(crate) async fn connect(path: &Path) -> Result<SqlitePool, StorageError> {
+    crate::fs::create_private_file_if_missing(path)?;
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .disable_statement_logging();
+    Ok(SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await?)
+}
+
+// The `WHERE` clauses of the entries `query` matches, over `history h`, and their values in order.
+fn filter_clauses(query: &HistoryQuery) -> (Vec<String>, Vec<Bind>) {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut binds: Vec<Bind> = Vec::new();
+    for term in query.term_matches() {
+        match term {
+            TermMatch::Trigram(phrase) => {
+                clauses.push("h.id IN (SELECT rowid FROM history_search WHERE history_search MATCH ?)".to_owned());
+                binds.push(Bind::Text(phrase));
+            }
+            TermMatch::Substring(text) => {
+                clauses.push("instr(h.query_folded, ?) > 0".to_owned());
+                binds.push(Bind::Text(text));
+            }
+        }
+    }
+    if let Some(connection) = query.connection {
+        clauses.push("h.connection_id = ?".to_owned());
+        binds.push(Bind::Text(connection.to_string()));
+    }
+    if let Some(connections) = &query.connections {
+        clauses.push(one_of("h.connection_id", connections.len()));
+        binds.extend(connections.iter().map(|id| Bind::Text(id.to_string())));
+    }
+    if let Some(sources) = &query.sources {
+        clauses.push(one_of("h.source", sources.len()));
+        binds.extend(sources.iter().map(|source| Bind::Text(source.as_str().to_owned())));
+    }
+    if let Some(predicate) = query.status.predicate() {
+        clauses.push(predicate.to_owned());
+    }
+    if let Some(after) = query.executed_after {
+        clauses.push("h.executed_at >= ?".to_owned());
+        binds.push(Bind::Integer(to_unix(after)));
+    }
+    if let Some(before) = query.executed_before {
+        clauses.push("h.executed_at <= ?".to_owned());
+        binds.push(Bind::Integer(to_unix(before)));
+    }
+    (clauses, binds)
+}
+
+// No placeholder for an empty list, which then matches no row. A filter list is the user's choice of connections or
+// sources, far under SQLite's limit on parameters.
+fn one_of(column: &str, count: usize) -> String {
+    match count {
+        0 => "0".to_owned(),
+        _ => format!("{column} IN ({})", vec!["?"; count].join(",")),
+    }
+}
+
+fn bound<'q>(
+    mut statement: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments>,
+    binds: Vec<Bind>,
+) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments> {
+    for bind in binds {
+        statement = match bind {
+            Bind::Text(text) => statement.bind(text),
+            Bind::Integer(value) => statement.bind(value),
+        };
+    }
+    statement
+}
+
 // A copy an upgrade kept never holds a history entry or saved query the database no longer has, so
 // what the user deleted, or the retention window dropped, is gone from it too. One transaction with
 // secure_delete, so the words leave the full-text blocks and freed pages at once, even after a crash.
@@ -613,21 +757,93 @@ pub(crate) struct CopyDelete {
     pub(crate) binds: Vec<Bind>,
 }
 
-// Callers hold the live SQLite write lock until their deletion commits, so copy reconciliation cannot restore a pending deletion.
-pub(crate) async fn trim_upgrade_copies(path: &Path, first: &[CopyDelete]) -> Result<(), StorageError> {
-    crate::upgrade_copies::remove_leftovers_blocking(path)?;
-    let copies = crate::upgrade_copies::copies_blocking(path)?;
-    if copies.is_empty() {
-        return Ok(());
+// The two databases the core keeps for queries. A copy an upgrade kept of `history.db` before saved queries moved out
+// holds the tables of both, so each side trims its own tables out of every copy that holds them.
+#[derive(Debug, Clone)]
+pub(crate) struct LiveFiles {
+    pub(crate) history: PathBuf,
+    pub(crate) saved: PathBuf,
+}
+
+impl LiveFiles {
+    pub(crate) fn of(paths: &StoragePaths) -> Self {
+        Self {
+            history: paths.history_database(),
+            saved: paths.saved_query_database(),
+        }
     }
-    let live = path.to_str().ok_or_else(|| StorageError::Io {
-        path: path.to_owned(),
-        source: std::io::Error::new(std::io::ErrorKind::InvalidInput, "the path is not UTF-8"),
-    })?;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    History,
+    Saved,
+}
+
+impl Side {
+    fn tables(self) -> &'static [&'static str] {
+        match self {
+            Self::History => &["history"],
+            Self::Saved => &[
+                "saved_queries",
+                "saved_query_folders",
+                "favourite_tables",
+                "favourite_databases",
+                "table_folders",
+                "table_folder_items",
+            ],
+        }
+    }
+
+    // The tables a copy keeps by rowid, matched against the live database that holds them now.
+    fn kept_by_rowid(self) -> &'static [&'static str] {
+        match self {
+            Self::History => &["history"],
+            Self::Saved => &["saved_queries", "saved_query_folders"],
+        }
+    }
+
+    // Only this side's live database, so a store the platform keeps locked fails no trim of the other's.
+    fn live(self, files: &LiveFiles) -> &Path {
+        match self {
+            Self::History => &files.history,
+            Self::Saved => &files.saved,
+        }
+    }
+}
+
+// Callers hold the write lock of the database their deletion commits to until it commits, so reconciling a copy
+// cannot restore a pending deletion. Each side reconciles only its own tables, so it reads the other database for
+// nothing a deletion there may still hold.
+pub(crate) async fn trim_history_copies(files: &LiveFiles, first: &[CopyDelete]) -> Result<(), StorageError> {
+    trim_copies(files, Side::History, first).await
+}
+
+pub(crate) async fn trim_saved_copies(files: &LiveFiles, first: &[CopyDelete]) -> Result<(), StorageError> {
+    trim_copies(files, Side::Saved, first).await
+}
+
+async fn trim_copies(files: &LiveFiles, side: Side, first: &[CopyDelete]) -> Result<(), StorageError> {
+    // A copy of the saved queries' database never holds the history, and only a copy of `history.db` from before
+    // the move holds the saved queries; another one is never opened, since it may be locked away from this store.
+    // What a crash left of a copy is the cleanup of its own file's store, which may be making one now.
+    let own = match side {
+        Side::History => &files.history,
+        Side::Saved => &files.saved,
+    };
+    crate::upgrade_copies::remove_leftovers_blocking(own)?;
+    let mut copies = crate::upgrade_copies::copies_blocking(own)?;
+    if side == Side::Saved {
+        copies.extend(
+            crate::upgrade_copies::copies_blocking(&files.history)?
+                .into_iter()
+                .filter(|copy| i64::try_from(copy.version).is_ok_and(|version| version < split::MOVE_OUT)),
+        );
+    }
     for copy in copies {
         // A copy that cannot be trimmed, being damaged or unreadable, goes rather than keep what the
         // user deleted.
-        match trim_copy(&copy.path, live, first).await {
+        match trim_copy(&copy.path, files, side, first).await {
             Ok(()) => {}
             // Another trim holds it: the copy is fine, and this one tries again next time.
             Err(error) if is_busy(&error) => return Err(error),
@@ -637,7 +853,6 @@ pub(crate) async fn trim_upgrade_copies(path: &Path, first: &[CopyDelete]) -> Re
     Ok(())
 }
 
-// SQLITE_BUSY and SQLITE_LOCKED, with their extended codes.
 // After the commit, so an id that does not read is left out of the journal rather than failing a write that landed.
 fn record_ids(texts: impl IntoIterator<Item = String>) -> Vec<Uuid> {
     texts
@@ -646,6 +861,7 @@ fn record_ids(texts: impl IntoIterator<Item = String>) -> Vec<Uuid> {
         .collect()
 }
 
+// SQLITE_BUSY and SQLITE_LOCKED, with their extended codes.
 fn is_busy(error: &StorageError) -> bool {
     let StorageError::Database(error) = error else {
         return false;
@@ -657,7 +873,38 @@ fn is_busy(error: &StorageError) -> bool {
         .is_some_and(|code| matches!(code & 0xff, 5 | 6))
 }
 
-async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), StorageError> {
+async fn holds_any(database: &mut SqliteConnection, tables: &[&str]) -> Result<bool, StorageError> {
+    for table in tables {
+        let present: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?")
+                .bind(*table)
+                .fetch_one(&mut *database)
+                .await?;
+        if present > 0 {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+// The side's live database as `live`. One that is not there reads as a database with no tables, which ATTACH would
+// otherwise create.
+async fn attach_live(database: &mut SqliteConnection, path: &Path) -> Result<(), StorageError> {
+    let target = match path.is_file() {
+        true => path.to_str().ok_or_else(|| StorageError::Io {
+            path: path.to_owned(),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidInput, "the path is not UTF-8"),
+        })?,
+        false => ":memory:",
+    };
+    sqlx::query("ATTACH DATABASE ? AS live")
+        .bind(target.to_owned())
+        .execute(&mut *database)
+        .await?;
+    Ok(())
+}
+
+async fn trim_copy(copy: &Path, files: &LiveFiles, side: Side, first: &[CopyDelete]) -> Result<(), StorageError> {
     let mut database = SqliteConnectOptions::new()
         .filename(copy)
         .foreign_keys(false)
@@ -666,13 +913,17 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
         .disable_statement_logging()
         .connect()
         .await?;
-    sqlx::query("ATTACH DATABASE ? AS live")
-        .bind(live)
-        .execute(&mut database)
-        .await?;
+    if !holds_any(&mut database, side.tables()).await? {
+        database.close().await?;
+        return Ok(());
+    }
+    attach_live(&mut database, side.live(files)).await?;
     let mut transaction = database.begin().await?;
     let sequence = copy_sequence(&mut transaction).await?;
-    let has_folders = backup_folders::reconcile(&mut transaction).await?;
+    let has_folders = match side {
+        Side::Saved => backup_folders::reconcile(&mut transaction).await?,
+        Side::History => false,
+    };
     for delete in first {
         let present: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?")
@@ -690,12 +941,12 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
             statement.execute(&mut *transaction).await?;
         }
     }
-    for table in ["history", "saved_queries", "saved_query_folders"] {
+    for table in side.kept_by_rowid() {
         let present: i64 = sqlx::query_scalar(
             "SELECT (SELECT COUNT(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?1) \
              * (SELECT COUNT(*) FROM live.sqlite_master WHERE type = 'table' AND name = ?1)",
         )
-        .bind(table)
+        .bind(*table)
         .fetch_one(&mut *transaction)
         .await?;
         if present > 0 {
@@ -806,6 +1057,7 @@ mod tests {
             duration_ms: Some(3),
             rows_affected: Some(1),
             outcome: Outcome::Success,
+            details: RunDetails::default(),
         }
     }
 
@@ -896,7 +1148,7 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 7);
+        assert_eq!(applied, 9);
     }
 
     /// A database an earlier build wrote, with its saved queries, is kept
@@ -932,9 +1184,13 @@ mod tests {
         .expect("a saved query");
         pool.close().await;
 
-        let history = QueryHistory::open(&paths).await.expect("open");
-
-        let saved = history.saved_queries().list(Some(connection)).await.expect("list");
+        let saved = crate::SavedQueryDatabase::open(&paths)
+            .await
+            .expect("open")
+            .saved_queries()
+            .list(Some(connection))
+            .await
+            .expect("list");
         assert_eq!(saved.len(), 1);
         assert_eq!(
             (saved[0].keyword.as_deref(), saved[0].folder_id, saved[0].order),
@@ -1004,8 +1260,8 @@ mod tests {
             "history_search_ad",
             "history_search_ai",
             "history_search_au",
-            "saved_queries",
-            "saved_queries_name_idx",
+            "history_tombstones",
+            "store_identity",
         ] {
             assert!(
                 names.iter().any(|name| name == expected),
@@ -1090,7 +1346,7 @@ mod tests {
     /// means a change went into a file that has already run somewhere.
     #[test]
     fn migrator_embeds_every_migration() {
-        assert_eq!(schema::MIGRATOR.iter().count(), 7);
+        assert_eq!(schema::MIGRATOR.iter().count(), 9);
     }
 
     #[tokio::test]
@@ -1518,24 +1774,68 @@ mod tests {
         assert!(!indexed(&copy, "xxx").await);
     }
 
+    // A `history.db` from before the saved queries moved out, with these runs and saved queries, opened by both
+    // stores: the copy the upgrade kept holds both stores' tables.
+    async fn moved_with_a_copy(
+        root: &tempfile::TempDir,
+        runs: &[(&str, SystemTime)],
+        saved: &[&str],
+    ) -> (QueryHistory, crate::SavedQueryDatabase, PathBuf) {
+        let (paths, pool) = fixtures::old_database(root, 7).await;
+        for (query, executed_at) in runs {
+            sqlx::query(
+                "INSERT INTO history (record_id, query, query_folded, driver_id, connection_id, connection_name, \
+                 executed_at, success) VALUES (?, ?, ?, 'sqlite', ?, 'test', ?, 1)",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(*query)
+            .bind(fold(query))
+            .bind(Uuid::nil().to_string())
+            .bind(to_unix(*executed_at))
+            .execute(&pool)
+            .await
+            .expect("a run");
+        }
+        for name in saved {
+            sqlx::query(
+                "INSERT INTO saved_queries (record_id, name, query, connection_id, connection_name, created_at, \
+                 updated_at) VALUES (?, ?, 'SELECT 1', ?, 'test', 1, 1)",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(*name)
+            .bind(Uuid::nil().to_string())
+            .execute(&pool)
+            .await
+            .expect("a saved query");
+        }
+        pool.close().await;
+        let history = QueryHistory::open(&paths).await.expect("history");
+        let saved = crate::SavedQueryDatabase::open(&paths).await.expect("saved queries");
+        let copy = crate::upgrade_copies::copies_blocking(&paths.history_database()).expect("copies")[0]
+            .path
+            .clone();
+        (history, saved, copy)
+    }
+
+    async fn saved_names(copy: &Path) -> Vec<String> {
+        let mut database = SqliteConnectOptions::new()
+            .filename(copy)
+            .read_only(true)
+            .connect()
+            .await
+            .expect("open the copy");
+        let names = sqlx::query_scalar("SELECT name FROM saved_queries ORDER BY name")
+            .fetch_all(&mut database)
+            .await
+            .expect("names");
+        database.close().await.expect("close");
+        names
+    }
+
     #[tokio::test]
     async fn clearing_the_history_clears_the_copies_and_keeps_their_saved_queries() {
         let root = tempfile::tempdir().expect("tempdir");
-        let history = QueryHistory::open(&paths(&root)).await.expect("open");
-        history.record(entry("SELECT qqqq", Uuid::nil())).await.expect("record");
-        history
-            .saved_queries()
-            .save(crate::saved_queries::NewSavedQuery {
-                name: "kept".to_owned(),
-                query: "SELECT 1".to_owned(),
-                connection_id: Some(Uuid::nil()),
-                connection_name: "test".to_owned(),
-            })
-            .await
-            .expect("a saved query");
-        let copy = crate::upgrade_copies::keep_database(&history.pool, &history.path, 1)
-            .await
-            .expect("a copy");
+        let (history, _saved, copy) = moved_with_a_copy(&root, &[("SELECT qqqq", SystemTime::now())], &["kept"]).await;
 
         history.clear_all().await.expect("clear");
 
@@ -1548,38 +1848,35 @@ mod tests {
             !indexed(&history.path, "qqq").await,
             "a cleared query's words stayed in the history's own index"
         );
-        let mut database = SqliteConnectOptions::new()
-            .filename(&copy)
-            .read_only(true)
-            .connect()
-            .await
-            .expect("open the copy");
-        let saved: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM saved_queries")
-            .fetch_one(&mut database)
-            .await
-            .expect("count");
-        assert_eq!(saved, 1, "a saved query went with the history");
+        assert_eq!(
+            saved_names(&copy).await,
+            ["kept"],
+            "a saved query went with the history"
+        );
     }
 
     #[tokio::test]
     async fn deleted_entries_expired_ones_and_deleted_saved_queries_leave_the_copies_too() {
         let root = tempfile::tempdir().expect("tempdir");
-        let history = QueryHistory::open(&paths(&root)).await.expect("open");
-        let kept = history.record(entry("SELECT qqqq", Uuid::nil())).await.expect("record");
-        let deleted = history.record(entry("SELECT zzzz", Uuid::nil())).await.expect("record");
-        let mut old = entry("SELECT xxxx", Uuid::nil());
-        old.executed_at = SystemTime::now() - Duration::from_secs(400 * 24 * 60 * 60);
-        history.record(old).await.expect("record");
-        let saved = history.saved_queries();
-        let named = |name: &str| crate::saved_queries::NewSavedQuery {
-            name: name.to_owned(),
-            query: "SELECT 1".to_owned(),
-            connection_id: Some(Uuid::nil()),
-            connection_name: "test".to_owned(),
-        };
-        saved.save(named("first")).await.expect("a saved query");
-        saved.save(named("second")).await.expect("a saved query");
+        let long_ago = SystemTime::now() - Duration::from_secs(400 * 24 * 60 * 60);
+        let (history, saved, copy) = moved_with_a_copy(
+            &root,
+            &[
+                ("SELECT qqqq", SystemTime::now()),
+                ("SELECT zzzz", SystemTime::now()),
+                ("SELECT xxxx", long_ago),
+            ],
+            &["first", "second"],
+        )
+        .await;
+        let deleted = all(&history)
+            .await
+            .into_iter()
+            .find(|entry| entry.query == "SELECT zzzz")
+            .expect("the run")
+            .id;
         let first = saved
+            .saved_queries()
             .list(None)
             .await
             .expect("list")
@@ -1587,13 +1884,10 @@ mod tests {
             .find(|query| query.name == "first")
             .expect("the first saved query")
             .id;
-        let copy = crate::upgrade_copies::keep_database(&history.pool, &history.path, 1)
-            .await
-            .expect("a copy");
 
         history.delete_returning(&[deleted]).await.expect("delete");
         history.prune(30).await.expect("prune");
-        saved.delete(first).await.expect("delete a saved query");
+        saved.saved_queries().delete(first).await.expect("delete a saved query");
 
         assert_eq!(
             copy_rows(&copy).await,
@@ -1603,18 +1897,11 @@ mod tests {
         assert!(!indexed(&copy, "zzz").await);
         assert!(!indexed(&copy, "xxx").await);
         assert!(indexed(&copy, "qqq").await, "a kept query went");
-        let mut database = SqliteConnectOptions::new()
-            .filename(&copy)
-            .read_only(true)
-            .connect()
-            .await
-            .expect("open the copy");
-        let names: Vec<String> = sqlx::query_scalar("SELECT name FROM saved_queries")
-            .fetch_all(&mut database)
-            .await
-            .expect("names");
-        assert_eq!(names, ["second"], "a deleted saved query stayed in the copy");
-        assert!(all(&history).await.iter().any(|entry| entry.id == kept));
+        assert_eq!(
+            saved_names(&copy).await,
+            ["second"],
+            "a deleted saved query stayed in the copy"
+        );
     }
 
     // VACUUM INTO copies the index blocks as they are, words of entries already deleted included.
@@ -1637,12 +1924,11 @@ mod tests {
         assert!(indexed(&copy, "qqq").await);
     }
 
-    /// A copy made after the favourites existed holds no folder, table or
-    /// database the user then deleted.
+    // A copy of the saved queries' database holds no folder, table or database the person then deleted.
     #[tokio::test]
     async fn deleted_folders_and_favourites_leave_the_copies_too() {
         let root = tempfile::tempdir().expect("tempdir");
-        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let history = crate::SavedQueryDatabase::open(&paths(&root)).await.expect("open");
         let connection = Uuid::new_v4();
         let folders = history.saved_query_folders();
         let favourites = history.favourites();
@@ -1665,7 +1951,7 @@ mod tests {
             .set_database(connection, "shop", crate::favourites::DatabaseEnvironment::Testing)
             .await
             .expect("a database");
-        let copy = crate::upgrade_copies::keep_database(&history.pool, &history.path, 1)
+        let copy = crate::upgrade_copies::keep_database(history.pool(), history.path(), 1)
             .await
             .expect("a copy");
         async fn kept(copy: &Path) -> Vec<i64> {

@@ -43,6 +43,7 @@ mod run;
 mod runtime;
 mod safe_mode_gate;
 mod saved_queries;
+mod saved_query_database;
 mod session;
 mod statement_at;
 mod structure;
@@ -98,8 +99,9 @@ pub use foreign_import::{
     TlsFileReasonTag,
 };
 pub use history::{
-    HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryOutcomeTag, HistoryPageInfo, HistoryRun,
-    QueryHistoryStore,
+    HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryFilterArg, HistoryFingerprintArg,
+    HistoryOutcomeTag, HistoryPageInfo, HistoryRun, HistoryRunDetails, HistorySourceTag, HistoryStatusTag,
+    QueryHistoryStore, StatementTypeTag,
 };
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
 pub use host_stores::{
@@ -146,6 +148,7 @@ pub use row_edits::{
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
 pub use saved_queries::{SavedQueriesInfo, SavedQueryDraft, SavedQueryFolderInfo, SavedQueryInfo, SavedQueryStore};
+pub use saved_query_database::{SavedQueryDatabaseStore, StoreFilesInfo};
 pub use session::{
     ColumnSort, DatabaseLayoutTag, DatabaseSession, FailureCauseTag, PageResume, RowEstimate, SessionHealthTag,
     TableInfoRecord, TablePageRead,

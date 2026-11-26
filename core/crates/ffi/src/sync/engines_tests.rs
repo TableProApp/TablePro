@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 
 use tablepro_records::Kind;
 use tablepro_storage::saved_queries::SavedQuery;
-use tablepro_storage::{ChangeJournal, QueryHistory, SavedQueryWrite, StoragePaths};
+use tablepro_storage::{ChangeJournal, QueryHistory, SavedQueryDatabase, SavedQueryWrite, StoragePaths};
 use tablepro_sync::adapters::library::Provider;
 use tablepro_sync::adapters::settings::ConnectionStanding;
 use tablepro_sync::adapters::store_journal::StoreJournal;
@@ -30,13 +30,14 @@ fn kinds(adapters: &[Arc<dyn RecordAdapter>]) -> Vec<Kind> {
 }
 
 #[tokio::test]
-async fn the_history_database_s_kinds_sync_its_writes_reach_the_engine_and_history_waits_for_the_standing() {
+async fn the_query_stores_kinds_sync_their_writes_reach_the_engine_and_history_waits_for_the_standing() {
     let dir = tempfile::tempdir().unwrap();
-    let history = QueryHistory::open(&StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro"))
-        .await
-        .unwrap();
+    let paths = StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
+    let history = QueryHistory::open(&paths).await.unwrap();
+    let saved = SavedQueryDatabase::open(&paths).await.unwrap();
     let store_journal = StoreJournal::new();
     history.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+    saved.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
     let device_store = Arc::new(FakeDeviceStore::new());
     let hosts = |standing: Option<Arc<dyn ConnectionStanding>>| Hosts {
         files: Arc::new(SqliteStateFiles::at(
@@ -49,6 +50,7 @@ async fn the_history_database_s_kinds_sync_its_writes_reach_the_engine_and_histo
         library: None,
         names: tablepro_sync::adapters::library::DriverNames::Mac,
         history: Some(history.clone()),
+        saved_queries: Some(saved.clone()),
         standing,
         store_journal: Arc::clone(&store_journal),
     };
@@ -57,7 +59,7 @@ async fn the_history_database_s_kinds_sync_its_writes_reach_the_engine_and_histo
 
     let unknown = kinds(&hosts(None).adapters(&journal, Provider::TableproSync));
     let known = kinds(&hosts(Some(Arc::new(Syncs))).adapters(&journal, Provider::TableproSync));
-    history
+    saved
         .saved_queries()
         .write(&SavedQueryWrite {
             queries: vec![SavedQuery {
@@ -88,6 +90,7 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
     let dir = tempfile::tempdir().unwrap();
     let paths = StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
     let history = QueryHistory::open(&paths).await.unwrap();
+    let saved = SavedQueryDatabase::open(&paths).await.unwrap();
     let store = tablepro_storage::ConnectionStore::new(&paths);
     let store_journal = StoreJournal::new();
     store.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
@@ -103,6 +106,7 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
         library: Some(store.clone()),
         names: tablepro_sync::adapters::library::DriverNames::Core,
         history: Some(history),
+        saved_queries: Some(saved),
         standing: Some(Arc::new(tablepro_sync::adapters::library::StoreStanding(store.clone()))),
         store_journal,
     };
@@ -133,4 +137,36 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
     }
     let named = journal.take();
     assert!(named[&Kind::Tag].contains(&tag.id.hyphenated().to_string().to_uppercase()));
+}
+
+// On iOS the history's file stays locked until the person unlocks the device, and saved queries still sync meanwhile.
+#[tokio::test]
+async fn saved_queries_sync_without_the_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
+    let saved = SavedQueryDatabase::open(&paths).await.unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let hosts = Hosts {
+        files: Arc::new(SqliteStateFiles::at(
+            dir.path().join("sync"),
+            Arc::clone(&device_store) as Arc<dyn HostDeviceStore>,
+        )) as Arc<dyn StateFiles>,
+        device_store: Arc::clone(&device_store) as Arc<dyn HostDeviceStore>,
+        settings: None,
+        events: Arc::new(Signals::default()),
+        library: None,
+        names: tablepro_sync::adapters::library::DriverNames::Mac,
+        history: None,
+        saved_queries: Some(saved),
+        standing: Some(Arc::new(Syncs)),
+        store_journal: StoreJournal::new(),
+    };
+
+    let found = kinds(&hosts.adapters(&Journal::new(Wake::new()), Provider::ICloud));
+
+    assert_eq!(found, [Kind::SavedQuery, Kind::SavedQueryFolder]);
+    assert!(
+        !paths.history_database().exists(),
+        "the saved queries opened the history"
+    );
 }

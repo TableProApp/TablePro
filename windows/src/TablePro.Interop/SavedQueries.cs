@@ -17,7 +17,7 @@ public sealed record SavedQueryFolder(Guid Id, string Name, Guid? ParentId, long
 // Read in one transaction, each list in its place's order.
 public sealed record SavedQueryList(IReadOnlyList<SavedQuery> Queries, IReadOnlyList<SavedQueryFolder> Folders);
 
-// A connection's saved queries and their folders, kept in the query history's database (core ADRs 0017 and 0052). The list
+// A connection's saved queries and their folders, kept in the saved queries' database (core ADRs 0017 and 0052). The list
 // holds those with no connection too, which show in every connection.
 public sealed class SavedQueries : IDisposable
 {

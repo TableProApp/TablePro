@@ -20,6 +20,17 @@ use tablepro_ffi::{
     RunOutcome, RunSettings, SafeModeTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings, mcp_address,
 };
 
+fn shown(text: impl Into<String>, connection: Option<String>) -> tablepro_ffi::HistoryFilterArg {
+    tablepro_ffi::HistoryFilterArg {
+        text: text.into(),
+        connection_ids: connection.map(|id| vec![id]),
+        sources: None,
+        status: tablepro_ffi::HistoryStatusTag::Any,
+        executed_after_ms: None,
+        executed_before_ms: None,
+    }
+}
+
 const WAIT: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Default)]
@@ -357,7 +368,7 @@ async fn the_command_reaches_a_connection_the_app_has_open_and_never_a_blocked_o
     assert_eq!(refused.exit, Exit::Usage, "{}", refused.err);
     let history = harness.core.history().await.unwrap();
     let recorded = history
-        .search("customers".to_owned(), Some(shop), None, 10)
+        .search(shown("customers".to_owned(), Some(shop)), None, 10)
         .await
         .unwrap();
     assert_eq!(recorded.entries.len(), 1);

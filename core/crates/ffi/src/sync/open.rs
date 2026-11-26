@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tablepro_records::Kind;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::{ChangeJournal, ConnectionStore, QueryHistory};
+use tablepro_storage::{ChangeJournal, ConnectionStore, QueryHistory, SavedQueryDatabase};
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::library::{DriverNames, StoreStanding};
 use tablepro_sync::adapters::settings::ConnectionStanding;
@@ -37,8 +37,10 @@ pub(crate) struct OpenParts {
     pub(crate) legacy_mirror: Option<Arc<dyn sync::LegacyMirror>>,
     // This Core's connection library; None on a Core opened without storage.
     pub(crate) library: Option<ConnectionStore>,
-    // This Core's history database; None on a Core opened without storage or when it could not open.
+    // This Core's query history and saved queries' store; each None on a Core opened without storage or when it could
+    // not open, and either syncs without the other.
     pub(crate) history: Option<QueryHistory>,
+    pub(crate) saved_queries: Option<SavedQueryDatabase>,
     // The sign-in's `/v2/sync` link, or why there is none.
     pub(crate) link: Result<ServiceLink, SyncError>,
     pub(crate) listener: Arc<dyn SyncListener>,
@@ -102,6 +104,7 @@ impl Core {
             }),
             library: self.connection_store().ok(),
             history: self.synced_history().await,
+            saved_queries: self.synced_saved_queries().await,
             link: Err(TransportError::SignedOut.into()),
             listener: Arc::from(listener),
         };
@@ -123,9 +126,21 @@ impl Core {
         match self.history().await {
             Ok(store) => Some(store.history.clone()),
             Err(error) => {
+                tracing::warn!(code = error.code(), "the history does not sync: it did not open");
+                None
+            }
+        }
+    }
+
+    // As `synced_history`. An iOS app opens sync in the background, when the history's file may still be locked.
+    async fn synced_saved_queries(&self) -> Option<SavedQueryDatabase> {
+        self.paths.as_ref()?;
+        match self.saved_query_database().await {
+            Ok(store) => Some(store.database.clone()),
+            Err(error) => {
                 tracing::warn!(
                     code = error.code(),
-                    "saved queries and history do not sync: the history did not open"
+                    "saved queries do not sync: their store did not open"
                 );
                 None
             }
@@ -182,6 +197,9 @@ impl SyncService {
                 if let Some(history) = &parts.history {
                     history.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
                 }
+                if let Some(saved) = &parts.saved_queries {
+                    saved.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+                }
                 if let Some(store) = &parts.library {
                     store.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
                 }
@@ -197,6 +215,7 @@ impl SyncService {
                     library: parts.library,
                     names: driver_names(parts.config.platform),
                     history: parts.history,
+                    saved_queries: parts.saved_queries,
                     standing,
                     store_journal,
                 })

@@ -315,19 +315,15 @@ internal sealed partial class Workbench : IDisposable
         return true;
     }
 
-    // Kept in the history's database, so null when the history cannot open.
+    // A store apart from the history, so null only when the saved queries' own store cannot open.
     public Task<SavedQueries?> GetSavedQueriesAsync() => _savedQueries ??= OpenSavedQueriesAsync();
 
     private async Task<SavedQueries?> OpenSavedQueriesAsync()
     {
-        if (await GetHistoryAsync().ConfigureAwait(true) is not { } history)
-        {
-            return null;
-        }
-
         try
         {
-            return history.OpenSavedQueries();
+            using var database = await Core.OpenSavedQueryDatabaseAsync().ConfigureAwait(true);
+            return database.OpenSavedQueries();
         }
         catch (TableProException)
         {

@@ -1,5 +1,5 @@
 // The connection library's kinds (0051, Kinds; 0054, Adapters): connections, groups, tags, SSH and credential profiles
-// over the core's connection store, one file, and table folders and their items over the history database. Each
+// over the core's connection store, one file, and table folders and their items over the saved queries' database. Each
 // record's wire fields are its CloudKit fields in snake case with the Mac's values (0061, 4), so a Mac-written copy and
 // the store's agree member by member. Local only and sample connections never leave the device, and neither do the
 // column layouts and table folders of a connection that does not sync.
@@ -22,7 +22,7 @@ use serde_json::Value;
 use tablepro_records::Kind;
 use tablepro_records::record_id::{parse_uuid, uuid_id};
 use tablepro_storage::{
-    ConnectionList, ConnectionListState, ConnectionStore, LibraryChange, QueryHistory, SshProfile, StorageError,
+    ConnectionList, ConnectionListState, ConnectionStore, LibraryChange, SavedQueryDatabase, SshProfile, StorageError,
 };
 use uuid::Uuid;
 
@@ -47,8 +47,7 @@ pub enum Provider {
     TableproSync,
 }
 
-// The same name for every kind the history database holds, so a restored file refills them together (0060).
-pub const HISTORY_STORE: &str = "history.db";
+pub use super::saved_queries::SAVED_QUERY_STORE;
 
 const KINDS: [Kind; 5] = [
     Kind::Connection,
@@ -85,14 +84,14 @@ impl LibraryAdapter {
 // Every kind of the library, the table folders included, over the stores a Core opens.
 pub fn adapters(
     store: &ConnectionStore,
-    history: Option<&QueryHistory>,
+    saved: Option<&SavedQueryDatabase>,
     names: DriverNames,
     provider: Provider,
 ) -> Vec<Arc<dyn RecordAdapter>> {
     let mut all = LibraryAdapter::all(store, names);
-    if let Some(history) = history {
-        all.extend(TableFolderAdapter::all(history, store));
-        all.extend(FavouriteAdapter::all(history, store, provider));
+    if let Some(saved) = saved {
+        all.extend(TableFolderAdapter::all(saved, store));
+        all.extend(FavouriteAdapter::all(saved, store, provider));
     }
     all
 }

@@ -7,18 +7,16 @@ use tablepro_session::Session;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::query_history::{
     Entry, HistoryCursor, HistoryPageRequest, HistoryQuery, MAX_PAGE_SIZE, MAX_QUERY_BYTES, NewEntry, Outcome,
+    RunDetails, RunSource, StatementType, StatusFilter,
 };
 use tablepro_storage::{QueryHistory, StoragePaths};
 use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::export::write_whole_file;
-use crate::favourites::FavouriteStore;
-use crate::library::parse_id;
+use crate::library::parse_ids;
 use crate::runtime::on_runtime;
-use crate::saved_queries::SavedQueryStore;
 use crate::session::DatabaseSession;
-use crate::table_folders::TableFolderStore;
 
 #[derive(uniffi::Object)]
 pub struct QueryHistoryStore {
@@ -34,6 +32,73 @@ pub struct HistoryRun {
     pub duration_ms: Option<i64>,
     pub rows_affected: Option<i64>,
     pub outcome: HistoryOutcomeTag,
+    pub details: HistoryRunDetails,
+}
+
+// What the app knew of a run beyond its outcome; None where it did not say, as for every run an older build recorded.
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct HistoryRunDetails {
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub source: Option<HistorySourceTag>,
+    pub statement_type: Option<StatementTypeTag>,
+    // The client's time to the first row, and the time the engine reported, where its protocol carries one.
+    pub first_row_ms: Option<i64>,
+    pub server_ms: Option<i64>,
+    // The statement's shape as the app's grammar reads it. It never leaves the device, so a run another device
+    // recorded comes without one (`QueryHistoryStore::entries_without_fingerprint`).
+    pub fingerprint: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum HistorySourceTag {
+    Editor,
+    Explain,
+    TableBrowse,
+    RowEdit,
+    StructureDdl,
+    Import,
+    Mcp,
+    Script,
+    Shortcuts,
+    CommandLine,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum StatementTypeTag {
+    Select,
+    Insert,
+    Update,
+    Delete,
+    Ddl,
+    Other,
+}
+
+// A cancelled run is neither succeeded nor failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum HistoryStatusTag {
+    Any,
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+// What the History pane shows. Every word of `text` appears in the run, in any case. An empty list of connections or
+// sources matches nothing; a run that names no source matches only None. Times are milliseconds, both ends inclusive.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HistoryFilterArg {
+    pub text: String,
+    pub connection_ids: Option<Vec<String>>,
+    pub sources: Option<Vec<HistorySourceTag>>,
+    pub status: HistoryStatusTag,
+    pub executed_after_ms: Option<i64>,
+    pub executed_before_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct HistoryFingerprintArg {
+    pub id: i64,
+    pub fingerprint: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -59,6 +124,7 @@ pub struct HistoryEntryInfo {
     pub rows_affected: Option<i64>,
     pub outcome: HistoryOutcomeTag,
     pub pinned: bool,
+    pub details: HistoryRunDetails,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -84,10 +150,6 @@ pub struct HistoryCursorArg {
 
 impl QueryHistoryStore {
     // The prune keeps every entry however old and drops the oldest past the store's cap.
-    pub(crate) fn saved_query_rows(&self) -> tablepro_storage::SavedQueries {
-        self.history.saved_queries()
-    }
-
     pub(crate) async fn open(paths: StoragePaths, tasks: Tasks) -> Result<Arc<Self>, CoreError> {
         let history = QueryHistory::open(&paths).await?;
         match history.prune(0).await {
@@ -128,20 +190,14 @@ impl QueryHistoryStore {
         .await
     }
 
-    // Every word of `text` appears in the entry, in any case. Pinned entries first, then newest.
+    // Pinned entries first, then newest.
     pub async fn search(
         &self,
-        text: String,
-        connection_id: Option<String>,
+        filter: HistoryFilterArg,
         after: Option<HistoryCursorArg>,
         limit: u32,
     ) -> Result<HistoryPageInfo, CoreError> {
-        let mut query = HistoryQuery::from_input(&text);
-        query.connection = connection_id
-            .as_deref()
-            .filter(|id| !id.trim().is_empty())
-            .map(parse_id)
-            .transpose()?;
+        let query = HistoryQuery::try_from(filter)?;
         let request = HistoryPageRequest {
             after: after.as_ref().map(HistoryCursorArg::cursor),
             limit: usize::try_from(limit).unwrap_or(MAX_PAGE_SIZE).min(MAX_PAGE_SIZE),
@@ -158,6 +214,7 @@ impl QueryHistoryStore {
         .await
     }
 
+    // The person's deletion: each entry leaves a tombstone until sync has pushed it.
     pub async fn delete(&self, ids: Vec<i64>) -> Result<(), CoreError> {
         let history = self.history.clone();
         on_runtime(&self.tasks, async move {
@@ -165,6 +222,35 @@ impl QueryHistoryStore {
             Ok(())
         })
         .await
+    }
+
+    // The person's deletion of everything `filter` matches, as the pane clears what it shows. Returns how many went.
+    pub async fn delete_matching(&self, filter: HistoryFilterArg) -> Result<u64, CoreError> {
+        let query = HistoryQuery::try_from(filter)?;
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move { Ok(history.delete_matching(&query).await?) }).await
+    }
+
+    // Oldest first, at most `limit`: runs a pull or an older build brought, whose shape the app reads with its grammar.
+    pub async fn entries_without_fingerprint(&self, limit: u32) -> Result<Vec<HistoryEntryInfo>, CoreError> {
+        let limit = usize::try_from(limit).unwrap_or(MAX_PAGE_SIZE);
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move {
+            Ok(history
+                .without_fingerprint(limit)
+                .await?
+                .into_iter()
+                .map(HistoryEntryInfo::from)
+                .collect())
+        })
+        .await
+    }
+
+    // In one commit, by rowid.
+    pub async fn set_fingerprints(&self, fingerprints: Vec<HistoryFingerprintArg>) -> Result<(), CoreError> {
+        let pairs: Vec<(i64, i64)> = fingerprints.iter().map(|arg| (arg.id, arg.fingerprint)).collect();
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move { Ok(history.set_fingerprints(&pairs).await?) }).await
     }
 
     // Drops unpinned entries older than `retention_days` (0 keeps every age), then the oldest past `max_entries`
@@ -212,23 +298,6 @@ impl QueryHistoryStore {
         })
         .await
     }
-
-    // The same database, so a store that opened serves both.
-    pub fn saved_queries(&self) -> Arc<SavedQueryStore> {
-        SavedQueryStore::new(
-            self.history.saved_queries(),
-            self.history.saved_query_folders(),
-            self.tasks.clone(),
-        )
-    }
-
-    pub fn favourites(&self) -> Arc<FavouriteStore> {
-        FavouriteStore::new(self.history.favourites(), self.tasks.clone())
-    }
-
-    pub fn table_folders(&self) -> Arc<TableFolderStore> {
-        TableFolderStore::new(self.history.table_folders(), self.tasks.clone())
-    }
 }
 
 // Without a dialect nobody can say which statements hold a secret, so nothing is kept.
@@ -252,6 +321,7 @@ fn kept(session: &Session, run: HistoryRun) -> Option<NewEntry> {
         duration_ms: run.duration_ms,
         rows_affected: run.rows_affected,
         outcome: run.outcome.into(),
+        details: run.details.into(),
     })
 }
 
@@ -280,6 +350,7 @@ impl HistoryCursorArg {
             cancelled: false,
             pinned: self.pinned,
             error: None,
+            details: RunDetails::default(),
         })
     }
 }
@@ -305,7 +376,117 @@ impl From<Entry> for HistoryEntryInfo {
             rows_affected: entry.rows_affected,
             outcome,
             pinned: entry.pinned,
+            details: entry.details.into(),
         }
+    }
+}
+
+impl From<RunDetails> for HistoryRunDetails {
+    fn from(details: RunDetails) -> Self {
+        Self {
+            database: details.database,
+            schema: details.schema,
+            source: details.source.map(HistorySourceTag::from),
+            statement_type: details.statement_type.map(StatementTypeTag::from),
+            first_row_ms: details.first_row_ms,
+            server_ms: details.server_ms,
+            fingerprint: details.fingerprint,
+        }
+    }
+}
+
+impl From<HistoryRunDetails> for RunDetails {
+    fn from(details: HistoryRunDetails) -> Self {
+        Self {
+            database: details.database,
+            schema: details.schema,
+            source: details.source.map(RunSource::from),
+            statement_type: details.statement_type.map(StatementType::from),
+            first_row_ms: details.first_row_ms,
+            server_ms: details.server_ms,
+            fingerprint: details.fingerprint,
+        }
+    }
+}
+
+impl From<RunSource> for HistorySourceTag {
+    fn from(source: RunSource) -> Self {
+        match source {
+            RunSource::Editor => Self::Editor,
+            RunSource::Explain => Self::Explain,
+            RunSource::TableBrowse => Self::TableBrowse,
+            RunSource::RowEdit => Self::RowEdit,
+            RunSource::StructureDdl => Self::StructureDdl,
+            RunSource::Import => Self::Import,
+            RunSource::Mcp => Self::Mcp,
+            RunSource::Script => Self::Script,
+            RunSource::Shortcuts => Self::Shortcuts,
+            RunSource::CommandLine => Self::CommandLine,
+        }
+    }
+}
+
+impl From<HistorySourceTag> for RunSource {
+    fn from(source: HistorySourceTag) -> Self {
+        match source {
+            HistorySourceTag::Editor => Self::Editor,
+            HistorySourceTag::Explain => Self::Explain,
+            HistorySourceTag::TableBrowse => Self::TableBrowse,
+            HistorySourceTag::RowEdit => Self::RowEdit,
+            HistorySourceTag::StructureDdl => Self::StructureDdl,
+            HistorySourceTag::Import => Self::Import,
+            HistorySourceTag::Mcp => Self::Mcp,
+            HistorySourceTag::Script => Self::Script,
+            HistorySourceTag::Shortcuts => Self::Shortcuts,
+            HistorySourceTag::CommandLine => Self::CommandLine,
+        }
+    }
+}
+
+impl From<StatementType> for StatementTypeTag {
+    fn from(kind: StatementType) -> Self {
+        match kind {
+            StatementType::Select => Self::Select,
+            StatementType::Insert => Self::Insert,
+            StatementType::Update => Self::Update,
+            StatementType::Delete => Self::Delete,
+            StatementType::Ddl => Self::Ddl,
+            StatementType::Other => Self::Other,
+        }
+    }
+}
+
+impl From<StatementTypeTag> for StatementType {
+    fn from(kind: StatementTypeTag) -> Self {
+        match kind {
+            StatementTypeTag::Select => Self::Select,
+            StatementTypeTag::Insert => Self::Insert,
+            StatementTypeTag::Update => Self::Update,
+            StatementTypeTag::Delete => Self::Delete,
+            StatementTypeTag::Ddl => Self::Ddl,
+            StatementTypeTag::Other => Self::Other,
+        }
+    }
+}
+
+impl TryFrom<HistoryFilterArg> for HistoryQuery {
+    type Error = CoreError;
+
+    fn try_from(filter: HistoryFilterArg) -> Result<Self, CoreError> {
+        let mut query = HistoryQuery::from_input(&filter.text);
+        query.connections = filter.connection_ids.as_deref().map(parse_ids).transpose()?;
+        query.sources = filter
+            .sources
+            .map(|sources| sources.into_iter().map(RunSource::from).collect());
+        query.status = match filter.status {
+            HistoryStatusTag::Any => StatusFilter::Any,
+            HistoryStatusTag::Succeeded => StatusFilter::Succeeded,
+            HistoryStatusTag::Failed => StatusFilter::Failed,
+            HistoryStatusTag::Cancelled => StatusFilter::Cancelled,
+        };
+        query.executed_after = filter.executed_after_ms.map(from_millis);
+        query.executed_before = filter.executed_before_ms.map(from_millis);
+        Ok(query)
     }
 }
 

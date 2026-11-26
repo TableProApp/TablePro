@@ -140,7 +140,7 @@ Each file TablePro keeps carries the version of its format. A build refuses a fi
 
 - The connection list shows "Saved connections were created by a newer version of TablePro". Reset… moves the file aside, under a name the toast shows, and starts an empty list.
 - A connection's saved tabs do not reopen, and a toast says "Saved tabs could not be read" with Reset.
-- The query history and saved queries say "The query history was written by a newer version of TablePro".
+- The query history and saved queries say "The query history was written by a newer version of TablePro", or "The saved queries were written by a newer version of TablePro".
 - Column widths and filters saved in the newer format are left as they are, and the older release does not save its own.
 
 Installing the newer release again brings all of it back, unless it was reset.
@@ -158,13 +158,15 @@ To give the older release its files back:
    ls -ltr ~/.config/tablepro/ ~/.local/state/tablepro/ ~/.local/state/tablepro/workspaces/
    ```
 
-3. Move the current file aside rather than deleting it. It holds what the newer release saved, and the newer release reads it again. For the history, move its `-wal` and `-shm` files with it, if they are there:
+3. Move the current file aside rather than deleting it. It holds what the newer release saved, and the newer release reads it again. For the history, move its `-wal` and `-shm` files with it, if they are there. A release that keeps saved queries in `saved_queries.db` takes them from a `history.db` put back from before it only while `saved_queries.db` is not there, so move that file aside too:
 
    ```sh
    cd ~/.local/state/tablepro
-   mv history.db history.db.newer
-   mv history.db-wal history.db-wal.newer
-   mv history.db-shm history.db-shm.newer
+   for file in history.db saved_queries.db; do
+     for part in "$file" "$file-wal" "$file-shm"; do
+       [ -e "$part" ] && mv "$part" "$part.newer"
+     done
+   done
    ```
 
 4. Copy the newest copy back under the file's own name. For the connection list:
@@ -183,7 +185,8 @@ What was saved after the copy was made, such as a connection added in the newer 
 |---|---|
 | `~/.config/tablepro/connections.json` | Saved connections, without passwords |
 | `~/.config/tablepro/column_layouts.json`, `filter_settings.json` | Column layouts and filters per table |
-| `~/.local/state/tablepro/history.db` | Query history and saved queries |
+| `~/.local/state/tablepro/history.db` | Query history |
+| `~/.local/state/tablepro/saved_queries.db` | Saved queries with their folders, favourite tables and databases, and table folders |
 | `~/.local/state/tablepro/workspaces/` | Each connection's tabs, and the connections open at the last quit |
 | `~/.local/share/tablepro/drafts/` | The text of each SQL editor tab |
 | `~/.local/state/tablepro/crashes/` | Crash reports |

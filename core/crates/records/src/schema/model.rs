@@ -220,7 +220,7 @@ const SAVED_QUERY_FOLDER: &[(&str, Target)] = &[
     ("updated_at", Wire("updated_at")),
 ];
 
-// The rowid and pins stay on the device (0052, History).
+// The rowid, pins and fingerprints stay on the device (0052, History).
 const HISTORY_ENTRY: &[(&str, Target)] = &[
     ("id", DeviceOnly),
     ("record_id", Id),
@@ -235,6 +235,14 @@ const HISTORY_ENTRY: &[(&str, Target)] = &[
     ("cancelled", Wire("cancelled")),
     ("pinned", DeviceOnly),
     ("error", Wire("error")),
+    ("details.database", Wire("database")),
+    ("details.schema", Wire("schema")),
+    ("details.source", Wire("source")),
+    ("details.statement_type", Wire("statement_type")),
+    ("details.first_row_ms", Wire("first_row_ms")),
+    ("details.server_ms", Wire("server_ms")),
+    // Read with each app's own grammar, so another device's reading would not match its own.
+    ("details.fingerprint", DeviceOnly),
 ];
 
 pub const MODELS: &[Model] = &[
