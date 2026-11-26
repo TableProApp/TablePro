@@ -37,6 +37,8 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
     var review = RemovalReviewInfo(review: "review-1", devices: [], members: [])
     var newRequest = "request-new"
     var expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
+    // Holds removeDeviceRow until opened.
+    var removeRowGate: AsyncGate?
 
     var calls: [Call] {
         locked { recorded }
@@ -183,6 +185,9 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
 
     func removeDeviceRow(device: String) async throws {
         try record("removeDeviceRow", [device])
+        if let gate = locked({ removeRowGate }) {
+            await gate.wait()
+        }
     }
 
     func beginDeviceRemoval(recoveryKey: String, lost: [String]) async throws -> RemovalReviewInfo {

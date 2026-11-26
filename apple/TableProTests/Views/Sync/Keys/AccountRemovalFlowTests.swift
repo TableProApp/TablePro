@@ -130,6 +130,34 @@ struct AccountRemovalFlowTests {
         #expect(flows.calls(named: "finishDeviceRemoval").first?.arguments == ["review-1", "key-phone"])
     }
 
+    @Test("A rotation that failed asks for the recovery key again and keeps the choices made")
+    func failedRotationStartsAgainFromTheKey() async {
+        let flows = FakeAccountKeyFlows()
+        let review = Self.review()
+        flows.review = review
+        flows.fail("finishDeviceRemoval", with: FakeAccountKeyFlows.failure("sync.network"))
+        let flow = Self.flow(flows, opened: Opened())
+        flow.recoveryKey = "key"
+        await flow.advance()
+        flow.setKeep(review.devices[2], false)
+        flow.setRemoving(AccountRemovalReview.Member(record: review.members[1]), true)
+        await flow.advance()
+
+        await flow.advance()
+
+        #expect(flow.step == .enterKey)
+        #expect(flow.failure != nil)
+        flow.recoveryKey = "key"
+        await flow.advance()
+        #expect(flow.step == .review)
+        #expect(flow.keep.isEmpty)
+        #expect(flow.removing == ["team_b/ACCT-2"])
+        await flow.advance()
+        await flow.advance()
+        #expect(flow.step == .done)
+        #expect(flows.calls(named: "finishDeviceRemoval").last?.arguments == ["review-1", "team_b/ACCT-2"])
+    }
+
     @Test("With every teammate kept, the removal ends without the portal")
     func noSeatsToRemove() async {
         let flows = FakeAccountKeyFlows()
