@@ -358,6 +358,32 @@ async fn past_grace_the_pass_only_pulls() {
 
 // A store edited between passes has its row moved on by the next pass, though that pass writes nothing to it, so a
 // later rollback to before the edit still shows as one.
+// A refused record its store cannot read for a while keeps its refusal: nothing different was seen of it, so once it
+// reads again the same change is not sent again (Codex security round 1).
+#[tokio::test]
+async fn a_refused_record_its_store_cannot_read_for_a_while_is_not_sent_again() {
+    let server = FakeServer::new();
+    let envelopes = MemoryAdapter::new(Kind::SecretEnvelope, "secrets", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&envelopes))
+        .build()
+        .await;
+    mac.sync().await;
+    let envelope = format!("connection/{}/password", id(1));
+    envelopes.put(&envelope, json!({"suite": "tp1", "kv": 1, "nonce": "n", "ct": "c"}));
+    mac.sync().await;
+    let refused_once = mac.wire.pushed().len();
+
+    envelopes.hide(&envelope);
+    mac.sync().await;
+    envelopes.show(&envelope);
+    mac.sync().await;
+
+    assert_eq!(refused_once, 1);
+    assert_eq!(mac.wire.pushed().len(), 1, "the same change is not sent again");
+    assert_eq!(mac.rows(RowRange::Table(Table::Refused)).await.len(), 1);
+}
+
 #[tokio::test]
 async fn a_pass_keeps_the_sequence_a_store_moved_on_to_without_it() {
     let server = FakeServer::new();

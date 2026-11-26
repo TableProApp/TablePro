@@ -47,6 +47,16 @@ pub(crate) fn seen_replaced(replaced: &[Replaced], ik: &Ed25519Public) -> bool {
     replace_point(replaced, ik).is_some()
 }
 
+// Whether `certificate` may not stand as the newest past `current`: another IK seen replaced never comes back, and the
+// current one, when a merge left it retired under an alert, signs nothing at or past its point (0066, Replace points).
+fn retires(replaced: &[Replaced], current: &Ed25519Public, certificate: &AccountCertificate) -> bool {
+    match replace_point(replaced, &certificate.ik) {
+        Some(_) if certificate.ik != *current => true,
+        Some(point) => certificate.av >= point,
+        None => false,
+    }
+}
+
 // A walk up an account's certificates from its pin: where the pin can move, and what stopped it.
 pub(crate) struct Walk {
     pub(crate) ik: Ed25519Public,
@@ -117,7 +127,7 @@ impl KeyService {
                     }
                 }
             };
-            if certificate.ik != walk.ik && seen_replaced(&walk.replaced, &certificate.ik) {
+            if retires(&walk.replaced, &walk.ik, &certificate) {
                 walk.stop = Some(KeysError::RetiredIk);
                 break;
             }
@@ -150,18 +160,18 @@ impl KeyService {
         let pin = self.pin(txn, certificate.account).await?.ok_or(SyncError::NotAllowed {
             what: "verify a certificate of an account with no pin",
         })?;
-        if certificate.ik == pin.ik {
-            return Ok(IkStanding::Pinned);
-        }
         // An IK seen replaced verifies only certificates below the `av` of the replace certificate that retired it, as
         // the pin keeps it; the certificates a server serves on either side never move that point (0066, Replace
-        // points).
+        // points). The pinned IK too: a merge with no endorsement keeps it pinned under an alert while it is retired.
         if let Some(point) = replace_point(&pin.replaced, &certificate.ik) {
             return if certificate.av < point {
                 Ok(IkStanding::Replaced)
             } else {
                 Err(KeysError::RetiredIk.into())
             };
+        }
+        if certificate.ik == pin.ik {
+            return Ok(IkStanding::Pinned);
         }
         if certificate.av <= pin.av {
             return Err(KeysError::Signature.into());
@@ -221,7 +231,7 @@ impl KeyService {
             self.verify_certificate(txn, scope, certificate).await?;
             return Ok(PinChange::Unchanged);
         }
-        if certificate.ik != pin.ik && seen_replaced(&pin.replaced, &certificate.ik) {
+        if retires(&pin.replaced, &pin.ik, certificate) {
             return Err(KeysError::RetiredIk.into());
         }
         let walk = self.walk(txn, scope, &pin, certificate).await?;

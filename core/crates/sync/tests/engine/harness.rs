@@ -102,6 +102,8 @@ impl StoreFile {
 struct Held {
     records: BTreeMap<String, (Value, Standing)>,
     unreadable: Vec<String>,
+    // What `hide` took out of `records`, given back by `show`.
+    hidden: BTreeMap<String, (Value, Standing)>,
     tombstones: Vec<String>,
     applies: Vec<Vec<LocalChange>>,
 }
@@ -205,6 +207,23 @@ impl MemoryAdapter {
 
     pub fn get(&self, id: &str) -> Option<Value> {
         lock(&self.held).records.get(id).map(|(fields, _)| fields.clone())
+    }
+
+    // The store can no longer read the record, as a newer build's, until `show` gives it back unchanged.
+    pub fn hide(&self, id: &str) {
+        let mut held = lock(&self.held);
+        if let Some(record) = held.records.remove(id) {
+            held.hidden.insert(id.to_owned(), record);
+            held.unreadable.push(id.to_owned());
+        }
+    }
+
+    pub fn show(&self, id: &str) {
+        let mut held = lock(&self.held);
+        if let Some(record) = held.hidden.remove(id) {
+            held.unreadable.retain(|unreadable| unreadable != id);
+            held.records.insert(id.to_owned(), record);
+        }
     }
 
     pub fn applies(&self) -> usize {

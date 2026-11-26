@@ -554,3 +554,45 @@ async fn an_accepted_alert_retires_the_old_ik_just_past_what_the_device_pinned()
     assert_eq!(later.unwrap_err().code(), "keys.retired_ik");
     assert_eq!(pinned.unwrap(), IkStanding::Replaced);
 }
+
+// An approval merge with no endorsement keeps the pinned IK under an alert while its trust retired it: the pinned IK
+// then signs nothing at or past its point either, for a server holding an old recovery key (Codex security round 1).
+#[tokio::test]
+async fn a_pinned_ik_a_merge_retired_verifies_nothing_at_or_past_its_point() {
+    let device = device().await;
+    let scope = team();
+    let member = Member::new();
+    device
+        .put(vec![
+            Row::KeyPin(KeyPinRow {
+                account: member.account,
+                ik: member.ik.public().unwrap(),
+                av: av(1),
+                how: PinHow::Compared,
+                alert: true,
+                replaced: vec![Replaced {
+                    ik: member.ik.public().unwrap(),
+                    av: av(2),
+                }],
+            }),
+            member_row(scope, &member.certificate(1)),
+            member_row(scope, &member.certificate(2)),
+        ])
+        .await;
+    let mut txn = device.txn().await;
+
+    let past = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(2))
+        .await;
+    let before = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(1))
+        .await;
+    drop(txn);
+    let offered = offer(&device, scope, &member.certificate(3)).await;
+
+    assert_eq!(past.unwrap_err().code(), "keys.retired_ik");
+    assert_eq!(before.unwrap(), IkStanding::Replaced);
+    assert_eq!(offered, Err("keys.retired_ik".to_owned()));
+}

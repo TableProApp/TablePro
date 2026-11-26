@@ -250,11 +250,13 @@ impl ServiceSync {
                     held.is_none()
                 })
                 .collect();
-            // A record a conflict or a hold keeps out of the diff keeps its refusal for when it comes back.
+            // A record a conflict, a hold or its store's failure to read it keeps out of the diff keeps its refusal
+            // for when it comes back: nothing different was seen of it.
             standing.extend(
                 skip.get(&KindName::of(kind))
                     .into_iter()
                     .flatten()
+                    .chain(&local.unreadable)
                     .map(|id| RecordKey::new(scope, kind, id.clone())),
             );
             refusals.drop_unless(&refused, scope, kind, named, &standing);
