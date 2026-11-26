@@ -7,6 +7,7 @@
 )]
 
 mod epochs;
+mod fixtures;
 mod harness;
 mod keys;
 mod parts;
