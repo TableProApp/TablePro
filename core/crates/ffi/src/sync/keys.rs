@@ -433,6 +433,16 @@ impl SyncService {
             .await
     }
 
+    // The person closed a Set Up, Replace, Remove or Reset sheet: its draft goes, and with it any recovery key it held.
+    // A draft already gone, or a service with no engine running, holds nothing to discard.
+    pub fn discard_key_draft(&self, draft: String) -> Result<(), CoreError> {
+        let draft = draft_arg(&draft)?;
+        if let Ok(engine) = self.service.now() {
+            engine.keys.drafts().remove(draft);
+        }
+        Ok(())
+    }
+
     pub async fn sign_out_keys(&self) -> Result<SignOutOutcomeTag, CoreError> {
         self.on_keys(move |keys| async move { keys.sign_out().await.map(SignOutOutcomeTag::from) })
             .await

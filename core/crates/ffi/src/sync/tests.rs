@@ -252,6 +252,57 @@ async fn genesis_runs_through_the_service_over_the_engine_s_key_flows() {
     assert_eq!(opened.service.status().problem, None);
 }
 
+fn typed(draft: &super::keys::RecoveryKeyDraftInfo) -> Vec<SecretString> {
+    let groups: Vec<String> = draft.text.expose_secret().split('-').map(str::to_lowercase).collect();
+    draft
+        .check
+        .iter()
+        .map(|index| SecretString::from(groups[usize::from(*index)].clone()))
+        .collect()
+}
+
+// A closed Replace sheet leaves no draft, so the current recovery key it held is dropped, and its zeroizing bytes
+// with it; the draft cannot be finished afterwards, and discarding it again is no error.
+#[tokio::test]
+async fn a_discarded_replace_draft_is_gone_with_the_recovery_key_it_held() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let opened = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        ..parts
+    })
+    .await;
+    opened.service.sync_now(PassReasonTag::Launch).await.unwrap();
+    let genesis = opened.service.begin_genesis().await.unwrap();
+    opened
+        .service
+        .finish_genesis(genesis.draft.clone(), typed(&genesis))
+        .await
+        .unwrap();
+    let replace = opened
+        .service
+        .begin_replace_recovery_key(genesis.text.clone())
+        .await
+        .unwrap();
+
+    opened
+        .service
+        .discard_key_draft(replace.recovery.draft.clone())
+        .unwrap();
+    let again = opened.service.discard_key_draft(replace.recovery.draft.clone());
+    let finished = opened
+        .service
+        .finish_replace_recovery_key(replace.recovery.draft.clone(), typed(&replace.recovery), Vec::new())
+        .await
+        .unwrap_err();
+    let malformed = opened.service.discard_key_draft("not a draft".to_owned()).unwrap_err();
+
+    assert!(again.is_ok());
+    assert_eq!(code(&finished), "sync.unknown");
+    assert_eq!(code(&malformed), "sync.malformed");
+}
+
 #[tokio::test]
 async fn an_argument_the_engine_cannot_read_is_refused_before_any_call() {
     let tasks = runtime::tasks().unwrap();

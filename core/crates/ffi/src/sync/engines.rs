@@ -195,8 +195,10 @@ impl ServiceEngine {
 }
 
 impl Drop for ServiceEngine {
+    // A task that still holds the key flows keeps no recovery key a sheet left behind.
     fn drop(&mut self) {
         self.stop.stop();
+        self.keys.drafts().clear();
     }
 }
 
