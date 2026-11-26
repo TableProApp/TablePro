@@ -151,6 +151,15 @@ impl KeyService {
         })
     }
 
+    // N's own session whose approval merged and whose device key switch is still owed.
+    pub(super) async fn switch_owed(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
+        Ok(self.session_records(txn).await?.iter().any(|record| {
+            record.role == Role::NewDevice
+                && record.end == Some(super::session::Ended::Approved)
+                && !record.sent.approval
+        }))
+    }
+
     pub(super) async fn session_record(
         &self,
         txn: &mut dyn StateTxn,

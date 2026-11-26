@@ -7,7 +7,7 @@ use tablepro_keys::record_id::KeyRecordId;
 use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::scope_key::{KeyRef, Start};
 use tablepro_sync::api::error::SyncError;
-use tablepro_sync::api::key_flows::{DeviceFlows, KeyState, LockCause, ResetKind};
+use tablepro_sync::api::key_flows::{AccountFlows, DeviceFlows, KeyState, LockCause, ResetKind};
 use tablepro_sync::api::transport::TransportError;
 use tablepro_sync_testing::FakeServer;
 
@@ -456,4 +456,203 @@ async fn a_recovery_asked_again_after_a_lost_answer_sends_the_first_one_again() 
 
     assert_eq!(first, second);
     assert_eq!(d.av().await, 2);
+}
+
+// Replace names no certificate of its own in its pending flow. A certificate of the server's at that `av`, which locks
+// the device, is never adopted as this device's rotation.
+#[tokio::test]
+async fn a_server_certificate_at_a_pending_rotation_s_av_is_never_adopted() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let ik = a.pin(account).await.unwrap().ik;
+    crate::harness::put_rows(
+        &a,
+        vec![tablepro_sync::api::state::Row::KeyPending(
+            tablepro_sync::api::state::KeyPendingRow {
+                flow: tablepro_sync::api::state::PendingFlow::AccountRotation {
+                    av: tablepro_keys::encoding::Version::new(2).unwrap(),
+                },
+                state: Vec::new(),
+            },
+        )],
+    )
+    .await;
+    let foreign = crate::harness::foreign_certificate(account, 2);
+    a.service
+        .apply_account_objects(crate::harness::arrival(vec![crate::harness::served(&foreign)]))
+        .await
+        .unwrap();
+
+    a.service
+        .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
+        .await
+        .unwrap();
+
+    let pin = a.pin(account).await.unwrap();
+    assert_eq!((pin.ik, pin.av.get()), (ik, 1));
+    assert!(!pin.replaced.contains(&ik));
+}
+
+// A team rotation whose answer was lost goes up again and meets `create_only` on its own version: the step is met.
+#[tokio::test]
+async fn a_team_step_whose_answer_was_lost_is_met_on_resume() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let team = owned_team(&a).await;
+    // The account rotation, the certificate copied into the team, then the team rotation whose answer is lost.
+    a.wire.lose_answer_after(2);
+
+    rotate_keeping_only_self(&a, &r).await;
+    let pending = a
+        .get(tablepro_sync::api::state::RowKey::KeyPending(
+            tablepro_sync::api::state::PendingFlow::AccountRotation {
+                av: tablepro_keys::encoding::Version::new(2).unwrap(),
+            },
+        ))
+        .await;
+    a.service
+        .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
+        .await
+        .unwrap();
+
+    assert!(pending.is_some());
+    assert!(
+        a.get(tablepro_sync::api::state::RowKey::KeyPending(
+            tablepro_sync::api::state::PendingFlow::AccountRotation {
+                av: tablepro_keys::encoding::Version::new(2).unwrap(),
+            },
+        ))
+        .await
+        .is_none()
+    );
+    let version = |number: u32| {
+        KeyRecordId::Version(KeyRef {
+            owner: team.0,
+            purpose: KeyPurpose::Team,
+            version: tablepro_keys::encoding::Version::new(number).unwrap(),
+        })
+        .to_wire()
+    };
+    assert!(stored_in_team(&server, team, "key.version", &version(2)));
+    assert!(!stored_in_team(&server, team, "key.version", &version(3)));
+}
+
+// The removal applied, its answer was lost and a pull followed it: on resume the removed device is no longer pinned,
+// so no later rotation can keep it.
+#[tokio::test]
+async fn a_removal_followed_by_pull_after_a_lost_answer_still_drops_the_removed_device_s_pin() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let b_device = key_device(&b).await;
+    a.wire.lose_next_answer();
+    let review = a.service.begin_removal(r, vec![b_device]).await.unwrap();
+    a.service
+        .finish_removal(review.review, Vec::new(), Vec::new())
+        .await
+        .unwrap_err();
+    a.pull().await;
+
+    a.service
+        .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
+        .await
+        .unwrap();
+
+    assert!(!a.device_pins().await.iter().any(|pin| pin.key_device == b_device));
+    assert_eq!(a.av().await, 2);
+}
+
+// A file with no anchor trusts nothing it holds: a device recovered with R starts with no pins of other accounts.
+#[tokio::test]
+async fn an_unanchored_device_recovered_with_r_starts_with_no_other_pins() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let other = new_account();
+    crate::harness::put_rows(
+        &b,
+        vec![tablepro_sync::api::state::Row::KeyPin(
+            tablepro_sync::api::state::KeyPinRow {
+                account: other,
+                ik: tablepro_keys::keys::Ed25519Public([7; 32]),
+                av: tablepro_keys::encoding::Version::FIRST,
+                how: tablepro_keys::trust::PinHow::Compared,
+                alert: false,
+                replaced: Vec::new(),
+            },
+        )],
+    )
+    .await;
+    let b = b
+        .reopen(crate::harness::opened_with(
+            tablepro_sync::api::state::KeyTrust::Unanchored,
+        ))
+        .await;
+
+    b.service.recover(r).await.unwrap();
+    b.server_approves().await;
+
+    assert!(b.pin(other).await.is_none());
+    assert_eq!(b.av().await, 2);
+}
+
+#[tokio::test]
+async fn a_recovery_of_a_stopped_device_resumes_its_personal_scope() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let key = tablepro_sync::api::state::RowKey::KeyVersion(
+        tablepro_sync::api::ids::ScopeName::Personal,
+        KeyPurpose::Personal,
+    );
+    let Some(tablepro_sync::api::state::Row::KeyVersion(mut row)) = b.get(key).await else {
+        unreachable!("no personal key row")
+    };
+    row.stop(tablepro_sync::api::state::StoppedCause::CatchUp);
+    crate::harness::put_rows(&b, vec![tablepro_sync::api::state::Row::KeyVersion(row)]).await;
+
+    b.service.recover(r).await.unwrap();
+
+    assert!(
+        b.hooks
+            .calls()
+            .contains(&tablepro_sync_testing::key_flows::HookCall::Resume(
+                tablepro_sync::api::ids::ScopeName::Personal
+            ))
+    );
+}
+
+// A refused recovery leaves no copy of the account keys R opened.
+#[tokio::test]
+async fn a_refused_recovery_keeps_no_account_keys() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    d.wire
+        .refuse_next_push(tablepro_sync::api::transport::RejectedCode::BadStatement);
+
+    d.service.recover(r).await.unwrap_err();
+
+    let opened = tablepro_sync::api::device_store::DeviceItem::AccountKeys {
+        origin: crate::harness::origin(),
+        account,
+        av: tablepro_keys::encoding::Version::FIRST,
+    };
+    assert!(!d.store.inner.holds(&opened));
 }

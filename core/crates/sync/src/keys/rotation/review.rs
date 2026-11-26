@@ -1,12 +1,11 @@
 // Removing a device (0056, Account flows, D7): the review of the members this account confirmed while the lost device
 // held its keys, and the choices that stay in `key_pending` until every team rotation is written (0054).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, TeamId, Version, WrapPurpose};
 use tablepro_keys::keys::Signature;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
-use tablepro_keys::scope_key::VersionRecord;
 use tablepro_keys::wrap::{Recipient, Wrap};
 use uuid::Uuid;
 
@@ -16,7 +15,8 @@ use crate::api::key_flows::ReviewedMember;
 use crate::api::state::{Row, RowRange, StateTxn, Table};
 use crate::keys::KeyService;
 
-const FORMAT: u8 = 1;
+// Format 1 carried no certificate.
+const FORMAT: u8 = 2;
 
 // The team steps an account rotation still owes: the members marked for removal per team, the teams done, and the
 // signature of this flow's own certificate at that `av`, which tells its rotation from another device's. An empty
@@ -76,7 +76,11 @@ impl TeamSteps {
 }
 
 fn decode(bytes: &[u8]) -> Option<TeamSteps> {
-    let mut rest = bytes.strip_prefix(&[FORMAT])?;
+    let (format, mut rest) = bytes.split_first()?;
+    if !matches!(*format, 1 | FORMAT) {
+        return None;
+    }
+    let format = *format;
     let mut take = |len: usize| -> Option<&[u8]> {
         if rest.len() < len {
             return None;
@@ -96,43 +100,24 @@ fn decode(bytes: &[u8]) -> Option<TeamSteps> {
     for _ in 0..count(take(4)?)? {
         steps.done.push(TeamId(uuid(take(16)?)?));
     }
-    steps.certificate = match take(1)? {
-        [0] => None,
-        [1] => Some(Signature(take(64)?.try_into().ok()?)),
-        _ => return None,
-    };
+    if format == FORMAT {
+        steps.certificate = match take(1)? {
+            [0] => None,
+            [1] => Some(Signature(take(64)?.try_into().ok()?)),
+            _ => return None,
+        };
+    }
     if !rest.is_empty() {
         return None;
     }
     Some(steps)
 }
 
-// The members this account confirmed with a wrap it signed under one of `avs`. A wrap confirms its recipient only when
-// that account did not hold the version before (0056, Teams, Confirming a member), so a rotation's wraps to the
-// holders it kept are not confirmations.
-pub(crate) fn confirmations(
-    account: AccountId,
-    avs: &[Version],
-    versions: &[VersionRecord],
-    wraps: &[Wrap],
-) -> BTreeMap<AccountId, Version> {
-    let holders_of = |version: Version| -> BTreeSet<AccountId> {
-        let mut holders: BTreeSet<AccountId> = wraps
-            .iter()
-            .filter(|wrap| wrap.target.version == version)
-            .filter_map(|wrap| match wrap.target.recipient {
-                Recipient::Account(recipient) => Some(recipient),
-                Recipient::Device(_) => None,
-            })
-            .collect();
-        holders.extend(
-            versions
-                .iter()
-                .filter(|record| record.key.version == version)
-                .map(|record| record.signer),
-        );
-        holders
-    };
+// The members this account wrapped a team key to under one of `avs`. Telling a confirmation from a rotation's wrap to a
+// holder it kept needs that holder's earlier wrap verified under a key the lost device never held; until the team
+// rules give that, every such wrap is listed, so no confirmation the lost device could have made is missed. The person
+// keeps the rest, which is the default.
+pub(crate) fn confirmations(account: AccountId, avs: &[Version], wraps: &[Wrap]) -> BTreeMap<AccountId, Version> {
     let mut members: BTreeMap<AccountId, Version> = BTreeMap::new();
     for wrap in wraps {
         let Recipient::Account(recipient) = wrap.target.recipient else {
@@ -142,15 +127,7 @@ pub(crate) fn confirmations(
             && wrap.wrapper.account == account
             && recipient != account
             && avs.contains(&wrap.wrapper.av);
-        if !signed_here {
-            continue;
-        }
-        let held_before = wrap
-            .target
-            .version
-            .previous()
-            .is_some_and(|before| holders_of(before).contains(&recipient));
-        if !held_before {
+        if signed_here {
             let entry = members.entry(recipient).or_insert(wrap.wrapper.av);
             *entry = (*entry).min(wrap.wrapper.av);
         }
@@ -198,13 +175,7 @@ impl KeyService {
                 .iter()
                 .filter_map(|held| held.object.wrap())
                 .collect();
-            let versions: Vec<VersionRecord> = self
-                .held_objects(txn, scope, KeyKind::Version)
-                .await?
-                .iter()
-                .filter_map(|held| held.object.version_record())
-                .collect();
-            for (member, av) in confirmations(account, &avs, &versions, &wraps) {
+            for (member, av) in confirmations(account, &avs, &wraps) {
                 members.insert((team, member), av);
             }
         }
@@ -237,8 +208,7 @@ impl KeyService {
 #[cfg(test)]
 mod tests {
     use tablepro_keys::encoding::KeyDeviceId;
-    use tablepro_keys::keys::Kid;
-    use tablepro_keys::scope_key::{KeyRef, Start};
+    use tablepro_keys::scope_key::KeyRef;
     use tablepro_keys::wrap::{Wrapper, scope_key_target};
 
     use super::*;
@@ -258,17 +228,6 @@ mod tests {
             owner: TEAM,
             purpose: KeyPurpose::Team,
             version: v(version),
-        }
-    }
-
-    fn record(version: u32, signer: AccountId) -> VersionRecord {
-        VersionRecord {
-            key: key(version),
-            start: if version == 1 { Start::Over } else { Start::Next },
-            kid: Kid([0; 32]),
-            signer,
-            signer_av: v(1),
-            sig: Signature([0; 64]),
         }
     }
 
@@ -321,34 +280,48 @@ mod tests {
         assert!(TeamSteps::decode(&[2]).is_err());
     }
 
-    // Owner O created the team and confirmed M; A, a holder, rotated to version 2 while its lost device held `av` 1
-    // and wrapped it to O and M, then confirmed E at version 2. Only E is A's confirmation.
+    // A rotated to version 2 while its lost device held `av` 1, and in the same `av` confirmed E back after a removal
+    // had left E out. Every member A wrapped to under that `av` is listed, the re-confirmed one included.
     #[test]
-    fn a_rotation_s_wraps_to_holders_it_kept_are_no_confirmation() {
+    fn every_member_wrapped_to_under_a_lost_av_is_listed() {
         let (a, o, m, e) = (account(0xa), account(0x0), account(0xd), account(0xe));
-        let versions = [record(1, o), record(2, a)];
         let wraps = [
             wrap(1, o, o, 1),
-            wrap(1, m, o, 1),
-            wrap(1, a, o, 1),
+            wrap(1, e, o, 1),
             wrap(2, o, a, 1),
             wrap(2, m, a, 1),
             wrap(2, a, a, 1),
             wrap(2, e, a, 1),
         ];
 
-        let confirmed = confirmations(a, &[v(1)], &versions, &wraps);
+        let listed = confirmations(a, &[v(1)], &wraps);
 
-        assert_eq!(confirmed.into_iter().collect::<Vec<_>>(), vec![(e, v(1))]);
+        assert_eq!(
+            listed.into_iter().collect::<Vec<_>>(),
+            vec![(o, v(1)), (m, v(1)), (e, v(1))]
+        );
     }
 
     #[test]
     fn a_wrap_under_an_av_no_lost_device_held_is_no_confirmation() {
         let (a, e) = (account(0xa), account(0xe));
-        let versions = [record(1, a)];
         let wraps = [wrap(1, a, a, 2), wrap(1, e, a, 2)];
 
-        assert!(confirmations(a, &[v(1)], &versions, &wraps).is_empty());
-        assert_eq!(confirmations(a, &[v(2)], &versions, &wraps).len(), 1);
+        assert!(confirmations(a, &[v(1)], &wraps).is_empty());
+        assert_eq!(confirmations(a, &[v(2)], &wraps).len(), 1);
+    }
+
+    #[test]
+    fn a_format_1_state_reads_with_no_certificate() {
+        let mut row = vec![1];
+        row.extend_from_slice(&1_u32.to_be_bytes());
+        row.extend_from_slice(Uuid::from_u128(1).as_bytes());
+        row.extend_from_slice(Uuid::from_u128(2).as_bytes());
+        row.extend_from_slice(&0_u32.to_be_bytes());
+
+        let steps = TeamSteps::decode(&row).unwrap();
+
+        assert_eq!(steps.remove, vec![(TeamId(Uuid::from_u128(1)), account(2))]);
+        assert_eq!(steps.certificate, None);
     }
 }

@@ -140,9 +140,16 @@ pub struct Wire {
     refuse: Mutex<Option<RejectedCode>>,
     fail: Mutex<Option<TransportError>>,
     lose: AtomicBool,
+    // Counts down the pushes before the one whose answer is lost; 0 loses none.
+    lose_after: AtomicI64,
 }
 
 impl Wire {
+    // The server applies the push `skip` pushes from now, and its answer never arrives.
+    pub fn lose_answer_after(&self, skip: i64) {
+        self.lose_after.store(skip + 1, Ordering::SeqCst);
+    }
+
     // The server applies the next push and its answer never arrives.
     pub fn lose_next_answer(&self) {
         self.lose.store(true, Ordering::SeqCst);
@@ -200,7 +207,11 @@ impl Transport for Wire {
             return Ok(PushAnswer { outcomes });
         }
         let answer = self.client.push(batch).await;
-        if self.lose.swap(false, Ordering::SeqCst) {
+        let countdown = self.lose_after.load(Ordering::SeqCst);
+        if countdown > 0 {
+            self.lose_after.store(countdown - 1, Ordering::SeqCst);
+        }
+        if self.lose.swap(false, Ordering::SeqCst) || countdown == 1 {
             return Err(TransportError::Network {
                 detail: "the answer was lost".to_owned(),
             });
@@ -255,6 +266,7 @@ impl Device {
             refuse: Mutex::new(None),
             fail: Mutex::new(None),
             lose: AtomicBool::new(false),
+            lose_after: AtomicI64::new(0),
         });
         let store = Arc::new(Store {
             inner: Arc::new(FakeDeviceStore::new()),
@@ -621,4 +633,68 @@ pub async fn owned_team(owner: &Device) -> TeamId {
     owner.join_team(team, &[(owner.account, Role::Owner)]).await;
     owner.service.create_team_keys(team).await.unwrap();
     team
+}
+
+pub async fn put_rows(device: &Device, rows: Vec<Row>) {
+    let mut txn = device.txn().await;
+    for row in rows {
+        txn.put(row).await.unwrap();
+    }
+    txn.commit().await.unwrap();
+}
+
+pub fn served(object: &KeyObject) -> tablepro_sync::api::transport::PulledRecord {
+    let fields = object.fields_json();
+    tablepro_sync::api::transport::PulledRecord {
+        kind: tablepro_sync::api::ids::KindName::parse(object.id.kind().name()).unwrap(),
+        record_id: object.id.to_wire(),
+        tag: tablepro_sync::api::ids::ChangeTag::Service("tag".to_owned()),
+        fields: Some(serde_json::from_str(&fields).unwrap()),
+        fields_json: Some(fields),
+        deleted: None,
+        service: None,
+    }
+}
+
+pub fn tombstone_of(kind: &str, record_id: &str) -> tablepro_sync::api::transport::PulledRecord {
+    tablepro_sync::api::transport::PulledRecord {
+        kind: tablepro_sync::api::ids::KindName::parse(kind).unwrap(),
+        record_id: record_id.to_owned(),
+        tag: tablepro_sync::api::ids::ChangeTag::Service("tag".to_owned()),
+        fields: None,
+        fields_json: None,
+        deleted: Some(tablepro_sync::api::transport::DeletedReason::User),
+        service: None,
+    }
+}
+
+pub fn arrival(records: Vec<tablepro_sync::api::transport::PulledRecord>) -> KeyArrival {
+    KeyArrival {
+        scope: ScopeName::Personal,
+        records,
+        order: ArrivalOrder::InOrder,
+    }
+}
+
+// A certificate at `av` under an IK of the server's own, with keys of its own: what a server cannot sign as the account.
+pub fn foreign_certificate(account: AccountId, av: u32) -> KeyObject {
+    let ik = tablepro_keys::keys::Ed25519Seed::generate().unwrap();
+    let keys = tablepro_keys::keys::AccountKeys::generate().unwrap();
+    let certificate = tablepro_keys::cert::AccountCertificate::sign(
+        &origin(),
+        account,
+        Version::new(av).unwrap(),
+        tablepro_keys::cert::CertKind::GenesisOrRotation,
+        &ik,
+        keys.public().unwrap(),
+        None,
+    )
+    .unwrap();
+    KeyObject {
+        id: tablepro_keys::record_id::KeyRecordId::Account {
+            account,
+            av: Version::new(av).unwrap(),
+        },
+        body: tablepro_keys::body::KeyBody::Account(tablepro_keys::body::AccountBody::of(&certificate)),
+    }
 }

@@ -216,6 +216,13 @@ impl KeyService {
         let objects = match self.held_approval(txn.as_mut(), record, &own).await? {
             Held::Applied(objects) => return self.approval_applied(record, &objects).await,
             Held::Candidates(objects) => objects,
+            // Another writer's approval at these ids, which this side never sealed: the session cannot complete.
+            Held::Foreign => {
+                drop(txn);
+                record.cancel(SessionEnd::User).ok();
+                self.send_cancel(record, SessionEnd::User).await?;
+                return Err(KeysError::Conflict.into());
+            }
             Held::None => {
                 let trust = trust_of(&held_tables(txn.as_mut()).await?, self.account());
                 let objects = change_set::build(self.origin(), self.account(), &own, &record.n, &trust)?;
@@ -253,17 +260,11 @@ impl KeyService {
         match answer {
             Pushed::Applied => self.approval_applied(record, &objects).await,
             // Another copy at one of its ids: this side's own, applied, when its wrap names this key device as writer.
+            // The server holds another copy at one of its ids: the next pull shows whose. The candidates stay, so
+            // nothing is sealed again meanwhile.
             Pushed::Refused(RejectedCode::CreateOnly) => {
-                let mut txn = self.begin().await?;
-                if let Held::Applied(held) = self.held_approval(txn.as_mut(), record, own).await? {
-                    drop(txn);
-                    return self.approval_applied(record, &held).await;
-                }
-                drop(txn);
-                self.forget_candidates(&objects).await?;
-                Err(SyncError::Rejected {
-                    code: RejectedCode::CreateOnly,
-                })
+                self.hooks().pass_soon();
+                Ok(())
             }
             Pushed::Refused(RejectedCode::BadStatement) => {
                 self.forget_candidates(&objects).await?;
@@ -332,6 +333,7 @@ impl KeyService {
             ) {
                 (true, true, _) => Held::Applied(objects),
                 (true, false, false) => Held::Candidates(objects),
+                (false, _, true) => Held::Foreign,
                 _ => Held::None,
             },
         )
@@ -375,10 +377,6 @@ impl KeyService {
                 what: "the request's device keys",
             });
         };
-        let old_av = {
-            let mut txn = self.begin().await?;
-            self.pin(txn.as_mut(), self.account()).await?.map(|pin| pin.av)
-        };
         let mut txn = self.begin().await?;
         let Some(found) = self.find_approval(txn.as_mut(), &n_keys).await? else {
             return Ok(false);
@@ -394,7 +392,13 @@ impl KeyService {
             Ok(opened) => opened,
             Err(error) => return self.refuse_approval(record, held_keys, error).await,
         };
-        let held = held_tables(txn.as_mut()).await?;
+        // A file with no anchor trusts none of its tables: it starts from the approver's pins and versions (0054, A
+        // stale file).
+        let held = if self.is_unanchored() {
+            HeldTables::default()
+        } else {
+            held_tables(txn.as_mut()).await?
+        };
         let facts = self.held_facts(txn.as_mut()).await?;
         let view = Approver {
             account: self.account(),
@@ -416,11 +420,10 @@ impl KeyService {
         // with its switch still owed, which `finish_switch` makes on resume (0054, The device's key state).
         self.store_account_keys(opened.av, &opened.keys).await?;
         record.merged();
-        self.write_merged(txn.as_mut(), &held, &merged).await?;
+        self.write_merged(txn.as_mut(), &merged).await?;
         self.put_session(txn.as_mut(), record).await?;
         txn.commit().await?;
         self.merged_notices(&merged)?;
-        self.erase_older_account_keys(old_av, opened.av).await?;
         self.finish_switch(record).await?;
         Ok(true)
     }
@@ -440,19 +443,22 @@ impl KeyService {
             pending: None,
         })
         .await?;
+        let av = {
+            let mut txn = self.begin().await?;
+            self.pin(txn.as_mut(), self.account()).await?.map(|pin| pin.av)
+        };
+        if let Some(av) = av {
+            self.erase_older_account_keys(av).await?;
+        }
         record.sent.approval = true;
         self.save_session(record).await
     }
 
-    // An approval replaces the account keys a device held (0056, Keys, Erasing): only the approved `av`'s stay.
-    async fn erase_older_account_keys(&self, old: Option<Version>, approved: Version) -> Result<(), SyncError> {
-        let Some(old) = old else {
-            return Ok(());
-        };
-        for av in 1..=old.get() {
-            if av != approved.get() {
-                self.erase_account_keys(Version::new(av)?).await?;
-            }
+    // An approval replaces the account keys a device held (0056, Keys, Erasing): only the approved `av`'s stay. Run
+    // with the switch, so a resume erases what a crash left.
+    async fn erase_older_account_keys(&self, approved: Version) -> Result<(), SyncError> {
+        for av in 1..approved.get() {
+            self.erase_account_keys(Version::new(av)?).await?;
         }
         Ok(())
     }
@@ -481,15 +487,24 @@ impl KeyService {
         Err(error.into())
     }
 
-    async fn write_merged(&self, txn: &mut dyn StateTxn, held: &HeldTables, merged: &Merged) -> Result<(), SyncError> {
+    // Every pin and version row becomes what the merge gives, so rows it left out go.
+    async fn write_merged(&self, txn: &mut dyn StateTxn, merged: &Merged) -> Result<(), SyncError> {
+        for row in scan_rows(txn, Table::KeyPins).await? {
+            if let Row::KeyPin(pin) = row
+                && !merged.pins.iter().any(|kept| kept.account == pin.account)
+            {
+                txn.delete(&RowKey::KeyPin(pin.account)).await?;
+            }
+        }
         for pin in &merged.pins {
             txn.put(Row::KeyPin(pin.clone())).await?;
         }
-        for row in &held.versions {
-            if !merged
-                .versions
-                .iter()
-                .any(|kept| kept.scope == row.scope && kept.purpose == row.purpose)
+        for row in scan_rows(txn, Table::KeyVersions).await? {
+            if let Row::KeyVersion(row) = row
+                && !merged
+                    .versions
+                    .iter()
+                    .any(|kept| kept.scope == row.scope && kept.purpose == row.purpose)
             {
                 txn.delete(&RowKey::KeyVersion(row.scope, row.purpose)).await?;
             }
@@ -588,6 +603,7 @@ impl KeyService {
 enum Held {
     Applied(Vec<KeyObject>),
     Candidates(Vec<KeyObject>),
+    Foreign,
     None,
 }
 

@@ -39,6 +39,14 @@ impl ApprovalFlows for KeyService {
                 what: "ask for approval",
             });
         }
+        // Its own rotation or an earlier approval's key switch settles first: new device keys must not stand in for
+        // the ones either still needs.
+        if self.rotation_pending(txn.as_mut()).await? || self.switch_owed(txn.as_mut()).await? {
+            self.hooks().pass_soon();
+            return Err(SyncError::NotAllowed {
+                what: "ask for approval while an earlier rotation or approval settles",
+            });
+        }
         let now = self.now_us();
         for mut record in self.session_records(txn.as_mut()).await? {
             if record.role == Role::NewDevice && record.live() && !record.expire_if_due(now) {

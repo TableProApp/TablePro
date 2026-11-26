@@ -170,9 +170,16 @@ impl KeyService {
             },
             _ => false,
         };
-        if activated && record.mine && record.pending() {
-            return Ok(Some(reset));
-        }
+        // This device's own reset is judged by the keys it proposed, never by what the server serves as its proposal.
+        let activated = if record.mine {
+            let own = self.own_activation_applied(&record).await?;
+            if own && record.pending() {
+                return Ok(Some(reset));
+            }
+            own
+        } else {
+            activated
+        };
         let state = if cancelled {
             ResetState::Cancelled
         } else if activated {

@@ -730,3 +730,87 @@ async fn an_approval_erases_the_account_keys_the_device_held_before() {
     assert!(!b.store.inner.holds(&old));
     assert_eq!(b.av().await, 2);
 }
+
+// The server purges the request once the session ended; N, its device key switch still owed, keeps what it needs.
+#[tokio::test]
+async fn a_purge_after_the_merge_keeps_the_owed_device_key_switch() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    let request = compared_session(&n, &a).await;
+    n.fail_next_device_keys_write();
+    n.service.confirm_session(request).await.unwrap_err();
+    let id = KeyRecordId::Request { request };
+
+    n.service
+        .apply_session_objects(crate::harness::arrival(vec![crate::harness::tombstone_of(
+            "key.request",
+            &id.to_wire(),
+        )]))
+        .await
+        .unwrap();
+    n.service.resume_approval(request).await.unwrap();
+    n.server_approves().await;
+
+    assert_eq!(n.av().await, 1);
+}
+
+// The approver's push met another copy at its ids: it waits for the pull instead of sealing again, and sends the same
+// objects when it goes up again.
+#[tokio::test]
+async fn an_approval_refused_create_only_is_not_sealed_again() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    a.wire.refuse_next_push(RejectedCode::CreateOnly);
+
+    let refused = a.service.confirm_session(request).await.unwrap();
+    let first = a.wire.last_push_by_id();
+    a.service.resume_approval(request).await.unwrap();
+    let second = a.wire.last_push_by_id();
+
+    assert_eq!(refused.phase, SessionPhase::Confirmed);
+    assert_eq!(first, second);
+    assert_eq!(
+        a.service.approval_session(request).await.unwrap().phase,
+        SessionPhase::Approved
+    );
+}
+
+#[tokio::test]
+async fn a_device_whose_rotation_still_settles_does_not_ask_for_approval() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    crate::harness::put_rows(
+        &n,
+        vec![tablepro_sync::api::state::Row::KeyPending(
+            tablepro_sync::api::state::KeyPendingRow {
+                flow: tablepro_sync::api::state::PendingFlow::AccountRotation {
+                    av: tablepro_keys::encoding::Version::new(2).unwrap(),
+                },
+                state: Vec::new(),
+            },
+        )],
+    )
+    .await;
+
+    let error = n.service.request_approval().await.unwrap_err();
+
+    assert_eq!(error.code(), "sync.not_allowed");
+}

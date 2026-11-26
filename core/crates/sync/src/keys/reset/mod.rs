@@ -288,28 +288,47 @@ impl KeyService {
     }
 
     // This device's own activation applied: the certificate at the reset's `av` is the one its proposal holds.
+    // This device's own activation applied: the certificate and device certificate at the reset's `av` name the keys
+    // its device store kept for the reset, under the IK it proposed. A served `key.reset` never decides it.
     pub(super) async fn own_activation_applied(&self, record: &ResetRecord) -> Result<bool, SyncError> {
         if !record.mine {
             return Ok(false);
         }
-        let mut txn = self.begin().await?;
-        let account = self.account();
-        let proposal = KeyRecordId::Reset {
-            account,
-            reset: record.reset,
-        };
-        let Some(KeyBody::Reset(body)) = self
-            .held_object(txn.as_mut(), ScopeName::Personal, KeyKind::Reset, &proposal.to_wire())
-            .await?
-            .map(|held| held.object.body)
-        else {
+        let Some(keys) = self.reset_keys(record.reset).await? else {
             return Ok(false);
         };
+        let public = keys.account.public()?;
+        let account = self.account();
+        let mut txn = self.begin().await?;
         let id = KeyRecordId::Account { account, av: record.av };
-        Ok(self
+        let certificate = match self
             .applied_object(txn.as_mut(), ScopeName::Personal, KeyKind::Account, &id.to_wire())
             .await?
-            .is_some_and(|applied| applied.body == KeyBody::Account(body.account.clone())))
+            .map(|object| object.body)
+        {
+            Some(KeyBody::Account(body)) => body,
+            _ => return Ok(false),
+        };
+        if certificate.ik != record.ik || certificate.ask != public.ask || certificate.aek != public.aek {
+            return Ok(false);
+        }
+        let device = KeyRecordId::Device {
+            account,
+            key_device: keys.device.key_device,
+            av: record.av,
+        };
+        Ok(
+            match self
+                .applied_object(txn.as_mut(), ScopeName::Personal, KeyKind::Device, &device.to_wire())
+                .await?
+                .map(|object| object.body)
+            {
+                Some(KeyBody::Device(body)) => {
+                    body.dek == keys.device.dek.public()? && body.dsk == keys.device.dsk.public()?
+                }
+                _ => false,
+            },
+        )
     }
 
     // The activation applied and the device learned of it by pull: it adopts the keys it proposed, which wins over
@@ -323,7 +342,7 @@ impl KeyService {
         let Some(keys) = self.reset_keys(reset).await? else {
             return Ok(());
         };
-        let objects = self.change_set_objects(record.av).await?;
+        let objects = self.applied_change_set(record.av).await?;
         self.activation_applied(&mut record, &keys, &objects).await
     }
 
@@ -349,17 +368,17 @@ impl KeyService {
         if !record.pending() {
             return Err(rejected(RejectedCode::BadStatement));
         }
-        // The wait as the server's own times give it; the server checks the same and answers `reset_held`.
-        if self.now_us() < record.held_until_us {
-            return Err(rejected(RejectedCode::ResetHeld));
-        }
         let keys = self.reset_keys(reset).await?.ok_or(SyncError::Unknown {
             what: "the reset's keys",
         })?;
         if self.own_activation_applied(&record).await? {
-            let objects = self.change_set_objects(record.av).await?;
+            let objects = self.applied_change_set(record.av).await?;
             self.activation_applied(&mut record, &keys, &objects).await?;
             return Ok(record);
+        }
+        // The wait as the server's own times give it; the server checks the same and answers `reset_held`.
+        if self.now_us() < record.held_until_us {
+            return Err(rejected(RejectedCode::ResetHeld));
         }
         let objects = match self.activation_candidates(reset).await? {
             Some(objects) => objects,
@@ -458,7 +477,18 @@ impl KeyService {
                     what: "the reset proposal",
                 })?
         };
-        self.send_proposal(record, &held.object, &keys.device).await
+        match self.send_proposal(record, &held.object, &keys.device).await {
+            Err(SyncError::Rejected { code }) => {
+                self.erase_reset_keys(record.reset).await?;
+                let mut txn = self.begin().await?;
+                self.drop_candidates(txn.as_mut(), ScopeName::Personal, std::slice::from_ref(&held.object))
+                    .await?;
+                txn.delete(&RowKey::KeyPending(record.to_row().flow)).await?;
+                txn.commit().await?;
+                Err(rejected(code))
+            }
+            other => other,
+        }
     }
 
     // After a reset another holder rotates each team and the person waits for re-confirmation, so this device only
