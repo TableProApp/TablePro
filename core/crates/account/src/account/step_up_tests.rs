@@ -49,6 +49,8 @@ struct Server {
     takes_step_up: bool,
     // The families POST /v2/devices bound.
     bound: StdMutex<Vec<String>>,
+    // Code exchanges answered so far: each after the first gets a refresh token of its own.
+    exchanges: StdMutex<usize>,
     log: StdMutex<Vec<String>>,
     revoked: StdMutex<Vec<String>>,
 }
@@ -64,6 +66,7 @@ impl Server {
             browser_account,
             takes_step_up,
             bound: StdMutex::default(),
+            exchanges: StdMutex::default(),
             log: StdMutex::default(),
             revoked: StdMutex::default(),
         })
@@ -181,7 +184,13 @@ impl Server {
                 {
                     return (400, String::new(), r#"{"error":"invalid_grant"}"#.to_owned());
                 }
-                ("stepped", "stepped-refresh".to_owned(), self.browser_account)
+                let mut exchanges = self.exchanges.lock().expect("the exchanges");
+                *exchanges += 1;
+                let refresh = match *exchanges {
+                    1 => "stepped-refresh".to_owned(),
+                    n => format!("stepped-refresh-{n}"),
+                };
+                ("stepped", refresh, self.browser_account)
             }
             Some("refresh_token") => {
                 let presented = fields.get("refresh_token").cloned().unwrap_or_default();
@@ -493,10 +502,62 @@ async fn a_step_up_that_comes_back_after_a_sign_out_is_revoked_not_adopted() {
     gate.add_permits(1);
     let late = stepping_up.await.expect("the step-up task");
 
-    assert!(matches!(late, Err(AccountError::SignInCanceled)), "{late:?}");
+    assert!(matches!(late, Err(AccountError::SignedOut)), "{late:?}");
     assert_eq!(server.revoked(), ["old-refresh", "stepped-refresh"]);
     assert!(held(&keyring).await.is_none());
     assert!(matches!(*account.status().borrow(), AccountStatus::SignedOut));
+}
+
+// A sign-in started before the step-up moves no attempt when it commits; its new session still ends the step-up.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_step_up_that_comes_back_after_an_earlier_sign_in_committed_is_revoked_not_adopted() {
+    let server = Server::new(SAAS_CHALLENGE);
+    let gate = Arc::new(Semaphore::new(0));
+    let authenticator = Arc::new(Authenticator {
+        opened: StdMutex::default(),
+        answer: confirmed,
+        gate: Some(gate.clone()),
+    });
+    let (_dir, keyring, account) = restored_mac(&server, authenticator.clone()).await;
+    let before = signed_in(&account).session_id;
+    let opened = |count: usize| {
+        let authenticator = authenticator.clone();
+        async move {
+            while authenticator.opened().len() < count {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }
+    };
+    let signing_in = tokio::spawn({
+        let account = account.clone();
+        async move { account.sign_in(std::future::pending()).await }
+    });
+    opened(1).await;
+    let challenge = StepUpChallenge {
+        acr_values: vec![PASSKEY.to_owned()],
+        max_age_secs: Some(300),
+    };
+    let stepping_up = tokio::spawn({
+        let account = account.clone();
+        async move { account.step_up(&challenge, std::future::pending()).await }
+    });
+    opened(2).await;
+
+    gate.add_permits(1);
+    let _ = signing_in.await.expect("the sign-in task");
+    let signed_in_now = signed_in(&account).session_id;
+    gate.add_permits(1);
+    let late = stepping_up.await.expect("the step-up task");
+
+    assert!(matches!(late, Err(AccountError::SignInCanceled)), "{late:?}");
+    assert_ne!(signed_in_now, before);
+    assert_eq!(signed_in(&account).session_id, signed_in_now);
+    assert!(
+        server.revoked().contains(&"stepped-refresh-2".to_owned()),
+        "{:?}",
+        server.revoked()
+    );
+    assert_eq!(held(&keyring).await.as_deref(), Some("stepped-refresh+"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

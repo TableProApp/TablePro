@@ -8,6 +8,13 @@ use crate::account_error::AccountError;
 use crate::account_settings::Redirect;
 use crate::oauth::Tokens;
 
+// The sign-in a step-up was started for, which its tokens may replace only while it still holds the session.
+struct SteppingUp {
+    attempt: u64,
+    session_id: Option<String>,
+    account_id: String,
+}
+
 impl Account {
     // RFC 9470 section 4, for the challenge a call was answered with: the server's authorization endpoint in the
     // browser, as the sign-in opens it (core ADR 0047), with the challenge's `acr_values` and `max_age` and PKCE. The
@@ -36,11 +43,16 @@ impl Account {
             discovered = discovering => discovered?,
             () = &mut cancelled => return Err(AccountError::SignInCanceled),
         };
-        // The account the tokens must come back for, before any page opens. Not cancelled: finding it can refresh the
-        // token, and a rotated refresh token dropped before it is kept would end the sign-in at its next use.
-        let account_id = {
+        // The sign-in the tokens must come back for, before any page opens. Not cancelled: finding its account can
+        // refresh the token, and a rotated refresh token dropped before it is kept would end the sign-in at its next use.
+        let stepping = {
             let mut session = self.inner.session.lock().await;
-            self.account_id(&mut session).await?
+            let account_id = self.account_id(&mut session).await?;
+            SteppingUp {
+                attempt,
+                session_id: session.id.clone(),
+                account_id,
+            }
         };
         let oauth = &server.connection()?.oauth;
         let issuer = server.expected_issuer()?;
@@ -54,7 +66,7 @@ impl Account {
                     .await?
             }
         };
-        self.commit_step_up(attempt, &server, &account_id, tokens).await
+        self.commit_step_up(&stepping, &server, tokens).await
     }
 
     // RFC 9470 section 4 for one call: when the server answers it with a step-up challenge, the step-up runs and the
@@ -74,13 +86,7 @@ impl Account {
         }
     }
 
-    async fn commit_step_up(
-        &self,
-        attempt: u64,
-        server: &Server,
-        account_id: &str,
-        tokens: Tokens,
-    ) -> Result<(), AccountError> {
+    async fn commit_step_up(&self, stepping: &SteppingUp, server: &Server, tokens: Tokens) -> Result<(), AccountError> {
         self.reachable()?;
         let Some(refresh) = tokens.refresh.clone().filter(|token| !token.expose_secret().is_empty()) else {
             return Err(AccountError::Protocol("the step-up gave no refresh token".to_owned()));
@@ -89,14 +95,15 @@ impl Account {
         let mut session = self.inner.session.lock().await;
         // The values may have stopped the server while the browser was open.
         self.reachable()?;
-        let refused = if self.inner.attempts.load(Ordering::SeqCst) != attempt {
-            // A sign-in, sign-out or server change since the step-up started owns the session now.
-            Err(AccountError::SignInCanceled)
-        } else if session.refresh.is_none() {
+        let refused = if session.refresh.is_none() {
             Err(AccountError::SignedOut)
+        } else if self.inner.attempts.load(Ordering::SeqCst) != stepping.attempt || session.id != stepping.session_id {
+            // A sign-in that committed, or a sign-out or server change, since the step-up started owns the session
+            // now. A sign-in started before the step-up moves no attempt when it commits, but it gives a new session.
+            Err(AccountError::SignInCanceled)
         } else {
             server_calls::audience_check(server, &tokens.access)
-                .and_then(|()| server_calls::subject_check(&tokens.access, account_id))
+                .and_then(|()| server_calls::subject_check(&tokens.access, &stepping.account_id))
         };
         if let Err(error) = refused {
             if let Err(revoked) = oauth.revoke(&refresh).await {
