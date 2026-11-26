@@ -598,6 +598,33 @@ async fn a_restart_without_a_ring_ends_the_walk_down() {
     assert_eq!(five_read.unwrap_err().code(), "sync.not_allowed");
 }
 
+// A member that joined at a restart never passed the version below it. M, an account the server made and the device
+// pinned on first use, signs that version with a wrap to this account: a snapshot envelope under it opens nothing.
+#[tokio::test]
+async fn a_version_below_a_restart_opens_only_down_a_ring_never_through_a_wrap() {
+    let mut t = five();
+    let (six, forged_five) = (key(), key());
+    let mut team = book(&t.me, None);
+    insert_all(
+        &mut team,
+        &version(6, Start::Over, &six, None, (&t.a, 1), &[(&t.a, 1), (&t.me, 1)]),
+    );
+    assert_eq!(
+        team.advance(&mut t.facts).await.unwrap().events,
+        [TeamEvent::Joined { version: v(6) }]
+    );
+    insert_all(
+        &mut team,
+        &version(5, Start::Next, &forged_five, Some(&key()), (&t.m, 1), &[(&t.me, 1)]),
+    );
+    let keyring = TestKeyring { account: t.me.clone() };
+
+    let read = secrets::team_key(&keyring, super::team(), &team, &mut t.facts, v(5), v(6)).await;
+
+    assert_eq!(read.unwrap_err().code(), "sync.not_allowed");
+    assert!(check_open_kv(v(5), None, v(6), None).is_ok());
+}
+
 #[test]
 fn a_confirmation_past_five_thousand_members_holding_the_key_is_team_full() {
     let account = |index: u128| tablepro_keys::encoding::AccountId(Uuid::from_u128(index + 1));

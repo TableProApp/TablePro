@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use tablepro_keys::cert::AccountCertificate;
 use tablepro_keys::encoding::{AccountId, Origin, TeamId, Version};
 use tablepro_keys::keys::{AccountKeys, ScopeKey};
-use tablepro_keys::scope_key::{Start, VersionRecord};
+use tablepro_keys::scope_key::VersionRecord;
 use tablepro_keys::wrap::Recipient;
 
 use super::book::TeamBook;
@@ -102,8 +102,9 @@ async fn open_own_wrap(
 }
 
 // `newest` is the version the device advanced to, above which it holds no key. A client reads it through its own wrap
-// and each older version by walking the rings down from it (0056, Signed objects and wraps, Ring). Below a restart,
-// which carries no ring, the walk goes on from this account's own wrap of the version below, the only way to it.
+// and each older version only by walking the rings down from it (0056, Signed objects and wraps, Ring). A restart with
+// no ring ends the walk: a wrap of the version below it would open a record that never passed the advancing checks,
+// which an account the server made up signs as easily as a holder does (0064).
 pub(crate) async fn team_key(
     service: &dyn Keyring,
     team: TeamId,
@@ -125,21 +126,10 @@ pub(crate) async fn team_key(
         let record = verified_record(origin, book, facts, below)
             .await?
             .ok_or_else(not_given)?;
-        key = match book.ring(at) {
-            Some(ring) => ring
-                .open(origin, build::team_key(team, at), &key, &record)
-                .map_err(SyncError::from)?,
-            None if book
-                .version_record(at)
-                .is_some_and(|record| record.start == Start::Over) =>
-            {
-                open_own_wrap(service, book, facts, below)
-                    .await?
-                    .ok_or_else(not_given)?
-            }
-            // A version with `start` 0 always has its ring; one missing is withheld, never a way around the chain.
-            None => return Err(not_given()),
-        };
+        let ring = book.ring(at).ok_or_else(not_given)?;
+        key = ring
+            .open(origin, build::team_key(team, at), &key, &record)
+            .map_err(SyncError::from)?;
         at = below;
     }
     Ok(key)
