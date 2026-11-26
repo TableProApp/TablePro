@@ -72,8 +72,8 @@ impl KeyService {
             ScopeName::Team(_) => (KeyKind::Member, KeyRecordId::Member { account, av }),
             ScopeName::Personal | ScopeName::History => (KeyKind::Account, KeyRecordId::Account { account, av }),
         };
-        let held = self.held_object(txn, scope, kind, &id.to_wire()).await?;
-        Ok(held.and_then(|held| match held.object.body {
+        let held = self.applied_object(txn, scope, kind, &id.to_wire()).await?;
+        Ok(held.and_then(|object| match object.body {
             KeyBody::Account(body) | KeyBody::Member(body) => Some(body.certificate(account, av)),
             _ => None,
         }))
@@ -148,8 +148,13 @@ impl KeyService {
         if certificate.ik == pin.ik {
             return Ok(IkStanding::Pinned);
         }
+        // An IK seen replaced verifies only what was signed before the pin moved past it (0056, `keys.retired_ik`).
         if pin.replaced.contains(&certificate.ik) {
-            return Ok(IkStanding::Replaced);
+            return if certificate.av < pin.av {
+                Ok(IkStanding::Replaced)
+            } else {
+                Err(KeysError::RetiredIk.into())
+            };
         }
         if certificate.av <= pin.av {
             return Err(KeysError::Signature.into());
@@ -179,7 +184,8 @@ impl KeyService {
     }
 
     // Advancing: offers `certificate` as the account's newest and moves its pin as 0056's Pins says, raising the
-    // notice or alert. An IK the pin saw replaced is `keys.retired_ik`.
+    // notice or alert. An IK the pin saw replaced is `keys.retired_ik`. The own account only verifies here: it moves
+    // through the personal scope, where its keys come with it, never through a team's copy.
     pub async fn offer_certificate(
         &self,
         txn: &mut dyn StateTxn,
@@ -188,6 +194,10 @@ impl KeyService {
     ) -> Result<PinChange, SyncError> {
         certificate.verify(&self.origin)?;
         let account = certificate.account;
+        if account == self.account {
+            self.verify_certificate(txn, scope, certificate).await?;
+            return Ok(PinChange::Unchanged);
+        }
         let Some(pin) = self.pin(txn, account).await? else {
             txn.put(Row::KeyPin(KeyPinRow {
                 account,
@@ -209,14 +219,21 @@ impl KeyService {
         }
         let walk = self.walk(txn, scope, &pin, certificate).await?;
         match walk.stop {
+            // The endorsed replaces before the unendorsed step still count: the pin follows them, then alerts.
             Some(KeysError::Unendorsed) => {
+                txn.put(Row::KeyPin(KeyPinRow {
+                    account,
+                    ik: walk.ik,
+                    av: walk.av,
+                    how: if walk.endorsed { PinHow::Replaced } else { pin.how },
+                    alert: true,
+                    replaced: walk.replaced,
+                }))
+                .await?;
+                if walk.endorsed {
+                    self.raise_notice(KeyNoticeKind::RecoveryKeyReplaced { account })?;
+                }
                 if !pin.alert {
-                    txn.put(Row::KeyPin(KeyPinRow {
-                        alert: true,
-                        av: walk.av,
-                        ..pin
-                    }))
-                    .await?;
                     self.raise_notice(KeyNoticeKind::KeysChanged { account })?;
                 }
                 Ok(PinChange::Alert)

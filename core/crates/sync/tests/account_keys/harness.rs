@@ -12,6 +12,7 @@ use tablepro_keys::encoding::{AccountId, Origin, TeamId, Version, WrapPurpose};
 use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::record_id::KeyRecordId;
 use tablepro_keys::wrap::{Wrap, Wrapper, device_target};
+use tablepro_sync::api::device_store::{DeviceItem, DeviceStoreError, HostDeviceStore};
 use tablepro_sync::api::ids::{DeviceRowId, KindName, ScopeName};
 use tablepro_sync::api::key_flows::{
     AccountFlows, ArrivalOrder, KeyApplied, KeyArrival, KeyState, RecoveryKeyDraft, TypedBack,
@@ -26,6 +27,7 @@ use tablepro_sync::api::transport::{
 };
 use tablepro_sync::keys::{Clock, KeyService, KeyServiceParts, create_change};
 use tablepro_sync_testing::{FakeClient, FakeDeviceStore, FakeServer, MemoryStateFiles, RecordingHooks};
+use zeroize::Zeroizing;
 
 pub const ORIGIN: &str = "https://sync.example.com";
 
@@ -47,11 +49,17 @@ pub struct Recorded {
     pub revokes: Mutex<Vec<Ed25519Public>>,
     // A check the fake does not make, as the real server's `bad_statement`: the next push is refused whole with it.
     refuse: Mutex<Option<RejectedCode>>,
+    // The next push applies on the server and its answer never comes back.
+    lose: Mutex<bool>,
 }
 
 impl Recorded {
     pub fn refuse_next_push(&self, code: RejectedCode) {
         *self.refuse.lock().unwrap() = Some(code);
+    }
+
+    pub fn lose_next_answer(&self) {
+        *self.lose.lock().unwrap() = true;
     }
 }
 
@@ -72,7 +80,13 @@ impl Transport for Recorded {
             );
             return Ok(PushAnswer { outcomes });
         }
-        self.client.push(batch).await
+        let answer = self.client.push(batch).await;
+        if std::mem::take(&mut *self.lose.lock().unwrap()) {
+            return Err(TransportError::Network {
+                detail: "the answer was lost".to_owned(),
+            });
+        }
+        answer
     }
 }
 
@@ -151,6 +165,7 @@ impl Device {
             client: server.client(account, row.clone()),
             revokes: Mutex::new(Vec::new()),
             refuse: Mutex::new(None),
+            lose: Mutex::new(false),
         });
         let hooks = Arc::new(RecordingHooks::default());
         let service = KeyService::new(KeyServiceParts {
@@ -177,12 +192,17 @@ impl Device {
 
     // The same device after its process stopped: the same state file and device store, no flow in memory.
     pub fn restarted(&self) -> Self {
+        self.restarted_over(self.store.clone())
+    }
+
+    // The same device over its store as `store` reaches it, as one whose deletes fail.
+    pub fn restarted_over(&self, store: Arc<dyn HostDeviceStore>) -> Self {
         let service = KeyService::new(KeyServiceParts {
             origin: origin(),
             account: self.account,
             device_row: self.row.clone(),
             state: Arc::clone(&self.state),
-            device_store: self.store.clone(),
+            device_store: store,
             transport: self.transport.clone(),
             hooks: self.hooks.clone(),
             clock: Arc::new(TestClock(AtomicI64::new(self.server.now_us()))),
@@ -308,6 +328,85 @@ impl Device {
             }
             cursor = page.cursor;
         }
+    }
+
+    // The engine's part of a pass for the personal scope with its envelopes: key objects applied in revision order, each
+    // envelope opened under the version in force at its place, none in a snapshot. Each envelope's id with its secret
+    // or its error code.
+    pub async fn pull_with_envelopes(&self) -> Vec<(String, Result<String, &'static str>)> {
+        let proof = Proof::Dpop(self.proof().await);
+        let mut row = match self.get(RowKey::Scope(ScopeName::Personal)).await {
+            Some(Row::Scope(row)) => row,
+            _ => ScopeRow::new(ScopeName::Personal),
+        };
+        let mut opened = Vec::new();
+        loop {
+            let page = self
+                .transport
+                .pull(PullRequest {
+                    scope: ScopeName::Personal,
+                    cursor: row.cursor.clone(),
+                    limit: None,
+                    proof: proof.clone(),
+                })
+                .await
+                .unwrap();
+            let order = if row.cursor.is_none() {
+                ArrivalOrder::Snapshot
+            } else {
+                ArrivalOrder::InOrder
+            };
+            let (in_force, page_opened) = self.feed_with_envelopes(page.records, order, row.key_version).await;
+            opened.extend(page_opened);
+            row.epoch = Some(self.server.epoch());
+            row.cursor = page.cursor.or(row.cursor);
+            row.key_version = in_force;
+            row.caught_up = page.caught_up;
+            self.put(vec![Row::Scope(row.clone())]).await;
+            if page.caught_up {
+                return opened;
+            }
+        }
+    }
+
+    // A page as the engine splits it: each run of key objects applied, then each envelope opened at its place.
+    pub async fn feed_with_envelopes(
+        &self,
+        records: Vec<PulledRecord>,
+        order: ArrivalOrder,
+        mut in_force: Option<Version>,
+    ) -> (Option<Version>, Vec<(String, Result<String, &'static str>)>) {
+        let mut opened = Vec::new();
+        let mut keys = Vec::new();
+        for record in records {
+            if record.kind.is_key() {
+                keys.push(record);
+                continue;
+            }
+            if !keys.is_empty() {
+                in_force = self.feed(std::mem::take(&mut keys), order).await.in_force.or(in_force);
+            }
+            if record.kind.as_str() != "secret_envelope" {
+                continue;
+            }
+            let at = if order == ArrivalOrder::Snapshot {
+                None
+            } else {
+                in_force
+            };
+            let id = tablepro_keys::envelope::EnvelopeId::parse(&record.record_id).unwrap();
+            let result = self
+                .service
+                .open_personal_envelope(id, record.fields.clone().unwrap(), at)
+                .await
+                .map(|envelope| envelope.secret.expose_secret().to_owned())
+                .map_err(|error| error.code());
+            opened.push((record.record_id, result));
+        }
+        if !keys.is_empty() {
+            in_force = self.feed(keys, order).await.in_force.or(in_force);
+        }
+        (in_force, opened)
     }
 
     // What a hostile server serves, straight to the key layer.
@@ -475,4 +574,52 @@ pub fn stored(server: &FakeServer, account: AccountId, kind: &str, id: &str) -> 
 
 pub fn refused_codes(applied: &KeyApplied) -> Vec<&'static str> {
     applied.refused.iter().map(|refused| refused.error.code()).collect()
+}
+
+// The device's store with its next delete failing, as a process cut off partway through erasing does.
+pub struct CutOff {
+    pub store: Arc<FakeDeviceStore>,
+    pub armed: Mutex<bool>,
+}
+
+#[async_trait]
+impl HostDeviceStore for CutOff {
+    async fn load(&self, item: DeviceItem) -> Result<Option<Zeroizing<Vec<u8>>>, DeviceStoreError> {
+        self.store.load(item).await
+    }
+
+    async fn store(&self, item: DeviceItem, value: Zeroizing<Vec<u8>>) -> Result<(), DeviceStoreError> {
+        self.store.store(item, value).await
+    }
+
+    async fn delete(&self, item: DeviceItem) -> Result<(), DeviceStoreError> {
+        if std::mem::take(&mut *self.armed.lock().unwrap()) {
+            return Err(DeviceStoreError::Failed {
+                detail: "cut off".to_owned(),
+            });
+        }
+        self.store.delete(item).await
+    }
+}
+
+pub fn stored_certificate(
+    server: &FakeServer,
+    account: AccountId,
+    av: Version,
+) -> tablepro_keys::cert::AccountCertificate {
+    let object = stored(server, account, "key.account", &format!("{}/{av}", account.to_wire()));
+    match object.body {
+        KeyBody::Account(body) => Some(body.certificate(account, av)),
+        _ => None,
+    }
+    .unwrap()
+}
+
+pub fn stored_blob(server: &FakeServer, account: AccountId, av: Version) -> tablepro_keys::recovery::RecoveryBlob {
+    let object = stored(server, account, "key.recovery", &format!("{}/{av}", account.to_wire()));
+    match object.body {
+        KeyBody::Recovery(blob) => Some(blob),
+        _ => None,
+    }
+    .unwrap()
 }

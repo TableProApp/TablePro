@@ -142,14 +142,14 @@ impl KeyService {
             version,
         };
         let held = self
-            .held_object(
+            .applied_object(
                 txn,
                 ScopeName::Personal,
                 KeyKind::Version,
                 &KeyRecordId::Version(key).to_wire(),
             )
             .await?;
-        Ok(held.and_then(|held| held.object.version_record()))
+        Ok(held.and_then(|object| object.version_record()))
     }
 
     // A personal or history version record checked under the own account's certificate at the `av` it names. None
@@ -222,14 +222,14 @@ impl KeyService {
                 version: above,
             };
             let ring = self
-                .held_object(
+                .applied_object(
                     txn,
                     ScopeName::Personal,
                     KeyKind::Ring,
                     &KeyRecordId::Ring(ring_key).to_wire(),
                 )
                 .await?
-                .and_then(|held| match held.object.body {
+                .and_then(|object| match object.body {
                     KeyBody::Ring(ring) => Some(ring),
                     _ => None,
                 })
@@ -290,19 +290,22 @@ impl KeyService {
             let Some(keys) = self.account_keys(recipient_av).await? else {
                 continue;
             };
-            let Some(recipient) = self
+            // A wrap planted beside the one this device can open must not hide it, whatever it names.
+            let recipient = self
                 .certificate_at(txn, ScopeName::Personal, self.account, recipient_av)
-                .await?
-            else {
-                continue;
-            };
-            let Some(wrapper) = self
+                .await;
+            let wrapper = self
                 .certificate_at(txn, ScopeName::Personal, self.account, wrap.wrapper.av)
-                .await?
-            else {
-                continue;
+                .await;
+            let (recipient, wrapper) = match (recipient, wrapper) {
+                (Ok(Some(recipient)), Ok(Some(wrapper))) => (recipient, wrapper),
+                (Err(SyncError::Keys(error)), _) | (_, Err(SyncError::Keys(error))) => {
+                    failed = Some(error);
+                    continue;
+                }
+                (Err(other), _) | (_, Err(other)) => return Err(other),
+                _ => continue,
             };
-            // A wrap planted beside the one this device can open must not hide it.
             match wrap.open_scope_key(&self.origin, &keys.aek, &recipient.aek, &wrapper.ask, &record) {
                 Ok(key) => return Ok(Some(key)),
                 Err(error) => failed = Some(error),

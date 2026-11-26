@@ -254,7 +254,7 @@ async fn a_retry_after_a_lost_answer_sends_the_same_objects_and_is_applied() {
 }
 
 #[tokio::test]
-async fn a_genesis_the_server_refuses_whole_keeps_no_candidate_and_can_be_built_again() {
+async fn a_genesis_the_server_refuses_whole_keeps_no_candidate_and_starts_again_with_a_new_key() {
     let server = FakeServer::new();
     let account = new_account();
     let device = Device::new(&server, account, "dev_b").await;
@@ -283,9 +283,18 @@ async fn a_genesis_the_server_refuses_whole_keeps_no_candidate_and_can_be_built_
         av: Version::FIRST,
     }));
     assert_eq!(device.key_state().await, KeyState::NoKeys);
-    let outcome = device
+    // The recovery key went when the change set was built, so the person starts again with a new one.
+    let again = device
         .service
         .finish_genesis(draft.draft, typed_back(&draft))
+        .await
+        .unwrap_err();
+    assert_eq!(again.code(), "sync.unknown");
+    let next = device.service.begin_genesis().await.unwrap();
+    assert_ne!(next.text.expose_secret(), draft.text.expose_secret());
+    let outcome = device
+        .service
+        .finish_genesis(next.draft, typed_back(&next))
         .await
         .unwrap();
     assert_eq!(outcome, GenesisOutcome::Created);
@@ -359,4 +368,146 @@ async fn a_genesis_that_applied_while_its_answer_was_lost_is_adopted_after_a_res
     let other = Device::new(&server, account, "dev_c").await;
     other.pull().await;
     assert_eq!(other.key_state().await, KeyState::NeedsApproval { request: None });
+}
+
+#[tokio::test]
+async fn a_second_genesis_after_a_lost_answer_never_stands_in_for_the_one_that_applied() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.pull().await;
+    let first = device.service.begin_genesis().await.unwrap();
+    device.transport.lose_next_answer();
+    let lost = device
+        .service
+        .finish_genesis(first.draft, typed_back(&first))
+        .await
+        .unwrap_err();
+    assert_eq!(lost.code(), "sync.network");
+
+    let second = device.service.begin_genesis().await.unwrap_err();
+
+    assert_eq!(second.code(), "sync.not_allowed");
+    let applied = stored_object(
+        &server,
+        ScopeOwner::Personal(account),
+        "key.account",
+        &format!("{}/1", account.to_wire()),
+    );
+    let KeyBody::Account(body) = applied.body else { panic!() };
+    let first_ik = RecoveryKey::parse(first.text.expose_secret())
+        .unwrap()
+        .identity_seed(&origin(), account)
+        .unwrap()
+        .public()
+        .unwrap();
+    assert_eq!(body.ik, first_ik);
+    let keys = device.service.account_keys(Version::FIRST).await.unwrap().unwrap();
+    keys.check_against(&body.ask, &body.aek).unwrap();
+    assert!(matches!(device.key_state().await, KeyState::Approved { av, .. } if av == Version::FIRST));
+}
+
+#[tokio::test]
+async fn a_genesis_that_lost_while_its_device_was_away_discards_its_keys() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    let c = Device::new(&server, account, "dev_c").await;
+    b.pull().await;
+    c.pull().await;
+    let draft = b.service.begin_genesis().await.unwrap();
+    server.fail_next(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    b.service
+        .finish_genesis(draft.draft, typed_back(&draft))
+        .await
+        .unwrap_err();
+    c.genesis().await;
+    b.pull().await;
+
+    let outcome = b.service.finish_genesis(draft.draft, typed_back(&draft)).await.unwrap();
+
+    assert_eq!(outcome, GenesisOutcome::AnotherDeviceWon);
+    assert!(!b.store.holds(&DeviceItem::AccountKeys {
+        origin: origin(),
+        account,
+        av: Version::FIRST,
+    }));
+    assert_eq!(b.key_state().await, KeyState::NeedsApproval { request: None });
+}
+
+#[tokio::test]
+async fn a_restarted_genesis_adopts_only_first_versions_its_certificate_s_key_signed() {
+    use tablepro_keys::body::VersionBody;
+    use tablepro_keys::scope_key::{KeyRef, Start, VersionRecord};
+
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.pull().await;
+    let draft = device.service.begin_genesis().await.unwrap();
+    server.fail_next(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    device
+        .service
+        .finish_genesis(draft.draft, typed_back(&draft))
+        .await
+        .unwrap_err();
+    let mut txn = device.txn().await;
+    let mut served: Vec<_> = txn
+        .scan(&RowRange::Table(Table::KeyObjects))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter_map(|row| match row {
+            Row::KeyObject(row) => Some(crate::harness::record(row.kind.as_str(), &row.record_id, &row.fields)),
+            _ => None,
+        })
+        .collect();
+    drop(txn);
+    let key = KeyRef {
+        owner: account.0,
+        purpose: KeyPurpose::Personal,
+        version: Version::FIRST,
+    };
+    let forged = VersionRecord::sign(
+        &origin(),
+        key,
+        Start::Over,
+        &tablepro_keys::keys::ScopeKey::generate().unwrap(),
+        account,
+        Version::FIRST,
+        &tablepro_keys::keys::Ed25519Seed::generate().unwrap(),
+    )
+    .unwrap();
+    let forged = crate::harness::record_of(&KeyObject {
+        id: tablepro_keys::record_id::KeyRecordId::Version(key),
+        body: KeyBody::Version(VersionBody::of(&forged)),
+    });
+    for record in &mut served {
+        if record.record_id == forged.record_id && record.kind == forged.kind {
+            *record = forged.clone();
+        }
+    }
+
+    let restarted = device.restarted();
+    restarted
+        .feed(served, tablepro_sync::api::key_flows::ArrivalOrder::Snapshot)
+        .await;
+
+    assert!(restarted.pin(account).await.is_some());
+    assert!(
+        restarted
+            .get(RowKey::KeyVersion(ScopeName::Personal, KeyPurpose::Personal))
+            .await
+            .is_none()
+    );
+    assert!(
+        restarted
+            .get(RowKey::KeyVersion(ScopeName::Personal, KeyPurpose::History))
+            .await
+            .is_some()
+    );
 }

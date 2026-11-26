@@ -371,3 +371,83 @@ async fn a_stale_or_unanchored_file_handles_no_secret_until_its_rebuild_or_an_ap
         tablepro_sync::api::key_flows::KeyState::NeedsApproval { request: None }
     );
 }
+
+#[tokio::test]
+async fn an_envelope_counts_under_the_version_in_force_at_its_place_in_a_real_pull() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    let c = Device::new(&server, account, "dev_c").await;
+    let text = b.genesis().await;
+    c.approved_by(&b).await;
+    let id = connection();
+    let written = b
+        .service
+        .seal_personal_envelope(id.clone(), SecretString::from("written at v1"), json!({}))
+        .await
+        .unwrap();
+    let change = tablepro_sync::api::transport::Change {
+        kind: tablepro_sync::api::ids::KindName::parse("secret_envelope").unwrap(),
+        record_id: id.to_wire(),
+        base: None,
+        op: tablepro_sync::api::transport::ChangeOp::Write {
+            fields: written.clone(),
+            patch: written.clone(),
+        },
+    };
+    b.service
+        .push_change_set(ScopeName::Personal, vec![change.clone()], b.proof().await)
+        .await
+        .unwrap();
+    let c_device = c.service.device_keys().await.unwrap().current.unwrap().key_device;
+    b.pull().await;
+    let draft = b.service.begin_replace(text).await.unwrap();
+    b.service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), vec![c_device])
+        .await
+        .unwrap();
+
+    // Offline while B wrote under v1 and then rotated, C meets the write before the rotation and takes it.
+    let opened = c.pull_with_envelopes().await;
+
+    assert_eq!(opened, [(id.to_wire(), Ok("written at v1".to_owned()))]);
+    // The honest server takes no write under v1 once v2 is current.
+    let late = b
+        .service
+        .push_change_set(
+            ScopeName::Personal,
+            vec![tablepro_sync::api::transport::Change {
+                record_id: connection().to_wire(),
+                ..change
+            }],
+            b.proof().await,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        late,
+        [tablepro_sync::api::transport::ChangeOutcome::Rejected {
+            code: tablepro_sync::api::transport::RejectedCode::KeyVersionStale
+        }]
+    );
+    // Slipped in after the rotation by a server that lies, the same write is refused there.
+    let mut rotation: Vec<_> = b
+        .served()
+        .await
+        .into_iter()
+        .filter(|record| record.kind.is_key())
+        .collect();
+    rotation.push(crate::harness::record(
+        "secret_envelope",
+        &id.to_wire(),
+        &written.to_string(),
+    ));
+    let (_, slipped) = c
+        .feed_with_envelopes(
+            rotation,
+            tablepro_sync::api::key_flows::ArrivalOrder::InOrder,
+            Some(Version::FIRST),
+        )
+        .await;
+    assert_eq!(slipped, [(id.to_wire(), Err("keys.stale"))]);
+}
