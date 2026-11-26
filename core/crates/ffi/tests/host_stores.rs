@@ -254,11 +254,20 @@ async fn history_entries_move_in_under_their_record_ids() {
         outcome: HistoryOutcomeTag::Succeeded,
     };
 
-    let added = history.put_entries(vec![run.clone(), run]).await.unwrap();
+    let added = history.put_entries(vec![run.clone(), run.clone()]).await.unwrap();
 
     assert_eq!(added, 1);
     let ids = history.record_ids().await.unwrap();
     assert_eq!(ids.iter().map(|id| id.to_uppercase()).collect::<Vec<_>>(), [RUN]);
     assert_eq!(history.remove_entries(ids).await.unwrap(), 1);
     assert!(history.record_ids().await.unwrap().is_empty());
+
+    let other = HistoryEntryRecord {
+        record_id: QUERY.to_owned(),
+        connection_id: FOLDER.to_owned(),
+        ..run.clone()
+    };
+    history.put_entries(vec![run, other]).await.unwrap();
+    assert_eq!(history.delete_for_connection(SHOP.to_owned()).await.unwrap(), 1);
+    assert_eq!(history.record_ids().await.unwrap().len(), 1);
 }

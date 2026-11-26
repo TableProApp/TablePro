@@ -1846,6 +1846,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -3163,6 +3165,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_table_folders(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_delete_for_connection(ulong @ptr,RustBuffer @connectionId
     );
 
     #if NET8_0_OR_GREATER
@@ -8189,6 +8202,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_delete_for_connection(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_put_entries(
     );
 
@@ -11672,6 +11696,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_table_folders();
             if (checksum != 54603) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_table_folders` checksum `54603`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_delete_for_connection();
+            if (checksum != 38619) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_delete_for_connection` checksum `38619`, library returned `{checksum}`");
             }
         }
         {
@@ -19393,6 +19423,8 @@ internal interface IQueryHistoryStore {
     Task SetPinned(long @id, bool @pinned);
     TableFolderStore TableFolders();
     /// <exception cref="CoreException"></exception>
+    Task<ulong> DeleteForConnection(string @connectionId);
+    /// <exception cref="CoreException"></exception>
     Task<ulong> PutEntries(HistoryEntryRecord[] @entries);
     /// <exception cref="CoreException"></exception>
     Task<string[]> RecordIds();
@@ -19649,6 +19681,28 @@ internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
 )));
     }
     
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<ulong> DeleteForConnection(string @connectionId) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_delete_for_connection(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u64(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_u64(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u64(future),
+        // Lift
+        (result) => FfiConverterUInt64.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
     
     /// <exception cref="CoreException"></exception>
     public async Task<ulong> PutEntries(HistoryEntryRecord[] @entries) {

@@ -1,6 +1,6 @@
-// Whole-store reads and writes for a host that keeps a store of its own beside the core's while it moves in, each
-// record under its own id (core ADR 0010, slices 3 and 9). A write names the digest it was based on where it
-// replaces a whole store, so a change the host never read is refused rather than lost.
+// Whole-store reads and writes for an app that keeps these records itself, or moves them in from a store of its own:
+// the Mac and iOS apps, each record under its own id (core ADR 0010, slices 3 and 9). A write names the digest it was
+// based on where it replaces a whole store, so a change the app never read is refused rather than lost.
 
 use tablepro_storage::query_history::{NewEntry, Outcome};
 use tablepro_storage::saved_queries::SavedQuery;
@@ -341,7 +341,10 @@ impl TableFolderStore {
 
 #[uniffi::export]
 impl QueryHistoryStore {
-    // In one commit. An entry the store already holds keeps its row. Returns how many were new.
+    // Runs the app recorded itself, with their outcome and error text, or moved in from its own store, in one commit.
+    // An entry the store already holds keeps its row. The engines' rules for statements that carry a secret live in
+    // their drivers, which an Apple build does not link, so the app passes only runs it keeps. Returns how many were
+    // new.
     pub async fn put_entries(&self, entries: Vec<HistoryEntryRecord>) -> Result<u64, CoreError> {
         let entries: Vec<NewEntry> = entries.into_iter().map(NewEntry::try_from).collect::<Result<_, _>>()?;
         let history = self.history.clone();
@@ -358,6 +361,16 @@ impl QueryHistoryStore {
                 .into_iter()
                 .map(|id| id.to_string())
                 .collect())
+        })
+        .await
+    }
+
+    // Every run of the connection, pinned ones included, for a connection deleted with its history.
+    pub async fn delete_for_connection(&self, connection_id: String) -> Result<u64, CoreError> {
+        let connection = parse_id(&connection_id)?;
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move {
+            Ok(history.delete_for_connection(connection).await?)
         })
         .await
     }

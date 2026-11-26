@@ -92,11 +92,6 @@ impl Favourites {
         replace: Option<(Kind, Option<&str>)>,
         write: &FavouriteWrite,
     ) -> Result<FavouriteDigests, StorageError> {
-        if write.tables.iter().any(|table| table.name.is_empty())
-            || write.databases.iter().any(|database| database.database.is_empty())
-        {
-            return Err(StorageError::EmptyName);
-        }
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         let (removed_tables, removed_databases) = match replace {
@@ -132,6 +127,12 @@ impl Favourites {
             }
             None => (write.removed_tables.clone(), write.removed_databases.clone()),
         };
+        // After the digest check, so a store that moved is refused as outdated whatever the write holds.
+        if write.tables.iter().any(|table| table.name.is_empty())
+            || write.databases.iter().any(|database| database.database.is_empty())
+        {
+            return Err(StorageError::EmptyName);
+        }
         trim_upgrade_copies(&self.path, &copy_deletes(&removed_tables, &removed_databases)).await?;
         let (gone_tables, gone_databases) = remove(&mut transaction, &removed_tables, &removed_databases).await?;
         let (marked_tables, marked_databases) = mark(&mut transaction, write).await?;

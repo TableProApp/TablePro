@@ -63,9 +63,6 @@ impl TableFolders {
     }
 
     async fn commit(&self, replace: Option<Option<&str>>, write: &TableFolderWrite) -> Result<String, StorageError> {
-        for folder in &write.folders {
-            checked_name(&folder.name)?;
-        }
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         let (removed_folders, removed_items) = match replace {
@@ -92,6 +89,10 @@ impl TableFolders {
             }
             None => (write.removed_folders.clone(), write.removed_items.clone()),
         };
+        // After the digest check, so a store that moved is refused as outdated whatever the write holds.
+        for folder in &write.folders {
+            checked_name(&folder.name)?;
+        }
         trim_upgrade_copies(&self.path, &copy_deletes(&removed_folders, &removed_items)).await?;
         let (gone_folders, gone_items) = remove(&mut transaction, &removed_folders, &removed_items).await?;
         let (wrote_folders, wrote_items) = put(&mut transaction, write).await?;
