@@ -11,7 +11,7 @@ mod web_authenticator;
 pub use account_info::{
     AccessTokenInfo, AccountStateTag, AccountStatusInfo, AppClientTag, DeviceInfo, EntitlementProblemTag,
     FeatureAccessTag, LicenseInfo, LicenseStateTag, MembershipInfo, ProfileInfo, ServerInfo, ServerLicenseInfo,
-    SignOutCauseTag, TeamInfo,
+    SignOutCauseTag, StepUpChallengeInfo, TeamInfo,
 };
 pub use account_service::{AccountConfig, AccountListener, AccountService};
 pub use host_browser::{HostBrowser, HostBrowserError};

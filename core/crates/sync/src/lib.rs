@@ -6,7 +6,9 @@ pub mod adapters;
 pub mod api;
 pub mod cloudkit;
 pub mod engine;
+pub mod http;
 pub mod keys;
+pub mod moves;
 pub mod service;
 pub mod state;
 

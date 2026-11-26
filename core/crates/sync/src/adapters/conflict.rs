@@ -12,14 +12,14 @@ use tablepro_records::Kind;
 
 use super::approval::{self, Split, split};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
-use crate::api::control::{ConflictChoice, TeamConflict};
+use crate::api::control::{ConflictChoice, TeamConflict, conflict_digest};
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
 use crate::api::state::{
     ApprovalRow, BaseRow, ConflictRow, HeldReason, HeldRow, Row, RowKey, RowRange, StateStore, Table,
 };
 use crate::api::transport::PulledRecord;
-use crate::engine::Adapters;
+use crate::engine::{Adapters, Fence};
 
 fn member<'a>(copy: Option<&'a Value>, name: &str) -> Option<&'a Value> {
     copy.and_then(|copy| copy.get(name))
@@ -109,6 +109,8 @@ pub fn sides(
 pub struct Conflicts<'a> {
     pub state: &'a Arc<dyn StateStore>,
     pub adapters: &'a Adapters,
+    // Checked before each store write and the commit, as the approval queue does.
+    pub fence: &'a dyn Fence,
 }
 
 impl Conflicts<'_> {
@@ -120,6 +122,7 @@ impl Conflicts<'_> {
             .filter_map(|row| match row {
                 Row::Conflict(row) => Some(TeamConflict {
                     fields: contested(&row),
+                    digest: conflict_digest(row.base.as_ref(), row.mine.as_ref(), row.theirs.as_ref()),
                     key: row.key,
                     mine: row.mine,
                     theirs: row.theirs,
@@ -139,7 +142,8 @@ impl Conflicts<'_> {
 
     // The store takes the side the person kept; the diff then sends Keep Mine on the stored tag, and Keep Theirs
     // leaves nothing to send. What the server holds still goes through the approval queue.
-    pub async fn resolve(&self, key: &RecordKey, keep: ConflictChoice) -> Result<(), SyncError> {
+    pub async fn resolve(&self, key: &RecordKey, seen: [u8; 32], keep: ConflictChoice) -> Result<(), SyncError> {
+        let _ = seen;
         let mut txn = self.state.begin().await?;
         let Some(Row::Conflict(row)) = txn.get(&RowKey::Conflict(key.clone())).await? else {
             return Err(SyncError::Unknown { what: "conflict" });
@@ -159,6 +163,7 @@ impl Conflicts<'_> {
         let outcome = outcome(&row, &rows, kind, key, stored.as_ref(), keep);
         match &outcome {
             Outcome::Delete if stored.is_some() => {
+                self.fence.check()?;
                 adapter
                     .apply(
                         key.scope,
@@ -169,6 +174,7 @@ impl Conflicts<'_> {
                     .await?;
             }
             Outcome::Put(fields, _) if stored.as_ref() != Some(fields) => {
+                self.fence.check()?;
                 adapter
                     .apply(
                         key.scope,
@@ -204,6 +210,7 @@ impl Conflicts<'_> {
             .await?;
         }
         txn.delete(&RowKey::Conflict(key.clone())).await?;
+        self.fence.check()?;
         txn.commit().await?;
         Ok(())
     }

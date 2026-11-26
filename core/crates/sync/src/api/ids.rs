@@ -88,6 +88,15 @@ fn parse_typeid_suffix(text: &str) -> Option<Uuid> {
     Some(Uuid::from_u128(value))
 }
 
+// Another server id as its TypeID, a prefix such as `acct_`, `epoch_` or `dev_` and the UUID's suffix (0051, Ids).
+pub fn typeid(prefix: &str, uuid: Uuid) -> String {
+    format!("{prefix}{}", typeid_suffix(uuid))
+}
+
+pub fn parse_typeid(prefix: &str, text: &str) -> Option<Uuid> {
+    text.strip_prefix(prefix).and_then(parse_typeid_suffix)
+}
+
 // An epoch's id: a random UUID, never a counter (0051, Epochs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EpochId(pub Uuid);
@@ -209,6 +218,20 @@ pub struct StateName(pub String);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn another_id_type_reads_back_under_its_own_prefix_only() {
+        let uuid = Uuid::parse_str("01890a5d-ac96-774b-bcce-b302099a8057").unwrap();
+
+        let account = typeid("acct_", uuid);
+
+        assert_eq!(account, "acct_01h455vb4pex5vsknk084sn02q");
+        assert_eq!(parse_typeid("acct_", &account), Some(uuid));
+        assert_eq!(parse_typeid("dev_", &account), None);
+        assert_eq!(parse_typeid("acct_", "acct_81h455vb4pex5vsknk084sn02q"), None);
+        assert_eq!(parse_typeid("acct_", "acct_01h455vb4pex5vsknk084sn02"), None);
+        assert_eq!(parse_typeid("acct_", "acct_01h455vb4pex5vsknk084sn0iq"), None);
+    }
 
     #[test]
     fn a_team_scope_is_its_typeid() {
