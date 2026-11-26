@@ -107,7 +107,8 @@ impl StateTxn for FlakyTxn {
 // be held until the test lets it go.
 pub struct Store {
     pub inner: Arc<FakeDeviceStore>,
-    fail_device_keys: AtomicBool,
+    // How many writes of the device keys land before one fails; below zero none fails.
+    fail_device_keys: AtomicI64,
     pause_erase: Mutex<Option<Arc<Pause>>>,
 }
 
@@ -135,10 +136,16 @@ impl HostDeviceStore for Store {
     }
 
     async fn store(&self, item: DeviceItem, value: Zeroizing<Vec<u8>>) -> Result<(), DeviceStoreError> {
-        if matches!(item, DeviceItem::DeviceKeys { .. }) && self.fail_device_keys.swap(false, Ordering::SeqCst) {
-            return Err(DeviceStoreError::Failed {
-                detail: "the write did not land".to_owned(),
-            });
+        if matches!(item, DeviceItem::DeviceKeys { .. }) {
+            let landing = self.fail_device_keys.load(Ordering::SeqCst);
+            if landing >= 0 {
+                self.fail_device_keys.store(landing - 1, Ordering::SeqCst);
+            }
+            if landing == 0 {
+                return Err(DeviceStoreError::Failed {
+                    detail: "the write did not land".to_owned(),
+                });
+            }
         }
         self.inner.store(item, value).await
     }
@@ -336,7 +343,7 @@ impl Device {
         });
         let store = Arc::new(Store {
             inner: Arc::new(FakeDeviceStore::new()),
-            fail_device_keys: AtomicBool::new(false),
+            fail_device_keys: AtomicI64::new(-1),
             pause_erase: Mutex::new(None),
         });
         let clock = Arc::new(ServerClock(Arc::clone(server), AtomicI64::new(0)));
@@ -430,7 +437,12 @@ impl Device {
     }
 
     pub fn fail_next_device_keys_write(&self) {
-        self.store.fail_device_keys.store(true, Ordering::SeqCst);
+        self.store.fail_device_keys.store(0, Ordering::SeqCst);
+    }
+
+    // The write of the device keys after `landing` more land fails.
+    pub fn fail_device_keys_write_after(&self, landing: i64) {
+        self.store.fail_device_keys.store(landing, Ordering::SeqCst);
     }
 
     pub fn pause_next_account_keys_erase(&self) -> Arc<Pause> {

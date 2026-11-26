@@ -1076,6 +1076,30 @@ async fn a_resume_settling_a_cut_off_recovery_never_erases_a_retry_at_the_same_a
     assert!(d.get(rotation_row(2)).await.is_some());
 }
 
+// The server refuses a recovery, and the device store fails to drop the device keys it drew: the row that names them
+// stays, so the flow settles them again, and no drawn keys are left that nothing names.
+#[tokio::test]
+async fn a_refused_recovery_never_leaves_drawn_device_keys_no_flow_names() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    d.wire
+        .refuse_next_push(tablepro_sync::api::transport::RejectedCode::BadStatement);
+    // The drawn keys land; dropping them does not.
+    d.fail_device_keys_write_after(1);
+
+    let refused = d.service.recover(r).await;
+    let pending = d.service.device_keys().await.unwrap().pending.is_some();
+    let named = d.get(rotation_row(2)).await.is_some();
+
+    assert!(refused.is_err());
+    assert!(pending);
+    assert!(named, "drawn device keys outlived the row that names them");
+}
+
 // The same window on a device that held the account keys R opens, so the flow had nothing else to name before it drew.
 #[tokio::test]
 async fn a_recovery_of_a_device_that_held_its_keys_cut_off_before_its_candidates_drops_what_it_drew() {
