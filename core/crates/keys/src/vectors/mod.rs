@@ -151,7 +151,7 @@ fn every_negative_row_of_adr_0056_has_a_case() {
     let adr = std::fs::read_to_string(adr_path).expect("ADR 0056");
     let start = adr.find("- **Negative.**").expect("the negative table");
     let end = adr[start..].find("- **Go side.**").expect("the end of the table") + start;
-    let rows: Vec<String> = adr[start..end]
+    let mut rows: Vec<String> = adr[start..end]
         .lines()
         .filter(|line| line.starts_with("| ") && !line.starts_with("| Case"))
         .filter_map(|line| {
@@ -162,6 +162,27 @@ fn every_negative_row_of_adr_0056_has_a_case() {
         })
         .collect();
     assert!(rows.len() > 80, "{} rows", rows.len());
+    // ADR 0064 adds three restart vectors in one line, each named before its colon.
+    let restart = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "../../docs/decisions/0064-a-team-restart-waits-for-a-word-comparison-and-the-sync-lanes-readings-are-settled.md",
+    ))
+    .expect("ADR 0064");
+    let line = restart
+        .lines()
+        .find_map(|line| line.strip_prefix("- **Vectors:** "))
+        .expect("0064's vectors");
+    let restart_row = line
+        .trim_end_matches('.')
+        .split("; ")
+        .map(|part| part.split(": ").next().unwrap_or(part))
+        .collect::<Vec<_>>()
+        .join("; ");
+    assert_eq!(
+        restart_row,
+        gen_flows::RESTART_HELD_ROW,
+        "0064's vectors as the scenarios name them"
+    );
+    rows.push(restart_row);
 
     // Every clause of every row, by a case or a scenario step that names both; every such case or
     // step says what the server answers.

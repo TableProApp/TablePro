@@ -451,7 +451,8 @@ impl Zeroize for JsonValue {
                 name.zeroize();
                 value.zeroize();
             }),
-            Self::Null | Self::Bool(_) => {}
+            Self::Bool(value) => value.zeroize(),
+            Self::Null => {}
         }
     }
 }

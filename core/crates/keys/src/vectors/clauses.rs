@@ -65,6 +65,8 @@ fn step_clause(scenario: &str, step: usize) -> Option<usize> {
         "activations out of time or from another device" => &[Some(0), Some(1), Some(2)],
         "kind 3 and kind 2 activations" => &[Some(0), Some(1)],
         "a restart shown to a holder, and a restart while a holder is on the roster" => &[Some(0), Some(1)],
+        "a restart shown to a device that held an earlier version, then accepted" => &[Some(0), Some(1)],
+        "a restart by an account the server made up" => &[Some(0), Some(2)],
         _ => panic!("no clauses listed for the scenario {scenario}"),
     };
     clauses.get(step).copied().flatten()

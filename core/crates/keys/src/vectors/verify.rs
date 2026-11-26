@@ -223,10 +223,13 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             ]
         }
         "base64url" => {
-            let bytes = b64::decode(input.str("text"))?;
-            if bytes.len() as u64 != input.u64("len") {
-                return Err(KeysError::encoding("wrong byte length"));
-            }
+            let text = input.str("text");
+            let bytes = match input.u64("len") {
+                1 => b64::decode_exact::<1>(text)?.to_vec(),
+                2 => b64::decode_exact::<2>(text)?.to_vec(),
+                32 => b64::decode_exact::<32>(text)?.to_vec(),
+                other => panic!("no field of {other} bytes"),
+            };
             vec![("bytes_hex", h(&bytes))]
         }
         "base32" => vec![("text", s(&base32::encode(&input.hex("bytes_hex"))))],
@@ -478,11 +481,11 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             let message = input.hex("message_hex");
             // A forgery case says whether the library alone takes it, so a verifier that drops the
             // pre-checks fails it.
-            if let Some(JsonValue::Bool(takes)) = input.optional("library_takes_it") {
+            if let Some(JsonValue::Bool(takes)) = input.optional("aws_lc_rs_takes_it") {
                 assert_eq!(
                     crypto::forgery::library_accepts(&public, &message, &sig.0),
                     *takes,
-                    "library_takes_it"
+                    "aws_lc_rs_takes_it"
                 );
             }
             Ed25519Public(public).verify(&message, &sig)?;
@@ -842,7 +845,7 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                 ("pins", n(trust.pins.len() as u64)),
                 ("versions", n(trust.versions.len() as u64)),
             ];
-            if trust.encode() == text {
+            if trust.encode().as_str() == text {
                 outputs.push(("padded_hex", h(&padding::pad(text.as_bytes())?)));
             }
             outputs
@@ -874,27 +877,33 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
         }
         "trust_wrap_record" => {
             let origin = input.origin();
-            let object = record_object(input.value("record"))?;
-            let wrap = object.wrap().expect("a wrap");
-            let secret = X25519Secret::from_bytes(input.hex32("recipient_secret_hex"));
-            let dsk = Ed25519Public(input.hex32("dsk_hex"));
-            let trust = wrap.open_trust(&origin, &secret, &secret.public()?, &dsk)?;
-            assert_eq!(
-                trust,
-                super::gen_sealed::generated_trust(input.value("generated")),
-                "the wrap holds the generated plaintext"
-            );
-            let fields = object.fields_json();
+            let generated = super::gen_sealed::generated_trust(input.value("generated"));
+            let wrapper_av = input.version("wrapper_av");
             let limit = usize::try_from(input.u64("record_limit")).expect("limit");
+            let fields_len = input.sub("record").value("fields").to_json().len();
             assert_eq!(
-                crate::trust::trust_wrap_record_len(trust.encode().len(), wrap.wrapper.av)?,
-                fields.len(),
+                crate::trust::trust_wrap_record_len(generated.encode().len(), wrapper_av)?,
+                fields_len,
                 "the predicted length"
             );
+            // A reader refuses a record past the limit before it parses it.
+            let read = match record_object(input.value("record")) {
+                Ok(object) => {
+                    let wrap = object.wrap().expect("a wrap");
+                    assert_eq!(wrap.wrapper.av, wrapper_av, "wrapper_av");
+                    let secret = X25519Secret::from_bytes(input.hex32("recipient_secret_hex"));
+                    let dsk = Ed25519Public(input.hex32("dsk_hex"));
+                    let trust = wrap.open_trust(&origin, &secret, &secret.public()?, &dsk)?;
+                    assert_eq!(trust, generated, "the wrap holds the generated plaintext");
+                    s("ok")
+                }
+                Err(error) => s(error.code()),
+            };
             vec![
-                ("fields_len", n(fields.len() as u64)),
-                ("within_limit", b(fields.len() <= limit)),
-                ("fits", b(trust.fit_record(limit, wrap.wrapper.av)?.is_some())),
+                ("fields_len", n(fields_len as u64)),
+                ("within_limit", b(fields_len <= limit)),
+                ("fits", b(generated.fit_record(limit, wrapper_av)?.is_some())),
+                ("read", read),
             ]
         }
         "sas" => {
@@ -902,9 +911,9 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             let commit = view.transcript.commitment(&view.n, &view.r_n)?;
             let digest = view.transcript.digest(&view.n, &view.r_n, &view.a, &view.r_a)?;
             // A's side, from the request it read and its own keys, after the reveal.
-            let mut approver = Comparison::approver(view.transcript.clone(), view.n, commit, view.a, view.r_a);
+            let mut approver = Comparison::approver_with(view.transcript.clone(), view.n, commit, view.a, view.r_a);
             approver.receive_reveal(view.r_n)?;
-            let mut new_device = Comparison::new_device(view.transcript.clone(), view.n, view.r_n)?;
+            let mut new_device = Comparison::new_device_with(view.transcript.clone(), view.n, view.r_n)?;
             new_device.receive_nonce(view.a, view.r_a)?;
             new_device.reveal()?;
             assert_eq!(approver.words()?, new_device.words()?);
@@ -945,10 +954,15 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                 .map(|word| crate::json::as_str(word).expect("word"))
                 .collect();
             assert_eq!(other_words, listed, "the other view's words");
+            // This side's session reaches its words, and the person says they differ.
+            let commit = base.transcript.commitment(&base.n, &base.r_n)?;
+            let mut session = Comparison::approver_with(base.transcript.clone(), base.n, commit, base.a, base.r_a);
+            session.receive_reveal(base.r_n)?;
+            assert_eq!(session.words()?, base_words, "the session's words");
             if base_words == other_words {
                 ok()
             } else {
-                return Err(KeysError::SasMismatch);
+                return Err(session.words_differ());
             }
         }
         "sas_session" => {
@@ -956,9 +970,9 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             let view = sas_view(&mut view_input);
             let commit = view.transcript.commitment(&view.n, &view.r_n)?;
             let mut session = if input.str("role") == "new_device" {
-                Comparison::new_device(view.transcript.clone(), view.n, view.r_n)?
+                Comparison::new_device_with(view.transcript.clone(), view.n, view.r_n)?
             } else {
-                Comparison::approver(view.transcript.clone(), view.n, commit, view.a, view.r_a)
+                Comparison::approver_with(view.transcript.clone(), view.n, commit, view.a, view.r_a)
             };
             let steps: Vec<String> = match input.value("steps") {
                 JsonValue::Array(items) => items

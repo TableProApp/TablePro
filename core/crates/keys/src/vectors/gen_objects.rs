@@ -225,6 +225,35 @@ pub(super) fn certificates() -> JsonValue {
         "keys.unendorsed",
         BAD_STATEMENT,
     ));
+    // An endorsement no key could make is keys.signature, not keys.unendorsed (ADR 0059).
+    let endorsed = sign_certificate(&a, 2, CertKind::Replace, &new_ik, Some(&a.ik));
+    let endorsement = endorsed.replace_sig.unwrap().0;
+    let mut s_past_l = endorsement;
+    s_past_l[32..].copy_from_slice(&add_l(&endorsement[32..]).expect("S + L fits 256 bits"));
+    let mut r_not_canonical = endorsement;
+    r_not_canonical[..32]
+        .copy_from_slice(&hex::decode("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f").unwrap());
+    for (name, sig) in [
+        ("a replace whose endorsement has S + L", s_past_l),
+        ("a replace whose endorsement has a non-canonical R", r_not_canonical),
+    ] {
+        let malformed = AccountCertificate {
+            replace_sig: Some(Signature(sig)),
+            ..endorsed.clone()
+        };
+        verify.push(negative(
+            name,
+            "verify_account_certificate",
+            "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+            vec![
+                ("origin", s(ORIGIN)),
+                ("record", account_record(&malformed)),
+                ("previous_ik_hex", h(&a.ik_public().0)),
+            ],
+            "keys.signature",
+            BAD_STATEMENT,
+        ));
+    }
     let reset = sign_certificate(&a, 2, CertKind::ResetKeepingKeys, &new_ik, None);
     verify.push(negative(
         "an IK change with no endorsement, as after a reset",
@@ -328,7 +357,7 @@ pub(super) fn certificates() -> JsonValue {
 
     file(
         "certificates",
-        "Account and device certificates, the replace endorsement, cancels, IK changes and version steps (ADR 0056, Signed objects and wraps, Pins)",
+        "Account and device certificates, the replace endorsement, cancels, IK changes and version steps (ADR 0056, Signed objects and wraps, Pins). In `ed25519`, `cofactorless_equation_holds` says that [S]B = R + [k]A holds for the signature, so only the refusal the case names stops it. `aws_lc_rs_takes_it` says whether aws-lc-rs 1.18.1, the library tablepro-keys verifies with, takes it without the crate's checks before it. It is given only for the canonical points of small order: for a non-canonical encoding the answer differs by platform, and the Windows build takes the sign-bit encodings of x = 0.",
         vec![
             ("account", arr(accounts)),
             ("device", arr(devices)),
@@ -386,24 +415,30 @@ fn ed25519_negatives() -> Vec<JsonValue> {
     // x = 0 and the sign bit set, of a non-canonical A) stops them.
     for (index, (small, order)) in crate::crypto::forgery::encodings().into_iter().enumerate() {
         let (forged, message) = crate::crypto::forgery::forge(&small, order, &format!("vector {index}"));
-        let sign_bit = if small[31] & 0x80 == 0 { "" } else { ", sign bit set" };
+        let canonical = small[31] & 0x80 == 0;
+        let mut input = vec![
+            ("public_hex", h(&small)),
+            ("message_hex", h(&message)),
+            ("sig_hex", h(&forged)),
+            ("cofactorless_equation_holds", super::out::b(true)),
+        ];
+        // AWS-LC's answer for a sign-bit encoding differs by platform, so it is given only where
+        // every platform agrees.
+        if canonical {
+            input.push((
+                "aws_lc_rs_takes_it",
+                super::out::b(crate::crypto::forgery::library_accepts(&small, &message, &forged)),
+            ));
+        }
         cases.push(negative(
             &format!(
-                "a forgery under A of order {order} ({}{sign_bit})",
-                hex::encode(&small[..4])
+                "a forgery under A of order {order} ({}{})",
+                hex::encode(&small[..4]),
+                if canonical { "" } else { ", sign bit set" }
             ),
             "ed25519_verify",
             row,
-            vec![
-                ("public_hex", h(&small)),
-                ("message_hex", h(&message)),
-                ("sig_hex", h(&forged)),
-                ("cofactorless_equation_holds", super::out::b(true)),
-                (
-                    "library_takes_it",
-                    super::out::b(crate::crypto::forgery::library_accepts(&small, &message, &forged)),
-                ),
-            ],
+            input,
             "keys.signature",
             BAD_STATEMENT,
         ));
@@ -422,40 +457,35 @@ fn ed25519_negatives() -> Vec<JsonValue> {
             ("message_hex", h(&message)),
             ("sig_hex", h(&forged)),
             ("cofactorless_equation_holds", super::out::b(true)),
-            (
-                "library_takes_it",
-                super::out::b(crate::crypto::forgery::library_accepts(
-                    &non_canonical,
-                    &message,
-                    &forged,
-                )),
-            ),
         ],
         "keys.signature",
         BAD_STATEMENT,
     ));
-    // x = 0 with the sign bit set, which RFC 8032 refuses and lenient decoders read as the identity.
-    let negative_zero = hex::decode("0100000000000000000000000000000000000000000000000000000000000080").unwrap();
-    let mut negative_zero_r = sig.0;
-    negative_zero_r[..32].copy_from_slice(&negative_zero);
-    cases.push(negative(
-        "R the identity with the sign bit set",
-        "ed25519_verify",
-        row,
-        input(&public.0, &negative_zero_r),
-        "keys.signature",
-        BAD_STATEMENT,
-    ));
-    let mut bad_r = sig.0;
-    bad_r[..32].copy_from_slice(&non_canonical);
-    cases.push(negative(
-        "a non-canonical R",
-        "ed25519_verify",
-        row,
-        input(&public.0, &bad_r),
-        "keys.signature",
-        BAD_STATEMENT,
-    ));
+    // R as x = 0 with the sign bit set, which RFC 8032 refuses, and as y = p + 1: a lenient decoder
+    // reads both as the identity, and S = k * a then satisfies the equation, so only the R check fails.
+    let negative_zero: [u8; 32] = hex::decode("0100000000000000000000000000000000000000000000000000000000000080")
+        .unwrap()
+        .try_into()
+        .unwrap();
+    for (name, r) in [
+        ("R the identity with the sign bit set", negative_zero),
+        ("a non-canonical R, y = p + 1", non_canonical),
+    ] {
+        let forged = crate::crypto::forgery::sign_with_identity_r(seed.expose(), &r, &signed);
+        cases.push(negative(
+            name,
+            "ed25519_verify",
+            row,
+            vec![
+                ("public_hex", h(&public.0)),
+                ("message_hex", h(&signed)),
+                ("sig_hex", h(&forged)),
+                ("cofactorless_equation_holds", super::out::b(true)),
+            ],
+            "keys.signature",
+            BAD_STATEMENT,
+        ));
+    }
     let mut high_s = sig.0;
     if let Some(s_plus_l) = add_l(&sig.0[32..]) {
         high_s[32..].copy_from_slice(&s_plus_l);
@@ -996,6 +1026,35 @@ pub(super) fn wraps(cache: &HpkeCache) -> JsonValue {
             ("certificate_aek_hex", h(&a_public.aek.0)),
         ]
     };
+    // A signature no key could make is keys.signature, even under the DSK this side compared.
+    let mut s_past_l = account_wrap.clone();
+    s_past_l.sig.0[32..].copy_from_slice(&add_l(&account_wrap.sig.0[32..]).expect("S + L fits 256 bits"));
+    let mut r_not_canonical = account_wrap.clone();
+    r_not_canonical.sig.0[..32]
+        .copy_from_slice(&hex::decode("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f").unwrap());
+    let malformed: Vec<JsonValue> = [
+        ("an approval wrap whose signature has S + L", s_past_l),
+        (
+            "an approval wrap whose signature has a non-canonical R",
+            r_not_canonical,
+        ),
+    ]
+    .into_iter()
+    .map(|(name, wrap)| {
+        open(
+            name,
+            "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+            "account",
+            &wrap,
+            &new_device.dek,
+            &new_device.dek.public().unwrap().0,
+            &approver.dsk.public().unwrap().0,
+            account_certificate(),
+            "keys.signature",
+            BAD_STATEMENT,
+        )
+    })
+    .collect();
     let mut opens = vec![
         open(
             "an approval wrap signed by ASK",
@@ -1131,6 +1190,7 @@ pub(super) fn wraps(cache: &HpkeCache) -> JsonValue {
         ],
         vec![("trust", s(&trust.encode()))],
     ));
+    opens.extend(malformed);
 
     let info = wrap_info(&origin(), team_wrap.target, &m.aek(1)).unwrap();
     let mut hpke = Vec::new();

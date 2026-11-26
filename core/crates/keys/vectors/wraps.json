@@ -474,6 +474,66 @@
       "output": {
         "trust": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"GJPqVoeWKz8R-i4r2RA9MiDfzhIVsodbpVhR7gp2-7I\",\"av\":2,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"oG2Yw_7UBgnga_Ju1JdPG4hd3VdcaMEgH6XjgRrRAaA\",\"av\":1,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"S3esjNWnMvxArYqnJquqc2VrtilNsJU67HKkny7Wfqg\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":2,\"record\":\"weiOcyDMOZipsxXvsmyQjTj7ZSciD_9nLjA2BYPs42Q\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":2,\"record\":\"sxhJol0P1t6DIMMA3g_JXhrK6ppMWThAP2JoiOhczR4\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"sER5_fEJx9PXdlbNuesgGHjjn5iTgdj_7AIPZuKVO3c\"}]}"
       }
+    },
+    {
+      "name": "an approval wrap whose signature has S + L",
+      "op": "open_wrap",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "origin": "https://sync.example.com",
+        "mode": "account",
+        "record": {
+          "kind": "key.wrap",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/account/2/device/4764A25F-E627-4E46-A216-6D9BA5DB6AE3/2",
+          "fields": {
+            "suite": "tp1",
+            "enc": "p59_ObYB_f34woECd3k0bZzQpgF8DaDn2M3Nreo8OUg",
+            "ct": "VcN_Z5c37dUBwIytdoy07srdsD7f3FjRGcPXjCDJB95eUA7NRAmubXi4zi9uwcJ_p6bNLLGJw4MalC8L8TApS2JpAvyELsmUqpFzVHX2jK0",
+            "wrapper": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "wrapper_av": 2,
+            "wrapper_device": "787A0869-B5F3-4B8D-B1F5-E854089D7DFD",
+            "sig": "RduJtnBPoFbFMyuLz8yQZiO9sTW3lIkC2ExirTP1uBlskjmGzBA-JpRk4Z2MPj8qT3rkuFzAXxxgkQSrS3oFFw"
+          }
+        },
+        "recipient_secret_hex": "510f538f8ee2facde1b426c3691f3cf7097f4d1376fb5284ae05ea6da2c0e356",
+        "certified_pk_hex": "718010a337e9550fea1095b9871bb89b1782ab6ef44e83ce7bd267755211a902",
+        "signer_hex": "6f5aa803055450f8082e882115375b756a6b8e648cb0aefd89f3e295f674f284",
+        "certificate_ask_hex": "b652c29af1e4d9a7384ae0e198f46895ea7d5280698a53b9a334a68af95af67b",
+        "certificate_aek_hex": "00abb6497ce4cea07636c49ff9cf3cbd485988384e89191c1dd7274a37f6f36e"
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "an approval wrap whose signature has a non-canonical R",
+      "op": "open_wrap",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "origin": "https://sync.example.com",
+        "mode": "account",
+        "record": {
+          "kind": "key.wrap",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/account/2/device/4764A25F-E627-4E46-A216-6D9BA5DB6AE3/2",
+          "fields": {
+            "suite": "tp1",
+            "enc": "p59_ObYB_f34woECd3k0bZzQpgF8DaDn2M3Nreo8OUg",
+            "ct": "VcN_Z5c37dUBwIytdoy07srdsD7f3FjRGcPXjCDJB95eUA7NRAmubXi4zi9uwcJ_p6bNLLGJw4MalC8L8TApS2JpAvyELsmUqpFzVHX2jK0",
+            "wrapper": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "wrapper_av": 2,
+            "wrapper_device": "787A0869-B5F3-4B8D-B1F5-E854089D7DFD",
+            "sig": "7v_______________________________________39_vkMpsq0rzr3H6fqtRGAVT3rkuFzAXxxgkQSrS3oFBw"
+          }
+        },
+        "recipient_secret_hex": "510f538f8ee2facde1b426c3691f3cf7097f4d1376fb5284ae05ea6da2c0e356",
+        "certified_pk_hex": "718010a337e9550fea1095b9871bb89b1782ab6ef44e83ce7bd267755211a902",
+        "signer_hex": "6f5aa803055450f8082e882115375b756a6b8e648cb0aefd89f3e295f674f284",
+        "certificate_ask_hex": "b652c29af1e4d9a7384ae0e198f46895ea7d5280698a53b9a334a68af95af67b",
+        "certificate_aek_hex": "00abb6497ce4cea07636c49ff9cf3cbd485988384e89191c1dd7274a37f6f36e"
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     }
   ],
   "hpke": [

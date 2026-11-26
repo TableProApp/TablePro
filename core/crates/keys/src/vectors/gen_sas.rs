@@ -14,7 +14,7 @@ fn sas_device(keys: &DeviceKeys) -> SasDevice {
     }
 }
 
-fn device_json(side: &SasDevice) -> JsonValue {
+pub(super) fn device_json(side: &SasDevice) -> JsonValue {
     obj(vec![
         ("key_device", s(&side.key_device.to_wire())),
         ("dek_hex", h(&side.dek.0)),

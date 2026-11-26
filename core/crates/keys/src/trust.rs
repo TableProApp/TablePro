@@ -41,7 +41,7 @@ impl PinHow {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TrustPin {
     pub account: AccountId,
     pub ik: Ed25519Public,
@@ -59,7 +59,7 @@ impl TrustPin {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TrustVersion {
     // The account for `personal` and `history`, the team for `team`.
     pub owner: Uuid,
@@ -70,21 +70,70 @@ pub struct TrustVersion {
 }
 
 // The `trust` wrap's plaintext: the approver's pins and the newest version of each scope key it holds.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Clone, PartialEq, Eq, Default)]
 pub struct TrustPlaintext {
     pub pins: Vec<TrustPin>,
     pub versions: Vec<TrustVersion>,
 }
 
+// Whom a person trusts is private, so no account, key or digest is printed.
+impl std::fmt::Debug for TrustPin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrustPin")
+            .field("how", &self.how)
+            .field("alert", &self.alert)
+            .field("replaced", &self.replaced.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for TrustVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrustVersion")
+            .field("purpose", &self.purpose)
+            .field("version", &self.version)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for TrustPlaintext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrustPlaintext")
+            .field("pins", &self.pins)
+            .field("versions", &self.versions)
+            .finish()
+    }
+}
+
 // 1 MiB a record, on its `fields` encoded without HTML escaping (ADR 0051, Limits).
 pub const RECORD_LIMIT: usize = 1 << 20;
 
+// Written straight into `out`, so the integer leaves no copy on the heap.
+fn push_version(out: &mut impl Sink, version: Version) {
+    let mut digits = [0_u8; 10];
+    let mut at = digits.len();
+    let mut value = version.get();
+    loop {
+        at -= 1;
+        digits[at] = b'0' + (value % 10) as u8;
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+    for digit in &digits[at..] {
+        out.push(char::from(*digit));
+    }
+}
+
 fn encode_pin(pin: &TrustPin, out: &mut impl Sink) {
     out.push_str("{\"account\":");
-    push_string(out, &pin.account.to_wire());
+    push_string(out, &Zeroizing::new(pin.account.to_wire()));
     out.push_str(",\"ik\":");
-    push_string(out, &b64::encode(&pin.ik.0));
-    out.push_str(&format!(",\"av\":{},\"how\":", pin.av));
+    push_string(out, &Zeroizing::new(b64::encode(&pin.ik.0)));
+    out.push_str(",\"av\":");
+    push_version(out, pin.av);
+    out.push_str(",\"how\":");
     push_string(out, pin.how.name());
     out.push_str(if pin.alert {
         ",\"alert\":true,\"replaced\":["
@@ -95,18 +144,20 @@ fn encode_pin(pin: &TrustPin, out: &mut impl Sink) {
         if position > 0 {
             out.push(',');
         }
-        push_string(out, &b64::encode(&replaced.0));
+        push_string(out, &Zeroizing::new(b64::encode(&replaced.0)));
     }
     out.push_str("]}");
 }
 
 fn encode_version(version: &TrustVersion, out: &mut impl Sink) {
     out.push_str("{\"owner\":");
-    push_string(out, &uuid_to_wire(version.owner));
+    push_string(out, &Zeroizing::new(uuid_to_wire(version.owner)));
     out.push_str(",\"purpose\":");
     push_string(out, version.purpose.name());
-    out.push_str(&format!(",\"version\":{},\"record\":", version.version));
-    push_string(out, &b64::encode(&version.record));
+    out.push_str(",\"version\":");
+    push_version(out, version.version);
+    out.push_str(",\"record\":");
+    push_string(out, &Zeroizing::new(b64::encode(&version.record)));
     out.push('}');
 }
 
@@ -130,12 +181,8 @@ pub fn trust_wrap_record_len(plaintext_len: usize, wrapper_av: Version) -> Resul
 }
 
 impl TrustPlaintext {
-    pub fn encode(&self) -> String {
-        std::mem::take(&mut *self.encode_zeroizing())
-    }
-
     // Sized before it is written, so no copy of the plaintext is left behind by a reallocation.
-    pub(crate) fn encode_zeroizing(&self) -> Zeroizing<String> {
+    pub fn encode(&self) -> Zeroizing<String> {
         let mut count = Count::default();
         self.encode_into(&mut count);
         let mut out = Zeroizing::new(String::with_capacity(count.0));
@@ -216,6 +263,8 @@ impl TrustPlaintext {
         let mut kept = vec![true; self.pins.len()];
         let mut kept_len: usize = pin_lens.iter().sum();
         let mut kept_count = self.pins.len();
+        // Each pass leaves out the next droppable pin from the end, so the whole fit is one walk.
+        let mut droppable = (0..self.pins.len()).rev().filter(|index| self.pins[*index].droppable());
         loop {
             let plaintext_len = empty + kept_len + kept_count.saturating_sub(1);
             if trust_wrap_record_len(plaintext_len, wrapper_av)? <= limit {
@@ -231,10 +280,7 @@ impl TrustPlaintext {
                     versions: self.versions.clone(),
                 }));
             }
-            let Some(last) = (0..self.pins.len())
-                .rev()
-                .find(|index| kept[*index] && self.pins[*index].droppable())
-            else {
+            let Some(last) = droppable.next() else {
                 return Ok(None);
             };
             kept[last] = false;
@@ -322,7 +368,7 @@ mod tests {
     #[test]
     fn round_trips() {
         let trust = sample();
-        let encoded = trust.encode_zeroizing();
+        let encoded = trust.encode();
         assert_eq!(encoded.capacity(), encoded.len(), "sized once, so never moved");
         assert_eq!(TrustPlaintext::parse(trust.encode().as_bytes()).unwrap(), trust);
     }

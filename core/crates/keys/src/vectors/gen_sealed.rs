@@ -1022,18 +1022,27 @@ pub(super) fn limits(cache: &super::fixtures::HpkeCache) -> JsonValue {
                 ("dsk_hex", h(&approver.dsk.public().unwrap().0)),
                 ("generated", generated_json(count)),
                 ("record_limit", n(RECORD_LIMIT as u64)),
+                ("wrapper_av", n(u64::from(av.get()))),
             ],
             vec![
                 ("fields_len", n(fields.len() as u64)),
                 ("within_limit", b(fields.len() <= RECORD_LIMIT)),
                 ("fits", b(trust.fit_record(RECORD_LIMIT, av).unwrap().is_some())),
+                (
+                    "read",
+                    s(if fields.len() <= RECORD_LIMIT {
+                        "ok"
+                    } else {
+                        "keys.encoding"
+                    }),
+                ),
             ],
             Some(server),
         ));
     }
     file(
         "limits",
-        "Trust wrap records at and past the 1 MiB record limit, measured on the compact `fields` (ADR 0051, Limits; ADR 0056, Pins). A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
+        "Trust wrap records at and past the 1 MiB record limit, measured on the compact `fields` (ADR 0051, Limits; ADR 0056, Pins). `read` is what a reader gets: it refuses a record past the limit before it parses it. A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
         vec![("trust_wraps", arr(cases))],
     )
 }

@@ -130,6 +130,21 @@
             "aek_hex": "4fb658001f838ca4112819955d7d5eee18645d88e1115cfd0a1b898b58f8bd1d"
           }
         ]
+      },
+      {
+        "name": "X",
+        "account": "42BE67A8-D910-4DD5-A8A5-2597F0D87F37",
+        "r_hex": "1918679a41eb526067dd257399c0f95409c9f44c5892d8065074cdc64cc072ad",
+        "ik_hex": "5bc17e596e9c0ccf1c6ab4ecf40b25bdb60eb00f4d064892a2c5e6a25f4fa726",
+        "account_keys": [
+          {
+            "av": 1,
+            "ask_seed_hex": "13380c346c9931268bb003c1645c206b834a4552ba83d71d12c1057f17a81430",
+            "ask_hex": "47b350871804512ecc69bdf7f86c6ccd73ff9de91708221d9d02a6e93feee997",
+            "aek_secret_hex": "a0e8cd885d3a365a441b556377c5cfdbb18f218c2dc64ea6d52206ac7dde9f7a",
+            "aek_hex": "a857dcf9f48daf17709a2c12bcf853c98f3d7e805ce11d740925ea0caed54372"
+          }
+        ]
       }
     ],
     "devices": [
@@ -204,6 +219,14 @@
         "dek_hex": "5f95abafec4f0a2a5210d5a398b7ef7e2293cc635778b9808368354407c35459",
         "dsk_seed_hex": "548b446521d1093dfe4f24857925a6ded54164821b1a4e054dfd62c670b3434f",
         "dsk_hex": "b4f3a0cc21e6704bff502f36b7d234ea1d22c75ebab89cf0aecfd10940ca6c65"
+      },
+      {
+        "name": "X device",
+        "key_device": "16CF66F4-B268-4FEF-A3F7-CCBF4743503B",
+        "dek_secret_hex": "41fb7586c2746b41301213d523837c02e57482be2429149c06d01a7b82b7d1de",
+        "dek_hex": "aad91ed328077e3eed302529aec5f006bfa5235988c62edf2848bf347ca7d616",
+        "dsk_seed_hex": "057fea84c32ed00852f9c2cdb05865627f08c6653237b423d5306a13a7ac7fb8",
+        "dsk_hex": "c01d00919008b5cef45ec4317d84f493659d712876225258e1bd37d9c6da5d59"
       }
     ],
     "team": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63",
@@ -245,7 +268,7 @@
         "key_hex": "71f32a1e4a413944c93d054f4e3c4004b4a6c8b8155b3c410c24c055ad76f781"
       }
     ],
-    "roles": "A admin, O owner, M member, E editor, P member; B, C and N are P's devices. \"P from C\" is P's account as device C's own genesis made it, with its own R, IK and keys",
+    "roles": "A admin, O owner, M member, E editor, P member; B, C and N are P's devices. \"P from C\" is P's account as device C's own genesis made it, with its own R, IK and keys. X is an account the server made up",
     "version_records": [
       {
         "label": "P PK1",
@@ -596,6 +619,16 @@
           ],
           "client": "keys.stale",
           "server": "bad_statement",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
           "clause": "A team version signed by an account that is not a holder of the one before, or by a holder under an older `av`"
         }
       ]
@@ -690,6 +723,16 @@
           ],
           "client": "keys.stale at version 6; the client stays at version 5",
           "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
           "clause": "A version signed under an older `av` than the client knows for its signer, on the way to a newer one"
         }
       ]
@@ -833,6 +876,16 @@
           ],
           "client": "keys.stale at version 7; M is no holder",
           "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
           "clause": "Version 7 signed with a removed device's old account key and wrapping to account M, then version 8 signed by M under its current key, in one pull"
         }
       ]
@@ -1888,6 +1941,16 @@
           ],
           "client": "keys.stale for the envelope after version 3",
           "server": "key_version_stale for a write under 2 once 3 is current",
+          "checks": [
+            {
+              "op": "check_not_below",
+              "input": {
+                "held": 3,
+                "offered": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
           "clause": "An envelope below the version in force at its place in the order, or below the copy held"
         },
         {
@@ -2102,6 +2165,34 @@
           ],
           "client": "keys.session",
           "server": "request_closed",
+          "checks": [
+            {
+              "op": "sas_session",
+              "input": {
+                "view": {
+                  "origin": "https://sync.example.com",
+                  "account": "11B5B614-7D89-4728-992A-7CCA62723257",
+                  "request": "9656B5A0-8DA7-4974-830E-C1F0631EAB84",
+                  "ik_hex": "5e746f57e32567cd4331c6e3c91b7b3c4a6a5f35300a2e9e14b527b4676663cb",
+                  "n": {
+                    "key_device": "89466905-7D19-4BD8-BA1D-662DAFA2967D",
+                    "dek_hex": "c92c8098342a79ef0ef6f96c62af49b3eafbc20d4caa628a19462d3b7718b85c",
+                    "dsk_hex": "7a7c5f875ae5d25be0fda09e6c96d8b1405ee32cefd92f042262a99ccc99cf69"
+                  },
+                  "r_n_hex": "66ed26634a63169f70c05288b2e69b69aa9cea2053e3b4f9c56e78f28baefcdd",
+                  "a": {
+                    "key_device": "0FB85DA3-26AF-49CC-9A5F-44BFADD5268B",
+                    "dek_hex": "3a40551ec85d74c41379adf6908c8f229ef6862379d750435a9f63c24feb4802",
+                    "dsk_hex": "66932ca8fe52ea1fb3734bbabf07c8d42cfd85c76e1f0d258f7dda98b536baf8"
+                  },
+                  "r_a_hex": "96fd2e6f1b68d3c9209fa1d81f065780550ab8efc0d0212616a8865a59a2c9ba"
+                },
+                "role": "new_device",
+                "steps": ["reveal"]
+              },
+              "error": "keys.session"
+            }
+          ],
           "clause": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`"
         }
       ]
@@ -6364,6 +6455,242 @@
       ]
     },
     {
+      "name": "a restart shown to a device that held an earlier version, then accepted",
+      "op": "scenario",
+      "row": "a restart shown to a device that held an earlier version; the person compares and accepts; a restart by an account the server made up, words that differ",
+      "layer": ["flow"],
+      "client": "keys.restart_held; applied, its signer the holder",
+      "client_codes": ["keys.restart_held","applied"],
+      "server": "none",
+      "server_codes": [],
+      "given": {
+        "roster": [
+          {
+            "account": "A",
+            "role": "admin"
+          },
+          {
+            "account": "O",
+            "role": "owner"
+          },
+          {
+            "account": "M",
+            "role": "member"
+          },
+          {
+            "account": "E",
+            "role": "editor"
+          },
+          {
+            "account": "P",
+            "role": "member"
+          }
+        ],
+        "client": "M",
+        "client_holds": {
+          "team_version": 5,
+          "holders": ["O@2","M@2"]
+        },
+        "server_holds": {
+          "team_version": 6,
+          "holders": ["O@2"]
+        }
+      },
+      "steps": [
+        {
+          "who": "server",
+          "does": "pull",
+          "records": [
+            {
+              "label": "version 7 by O with start 1",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.version",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7",
+              "fields": {
+                "suite": "tp1",
+                "start": 1,
+                "kid": "JbQez5h-UK12eWDMo0-5ohBSlah5RsAbwyNKEhscsWM",
+                "signer": "8424AB1F-D93A-4875-8A4E-D54B300C3590",
+                "signer_av": 2,
+                "sig": "dp1qNCbACecNOKMyhIizsrDcMwLfqDj4gBCIJqRyy1l7m54mCEbVMXu2RN3Lh-RJkiFoUkdnM5CN3PRbKam0Cg"
+              },
+              "verify": {
+                "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
+                "digest_hex": "0d66cee094ff41963c6e3b32d9c8ba8abecc9dc8d1ad5c98911c17b7fb577967"
+              }
+            },
+            {
+              "label": "version 7 to M",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.wrap",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7/account/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "12lsRkBtqnFA88sVy0Fo4vpc21m5U6l3AXZlUHBEv1g",
+                "ct": "aG9Yo8ZbXfwwd9CtfsUkHhc3KZvfL0gafYFJILYjmHOWtPMjY2VjsYCND_8t6cB-",
+                "wrapper": "8424AB1F-D93A-4875-8A4E-D54B300C3590",
+                "wrapper_av": 2,
+                "wrapper_device": "6DC551B4-D1FE-4F1B-9034-78A414130AE2",
+                "sig": "GTmAqhqgrU9UTAwPOWSqUCjsXu6s6HJooc4T884IaQ4znTHsAjCBukNZAPADyw7jN1usDh4L1YqP60uMdqiBBA"
+              },
+              "verify": {
+                "signer_hex": "cbb53ad7c076a25889e0bc90b93127c8c8da241039c01e42f86c7e0cbc4da8ab",
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163"
+              }
+            }
+          ],
+          "client": "keys.restart_held: version 7 is not current, and M writes nothing under the team key",
+          "server": "none",
+          "clause": "a restart shown to a device that held an earlier version"
+        },
+        {
+          "who": "M",
+          "does": "the person compares O's six fingerprint words and accepts",
+          "records": [],
+          "words": ["onlooker","crawlers","swept","upheld","regulator","crummy"],
+          "client": "applied: version 7 is current, O is its holder, and O's pin is compared",
+          "server": "none",
+          "clause": "the person compares and accepts"
+        }
+      ]
+    },
+    {
+      "name": "a restart by an account the server made up",
+      "op": "scenario",
+      "row": "a restart shown to a device that held an earlier version; the person compares and accepts; a restart by an account the server made up, words that differ",
+      "layer": ["flow"],
+      "client": "keys.restart_held; stays held",
+      "client_codes": ["keys.restart_held"],
+      "server": "none",
+      "server_codes": [],
+      "given": {
+        "roster": [
+          {
+            "account": "A",
+            "role": "admin"
+          },
+          {
+            "account": "O",
+            "role": "owner"
+          },
+          {
+            "account": "M",
+            "role": "member"
+          },
+          {
+            "account": "E",
+            "role": "editor"
+          },
+          {
+            "account": "P",
+            "role": "member"
+          }
+        ],
+        "client": "M",
+        "client_holds": {
+          "team_version": 5,
+          "holders": ["O@2","M@2"]
+        },
+        "server_holds": {
+          "team_version": 6,
+          "holders": ["O@2"]
+        }
+      },
+      "steps": [
+        {
+          "who": "server",
+          "does": "pull",
+          "records": [
+            {
+              "label": "X's certificate in the team",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.member",
+              "id": "42BE67A8-D910-4DD5-A8A5-2597F0D87F37/1",
+              "fields": {
+                "suite": "tp1",
+                "kind": 0,
+                "ik": "W8F-WW6cDM8carTs9AslvbYOsA9NBkiSosXmol9PpyY",
+                "ask": "R7NQhxgEUS7Mab33-GxszXP_nekXCCIdnQKm6T_u6Zc",
+                "aek": "qFfc-fSNrxdwmiwSvPhTyY89foBc4R10CSXqDK7VQ3I",
+                "sig": "4iqXeQIajSFxF8mMx5onJASJiojtR8pG-iyVWckZ4IG4lrHY918yAbM7swCNKBUUSLvhT4MWzjayYHj4JtskDA"
+              },
+              "verify": {
+                "ik_hex": "5bc17e596e9c0ccf1c6ab4ecf40b25bdb60eb00f4d064892a2c5e6a25f4fa726"
+              }
+            },
+            {
+              "label": "version 7 by X with start 1",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.version",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7",
+              "fields": {
+                "suite": "tp1",
+                "start": 1,
+                "kid": "2vDs97iD3ZI9kPGOcaP5VnumJik70LjsJvAtLGlaV0I",
+                "signer": "42BE67A8-D910-4DD5-A8A5-2597F0D87F37",
+                "signer_av": 1,
+                "sig": "Kc6bs04dalM35QdDdT4yr-EYiZDc8VQq4JoBumewG0y-pVFZ-kYe4OY9VyD-ng9qrVaRv0DRKtF7N1ouO8rZDg"
+              },
+              "verify": {
+                "signer_hex": "47b350871804512ecc69bdf7f86c6ccd73ff9de91708221d9d02a6e93feee997",
+                "digest_hex": "babd7c7210ad26c9cd9f19d34fa04c4277c35b3dafa01551ffed024401221110"
+              }
+            },
+            {
+              "label": "version 7 to M, by X",
+              "scope": {
+                "type": "team",
+                "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+              },
+              "kind": "key.wrap",
+              "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/7/account/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2",
+              "fields": {
+                "suite": "tp1",
+                "enc": "aNveCVOqGYjVvzKSDUlEHZBF0kD9E6eRkjB6IgKM_zg",
+                "ct": "8PkvJN7xVUFrUWUraVrUOsEXS7nGJKpd_0sH2P7EN7DcRXE1nFshlLrE_iFO5ItD",
+                "wrapper": "42BE67A8-D910-4DD5-A8A5-2597F0D87F37",
+                "wrapper_av": 1,
+                "wrapper_device": "16CF66F4-B268-4FEF-A3F7-CCBF4743503B",
+                "sig": "oZHT8mCCoIGtR2MRj2lDgnWmEZQE-W5OZ-YV9S4GUqhh6fzOvHpjIfKvpk7mL6TTv4IiuWI2a4WNSHHg8mM_Ag"
+              },
+              "verify": {
+                "signer_hex": "47b350871804512ecc69bdf7f86c6ccd73ff9de91708221d9d02a6e93feee997",
+                "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
+                "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
+                "kid_hex": "daf0ecf7b883dd923d90f18e71a3f9567ba626293bd0b8ec26f02d2c695a5742"
+              }
+            }
+          ],
+          "client": "keys.restart_held: version 7 is not current, and M writes nothing under the team key",
+          "server": "none",
+          "clause": "a restart shown to a device that held an earlier version"
+        },
+        {
+          "who": "M",
+          "does": "the person compares X's six fingerprint words, which match no one's, and says they differ",
+          "records": [],
+          "words": ["unstuffed","alkaline","extrude","blizzard","taking","icy"],
+          "client": "stays held: keys.restart_held",
+          "server": "none",
+          "clause": "a restart by an account the server made up, words that differ"
+        }
+      ]
+    },
+    {
       "name": "a sole owner who reset restarts its team",
       "op": "scenario",
       "row": "A sole owner who reset and restarts its team from the device that held the key",
@@ -7296,6 +7623,16 @@
           ],
           "client": "keys.stale; the device keeps its keys",
           "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
           "clause": "An approver at `av` 1 approves a device that knows `av` 2 under the same IK, the words matching"
         }
       ]
@@ -7654,6 +7991,37 @@
           ],
           "client": "keys.conflict",
           "server": "none",
+          "checks": [
+            {
+              "op": "check_record_digest",
+              "input": {
+                "origin": "https://sync.example.com",
+                "anchored_hex": "66b656b395a916cd0ed9c9bb418056afaa8f638d61549833bf398a17e195f384",
+                "record": {
+                  "label": "P PK3 other",
+                  "scope": {
+                    "type": "personal",
+                    "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+                  },
+                  "kind": "key.version",
+                  "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/3",
+                  "fields": {
+                    "suite": "tp1",
+                    "start": 0,
+                    "kid": "nrKgmeAjWdG8q9uiHzXxhlI0AUMQ7HepxqE-sUNg6KI",
+                    "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+                    "signer_av": 2,
+                    "sig": "Xg_qNt8fCDBeJknbXtBCHVOIaNKuONLPgImJzo5suGx41MaA_bQOjb83FJh8s0SOgseDe1B9GzFH8LTJvr4XBg"
+                  },
+                  "verify": {
+                    "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
+                    "digest_hex": "b742798c876eb707fce9f96e318f65c0296b1310048a75b3bba329538edc3846"
+                  }
+                }
+              },
+              "error": "keys.conflict"
+            }
+          ],
           "clause": "An approver at the same `av` with a lower personal version, and one with another record at an equal version"
         }
       ]
@@ -7825,6 +8193,16 @@
           ],
           "client": "keys.stale",
           "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
           "clause": "B saw A's rotation and holds team version 6, stopped or not. The person approves B from C, which took version 7 under A's old account key with a wrap to M, and version 8 signed by M, because the server withheld A's rotation from C"
         }
       ]
@@ -7981,6 +8359,37 @@
           ],
           "client": "keys.conflict at version 2",
           "server": "none",
+          "checks": [
+            {
+              "op": "check_record_digest",
+              "input": {
+                "origin": "https://sync.example.com",
+                "anchored_hex": "f8c3d514dda5f932b17f25d32ff5d217fe646e99c1d55c2d6e0f6693aa07c27e",
+                "record": {
+                  "label": "C's personal version 2 under the old av 1",
+                  "scope": {
+                    "type": "personal",
+                    "owner": "11B5B614-7D89-4728-992A-7CCA62723257"
+                  },
+                  "kind": "key.version",
+                  "id": "11B5B614-7D89-4728-992A-7CCA62723257/personal/2",
+                  "fields": {
+                    "suite": "tp1",
+                    "start": 0,
+                    "kid": "-KsJgb7PhhxAPLeaY7TPCWTdyG9xlc0xTeqwvqLl1NQ",
+                    "signer": "11B5B614-7D89-4728-992A-7CCA62723257",
+                    "signer_av": 1,
+                    "sig": "JJu_bLH3P2t0-0K-chBwQ7c7ImJoo-GgUBHIOFYLluipLORKgdZLReYgvx_plB7zfKGTqkN-xf1bOaZk5WP2Bg"
+                  },
+                  "verify": {
+                    "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
+                    "digest_hex": "26ab504fbf91a5e502a325f6a20ae45144cc7dda316bf940e5319d388584cd21"
+                  }
+                }
+              },
+              "error": "keys.conflict"
+            }
+          ],
           "clause": "C, kept on `av` 1 by the server, took personal versions 2 and 3 signed under the old account key and still holds its version 2. B, at `av` 2 with personal version 2 signed under it, approves C"
         }
       ]
@@ -8364,6 +8773,16 @@
           ],
           "client": "keys.stale",
           "server": "none",
+          "checks": [
+            {
+              "op": "check_signed_under_newest",
+              "input": {
+                "signed_under": 1,
+                "newest_known": 2
+              },
+              "error": "keys.stale"
+            }
+          ],
           "clause": "An approval where neither side holds a personal version signed under the merged current `av`"
         }
       ]

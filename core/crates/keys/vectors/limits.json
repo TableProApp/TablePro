@@ -2,7 +2,7 @@
   "area": "limits",
   "suite": "tp1",
   "format": 1,
-  "about": "Trust wrap records at and past the 1 MiB record limit, measured on the compact `fields` (ADR 0051, Limits; ADR 0056, Pins). A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
+  "about": "Trust wrap records at and past the 1 MiB record limit, measured on the compact `fields` (ADR 0051, Limits; ADR 0056, Pins). `read` is what a reader gets: it refuses a record past the limit before it parses it. A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
   "trust_wraps": [
     {
       "name": "a trust wrap record of the most compared pins that fit 1 MiB",
@@ -36,12 +36,14 @@
           "replaced": [],
           "versions": []
         },
-        "record_limit": 1048576
+        "record_limit": 1048576,
+        "wrapper_av": 2
       },
       "output": {
         "fields_len": 1043426,
         "within_limit": true,
-        "fits": true
+        "fits": true,
+        "read": "ok"
       },
       "server": "applied",
       "clause": "A rotation or a trust record at the record limit"
@@ -78,12 +80,14 @@
           "replaced": [],
           "versions": []
         },
-        "record_limit": 1048576
+        "record_limit": 1048576,
+        "wrapper_av": 2
       },
       "output": {
         "fields_len": 1048888,
         "within_limit": false,
-        "fits": false
+        "fits": false,
+        "read": "keys.encoding"
       },
       "server": "too_large",
       "clause": "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit"

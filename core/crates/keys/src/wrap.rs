@@ -164,7 +164,7 @@ impl Wrap {
     ) -> Result<Self, KeysError> {
         require_purpose(target, WrapPurpose::Trust)?;
         trust.check_unique()?;
-        let padded = crate::padding::pad(trust.encode_zeroizing().as_bytes())?;
+        let padded = crate::padding::pad(trust.encode().as_bytes())?;
         Self::seal(origin, target, dek, &padded, wrapper, dsk)
     }
 
@@ -316,6 +316,7 @@ mod tests {
     use crate::encoding::{AccountId, KeyDeviceId, KeyPurpose, Origin, Version, WrapPurpose};
     use crate::keys::{AccountKeys, DeviceKeys, ScopeKey, X25519Secret};
     use crate::scope_key::{KeyRef, Start, VersionRecord};
+    use crate::trust::{PinHow, TrustPin, TrustPlaintext};
 
     fn origin() -> Origin {
         Origin::parse("https://sync.example.com").unwrap()
@@ -379,6 +380,89 @@ mod tests {
             ),
             Err(KeysError::Mismatch { .. })
         ));
+    }
+
+    #[test]
+    fn a_signature_no_key_could_make_is_keys_signature_whoever_was_compared() {
+        let account = AccountId(Uuid::from_u128(1));
+        let av = Version::new(2).unwrap();
+        let keys = AccountKeys::generate().unwrap();
+        let approver = DeviceKeys::generate().unwrap();
+        let new_device = DeviceKeys::generate().unwrap();
+        let wrapper = Wrapper {
+            account,
+            av,
+            key_device: approver.key_device,
+        };
+        let target = device_target(account, WrapPurpose::Account, av, new_device.key_device);
+        let dek = new_device.dek.public().unwrap();
+        let wrap = Wrap::seal_account(&origin(), target, &dek, &keys, wrapper, &approver.dsk).unwrap();
+        let compared = approver.dsk.public().unwrap();
+        let public = keys.public().unwrap();
+        let mut s_past_l = wrap.clone();
+        s_past_l.sig.0[63] = 0xff;
+        // y = p + 1, which a lenient decoder reads as the identity.
+        let mut r_not_canonical = wrap.clone();
+        r_not_canonical.sig.0[..32].copy_from_slice(&[0xff; 32]);
+        r_not_canonical.sig.0[0] = 0xee;
+        r_not_canonical.sig.0[31] = 0x7f;
+        for bad in [s_past_l, r_not_canonical] {
+            assert_eq!(
+                bad.open_account(&origin(), &new_device.dek, &dek, &compared, &public)
+                    .unwrap_err(),
+                KeysError::Signature
+            );
+        }
+    }
+
+    #[test]
+    fn a_trust_wrap_seals_its_plaintext_and_opens_only_under_the_compared_dsk() {
+        let account = AccountId(Uuid::from_u128(1));
+        let av = Version::new(2).unwrap();
+        let approver = DeviceKeys::generate().unwrap();
+        let new_device = DeviceKeys::generate().unwrap();
+        let wrapper = Wrapper {
+            account,
+            av,
+            key_device: approver.key_device,
+        };
+        let target = device_target(account, WrapPurpose::Trust, av, new_device.key_device);
+        let dek = new_device.dek.public().unwrap();
+        let pin = TrustPin {
+            account: AccountId(Uuid::from_u128(9)),
+            ik: approver.dsk.public().unwrap(),
+            av: Version::new(3).unwrap(),
+            how: PinHow::Compared,
+            alert: true,
+            replaced: Vec::new(),
+        };
+        let trust = TrustPlaintext {
+            pins: vec![pin.clone()],
+            versions: Vec::new(),
+        };
+        let wrap = Wrap::seal_trust(&origin(), target, &dek, &trust, wrapper, &approver.dsk).unwrap();
+        let compared = approver.dsk.public().unwrap();
+        assert_eq!(
+            wrap.open_trust(&origin(), &new_device.dek, &dek, &compared).unwrap(),
+            trust
+        );
+        let other_dsk = DeviceKeys::generate().unwrap().dsk.public().unwrap();
+        assert_eq!(
+            wrap.open_trust(&origin(), &new_device.dek, &dek, &other_dsk)
+                .unwrap_err(),
+            KeysError::NotCompared
+        );
+
+        let twice = TrustPlaintext {
+            pins: vec![pin.clone(), pin],
+            versions: Vec::new(),
+        };
+        assert!(matches!(
+            Wrap::seal_trust(&origin(), target, &dek, &twice, wrapper, &approver.dsk),
+            Err(KeysError::Encoding { .. })
+        ));
+        let account_target = device_target(account, WrapPurpose::Account, av, new_device.key_device);
+        assert!(Wrap::seal_trust(&origin(), account_target, &dek, &trust, wrapper, &approver.dsk).is_err());
     }
 
     #[test]

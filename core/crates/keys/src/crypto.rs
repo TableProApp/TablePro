@@ -375,6 +375,35 @@ pub(crate) mod forgery {
         }
     }
 
+    // a times b mod L.
+    fn mul(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
+        let mut limbs = [0_u32; 64];
+        for (i, x) in a.iter().enumerate() {
+            for (j, y) in b.iter().enumerate() {
+                limbs[i + j] += u32::from(*x) * u32::from(*y);
+            }
+        }
+        let mut product = [0_u8; 64];
+        let mut carry = 0_u32;
+        for (byte, limb) in product.iter_mut().zip(limbs) {
+            let value = limb + carry;
+            *byte = (value & 0xff) as u8;
+            carry = value >> 8;
+        }
+        reduce(&product)
+    }
+
+    // S = k * a, with R an encoding a lenient decoder reads as the identity: then [S]B = R + [k]A
+    // holds, so only the refusal of that R stops the signature.
+    pub(crate) fn sign_with_identity_r(seed: &[u8; 32], r: &[u8; 32], message: &[u8]) -> [u8; 64] {
+        let public = ed25519_public(seed).expect("public");
+        let s = mul(&challenge(r, &public, message), &scalar(seed));
+        let mut signature = [0_u8; 64];
+        signature[..32].copy_from_slice(r);
+        signature[32..].copy_from_slice(&s);
+        signature
+    }
+
     pub(crate) fn library_accepts(public: &[u8; 32], message: &[u8], signature: &[u8; 64]) -> bool {
         aws_lc_rs::signature::UnparsedPublicKey::new(&aws_lc_rs::signature::ED25519, public)
             .verify(message, signature)
@@ -416,13 +445,16 @@ pub(crate) mod tests {
         bad_r[..32].copy_from_slice(&FIELD_P);
         assert_eq!(ed25519_verify(&public, b"m", &bad_r), Err(KeysError::Signature));
 
-        // Real forgeries: the library alone takes the ones it can decode, so only the small-order
-        // refusal stops them, and dropping it fails this test.
-        let mut taken_by_the_library = 0;
+        // Real forgeries: the library alone takes each canonical point of small order, so only the
+        // small-order refusal stops them, and dropping it fails this test. Whether it also takes the
+        // two sign-bit encodings depends on the platform's AWS-LC build, so that is not asserted.
         for (index, (small, order)) in super::forgery::encodings().into_iter().enumerate() {
             let (forged, message) = super::forgery::forge(&small, order, &format!("unit {index}"));
-            if super::forgery::library_accepts(&small, &message, &forged) {
-                taken_by_the_library += 1;
+            if index < SMALL_ORDER.len() {
+                assert!(
+                    super::forgery::library_accepts(&small, &message, &forged),
+                    "the library takes encoding {index}"
+                );
             }
             assert_eq!(
                 ed25519_verify(&small, &message, &forged),
@@ -430,7 +462,6 @@ pub(crate) mod tests {
                 "encoding {index}"
             );
         }
-        assert_eq!(taken_by_the_library, 8, "every canonical point of small order");
         let mut negative_zero_r = signature;
         negative_zero_r[..32].copy_from_slice(&SMALL_ORDER[0]);
         negative_zero_r[31] |= 0x80;

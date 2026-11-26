@@ -60,6 +60,8 @@ struct World<'a> {
     p: Person,
     // P's account as another device's genesis would make it: its own R, IK and keys.
     p_other: Person,
+    // An account the server made up, with keys only the server holds.
+    x: Person,
     team: uuid::Uuid,
 }
 
@@ -104,6 +106,7 @@ impl World<'_> {
             "E" => &self.e,
             "O" => &self.o,
             "P'" => &self.p_other,
+            "X" => &self.x,
             _ => &self.p,
         }
     }
@@ -814,6 +817,30 @@ fn step(who: &str, does: &str, records: Vec<JsonValue>, client: &str, server: &s
     ])
 }
 
+// A check the crate makes for a step's client code: the op and input `verify::run` takes, and
+// the code it answers.
+fn crate_check(op: &str, input: Vec<(&str, JsonValue)>, error: &str) -> JsonValue {
+    obj(vec![("op", s(op)), ("input", obj(input)), ("error", s(error))])
+}
+
+fn signed_under(signed: u32, newest_known: u32) -> JsonValue {
+    crate_check(
+        "check_signed_under_newest",
+        vec![
+            ("signed_under", n(u64::from(signed))),
+            ("newest_known", n(u64::from(newest_known))),
+        ],
+        "keys.stale",
+    )
+}
+
+fn checked(mut step: JsonValue, checks: Vec<JsonValue>) -> JsonValue {
+    if let JsonValue::Object(members) = &mut step {
+        members.push(("checks".to_owned(), arr(checks)));
+    }
+    step
+}
+
 fn step_with(
     who: &str,
     does: &str,
@@ -913,6 +940,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         o: Person::new("O", AccountId(draw_uuid("flows/O id")), 2),
         p: Person::new("P", AccountId(draw_uuid("flows/P id")), 2),
         p_other: Person::new("P from C", AccountId(draw_uuid("flows/P id")), 1),
+        x: Person::new("X", AccountId(draw_uuid("flows/X id")), 1),
         team: uuid_from_wire(TEAM_T).expect("team"),
     };
     let a1 = device("A device 1");
@@ -946,7 +974,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         given: given(vec![("client_holds", holds(5, &["A@2", "M@1"])), ("account_av", obj(vec![("A", n(2)), ("E", n(1))])), ("rotation_due", b(false))]),
         steps: vec![
             step("E", "push", vec![w.member("E's certificate in the team", "E", 1), w.team_version("version 6 signed by E", 6, Start::Next, "E", 1), w.team_ring("its ring", 6)], "keys.not_holder", "role"),
-            step("A", "push", vec![w.team_version("version 6 signed by A under av 1", 6, Start::Next, "A", 1), w.team_ring("its ring", 6)], "keys.stale", "bad_statement"),
+            checked(step("A", "push", vec![w.team_version("version 6 signed by A under av 1", 6, Start::Next, "A", 1), w.team_ring("its ring", 6)], "keys.stale", "bad_statement"), vec![signed_under(1, 2)]),
         ],
     }));
 
@@ -961,15 +989,18 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                 ("client_holds", holds(5, &["A@2"])),
                 ("client_knows_av", obj(vec![("A", n(2))])),
             ]),
-            steps: vec![step(
-                "server",
-                "pull",
-                vec![
-                    w.team_version("version 6 signed by A under av 1", 6, Start::Next, "A", 1),
-                    w.team_version("version 7 signed by A under av 2", 7, Start::Next, "A", 2),
-                ],
-                "keys.stale at version 6; the client stays at version 5",
-                "none",
+            steps: vec![checked(
+                step(
+                    "server",
+                    "pull",
+                    vec![
+                        w.team_version("version 6 signed by A under av 1", 6, Start::Next, "A", 1),
+                        w.team_version("version 7 signed by A under av 2", 7, Start::Next, "A", 2),
+                    ],
+                    "keys.stale at version 6; the client stays at version 5",
+                    "none",
+                ),
+                vec![signed_under(1, 2)],
             )],
         },
     ));
@@ -980,12 +1011,12 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "none",
         layer: &["flow"],
         given: given(vec![("client_holds", holds(6, &["A@2", "P@2"])), ("client_knows_av", obj(vec![("A", n(2)), ("M", n(2))]))]),
-        steps: vec![step("server", "pull", vec![
+        steps: vec![checked(step("server", "pull", vec![
             w.team_version("version 7 signed under A's old av 1", 7, Start::Next, "A", 1),
             w.team_wrap("version 7 to M, under A's av 1", 7, "M", 2, "A", 1, &a_lost),
             w.team_version("version 8 signed by M under av 2", 8, Start::Next, "M", 2),
             w.team_wrap("version 8 to P, by M", 8, "P", 2, "M", 2, &m1),
-        ], "keys.stale at version 7; M is no holder", "none")],
+        ], "keys.stale at version 7; M is no holder", "none"), vec![signed_under(1, 2)])],
     }));
 
     let stopped = |extra: Vec<(&str, JsonValue)>| {
@@ -1200,10 +1231,10 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         layer: &["flow", "server"],
         given: obj(vec![("client_holds", obj(vec![("personal", n(2))])), ("order", s("records in each step come in revision order"))]),
         steps: vec![
-            step("server", "pull", vec![
+            checked(step("server", "pull", vec![
                 w.version("PK version 3", pk(3), Start::Next, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
                 w.envelope("an envelope under PK 2 after version 3", "P", 2, "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44"),
-            ], "keys.stale for the envelope after version 3", "key_version_stale for a write under 2 once 3 is current"),
+            ], "keys.stale for the envelope after version 3", "key_version_stale for a write under 2 once 3 is current"), vec![crate_check("check_not_below", vec![("held", n(3)), ("offered", n(2))], "keys.stale")]),
             step("server", "pull", vec![
                 w.envelope("the same envelope under PK 2, before version 3", "P", 2, "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44"),
                 w.version("PK version 3", pk(3), Start::Next, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
@@ -1253,13 +1284,40 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         },
     ));
 
+    let reveal_before_nonce = {
+        let (transcript, n_side, r_n) = w.sas_view("P", request, &dev_n);
+        let a_side = crate::sas::SasDevice {
+            key_device: dev_b.key_device,
+            dek: dev_b.dek.public().expect("public"),
+            dsk: dev_b.dsk.public().expect("public"),
+        };
+        let view = obj(vec![
+            ("origin", s(transcript.origin.as_str())),
+            ("account", s(&transcript.account.to_wire())),
+            ("request", s(&request.to_wire())),
+            ("ik_hex", h(&transcript.ik.0)),
+            ("n", super::gen_sas::device_json(&n_side)),
+            ("r_n_hex", h(&r_n)),
+            ("a", super::gen_sas::device_json(&a_side)),
+            ("r_a_hex", h(&draw::<32>("flows/a reveal before the nonce/r_A"))),
+        ]);
+        crate_check(
+            "sas_session",
+            vec![
+                ("view", view),
+                ("role", s("new_device")),
+                ("steps", arr(vec![s("reveal")])),
+            ],
+            "keys.session",
+        )
+    };
     rows.push(scenario("a reveal before the nonce, steps after the session ended", Row {
         row: "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`",
         client: "keys.session",
         server: "request_closed",
         layer: &["flow", "server"],
         given: obj(vec![("session", s("open"))]),
-        steps: vec![step("N", "push", vec![w.reveal("N's reveal before any nonce", "P", request, &dev_n)], "keys.session", "request_closed")],
+        steps: vec![checked(step("N", "push", vec![w.reveal("N's reveal before any nonce", "P", request, &dev_n)], "keys.session", "request_closed"), vec![reveal_before_nonce])],
     }));
 
     rows.push(scenario(
@@ -1784,6 +1842,109 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         ],
     }));
 
+    // ADR 0064: a restart a member's device did not sign waits for a comparison of the signer's words.
+    let fingerprint_words = |who: &str| {
+        let person = w.person(who);
+        let fingerprint =
+            crate::fingerprint::fingerprint(&origin(), person.id, &person.ik.public().expect("public")).expect("f");
+        arr(crate::fingerprint::fingerprint_words(&fingerprint)
+            .into_iter()
+            .map(s)
+            .collect())
+    };
+    let restart_given = || {
+        given(vec![
+            ("client", s("M")),
+            ("client_holds", holds(5, &["O@2", "M@2"])),
+            ("server_holds", holds(6, &["O@2"])),
+        ])
+    };
+    rows.push(scenario(
+        "a restart shown to a device that held an earlier version, then accepted",
+        Row {
+            row: RESTART_HELD_ROW,
+            client: "keys.restart_held; applied, its signer the holder",
+            server: "none",
+            layer: &["flow"],
+            given: restart_given(),
+            steps: vec![
+                step(
+                    "server",
+                    "pull",
+                    vec![
+                        w.team_version("version 7 by O with start 1", 7, Start::Over, "O", 2),
+                        w.team_wrap("version 7 to M", 7, "M", 2, "O", 2, &o1),
+                    ],
+                    "keys.restart_held: version 7 is not current, and M writes nothing under the team key",
+                    "none",
+                ),
+                step_with(
+                    "M",
+                    "the person compares O's six fingerprint words and accepts",
+                    vec![],
+                    vec![("words", fingerprint_words("O"))],
+                    "applied: version 7 is current, O is its holder, and O's pin is compared",
+                    "none",
+                ),
+            ],
+        },
+    ));
+    let made_up = KeyRef {
+        owner: w.team,
+        purpose: KeyPurpose::Team,
+        version: v(7),
+    };
+    let made_up_key = scope_key("flows/TK7 made up by the server");
+    rows.push(scenario(
+        "a restart by an account the server made up",
+        Row {
+            row: RESTART_HELD_ROW,
+            client: "keys.restart_held; stays held",
+            server: "none",
+            layer: &["flow"],
+            given: restart_given(),
+            steps: vec![
+                step(
+                    "server",
+                    "pull",
+                    vec![
+                        w.member("X's certificate in the team", "X", 1),
+                        w.version(
+                            "version 7 by X with start 1",
+                            made_up,
+                            Start::Over,
+                            &made_up_key,
+                            "X",
+                            1,
+                            &w.x.at(1).ask,
+                        ),
+                        w.scope_wrap(
+                            "version 7 to M, by X",
+                            made_up,
+                            &made_up_key,
+                            "M",
+                            2,
+                            "X",
+                            1,
+                            &w.x.at(1).ask,
+                            &device("X device"),
+                        ),
+                    ],
+                    "keys.restart_held: version 7 is not current, and M writes nothing under the team key",
+                    "none",
+                ),
+                step_with(
+                    "M",
+                    "the person compares X's six fingerprint words, which match no one's, and says they differ",
+                    vec![],
+                    vec![("words", fingerprint_words("X"))],
+                    "stays held: keys.restart_held",
+                    "none",
+                ),
+            ],
+        },
+    ));
+
     rows.push(scenario(
         "a sole owner who reset restarts its team",
         Row {
@@ -2195,7 +2356,10 @@ fn approval_rows(
                 ),
                 "keys.stale; the device keeps its keys",
                 "none",
-            )],
+            )]
+            .into_iter()
+            .map(|step| checked(step, vec![signed_under(1, 2)]))
+            .collect(),
         },
     ));
     let other_ik_a = Ed25519Seed::from_bytes(draw("flows/A other IK"))
@@ -2259,7 +2423,7 @@ fn approval_rows(
         given: obj(vec![("device_holds", obj(vec![("personal", n(3)), ("record_hex", h(&record_of("P PK3 held")))]))]),
         steps: vec![
             step("B approves N", "pull", w.approval("B with PK 2", "P", 2, dev_n, dev_b, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(2, "P PK2")])), "keeps its own", "none"),
-            step("C approves N", "pull", w.approval("C with another PK 3 record", "P", 2, dev_n, dev_c, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(3, "P PK3 other")])), "keys.conflict", "none"),
+            checked(step("C approves N", "pull", w.approval("C with another PK 3 record", "P", 2, dev_n, dev_c, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(3, "P PK3 other")])), "keys.conflict", "none"), vec![crate_check("check_record_digest", vec![("origin", s(super::fixtures::ORIGIN)), ("anchored_hex", h(&record_of("P PK3 held"))), ("record", labelled_version(w, "P PK3 other").0)], "keys.conflict")]),
         ],
     }));
     rows.push(scenario("B keeps team version 6 when approved from a C the server kept behind", Row {
@@ -2270,7 +2434,7 @@ fn approval_rows(
         given: obj(vec![("b_holds", holds(6, &["A@2", "P@2"])), ("b_knows_av", obj(vec![("A", n(2))]))]),
         steps: vec![
             step("C approves B", "pull", w.approval("C's view with team version 8", "P", 2, dev_b, dev_c, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![tv(8, "team 8 by M")])), "B keeps version 6", "none"),
-            step("server", "pull", vec![w.team_version("version 7 under A's old av 1", 7, Start::Next, "A", 1), w.team_wrap("version 7 to M under A's av 1", 7, "M", 2, "A", 1, a1), w.team_version("version 8 by M", 8, Start::Next, "M", 2)], "keys.stale", "none"),
+            checked(step("server", "pull", vec![w.team_version("version 7 under A's old av 1", 7, Start::Next, "A", 1), w.team_wrap("version 7 to M under A's av 1", 7, "M", 2, "A", 1, a1), w.team_version("version 8 by M", 8, Start::Next, "M", 2)], "keys.stale", "none"), vec![signed_under(1, 2)]),
         ],
     }));
     let c_old = |version: u32| {
@@ -2299,7 +2463,7 @@ fn approval_rows(
         server: "none",
         layer: &["flow"],
         given: obj(vec![("c_holds", arr(vec![c_old(2), c_old(3)])), ("b_holds", arr(vec![b_v2.clone()]))]),
-        steps: vec![step("B approves C", "pull", w.approval("B with PK 2 under av 2", "P", 2, dev_c, dev_b, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(2, "P PK2 under av 2")])), "keys.conflict at version 2", "none")],
+        steps: vec![checked(step("B approves C", "pull", w.approval("B with PK 2 under av 2", "P", 2, dev_c, dev_b, &trust(vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new())], vec![pv(2, "P PK2 under av 2")])), "keys.conflict at version 2", "none"), vec![crate_check("check_record_digest", vec![("origin", s(super::fixtures::ORIGIN)), ("anchored_hex", h(&record_of("P PK2 under av 2"))), ("record", c_old(2))], "keys.conflict")])],
     }));
     rows.push(scenario(
         "the same C after an anchored rebuild that kept only version 3",
@@ -2363,7 +2527,10 @@ fn approval_rows(
                 ),
                 "keys.stale",
                 "none",
-            )],
+            )]
+            .into_iter()
+            .map(|step| checked(step, vec![signed_under(1, 2)]))
+            .collect(),
         },
     ));
     rows.push(scenario("an approval over a stopped personal key and over an ended scope", Row {
@@ -2563,7 +2730,10 @@ fn labelled_version(w: &World<'_>, label: &str) -> (JsonValue, [u8; 32]) {
 }
 
 // Every device a scenario names, under its fixture name; its keys are drawn from the name.
-const DEVICES: [&str; 9] = [
+// ADR 0064's three restart vectors, as its Vectors line names them.
+pub(super) const RESTART_HELD_ROW: &str = "a restart shown to a device that held an earlier version; the person compares and accepts; a restart by an account the server made up, words that differ";
+
+const DEVICES: [&str; 10] = [
     "A device 1",
     "A lost device",
     "M device 1",
@@ -2573,6 +2743,7 @@ const DEVICES: [&str; 9] = [
     "P device C again",
     "P device N",
     "P device N approved again",
+    "X device",
 ];
 
 fn world_json(w: &World<'_>) -> JsonValue {
@@ -2619,6 +2790,7 @@ fn world_json(w: &World<'_>) -> JsonValue {
                 person(&w.o),
                 person(&w.p),
                 person(&w.p_other),
+                person(&w.x),
             ]),
         ),
         (
@@ -2643,7 +2815,7 @@ fn world_json(w: &World<'_>) -> JsonValue {
         (
             "roles",
             s(
-                "A admin, O owner, M member, E editor, P member; B, C and N are P's devices. \"P from C\" is P's account as device C's own genesis made it, with its own R, IK and keys",
+                "A admin, O owner, M member, E editor, P member; B, C and N are P's devices. \"P from C\" is P's account as device C's own genesis made it, with its own R, IK and keys. X is an account the server made up",
             ),
         ),
         (
@@ -2667,6 +2839,20 @@ pub(super) fn check(_file: &str, case: &JsonValue) {
     collect_records(members.required("given").expect("given"), &mut records);
     for record in records {
         check_record(&name, record);
+    }
+    if let JsonValue::Array(steps) = members.required("steps").expect("steps") {
+        for step in steps {
+            if let Some(JsonValue::Array(checks)) = In::of(step).optional("checks") {
+                for check in checks {
+                    let mut check = In::of(check);
+                    let op = check.str("op");
+                    let answered = super::verify::run(op, check.value("input"))
+                        .map(|_| ())
+                        .map_err(|error| error.code());
+                    assert_eq!(answered, Err(check.str("error")), "{name}: {op}");
+                }
+            }
+        }
     }
 }
 
