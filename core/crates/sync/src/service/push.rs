@@ -602,9 +602,12 @@ impl ServiceSync {
         for fresh in [false, true] {
             let key = self.outbox_key(scope, digest, retention_ms, fresh).await?;
             self.check_stop()?;
-            // A team's edits go out only under the sign-in they were made in.
-            if matches!(scope, ScopeName::Team(_)) && !self.team_sign_in_holds() {
-                return Err(crate::api::team_library::TeamLibraryError::SignedInChanged.into());
+            // A team's edits go out only under the sign-in they were made in, and none once a delete of them began.
+            if let Some(refused) = matches!(scope, ScopeName::Team(_))
+                .then(|| self.team_send_refused())
+                .flatten()
+            {
+                return Err(refused);
             }
             let request = PushBatch {
                 scope,

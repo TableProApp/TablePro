@@ -511,8 +511,9 @@ fn delete_file_blocking(path: &Path) -> Result<(), StorageError> {
 }
 
 // Every owner's file but `keep`'s, each marked before it goes: its marker stays until that owner's sync state lets
-// go of the same data, so nothing of it is read meanwhile. A file that cannot be read is deleted too, since its owner
-// cannot be shown to be `keep`.
+// go of the same data, so nothing of it is read meanwhile. An owner is found by its file, a temporary copy a crash
+// left without one, or its marker. A file that cannot be read is deleted too, since its owner cannot be shown to be
+// `keep`.
 pub fn delete_other_owners_blocking(paths: &StoragePaths, keep: Option<&TeamLibraryOwner>) -> Result<(), StorageError> {
     let folder = paths.state.join("team-library");
     let kept = keep.map(|owner| TeamLibraryStore::path_for(paths, owner));
@@ -526,15 +527,15 @@ pub fn delete_other_owners_blocking(paths: &StoragePaths, keep: Option<&TeamLibr
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(source) => return Err(StorageError::Io { path: folder, source }),
     };
-    let targets: Vec<PathBuf> = entries
+    let mut targets: Vec<PathBuf> = entries
         .into_iter()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension().is_some_and(|extension| extension == "json")
-                && path.file_stem().is_some_and(|stem| stem.len() == 64)
-                && kept.as_deref() != Some(path.as_path())
+        .filter_map(|entry| {
+            owner_digest(&entry.file_name().to_string_lossy()).map(|digest| folder.join(format!("{digest}.json")))
         })
+        .filter(|path| kept.as_deref() != Some(path.as_path()))
         .collect();
+    targets.sort();
+    targets.dedup();
     // Every owner is marked before any file goes, so one delete that fails leaves every owner it was meant for unread.
     for path in &targets {
         crate::fs::write_private_blocking(&marker_for(path), b"")?;
@@ -547,6 +548,21 @@ pub fn delete_other_owners_blocking(paths: &StoragePaths, keep: Option<&TeamLibr
         }
     }
     failed.map_or(Ok(()), Err)
+}
+
+// The owner digest a name in the folder belongs to: `<digest>.json`, `.<digest>.json.<random>.tmp` or
+// `<digest>.deleting`.
+fn owner_digest(name: &str) -> Option<&str> {
+    let digest = name
+        .strip_suffix(".json")
+        .or_else(|| name.strip_suffix(".deleting"))
+        .or_else(|| {
+            name.strip_prefix('.')
+                .filter(|rest| rest.ends_with(".tmp"))
+                .and_then(|rest| rest.split_once(".json."))
+                .map(|(digest, _)| digest)
+        })?;
+    (digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())).then_some(digest)
 }
 
 fn item_record(team_id: &str, id: &str) -> RecordRef {

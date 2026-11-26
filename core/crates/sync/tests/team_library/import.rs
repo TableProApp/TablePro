@@ -1,7 +1,7 @@
 use serde_json::json;
 use tablepro_records::Kind;
 use tablepro_storage::TeamLibraryKind;
-use tablepro_sync::api::control::SyncControl;
+use tablepro_sync::api::control::{ConflictChoice, SyncControl};
 use tablepro_sync::api::ids::RecordKey;
 use tablepro_sync::api::scopes::Role;
 use tablepro_sync::api::team_library::{
@@ -198,5 +198,65 @@ async fn what_0_88_published_stays_this_device_s_to_remove() {
             .unwrap()
             .deleted
             .is_some()
+    );
+}
+
+#[tokio::test]
+async fn an_imported_delete_whose_base_0_88_did_not_keep_asks_before_the_team_s_copy_stays() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    team_with_history(&server, dir.path()).await;
+    let mac = Mac::new(&server, "dev_mac", dir.path()).await;
+
+    mac.device
+        .sync
+        .import_team_library(import(vec![edit(4, Some(1), None, None)]))
+        .await
+        .unwrap();
+    mac.device.sync().await;
+    let open = mac.device.sync.conflicts().await.unwrap();
+    let key = RecordKey::new(scope(), Kind::LibraryQuery, lower(4));
+    crate::support::resolve(&mac, key.clone(), ConflictChoice::KeepMine).await;
+    mac.device.sync().await;
+
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].key, key);
+    assert!(
+        server
+            .stored(crate::support::owner(), "library_query", &lower(4))
+            .unwrap()
+            .deleted
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn an_edit_on_the_version_number_the_team_holds_with_other_content_merges_instead_of_overwriting() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    team_with_history(&server, dir.path()).await;
+    let mac = Mac::new(&server, "dev_mac", dir.path()).await;
+    let version_4 = server
+        .stored(crate::support::owner(), "library_query", &lower(4))
+        .unwrap()
+        .version;
+
+    mac.device
+        .sync
+        .import_team_library(import(vec![edit(
+            4,
+            Some(version_4),
+            Some(query_fields("Four", None)),
+            Some(query_fields("Four mine", None)),
+        )]))
+        .await
+        .unwrap();
+    mac.device.sync().await;
+    let open = mac.device.sync.conflicts().await.unwrap();
+
+    assert_eq!(open.len(), 1);
+    assert_eq!(
+        server_fields(&server, "library_query", &lower(4)),
+        Some(query_fields("Four renamed", None))
     );
 }

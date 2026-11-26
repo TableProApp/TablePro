@@ -50,15 +50,15 @@ fn library_row(row: &Row, only: &[ScopeName]) -> bool {
 }
 
 impl ServiceSync {
+    // A mark that cannot be written keeps nothing back: the delete goes ahead, and fails only if data stays behind.
     pub(super) async fn delete_all(&self) -> Result<(), SyncError> {
         self.team_library.off.store(true, Ordering::SeqCst);
-        let marked = self
-            .store_call(|store| {
-                store.mark_deleting_blocking()?;
-                store.delete_blocking()
-            })
-            .await;
-        marked.map_err(|error| failed(&error))?;
+        if let Err(error) = self.store_call(|store| store.mark_deleting_blocking()).await {
+            tracing::warn!(
+                code = error.code(),
+                "the team library delete goes ahead without its mark"
+            );
+        }
         self.finish_delete().await
     }
 

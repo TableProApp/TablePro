@@ -9,7 +9,7 @@ use tablepro_records::record_id::library_ids_match;
 use tablepro_storage::{TeamLibraryCopy, TeamLibraryImported, TeamLibraryKind, TeamLibraryLocal, TeamLibraryRef};
 
 use super::super::{ServiceSync, Session, begin};
-use super::plan::{kind_of, with_unknown_members};
+use super::plan::{collisions, kind_of, same_item, with_unknown_members};
 use super::writes;
 use crate::api::adapter::{LocalChange, LocalRecord};
 use crate::api::error::SyncError;
@@ -65,6 +65,7 @@ impl ServiceSync {
     pub(super) async fn keep_imports(&self, teams: Vec<TeamLibraryImport>) -> Result<(), SyncError> {
         for import in teams {
             let scope = ScopeName::Team(import.team);
+            self.team_commit_check()?;
             self.update_local(scope, move |local| keep(local, import)).await?;
         }
         Ok(())
@@ -99,30 +100,39 @@ impl ServiceSync {
         if !writable {
             return Ok(());
         }
-        let local = self.team_local(scope).await?;
-        let pulled = self
-            .scope_row(scope)
-            .await?
-            .is_some_and(|row| row.epoch.is_some() && row.caught_up && !row.refill);
-        if !pulled || !self.team_sign_in_holds() {
+        if !self.team_pulled(scope).await? || !self.team_sign_in_holds() {
             return Ok(());
         }
         let _read = self.policy_read().await?;
+        let local = self.team_local(scope).await?;
         self.apply_each(scope, local.imports).await
     }
 
+    // Only the imports applied here leave the list, matched whole, so one kept again meanwhile stays.
     async fn apply_each(&self, scope: ScopeName, imports: Vec<TeamLibraryImported>) -> Result<(), SyncError> {
         let bases = self.team_bases(scope).await?;
-        let mut done = Vec::new();
+        let mut done: Vec<TeamLibraryImported> = Vec::new();
+        let mut refused: Vec<(TeamLibraryImported, &'static str)> = Vec::new();
         let mut claims = Vec::new();
         for (kind, adapter) in self.library_adapters(scope) {
             let records = adapter.records(scope).await?.records;
+            let collided = collisions(
+                records
+                    .iter()
+                    .map(|record| (kind, record.record_id.as_str()))
+                    .chain(bases.iter().map(|(held, base)| (*held, base.key.record_id.as_str()))),
+            );
             let mut changes = Vec::new();
             let mut conflicts = Vec::new();
             for imported in imports
                 .iter()
                 .filter(|imported| imported.kind == kind && imported.refused.is_none())
             {
+                // Listed with the code until it is discarded.
+                if collided.contains(&(kind, imported.id.to_lowercase())) {
+                    refused.push((imported.clone(), TeamLibraryError::IdCaseCollision.code()));
+                    continue;
+                }
                 let Some(applied) = self.applied(scope, imported, &records, &bases).await? else {
                     continue;
                 };
@@ -135,19 +145,19 @@ impl ServiceSync {
                         fields,
                     });
                 }
-                done.push((kind, imported.id.clone()));
+                done.push(imported.clone());
             }
             if !conflicts.is_empty() {
-                self.check_stop()?;
                 let mut txn = begin(&self.state).await?;
                 for conflict in conflicts {
                     txn.put(Row::Conflict(conflict)).await?;
                 }
+                self.team_commit_check()?;
                 txn.commit().await?;
             }
             if !changes.is_empty() {
                 let (written, deleted) = changed_ids(&changes);
-                self.check_stop()?;
+                self.team_commit_check()?;
                 adapter.apply(scope, changes).await?;
                 // The next pass sends them, as a store's own write would ask for it (0060).
                 self.journal.changed(&[JournalEntry {
@@ -157,12 +167,14 @@ impl ServiceSync {
                 }]);
             }
         }
+        self.team_commit_check()?;
         self.update_local(scope, move |local| {
-            local.imports.retain(|held| {
-                !done
-                    .iter()
-                    .any(|(kind, id)| held.kind == *kind && library_ids_match(&held.id, id))
-            });
+            local.imports.retain(|held| !done.contains(held));
+            for (import, code) in refused {
+                if let Some(held) = local.imports.iter_mut().find(|held| **held == import) {
+                    held.refused = Some(code.to_owned());
+                }
+            }
             local.claims.extend(claims);
         })
         .await?;
@@ -195,34 +207,59 @@ impl ServiceSync {
         if open.is_some() || (live.is_some() && stored.is_none()) {
             return Ok(None);
         }
-        let unchanged = match (imported.base_version, live) {
-            (Some(version), Some(base)) => base.version == Some(version),
-            (None, None) => current.is_none(),
-            _ => false,
-        };
         let theirs = stored.map(|record| &record.fields);
         let mine = imported
             .fields
             .clone()
             .map(|fields| with_unknown_members(imported.kind, theirs, fields));
+        // Nothing to write, and nothing shows the team took it from this device.
+        if theirs == mine.as_ref() {
+            return Ok(Some(Applied {
+                change: None,
+                conflict: None,
+                claim: None,
+            }));
+        }
+        // A version alone proves nothing: a restored server can reuse it under another epoch (0051), so the team's
+        // copy must also read as the facade's base did.
+        let unchanged = match (imported.base_version, live) {
+            (Some(version), Some(base)) => {
+                base.version == Some(version)
+                    && matches!(
+                        (&base.fields, &imported.base_fields),
+                        (Some(held), Some(facade)) if same_item(imported.kind, held, facade)
+                    )
+            }
+            (None, None) => current.is_none(),
+            _ => false,
+        };
         if unchanged {
             return Ok(Some(direct(&id, mine, stored.is_some())));
         }
         // An edit 0.88 sent without a base asks before it brings back what the team deleted, as the facade did.
         let deleted = current.is_some_and(|base| base.deleted == Some(DeletedReason::User));
-        if let (true, None, None, Some(fields)) = (deleted, imported.base_version, stored, &mine) {
-            return Ok(Some(Applied {
-                change: None,
-                conflict: Some(ConflictRow {
-                    key,
-                    base: None,
-                    mine: Some(fields.clone()),
-                    theirs: None,
-                }),
-                claim: mine,
-            }));
+        if let (true, None, None, Some(_)) = (deleted, imported.base_version, stored, &mine) {
+            return Ok(Some(asked(key, None, mine)));
+        }
+        // A facade version whose fields 0.88 did not keep is a base nobody can rebuild, which is not the same as no
+        // record: the person decides.
+        if imported.base_version.is_some() && imported.base_fields.is_none() {
+            return Ok(Some(asked(key, theirs.cloned(), mine)));
         }
         Ok(Some(merged(&key, imported, theirs, mine)))
+    }
+}
+
+fn asked(key: RecordKey, theirs: Option<Value>, mine: Option<Value>) -> Applied {
+    Applied {
+        change: None,
+        conflict: Some(ConflictRow {
+            key,
+            base: None,
+            mine: mine.clone(),
+            theirs,
+        }),
+        claim: mine,
     }
 }
 

@@ -323,6 +323,21 @@ fn another_owner_s_file_goes_and_stays_unread_while_the_kept_owner_s_stays() {
 }
 
 #[test]
+fn another_owner_s_copy_a_first_write_left_without_its_file_goes_too() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let theirs = TeamLibraryStore::new(&paths(&root), owner("https://sync.example.com/v2", "acct_2"));
+    let name = theirs.path().file_name().expect("name").to_string_lossy().into_owned();
+    let left = theirs.path().with_file_name(format!(".{name}.x1y2.tmp"));
+    std::fs::create_dir_all(left.parent().expect("folder")).expect("folder");
+    std::fs::write(&left, b"{\"teams\": []}").expect("left");
+
+    delete_other_owners_blocking(&paths(&root), None).expect("deleted");
+
+    assert!(!left.exists());
+    assert!(theirs.delete_pending_blocking());
+}
+
+#[test]
 fn an_item_s_writer_is_replaced_by_the_next_pull_and_goes_with_the_item() {
     let root = tempfile::tempdir().expect("tempdir");
     let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));

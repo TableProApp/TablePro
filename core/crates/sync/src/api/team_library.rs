@@ -256,6 +256,9 @@ pub enum TeamLibraryError {
     DeletePending,
     #[error("the Team Library data could not be deleted: {detail}")]
     DeleteFailed { detail: String },
+    // Two of the team's records share the id once lower-cased, so an edit of it could land on either (0052).
+    #[error("two of the team's items share this id")]
+    IdCaseCollision,
 }
 
 impl TeamLibraryError {
@@ -269,6 +272,7 @@ impl TeamLibraryError {
             Self::Malformed { .. } => "sync.team_library.malformed",
             Self::DeletePending => "sync.team_library.delete_pending",
             Self::DeleteFailed { .. } => "sync.team_library.delete_failed",
+            Self::IdCaseCollision => "sync.team_library.id_case_collision",
         }
     }
 }

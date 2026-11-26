@@ -288,3 +288,128 @@ async fn a_server_the_managed_policy_no_longer_allows_takes_no_publish_and_nothi
     assert!(mac.items(TeamLibraryKind::Query).is_empty());
     assert!(server.stored(owner(), "library_query", &lower(3)).is_none());
 }
+
+// This Mac's rename waits in a conflict against the one another Mac made.
+async fn conflicted(server: &std::sync::Arc<FakeServer>, dir: &std::path::Path) -> (Mac, Mac) {
+    let (mac, mini) = published_by_both(server, dir).await;
+    let folders = vec![folder(1, "Top", None), folder(2, "Mine", Some(1))];
+    mac.device.wire.drop_next_push();
+    mac.device
+        .sync
+        .publish_team_saved_queries(team(), folders.clone(), vec![query(3, "Renamed here", Some(2))])
+        .await
+        .unwrap();
+    mini.device.sync().await;
+    mini.device
+        .sync
+        .publish_team_saved_queries(
+            team(),
+            folders,
+            vec![query(3, "Renamed there", Some(2)), query(4, "Theirs", Some(2))],
+        )
+        .await
+        .unwrap();
+    mac.device.sync().await;
+    (mac, mini)
+}
+
+#[tokio::test]
+async fn a_publish_while_a_conflict_is_open_becomes_its_side_so_keep_mine_sends_the_newer_copy() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    let (mac, _mini) = conflicted(&server, dir.path()).await;
+    let before = mac.device.sync.conflicts().await.unwrap();
+
+    let newer = mac
+        .device
+        .sync
+        .publish_team_saved_queries(
+            team(),
+            vec![folder(1, "Top", None), folder(2, "Mine", Some(1))],
+            vec![query(3, "Renamed newer", Some(2))],
+        )
+        .await
+        .unwrap();
+    let key = RecordKey::new(scope(), Kind::LibraryQuery, lower(3));
+    let stale = mac
+        .device
+        .sync
+        .resolve_conflict(key.clone(), before[0].digest, ConflictChoice::KeepMine)
+        .await;
+    crate::support::resolve(&mac, key, ConflictChoice::KeepMine).await;
+    mac.device.sync().await;
+
+    assert_eq!(before.len(), 1);
+    assert_eq!((newer.edits, newer.conflicts), (1, 1));
+    assert_eq!(stale.unwrap_err().code(), "sync.changed");
+    assert_eq!(
+        server_fields(&server, "library_query", &lower(3)).unwrap()["name"],
+        json!("Renamed newer")
+    );
+}
+
+#[tokio::test]
+async fn keep_mine_needs_the_sign_in_the_edit_was_made_in_and_keep_theirs_does_not() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    let (mac, _mini) = conflicted(&server, dir.path()).await;
+    let open = mac.device.sync.conflicts().await.unwrap();
+    let key = RecordKey::new(scope(), Kind::LibraryQuery, lower(3));
+
+    mac.sign_out();
+    let mine = mac
+        .device
+        .sync
+        .resolve_conflict(key.clone(), open[0].digest, ConflictChoice::KeepMine)
+        .await;
+    let theirs = mac
+        .device
+        .sync
+        .resolve_conflict(key, open[0].digest, ConflictChoice::KeepTheirs)
+        .await;
+
+    assert_eq!(mine.unwrap_err().code(), "sync.team_library.signed_in_changed");
+    assert!(theirs.is_ok());
+    assert!(mac.device.sync.conflicts().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_item_the_team_deleted_and_someone_brought_back_is_no_longer_this_device_s_to_remove() {
+    let server = team_server(Role::Owner);
+    let dir = tempfile::tempdir().unwrap();
+    let mac = Mac::new(&server, "dev_mac", dir.path()).await;
+    let mini = Mac::new(&server, "dev_mini", dir.path()).await;
+    mac.device
+        .sync
+        .publish_team_saved_queries(team(), Vec::new(), vec![query(3, "Q", None)])
+        .await
+        .unwrap();
+    mini.device.sync().await;
+    mini.device
+        .sync
+        .remove_team_items(team(), vec![item(TeamLibraryKind::Query, lower(3))])
+        .await
+        .unwrap();
+    mac.device.sync().await;
+    mini.device
+        .sync
+        .publish_team_saved_queries(team(), Vec::new(), vec![query(3, "Back", None)])
+        .await
+        .unwrap();
+    let key = RecordKey::new(scope(), Kind::LibraryQuery, lower(3));
+    crate::support::resolve(&mini, key, ConflictChoice::KeepMine).await;
+    mini.device.sync().await;
+    mac.device.sync().await;
+
+    let removed = mac
+        .device
+        .sync
+        .publish_team_saved_queries(team(), Vec::new(), Vec::new())
+        .await
+        .unwrap();
+
+    assert_eq!(removed, TeamPublish::default());
+    let back = server.stored(owner(), "library_query", &lower(3)).unwrap();
+    assert!(back.deleted.is_none());
+    assert_eq!(back.fields, Some(query_fields("Back", None)));
+}

@@ -6,7 +6,7 @@
     reason = "record fields compare as JSON values, as Postgres jsonb does, so member order carries nothing"
 )]
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use serde_json::{Map, Value};
 use tablepro_records::record_id::{library_id, library_ids_match};
@@ -32,6 +32,29 @@ pub(super) struct TeamView<'a> {
     pub(super) items: &'a [TeamLibraryItem],
     pub(super) bases: &'a [(TeamLibraryKind, BaseRow)],
     pub(super) local: &'a TeamLibraryLocal,
+    collided: HashSet<(TeamLibraryKind, String)>,
+}
+
+// The ids two records of one kind share once lower-cased, tombstones included. Neither record is planned, removed or
+// referred to, since picking one would let an edit or a tombstone land on the other (0052, Team scope).
+pub(super) fn collisions<'a>(
+    ids: impl IntoIterator<Item = (TeamLibraryKind, &'a str)>,
+) -> HashSet<(TeamLibraryKind, String)> {
+    let mut spellings: HashMap<(TeamLibraryKind, String), &str> = HashMap::new();
+    let mut collided = HashSet::new();
+    for (kind, id) in ids {
+        let key = (kind, id.to_lowercase());
+        match spellings.get(&key) {
+            Some(held) if *held != id => {
+                collided.insert(key);
+            }
+            Some(_) => {}
+            None => {
+                spellings.insert(key, id);
+            }
+        }
+    }
+    collided
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,7 +90,42 @@ impl Planned {
     }
 }
 
-impl TeamView<'_> {
+impl<'a> TeamView<'a> {
+    pub(super) fn new(
+        items: &'a [TeamLibraryItem],
+        bases: &'a [(TeamLibraryKind, BaseRow)],
+        local: &'a TeamLibraryLocal,
+    ) -> Self {
+        let collided = collisions(
+            items
+                .iter()
+                .map(|item| (item.kind, item.id.as_str()))
+                .chain(bases.iter().map(|(kind, base)| (*kind, base.key.record_id.as_str()))),
+        );
+        Self {
+            items,
+            bases,
+            local,
+            collided,
+        }
+    }
+
+    fn collides(&self, kind: TeamLibraryKind, id: &str) -> bool {
+        self.collided.contains(&(kind, id.to_lowercase()))
+    }
+
+    // An item whose own id, or a folder or connection it names, collides.
+    fn tangled(&self, kind: TeamLibraryKind, id: &str, fields: &Value) -> bool {
+        self.collides(kind, id)
+            || [
+                ("parent_client_id", TeamLibraryKind::Folder),
+                ("folder_client_id", TeamLibraryKind::Folder),
+                ("connection_client_id", TeamLibraryKind::Connection),
+            ]
+            .into_iter()
+            .any(|(member, of)| text(fields, member).is_some_and(|named| self.collides(of, named)))
+    }
+
     fn held(&self, kind: TeamLibraryKind, id: &str) -> Option<&TeamLibraryItem> {
         self.items
             .iter()
@@ -100,7 +158,7 @@ impl TeamView<'_> {
         self.local
             .declined
             .iter()
-            .any(|copy| copy.kind == kind && library_ids_match(&copy.id, id) && copy.fields == *fields)
+            .any(|copy| copy.kind == kind && library_ids_match(&copy.id, id) && same_item(kind, &copy.fields, fields))
     }
 
     fn upsert(&self, kind: TeamLibraryKind, id: String, fields: Value, own: bool) -> Planned {
@@ -167,7 +225,7 @@ fn same_reference(left: Option<&str>, right: Option<&str>) -> bool {
 
 // `TeamLibraryFolderData.matches` and `TeamLibraryQueryData.matches`: names and text as written, references without
 // case, and an empty keyword or reference as none.
-fn same_item(kind: TeamLibraryKind, held: &Value, sent: &Value) -> bool {
+pub(super) fn same_item(kind: TeamLibraryKind, held: &Value, sent: &Value) -> bool {
     let name = |fields: &Value| fields.get("name").and_then(Value::as_str).unwrap_or("").to_owned();
     let same_text = |member: &str| text(held, member) == text(sent, member);
     let same_ref = |member: &str| same_reference(text(held, member), text(sent, member));
@@ -200,6 +258,9 @@ pub(super) fn connections(view: &TeamView<'_>, connections: &[TeamConnection]) -
         let kind = TeamLibraryKind::Connection;
         let id = view.stored_id(kind, connection.id);
         let fields = without_secret_keys(connection.settings.clone());
+        if view.collides(kind, &id) {
+            continue;
+        }
         if view
             .held(kind, &id)
             .is_some_and(|held| same_item(kind, &held.fields, &fields))
@@ -299,6 +360,9 @@ pub(super) fn saved_queries(view: &TeamView<'_>, folders: &[TeamFolder], queries
     let mut planned = Vec::new();
     let mut push = |kind: TeamLibraryKind, id: String, fields: Value, planned: &mut Vec<Planned>| {
         touched.insert((kind, id.to_lowercase()));
+        if view.tangled(kind, &id, &fields) {
+            return;
+        }
         let unchanged = view
             .held(kind, &id)
             .is_some_and(|held| same_item(kind, &held.fields, &fields));
@@ -343,6 +407,7 @@ fn removed(view: &TeamView<'_>, local: &HashSet<(TeamLibraryKind, String)>) -> V
         .published
         .iter()
         .filter(|published| published.kind != TeamLibraryKind::Connection)
+        .filter(|published| !view.collides(published.kind, &published.id))
         .filter_map(|published| view.held(published.kind, &published.id))
         .filter(|held| !local.contains(&(held.kind, held.id.to_lowercase())));
     for item in held {
@@ -383,12 +448,19 @@ fn moves(view: &TeamView<'_>, touched: &HashSet<(TeamLibraryKind, String)>, remo
         let Some((member, folder)) = container(item) else {
             continue;
         };
-        if touched.contains(&key) || is_removed || !gone.contains(&folder) {
+        if touched.contains(&key)
+            || is_removed
+            || !gone.contains(&folder)
+            || view.tangled(item.kind, &item.id, &item.fields)
+        {
             continue;
         }
+        let Some(parent) = surviving_parent(view, &folder, &gone) else {
+            continue;
+        };
         let mut fields = item.fields.clone();
         if let Value::Object(members) = &mut fields {
-            match surviving_parent(view, &folder, &gone) {
+            match parent {
                 Some(parent) => {
                     members.insert(member.to_owned(), Value::from(parent));
                 }
@@ -402,10 +474,15 @@ fn moves(view: &TeamView<'_>, touched: &HashSet<(TeamLibraryKind, String)>, remo
     planned
 }
 
-fn surviving_parent(view: &TeamView<'_>, folder: &str, gone: &BTreeSet<String>) -> Option<String> {
+// The first folder up the chain that stays, or Some(None) for the top. None when a folder on the way collides, so the
+// item stays where it is.
+fn surviving_parent(view: &TeamView<'_>, folder: &str, gone: &BTreeSet<String>) -> Option<Option<String>> {
     let mut current = Some(folder.to_owned());
     let mut seen = HashSet::new();
     while let Some(id) = current.clone() {
+        if view.collides(TeamLibraryKind::Folder, &id) {
+            return None;
+        }
         if !gone.contains(&id) || !seen.insert(id.clone()) {
             break;
         }
@@ -414,11 +491,13 @@ fn surviving_parent(view: &TeamView<'_>, folder: &str, gone: &BTreeSet<String>) 
             .and_then(|held| text(&held.fields, "parent_client_id"))
             .map(str::to_lowercase);
     }
-    let id = current.filter(|id| !gone.contains(id))?;
-    Some(
+    let Some(id) = current.filter(|id| !gone.contains(id)) else {
+        return Some(None);
+    };
+    Some(Some(
         view.held(TeamLibraryKind::Folder, &id)
             .map_or(id, |held| held.id.clone()),
-    )
+    ))
 }
 
 // Queries before folders, as the Swift plan sorted them.
@@ -442,6 +521,9 @@ fn deletions(mut removed: Vec<TeamItemRef>) -> Vec<Planned> {
 pub(super) fn removals(view: &TeamView<'_>, items: &[TeamItemRef]) -> Vec<Planned> {
     let mut planned: Vec<Planned> = Vec::new();
     for item in items {
+        if view.collides(item.kind, &item.id) {
+            continue;
+        }
         let Some(held) = view.held(item.kind, &item.id) else {
             continue;
         };

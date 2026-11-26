@@ -69,12 +69,14 @@ impl ServiceSync {
             self.update_local(*scope, move |local| local.synced_at_ms = Some(now))
                 .await?;
             self.apply_imports(session, *scope).await?;
+            self.settle_ownership(*scope).await?;
         }
         self.set_problems(skipped);
         self.drop_unreached(session, &teams).await
     }
 
-    // A team the account lost its seat in goes with what this device held of it, once nothing of it is left unsent.
+    // A team the account lost its seat in goes with what this device held of it, once nothing of it is left unsent. Its
+    // scope row goes first, so a rejoin starts from a snapshot and never resumes a cursor past items no longer here.
     async fn drop_unreached(&self, session: &Session, reached: &[ScopeName]) -> Result<(), SyncError> {
         for scope in self.known_teams(session).await? {
             if reached.contains(&scope) || !self.team_diff(scope).await?.is_empty() {
@@ -83,10 +85,20 @@ impl ServiceSync {
             if !self.team_local(scope).await?.imports.is_empty() {
                 continue;
             }
+            self.forget_scope(scope).await?;
             self.drop_library_rows(&[scope]).await?;
             let team = scope.wire();
             self.store_call(move |store| store.remove_team_blocking(&team)).await?;
         }
+        Ok(())
+    }
+
+    async fn forget_scope(&self, scope: ScopeName) -> Result<(), SyncError> {
+        let mut txn = begin(&self.state).await?;
+        txn.delete(&RowKey::Scope(scope)).await?;
+        txn.delete(&RowKey::Outbox(scope)).await?;
+        self.check_stop()?;
+        txn.commit().await?;
         Ok(())
     }
 

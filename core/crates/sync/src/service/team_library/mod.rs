@@ -147,17 +147,38 @@ impl ServiceSync {
         Ok(attached)
     }
 
-    // Held by a commit that writes what goes up, from its check until it lands.
+    // Held by a commit that writes what goes up, from its check until it lands. The sign-in is checked again once the
+    // read is held, since a sign-out does not wait on the gate.
     async fn policy_read(&self) -> Result<tablepro_account::PolicyRead, SyncError> {
         let policy = &self.attached()?.policy;
         let read = policy.gate.read().await;
-        if (policy.allowed)() {
-            Ok(read)
-        } else {
-            Err(SyncError::NotAllowed {
+        if !(policy.allowed)() {
+            return Err(SyncError::NotAllowed {
                 what: "send Team Library edits to a server the managed policy does not allow",
-            })
+            });
         }
+        self.signed_in()?;
+        Ok(read)
+    }
+
+    // Just before each write of what goes up lands: a stop, a delete or the end of the sign-in keeps it out.
+    fn team_commit_check(&self) -> Result<(), SyncError> {
+        self.check_stop()?;
+        self.signed_in().map(|_| ())
+    }
+
+    // Keep Mine on a team library conflict writes what goes up, so it commits as a publish does.
+    pub(in crate::service) async fn team_keep_mine(&self) -> Result<tablepro_account::PolicyRead, SyncError> {
+        self.signed_in()?;
+        self.policy_read().await
+    }
+
+    // An empty team's pull ends caught up with no cursor, which is pulled all the same.
+    async fn team_pulled(&self, scope: ScopeName) -> Result<bool, SyncError> {
+        Ok(self
+            .scope_row(scope)
+            .await?
+            .is_some_and(|row| row.epoch.is_some() && row.caught_up && !row.refill))
     }
 
     // A delete that did not finish, here or by another sign-in's call, keeps every team scope out of the pass, so
@@ -177,6 +198,17 @@ impl ServiceSync {
             .attached
             .get()
             .is_none_or(|attached| attached.sign_in.holds())
+    }
+
+    // Why a team batch built earlier in the pass may not go out now: the sign-in ended or a delete began meanwhile.
+    pub(super) fn team_send_refused(&self) -> Option<SyncError> {
+        if !self.team_sign_in_holds() {
+            Some(TeamLibraryError::SignedInChanged.into())
+        } else if self.team_library_off() {
+            Some(TeamLibraryError::DeletePending.into())
+        } else {
+            None
+        }
     }
 
     fn set_problems(&self, problems: HashMap<ScopeName, String>) {
@@ -277,9 +309,21 @@ fn team_of(scope: ScopeName) -> Option<TeamId> {
     }
 }
 
-fn with_writers(items: Vec<TeamLibraryItem>, writers: &[TeamLibraryWriter]) -> Vec<TeamItem> {
+// Two records whose ids collide are both left out (0052, Team scope).
+fn with_writers(
+    items: Vec<TeamLibraryItem>,
+    bases: &[(TeamLibraryKind, BaseRow)],
+    writers: &[TeamLibraryWriter],
+) -> Vec<TeamItem> {
+    let collided = plan::collisions(
+        items
+            .iter()
+            .map(|item| (item.kind, item.id.as_str()))
+            .chain(bases.iter().map(|(kind, base)| (*kind, base.key.record_id.as_str()))),
+    );
     items
         .into_iter()
+        .filter(|item| !collided.contains(&(item.kind, item.id.to_lowercase())))
         .map(|item| {
             let writer = writers
                 .iter()
@@ -318,12 +362,13 @@ impl TeamLibraryControl for ServiceSync {
         for (scope, role) in scopes {
             let Some(team) = team_of(scope) else { continue };
             let items = self.team_items(scope).await?;
+            let bases = self.team_bases(scope).await?;
             let local = self.team_local(scope).await?;
             teams.push(TeamLibraryTeam {
                 team,
                 role,
                 writable: writes(role),
-                items: with_writers(items, &local.writers),
+                items: with_writers(items, &bases, &local.writers),
                 name: local.name,
             });
         }
@@ -347,8 +392,9 @@ impl TeamLibraryControl for ServiceSync {
             .collect())
     }
 
+    // Only under the sign-in that listed the teams, so a profile read after a switch names nothing here.
     async fn name_teams(&self, names: Vec<(TeamId, String)>) -> Result<(), SyncError> {
-        self.readable()?;
+        self.signed_in()?;
         *self
             .team_library
             .named_at_ms
@@ -358,6 +404,7 @@ impl TeamLibraryControl for ServiceSync {
         for (team, name) in names {
             let scope = ScopeName::Team(team);
             let name = (!name.trim().is_empty()).then_some(name);
+            self.signed_in()?;
             changed |= self
                 .update_local(scope, move |local| {
                     let changed = local.name != name;
@@ -446,9 +493,12 @@ impl TeamLibraryControl for ServiceSync {
         Ok(status)
     }
 
+    // Under the session lock, so a pass applying earlier imports or a delete never runs beside it.
     async fn import_team_library(&self, teams: Vec<TeamLibraryImport>) -> Result<(), SyncError> {
         self.signed_in()?;
+        let session = self.session.lock().await;
         self.keep_imports(teams).await?;
+        drop(session);
         self.journal.pass_soon(crate::api::control::PassReason::Person);
         Ok(())
     }

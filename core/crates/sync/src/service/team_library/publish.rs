@@ -2,12 +2,14 @@
 // the store under the session lock, then a pass that pushes it. What a publish wrote of this device's own items
 // becomes this device's to remove once the team holds it as sent.
 
+use std::collections::HashMap;
+
 use tablepro_keys::encoding::TeamId;
 use tablepro_records::record_id::library_ids_match;
 use tablepro_storage::{TeamLibraryCopy, TeamLibraryKind, TeamLibraryRef};
 
 use super::super::{ServiceSync, Session, begin};
-use super::plan::{Planned, TeamView, kind_of};
+use super::plan::{Planned, TeamView, kind_of, same_item};
 use super::unsent::{Unsent, settled};
 use super::writes;
 use crate::api::adapter::LocalChange;
@@ -15,7 +17,7 @@ use crate::api::control::PassReason;
 use crate::api::error::SyncError;
 use crate::api::ids::{KindName, RecordKey, ScopeName};
 use crate::api::scopes::ScopeInfo;
-use crate::api::state::{ConflictRow, Row};
+use crate::api::state::{ConflictRow, Row, RowKey, RowRange, Table};
 use crate::api::team_library::{TeamLibraryError, TeamPublish, UnsentState};
 
 impl ServiceSync {
@@ -30,16 +32,11 @@ impl ServiceSync {
         self.signed_in()?;
         let session = self.session.lock().await;
         let info = self.writable_team(&session, scope, first.as_ref().err()).await?;
-        self.settle_claims(scope).await?;
+        self.settle_ownership(scope).await?;
         let items = self.team_items(scope).await?;
         let bases = self.team_bases(scope).await?;
         let local = self.team_local(scope).await?;
-        let planned = plan(&TeamView {
-            items: &items,
-            bases: &bases,
-            local: &local,
-        });
-        self.signed_in()?;
+        let planned = plan(&TeamView::new(&items, &bases, &local));
         let read = self.policy_read().await?;
         self.write_planned(scope, &planned).await?;
         drop(read);
@@ -71,18 +68,70 @@ impl ServiceSync {
         if !writes(info.role) {
             return Err(TeamLibraryError::NotWritable.into());
         }
-        // An empty team's pull ends caught up with no cursor, which is pulled all the same.
-        let pulled = self
-            .scope_row(scope)
-            .await?
-            .is_some_and(|row| row.epoch.is_some() && row.caught_up && !row.refill);
-        if !pulled {
+        if !self.team_pulled(scope).await? {
             return Err(failure().unwrap_or_else(|| TeamLibraryError::NotPulled.into()));
         }
         Ok(info)
     }
 
+    // Conflicts first: an open one takes the new copy as its own side, so Keep Mine never puts back an older one and
+    // a sheet showing that older one is turned away by its digest. Each write checks the sign-in just before it lands.
     async fn write_planned(&self, scope: ScopeName, planned: &[Planned]) -> Result<(), SyncError> {
+        let open: HashMap<RecordKey, ConflictRow> = begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Conflicts, scope))
+            .await?
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Conflict(row) => Some((row.key.clone(), row)),
+                _ => None,
+            })
+            .collect();
+        let mut rows: Vec<Result<Row, RowKey>> = Vec::new();
+        for planned in planned {
+            let item = planned.item();
+            let key = RecordKey::new(scope, KindName::of(kind_of(item.kind)), item.id);
+            let held = open.get(&key);
+            let row = match planned {
+                Planned::Ask { fields, .. } => ConflictRow {
+                    key,
+                    base: None,
+                    mine: Some(fields.clone()),
+                    theirs: None,
+                },
+                Planned::Put { fields, .. } => match held {
+                    Some(held) => ConflictRow {
+                        mine: Some(fields.clone()),
+                        ..held.clone()
+                    },
+                    None => continue,
+                },
+                Planned::Delete { .. } => match held {
+                    Some(held) if held.theirs.is_none() => {
+                        rows.push(Err(RowKey::Conflict(key)));
+                        continue;
+                    }
+                    Some(held) => ConflictRow {
+                        mine: None,
+                        ..held.clone()
+                    },
+                    None => continue,
+                },
+            };
+            rows.push(Ok(Row::Conflict(row)));
+        }
+        if !rows.is_empty() {
+            let mut txn = begin(&self.state).await?;
+            for row in rows {
+                match row {
+                    Ok(row) => txn.put(row).await?,
+                    Err(key) => txn.delete(&key).await?,
+                }
+            }
+            self.team_commit_check()?;
+            txn.commit().await?;
+            self.refresh_counts().await;
+        }
         for (kind, adapter) in self.library_adapters(scope) {
             let changes: Vec<LocalChange> = planned
                 .iter()
@@ -100,32 +149,12 @@ impl ServiceSync {
                 })
                 .collect();
             if !changes.is_empty() {
-                self.check_stop()?;
+                self.team_commit_check()?;
                 adapter.apply(scope, changes).await?;
             }
         }
-        let asks: Vec<Row> = planned
-            .iter()
-            .filter_map(|planned| match planned {
-                Planned::Ask { kind, id, fields, .. } => Some(Row::Conflict(ConflictRow {
-                    key: RecordKey::new(scope, KindName::of(kind_of(*kind)), id.clone()),
-                    base: None,
-                    mine: Some(fields.clone()),
-                    theirs: None,
-                })),
-                _ => None,
-            })
-            .collect();
-        if !asks.is_empty() {
-            self.check_stop()?;
-            let mut txn = begin(&self.state).await?;
-            for row in asks {
-                txn.put(row).await?;
-            }
-            txn.commit().await?;
-            self.refresh_counts().await;
-        }
         let claims = claims_of(planned);
+        self.team_commit_check()?;
         self.update_local(scope, move |local| {
             for (kind, id, claim) in claims {
                 local
@@ -137,28 +166,54 @@ impl ServiceSync {
         .await
     }
 
-    // A claim stands until the team holds the item as sent, which makes it this device's, or until nothing of it is
-    // left to send without the team holding it: Keep Theirs, a discard, or the team deleting it.
-    pub(super) async fn settle_claims(&self, scope: ScopeName) -> Result<(), SyncError> {
+    // A claim becomes this device's once the team holds the copy it claimed and nothing of it waits to go up; a team
+    // that holds something else, or nothing, ends it. An item the team no longer holds is no longer this device's, so a
+    // later publish never removes what someone else brought back. Only against a team pulled to its end.
+    pub(super) async fn settle_ownership(&self, scope: ScopeName) -> Result<(), SyncError> {
+        if !self.team_pulled(scope).await? {
+            return Ok(());
+        }
         let local = self.team_local(scope).await?;
-        if local.claims.is_empty() {
+        if local.claims.is_empty() && local.published.is_empty() {
             return Ok(());
         }
         let unsent = self.team_diff(scope).await?;
+        let skipped = self.skipped(scope).await?;
         let bases = self.team_bases(scope).await?;
+        let live = |kind: TeamLibraryKind, id: &str| {
+            bases
+                .iter()
+                .find(|(held, base)| *held == kind && library_ids_match(&base.key.record_id, id))
+                .map(|(_, base)| base)
+                .filter(|base| base.deleted.is_none())
+        };
+        let waiting = |kind: TeamLibraryKind, id: &str| {
+            !settled(&unsent, kind, id)
+                || skipped
+                    .get(&KindName::of(kind_of(kind)))
+                    .is_some_and(|held| held.iter().any(|held| library_ids_match(held, id)))
+        };
         let mut taken = Vec::new();
-        let mut gone = Vec::new();
-        for claim in &local.claims {
-            if !settled(&unsent, claim.kind, &claim.id) {
-                continue;
+        let mut ended = Vec::new();
+        for claim in local.claims.iter().filter(|claim| !waiting(claim.kind, &claim.id)) {
+            let holds = live(claim.kind, &claim.id)
+                .and_then(|base| base.fields.as_ref())
+                .is_some_and(|fields| same_item(claim.kind, fields, &claim.fields));
+            let named = (claim.kind, claim.id.clone());
+            if holds {
+                taken.push(named);
+            } else {
+                ended.push(named);
             }
-            let held = bases.iter().find(|(kind, base)| {
-                *kind == claim.kind && library_ids_match(&base.key.record_id, &claim.id) && base.deleted.is_none()
-            });
-            match held {
-                Some(_) => taken.push((claim.kind, claim.id.clone())),
-                None => gone.push((claim.kind, claim.id.clone())),
-            }
+        }
+        let released: Vec<(TeamLibraryKind, String)> = local
+            .published
+            .iter()
+            .filter(|held| live(held.kind, &held.id).is_none() && !waiting(held.kind, &held.id))
+            .map(|held| (held.kind, held.id.clone()))
+            .collect();
+        if taken.is_empty() && ended.is_empty() && released.is_empty() {
+            return Ok(());
         }
         self.update_local(scope, move |local| {
             let named = |kind: TeamLibraryKind, id: &str, list: &[(TeamLibraryKind, String)]| {
@@ -167,8 +222,9 @@ impl ServiceSync {
             };
             local
                 .claims
-                .retain(|claim| !named(claim.kind, &claim.id, &taken) && !named(claim.kind, &claim.id, &gone));
+                .retain(|claim| !named(claim.kind, &claim.id, &taken) && !named(claim.kind, &claim.id, &ended));
             local.declined.retain(|copy| !named(copy.kind, &copy.id, &taken));
+            local.published.retain(|held| !named(held.kind, &held.id, &released));
             for (kind, id) in taken {
                 if !local.published.iter().any(|held| held.names(kind, &id)) {
                     local.published.push(TeamLibraryRef { kind, id });
@@ -178,7 +234,6 @@ impl ServiceSync {
         .await
     }
 }
-
 // Each planned item's claim: an own item's copy, or none for a move of someone else's item or a removal.
 fn claims_of(planned: &[Planned]) -> Vec<(TeamLibraryKind, String, Option<TeamLibraryCopy>)> {
     planned
