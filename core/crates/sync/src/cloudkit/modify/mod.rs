@@ -491,7 +491,10 @@ impl<'p> Pusher<'p> {
         let bases = self.bases(Kind::Connection).await?;
         let mut txn = self.fetcher.state.begin().await?;
         let mut recorded: HashMap<String, Standing> = HashMap::new();
-        for row in txn.scan(&RowRange::ScopeKind(Table::Standing, SCOPE, name.clone())).await? {
+        for row in txn
+            .scan(&RowRange::ScopeKind(Table::Standing, SCOPE, name.clone()))
+            .await?
+        {
             if let Row::Standing(row) = row {
                 recorded.insert(row.key.record_id, row.standing);
             }

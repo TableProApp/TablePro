@@ -388,12 +388,11 @@ async fn an_owned_record_deleted_before_the_first_pass_reaches_icloud_is_marked_
     let restarted = rig
         .sync(Some(USER))
         .with_legacy_mirror(Arc::clone(&mirror) as Arc<dyn LegacyMirror>);
-    rig.cloud.fail_next(tablepro_sync::api::cloudkit::CloudKitFailure::Network);
+    rig.cloud
+        .fail_next(tablepro_sync::api::cloudkit::CloudKitFailure::Network);
 
     rig.store(Kind::FavouriteTable).remove(&id);
-    restarted
-        .journal()
-        .changed(&[entry(Kind::FavouriteTable, &[], &[&id])]);
+    restarted.journal().changed(&[entry(Kind::FavouriteTable, &[], &[&id])]);
     let offline = restarted.run_pass(PassReason::Launch).await;
     restarted.flush_legacy_marks().await.unwrap();
     let held = mirror.metadata();
@@ -471,8 +470,16 @@ async fn a_record_waiting_for_approval_goes_to_the_previous_stable_as_it_was_bef
     assert_eq!(waiting.len(), 1);
     assert_eq!(cached.system_fields, before.system_fields);
     assert_eq!(
-        cached.fields.iter().find(|field| field.name == "host").map(|field| &field.value),
-        before.fields.iter().find(|field| field.name == "host").map(|field| &field.value)
+        cached
+            .fields
+            .iter()
+            .find(|field| field.name == "host")
+            .map(|field| &field.value),
+        before
+            .fields
+            .iter()
+            .find(|field| field.name == "host")
+            .map(|field| &field.value)
     );
     assert_ne!(after.system_fields, before.system_fields);
 }

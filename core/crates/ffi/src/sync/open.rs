@@ -271,7 +271,11 @@ impl SyncService {
         let kept = categories.clone().unwrap_or_default();
         // A provider the values no longer allow carries no personal data from the start (0055, Leaving a provider).
         let personal = parts.config.provider == SyncProviderTag::TableproSync
-            && allowed(parts.account.as_deref(), parts.config.platform, SyncProviderTag::TableproSync);
+            && allowed(
+                parts.account.as_deref(),
+                parts.config.platform,
+                SyncProviderTag::TableproSync,
+            );
         let mode = if personal {
             ServiceMode::Personal
         } else {
@@ -312,7 +316,10 @@ impl SyncService {
             _policy: std::sync::Mutex::new(None),
         });
         let watching = service.tasks.spawn_owned(hold_to_policy(&Arc::downgrade(&service)));
-        *service._policy.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(watching);
+        *service
+            ._policy
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(watching);
         drop(service.tasks.spawn_task(resume_open_move(&Arc::downgrade(&service))));
         service
     }

@@ -428,7 +428,8 @@ impl ServiceSync {
             })
         );
         if !open {
-            self.let_go_of_personal(matches!(arrival, Arrival::FirstUpload), from).await?;
+            self.let_go_of_personal(matches!(arrival, Arrival::FirstUpload), from)
+                .await?;
         }
         let before = std::mem::replace(
             &mut *self.mode.lock().unwrap_or_else(PoisonError::into_inner),

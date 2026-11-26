@@ -555,7 +555,8 @@ async fn a_deleted_local_only_connection_and_its_records_stay_in_the_zone() {
     .await;
     let stored = rig.store(Kind::Connection).fields(A).unwrap();
     rig.store(Kind::Connection).put_with(A, stored, Standing::LocalOnly);
-    rig.fetch().await.unwrap();
+    // A push while the store still holds it records that it stays on the device.
+    rig.push().await.unwrap();
     rig.store(Kind::Connection).remove(A);
     rig.store(Kind::SavedQuery).remove(B);
 

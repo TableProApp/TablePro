@@ -308,7 +308,13 @@ impl CloudKitSync {
         }
         if let Some(state) = self.move_file(&session).await? {
             let held = state.begin().await?.get(&RowKey::Move).await?;
-            if !matches!(held, Some(Row::Move(MoveRow { target: Provider::Service, .. }))) {
+            if !matches!(
+                held,
+                Some(Row::Move(MoveRow {
+                    target: Provider::Service,
+                    ..
+                }))
+            ) {
                 self.mark_move(state.as_ref(), MovePhase::Open).await?;
             }
         }
@@ -357,7 +363,13 @@ impl CloudKitSync {
         let state = self.move_file(&session).await?;
         if let Some(state) = &state {
             let held = state.begin().await?.get(&RowKey::Move).await?;
-            if !matches!(held, Some(Row::Move(MoveRow { target: Provider::Service, .. }))) {
+            if !matches!(
+                held,
+                Some(Row::Move(MoveRow {
+                    target: Provider::Service,
+                    ..
+                }))
+            ) {
                 self.mark_move(state.as_ref(), MovePhase::Open).await?;
             }
         }

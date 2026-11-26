@@ -735,7 +735,10 @@ async fn a_profile_that_forces_icloud_rests_personal_data_on_tablepro_sync_at_on
         after = running.service.service.now().unwrap().sync.mode();
     }
 
-    assert_eq!(at_open.service.service.now().unwrap().sync.mode(), ServiceMode::TeamsOnly);
+    assert_eq!(
+        at_open.service.service.now().unwrap().sync.mode(),
+        ServiceMode::TeamsOnly
+    );
     assert_eq!(before, ServiceMode::Personal);
     assert_eq!(after, ServiceMode::TeamsOnly);
 }

@@ -281,7 +281,8 @@ async fn a_zone_the_swift_engine_saw_removed_waits_for_upload_again_once_made_ag
     let mut left = mirror.metadata();
     left.zone_state = Some("removed".to_owned());
     mirror.replace(left);
-    rig.store(Kind::Group).put(B, projected(Kind::Group, B, &group("Only here")));
+    rig.store(Kind::Group)
+        .put(B, projected(Kind::Group, B, &group("Only here")));
     let sync = rig.sync_mirrored(&mirror);
 
     let _ = sync.run_pass(PassReason::Launch).await;

@@ -58,7 +58,11 @@ impl Mover {
         let icloud = self.parts.icloud.as_ref().ok_or(SyncError::NotAllowed {
             what: "move to TablePro Sync while iCloud is not the provider",
         })?;
-        if icloud.open_move().await?.is_some_and(|row| row.phase == MovePhase::Done) {
+        if icloud
+            .open_move()
+            .await?
+            .is_some_and(|row| row.phase == MovePhase::Done)
+        {
             return Ok(());
         }
         icloud.stop_for_move().await?;
@@ -75,7 +79,11 @@ impl Mover {
     // holds the bases then.
     pub async fn move_to_service_without_icloud(&self) -> Result<(), SyncError> {
         if let Some(icloud) = &self.parts.icloud {
-            if icloud.open_move().await?.is_some_and(|row| row.phase == MovePhase::Done) {
+            if icloud
+                .open_move()
+                .await?
+                .is_some_and(|row| row.phase == MovePhase::Done)
+            {
                 return Ok(());
             }
             let copy = icloud.copy_without_icloud().await?;

@@ -486,11 +486,14 @@ impl<'s, 'f> Settle<'s, 'f> {
             return Ok(());
         }
         let kept = self.txn.get(&RowKey::LegacyMirror(item.clone())).await?.is_some();
-        if let (false, Some(BaseRow {
-            tag: ChangeTag::CloudKit(tag),
-            fields: Some(fields),
-            ..
-        })) = (kept, prior)
+        if let (
+            false,
+            Some(BaseRow {
+                tag: ChangeTag::CloudKit(tag),
+                fields: Some(fields),
+                ..
+            }),
+        ) = (kept, prior)
         {
             self.txn
                 .put(Row::LegacyMirror(LegacyMirrorRow {

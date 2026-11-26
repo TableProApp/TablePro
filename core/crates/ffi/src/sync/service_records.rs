@@ -11,8 +11,8 @@ use tablepro_sync::api::{KindName, RecordKey, ScopeName};
 
 use super::service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncPhaseTag, SyncRecordRef,
-    SyncStatusInfo, TeamConflictInfo,
+    NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncPhaseTag,
+    SyncRecordRef, SyncStatusInfo, TeamConflictInfo,
 };
 use crate::account::SyncProviderTag;
 

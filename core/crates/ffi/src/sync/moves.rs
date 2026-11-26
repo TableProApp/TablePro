@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use tablepro_account::SyncProvider;
 use tablepro_sync::SyncError;
-use tablepro_sync::moves::{MoveParts, Mover};
 use tablepro_sync::api::state::{MovePhase, Provider};
+use tablepro_sync::moves::{MoveParts, Mover};
 use tablepro_sync::service::ServiceMode;
 
 use super::service::{MoveBackPlanInfo, MovePlanInfo, SyncPlatformTag, SyncService};
@@ -79,7 +79,9 @@ pub(crate) fn allowed(account: Option<&AccountService>, platform: SyncPlatformTa
 pub(crate) fn hold_to_policy(service: &std::sync::Weak<SyncService>) -> impl Future<Output = ()> + Send + 'static {
     let service = std::sync::Weak::clone(service);
     async move {
-        let Some(mut values) = service.upgrade().and_then(|held| held.account.as_ref().map(|account| account.account.watch_policy()))
+        let Some(mut values) = service
+            .upgrade()
+            .and_then(|held| held.account.as_ref().map(|account| account.account.watch_policy()))
         else {
             return;
         };
@@ -114,7 +116,10 @@ impl SyncService {
         // A server the values no longer allow gets no more calls from the account, and sync on it, teams included,
         // stops at once, so an answer it holds back lands nowhere (0055, When a value applies).
         if let Some(account) = &self.account
-            && !account.account.policy().allows_server(&account.account.server().api_origin)
+            && !account
+                .account
+                .policy()
+                .allows_server(&account.account.server().api_origin)
             && let Ok(engine) = self.service.now()
         {
             engine.stop();
