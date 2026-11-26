@@ -64,10 +64,10 @@ struct AccountSettingsModelTests {
         flows.state = .approved(av: 2, keyDevice: "key-this")
         let prompt = ScriptedSignOutPrompt([.discard])
         var signedInAtRevoke: Bool?
-        let live = AccountKeysSignOut.over { flows }
+        let live = AccountKeysSignOut.over({ flows }, askAfterFailure: { _ in .cancel })
         let keys = AccountKeysSignOut(holdsKeys: live.holdsKeys) {
             signedInAtRevoke = fixture.services.isSignedIn
-            await live.signOut()
+            return await live.signOut()
         }
         let model = AccountSettingsModel(
             services: fixture.services, teamLibrary: { Self.idleTeamLibrary(fixture) }, keys: keys, askSignOut: prompt.ask
@@ -82,23 +82,60 @@ struct AccountSettingsModelTests {
         #expect(!fixture.services.isSignedIn)
     }
 
-    @Test("A key sign-out that fails still signs out, and a Mac with no keys says nothing of them")
-    func failedKeySignOutStillSignsOut() async throws {
+    @Test("Keys that could not be erased ask first: Try Again revokes again, Cancel keeps the sign-in")
+    func failedKeySignOutAsks() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
         let flows = FakeAccountKeyFlows()
-        flows.state = .noKeys
-        flows.fail("signOutKeys", with: FakeAccountKeyFlows.failure("sync.network"))
-        let prompt = ScriptedSignOutPrompt([.discard])
+        flows.state = .approved(av: 2, keyDevice: "key-this")
+        flows.fail("signOutKeys", with: FakeAccountKeyFlows.failure("sync.device_store.locked"))
+        flows.fail("signOutKeys", with: FakeAccountKeyFlows.failure("sync.device_store.locked"))
+        var answers: [AccountKeysSignOutAnswer] = [.retry, .cancel]
+        var reasons: [String] = []
+        let keys = AccountKeysSignOut.over({ flows }) { reason in
+            reasons.append(reason)
+            return answers.removeFirst()
+        }
         let model = AccountSettingsModel(
             services: fixture.services, teamLibrary: { Self.idleTeamLibrary(fixture) },
-            keys: .over { flows }, askSignOut: prompt.ask
+            keys: keys, askSignOut: ScriptedSignOutPrompt([.discard]).ask
         )
 
         await model.signOut()
 
+        #expect(flows.calls(named: "signOutKeys").count == 2)
+        #expect(reasons.count == 2)
+        #expect(fixture.services.isSignedIn)
+    }
+
+    @Test("Sign Out Anyway signs out with the keys left, and an account with no keys revokes nothing")
+    func signOutAnywayAndNoKeys() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        let flows = FakeAccountKeyFlows()
+        flows.state = .locked(cause: .unanchored)
+        flows.fail("signOutKeys", with: FakeAccountKeyFlows.failure("sync.network"))
+        let model = AccountSettingsModel(
+            services: fixture.services, teamLibrary: { Self.idleTeamLibrary(fixture) },
+            keys: .over({ flows }, askAfterFailure: { _ in .signOutAnyway }), askSignOut: ScriptedSignOutPrompt([.discard]).ask
+        )
+
+        await model.signOut()
+
+        #expect(!fixture.services.isSignedIn)
+
+        try await fixture.signIn()
+        let empty = FakeAccountKeyFlows()
+        let prompt = ScriptedSignOutPrompt([.discard])
+        let second = AccountSettingsModel(
+            services: fixture.services, teamLibrary: { Self.idleTeamLibrary(fixture) },
+            keys: .over({ empty }, askAfterFailure: { _ in .cancel }), askSignOut: prompt.ask
+        )
+
+        await second.signOut()
+
         #expect(prompt.asked.first?.erasesKeys == false)
-        #expect(flows.calls(named: "signOutKeys").count == 1)
+        #expect(empty.calls(named: "signOutKeys").isEmpty)
         #expect(!fixture.services.isSignedIn)
     }
 

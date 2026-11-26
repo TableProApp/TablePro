@@ -248,6 +248,7 @@ internal final class AccountSettingsModel: ObservableObject {
         let hold = await teamLibrary.hold()
         defer { hold.release() }
         var failure: TeamLibraryFailure?
+        // The key device is revoked before the sign-in it proves itself with (core ADR 0051, Sign Out).
         let erasesKeys = await keys.holdsKeys()
         while services.isSignedIn {
             asksSignOut = true
@@ -263,23 +264,19 @@ internal final class AccountSettingsModel: ObservableObject {
             case .cancel:
                 return
             case .discard:
+                guard await keys.signOut() else { return }
                 teamLibrary.discardHeld()
-                await signOutWithKeys()
+                await services.signOut()
                 return
             case .upload:
                 failure = await teamLibrary.pushHeld().failure
                 if teamLibrary.unsentChanges.isEmpty, services.isSignedIn {
-                    await signOutWithKeys()
+                    guard await keys.signOut() else { return }
+                    await services.signOut()
                     return
                 }
             }
         }
-    }
-
-    // The key device goes first, while the sign-in it revokes with still works (core ADR 0051, Sign Out).
-    private func signOutWithKeys() async {
-        await keys.signOut()
-        await services.signOut()
     }
 
     func checkNow() async {

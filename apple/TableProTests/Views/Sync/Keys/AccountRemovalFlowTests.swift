@@ -91,8 +91,8 @@ struct AccountRemovalFlowTests {
         #expect(flow.canKeep(review.devices[2]))
     }
 
-    @Test("Change Keys keeps the ticked devices, removes the marked teammates, then sends the person to their teams")
-    func finishRotatesAndListsTeams() async throws {
+    @Test("Marked teammates send the person to their teams first, then Change Keys removes them and keeps the ticked devices")
+    func seatsBeforeTheRotation() async throws {
         let flows = FakeAccountKeyFlows()
         let review = Self.review()
         flows.review = review
@@ -104,13 +104,39 @@ struct AccountRemovalFlowTests {
 
         await flow.advance()
 
-        #expect(flows.calls(named: "finishDeviceRemoval") == [
-            FakeAccountKeyFlows.Call("finishDeviceRemoval", ["review-1", "key-phone", "team_b/ACCT-2"])
-        ])
         #expect(flow.step == .seats)
+        #expect(flows.calls(named: "finishDeviceRemoval").isEmpty)
         #expect(flow.teamsToVisit.map(\.name) == ["Beta"])
         flow.openTeam(try #require(flow.teamsToVisit.first))
         #expect(opened.urls == [AccountPortal(server: .production).portalTeam("TEAM-B")])
+        flow.setRemoving(review.members[0], true)
+        #expect(flow.removing.count == 1)
+
+        await flow.advance()
+
+        #expect(flows.calls(named: "finishDeviceRemoval") == [
+            FakeAccountKeyFlows.Call("finishDeviceRemoval", ["review-1", "key-phone", "team_b/ACCT-2"])
+        ])
+        #expect(flow.step == .done)
+    }
+
+    @Test("Back from the seats step changes the choice before anything rotates")
+    func backFromSeats() async {
+        let flows = FakeAccountKeyFlows()
+        let review = Self.review()
+        flows.review = review
+        let flow = Self.flow(flows, opened: Opened())
+        flow.recoveryKey = "key"
+        await flow.advance()
+        flow.setRemoving(review.members[1], true)
+        await flow.advance()
+
+        flow.backToReview()
+        flow.setRemoving(review.members[1], false)
+        await flow.advance()
+
+        #expect(flow.step == .done)
+        #expect(flows.calls(named: "finishDeviceRemoval").first?.arguments == ["review-1", "key-phone"])
     }
 
     @Test("With every teammate kept, the removal ends without the portal")

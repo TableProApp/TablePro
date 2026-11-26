@@ -135,6 +135,39 @@ struct AccountApprovalFlowTests {
         #expect(flows.calls(named: "cancelApprovalSession").isEmpty)
     }
 
+    @Test("A request whose first read failed is still cancelled when the sheet closes")
+    func failedReadStillCancels() async throws {
+        let flows = FakeAccountKeyFlows()
+        flows.fail("approvalSession", with: FakeAccountKeyFlows.failure("sync.network"))
+        let flow = Self.newDevice(flows, clock: ManualClock())
+
+        await flow.start()
+        #expect(flow.phase.hasEnded)
+
+        flow.close()
+
+        try await waitUntil { !flows.calls(named: "cancelApprovalSession").isEmpty }
+        #expect(flows.calls(named: "cancelApprovalSession") == [FakeAccountKeyFlows.Call("cancelApprovalSession", ["request-new"])])
+    }
+
+    @Test("Once approved, a later answer never brings the words back")
+    func endedSessionStaysEnded() async throws {
+        let flows = FakeAccountKeyFlows()
+        let clock = ManualClock()
+        flows.sessionPhases = [.compare(words: Self.words)]
+        let flow = Self.newDevice(flows, clock: clock)
+        await flow.start()
+        flows.sessionPhases = [.approved]
+        await flow.wordsMatch()
+        flows.sessionPhases = [.compare(words: Self.words)]
+
+        await flow.refresh()
+
+        #expect(flow.phase == .approved)
+        flow.close()
+        #expect(flows.calls(named: "cancelApprovalSession").isEmpty)
+    }
+
     @Test("A request that could not be written ends with the reason")
     func failedRequest() async {
         let flows = FakeAccountKeyFlows()

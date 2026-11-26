@@ -8,8 +8,8 @@ import Foundation
 import TableProFFI
 
 // Removing a lost device after its row is gone (core ADR 0056, Removing a device, steps 2 to 4): the recovery key, the
-// review of devices to keep and teammates to remove, the rotation, then the portal for the seats of those removed,
-// since membership changes only there.
+// review of devices to keep and teammates to remove, the portal for the seats of those removed, since membership
+// changes only there, then the rotation, which leaves them out whatever the server still lists.
 @MainActor
 internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     enum Step: Equatable {
@@ -42,10 +42,13 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     @Published private(set) var review: AccountRemovalReview?
     @Published private(set) var keep: Set<String> = []
     @Published private(set) var removing: Set<String> = []
+    // The teammates as the review stood when the person left it, which the seats step and the rotation both use.
+    @Published private(set) var submitted: Set<String> = []
 
     private let flows: @MainActor () async throws -> any AccountKeyFlows
     private let portal: @MainActor () -> AccountPortal
     private let openURL: @MainActor (URL) -> Void
+    private var closed = false
 
     init(
         lost: AccountDeviceInfo,
@@ -78,7 +81,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     }
 
     func setKeep(_ device: ReviewedDeviceInfo, _ kept: Bool) {
-        guard canKeep(device) else { return }
+        guard step == .review, !isWorking, canKeep(device) else { return }
         if kept {
             keep.insert(device.device.keyDevice)
         } else {
@@ -87,6 +90,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     }
 
     func setRemoving(_ member: AccountRemovalReview.Member, _ removes: Bool) {
+        guard step == .review, !isWorking else { return }
         if removes {
             removing.insert(member.id)
         } else {
@@ -114,7 +118,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     // The teams whose seats the person removes in the portal, for the members marked.
     var teamsToVisit: [Team] {
         memberGroups
-            .filter { group in group.members.contains { removing.contains($0.id) } }
+            .filter { group in group.members.contains { submitted.contains($0.id) } }
             .map { $0.team }
     }
 
@@ -125,12 +129,24 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
         case .enterKey:
             await beginReview()
         case .review:
-            await finish()
+            submitted = removing
+            if submitted.isEmpty {
+                await finish()
+            } else {
+                step = .seats
+            }
         case .seats:
-            step = .done
+            await finish()
         case .done:
             break
         }
+    }
+
+    // From the seats step, before anything rotated.
+    func backToReview() {
+        guard step == .seats, !isWorking else { return }
+        failure = nil
+        step = .review
     }
 
     func openTeam(_ team: Team) {
@@ -139,6 +155,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     }
 
     func discard() {
+        closed = true
         recoveryKey = ""
     }
 
@@ -146,6 +163,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
         let recoveryKey = recoveryKey
         await working {
             let review = try await self.flows().reviewDeviceRemoval(recoveryKey: recoveryKey, lost: [self.lost.keyDevice])
+            guard !self.closed else { return }
             self.recoveryKey = ""
             self.review = review
             self.keep = Set(review.devices.filter { $0.keepByDefault && self.canKeep($0) }.map(\.device.keyDevice))
@@ -157,10 +175,10 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     private func finish() async {
         guard let review else { return }
         let keep = review.devices.map(\.device.keyDevice).filter { self.keep.contains($0) }
-        let remove = review.members.filter { removing.contains($0.id) }.map(\.record)
+        let remove = review.members.filter { submitted.contains($0.id) }.map(\.record)
         await working {
             try await self.flows().finishDeviceRemoval(review: review.review, keep: keep, remove: remove)
-            self.step = self.teamsToVisit.isEmpty ? .done : .seats
+            self.step = .done
         }
     }
 
@@ -170,6 +188,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
         do {
             try await body()
         } catch {
+            guard !closed else { return }
             failure = AccountKeysText.message(for: error)
         }
     }

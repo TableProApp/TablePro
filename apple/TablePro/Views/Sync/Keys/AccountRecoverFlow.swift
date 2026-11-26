@@ -17,6 +17,7 @@ internal final class AccountRecoverFlow: ObservableObject, Identifiable {
     @Published private(set) var isDone = false
 
     private let flows: @MainActor () async throws -> any AccountKeyFlows
+    private var closed = false
 
     init(flows: @escaping @MainActor () async throws -> any AccountKeyFlows) {
         self.flows = flows
@@ -27,7 +28,7 @@ internal final class AccountRecoverFlow: ObservableObject, Identifiable {
     }
 
     func recover() async {
-        guard canRecover else { return }
+        guard canRecover, !closed else { return }
         let recoveryKey = recoveryKey
         failure = nil
         isWorking = true
@@ -37,11 +38,13 @@ internal final class AccountRecoverFlow: ObservableObject, Identifiable {
             self.recoveryKey = ""
             isDone = true
         } catch {
+            guard !closed else { return }
             failure = AccountKeysText.message(for: error)
         }
     }
 
     func discard() {
+        closed = true
         recoveryKey = ""
     }
 }

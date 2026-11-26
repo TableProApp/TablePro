@@ -97,15 +97,15 @@ internal struct AccountRecoveryKeyGrid: View {
     }
 }
 
-// Where the person types the recovery key they keep. The core reads it with or without hyphens and spaces.
+// Where the person types or pastes the recovery key they keep. A secure field, so the key never leaves it through an
+// ordinary copy that a clipboard history keeps. The core reads it with or without hyphens and spaces.
 internal struct AccountRecoveryKeyField: View {
     @Binding var text: String
     let onSubmit: () -> Void
 
     var body: some View {
-        TextField(String(localized: "Recovery key"), text: $text, prompt: Text(verbatim: "XXXX-XXXX-XXXX-…"))
+        SecureField(String(localized: "Recovery key"), text: $text, prompt: Text(verbatim: "XXXX-XXXX-XXXX-…"))
             .font(.body.monospaced())
-            .autocorrectionDisabled()
             .onSubmit(onSubmit)
             .accessibilityIdentifier("account-recovery-key-field")
     }

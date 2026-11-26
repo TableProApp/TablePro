@@ -72,6 +72,8 @@ internal struct AccountKeysEnvironment {
     var flows: @MainActor () async throws -> any AccountKeyFlows
     // The core's listener: the key state, a session or the devices changed.
     var keyChanges: AnyPublisher<Void, Never>
+    // A sign-in or a sign-out: what was read belongs to the account before it.
+    var accountChanges: AnyPublisher<Void, Never>
     var stepUp: StepUpRetry
     var portal: @MainActor () -> AccountPortal
     var openURL: @MainActor (URL) -> Void
@@ -91,6 +93,7 @@ internal struct AccountKeysEnvironment {
         AccountKeysEnvironment(
             flows: liveFlows,
             keyChanges: SyncEngineHost.shared.keyChanges.eraseToAnyPublisher(),
+            accountChanges: AccountServices.shared.events.map { _ in () }.eraseToAnyPublisher(),
             stepUp: .live,
             portal: { AccountServices.shared.portal },
             openURL: { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },

@@ -44,18 +44,30 @@ internal final class AccountKeysModel: ObservableObject {
     @Published var actionFailure: AccountActionFailure?
 
     let environment: AccountKeysEnvironment
-    private var changes: AnyCancellable?
+    private var changes: Set<AnyCancellable> = []
     private var reloading: Task<Void, Never>?
     private var reloadsAgain = false
+    // Bumped when the account signs in or out, so a read still out for the old one lands nowhere.
+    private var generation = 0
 
     init(environment: AccountKeysEnvironment) {
         self.environment = environment
-        changes = environment.keyChanges
+        environment.keyChanges
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in
                 guard let self else { return }
                 Task { await self.reload() }
             }
+            .store(in: &changes)
+        environment.accountChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.forgetAccount()
+                    await self?.reload()
+                }
+            }
+            .store(in: &changes)
     }
 
     var isApproved: Bool {
@@ -194,12 +206,26 @@ internal final class AccountKeysModel: ObservableObject {
 
     // MARK: - Reads
 
+    // Another account's keys, devices and requests are never shown under this one.
+    private func forgetAccount() {
+        generation += 1
+        closeSheet()
+        pendingRemoval = nil
+        actionFailure = nil
+        state = AccountRemote()
+        devices = AccountRemote()
+        requests = []
+    }
+
     private func read() async {
+        let started = generation
         state.isLoading = true
         do {
             let value = try await environment.flows().keyState()
+            guard started == generation else { return }
             state = AccountRemote(value: value)
         } catch {
+            guard started == generation else { return }
             state.isLoading = false
             state.failure = AccountKeysText.message(for: error)
             return
@@ -214,18 +240,25 @@ internal final class AccountKeysModel: ObservableObject {
     }
 
     private func readDevices() async {
+        let started = generation
         devices.isLoading = true
         do {
-            devices = AccountRemote(value: try await environment.flows().accountDevices())
+            let value = try await environment.flows().accountDevices()
+            guard started == generation else { return }
+            devices = AccountRemote(value: value)
         } catch {
+            guard started == generation else { return }
             devices.isLoading = false
             devices.failure = AccountKeysText.message(for: error)
         }
     }
 
     private func readRequests() async {
+        let started = generation
         do {
-            requests = try await environment.flows().approvalRequests()
+            let value = try await environment.flows().approvalRequests()
+            guard started == generation else { return }
+            requests = value
         } catch {
             Self.logger.notice(
                 "Approval requests did not load: \(LogRedaction.publicDescription(of: error), privacy: .public)"
@@ -237,42 +270,6 @@ internal final class AccountKeysModel: ObservableObject {
         actionFailure = AccountActionFailure(
             title: String(format: String(localized: "Could not remove “%@”"), AccountKeysText.deviceName(device.name)),
             message: message
-        )
-    }
-}
-
-// Sign Out's part for the keys (core ADR 0056, Sign Out): before the sign-in is revoked, the device's own key device
-// is revoked and its keys erased. Offline it erases anyway, so a failure never stops the sign-out.
-@MainActor
-internal struct AccountKeysSignOut {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AccountKeys")
-
-    // Whether this Mac holds keys that Sign Out erases, for the question it asks first.
-    var holdsKeys: @MainActor () async -> Bool
-    var signOut: @MainActor () async -> Void
-
-    static var live: AccountKeysSignOut {
-        over(AccountKeysEnvironment.liveFlows)
-    }
-
-    static func over(_ flows: @escaping @MainActor () async throws -> any AccountKeyFlows) -> AccountKeysSignOut {
-        AccountKeysSignOut(
-            holdsKeys: {
-                switch try? await flows().keyState() {
-                case .approved?, .locked?: true
-                default: false
-                }
-            },
-            signOut: {
-                do {
-                    let outcome = try await flows().signOutKeys()
-                    logger.notice("Signed out of the keys: \(String(describing: outcome), privacy: .public)")
-                } catch {
-                    logger.warning(
-                        "The keys' sign-out failed: \(LogRedaction.publicDescription(of: error), privacy: .public)"
-                    )
-                }
-            }
         )
     }
 }

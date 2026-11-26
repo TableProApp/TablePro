@@ -42,6 +42,8 @@ internal final class AccountRecoveryKeyFlow: ObservableObject, Identifiable {
 
     private let flows: @MainActor () async throws -> any AccountKeyFlows
     private var draft: String?
+    // The sheet closed while a call was out: what it answers is dropped.
+    private var closed = false
 
     init(purpose: Purpose, flows: @escaping @MainActor () async throws -> any AccountKeyFlows) {
         self.purpose = purpose
@@ -79,9 +81,10 @@ internal final class AccountRecoveryKeyFlow: ObservableObject, Identifiable {
 
     // Genesis draws its key as the sheet opens.
     func start() async {
-        guard purpose == .setUp, draft == nil, !isWorking else { return }
+        guard purpose == .setUp, draft == nil, !isWorking, !closed else { return }
         await working {
             let made = try await self.flows().beginGenesis()
+            guard !self.closed else { return }
             self.adopt(made)
         }
     }
@@ -111,8 +114,13 @@ internal final class AccountRecoveryKeyFlow: ObservableObject, Identifiable {
         step = .showKey
     }
 
-    // The sheet closed: what it held goes with it.
+    // The sheet closed: what it held goes with it, and a call still out lands nowhere.
     func discard() {
+        closed = true
+        clearSecrets()
+    }
+
+    private func clearSecrets() {
         draft = nil
         groups = []
         check = []
@@ -128,6 +136,7 @@ internal final class AccountRecoveryKeyFlow: ObservableObject, Identifiable {
         let recoveryKey = currentKey
         await working {
             let rotation = try await self.flows().beginReplaceRecoveryKey(recoveryKey: recoveryKey)
+            guard !self.closed else { return }
             self.currentKey = ""
             self.devices = rotation.devices
             self.keep = Set(rotation.devices.filter { $0.keepByDefault && self.canKeep($0) }.map(\.device.keyDevice))
@@ -150,7 +159,7 @@ internal final class AccountRecoveryKeyFlow: ObservableObject, Identifiable {
                 try await flows.finishReplaceRecoveryKey(draft: draft, typed: typed, keep: keep)
                 self.step = .done
             }
-            self.discard()
+            self.clearSecrets()
         }
     }
 
@@ -169,6 +178,7 @@ internal final class AccountRecoveryKeyFlow: ObservableObject, Identifiable {
         do {
             try await body()
         } catch {
+            guard !closed else { return }
             failure = AccountKeysText.message(for: error)
         }
     }

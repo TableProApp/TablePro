@@ -210,7 +210,7 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
 extension AccountKeysSignOut {
     // For an account test that signs out with no end-to-end keys in play.
     static var untouched: AccountKeysSignOut {
-        AccountKeysSignOut(holdsKeys: { false }, signOut: {})
+        AccountKeysSignOut(holdsKeys: { false }, signOut: { true })
     }
 }
 
@@ -218,6 +218,7 @@ extension AccountKeysSignOut {
 final class AccountKeysFixture {
     let flows = FakeAccountKeyFlows()
     let keyChanges = PassthroughSubject<Void, Never>()
+    let accountChanges = PassthroughSubject<Void, Never>()
     let clock = ManualClock()
     var stepUps: [StepUpChallenge] = []
     var stepUpFailure: (any Error)?
@@ -227,6 +228,7 @@ final class AccountKeysFixture {
     lazy var environment = AccountKeysEnvironment(
         flows: { [flows] in flows },
         keyChanges: keyChanges.eraseToAnyPublisher(),
+        accountChanges: accountChanges.eraseToAnyPublisher(),
         stepUp: StepUpRetry { [weak self] challenge in
             guard let self else { return }
             stepUps.append(challenge)

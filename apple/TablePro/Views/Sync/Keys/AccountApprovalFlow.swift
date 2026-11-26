@@ -62,6 +62,8 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
     private var started = false
     // Closed while a call was out: what it answers is dropped.
     private var closed = false
+    // The session ended as the core reported it, apart from what this sheet shows, so a close cancels any other.
+    private var settled = false
 
     init(
         role: Role,
@@ -137,6 +139,7 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
         guard case .compare = phase, let request else { return }
         await act { flows in
             try await flows.approvalWordsDiffer(request: request)
+            self.settled = true
             self.phase = .cancelled(.mismatch)
         }
     }
@@ -146,9 +149,11 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
         closed = true
         polling?.cancel()
         polling = nil
-        let wasRunning = !phase.hasEnded && phase != .reviewing
-        guard wasRunning, let request else { return }
-        phase = .cancelled(.user)
+        guard let request, !settled else { return }
+        settled = true
+        if !phase.hasEnded {
+            phase = .cancelled(.user)
+        }
         cancelSession(request)
     }
 
@@ -183,7 +188,9 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
         }
     }
 
+    // An answer after the sheet closed or the session ended changes nothing: an ended session never shows words again.
     private func apply(_ session: ApprovalSessionInfo) {
+        guard !closed, !phase.hasEnded else { return }
         expiresAt = AccountKeysText.date(microseconds: session.expiresAtUs)
         actionFailure = nil
         switch session.phase {
@@ -197,12 +204,16 @@ internal final class AccountApprovalFlow: ObservableObject, Identifiable {
             // A confirmed side keeps no words on screen.
             phase = .confirmed
         case .approved:
+            settled = true
             phase = .approved
         case .takenElsewhere:
+            settled = true
             phase = .takenElsewhere
         case .cancelled(let reason):
+            settled = true
             phase = .cancelled(reason)
         case .expired:
+            settled = true
             phase = .expired
         }
     }

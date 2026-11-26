@@ -84,6 +84,25 @@ struct AccountKeysModelTests {
         #expect(fixture.flows.calls(named: "keyState").count == 2)
     }
 
+    @Test("A sign-in or sign-out forgets the account's keys, devices and requests and closes its sheet")
+    func accountChangeForgetsState() async throws {
+        let fixture = AccountKeysFixture()
+        Self.approved(fixture)
+        let model = fixture.model()
+        await model.reload()
+        model.replaceRecoveryKey()
+        fixture.flows.fail("keyState", with: FakeAccountKeyFlows.failure("sync.network"))
+        fixture.flows.fail("keyState", with: FakeAccountKeyFlows.failure("sync.network"))
+
+        fixture.accountChanges.send()
+
+        try await waitUntil { model.state.failure != nil && fixture.flows.calls(named: "keyState").count == 3 }
+        #expect(model.sheet == nil)
+        #expect(model.state.value == nil)
+        #expect(model.devices.value == nil)
+        #expect(model.requests.isEmpty)
+    }
+
     @Test("Removing a device steps up once on the server's challenge, removes its row, then asks for the recovery key")
     func removeStepsUpThenRemovesTheRow() async {
         let fixture = AccountKeysFixture()

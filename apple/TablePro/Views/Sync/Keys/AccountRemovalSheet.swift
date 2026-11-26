@@ -65,7 +65,7 @@ internal struct AccountRemovalSheet: View {
                                     get: { device.device.thisDevice || flow.keep.contains(device.device.keyDevice) },
                                     set: { flow.setKeep(device, $0) }
                                 ),
-                                isEnabled: flow.canKeep(device)
+                                isEnabled: flow.canKeep(device) && !flow.isWorking
                             )
                         }
                     } header: {
@@ -83,6 +83,7 @@ internal struct AccountRemovalSheet: View {
                                     set: { flow.setRemoving(member, !$0) }
                                 )
                             )
+                            .disabled(flow.isWorking)
                         }
                     } header: {
                         Text(verbatim: group.team.name ?? String(localized: "Unnamed team"))
@@ -107,14 +108,14 @@ internal struct AccountRemovalSheet: View {
         } actions: {
             Button(String(localized: "Later"), action: onClose)
                 .keyboardShortcut(.cancelAction)
-            primary(String(localized: "Change Keys"))
+            primary(flow.removing.isEmpty ? String(localized: "Change Keys") : String(localized: "Continue"))
         }
     }
 
     private var seats: some View {
         AccountKeysSheetLayout(
-            title: String(localized: "Remove Their Seats"),
-            message: String(localized: "The teammates you turned off get no new team keys. Remove their seats too, so they lose the team's records."),
+            title: String(localized: "Remove Their Seats First"),
+            message: String(localized: "Remove the seats of the teammates you turned off, then change your keys. The new team keys leave them out either way."),
             identifier: "account-removal-seats"
         ) {
             Form {
@@ -128,13 +129,24 @@ internal struct AccountRemovalSheet: View {
                         }
                     }
                 }
+
+                if let failure = flow.failure {
+                    Section {
+                        AccountKeysFailureNotice(message: failure)
+                    }
+                }
             }
             .formStyle(.grouped)
             .frame(maxHeight: 280)
+        } auxiliary: {
+            Button(String(localized: "Back")) {
+                flow.backToReview()
+            }
+            .disabled(flow.isWorking)
         } actions: {
-            Button(String(localized: "Done"), action: onClose)
-                .keyboardShortcut(.defaultAction)
-                .accessibilityIdentifier("account-removal-done")
+            Button(String(localized: "Later"), action: onClose)
+                .keyboardShortcut(.cancelAction)
+            primary(String(localized: "Change Keys"))
         }
     }
 
