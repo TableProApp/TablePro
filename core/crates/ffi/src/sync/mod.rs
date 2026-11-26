@@ -1,11 +1,19 @@
-// The sync surface the apps call (core ADRs 0054 and 0056): `SyncService`, its listener, and the callbacks the
-// apps implement. Its bodies answer `sync.unimplemented` until the engine and key lanes fill them.
+// The sync surface the apps call (core ADRs 0054 and 0056): `SyncService` over the engine, its listener, and the
+// callbacks the apps implement.
 
 mod cloudkit;
+mod engines;
+mod events;
 mod host;
+mod key_records;
 mod keys;
 mod legacy;
+mod names;
+mod open;
 mod service;
+mod service_records;
+#[cfg(test)]
+mod tests;
 
 pub use cloudkit::{
     CloudKitAccount, CloudKitChanges, CloudKitDeletion, CloudKitFailure, CloudKitFetched, CloudKitField,
