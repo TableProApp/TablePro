@@ -1,9 +1,9 @@
 // The state file on disk (0054, The state file): SQLite in WAL mode, one file per provider and account, bound to its
-// identity and held by one process. It neither computes the state MAC nor keeps the anchor (0054, Integrity and
-// freshness), so every open reports a fresh file.
+// identity and held by one process, sealed by the state MAC and anchored in the device store (Integrity and freshness).
 
 mod codec;
 mod file;
+pub mod integrity;
 mod name;
 
 pub use file::{SCHEMA_VERSION, SqliteState, SqliteStateFiles};

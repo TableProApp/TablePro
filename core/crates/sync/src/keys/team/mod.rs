@@ -33,7 +33,7 @@ use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::{HeldRestart, KeyApplied, KeyArrival, OpenedEnvelope, Roster, TeamFlows, TeamKeys};
 use crate::api::state::{
-    KeyPendingRow, KeyTrust, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, ScopeRow, StateTxn, StoppedCause,
+    KeyPendingRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, ScopeRow, StateTxn, StoppedCause,
 };
 use crate::keys::KeyService;
 
@@ -203,7 +203,7 @@ impl KeyService {
 
     // A file with no anchor, or one rebuilding from the server, handles no secret (0054, On open).
     fn may_handle_secrets(&self) -> Result<(), SyncError> {
-        if self.is_unanchored() || matches!(self.state().opened().key_tables, KeyTrust::Rebuild { .. }) {
+        if self.is_unanchored() || self.is_rebuilding() {
             return Err(SyncError::NotAllowed {
                 what: "handle a team secret before the key tables are verified",
             });

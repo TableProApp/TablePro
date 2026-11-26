@@ -4,18 +4,22 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous};
+use sqlx::sqlite::{
+    SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
+};
 use sqlx::{AssertSqlSafe, ConnectOptions, Sqlite, Transaction};
 use tablepro_storage::StoragePaths;
 use uuid::Uuid;
 
 use super::codec;
+use super::integrity::{self, Bound, Seal, Written};
 use super::name::state_path;
+use crate::api::device_store::HostDeviceStore;
 use crate::api::error::StateError;
 use crate::api::ids::FileId;
 use crate::api::state::{
-    BindingRow, Committed, Opened, Provider, Row, RowKey, RowRange, StateFiles, StateIdentity, StateStore, StateTxn,
-    Table,
+    BindingRow, Committed, KeysSettled, Opened, Provider, Row, RowKey, RowRange, StateFiles, StateIdentity, StateStore,
+    StateTxn, Table,
 };
 
 pub const SCHEMA_VERSION: u32 = 1;
@@ -29,7 +33,7 @@ fn io(error: impl std::fmt::Display) -> StateError {
 }
 
 // SQLITE_BUSY and SQLITE_LOCKED, with their extended codes in the bits above the first byte.
-fn sql(error: sqlx::Error) -> StateError {
+pub(super) fn sql(error: sqlx::Error) -> StateError {
     let busy = error
         .as_database_error()
         .and_then(|database| database.code())
@@ -38,25 +42,44 @@ fn sql(error: sqlx::Error) -> StateError {
     if busy { StateError::Busy } else { io(error) }
 }
 
-// The state files under `<state>/sync`, one per provider and account (0054, The state file).
-#[derive(Debug, Clone)]
+// The state files under `<state>/sync`, one per provider and account (0054, The state file), each sealed and anchored
+// in the device store.
+#[derive(Clone)]
 pub struct SqliteStateFiles {
     root: PathBuf,
     // Each file's pool outlives the store that used it, so a delete or a reopen closes its connection first: Windows
     // keeps an open file from being deleted, and a dropped pool closes in the background.
     pools: Arc<Mutex<HashMap<PathBuf, SqlitePool>>>,
+    device_store: Arc<dyn HostDeviceStore>,
+}
+
+impl std::fmt::Debug for SqliteStateFiles {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SqliteStateFiles")
+            .field("root", &self.root)
+            .finish_non_exhaustive()
+    }
 }
 
 impl SqliteStateFiles {
-    pub fn new(paths: &StoragePaths) -> Self {
-        Self::at(paths.state.join("sync"))
+    pub fn new(paths: &StoragePaths, device_store: Arc<dyn HostDeviceStore>) -> Self {
+        Self::at(paths.state.join("sync"), device_store)
     }
 
-    pub fn at(root: PathBuf) -> Self {
+    pub fn at(root: PathBuf, device_store: Arc<dyn HostDeviceStore>) -> Self {
         Self {
             root,
             pools: Arc::default(),
+            device_store,
         }
+    }
+
+    // Closes the file's connection once no store holds it, so the file on disk is whole: a backup can copy it.
+    pub async fn release(&self, identity: &StateIdentity) -> Result<(), StateError> {
+        let path = self.path(identity);
+        let _lock = take_lock(&path)?;
+        self.close(&path).await;
+        Ok(())
     }
 
     pub fn path(&self, identity: &StateIdentity) -> PathBuf {
@@ -150,42 +173,112 @@ fn bound_to(binding: &BindingRow, identity: &StateIdentity) -> bool {
 async fn connect(path: &Path) -> Result<SqlitePool, StateError> {
     // Pre-created at 0600 so the WAL and SHM copy its mode.
     tablepro_storage::fs::create_private_file_if_missing(path).map_err(io)?;
+    // Held exclusively for as long as the store is open, so no other process writes rows a commit would then seal.
     let options = SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(true)
+        .locking_mode(SqliteLockingMode::Exclusive)
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Full)
+        .pragma("trusted_schema", "OFF")
         .disable_statement_logging();
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
+        .idle_timeout(None)
+        .max_lifetime(None)
         .connect_with(options)
         .await
         .map_err(sql)?;
+    check_schema(&pool).await?;
     MIGRATOR.run(&pool).await.map_err(io)?;
+    check_schema(&pool).await?;
+    check_rows(&pool).await?;
     Ok(pool)
 }
 
-// A file is bound once, when it is made. One that holds rows and no binding was not made by this code, and is refused.
-async fn bind(pool: &SqlitePool, identity: &StateIdentity) -> Result<(), StateError> {
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(sql)?;
-    match read(&mut tx, &RowKey::Binding).await? {
-        Some(Row::Binding(binding)) if bound_to(&binding, identity) => {}
-        Some(_) => return Err(StateError::WrongIdentity),
+// The digests read every row in key order, and the store finds rows by their keys: a key stored as text sorts and
+// hashes the same yet is never found, and a damaged b-tree can show a scan rows a lookup misses. Either would hide
+// rows the MAC still covers.
+async fn check_rows(pool: &SqlitePool) -> Result<(), StateError> {
+    for table in Table::SYNC.into_iter().chain(Table::KEY) {
+        let statement = format!(
+            "SELECT EXISTS (SELECT 1 FROM {} WHERE typeof(key) != 'blob' OR typeof(columns) != 'blob')",
+            table.name()
+        );
+        let mistyped: bool = sqlx::query_scalar(AssertSqlSafe(statement))
+            .fetch_one(pool)
+            .await
+            .map_err(sql)?;
+        if mistyped {
+            return Err(StateError::Integrity);
+        }
+    }
+    let checked: Vec<String> = sqlx::query_scalar("PRAGMA quick_check")
+        .fetch_all(pool)
+        .await
+        .map_err(sql)?;
+    if checked != ["ok"] {
+        return Err(StateError::Integrity);
+    }
+    Ok(())
+}
+
+// The MAC covers rows, not the schema: a trigger or a view a local writer added could change what a commit then seals.
+// So the file holds only the tables the migrations make, each as they make it.
+async fn check_schema(pool: &SqlitePool) -> Result<(), StateError> {
+    let objects: Vec<(String, String, Option<String>)> = sqlx::query_as("SELECT type, name, sql FROM sqlite_schema")
+        .fetch_all(pool)
+        .await
+        .map_err(sql)?;
+    for (kind, name, statement) in objects {
+        let expected = match kind.as_str() {
+            "table" if name == "_sqlx_migrations" => true,
+            "table" => Table::SYNC.into_iter().chain(Table::KEY).any(|table| {
+                table.name() == name
+                    && statement.as_deref()
+                        == Some(&*format!(
+                            "CREATE TABLE {name} (key BLOB PRIMARY KEY NOT NULL, columns BLOB NOT NULL) WITHOUT ROWID"
+                        ))
+            }),
+            // The index SQLite makes for a primary key has no SQL of its own.
+            "index" => statement.is_none(),
+            _ => false,
+        };
+        if !expected {
+            return Err(StateError::Integrity);
+        }
+    }
+    Ok(())
+}
+
+// A file is bound once, when it is made, in the commit that anchors it. One that holds rows and no binding was not made
+// by this code, and is refused.
+async fn bind(tx: &mut Transaction<'static, Sqlite>, identity: &StateIdentity) -> Result<Bound, StateError> {
+    match read(tx, &RowKey::Binding).await? {
+        Some(Row::Binding(binding)) if bound_to(&binding, identity) => Ok(Bound {
+            binding,
+            new_file: false,
+        }),
+        Some(_) => Err(StateError::WrongIdentity),
         None => {
             for table in Table::SYNC.into_iter().chain(Table::KEY) {
                 let statement = format!("SELECT EXISTS (SELECT 1 FROM {})", table.name());
                 let held: bool = sqlx::query_scalar(AssertSqlSafe(statement))
-                    .fetch_one(&mut *tx)
+                    .fetch_one(&mut **tx)
                     .await
                     .map_err(sql)?;
                 if held {
                     return Err(StateError::Integrity);
                 }
             }
-            write(&mut tx, &Row::Binding(fresh_binding(identity))).await?;
+            let binding = fresh_binding(identity);
+            write(tx, &Row::Binding(binding.clone())).await?;
+            Ok(Bound {
+                binding,
+                new_file: true,
+            })
         }
     }
-    tx.commit().await.map_err(sql)
 }
 
 #[async_trait]
@@ -195,12 +288,15 @@ impl StateFiles for SqliteStateFiles {
         let lock = take_lock(&path)?;
         self.close(&path).await;
         let pool = connect(&path).await?;
-        bind(&pool, &identity).await?;
+        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(sql)?;
+        let bound = bind(&mut tx, &identity).await?;
+        let (seal, opened) = integrity::open(tx, &identity, bound, Arc::clone(&self.device_store)).await?;
         self.pools().insert(path, pool.clone());
         Ok(Arc::new(SqliteState {
             identity,
-            opened: Opened::FRESH,
+            opened,
             pool,
+            seal,
             _lock: lock,
         }))
     }
@@ -219,6 +315,7 @@ impl StateFiles for SqliteStateFiles {
                 Err(error) => return Err(io(error)),
             }
         }
+        integrity::forget(self.device_store.as_ref(), &identity).await?;
         drop(lock);
         Ok(())
     }
@@ -229,6 +326,7 @@ pub struct SqliteState {
     identity: StateIdentity,
     opened: Opened,
     pool: SqlitePool,
+    seal: Arc<Seal>,
     _lock: File,
 }
 
@@ -245,15 +343,34 @@ impl StateStore for SqliteState {
     // One writer at a time: the pool holds one connection, and the transaction takes the write lock at once.
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError> {
         let tx = self.pool.begin_with("BEGIN IMMEDIATE").await.map_err(sql)?;
-        Ok(Box::new(SqliteTxn { tx }))
+        Ok(Box::new(SqliteTxn {
+            tx,
+            seal: Arc::clone(&self.seal),
+            written: Written::default(),
+        }))
     }
 }
 
 struct SqliteTxn {
     tx: Transaction<'static, Sqlite>,
+    seal: Arc<Seal>,
+    written: Written,
 }
 
-async fn read(tx: &mut Transaction<'static, Sqlite>, key: &RowKey) -> Result<Option<Row>, StateError> {
+impl SqliteTxn {
+    // An iCloud file has no key tables (0054, The device's key state).
+    fn writes(&mut self, table: Table) -> Result<(), StateError> {
+        if table.is_key_table() {
+            if self.seal.provider() == Provider::ICloud {
+                return Err(StateError::WrongIdentity);
+            }
+            self.written.key_tables = true;
+        }
+        Ok(())
+    }
+}
+
+pub(super) async fn read(tx: &mut Transaction<'static, Sqlite>, key: &RowKey) -> Result<Option<Row>, StateError> {
     let table = key.table();
     let encoded = key.encoded();
     let statement = format!("SELECT columns FROM {} WHERE key = ?", table.name());
@@ -267,7 +384,7 @@ async fn read(tx: &mut Transaction<'static, Sqlite>, key: &RowKey) -> Result<Opt
         .transpose()
 }
 
-async fn write(tx: &mut Transaction<'static, Sqlite>, row: &Row) -> Result<(), StateError> {
+pub(super) async fn write(tx: &mut Transaction<'static, Sqlite>, row: &Row) -> Result<(), StateError> {
     let key = row.key();
     let statement = format!(
         "INSERT INTO {} (key, columns) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET columns = excluded.columns",
@@ -319,18 +436,13 @@ impl StateTxn for SqliteTxn {
             .collect()
     }
 
-    // What the file is bound to and its counter are the store's: a binding row put changes only the state MAC.
+    // The binding row is the store's: what the file is bound to, its counter and the MAC the commit computes. A put of
+    // it changes nothing.
     async fn put(&mut self, row: Row) -> Result<(), StateError> {
-        let row = match row {
-            Row::Binding(binding) => match read(&mut self.tx, &RowKey::Binding).await? {
-                Some(Row::Binding(mut stored)) => {
-                    stored.state_mac = binding.state_mac;
-                    Row::Binding(stored)
-                }
-                _ => return Err(StateError::Integrity),
-            },
-            row => row,
-        };
+        if matches!(row, Row::Binding(_)) {
+            return Ok(());
+        }
+        self.writes(row.key().table())?;
         write(&mut self.tx, &row).await
     }
 
@@ -338,6 +450,7 @@ impl StateTxn for SqliteTxn {
         if *key == RowKey::Binding {
             return Err(StateError::WrongIdentity);
         }
+        self.writes(key.table())?;
         let statement = format!("DELETE FROM {} WHERE key = ?", key.table().name());
         sqlx::query(AssertSqlSafe(statement))
             .bind(key.encoded())
@@ -348,6 +461,8 @@ impl StateTxn for SqliteTxn {
     }
 
     async fn clear_key_tables(&mut self) -> Result<(), StateError> {
+        self.written.key_tables = true;
+        self.written.settles.clear();
         for table in Table::KEY {
             let statement = format!("DELETE FROM {}", table.name());
             sqlx::query(AssertSqlSafe(statement))
@@ -358,15 +473,12 @@ impl StateTxn for SqliteTxn {
         Ok(())
     }
 
-    async fn commit(mut self: Box<Self>) -> Result<Committed, StateError> {
-        let Some(Row::Binding(mut binding)) = read(&mut self.tx, &RowKey::Binding).await? else {
-            return Err(StateError::Integrity);
-        };
-        binding.counter = binding.counter.checked_add(1).ok_or(StateError::Integrity)?;
-        write(&mut self.tx, &Row::Binding(binding.clone())).await?;
-        self.tx.commit().await.map_err(sql)?;
-        Ok(Committed {
-            counter: binding.counter,
-        })
+    fn settle_keys(&mut self, settled: KeysSettled) {
+        self.written.settles.add(settled);
+    }
+
+    async fn commit(self: Box<Self>) -> Result<Committed, StateError> {
+        let Self { tx, seal, written } = *self;
+        integrity::commit(&seal, tx, written).await
     }
 }

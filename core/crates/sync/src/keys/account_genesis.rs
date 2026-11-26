@@ -16,7 +16,7 @@ use crate::api::device_store::DeviceStoreError;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::{DraftId, GenesisOutcome, KeyState, LockCause, RecoveryKeyDraft, TypedBack};
-use crate::api::state::{KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
+use crate::api::state::{KeyVersionState, KeysSettled, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
 use crate::api::transport::{ChangeOutcome, RejectedCode};
 
 const GROUPS: u8 = 14;
@@ -121,6 +121,9 @@ impl KeyService {
             None if device.current.is_none() => Ok(KeyState::NeedsApproval {
                 request: pending_request(txn).await?,
             }),
+            // A stale file's rebuild starts from the anchored pins with none of the key objects, which its pulls bring
+            // back (0054, A stale file).
+            None if self.is_rebuilding() => Ok(KeyState::Unknown),
             None => Ok(locked(LockCause::LeftOutOfRotation)),
         }
     }
@@ -253,8 +256,24 @@ impl KeyService {
         match refusal(&outcomes) {
             None => {
                 let mut txn = self.begin().await?;
+                // A new account starts from its own keys alone: nothing a file with no anchor held stands beside them
+                // (0054, A stale file).
+                if self.is_unanchored() {
+                    for table in [
+                        Table::KeyPins,
+                        Table::KeyVersions,
+                        Table::KeyDevicePins,
+                        Table::KeyEnvelopes,
+                    ] {
+                        for row in txn.scan(&RowRange::Table(table)).await? {
+                            txn.delete(&row.key()).await?;
+                        }
+                    }
+                }
                 self.adopt_account_change_set(txn.as_mut(), objects).await?;
+                txn.settle_keys(KeysSettled::Reapproved);
                 txn.commit().await?;
+                self.clear_unanchored();
                 self.hooks().pass_soon();
                 Ok(GenesisOutcome::Created)
             }

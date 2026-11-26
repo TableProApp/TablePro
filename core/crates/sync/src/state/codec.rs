@@ -480,14 +480,25 @@ pub(crate) fn columns(row: &Row) -> Vec<u8> {
 }
 
 fn binding_columns(out: &mut Writer, row: &BindingRow) {
+    binding_sealed_columns(out, row);
+    out.bytes(&row.state_mac);
+}
+
+fn binding_sealed_columns(out: &mut Writer, row: &BindingRow) {
     out.text(provider_name(row.provider))
         .maybe(row.origin.as_ref(), |out, origin| out.text(origin.as_str()))
         .text(&row.account)
         .text(&row.device)
         .int(u64::from(row.schema_version))
         .bytes(&row.file_id.0)
-        .int(row.counter)
-        .bytes(&row.state_mac);
+        .int(row.counter);
+}
+
+// The binding's columns as the sync digest takes them: without the state MAC, which is computed over that digest.
+pub(crate) fn binding_digest_columns(row: &BindingRow) -> Vec<u8> {
+    let mut out = Writer::default();
+    binding_sealed_columns(&mut out, row);
+    out.finish()
 }
 
 fn scope_columns(out: &mut Writer, row: &ScopeRow) {

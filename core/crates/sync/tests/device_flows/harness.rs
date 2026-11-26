@@ -19,8 +19,8 @@ use tablepro_sync::api::key_flows::{
 use tablepro_sync::api::scopes::ScopesAnswer;
 use tablepro_sync::api::scopes::{Role, TeamMember};
 use tablepro_sync::api::state::{
-    Committed, KeyDevicePinRow, KeyPinRow, Opened, Row, RowKey, RowRange, ScopeRow, StateFiles, StateIdentity,
-    StateStore, StateTxn, Table,
+    Committed, KeyDevicePinRow, KeyPinRow, KeysSettled, Opened, Row, RowKey, RowRange, ScopeRow, StateFiles,
+    StateIdentity, StateStore, StateTxn, Table,
 };
 use tablepro_sync::api::transport::{
     Change, ChangeOutcome, DpopKey, Proof, PullRequest, PulledPage, PushAnswer, PushBatch, RejectedCode,
@@ -82,6 +82,10 @@ impl StateTxn for FlakyTxn {
 
     async fn clear_key_tables(&mut self) -> Result<(), StateError> {
         self.inner.clear_key_tables().await
+    }
+
+    fn settle_keys(&mut self, settled: KeysSettled) {
+        self.inner.settle_keys(settled);
     }
 
     async fn commit(self: Box<Self>) -> Result<Committed, StateError> {

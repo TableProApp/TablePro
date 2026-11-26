@@ -10,7 +10,9 @@ use tablepro_sync::api::cloudkit::{
     CloudKitTransport,
 };
 use tablepro_sync::api::error::StateError;
-use tablepro_sync::api::state::{Committed, Opened, Row, RowKey, RowRange, StateIdentity, StateStore, StateTxn};
+use tablepro_sync::api::state::{
+    Committed, KeysSettled, Opened, Row, RowKey, RowRange, StateIdentity, StateStore, StateTxn,
+};
 use tablepro_sync_testing::FakeCloudKit;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -291,6 +293,10 @@ impl StateTxn for CrashingTxn {
 
     async fn clear_key_tables(&mut self) -> Result<(), StateError> {
         self.inner.clear_key_tables().await
+    }
+
+    fn settle_keys(&mut self, settled: KeysSettled) {
+        self.inner.settle_keys(settled);
     }
 
     async fn commit(self: Box<Self>) -> Result<Committed, StateError> {

@@ -533,7 +533,7 @@ impl KeyService {
         })
         .await?;
         self.erase_reset_keys(record.reset).await?;
-        self.clear_unanchored();
+        self.withdraw_lock_notices();
         Ok(())
     }
 

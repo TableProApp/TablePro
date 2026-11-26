@@ -21,7 +21,7 @@ use super::steps::{Pushed, pushed};
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::{KeyNoticeKind, SessionEnd};
-use crate::api::state::{KeyDevicePinRow, Row, RowKey, RowRange, StateTxn, Table};
+use crate::api::state::{KeyDevicePinRow, KeysSettled, Row, RowKey, RowRange, StateTxn, Table};
 use crate::api::transport::{DpopKey, RejectedCode, TransportError};
 use crate::keys::{HeldDeviceKeys, HeldObject, KeyService, OwnAccount, create_change};
 
@@ -423,6 +423,8 @@ impl KeyService {
         record.merged();
         self.write_merged(txn.as_mut(), &merged).await?;
         self.put_session(txn.as_mut(), record).await?;
+        // The approver's view replaces what a file with no anchor held, so the anchor stops owing it with this commit.
+        txn.settle_keys(KeysSettled::Reapproved);
         txn.commit().await?;
         self.merged_notices(&merged)?;
         self.finish_switch(record).await?;
