@@ -181,6 +181,17 @@ struct LibraryRecordMappingTests {
 }
 
 struct ConnectionKeychainSecretsTests {
+    @Test("Until the library first reads, every connection's secrets stay on this Mac")
+    func localOnlyFailsClosed() {
+        let localOnly = LocalOnlyConnections()
+        let synced = UUID()
+        #expect(localOnly.contains(synced))
+
+        localOnly.set([])
+
+        #expect(!localOnly.contains(synced))
+    }
+
     @Test("The core's secrets use the keys and scope earlier builds read")
     func secretsUseTheMacsItems() throws {
         let keychain = ScopeRecordingKeychain()

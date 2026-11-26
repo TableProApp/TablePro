@@ -216,6 +216,11 @@ struct CoreLibraryStoreTests {
         #expect(try setAsideCopies().isEmpty)
     }
 
+    private func keptCopies(named prefix: String) throws -> [URL] {
+        try FileManager.default.contentsOfDirectory(at: fixture.coreURL.deletingLastPathComponent(), includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("connections.json." + prefix) }
+    }
+
     private func setAsideCopies() throws -> [URL] {
         try FileManager.default.contentsOfDirectory(at: fixture.coreURL.deletingLastPathComponent(), includingPropertiesForKeys: nil)
             .filter { url in
@@ -325,14 +330,16 @@ struct CoreLibraryStoreTests {
     func onlyAConnectionSaveVouches() throws {
         let storage = fixture.launch()
         let favorite = connection("alpha", favorite: true)
-        #expect(storage.addConnection(favorite))
+        let second = connection("beta", favorite: true)
+        #expect(storage.saveConnections([favorite, second]))
         try plantReadableCoreConnection(named: "planted")
         try editLegacyOutsideTablePro()
 
         let relaunched = fixture.launch()
         try fixture.groups(relaunched).addGroup(ConnectionGroup(name: "Staging"))
         try fixture.tags(relaunched).addTag(ConnectionTag(name: "eu-west"))
-        fixture.preferences(relaunched).setFavoritesOrder([favorite.id])
+        fixture.preferences(relaunched).setFavoritesOrder([second.id, favorite.id])
+        #expect(fixture.preferences(relaunched).favoritesOrder == [second.id, favorite.id])
         #expect(relaunched.saveConnections(relaunched.loadConnections(), byUser: false))
 
         #expect(!relaunched.storeIsTrusted)
@@ -391,7 +398,7 @@ struct CoreLibraryStoreTests {
         #expect(reopened.storeIsTrusted)
     }
 
-    @Test("What the core wrote into the library itself is read in after a sync pass and tagged again")
+    @Test("What another writer left in the core's file is read in after a sync pass, untrusted until a connection save")
     func aCoreWriteIsReadInAfterAPass() async throws {
         let storage = fixture.launch()
         #expect(storage.addConnection(connection("alpha")))
@@ -400,19 +407,72 @@ struct CoreLibraryStoreTests {
         storage.readCoreWrites()
 
         #expect(storage.loadConnections().map(\.name) == ["renamed by a pull"])
-        #expect(storage.storeIsTrusted)
+        #expect(!storage.storeIsTrusted)
         #expect(try fixture.legacyConnections().map(\.name) == ["renamed by a pull"])
+        let legacy = try Data(contentsOf: fixture.legacyURL)
+        #expect(ConnectionStoreIntegrity.shared.verify(legacy, fileURL: fixture.legacyURL) != .trusted)
         let reopened = fixture.launch()
         #expect(reopened.loadConnections().map(\.name) == ["renamed by a pull"])
+        #expect(!reopened.storeIsTrusted)
+
+        #expect(reopened.addConnection(connection("beta")))
         #expect(reopened.storeIsTrusted)
+    }
+
+    @Test("A connection save over a core file changed since a trusted read keeps the values only the core names")
+    func aRebuildAfterATrustedReadKeepsStoredValues() async throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("alpha")))
+        try await writeAsTheCore { $0.connections[0].connection.color = "teal" }
+        #expect(fixture.stampCore(try Data(contentsOf: fixture.coreURL)))
+        let relaunched = fixture.launch()
+        _ = relaunched.loadConnections()
+        #expect(relaunched.storeIsTrusted)
+        try plantReadableCoreConnection(named: "planted")
+
+        #expect(relaunched.addConnection(connection("beta")))
+
+        let colors = try await coreLibrary().libraryContents().connections.map { $0.connection.color }
+        #expect(colors == ["teal", nil])
+        #expect(relaunched.loadConnections().map(\.name) == ["alpha", "beta"])
+    }
+
+    @Test("A connection save over a file a newer build wrote since is refused and leaves the file as it is")
+    func aSaveOverANewerFileIsRefused() throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("alpha")))
+        let newer = Data(#"{"version": 99, "connections": []}"#.utf8)
+        try newer.write(to: fixture.coreURL, options: .atomic)
+
+        #expect(!storage.addConnection(connection("beta")))
+
+        #expect(try Data(contentsOf: fixture.coreURL) == newer)
+        #expect(try setAsideCopies().isEmpty)
+    }
+
+    @Test("A library with no file yet is trusted, and its first write is tagged")
+    func anEmptyLibraryStartsTrusted() throws {
+        let storage = fixture.launch()
+        #expect(storage.loadConnections().isEmpty)
+        #expect(storage.storeIsTrusted)
+
+        try fixture.groups(storage).addGroup(ConnectionGroup(name: "Staging"))
+
+        let reopened = fixture.launch()
+        _ = reopened.loadConnections()
+        #expect(reopened.storeIsTrusted)
+    }
+
+    private func coreLibrary() throws -> ConnectionLibrary {
+        try Core(
+            config: HostConfig(clientVersion: "test", storageDir: fixture.coreURL.deletingLastPathComponent().path),
+            secrets: ConnectionKeychainSecrets(keychain: fixture.keychain) { _ in false }
+        ).library()
     }
 
     // A write the core makes on its own, as its engine does for a pull, which this Mac's store is not told of.
     private func writeAsTheCore(_ edit: (inout LibraryContents) -> Void) async throws {
-        let library = try Core(
-            config: HostConfig(clientVersion: "test", storageDir: fixture.coreURL.deletingLastPathComponent().path),
-            secrets: ConnectionKeychainSecrets(keychain: fixture.keychain) { _ in false }
-        ).library()
+        let library = try coreLibrary()
         var contents = try await library.libraryContents()
         edit(&contents)
         _ = try await library.replaceLibrary(
@@ -438,6 +498,8 @@ struct CoreLibraryStoreTests {
         let relaunched = fixture.launch()
         _ = relaunched.loadConnections()
         #expect(!relaunched.storeIsTrusted)
+
+        #expect(try keptCopies(named: "replaced-").count == 1)
 
         let again = fixture.launch()
         _ = again.loadConnections()

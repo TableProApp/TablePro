@@ -46,7 +46,8 @@ nonisolated internal final class ConnectionKeychainSecrets: HostSecrets, @unchec
     func relabel(connectionId: String, kind: SecretKindTag, label: String) throws {}
 
     func delete(connectionId: String, kind: SecretKindTag) throws {
-        keychain.delete(forKey: Self.key(kind, try Self.id(connectionId)))
+        let id = try Self.id(connectionId)
+        keychain.delete(forKey: Self.key(kind, id), deviceOnly: keepsOnDevice(id))
     }
 
     // The core deletes a connection for a deletion another device made, which leaves the iCloud Keychain items to it.

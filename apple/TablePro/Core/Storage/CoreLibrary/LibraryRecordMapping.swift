@@ -127,7 +127,10 @@ nonisolated enum LibraryRecordMapping {
             color: colorId(connection.color, keeping: kept?.color),
             groupId: connection.groupId?.uuidString,
             lastOpenedMs: kept?.lastOpenedMs,
-            tags: connection.tagIds.map(\.uuidString),
+            // The core holds each tag once; connections.json could repeat one.
+            tags: connection.tagIds.reduce(into: [UUID]()) { kept, id in
+                if !kept.contains(id) { kept.append(id) }
+            }.map(\.uuidString),
             aiPolicy: aiPolicyTag(connection.aiPolicy),
             externalAccess: externalAccessTag(connection.externalAccess),
             icon: icon(connection.iconName),

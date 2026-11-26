@@ -337,7 +337,7 @@ struct CatalogEditAdoption {
         guard var saved = connectionStorage.loadConnections().first(where: { $0.id == connectionId }),
               saved.database == oldName else { return }
         saved.database = newName
-        connectionStorage.updateConnection(saved)
+        connectionStorage.updateConnection(saved, byUser: false)
     }
 
     /// A rename has a new name to point the saved default at. A drop has none, so it is emptied,
@@ -356,7 +356,7 @@ struct CatalogEditAdoption {
               saved.database == database,
               !ConnectionDatabaseRequirement.requiresValue(for: saved.type) else { return }
         saved.database = ""
-        connectionStorage.updateConnection(saved)
+        connectionStorage.updateConnection(saved, byUser: false)
         appSettings.saveLastDatabase(nil, for: connectionId)
     }
 

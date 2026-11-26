@@ -59,14 +59,14 @@ nonisolated internal final class CoreStoreSecrets: HostSecrets, @unchecked Senda
 }
 
 // The Local only connections by id, set by the library on every read and write and read by the Keychain calls the core
-// makes on its own threads, so their secrets stay on this Mac.
+// makes on its own threads, so their secrets stay on this Mac. Until the library first reads, every one counts.
 nonisolated internal final class LocalOnlyConnections: Sendable {
     static let shared = LocalOnlyConnections()
 
-    private let ids = OSAllocatedUnfairLock<Set<UUID>>(initialState: [])
+    private let ids = OSAllocatedUnfairLock<Set<UUID>?>(initialState: nil)
 
     func contains(_ id: UUID) -> Bool {
-        ids.withLock { $0.contains(id) }
+        ids.withLock { $0?.contains(id) ?? true }
     }
 
     func set(_ local: Set<UUID>) {

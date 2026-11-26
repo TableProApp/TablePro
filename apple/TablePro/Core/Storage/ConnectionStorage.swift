@@ -254,11 +254,12 @@ final class ConnectionStorage {
         return ConnectionImportWrite(added: added.map(\.id), replaced: replaced.map(\.id))
     }
 
-    func updateConnection(_ connection: DatabaseConnection, password: String? = nil) {
+    // `byUser` false for a write the app makes itself, which never vouches for the store.
+    func updateConnection(_ connection: DatabaseConnection, password: String? = nil, byUser: Bool = true) {
         var connections = loadConnections()
         if let index = connections.firstIndex(where: { $0.id == connection.id }) {
             connections[index] = connection
-            guard saveConnections(connections) else {
+            guard saveConnections(connections, byUser: byUser) else {
                 Self.logger.error("Aborted updateConnection: persistence failed for \(connection.id, privacy: .public)")
                 return
             }
