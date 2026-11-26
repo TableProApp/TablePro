@@ -339,6 +339,30 @@ impl<'a> Fetcher<'a> {
         // before the fetch, so one cut short refills again.
         let mut wrote = false;
         let mut marked: BTreeSet<String> = BTreeSet::new();
+        // A file schema 1 wrote holds a `stores` row per kind, `<store>/<kind>`, which a kind whose category was off kept
+        // until it refilled. A kind whose row is behind its store still owes that refill, and the row goes.
+        for (kind, adapter) in &self.adapters {
+            let legacy = RowKey::Store(format!("{}/{}", adapter.store(), kind.as_str()));
+            let Some(Row::Store(seen)) = txn.get(&legacy).await? else {
+                continue;
+            };
+            let behind = start.stores.get(adapter.store()).is_some_and(|stamp| {
+                stamp.needs_refill(StoreStamp {
+                    generation: seen.generation,
+                    sequence: seen.sequence,
+                })
+            });
+            if behind {
+                txn.put(Row::StoresKind(StoresKindRow {
+                    store: adapter.store().to_owned(),
+                    kind: KindName::of(*kind),
+                }))
+                .await?;
+                marked.insert(adapter.store().to_owned());
+            }
+            txn.delete(&legacy).await?;
+            wrote = true;
+        }
         for (store, stamp) in &start.stores {
             let seen = match txn.get(&RowKey::Store(store.clone())).await? {
                 Some(Row::Store(seen)) => Some(StoreStamp {

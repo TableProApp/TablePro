@@ -656,6 +656,43 @@ fn served(bytes: &[u8]) -> Result<Served, StateError> {
     }
 }
 
+// Schema 1 kept no replace point, and the replace certificate that sets one is not in the pin (0066, Replace points).
+// At 1 no certificate under the IK verifies as history, which refuses rather than guesses.
+const SCHEMA_1_REPLACE_POINT: u32 = 1;
+
+// A row's columns as schema 1 stored them, in this schema's encoding: a scope and a key object end in a null
+// `push_wait` and `served`, and each replaced IK of a pin gains its replace point.
+pub(crate) fn schema_1_columns(table: Table, columns: &[u8]) -> Result<Vec<u8>, StateError> {
+    match table {
+        Table::Scopes | Table::KeyObjects => {
+            let mut out = Writer(columns.to_vec());
+            out.null();
+            Ok(out.finish())
+        }
+        Table::KeyPins => {
+            let mut read = Reader::new(columns);
+            for what in ["IK", "av", "pin how", "alert"] {
+                read.present(what)?;
+            }
+            let kept = columns.len() - read.rest.len();
+            let replaced = read.bytes("replaced")?;
+            read.end()?;
+            let (chunks, rest) = replaced.as_chunks::<32>();
+            if !rest.is_empty() {
+                return Err(malformed("replaced IKs"));
+            }
+            let entries: Vec<u8> = chunks
+                .iter()
+                .flat_map(|ik| [&ik[..], &SCHEMA_1_REPLACE_POINT.to_be_bytes()].concat())
+                .collect();
+            let mut out = Writer(columns[..kept].to_vec());
+            out.bytes(&entries);
+            Ok(out.finish())
+        }
+        _ => Ok(columns.to_vec()),
+    }
+}
+
 // The row a table's stored key and columns hold.
 pub(crate) fn decode(table: Table, key: &[u8], columns: &[u8]) -> Result<Row, StateError> {
     let mut keys = Reader::new(key);
