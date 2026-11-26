@@ -17,6 +17,8 @@ struct SSHProfileStorageTests {
     private let connections: ConnectionStorage
     private let keychain: InMemoryKeychain
 
+    private let tracker = SyncJournalRecorder()
+
     init() throws {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
@@ -30,10 +32,8 @@ struct SSHProfileStorageTests {
 
         let connectionDefaults = try pool.make().defaults
         let profileDefaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
 
         keychain = InMemoryKeychain()
-        let tracker = SyncJournalRecorder()
         let connectionStorage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: connectionDefaults,

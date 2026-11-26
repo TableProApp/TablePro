@@ -107,6 +107,7 @@ try mirror.write(metadata: LegacyMetadataArg(
         recordType: "ConnectionTag",
         name: "Tag_A",
         systemFields: CloudKitRecordConversion.systemFields(of: base),
+        createdMs: nil,
         fields: [CloudKitField(name: "name", value: .text(value: "Production"))]
     )]
 ))

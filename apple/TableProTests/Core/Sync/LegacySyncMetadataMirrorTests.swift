@@ -30,6 +30,7 @@ struct LegacySyncMetadataMirrorTests {
             recordType: type,
             name: name,
             systemFields: CloudKitRecordConversion.systemFields(of: record),
+            createdMs: nil,
             fields: fields
         )
     }
@@ -86,6 +87,7 @@ struct LegacySyncMetadataMirrorTests {
                 recordType: record.recordType,
                 name: record.name,
                 systemFields: rebuilt.map { Data($0.recordID.zoneID.ownerName.utf8) },
+                createdMs: record.createdMs,
                 fields: record.fields
             )
         }
@@ -198,7 +200,7 @@ struct LegacySyncMetadataMirrorTests {
     func unusableBasesStayOutOfTheCache() throws {
         var written = Self.pass(token: nil, syncing: UUID(), localOnly: UUID(), owner: UUID())
         written.cache = [
-            CloudKitRecord(recordType: "ConnectionTag", name: "Tag_NoSystemFields", systemFields: nil, fields: []),
+            CloudKitRecord(recordType: "ConnectionTag", name: "Tag_NoSystemFields", systemFields: nil, createdMs: nil, fields: []),
             Self.base("Tag_Renamed", fields: []).renamed("Tag_Other"),
             Self.base("Tag_Reserved", fields: [CloudKitField(name: "recordChangeTag", value: .text(value: "x"))])
         ]
@@ -258,6 +260,6 @@ struct LegacySyncMetadataMirrorTests {
 
 private extension CloudKitRecord {
     func renamed(_ name: String) -> CloudKitRecord {
-        CloudKitRecord(recordType: recordType, name: name, systemFields: systemFields, fields: fields)
+        CloudKitRecord(recordType: recordType, name: name, systemFields: systemFields, createdMs: nil, fields: fields)
     }
 }

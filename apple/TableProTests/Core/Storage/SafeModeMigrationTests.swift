@@ -30,7 +30,6 @@ struct SafeModeMigrationTests {
             withIntermediateDirectories: true
         )
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
         self.defaults = defaults
         self.tracker = SyncJournalRecorder()
         self.storage = ConnectionStorage(
@@ -148,7 +147,7 @@ struct SafeModeMigrationTests {
         )
 
         storage.addConnection(connection)
-        tracker.clearDirty(.connection, id: id.uuidString)
+        tracker.clearDirty(type: .connection)
 
         let manager = DatabaseManager(connectionStorage: storage)
         manager.injectSession(ConnectionSession(connection: connection), for: id)
@@ -269,7 +268,7 @@ struct SafeModeMigrationTests {
         )
 
         storage.addConnection(connection, password: "secret")
-        tracker.clearDirty(.connection, id: id.uuidString)
+        tracker.clearDirty(type: .connection)
         defer { storage.deletePassword(for: id) }
 
         let updated = storage.updateSafeModeLevel(.safeModeFull, for: id)
@@ -296,7 +295,7 @@ struct SafeModeMigrationTests {
         )
 
         storage.addConnection(connection)
-        tracker.clearDirty(.connection, id: id.uuidString)
+        tracker.clearDirty(type: .connection)
 
         let updated = storage.updateSafeModeLevel(.readOnly, for: id)
 

@@ -10,6 +10,7 @@ import Testing
 
 @testable import TablePro
 
+@MainActor
 struct SQLFavoriteVersionTests {
     private let storage: SQLFavoriteStorage
     private let suite: EphemeralDefaults

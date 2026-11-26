@@ -194,7 +194,6 @@ struct ConnectionDuplicateCoverageTests {
             withIntermediateDirectories: true
         )
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,

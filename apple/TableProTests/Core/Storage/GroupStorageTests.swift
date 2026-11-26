@@ -404,7 +404,7 @@ final class GroupStorageTests: XCTestCase {
 
         let loaded = storage.loadGroups()
         XCTAssertEqual(loaded.count, 2)
-        // Both now named "Production" — storage doesn't enforce uniqueness on update
+        // An update does not enforce unique names.
         XCTAssertEqual(loaded[0].name, "Production")
         XCTAssertEqual(loaded[1].name, "Production")
     }

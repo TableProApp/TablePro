@@ -583,9 +583,7 @@ struct DatabaseTreeFavoriteRefreshTests {
     @Test("Adding and removing a favorite repaints every visible copy without replacing its host")
     func favoriteMutationRepaintsVisibleRows() async throws {
         let favoritesSuite = try EphemeralDefaults()
-        let syncSuite = try EphemeralDefaults()
         let favoritesDefaults = favoritesSuite.defaults
-        let syncDefaults = syncSuite.defaults
 
         let tracker = SyncJournalRecorder()
         let storage = FavoriteTablesStorage(userDefaults: favoritesDefaults, syncJournal: tracker.journal)
@@ -653,10 +651,8 @@ struct DatabaseTreeFavoriteRefreshTests {
     func databaseFavoriteMutationRepaintsVisibleRow() async throws {
         let tableSuite = try EphemeralDefaults()
         let databaseSuite = try EphemeralDefaults()
-        let syncSuite = try EphemeralDefaults()
         let tableDefaults = tableSuite.defaults
         let databaseDefaults = databaseSuite.defaults
-        let syncDefaults = syncSuite.defaults
 
         let tracker = SyncJournalRecorder()
         let tableStorage = FavoriteTablesStorage(userDefaults: tableDefaults, syncJournal: tracker.journal)

@@ -17,10 +17,11 @@ struct SyncHostChange: Equatable, Sendable {
 // Each Swift store's write path calls this once its write is on disk (core ADRs 0054 and 0060). The engine's diff, not
 // the journal, decides what goes up, so a missed call only delays a push. While the previous stable still runs the
 // Swift engine, the engine marks these ids in that build's metadata, so an edit made offline reaches it too.
-nonisolated final class SyncHostJournal: Sendable {
+// Combine's subjects take a send from any thread, and stores journal on the main actor.
+nonisolated final class SyncHostJournal: @unchecked Sendable {
     static let shared = SyncHostJournal()
 
-    @MainActor let changes = PassthroughSubject<SyncHostChange, Never>()
+    let changes = PassthroughSubject<SyncHostChange, Never>()
 
     // An id a write both removed and wrote back is there once it lands, so it counts as written.
     @MainActor

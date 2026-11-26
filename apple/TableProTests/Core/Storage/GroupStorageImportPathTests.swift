@@ -17,12 +17,12 @@ struct GroupStorageImportPathTests {
     private let defaults: UserDefaults
     private let events: AppEvents
     private let storage: GroupStorage
+    private let tracker = SyncJournalRecorder()
 
     init() throws {
         defaults = try pool.make().defaults
         let appEvents = AppEvents()
         events = appEvents
-        let tracker = SyncJournalRecorder()
         let keychain = InMemoryKeychain()
         let connections = ConnectionStorage(
             fileURL: FileManager.default.temporaryDirectory

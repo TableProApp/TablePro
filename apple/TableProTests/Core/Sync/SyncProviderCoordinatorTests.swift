@@ -146,7 +146,7 @@ private final class Fixture {
                 for name in ["Tag_A", "Tag_B"] {
                     _ = try? await transport.modify(
                         account: "_alice",
-                        saves: [CloudKitRecord(recordType: "ConnectionTag", name: name, systemFields: nil, fields: [])],
+                        saves: [CloudKitRecord(recordType: "ConnectionTag", name: name, systemFields: nil, createdMs: nil, fields: [])],
                         deletes: []
                     )
                 }

@@ -18,6 +18,8 @@ struct CredentialProfileImportTests {
     private let connections: ConnectionStorage
     private let storage: CredentialProfileStorage
 
+    private let tracker = SyncJournalRecorder()
+
     init() throws {
         let unique = UUID().uuidString
         directory = FileManager.default.temporaryDirectory
@@ -25,7 +27,6 @@ struct CredentialProfileImportTests {
             .appendingPathComponent("credential-import-\(unique)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
-        let tracker = SyncJournalRecorder()
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: try pool.make().defaults,

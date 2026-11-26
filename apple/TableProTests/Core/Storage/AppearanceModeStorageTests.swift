@@ -120,7 +120,6 @@ struct AppearanceModeStorageTests {
 
     @Test("Changing the mode saves it on this Mac, applies it, and marks nothing for sync")
     func modeChangeStaysLocal() throws {
-        let syncSuite = try EphemeralDefaults()
         let tracker = SyncJournalRecorder()
         let root = Self.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -140,7 +139,6 @@ struct AppearanceModeStorageTests {
 
     @Test("Changing a theme id marks the appearance record and leaves the mode")
     func themeChangeSyncs() throws {
-        let syncSuite = try EphemeralDefaults()
         let tracker = SyncJournalRecorder()
         let root = Self.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }

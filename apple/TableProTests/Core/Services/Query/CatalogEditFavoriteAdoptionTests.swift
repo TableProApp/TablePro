@@ -13,12 +13,13 @@ struct CatalogEditFavoriteAdoptionTests {
     private let databaseManager: DatabaseManager
     private let adoption: CatalogEditAdoption
 
+    private let tracker = SyncJournalRecorder()
+
     init() throws {
         let unique = UUID().uuidString
         suite = try EphemeralDefaults()
         syncSuite = try EphemeralDefaults()
         let defaults = suite.defaults
-        let tracker = SyncJournalRecorder()
         favoriteTables = FavoriteTablesStorage(userDefaults: defaults, syncJournal: tracker.journal)
         favoriteDatabases = FavoriteDatabasesStorage(defaults: defaults, syncJournal: tracker.journal)
         let connectionStorage = ConnectionStorage(

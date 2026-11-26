@@ -20,6 +20,8 @@ struct CredentialProfileStorageTests {
     /// untrusted and the trust assertions here would pass or fail on the environment.
     private let integrity: ConnectionStoreIntegrity
 
+    private let tracker = SyncJournalRecorder()
+
     init() throws {
         let unique = UUID().uuidString
         directory = FileManager.default.temporaryDirectory
@@ -28,7 +30,6 @@ struct CredentialProfileStorageTests {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         keychain = InMemoryKeychain()
-        let tracker = SyncJournalRecorder()
         integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),

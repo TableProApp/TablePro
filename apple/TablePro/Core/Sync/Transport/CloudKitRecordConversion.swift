@@ -53,6 +53,7 @@ nonisolated enum CloudKitRecordConversion {
             recordType: record.recordType,
             name: record.recordID.recordName,
             systemFields: systemFields(of: record),
+            createdMs: record.creationDate.map(milliseconds),
             fields: fields
         )
     }
