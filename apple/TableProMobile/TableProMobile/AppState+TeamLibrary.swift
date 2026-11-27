@@ -8,7 +8,7 @@ extension AppState {
         return TeamKeysModel(
             team: TeamKeysTeam(team),
             service: TeamKeysLiveCalls(host: host),
-            changes: host.keyChanges.merge(with: host.reopened).eraseToAnyPublisher()
+            changes: host.keyChanges.merge(with: host.reopened, host.signInChanges).eraseToAnyPublisher()
         )
     }
 }

@@ -382,6 +382,10 @@ final class ResetProposalModel {
             AccountKeysText.log(error, while: "Asking for a key reset")
             failure = ResetKeysModel.failureMessage(error)
             phase = .typeBack
+            // The sheet closed while this ran, so nothing will try again: the core drops the draft and its key now.
+            if isClosed {
+                await close()
+            }
         }
     }
 }

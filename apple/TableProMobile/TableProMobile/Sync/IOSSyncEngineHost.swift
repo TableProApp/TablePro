@@ -50,6 +50,8 @@ final class IOSSyncEngineHost {
     let keyChanges = PassthroughSubject<Void, Never>()
     // A sign-in change opened the service again, which takes no choice the old one was told.
     let reopened = PassthroughSubject<Void, Never>()
+    // Sent at the sign-in change itself, before any reopen: what was read belongs to the account before it.
+    let signInChanges = PassthroughSubject<Void, Never>()
     private let open: @MainActor (SyncProviderTag, any SyncListener) async throws -> any IOSSyncEngine
     private let keepICloudAccount: @MainActor (String?) -> Void
     private let keepServiceAccount: @MainActor (String?) -> Void
@@ -88,6 +90,7 @@ final class IOSSyncEngineHost {
     // flight and its flush end.
     func signInChanged() {
         signIn += 1
+        signInChanges.send()
         guard let provider = opened?.provider ?? opening?.provider else { return }
         if let old = opened?.engine {
             retire(old)

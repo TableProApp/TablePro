@@ -115,4 +115,28 @@ struct ResetKeysModelTests {
         #expect(fixture.resets.read { $0.calls } == ["beginReset", "discardKeyDraft"])
         #expect(proposal.groups.isEmpty)
     }
+
+    @Test("A proposal that fails after its sheet closed discards its draft, since nothing tries it again")
+    func closedDuringSubmitDiscardsOnFailure() async throws {
+        let fixture = AccountKeysFixture()
+        let gate = AsyncGate()
+        fixture.resets.update {
+            $0.proposalGate = gate
+            $0.proposalFailure = FakeAccountKeyFlows.failure("sync.network")
+        }
+        let proposal = ResetProposalModel(kind: .keepScopeKeys, service: fixture.resets, stepUp: fixture.environment.stepUp)
+        await proposal.begin()
+        proposal.continueToTypeBack()
+        proposal.typed = ["0021", "0084"]
+
+        let submitting = Task { await proposal.submit() }
+        await gate.arrived(1)
+        await proposal.close()
+        #expect(fixture.resets.read { $0.calls } == ["beginReset", "finishResetProposal"])
+        await gate.open()
+        await submitting.value
+
+        #expect(fixture.resets.read { $0.calls } == ["beginReset", "finishResetProposal", "discardKeyDraft"])
+        #expect(proposal.groups.isEmpty)
+    }
 }

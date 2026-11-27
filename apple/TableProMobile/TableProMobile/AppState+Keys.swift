@@ -18,7 +18,7 @@ extension AppState {
         return AccountKeysEnvironment(
             flows: keyFlows,
             keyChanges: host.keyChanges.eraseToAnyPublisher(),
-            accountChanges: host.reopened.eraseToAnyPublisher(),
+            accountChanges: host.signInChanges.eraseToAnyPublisher(),
             stepUp: .live(account: account, anchor: anchor),
             resets: ResetKeysLiveService { try await host.keyService() },
             teamPage: { team in

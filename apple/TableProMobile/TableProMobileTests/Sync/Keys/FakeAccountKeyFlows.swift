@@ -225,6 +225,9 @@ nonisolated final class FakeResetKeysService: ResetKeysService, @unchecked Senda
         var pending: PendingResetInfo?
         var notices: [KeyNoticeInfo] = []
         var calls: [String] = []
+        // Holds the proposal until the test opens it, then fails it with this, when set.
+        var proposalGate: AsyncGate?
+        var proposalFailure: (any Error)?
     }
 
     let state = OSAllocatedUnfairLock(uncheckedState: State())
@@ -256,6 +259,12 @@ nonisolated final class FakeResetKeysService: ResetKeysService, @unchecked Senda
 
     func finishResetProposal(draft: String, typed: [String]) async throws -> PendingResetInfo {
         called("finishResetProposal")
+        if let gate = read({ $0.proposalGate }) {
+            await gate.wait()
+        }
+        if let failure = read({ $0.proposalFailure }) {
+            throw failure
+        }
         return Self.pending(mine: true, heldUntil: Date(timeIntervalSince1970: 1_800_000_000))
     }
 

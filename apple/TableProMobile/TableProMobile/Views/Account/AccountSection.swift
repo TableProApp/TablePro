@@ -21,6 +21,8 @@ struct AccountSection: View {
     @State private var teamChanges: [String]? = []
     @State private var uploadProblem: TeamLibraryProblem?
     @State private var isUploadingTeamChanges = false
+    // The sign-in the question was asked about; a confirmation that outlives it signs nothing out.
+    @State private var signOutSession: String?
 
     var body: some View {
         Section {
@@ -222,6 +224,7 @@ struct AccountSection: View {
     // Whether this device holds keys and which Team Library edits are not sent are read first, so the question can say
     // what Sign Out erases and loses.
     private func askToSignOut() async {
+        signOutSession = account.snapshot.sessionID
         isCheckingKeys = true
         signOutErasesKeys = await appState.keysSignOut(askAfterFailure: keysPrompt.ask).holdsKeys()
         teamChanges = await appState.teamLibrary.unsentNames()
@@ -232,7 +235,8 @@ struct AccountSection: View {
 
     // What the upload leaves is asked about again; all sent, the sign-out goes on.
     private func uploadThenSignOut() async {
-        let session = account.snapshot.sessionID
+        let session = signOutSession
+        guard account.snapshot.sessionID == session, account.isSignedIn else { return }
         isUploadingTeamChanges = true
         let (left, problem) = await appState.teamLibrary.upload()
         isUploadingTeamChanges = false
@@ -250,7 +254,8 @@ struct AccountSection: View {
     // could not be erased, or when another sign-in took this one's place meanwhile. Once signed out, the account's Team
     // Library data is deleted, verified.
     private func signOut() async {
-        let session = account.snapshot.sessionID
+        let session = signOutSession
+        guard session != nil, account.snapshot.sessionID == session else { return }
         let keys = appState.keysSignOut(askAfterFailure: keysPrompt.ask)
         isErasingKeys = true
         let erased = await keys.signOut({ account.snapshot.sessionID == session })

@@ -53,7 +53,7 @@ extension TeamLibrarySource {
         deleteOtherOwners: (@MainActor (TeamLibraryOwnerArg?) async throws -> Void)? = nil
     ) -> TeamLibrarySource {
         TeamLibrarySource(
-            changes: host.statusChanges.merge(with: host.reopened, host.keyChanges).eraseToAnyPublisher(),
+            changes: host.statusChanges.merge(with: host.reopened, host.keyChanges, host.signInChanges).eraseToAnyPublisher(),
             engine: {
                 guard let engine = try await host.accountScopesEngine() as? any TeamLibraryCalls else {
                     throw TeamLibraryUnavailable()
