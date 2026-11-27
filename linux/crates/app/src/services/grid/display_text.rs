@@ -5,7 +5,9 @@ use tablepro_core::column::ColumnType;
 use tablepro_core::grid::display::{ValueDisplay, value_display, write_scalar};
 use tablepro_linux_platform::settings::DateFormat;
 
-pub use tablepro_core::grid::display::{DISPLAY_MAX_CHARS, WRAP_MAX_LINES, keep_line_breaks, line_cut};
+pub use tablepro_core::grid::display::{WRAP_MAX_LINES, keep_line_breaks, line_cut};
+#[cfg(test)]
+pub use tablepro_core::grid::display::DISPLAY_MAX_CHARS;
 
 use super::date_display::core_format;
 
