@@ -38,13 +38,13 @@ extension SyncProviderCoordinator {
         var off = SyncRecordType.allCases
             .filter { !settings.syncs($0) || keptInSwift.contains($0) }
             .map(\.coreKind)
-        if !settings.syncConnections {
+        if !settings.syncConnections, !off.contains(connectionProjectKind) {
             off.append(connectionProjectKind)
         }
         return SyncCategoriesArg(offKinds: off, passwords: settings.syncConnections && settings.syncPasswords)
     }
 
-    nonisolated static let connectionProjectKind = "connection_project"
+    nonisolated static let connectionProjectKind = SyncRecordType.project.coreKind
 
     // Kinds whose Mac store is still Swift's, so the core's store holds none of them: an adapter over it would read every
     // record as deleted. An off kind rests and pushes nothing. Each goes once M2 moves its store into the core.

@@ -521,6 +521,8 @@ fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>, names: Drive
         last_opened_at: None,
         color: text(fields, "color").and_then(connection_color),
         group_id: uuid_at(fields, "group_id"),
+        // Project membership does not sync yet (ADR 0067), so a pull keeps this device's.
+        project_id: stored.and_then(|stored| stored.project_id),
         order: integer(fields, "sort_order").map_or(0, clamped),
         tags: fields
             .get("tag_ids")

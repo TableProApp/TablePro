@@ -32,6 +32,8 @@ pub(super) fn group(id: Uuid, fields: &Value, stored: Option<&ConnectionGroup>) 
         order: integer(fields, "sort_order").map_or(0, clamped),
         color: text(fields, "color").and_then(color_named),
         icon: text(fields, "icon_name").and_then(icon_for_symbol),
+        // Project membership does not sync yet (ADR 0067), so a pull keeps this device's.
+        project_id: stored.and_then(|stored| stored.project_id),
     }
 }
 
