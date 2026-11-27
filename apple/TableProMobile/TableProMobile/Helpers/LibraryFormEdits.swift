@@ -80,7 +80,7 @@ extension GroupFormEdits {
     @MainActor
     func save(editing existing: ConnectionGroup?, in appState: AppState) -> LibraryWriteOutcome {
         guard let existing else {
-            return appState.addGroup(applied(to: ConnectionGroup(), changedSince: nil))
+            return appState.addGroupToActiveProject(applied(to: ConnectionGroup(), changedSince: nil))
         }
         let opening = GroupFormEdits(group: existing)
         return appState.mutateGroup(existing.id) { $0 = applied(to: $0, changedSince: opening) }

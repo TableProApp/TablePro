@@ -236,6 +236,58 @@ struct LibraryOutlineBuilderTests {
         #expect(outline.connectionIdsInDisplayOrder == [inside.id])
     }
 
+    @Test("Every word of the search has to be in some field, the group path included")
+    func everyWordSearch() {
+        let outer = FixtureGroup(name: "Clients")
+        let acme = FixtureGroup(name: "Acme", parentId: outer.id)
+        let prod = FixtureConnection(name: "prod", groupId: acme.id)
+        let staging = FixtureConnection(name: "staging", groupId: acme.id)
+        let loose = FixtureConnection(name: "prod", host: "db.example.com")
+
+        func ids(_ text: String) -> [UUID] {
+            LibraryOutlineBuilder.build(request(
+                connections: [prod, staging, loose],
+                groups: [outer, acme],
+                query: LibraryQuery(text: text)
+            )).connectionIdsInDisplayOrder
+        }
+
+        #expect(ids("acme prod") == [prod.id])
+        #expect(ids("  PROD   clients ") == [prod.id])
+        #expect(ids("prod example") == [loose.id])
+        #expect(ids("acme prod missing").isEmpty)
+        #expect(ids("clients acme") == [prod.id, staging.id])
+    }
+
+    @Test("A favorite inside a group whose name matches is a match")
+    func favoriteInMatchingGroup() {
+        let acme = FixtureGroup(name: "Acme")
+        let favorite = FixtureConnection(name: "prod", groupId: acme.id, isFavorite: true)
+        let matcher = LibraryQueryMatcher(
+            query: LibraryQuery(text: "acme"),
+            tags: [FixtureTag](),
+            groups: LibraryGroupGraph(groups: [acme])
+        )
+
+        #expect(matcher.matches(favorite))
+        #expect(!LibraryQueryMatcher(query: LibraryQuery(text: "acme"), tags: [FixtureTag]()).matches(favorite))
+    }
+
+    @Test("Team and linked rows use the same every-word rule")
+    func externalEveryWord() {
+        let entry = LibraryExternalEntry(
+            id: UUID(), name: "Shared prod", host: "db.acme.io", database: "", username: "", typeName: "MySQL"
+        )
+        func matches(_ text: String) -> Bool {
+            LibraryQueryMatcher(query: LibraryQuery(text: text), tags: [FixtureTag]()).matches(entry)
+        }
+
+        #expect(matches("acme prod"))
+        #expect(matches("mysql shared"))
+        #expect(!matches("acme staging"))
+        #expect(!matches("prod acme.io x"))
+    }
+
     @Test("Tag tokens match any or all and combine with text")
     func tagTokens() {
         let prod = FixtureTag(name: "prod")

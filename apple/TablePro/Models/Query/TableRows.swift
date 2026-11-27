@@ -182,6 +182,14 @@ struct TableRows: Sendable {
         sparse.unloadedColumns[id] ?? [:]
     }
 
+    func unloadedHead(_ id: RowID, column: Int) -> String? {
+        sparse.unloadedHeads[id]?[column]
+    }
+
+    func unloadedHeads(of id: RowID) -> [Int: String] {
+        sparse.unloadedHeads[id] ?? [:]
+    }
+
     func hasUnloadedValues(_ id: RowID) -> Bool {
         sparse.unloadedColumns[id] != nil
     }
@@ -235,6 +243,7 @@ struct TableRows: Sendable {
                 rows[index].values[column] = addedMasks.value(rows[index].values[column], column: column)
             }
         }
+        sparse.dropUnloadedHeads(inColumns: Set(added.keys))
         let columns = columns
         let policy = exportPolicy
         let table = exportTable
@@ -398,11 +407,14 @@ struct TableRows: Sendable {
         guard !pageRows.isEmpty else { return .none }
         let firstIndex = rows.count
         rows.reserveCapacity(rows.count + pageRows.count)
-        for (idx, values) in pageRows.enumerated() {
+        for (idx, read) in pageRows.enumerated() {
+            let unloaded = Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count)
+            let (values, heads) = Self.liftingHeads(read, unloaded: unloaded, masks: masks)
             let normalized = Self.normalize(values: masks.row(values), toCount: columns.count)
             let id = RowID.existing(offset + idx)
             sparse.setAbsentColumns(Self.clamp(absentCells[idx] ?? [], toCount: columns.count), for: id)
-            sparse.setUnloadedColumns(Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count), for: id)
+            sparse.setUnloadedColumns(unloaded, for: id)
+            sparse.setUnloadedHeads(heads, for: id)
             sparse.setExportSnapshot(
                 Self.exportSnapshot(
                     documents: exportDocuments, index: idx, count: pageRows.count,
@@ -727,12 +739,14 @@ struct TableRows: Sendable {
                     isComplete: false
                 )
             }
-            let values = queryRows[rowIndex]
+            let unloaded = clamp(unloadedCells[position] ?? [:], toCount: columnCount)
+            let (values, heads) = liftingHeads(queryRows[rowIndex], unloaded: unloaded, masks: shape.masks)
             let normalized = normalize(values: shape.masks.row(values), toCount: columnCount)
             let absent = absentCells[position] ?? []
             let id = RowID.existing(offset + position)
             sparse.setAbsentColumns(clamp(absent, toCount: columnCount), for: id)
-            sparse.setUnloadedColumns(clamp(unloadedCells[position] ?? [:], toCount: columnCount), for: id)
+            sparse.setUnloadedColumns(unloaded, for: id)
+            sparse.setUnloadedHeads(heads, for: id)
             sparse.setExportSnapshot(
                 exportSnapshot(
                     documents: exportDocuments, index: position, count: count,
@@ -838,6 +852,26 @@ struct TableRows: Sendable {
     private static func clamp(_ unloadedColumns: [Int: Int], toCount targetCount: Int) -> [Int: Int] {
         guard unloadedColumns.keys.contains(where: { $0 < 0 || $0 >= targetCount }) else { return unloadedColumns }
         return unloadedColumns.filter { $0.key >= 0 && $0.key < targetCount }
+    }
+
+    // A cut text arrives with its first characters in the cell. The row holds NULL there, as for any value left on the
+    // server, so no reader takes the characters for the value; the grid shows them. A masked column shows only the size,
+    // since a mask over the first characters is not the mask of the value.
+    static func liftingHeads(
+        _ values: [PluginCellValue],
+        unloaded: [Int: Int],
+        masks: ColumnMasks
+    ) -> (values: [PluginCellValue], heads: [Int: String]) {
+        guard !unloaded.isEmpty else { return (values, [:]) }
+        var values = values
+        var heads: [Int: String] = [:]
+        for column in unloaded.keys where values.indices.contains(column) {
+            if case .text(let head) = values[column], !head.isEmpty, !masks.isMasked(column) {
+                heads[column] = head
+            }
+            values[column] = .null
+        }
+        return (values, heads)
     }
 }
 

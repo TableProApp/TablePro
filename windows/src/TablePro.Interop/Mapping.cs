@@ -465,7 +465,8 @@ internal static partial class Mapping
         connection.LastOpened?.ToUnixTimeMilliseconds(),
         [.. connection.Tags.Select(tag => tag.ToString())],
         connection.AiPolicy is { } policy ? Policy(policy) : null,
-        connection.ExternalAccess is { } access ? Access(access) : null);
+        connection.ExternalAccess is { } access ? Access(access) : null,
+        connection.ProjectId?.ToString());
 
     public static SavedConnection Connection(Native.ConnectionRecord record) => new(
         Guid.Parse(record.Id),
@@ -508,6 +509,7 @@ internal static partial class Mapping
         Tags = [.. record.Tags.Select(Guid.Parse)],
         AiPolicy = Policy(record.AiPolicy ?? Native.AiPolicyTag.Ask),
         ExternalAccess = Access(record.ExternalAccess ?? Native.ExternalAccessTag.ReadOnly),
+        ProjectId = record.ProjectId is { } project ? Guid.Parse(project) : null,
     };
 
     public static ConnectionGroup Group(Native.GroupRecord group) => new(
@@ -515,7 +517,16 @@ internal static partial class Mapping
         group.Name,
         group.ParentId is { } parent ? Guid.Parse(parent) : null,
         checked((int)group.Order),
-        group.Color);
+        group.Color)
+    {
+        ProjectId = group.ProjectId is { } project ? Guid.Parse(project) : null,
+    };
+
+    public static ConnectionProject Project(Native.ProjectRecord project) => new(
+        Guid.Parse(project.Id),
+        project.Name,
+        checked((int)project.Order),
+        project.Color);
 
     public static LibrarySnapshot Snapshot(Native.LibrarySnapshot snapshot) => new(
         [.. snapshot.Connections.Select(Connection)],
@@ -524,6 +535,8 @@ internal static partial class Mapping
         [.. snapshot.Recent.Select(Guid.Parse)])
     {
         Tags = [.. snapshot.Tags.Select(tag => new ConnectionTag(Guid.Parse(tag.Id), tag.Name, tag.Color))],
+        Projects = [.. snapshot.Projects.Select(Project)],
+        Scope = snapshot.Scope is { } scope ? Guid.Parse(scope) : null,
     };
 
     public static ParsedConnectionUrl Url(Native.ParsedConnectionUrl url) => new(

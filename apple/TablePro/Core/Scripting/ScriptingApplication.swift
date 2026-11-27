@@ -23,7 +23,8 @@ internal extension NSApplication {
 
     @objc func valueInScriptConnections(withUniqueID id: Any) -> ScriptConnection? {
         guard let wanted = ScriptingSnapshot.uuid(from: id) else { return nil }
-        return scriptConnections.first { $0.connectionId == wanted }
+        // By id a script reaches a connection of another project, as its open window does.
+        return ScriptingSnapshot.connection(withId: wanted)
     }
 
     @objc func valueInScriptConnections(withName name: String) -> ScriptConnection? {

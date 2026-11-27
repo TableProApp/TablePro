@@ -36,6 +36,32 @@ struct ExternalConnectionDirectoryTests {
         #expect(!ExternalConnectionDirectory.liveState(for: session).isConnected)
     }
 
+    @Test("An outside client is offered the active project's connections, and all of them in All Connections")
+    func listingFollowsTheActiveProject() {
+        let inProject = DatabaseConnection(name: "A")
+        let outside = DatabaseConnection(name: "B")
+        let all = listings([inProject, outside])
+
+        #expect(ExternalConnectionDirectory.inScope(all, allowedConnectionIds: [inProject.id]).map(\.id) == [inProject.id])
+        #expect(ExternalConnectionDirectory.inScope(all, allowedConnectionIds: nil) == all)
+        #expect(ExternalConnectionDirectory.inScope(all, allowedConnectionIds: []).isEmpty)
+    }
+
+    @Test("A saved shortcut still resolves a connection the active project does not list")
+    func savedShortcutResolvesOutsideTheProject() {
+        let inProject = DatabaseConnection(name: "A")
+        let outside = DatabaseConnection(name: "B", host: "db.example.com")
+        let all = listings([inProject, outside])
+        let offered = ExternalConnectionDirectory.inScope(all, allowedConnectionIds: [inProject.id])
+
+        guard #available(macOS 14.0, *) else { return }
+        let resolved = ConnectionEntityQuery.entities(for: [outside.id], listings: all, stored: [inProject, outside])
+
+        #expect(!offered.map(\.id).contains(outside.id))
+        #expect(resolved.map(\.id) == [outside.id])
+        #expect(resolved.first?.host == "db.example.com")
+    }
+
     @Test("A Blocked connection is not listed, every other level is")
     func blockedIsDropped() {
         let readOnly = DatabaseConnection(name: "A", externalAccess: .readOnly)

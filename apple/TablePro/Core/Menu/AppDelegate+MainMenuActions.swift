@@ -90,6 +90,19 @@ extension AppDelegate: NSMenuItemValidation {
         WelcomeRouter.shared.route(.openProjectFolder)
     }
 
+    // The sender names its project in `representedObject`; All Connections carries none.
+    @objc func selectConnectionProject(_ sender: NSMenuItem) {
+        ConnectionScope.shared.setActiveProject(sender.representedObject as? UUID)
+    }
+
+    @objc func newConnectionProject(_ sender: Any?) {
+        WelcomeRouter.shared.route(.newProject)
+    }
+
+    @objc func manageConnectionProjects(_ sender: Any?) {
+        WelcomeRouter.shared.route(.manageProjects)
+    }
+
     @objc func openSampleDatabase(_ sender: Any?) {
         SampleDatabaseLauncher.open()
     }

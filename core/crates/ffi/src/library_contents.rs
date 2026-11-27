@@ -5,15 +5,15 @@ use chrono::DateTime;
 use tablepro_core::{AuthMode, ExternalAccess, NetworkOptions};
 use tablepro_records::cloudkit::library::{icon_for_symbol, symbol_for_icon};
 use tablepro_storage::{
-    ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionTag, ConnectionTagName,
-    CredentialPassword, CredentialProfile, DeviceOnly, LibraryWrite, SavedConnection, SshProfile,
+    ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionProject, ConnectionTag,
+    ConnectionTagName, CredentialPassword, CredentialProfile, DeviceOnly, LibraryWrite, SavedConnection, SshProfile,
 };
 use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::library::{
-    ConnectionLibrary, ConnectionRecord, GroupRecord, LibraryIconRecord, TagRecord, library_icon, optional_id,
-    parse_id, parse_ids, stored_ssh, stored_tls, tag_color,
+    ConnectionLibrary, ConnectionRecord, GroupRecord, LibraryIconRecord, ProjectRecord, TagRecord, library_icon,
+    optional_id, parse_id, parse_ids, project_name, stored_ssh, stored_tls, tag_color,
 };
 use crate::library_details::{
     ConnectionDetailsRecord, CredentialProfileRecord, DeviceSettingsRecord, SshProfileRecord,
@@ -34,6 +34,7 @@ pub struct LibraryContents {
     pub groups: Vec<GroupRecord>,
     pub tags: Vec<TagRecord>,
     pub favorites: Vec<String>,
+    pub projects: Vec<ProjectRecord>,
     pub ssh_profiles: Vec<SshProfileRecord>,
     pub credential_profiles: Vec<CredentialProfileRecord>,
     // Connections this build cannot read. The file keeps them, and a library write leaves them unless it names one.
@@ -50,6 +51,8 @@ pub struct LibraryWriteRecord {
     pub groups: Vec<GroupRecord>,
     pub tags: Vec<TagRecord>,
     pub favorites: Vec<String>,
+    // The whole list: a project this leaves out is deleted, and its members stay in no project.
+    pub projects: Vec<ProjectRecord>,
     // The whole set: a profile the file holds that the write leaves out goes, with its secrets.
     pub ssh_profiles: Vec<SshProfileRecord>,
     pub credential_profiles: Vec<CredentialProfileRecord>,
@@ -76,6 +79,7 @@ impl ConnectionLibrary {
                 groups: list.groups.iter().map(GroupRecord::from).collect(),
                 tags: list.tags.iter().map(TagRecord::from).collect(),
                 favorites: list.favorites.iter().map(Uuid::to_string).collect(),
+                projects: list.projects.iter().map(ProjectRecord::from).collect(),
                 ssh_profiles: list.ssh_profiles.iter().map(SshProfileRecord::from).collect(),
                 credential_profiles: list
                     .credential_profiles
@@ -165,6 +169,11 @@ fn library_write(library: LibraryWriteRecord, stored: Option<&ConnectionList>) -
             .collect::<Result<_, CoreError>>()?,
         tags: library.tags.iter().map(stored_tag).collect::<Result<_, CoreError>>()?,
         favorites: parse_ids(&library.favorites)?,
+        projects: library
+            .projects
+            .iter()
+            .map(stored_project)
+            .collect::<Result<_, CoreError>>()?,
         ssh_profiles: library
             .ssh_profiles
             .iter()
@@ -186,6 +195,16 @@ fn library_write(library: LibraryWriteRecord, stored: Option<&ConnectionList>) -
             })
             .collect::<Result<_, CoreError>>()?,
         removing: parse_ids(&library.removing)?,
+    })
+}
+
+fn stored_project(record: &ProjectRecord) -> Result<ConnectionProject, CoreError> {
+    Ok(ConnectionProject {
+        id: parse_id(&record.id)?,
+        name: project_name(&record.name)?,
+        order: record.order,
+        color: record.color.as_deref().map(tag_color).transpose()?,
+        icon: record.icon.as_ref().map(library_icon).transpose()?,
     })
 }
 
@@ -271,6 +290,7 @@ fn stored_connection(
             .transpose()?,
         color: connection.color.as_deref().map(tag_color).transpose()?,
         group_id: optional_id(connection.group_id.as_deref())?,
+        project_id: optional_id(connection.project_id.as_deref())?,
         order: connection.order,
         tags: parse_ids(&connection.tags)?,
         icon: connection.icon.as_ref().map(library_icon).transpose()?,
@@ -318,6 +338,7 @@ fn stored_group(record: &GroupRecord) -> Result<ConnectionGroup, CoreError> {
         order: record.order,
         color: record.color.as_deref().map(tag_color).transpose()?,
         icon: record.icon.as_ref().map(library_icon).transpose()?,
+        project_id: optional_id(record.project_id.as_deref())?,
     })
 }
 

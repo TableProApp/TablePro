@@ -90,7 +90,7 @@ internal extension SyncSettings {
     func syncs(_ type: SyncRecordType) -> Bool {
         switch type {
         case .connection: syncConnections
-        case .group, .tag: syncGroupsAndTags
+        case .group, .tag, .project: syncGroupsAndTags
         case .settings: syncSettings
         case .sshProfile: syncSSHProfiles
         case .credentialProfile: syncCredentialProfiles

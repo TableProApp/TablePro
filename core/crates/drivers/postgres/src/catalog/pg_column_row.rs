@@ -12,14 +12,9 @@ use crate::codec::TextArray;
 /// `atttypmod` is -1 when the modifier was declared on the domain.
 ///
 /// The argument is the compression projection, since
-/// `attcompression` arrived in PostgreSQL 14.
-///
 /// Under the catalog path `format_type` drops a built-in's schema, but a
 /// cast target runs under the session's path, where a lookalike can win.
-macro_rules! columns_sql {
-    ($compression:literal) => {
-        concat!(
-            "\
+pub(crate) const COLUMNS_SQL: &str = "\
 WITH RECURSIVE resolved AS (
     SELECT a.attnum, a.atttypid AS type_oid, a.atttypmod AS typmod, 0 AS depth
     FROM pg_catalog.pg_attribute a
@@ -56,14 +51,12 @@ SELECT a.attname::text,
        COALESCE(a.attnum = ANY (pk.conkey), false),
        pg_catalog.pg_get_expr(d.adbin, d.adrelid)::text,
        a.attidentity::text,
-       a.attgenerated::text,
+       {a.attgenerated}::text,
        pg_catalog.col_description(a.attrelid, a.attnum::int4)::text,
        CASE WHEN a.attcollation <> 0::oid AND a.attcollation <> at.typcollation THEN cn.nspname::text END,
        CASE WHEN a.attcollation <> 0::oid AND a.attcollation <> at.typcollation THEN co.collname::text END,
        CASE WHEN a.attstorage <> at.typstorage THEN a.attstorage::text END,
-       ",
-            $compression,
-            "
+       NULLIF({a.attcompression}::text, '')
 FROM pg_catalog.pg_attribute a
 JOIN base b ON b.attnum = a.attnum
 JOIN pg_catalog.pg_type at ON at.oid = a.atttypid
@@ -75,13 +68,7 @@ LEFT JOIN pg_catalog.pg_constraint pk ON pk.conrelid = a.attrelid AND pk.contype
 LEFT JOIN pg_catalog.pg_collation co ON co.oid = a.attcollation
 LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid = co.collnamespace
 WHERE a.attrelid = $1::text::oid AND a.attnum > 0 AND NOT a.attisdropped
-ORDER BY a.attnum"
-        )
-    };
-}
-
-pub(crate) const COLUMNS_SQL: &str = columns_sql!("NULLIF(a.attcompression::text, '')");
-pub(crate) const COLUMNS_SQL_BEFORE_14: &str = columns_sql!("NULL::text");
+ORDER BY a.attnum";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PgColumnRow {

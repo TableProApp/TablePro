@@ -3,7 +3,7 @@ use gtk4::prelude::*;
 use uuid::Uuid;
 
 use super::connection_menu::{
-    DELETE_GROUP, NEW_GROUP, NONE, PICKER, RENAME_GROUP, ROW, ROW_PARENT, item, order_section,
+    DELETE_GROUP, NEW_GROUP, NONE, PICKER, RENAME_GROUP, ROW, ROW_PARENT, item, move_to_project_menu, order_section,
 };
 use crate::services::library_outline::{LibraryItem, LibraryOutline};
 use crate::ui::menu_label;
@@ -26,6 +26,9 @@ pub(crate) fn group_menu(id: Uuid, outline: &LibraryOutline) -> gio::Menu {
     let order = order_section();
     if let Some(parents) = parent_menu(id, outline) {
         order.append_submenu(Some(&crate::i18n::gettext("Move Group _To")), &parents);
+    }
+    if let Some(projects) = move_to_project_menu(LibraryItem::Group(id), outline) {
+        order.append_submenu(Some(&crate::i18n::gettext("Move to Pro_ject")), &projects);
     }
     menu.append_section(None, &order);
     let danger = gio::Menu::new();

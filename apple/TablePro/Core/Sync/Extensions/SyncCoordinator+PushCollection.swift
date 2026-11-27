@@ -75,7 +75,8 @@ extension SyncCoordinator {
             field,
             record: build(base?.copy() as? CKRecord),
             base: base,
-            baseAsWritten: base.flatMap(reread)
+            baseAsWritten: base.flatMap(reread),
+            schema: schema
         )
     }
 
@@ -102,7 +103,8 @@ extension SyncCoordinator {
                     Self.syncedTunnel(of: connection, profiles: profiles),
                     in: zoneID,
                     base: recordCache.record(for: recordID),
-                    publisher: routePublisher
+                    publisher: routePublisher,
+                    schema: schema
                 ))
             }
         }
@@ -112,11 +114,30 @@ extension SyncCoordinator {
             await collectRecords(of: .group, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let groups = groupStorage.loadGroups()
                 return groupStorage.storeIsUnreadable ? nil : groups
+            } unreadable: {
+                groupStorage.unreadableGroupIds
             } disposition: { (group: ConnectionGroup) in
                 .push(edit(ConnectionGroupSyncField.self, .group, id: group.id.uuidString, in: zoneID) { base in
-                    SyncRecordMapper.toCKRecord(group, in: zoneID, base: base)
+                    SyncRecordMapper.toCKRecord(group, in: zoneID, base: base, schema: schema)
                 } reread: { base in
-                    SyncRecordMapper.toGroup(base).map { SyncRecordMapper.toCKRecord($0, in: zoneID) }
+                    SyncRecordMapper.toGroup(base, readsProject: schema.writesProjects)
+                        .map { SyncRecordMapper.toCKRecord($0, in: zoneID, schema: schema) }
+                })
+            }
+        }
+
+        if boundary.includes(.project) {
+            let projectStorage = services.projectStorage
+            await collectRecords(of: .project, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
+                let projects = projectStorage.loadProjects()
+                return projectStorage.storeIsUnreadable ? nil : projects
+            } unreadable: {
+                projectStorage.unreadableProjectIds
+            } disposition: { (project: ConnectionProject) in
+                .push(edit(ConnectionProjectSyncField.self, .project, id: project.id.uuidString, in: zoneID) { base in
+                    SyncRecordMapper.toCKRecord(project, in: zoneID, base: base, schema: schema)
+                } reread: { base in
+                    SyncRecordMapper.toProject(base).map { SyncRecordMapper.toCKRecord($0, in: zoneID, schema: schema) }
                 })
             }
         }
@@ -126,6 +147,8 @@ extension SyncCoordinator {
             await collectRecords(of: .tag, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let tags = tagStorage.loadTags()
                 return tagStorage.storeIsUnreadable ? nil : tags
+            } unreadable: {
+                tagStorage.unreadableTagIds
             } disposition: { (tag: ConnectionTag) in
                 .push(edit(ConnectionTagSyncField.self, .tag, id: tag.id.uuidString, in: zoneID) { base in
                     SyncRecordMapper.toCKRecord(tag, in: zoneID, base: base)

@@ -1838,6 +1838,12 @@
     "A number in %@ is larger than a 64-bit integer. Write it as a decimal, such as {\"$numberDecimal\": \"12345678901234567890\"}." : {
 
     },
+    "A project named “%@” already exists." : {
+
+    },
+    "A project shows only its own connections in the list, in search and in Shortcuts." : {
+
+    },
     "A query that switches the database is running on this connection. Try again once it ends." : {
 
     },
@@ -2386,6 +2392,9 @@
           }
         }
       }
+    },
+    "Add a connection, or move one here from All Connections." : {
+
     },
     "Add a connection, then open the file again." : {
 
@@ -3021,6 +3030,9 @@
       "generatesSymbol" : false
     },
     "All connections" : {
+
+    },
+    "All Connections" : {
 
     },
     "All data in \"%@\" will be permanently deleted." : {
@@ -4881,6 +4893,9 @@
 
     },
     "Check the server's TLS settings and this connection's SSL Mode." : {
+
+    },
+    "Check the spelling or try a new search." : {
 
     },
     "Check the start URL and SSO Region in this connection's Authentication section." : {
@@ -8284,6 +8299,9 @@
         }
       }
     },
+    "Delete “%@”?" : {
+
+    },
     "Delete %d Connections" : {
       "localizations" : {
         "ko" : {
@@ -8458,6 +8476,9 @@
           }
         }
       }
+    },
+    "Delete Project…" : {
+
     },
     "Delete row" : {
       "localizations" : {
@@ -13273,6 +13294,9 @@
     "Its connection is not imported." : {
 
     },
+    "Its connections are kept and move to All Connections." : {
+
+    },
     "Its subgroups are deleted too. Their connections move to Ungrouped." : {
       "localizations" : {
         "ko" : {
@@ -14361,6 +14385,9 @@
         }
       }
     },
+    "Manage Projects…" : {
+
+    },
     "Manage Storage…" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -15049,6 +15076,9 @@
         }
       }
     },
+    "Move to Project" : {
+
+    },
     "Moves the cursor to the error." : {
 
     },
@@ -15390,6 +15420,12 @@
     "New Jump Host" : {
 
     },
+    "New Project" : {
+
+    },
+    "New Project…" : {
+
+    },
     "New Subfolder" : {
       "localizations" : {
         "ko" : {
@@ -15568,6 +15604,10 @@
         }
       }
     },
+    "no answer within %lld seconds" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "No columns found in the file." : {
 
     },
@@ -15598,6 +15638,9 @@
           }
         }
       }
+    },
+    "No Connections in %@" : {
+
     },
     "No connections match the selected filter." : {
       "extractionState" : "stale",
@@ -15928,6 +15971,9 @@
         }
       }
     },
+    "No Projects" : {
+
+    },
     "No Referenced Row" : {
       "localizations" : {
         "ko" : {
@@ -15983,6 +16029,9 @@
           }
         }
       }
+    },
+    "No Results in %@" : {
+
     },
     "No row found in %@ where %@ = '%@'" : {
       "localizations" : {
@@ -18783,6 +18832,15 @@
         }
       }
     },
+    "Project" : {
+
+    },
+    "Projects" : {
+
+    },
+    "Projects Unavailable" : {
+
+    },
     "Prompt at Connect" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -19941,6 +19999,12 @@
       }
     },
     "Rename Folder" : {
+
+    },
+    "Rename Project" : {
+
+    },
+    "Rename…" : {
 
     },
     "Renaming a check constraint needs PostgreSQL 9.2 or later." : {
@@ -21161,6 +21225,9 @@
           }
         }
       }
+    },
+    "Search All Connections" : {
+
     },
     "Search Connections" : {
       "localizations" : {
@@ -24258,6 +24325,9 @@
         }
       }
     },
+    "TablePro could not read your projects. Nothing on this device has been changed." : {
+
+    },
     "TablePro could not read your saved connections. Nothing on this device has been changed." : {
       "localizations" : {
         "ko" : {
@@ -24287,6 +24357,9 @@
       }
     },
     "TablePro could not read your saved queries. Nothing on this device has been changed." : {
+
+    },
+    "TablePro could not save the project. Nothing on this device has been changed." : {
 
     },
     "TablePro could not write the CA bundle DuckDB reads: %@" : {
@@ -26036,6 +26109,10 @@
         }
       }
     },
+    "the host name could not be resolved" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The IAM Identity Center sign-in on this device has expired." : {
 
     },
@@ -26477,6 +26554,30 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The Oracle listener redirected the connection to %@, which could not be reached." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %@, which expects TLS. Set an SSL mode for this connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %@, which the tunnel does not forward. Enter that host and port as this connection's host and port so the tunnel reaches them." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %1$@, and the listener there refused it. %2$@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %1$@, which could not be reached (%2$@)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to an address TablePro could not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The Oracle listener refused the connection (ORA-%ld)." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -26536,6 +26637,14 @@
           }
         }
       }
+    },
+    "The Oracle listeners redirected the connection too many times." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listeners redirected the connection too many times. The last address was %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The Oracle server accepted the connection but stopped answering during the login." : {
       "extractionState" : "manual",
@@ -27204,6 +27313,10 @@
       "generatesSymbol" : false
     },
     "The server offers only MAC algorithms TablePro no longer supports: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server refused the connection. Check the host and port, and that the Oracle listener is running." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

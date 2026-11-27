@@ -199,4 +199,45 @@ struct ClickHouseTabSeparatedRowDecoderTests {
         let outcome = decodeAll(body)
         #expect(outcome.rows == [[.text("1"), .text(""), .text("value")]])
     }
+
+    @Test("A value that opens with a byte order mark keeps it, since it is part of the stored string")
+    func keepsLeadingByteOrderMark() {
+        var body = Self.header
+        body.append(contentsOf: Data("1\t".utf8))
+        body.append(contentsOf: [0xEF, 0xBB, 0xBF])
+        body.append(contentsOf: Data("x\\ty\t".utf8))
+        body.append(contentsOf: [0xEF, 0xBB, 0xBF])
+        body.append(contentsOf: Data("z\n".utf8))
+        let outcome = decodeAll(body)
+        #expect(outcome.rows == [[.text("1"), .text("\u{FEFF}x\ty"), .text("\u{FEFF}z")]])
+        #expect(bytewise(body) == outcome.rows)
+        #expect(ClickHouseResponseClassifier.classify(headers: [:], body: body).rows == outcome.rows)
+    }
+
+    @Test("Streaming and buffered reads of one body give the same rows")
+    func streamingMatchesBuffered() {
+        var body = Self.header
+        body.append(contentsOf: Data("1\t\\N\tplain\n2\ttab\\there\t\\N\n3\t\t\n".utf8))
+        body.append(contentsOf: Data("4\t".utf8))
+        body.append(contentsOf: [0xC3, 0xA9, 0x0A])
+        let buffered = ClickHouseResponseClassifier.classify(headers: [:], body: body)
+        #expect(decodeAll(body).rows == buffered.rows)
+        #expect(bytewise(body) == buffered.rows)
+        #expect(buffered.rows.count == 4)
+    }
+
+    // MARK: - Row Capacity
+
+    @Test("Each streamed row is allocated at its column count, with no spare slots")
+    func streamedRowHasExactCapacity() throws {
+        let columns = 0..<20
+        var body = Data(columns.map { "c\($0)" }.joined(separator: "\t").utf8)
+        body.append(contentsOf: Data(("\n" + columns.map { _ in "String" }.joined(separator: "\t") + "\n").utf8))
+        body.append(contentsOf: Data((columns.map { "v\($0)" }.joined(separator: "\t") + "\n").utf8))
+
+        let row = try #require(decodeAll(body).rows.first)
+
+        #expect(row.count == 20)
+        #expect(row.capacity == row.count)
+    }
 }

@@ -832,6 +832,9 @@ actor QueryHistoryStorage {
         if let connectionId = request.scope.connectionId {
             clause.append(" AND \(prefix)connection_id = ?", .text(connectionId.uuidString))
         }
+        if let allowed = request.allowedConnectionIds {
+            clause.appendConnections(in: allowed, column: "\(prefix)connection_id")
+        }
 
         let allSources = Set(QueryHistorySource.allCases)
         guard request.sources != allSources else { return }

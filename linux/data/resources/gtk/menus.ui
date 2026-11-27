@@ -18,6 +18,22 @@
       </item>
     </section>
     <section>
+      <!-- The projects are listed above these two at run time, as one radio section. -->
+      <submenu id="project_menu">
+        <attribute name="label" translatable="yes">Pro_ject</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">_New Project…</attribute>
+            <attribute name="action">win.new-project</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">_Manage Projects…</attribute>
+            <attribute name="action">win.manage-projects</attribute>
+          </item>
+        </section>
+      </submenu>
+    </section>
+    <section>
       <item>
         <attribute name="label" translatable="yes">_Import Connections…</attribute>
         <attribute name="action">win.import-connections</attribute>

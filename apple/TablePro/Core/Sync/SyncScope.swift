@@ -16,7 +16,7 @@ extension SyncRecordType {
         switch self {
         case .connection, .group, .tag, .settings, .favorite, .favoriteFolder,
              .tableFavorite, .favoriteDatabase, .sshProfile, .credentialProfile,
-             .tableFolder, .tableFolderItem:
+             .tableFolder, .tableFolderItem, .project:
             return .synced
         }
     }

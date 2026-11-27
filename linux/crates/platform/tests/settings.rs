@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
+use gio::prelude::SettingsExt as _;
 use tablepro_core::AiProvider;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 use tablepro_linux_platform::settings::keys;
@@ -176,6 +177,37 @@ async fn restore_session_round_trip() -> TestResult {
     fixture.settings.set_restore_session(false)?;
 
     assert!(!fixture.settings.restore_session());
+    Ok(())
+}
+
+#[glib::async_test]
+async fn the_active_project_starts_as_all_connections_and_round_trips() -> TestResult {
+    let fixture = Fixture::new()?;
+    assert_eq!(fixture.settings.active_project(), None);
+    let project = uuid::Uuid::new_v4();
+    let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = seen.clone();
+    fixture
+        .settings
+        .connect_active_project_changed(move |project| sink.borrow_mut().push(project));
+
+    fixture.settings.set_active_project(Some(project))?;
+    assert_eq!(fixture.settings.active_project(), Some(project));
+    fixture.settings.set_active_project(None)?;
+
+    assert_eq!(fixture.settings.active_project(), None);
+    assert_eq!(fixture.settings.gio().string(keys::ACTIVE_PROJECT), "");
+    assert_eq!(*seen.borrow(), [Some(project), None]);
+    Ok(())
+}
+
+#[glib::async_test]
+async fn an_active_project_that_is_no_id_reads_as_all_connections() -> TestResult {
+    let fixture = Fixture::new()?;
+
+    fixture.settings.gio().set_string(keys::ACTIVE_PROJECT, "not an id")?;
+
+    assert_eq!(fixture.settings.active_project(), None);
     Ok(())
 }
 

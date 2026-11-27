@@ -101,6 +101,21 @@ pub enum StorageError {
     #[error("groups nest at most {max} levels deep")]
     GroupTooDeep { max: usize },
 
+    #[error("no project has the id {id}")]
+    ProjectNotFound { id: uuid::Uuid },
+
+    #[error("a project with the id {id} already exists")]
+    ProjectExists { id: uuid::Uuid },
+
+    #[error("another project is named {name}")]
+    ProjectNameTaken { name: String },
+
+    #[error("the connection {id} is in a group, which decides its project")]
+    ConnectionGrouped { id: uuid::Uuid },
+
+    #[error("the group {id} is inside another group, which decides its project")]
+    GroupNotTopLevel { id: uuid::Uuid },
+
     #[error("{} belongs to another account", .path.display())]
     StoreOwnerMismatch { path: std::path::PathBuf },
 
@@ -145,6 +160,11 @@ impl StorageError {
             Self::GroupNameTaken { .. } => "storage.group_name_taken",
             Self::GroupCycle { .. } => "storage.group_cycle",
             Self::GroupTooDeep { .. } => "storage.group_too_deep",
+            Self::ProjectNotFound { .. } => "storage.project_not_found",
+            Self::ProjectExists { .. } => "storage.project_exists",
+            Self::ProjectNameTaken { .. } => "storage.project_name_taken",
+            Self::ConnectionGrouped { .. } => "storage.connection_grouped",
+            Self::GroupNotTopLevel { .. } => "storage.group_not_top_level",
             Self::StoreOwnerMismatch { .. } => "storage.store_owner_mismatch",
             Self::RepeatedId { .. } => "storage.repeated_id",
             Self::LibraryChanged => "storage.library_changed",
@@ -179,6 +199,14 @@ mod tests {
             .code(),
             StorageError::GroupCycle { id }.code(),
             StorageError::GroupTooDeep { max: 3 }.code(),
+            StorageError::ProjectNotFound { id }.code(),
+            StorageError::ProjectExists { id }.code(),
+            StorageError::ProjectNameTaken {
+                name: "Acme".to_owned(),
+            }
+            .code(),
+            StorageError::ConnectionGrouped { id }.code(),
+            StorageError::GroupNotTopLevel { id }.code(),
             StorageError::RepeatedId { id }.code(),
             StorageError::LibraryChanged.code(),
         ];
@@ -192,6 +220,11 @@ mod tests {
                 "storage.group_name_taken",
                 "storage.group_cycle",
                 "storage.group_too_deep",
+                "storage.project_not_found",
+                "storage.project_exists",
+                "storage.project_name_taken",
+                "storage.connection_grouped",
+                "storage.group_not_top_level",
                 "storage.repeated_id",
                 "storage.library_changed",
             ]

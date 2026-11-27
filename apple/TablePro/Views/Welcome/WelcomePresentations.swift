@@ -66,7 +66,7 @@ internal struct WelcomePresentations: ViewModifier {
     private func activeSheetContent(_ sheet: WelcomeActiveSheet) -> some View {
         switch sheet {
         case .newGroup(let request):
-            GroupEditorSheet(mode: .create(parentId: request.parentId), groups: vm.groups) { draft in
+            GroupEditorSheet(mode: .create(parentId: request.parentId), groups: vm.scopedGroups) { draft in
                 try vm.createGroup(
                     name: draft.name,
                     color: draft.color,
@@ -76,7 +76,7 @@ internal struct WelcomePresentations: ViewModifier {
                 )
             }
         case .editGroup(let group):
-            GroupEditorSheet(mode: .edit(group), groups: vm.groups) { draft in
+            GroupEditorSheet(mode: .edit(group), groups: vm.groupChoices(editing: group)) { draft in
                 try vm.saveGroup(id: group.id, from: ConnectionGroupFields(group), to: draft)
             }
         case .importFile(let url):
@@ -103,6 +103,12 @@ internal struct WelcomePresentations: ViewModifier {
             DeeplinkImportSheet(bundle: bundle, onCancel: { vm.activeSheet = nil }) { vm.finishImport($0, from: .fileOrLink) }
         case .teamLibraryConflicts:
             TeamLibraryConflictSheet(sync: .shared)
+        case .newProject:
+            ProjectNameSheet { name in
+                try vm.createProject(name: name)
+            }
+        case .manageProjects:
+            ManageProjectsSheet(storage: vm.projectStorage, appEvents: vm.services.appEvents)
         }
     }
 }

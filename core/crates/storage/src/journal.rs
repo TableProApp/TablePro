@@ -19,10 +19,11 @@ pub enum RecordKind {
     LibraryConnection,
     LibraryFolder,
     LibraryQuery,
+    ConnectionProject,
 }
 
 impl RecordKind {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Connection,
         Self::Group,
         Self::Tag,
@@ -38,6 +39,7 @@ impl RecordKind {
         Self::LibraryConnection,
         Self::LibraryFolder,
         Self::LibraryQuery,
+        Self::ConnectionProject,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -57,6 +59,7 @@ impl RecordKind {
             Self::LibraryConnection => "library_connection",
             Self::LibraryFolder => "library_folder",
             Self::LibraryQuery => "library_query",
+            Self::ConnectionProject => "connection_project",
         }
     }
 

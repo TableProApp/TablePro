@@ -17,12 +17,17 @@ public enum KeywordUppercaseHelper {
         (ch >= 0x30 && ch <= 0x39) || ch == 0x5F
     }
 
-    // Read from the start of the text with the session's grammar: a literal can open any distance back, and where it
-    // ends is the engine's rule.
-    static func isInsideProtectedContext(_ text: NSString, at position: Int, grammar: SQLLexicalGrammar) -> Bool {
+    // Read with the session's grammar from `codeStart`, a point known to sit in code such as the start of the statement:
+    // a literal can open any distance back, and where it ends is the engine's rule.
+    static func isInsideProtectedContext(
+        _ text: NSString,
+        at position: Int,
+        from codeStart: Int = 0,
+        grammar: SQLLexicalGrammar
+    ) -> Bool {
         let length = text.length
         let runsExecutableComments = grammar.contains(.executableComments)
-        var index = 0
+        var index = min(max(0, codeStart), position)
         while index < position {
             // The server runs the body of `/*! ... */`, so it is code.
             if runsExecutableComments, let opener = SqlLexer.executableCommentOpenerLength(text, at: index, length: length) {
@@ -40,10 +45,13 @@ public enum KeywordUppercaseHelper {
     }
 
     // Nil when the word is not a keyword, sits in a comment, a literal or a quoted name, or is already in the target case.
+    // `codeStart` is where reading for a literal or comment may begin: a statement start the scanner found, or the top.
+    // Finding it can cost a scan, so it is asked for only once the word is a keyword that would change.
     public static func keywordBeforePosition(
         _ text: NSString,
         at position: Int,
         uppercase: Bool = true,
+        codeStart: @autoclosure () -> Int = 0,
         grammar: SQLLexicalGrammar
     ) -> (word: String, folded: String, range: NSRange)? {
         var wordStart = position
@@ -58,10 +66,10 @@ public enum KeywordUppercaseHelper {
 
         let word = text.substring(with: NSRange(location: wordStart, length: wordLength))
         guard SQLKeywords.keywordSet.contains(word.lowercased()) else { return nil }
-        guard !isInsideProtectedContext(text, at: wordStart, grammar: grammar) else { return nil }
 
         let folded = uppercase ? word.uppercased() : word.lowercased()
         guard folded != word else { return nil }
+        guard !isInsideProtectedContext(text, at: wordStart, from: codeStart(), grammar: grammar) else { return nil }
 
         return (word: word, folded: folded, range: NSRange(location: wordStart, length: wordLength))
     }

@@ -18,7 +18,8 @@
 # The steps share a container volume that is removed at the end, so the
 # build never writes into a container's own layer.
 # Usage: build-deb.sh <tablepro_V.dsc> <output dir>
-# CONTAINER_ENGINE picks docker (the default) or podman.
+# CONTAINER_ENGINE picks docker (the default) or podman. UBUNTU_IMAGE names
+# the image the steps run in, ubuntu by default, tagged with the series.
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -90,6 +91,7 @@ source_dir="$(cd "$(dirname "$1")" && pwd)"
 dsc="$(basename "$1")"
 changes="${dsc%.dsc}_source.changes"
 series="$(sed -n 's/^Distribution: //p' "$source_dir/$changes")"
+image="${UBUNTU_IMAGE:-ubuntu}:$series"
 mkdir -p "$2"
 out="$(cd "$2" && pwd)"
 
@@ -100,9 +102,9 @@ trap '"$engine" volume rm -f "$volume" >/dev/null' EXIT
 step() {
     if [ "$1" = offline ]; then
         shift
-        set -- --network none "ubuntu:$series" /packaging/build-deb.sh --step "$@"
+        set -- --network none "$image" /packaging/build-deb.sh --step "$@"
     else
-        set -- "ubuntu:$series" /packaging/build-deb.sh --step "$@"
+        set -- "$image" /packaging/build-deb.sh --step "$@"
     fi
     "$engine" run --rm -v "$volume:/build" -v "$here:/packaging:ro" -v "$source_dir:/source:ro" \
         -v "$out:/out" "$@"

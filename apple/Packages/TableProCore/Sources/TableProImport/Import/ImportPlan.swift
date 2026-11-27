@@ -14,6 +14,8 @@ public struct PlannedConnection: Sendable, Equatable {
     public let tagNames: [String]
     public let credentialProfileRef: BundleRef?
     public let credentials: ExportableCredentials?
+    // The project the file puts this connection in, through its top-level group when it has one.
+    public let projectRef: BundleRef?
 
     public init(
         ref: BundleRef,
@@ -23,8 +25,10 @@ public struct PlannedConnection: Sendable, Equatable {
         groupPath: [PathComponent],
         tagNames: [String],
         credentialProfileRef: BundleRef?,
-        credentials: ExportableCredentials?
+        credentials: ExportableCredentials?,
+        projectRef: BundleRef? = nil
     ) {
+        self.projectRef = projectRef
         self.ref = ref
         self.id = id
         self.write = write
@@ -33,6 +37,22 @@ public struct PlannedConnection: Sendable, Equatable {
         self.tagNames = tagNames
         self.credentialProfileRef = credentialProfileRef
         self.credentials = credentials
+    }
+}
+
+public struct PlannedProject: Sendable, Equatable {
+    public let ref: BundleRef
+    public let id: UUID?
+    public let name: String
+    public let color: String?
+    public let iconName: String?
+
+    public init(ref: BundleRef, id: UUID?, name: String, color: String?, iconName: String?) {
+        self.ref = ref
+        self.id = id
+        self.name = name
+        self.color = color
+        self.iconName = iconName
     }
 }
 
@@ -128,6 +148,9 @@ public struct ImportPlan: Sendable, Equatable {
     public let credentialProfiles: [PlannedCredentialProfile]
     public let queries: [PlannedQuery]
     public let queryStatuses: [BundleRef: QueryStatus]
+    public let projects: [PlannedProject]
+    // Where a connection lands when the file names no project for it. Nil is no project.
+    public let targetProjectId: UUID?
 
     public var isEmpty: Bool {
         connections.isEmpty && queries.isEmpty
@@ -139,8 +162,12 @@ public struct ImportPlan: Sendable, Equatable {
         tags: [PlannedTag],
         credentialProfiles: [PlannedCredentialProfile],
         queries: [PlannedQuery],
-        queryStatuses: [BundleRef: QueryStatus]
+        queryStatuses: [BundleRef: QueryStatus],
+        projects: [PlannedProject] = [],
+        targetProjectId: UUID? = nil
     ) {
+        self.projects = projects
+        self.targetProjectId = targetProjectId
         self.connections = connections
         self.keptConnections = keptConnections
         self.tags = tags

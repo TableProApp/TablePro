@@ -177,6 +177,22 @@ impl SavedQueries {
         rows.iter().map(row_to_saved_query).collect()
     }
 
+    // In the order `list(None)` gives. A query with no connection belongs to every connection, so to every set.
+    pub async fn list_for(&self, connections: &[Uuid]) -> Result<Vec<SavedQuery>, StorageError> {
+        sqlx::query(concat!(
+            "SELECT ",
+            columns!(),
+            " FROM saved_queries WHERE connection_id IN (SELECT value FROM json_each(?)) OR connection_id IS NULL \
+             ORDER BY connection_name COLLATE NOCASE, name COLLATE NOCASE, id"
+        ))
+        .bind(crate::query_history::id_set(connections))
+        .fetch_all(&self.pool)
+        .await?
+        .iter()
+        .map(row_to_saved_query)
+        .collect()
+    }
+
     // What one connection shows: its own queries and folders and those with no connection.
     pub async fn snapshot(&self, connection: Uuid) -> Result<SavedQueriesSnapshot, StorageError> {
         let mut transaction = self.pool.begin().await?;
@@ -879,6 +895,42 @@ mod tests {
         assert_eq!(store.list(Some(first)).await.expect("list")[0].query, "SELECT 1");
         assert_eq!(store.list(Some(second)).await.expect("list")[0].query, "SELECT 2");
         assert_eq!(store.list(None).await.expect("list all").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_list_for_a_set_of_connections_holds_theirs_and_the_ones_with_no_connection() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let (first, second, outside) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let mut named = new_query("b", "SELECT 1", first);
+        named.connection_name = "alpha".to_owned();
+        store.save(named).await.expect("save");
+        let mut named = new_query("a", "SELECT 2", second);
+        named.connection_name = "beta".to_owned();
+        store.save(named).await.expect("save");
+        store.save(new_query("c", "SELECT 3", outside)).await.expect("save");
+        let shared = NewSavedQuery {
+            connection_id: None,
+            connection_name: String::new(),
+            ..new_query("s", "SELECT 4", outside)
+        };
+        store.save(shared).await.expect("save");
+
+        let mut many: Vec<Uuid> = (0..40_000).map(|_| Uuid::new_v4()).collect();
+        many.extend([second, first]);
+        let listed = store.list_for(&many).await.expect("list");
+
+        let names: Vec<&str> = listed.iter().map(|query| query.name.as_str()).collect();
+        assert_eq!(names, ["s", "b", "a"]);
+        let alone: Vec<String> = store
+            .list_for(&[])
+            .await
+            .expect("list")
+            .into_iter()
+            .map(|query| query.name)
+            .collect();
+        assert_eq!(alone, ["s"]);
+        assert_eq!(store.list(None).await.expect("list").len(), 4);
     }
 
     #[tokio::test]

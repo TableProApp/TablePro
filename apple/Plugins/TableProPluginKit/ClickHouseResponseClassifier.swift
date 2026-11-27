@@ -37,15 +37,13 @@ public enum ClickHouseResponseClassifier {
         if let format = headerValue(headers, named: formatHeaderName), format != requestedFormat {
             return rawOutcome(body: body)
         }
-        let bytes = [UInt8](body)
-        guard !ClickHouseTabSeparatedBytes.isAsciiWhitespace(bytes) else {
-            return noResultSetOutcome(headers: headers)
+        return body.withUnsafeBytes { raw in
+            let bytes = raw.bindMemory(to: UInt8.self)
+            guard !ClickHouseTabSeparatedBytes.isAsciiWhitespace(bytes) else {
+                return noResultSetOutcome(headers: headers)
+            }
+            return tabSeparatedOutcome(bytes, rowLimit: rowLimit) ?? rawOutcome(body: body)
         }
-        let lines = ClickHouseTabSeparatedBytes.lines(bytes)
-        guard lines.count >= 2 else {
-            return rawOutcome(body: body)
-        }
-        return tabSeparatedOutcome(lines: lines, rowLimit: rowLimit)
     }
 
     public static func affectedRowsFromSummary(headers: [String: String]) -> Int {
@@ -89,43 +87,46 @@ public enum ClickHouseResponseClassifier {
         )
     }
 
-    private static func tabSeparatedOutcome(lines: [ArraySlice<UInt8>], rowLimit: Int) -> Outcome {
-        let columns = ClickHouseTabSeparatedBytes.fields(lines[0]).map(ClickHouseTabSeparatedBytes.headerText)
-        let columnTypeNames = ClickHouseTabSeparatedBytes.fields(lines[1]).map(ClickHouseTabSeparatedBytes.headerText)
-        let literalSyntaxColumns = columnTypeNames.map(ClickHouseTabSeparatedBytes.writesLiteralSyntax)
-
+    /// Nil when the body has no second line, so it holds no names-and-types header.
+    private static func tabSeparatedOutcome(_ bytes: UnsafeBufferPointer<UInt8>, rowLimit: Int) -> Outcome? {
+        var columns: [String]?
+        var columnTypeNames: [String]?
+        var literalSyntaxColumns: [Bool] = []
         var rows: [[PluginCellValue]] = []
         var binaryColumns = Set<Int>()
         var isTruncated = false
-        for index in 2..<lines.count {
-            let line = lines[index]
-            if line.isEmpty { continue }
+        ClickHouseTabSeparatedBytes.forEachLine(bytes) { line in
+            guard columns != nil else {
+                columns = ClickHouseTabSeparatedBytes.headerTexts(line)
+                return true
+            }
+            guard columnTypeNames != nil else {
+                let types = ClickHouseTabSeparatedBytes.headerTexts(line)
+                columnTypeNames = types
+                literalSyntaxColumns = types.map(ClickHouseTabSeparatedBytes.writesLiteralSyntax)
+                return true
+            }
+            if line.isEmpty { return true }
 
-            let fields = ClickHouseTabSeparatedBytes.fields(line)
             var row: [PluginCellValue] = []
-            row.reserveCapacity(fields.count)
-            for (column, field) in fields.enumerated() {
-                if ClickHouseTabSeparatedBytes.isNullMarker(field) {
-                    row.append(.null)
-                    continue
-                }
-                let value = ClickHouseTabSeparatedBytes.value(
+            row.reserveCapacity(literalSyntaxColumns.count)
+            ClickHouseTabSeparatedBytes.forEachField(line) { field in
+                let column = row.count
+                let value = ClickHouseTabSeparatedBytes.cellValue(
                     field,
                     writesLiteralSyntax: column < literalSyntaxColumns.count && literalSyntaxColumns[column]
                 )
-                guard let text = utf8Text(value) else {
-                    binaryColumns.insert(column)
-                    row.append(.bytes(Data(value)))
-                    continue
-                }
-                row.append(.text(text))
+                if case .bytes = value { binaryColumns.insert(column) }
+                row.append(value)
             }
             rows.append(row)
             if rows.count >= rowLimit {
                 isTruncated = true
-                break
+                return false
             }
+            return true
         }
+        guard let columns, let columnTypeNames else { return nil }
 
         return Outcome(
             columns: columns,
@@ -146,7 +147,8 @@ public enum ClickHouseResponseClassifier {
     ) -> [[PluginCellValue]] {
         guard !binaryColumns.isEmpty else { return rows }
         return rows.map { row in
-            row.enumerated().map { column, value in
+            row.indices.map { column in
+                let value = row[column]
                 guard binaryColumns.contains(column), case .text(let text) = value else { return value }
                 return .bytes(Data(text.utf8))
             }

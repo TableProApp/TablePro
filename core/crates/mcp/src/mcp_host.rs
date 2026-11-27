@@ -22,6 +22,11 @@ pub trait McpHost: Send + Sync + 'static {
 
     async fn open_connections(&self) -> Vec<Uuid>;
 
+    // Read for each call, since the user switches it in the app; `None` is All Connections.
+    fn active_project(&self) -> Option<Uuid> {
+        None
+    }
+
     /// Open the saved connection in a window, as the picker does, and
     /// wait a while for its session.
     async fn open(&self, connection: SavedConnection) -> OpenOutcome;

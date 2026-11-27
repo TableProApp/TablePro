@@ -93,6 +93,30 @@ struct CoreLibraryStoreTests {
         #expect(try makeStore().load() == library)
     }
 
+    @Test("Projects and the project each top-level group and loose connection names live in the core's store")
+    func projectsLiveInTheCoreStore() async throws {
+        let store = makeStore()
+        var library = try store.load()
+        let acme = ConnectionProject(name: "Acme", color: .blue)
+        let team = ConnectionGroup(name: "Team", projectId: acme.id)
+        var loose = DatabaseConnection(name: "Loose", type: .mysql)
+        loose.projectId = acme.id
+        library.projects = [acme]
+        library.groups = [team]
+        library.connections = [loose]
+
+        try store.write(library, keepingPastedSSHKeys: [:])
+
+        let contents = try await coreContents()
+        #expect(contents.projects.map(\.name) == ["Acme"])
+        #expect(contents.groups.first?.projectId.flatMap(UUID.init(uuidString:)) == acme.id)
+        #expect(contents.connections.first?.connection.projectId.flatMap(UUID.init(uuidString:)) == acme.id)
+        let reloaded = try makeStore().load()
+        #expect(reloaded.projects.map(\.id) == [acme.id])
+        #expect(reloaded.groups.first?.projectId == acme.id)
+        #expect(reloaded.connections.first?.projectId == acme.id)
+    }
+
     @Test("An edit the previous stable made after a downgrade is taken in at the next launch")
     func previousStableEditIsTakenIn() throws {
         let store = makeStore()
@@ -263,7 +287,7 @@ struct CoreLibraryStoreTests {
 
         #expect(throws: (any Error).self) { try store.load() }
         #expect(throws: CoreLibraryStore.Failure.notLoaded) {
-            try store.write(CoreLibraryStore.Library(connections: [], groups: [], tags: []), keepingPastedSSHKeys: [:])
+            try store.write(CoreLibraryStore.Library(connections: [], groups: [], tags: [], projects: []), keepingPastedSSHKeys: [:])
         }
         #expect(try Data(contentsOf: coreFile) == newer)
     }
@@ -302,6 +326,7 @@ struct CoreLibraryStoreTests {
                 groups: contents.groups,
                 tags: contents.tags,
                 favorites: contents.favorites,
+                projects: contents.projects,
                 sshProfiles: contents.sshProfiles,
                 credentialProfiles: contents.credentialProfiles,
                 removing: []
@@ -354,6 +379,7 @@ struct CoreLibraryStoreTests {
                 groups: contents.groups,
                 tags: contents.tags,
                 favorites: contents.favorites,
+                projects: contents.projects,
                 sshProfiles: ssh,
                 credentialProfiles: credential,
                 removing: []
@@ -417,6 +443,7 @@ struct CoreLibraryStoreTests {
                     groups: contents.groups,
                     tags: contents.tags,
                     favorites: contents.favorites,
+                    projects: contents.projects,
                     sshProfiles: [],
                     credentialProfiles: [],
                     removing: []
@@ -469,6 +496,21 @@ struct CoreLibraryStoreTests {
         library.connections[0].name = "Renamed"
         #expect(throws: (any Error).self) { try store.write(library, keepingPastedSSHKeys: [:]) }
         #expect(try String(contentsOf: coreFile, encoding: .utf8) == swapped)
+    }
+
+    @Test("A write after the core's file went missing writes it again, since no other writer's copy is under it")
+    func writeAfterTheCoreFileWentMissingLands() throws {
+        let store = makeStore()
+        var library = try store.load()
+        library.connections = [DatabaseConnection(name: "Orders", type: .postgresql)]
+        try store.write(library, keepingPastedSSHKeys: [:])
+        try FileManager.default.removeItem(at: coreFile)
+
+        library.connections[0].name = "Renamed"
+        try store.write(library, keepingPastedSSHKeys: [:])
+
+        #expect(try String(contentsOf: coreFile, encoding: .utf8).contains("Renamed"))
+        #expect(try makeStore().load().connections.map(\.name) == ["Renamed"])
     }
 
     @Test("A write that names one id twice, or a record this build cannot read, is refused")

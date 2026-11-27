@@ -569,6 +569,7 @@ impl ConnectForm {
             last_opened_at: existing.and_then(|saved| saved.last_opened_at),
             color: existing.and_then(|saved| saved.color),
             group_id: existing.and_then(|saved| saved.group_id),
+            project_id: existing.and_then(|saved| saved.project_id),
             order: existing.map_or(0, |saved| saved.order),
             tags: self.tags.clone(),
             // A symbol only the Apple apps draw shows here as no icon, and stays until one of them changes it.

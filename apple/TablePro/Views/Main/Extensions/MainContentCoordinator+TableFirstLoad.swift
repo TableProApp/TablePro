@@ -94,11 +94,11 @@ extension MainContentCoordinator {
 
     /// Applied filters wait for the schema because no rows have arrived to type their values, and
     /// an untyped value is guessed from its text: `123` goes to a text column as a number, which
-    /// PostgreSQL rejects and MySQL answers by comparing numerically. An engine that defers binary
+    /// PostgreSQL rejects and MySQL answers by comparing numerically. An engine that defers large
     /// values needs the column types to leave them out of the first page.
     func firstLoadNeedsSchemaColumns(for tab: QueryTab, hint: DefaultSortHint) -> Bool {
         wantsDefaultSort(for: tab, hint: hint)
-            || defersBinaryValues
+            || defersLargeValues
             || !tab.columnLayout.hiddenColumns.isEmpty
             || tab.filterState.isFiltering
             || tab.pendingRestoredSort != nil

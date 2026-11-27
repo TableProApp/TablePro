@@ -144,6 +144,7 @@ fn record(path: &Path, ai_policy: Option<AiPolicyTag>) -> ConnectionRecord {
         tags: Vec::new(),
         ai_policy,
         external_access: None,
+        project_id: None,
         icon: None,
         order: 0,
     }

@@ -65,7 +65,10 @@ struct AppearanceFacetView: View {
             .editorRowFocus(row, store: store)
         case .builtIn(.group):
             LabeledContent {
-                ConnectionGroupPicker(selectedGroupId: store.tracking(store.binding(\.appearance.groupId), row: row))
+                ConnectionGroupPicker(
+                    selectedGroupId: store.tracking(store.binding(\.appearance.groupId), row: row),
+                    connectionId: store.connectionId
+                )
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier(BuiltInRow.group.accessibilityIdentifier)
             } label: {

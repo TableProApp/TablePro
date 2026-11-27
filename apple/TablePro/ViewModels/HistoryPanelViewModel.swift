@@ -25,6 +25,7 @@ final class HistoryPanelViewModel: ObservableObject {
     private let connectionDirectory: HistoryConnectionDirectory
     private let pageSize: Int
     private let clock: any Clock<Duration>
+    private let appEvents: AppEvents
 
     @Published private var entries: [QueryHistoryEntry] = []
     @Published private var nextCursor: QueryHistoryCursor?
@@ -33,14 +34,20 @@ final class HistoryPanelViewModel: ObservableObject {
     @Published private var searchDebounce: Task<Void, Never>?
     private var liveRefresh: Task<Void, Never>?
     private var updateSubscription: AnyCancellable?
+    private var scopeSubscription: AnyCancellable?
+    private let scopeChanged: AnyPublisher<Void, Never>
 
     init(
         connectionId: UUID,
         history: QueryHistoryReading,
         connectionDirectory: HistoryConnectionDirectory = .live,
         pageSize: Int = HistoryPanelViewModel.pageSize,
-        clock: any Clock<Duration> = ContinuousClock()
+        clock: any Clock<Duration> = ContinuousClock(),
+        scopeChanged: AnyPublisher<Void, Never> = ConnectionScope.shared.scopedSetChanged,
+        appEvents: AppEvents = .shared
     ) {
+        self.appEvents = appEvents
+        self.scopeChanged = scopeChanged
         self.connectionId = connectionId
         self.history = history
         self.connectionDirectory = connectionDirectory
@@ -85,11 +92,19 @@ final class HistoryPanelViewModel: ObservableObject {
 
     func startObserving() {
         guard updateSubscription == nil else { return }
-        updateSubscription = AppEvents.shared.queryHistoryDidUpdate
+        updateSubscription = appEvents.queryHistoryDidUpdate
             .receive(on: RunLoop.main)
             .sink { [weak self] payload in
                 guard let self else { return }
                 guard payload == nil || state.scope == .all || payload == state.scope.connectionId else { return }
+                scheduleLiveRefresh()
+            }
+        // "All connections" lists the active project's. The token moves now, so a fetch already out under
+        // the old scope is dropped when it lands.
+        scopeSubscription = scopeChanged
+            .sink { [weak self] _ in
+                guard let self, state.scope == .all else { return }
+                loadToken = UUID()
                 scheduleLiveRefresh()
             }
     }
@@ -97,6 +112,8 @@ final class HistoryPanelViewModel: ObservableObject {
     func stopObserving() {
         updateSubscription?.cancel()
         updateSubscription = nil
+        scopeSubscription?.cancel()
+        scopeSubscription = nil
         searchDebounce?.cancel()
         searchDebounce = nil
         liveRefresh?.cancel()
@@ -133,7 +150,8 @@ final class HistoryPanelViewModel: ObservableObject {
             loadedPageCount = 1
         }
         let windowLimit = min(max(pageSize, loadedPageCount * pageSize), Self.maximumRefreshWindow)
-        let page = await history.fetch(state.filter(), after: nil, limit: windowLimit)
+        let filter = state.filter()
+        let page = await history.fetch(filter, after: nil, limit: windowLimit)
         let storeAvailable = await history.isStoreAvailable()
         guard loadToken == token else { return }
 

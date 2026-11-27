@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import Observation
 import os
+import TableProConnectionLibrary
 import TableProModels
 import TableProSync
 import TableProSyncTransport
@@ -29,19 +30,29 @@ final class IOSSyncCoordinator {
         case superseded
     }
 
-    private enum RemoteApply {
+    private enum RemoteApply: Equatable {
         case saved
-        // Connections, groups and tags landed and the saved queries did not, so only the token waits.
-        case savedQueriesHeld
+        // Connections, groups and tags landed and records of these types did not, so only the token waits.
+        case held(Set<SyncRecordType>)
         case notSaved
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "Sync")
 
-    // Plus a kind for each field an older build pulled without reading.
-    static let readableRecordTypes = Set(
-        [SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder].map(\.rawValue)
-    ).union([ConnectionSyncField.sshRouteContentKind])
+    // Plus a kind for each field an older build pulled without reading. Projects and membership join only while a
+    // pull reads them.
+    static func readableRecordTypes(projectSyncWritable: Bool) -> Set<String> {
+        Set([SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder].map(\.rawValue))
+            .union(projectSyncWritable ? [SyncRecordType.project.rawValue] : [])
+            .union([ConnectionSyncField.sshRouteContentKind])
+            .union(SyncSchemaGate.membershipContentKinds(readsProjects: projectSyncWritable))
+    }
+
+    static var readableRecordTypes: Set<String> {
+        readableRecordTypes(projectSyncWritable: SyncSchemaGate.isProjectSyncWritable)
+    }
+
+    static let membershipUploadedKey = "com.TablePro.sync.projectMembershipUploaded"
 
     private(set) var status: SyncStatus
     private(set) var lastSyncDate: Date?
@@ -51,6 +62,8 @@ final class IOSSyncCoordinator {
     @ObservationIgnored private var sshFieldsReadFromCache: Set<UUID> = []
     @ObservationIgnored private let makeTransport: () -> any IOSSyncTransport
     @ObservationIgnored private let isEnabled: () -> Bool
+    @ObservationIgnored private let schema: SyncWritableSchema
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let networkMonitor: SyncNetworkMonitor?
     @ObservationIgnored private var transport: (any IOSSyncTransport)?
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
@@ -97,6 +110,9 @@ final class IOSSyncCoordinator {
     @ObservationIgnored var onUnreadableCopiesSettled: ((_ deleted: UnreadableCopies, _ listed: UnreadableCopies) -> Void)?
     @ObservationIgnored var getSavedQueries: (() -> SavedQueryContents?)?
     @ObservationIgnored var onSavedQueriesChanged: ((SavedQueryContents) -> Bool)?
+    // Nil while the projects file is not loaded, which holds pulled projects the way unloaded saved queries are held.
+    @ObservationIgnored var getProjects: (() -> [ConnectionProject]?)?
+    @ObservationIgnored var onProjectsChanged: (([ConnectionProject]) -> Bool)?
 
     private static var recordCacheDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -112,6 +128,8 @@ final class IOSSyncCoordinator {
         ),
         makeTransport: @escaping () -> any IOSSyncTransport = { CloudKitSyncEngine() },
         isEnabled: @escaping () -> Bool = { AppPreferences.isCloudSyncEnabled },
+        schema: SyncWritableSchema = .production,
+        defaults: UserDefaults = .standard,
         notificationCenter: NotificationCenter = .default,
         networkMonitor: SyncNetworkMonitor? = SyncNetworkMonitor(),
         activationClock: any Clock<Duration> = ContinuousClock(),
@@ -122,6 +140,8 @@ final class IOSSyncCoordinator {
         self.recordCache = recordCache
         self.makeTransport = makeTransport
         self.isEnabled = isEnabled
+        self.schema = schema
+        self.defaults = defaults
         self.networkMonitor = networkMonitor
         self.activationClock = activationClock
         self.status = isEnabled() ? metadata.zoneState.initialStatus : .disabled(.userDisabled)
@@ -452,6 +472,7 @@ final class IOSSyncCoordinator {
             }
         }
 
+        uploadMembershipOnceWritable()
         var pulled: PullResult
         downloadIsAheadInRun = false
         do {
@@ -472,7 +493,7 @@ final class IOSSyncCoordinator {
         guard generation == statusGeneration else { return nil }
         // A record the zone listed but this pull could not read is still there, saved after any held deletion.
         let live = Set((pulled.changedRecords.map(\.recordID) + pulled.unreadRecordIDs).map(\.recordName))
-        let (changes, settledDeletions) = settlingUnreadableCopies(PullChanges(pulled), live: live)
+        let (changes, settledDeletions) = settlingUnreadableCopies(pullChanges(pulled), live: live)
         let keptEdits = pendingEditRecordNames()
         let connCount = changes.changedConnections.count
         let groupCount = changes.changedGroups.count
@@ -498,7 +519,6 @@ final class IOSSyncCoordinator {
         recordCache.remove(pulled.deletedRecordIDs)
         settleLegacySSLModes(pulled: pulled.changedRecords)
         let heldDownload: SyncStepFailure? = applied == .saved ? nil : .pullNotSaved
-
         guard admission == .full else { return RunResult(admission: admission, failure: heldDownload) }
         // Turned off during the download, by the person or by the organization's managed configuration (core ADR
         // 0055), which takes effect with no setEnabled call: nothing more leaves the device.
@@ -517,7 +537,7 @@ final class IOSSyncCoordinator {
 
     private func fetchChanges(using transport: any IOSSyncTransport) async throws -> PullResult {
         // A delta never resends what an earlier build skipped, so a build that reads more types fetches everything once.
-        if metadata.adoptReadableRecordTypes(Self.readableRecordTypes) {
+        if metadata.adoptReadableRecordTypes(Self.readableRecordTypes(projectSyncWritable: isProjectSyncWritable())) {
             Self.logger.notice("This build reads record types an earlier one skipped, so it fetches everything once")
             metadata.saveToken(nil)
         }
@@ -651,6 +671,14 @@ final class IOSSyncCoordinator {
         addTombstone(tagId.uuidString, type: .tag)
     }
 
+    func markDirtyProject(_ projectId: UUID) {
+        markDirty([projectId.uuidString], type: .project)
+    }
+
+    func markDeletedProject(_ projectId: UUID) {
+        addTombstone(projectId.uuidString, type: .project)
+    }
+
     func markDirty(savedQueries queryIds: [UUID], folders folderIds: [UUID] = []) {
         markDirty(queryIds.map(\.uuidString), type: .favorite)
         markDirty(folderIds.map(\.uuidString), type: .favoriteFolder)
@@ -677,6 +705,7 @@ final class IOSSyncCoordinator {
         markDirty(state.connections.filter(\.participatesInSync).map(\.id.uuidString), type: .connection)
         markDirty(state.groups.map(\.id.uuidString), type: .group)
         markDirty(state.tags.map(\.id.uuidString), type: .tag)
+        markDirty((getProjects?() ?? []).map(\.id.uuidString), type: .project)
         guard let savedQueries = getSavedQueries?() else { return }
         let syncs = uploads(in: state.connections)
         markDirty(savedQueries.queries.filter { syncs($0.connectionId) }.map(\.id.uuidString), type: .favorite)
@@ -741,17 +770,112 @@ final class IOSSyncCoordinator {
 
     private func applyRemoteChanges(_ remote: PullChanges) -> RemoteApply {
         guard let state = getCurrentState?() else { return .notSaved }
+        // A project deleted on another device leaves its groups and connections in no project, as a delete here does.
         let merged = mergeConnections(local: state.connections, remote: remote)
-        let connectionsSaved = onConnectionsChanged?(merged.connections) ?? true
+        // A group deleted on another device hands its project to what it held here, as a delete here does. Once
+        // records carry a project, a record this pull brought keeps the one it was sent with.
+        let readsProjects = isProjectSyncWritable()
+        let kept = ConnectionLibraryEditing.keepingProjects(
+            ofGroupsRemovedFrom: state.groups,
+            connectionsBefore: state.connections,
+            groups: mergeGroups(local: state.groups, remote: remote),
+            connections: merged.connections,
+            connectionsWithOwnProject: readsProjects ? Set(remote.changedConnections.map(\.id)) : [],
+            groupsWithOwnProject: readsProjects ? Set(remote.changedGroups.map(\.id)) : []
+        )
+        let cleared = ConnectionLibraryEditing.clearingProjects(
+            remote.deletedProjectIDs,
+            groups: kept.groups,
+            connections: kept.connections
+        )
+        let connectionsSaved = onConnectionsChanged?(cleared.connections) ?? true
         // Marked read only once saved, so a pull whose save failed reads the cache again next time.
         if connectionsSaved { sshFieldsReadFromCache.formUnion(merged.adoptedFromCache) }
-        let groupsSaved = onGroupsChanged?(mergeGroups(local: state.groups, remote: remote)) ?? true
+        let groupsSaved = onGroupsChanged?(cleared.groups) ?? true
         let tagsSaved = onTagsChanged?(mergeTags(local: state.tags, remote: remote)) ?? true
         guard connectionsSaved, groupsSaved, tagsSaved else {
             Self.logger.error("A pulled library change was not saved, so the change token is held")
             return .notSaved
         }
-        return applyRemoteSavedQueries(remote.savedQueries) ? .saved : .savedQueriesHeld
+        var held: Set<SyncRecordType> = []
+        if !applyRemoteProjects(remote) { held.insert(.project) }
+        if !applyRemoteSavedQueries(remote.savedQueries) { held.formUnion([.favorite, .favoriteFolder]) }
+        return held.isEmpty ? .saved : .held(held)
+    }
+
+    private func applyRemoteProjects(_ remote: PullChanges) -> Bool {
+        guard !remote.changedProjects.isEmpty || !remote.deletedProjectIDs.isEmpty else { return true }
+        guard let local = getProjects?() else {
+            Self.logger.error("Projects arrived while the stored ones are not loaded, so the change token is held")
+            return false
+        }
+        let merged = merge(
+            local: local,
+            changed: remote.changedProjects,
+            deleted: remote.deletedProjectIDs,
+            dirtyIds: metadata.dirtyIds(for: .project),
+            tombstonedIds: tombstonedIds(for: .project)
+        )
+        guard onProjectsChanged?(merged) ?? true else {
+            Self.logger.error("Pulled projects were not saved, so the change token is held")
+            return false
+        }
+        return true
+    }
+
+    private func isProjectSyncWritable() -> Bool {
+        schema.writesProjects
+    }
+
+    private func pullChanges(_ pulled: PullResult) -> PullChanges {
+        PullChanges(pulled, over: getCurrentState?(), projectSyncWritable: isProjectSyncWritable())
+    }
+
+    // Membership made while the fields were not in Production never went up: a push carried the record without it
+    // and cleared the mark. So the first run that can write it sends every project and member once, before a pull
+    // that would otherwise read the server's empty field over them.
+    private func uploadMembershipOnceWritable() {
+        guard isProjectSyncWritable(), !defaults.bool(forKey: Self.membershipUploadedKey) else { return }
+        guard let state = getCurrentState?(), let projects = getProjects?() else { return }
+        guard adoptCachedMembership(in: state) else { return }
+        markDirty(projects.map(\.id.uuidString), type: .project)
+        markDirty(
+            state.connections.filter { $0.participatesInSync && $0.projectId != nil }.map(\.id.uuidString),
+            type: .connection
+        )
+        markDirty(state.groups.filter { $0.projectId != nil }.map(\.id.uuidString), type: .group)
+        defaults.set(true, forKey: Self.membershipUploadedKey)
+    }
+
+    // A copy in no project whose cached record names one another device wrote takes it, once, before the first
+    // push that writes the field. Otherwise an unrelated edit waiting to go up reads as removing that project.
+    // After this run, no project here against a project in the cache is a removal made on this device.
+    private func adoptCachedMembership(in state: LibraryState) -> Bool {
+        var connections = state.connections
+        var adoptedConnections = 0
+        for index in connections.indices
+            where connections[index].participatesInSync && connections[index].projectId == nil && connections[index].groupId == nil {
+            guard let cached = recordCache.projectId(ofConnection: connections[index].id) else { continue }
+            connections[index].projectId = cached
+            adoptedConnections += 1
+        }
+        var groups = state.groups
+        var adoptedGroups = 0
+        for index in groups.indices where groups[index].projectId == nil && groups[index].parentId == nil {
+            guard let cached = recordCache.projectId(ofGroup: groups[index].id) else { continue }
+            groups[index].projectId = cached
+            adoptedGroups += 1
+        }
+        guard adoptedConnections == 0 || onConnectionsChanged?(connections) == true,
+              adoptedGroups == 0 || onGroupsChanged?(groups) == true
+        else {
+            Self.logger.error("The projects other devices assigned were not saved, so membership waits for the next run")
+            return false
+        }
+        if adoptedConnections + adoptedGroups > 0 {
+            Self.logger.info("Took the project of \(adoptedConnections + adoptedGroups, privacy: .public) records from their cached copies")
+        }
+        return true
     }
 
     // Read after the connection callbacks ran, so a connection deleted elsewhere has already taken its records.
@@ -879,7 +1003,7 @@ final class IOSSyncCoordinator {
         guard !rebased.isEmpty else { return true }
         let keptEdits = pendingEditRecordNames()
         let pulled = PullResult(changedRecords: rebased, deletedRecordIDs: [], newToken: nil)
-        let applied = applyRemoteChanges(PullChanges(pulled))
+        let applied = applyRemoteChanges(pullChanges(pulled))
         guard applied != .notSaved else {
             Self.logger.error("A merged save was not applied here, so the next pull brings it")
             return false
@@ -891,20 +1015,24 @@ final class IOSSyncCoordinator {
     // The cache holds only what the local copy holds: a copy that kept its edit keeps the record the edit
     // was made on, so its push is refused and merged instead of restating fields it never changed.
     private func cacheRecords(_ records: [CKRecord], takenBy applied: RemoteApply, keptEdits: Set<String>) {
-        let savedQueryTypes = [SyncRecordType.favorite, .favoriteFolder].map(\.rawValue)
+        var heldTypes: Set<String> = []
+        if case .held(let types) = applied { heldTypes = Set(types.map(\.rawValue)) }
         // A record whose copy here this device cannot read was not taken, so it stays out until a build that reads it.
         let unreadable = unreadableCopies().recordNames
+        // A project the pull skipped while project sync is off stays out until the full fetch that applies it.
+        let readsProjects = isProjectSyncWritable()
         recordCache.store(records.filter { record in
             !keptEdits.contains(record.recordID.recordName)
                 && !unreadable.contains(record.recordID.recordName)
-                && (applied == .saved || !savedQueryTypes.contains(record.recordType))
+                && !heldTypes.contains(record.recordType)
+                && (readsProjects || record.recordType != SyncRecordType.project.rawValue)
         })
     }
 
     // With no cached record there is no base to keep, and the pulled one serves as well as any.
     private func pendingEditRecordNames() -> Set<String> {
         var names: Set<String> = []
-        for type in [SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder] {
+        for type in [SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder, .project] {
             for id in metadata.dirtyIds(for: type).union(tombstonedIds(for: type)) {
                 let name = type.recordName(for: id)
                 if recordCache.holdsRecord(named: name) {
@@ -927,13 +1055,13 @@ final class IOSSyncCoordinator {
         for connection in state.connections
             where connection.participatesInSync && dirtyConnIDs.contains(connection.id.uuidString) {
             let base = cachedRecord(.connection, id: connection.id.uuidString, in: zoneID)
-            edits.append(SyncRecordMapper.edit(connection, base: base, zoneID: zoneID))
+            edits.append(SyncRecordMapper.edit(connection, base: base, zoneID: zoneID, schema: schema))
         }
 
         let dirtyGroupIDs = metadata.dirtyIds(for: .group)
         for group in state.groups where dirtyGroupIDs.contains(group.id.uuidString) {
             let base = cachedRecord(.group, id: group.id.uuidString, in: zoneID)
-            edits.append(SyncRecordMapper.edit(group, base: base, zoneID: zoneID))
+            edits.append(SyncRecordMapper.edit(group, base: base, zoneID: zoneID, schema: schema))
         }
 
         let dirtyTagIDs = metadata.dirtyIds(for: .tag)
@@ -942,7 +1070,13 @@ final class IOSSyncCoordinator {
             edits.append(SyncRecordMapper.edit(tag, base: base, zoneID: zoneID))
         }
 
-        var deletedTypes: [SyncRecordType] = [.connection, .group, .tag]
+        let dirtyProjectIDs = metadata.dirtyIds(for: .project)
+        for project in getProjects?() ?? [] where dirtyProjectIDs.contains(project.id.uuidString) {
+            let base = cachedRecord(.project, id: project.id.uuidString, in: zoneID)
+            edits.append(SyncRecordMapper.edit(project, base: base, zoneID: zoneID, schema: schema))
+        }
+
+        var deletedTypes: [SyncRecordType] = [.connection, .group, .tag, .project]
         if let savedQueries {
             edits += savedQueryEdits(savedQueries, connections: state.connections, in: zoneID)
             deletedTypes += [.favorite, .favoriteFolder]

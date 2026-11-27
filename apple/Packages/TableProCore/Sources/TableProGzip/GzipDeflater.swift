@@ -67,6 +67,15 @@ public final class GzipDeflater {
         }
     }
 
+    // A sync flush writes out everything taken so far and keeps the window, so the bytes written are the
+    // stream's exact size up to here at the cost of a few bytes, not of the compression ratio.
+    public func flush(into sink: (UnsafeRawBufferPointer) throws -> Void) throws {
+        guard !finished else { throw GzipError.compressionFailed }
+        stream.pointee.next_in = nil
+        stream.pointee.avail_in = 0
+        try drain(flush: Z_SYNC_FLUSH, into: sink)
+    }
+
     public func finish(into sink: (UnsafeRawBufferPointer) throws -> Void) throws {
         guard !finished else { return }
         stream.pointee.next_in = nil

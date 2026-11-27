@@ -33,7 +33,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `scripts/engine-glyphs.py`: writes `src/TablePro.App/Resources/EngineGlyphs.xaml` from the macOS app's engine artwork. Run it after that artwork changes or an engine is added.
 - `scripts/package-assets.py`: writes the MSIX logos in `src/TablePro.App/Assets` from the app icon. Run it after the icon changes.
 - `scripts/editor-schemes.py`: writes `src/TablePro.Editor.Model/ColorSchemes.Themes.cs`, the editor's color schemes, from the macOS app's built-in themes. Run it after a theme changes.
-- `RELEASING.md`: how a release is built, signed, published and sent to winget.
+- `RELEASING.md`: how a release is built, signed, published and sent to winget. `CHANGELOG.md` and `changelog.d/`: the towncrier notes (`.claude/rules/changelog.md`).
 - `docs/decisions/`: the decisions only the Windows app makes.
 - The core's side of the boundary: `core/crates/ffi` (`core/ARCHITECTURE.md`, Bindings).
 
@@ -59,6 +59,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `QueryEvent.Finished.Transaction` is the transaction the editor's connection is left in. A session's `Health` is waited on with `WaitForHealthChangeAsync`, which returns once it differs from the one passed in.
 - The app starts the core with `TableProCore.CreateWithSystemSecrets`, so the core keeps secrets in Credential Manager itself. `ISecretStore` is for tests and hosts with a store of their own; the core calls it on a thread of its own.
 - `TableProCore.Library` reads and writes the saved connections in the storage directory the configuration names. A list the app shows is rebuilt from `GetSnapshotAsync` after each change.
+- `ConnectionLibrary.GetSnapshotAsync(projectId)` is what one project shows, with its own `Recent`; the call without one is the whole library, for a reader by id. `SavedConnection.ProjectId` and `ConnectionGroup.ProjectId` are the project the core says the entry shows in. `CreateProjectAsync`, `RenameProjectAsync`, `SetProjectColorAsync`, `MoveProjectsAsync`, `DeleteProjectAsync`, `MoveToProjectAsync` and `MoveGroupsToProjectAsync` write; `QueryHistory.SearchAsync` takes a project, `DeleteForConnectionAsync` removes a deleted connection's runs, and `McpServer.SetActiveProject` tells the server the project the app shows (`docs/decisions/0027-connection-projects.md`).
 - A result share's columns start from `ResultSet.GetShareMaskingAsync` (what the detectors see), `GetShareSummaryAsync` says what a share with the sheet's choices sends and `GetSharePreviewAsync` shows it masked as sent; `CreateShareAsync` takes the same choices. Nothing else masks (`docs/decisions/0010-data-masking.md`).
 - `TableProCore.Assistant` keeps provider keys in the core's store (`HasKeyAsync`, `SetKeyAsync`; a key never comes back), lists models, writes a conversation's system prompt from a session's catalog (`StartConversationAsync`) and returns an `AiReply` at once, whose `ReadEventsAsync` streams the text and ends `Finished`, `Failed` or `Stopped`. A saved connection under `AiPolicy.Never` is refused with `ai.blocked`; asking under Ask is the app's (`docs/decisions/0014-ai-assistant.md`).
 - `TableProCore.OpenMcpServer` gives the app's one `McpServer`: `Apply` runs it while Settings has it on, `Status` and `Clients` change through `ReadChangesAsync`, and `GetAccessTokenAsync` and `RegenerateTokenAsync` read and replace the token in Credential Manager. Its tools reach the saved connections `ConnectAsync` opened; the core calls `IMcpAppHost` on a thread it lets block to open a connection or ask about a client's write. `SavedConnection.ExternalAccess` is the connection's External clients level (`docs/decisions/0019-mcp-server-and-command-line.md`).
@@ -107,9 +108,10 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 ## Every change
 
 1. **Tests.** Behavior of the interop library gets a test in `tests/` against a real database file. Behavior of the core gets its Rust test in `core/crates/ffi`.
-2. **Strings.** Every word the app shows is in `src/TablePro.App/Strings/en-US/Resources.resw`: `x:Uid` in XAML, `Strings.Get`, `Format` or `Plural` in the app, `HostStrings` in a control. A count takes `Plural` and `{n:N0}`, never a comparison with one, and a join of words is a string too (`docs/decisions/0021-localization.md`). `LocalizationTests` fails on the common shapes; a literal a helper passes on to a control is the review's to catch.
-3. **Code style.** `.editorconfig` and the analyzers; a warning fails the build. A comment is one `//` line that says why, never what: no XML doc and no multi-line block.
-4. **Commits and pull requests** follow the root rules, with scope `windows` or `windows-<area>`.
+2. **Changelog.** A user-visible change adds `changelog.d/<PR>.<type>.md`; only a release PR edits `CHANGELOG.md` (`.claude/rules/changelog.md`).
+3. **Strings.** Every word the app shows is in `src/TablePro.App/Strings/en-US/Resources.resw`: `x:Uid` in XAML, `Strings.Get`, `Format` or `Plural` in the app, `HostStrings` in a control. A count takes `Plural` and `{n:N0}`, never a comparison with one, and a join of words is a string too (`docs/decisions/0021-localization.md`). `LocalizationTests` fails on the common shapes; a literal a helper passes on to a control is the review's to catch.
+4. **Code style.** `.editorconfig` and the analyzers; a warning fails the build. A comment is one `//` line that says why, never what: no XML doc and no multi-line block.
+5. **Commits and pull requests** follow the root rules, with scope `windows` or `windows-<area>`.
 
 ## CI
 

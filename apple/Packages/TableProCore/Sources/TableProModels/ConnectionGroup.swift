@@ -8,6 +8,8 @@ public struct ConnectionGroup: Identifiable, Codable, Hashable, Sendable {
     /// An SF Symbol the user picked to draw instead of the folder. Nil draws the folder.
     public var iconName: String?
     public var parentId: UUID?
+    // Counts only on a top-level group. Its subtree and their connections follow it.
+    public var projectId: UUID?
 
     public init(
         id: UUID = UUID(),
@@ -15,7 +17,8 @@ public struct ConnectionGroup: Identifiable, Codable, Hashable, Sendable {
         sortOrder: Int = 0,
         color: ConnectionColor = .none,
         iconName: String? = nil,
-        parentId: UUID? = nil
+        parentId: UUID? = nil,
+        projectId: UUID? = nil
     ) {
         self.id = id
         self.name = name
@@ -23,10 +26,11 @@ public struct ConnectionGroup: Identifiable, Codable, Hashable, Sendable {
         self.color = color
         self.iconName = iconName
         self.parentId = parentId
+        self.projectId = projectId
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, sortOrder, color, iconName, parentId
+        case id, name, sortOrder, color, iconName, parentId, projectId
     }
 
     public init(from decoder: Decoder) throws {
@@ -37,5 +41,6 @@ public struct ConnectionGroup: Identifiable, Codable, Hashable, Sendable {
         color = try container.decodeIfPresent(ConnectionColor.self, forKey: .color) ?? .none
         iconName = try container.decodeIfPresent(String.self, forKey: .iconName)
         parentId = try container.decodeIfPresent(UUID.self, forKey: .parentId)
+        projectId = try container.decodeIfPresent(UUID.self, forKey: .projectId)
     }
 }

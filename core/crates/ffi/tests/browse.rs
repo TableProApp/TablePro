@@ -566,7 +566,14 @@ async fn a_trigger_reads_back_and_a_function_is_unsupported_on_sqlite() {
     let CoreError::Failed { info } = function else {
         unreachable!("a function was read: {function:?}")
     };
-    assert_eq!(info.codes, ["operation.driver", "driver.unsupported"]);
+    assert_eq!(
+        info.codes,
+        [
+            "operation.driver",
+            "driver.unsupported",
+            "unsupported.object_definitions"
+        ]
+    );
     assert_eq!(key.code(), "ffi.no_definition");
 }
 
@@ -581,7 +588,7 @@ async fn an_editor_moves_to_a_database_only_where_the_engine_switches_one() {
     editor.close().await.unwrap();
     session.close().await.unwrap();
 
-    assert_eq!(refused.code(), "driver.unsupported");
+    assert_eq!(refused.code(), "unsupported.database_switching");
 }
 
 const REFERENCES: &str = "CREATE TABLE parent (code TEXT NOT NULL, region INTEGER NOT NULL, \
