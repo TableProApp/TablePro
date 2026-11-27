@@ -53,7 +53,7 @@ public enum SyncRetryPolicy: Sendable {
             backoff = (base: 300, cap: 3_600)
         case .busy:
             backoff = (base: 30, cap: 900)
-        case .blocked, .offline, .recordsRejected, .pullNotSaved, .unexpected:
+        case .blocked, .offline, .waitingForKeychain, .recordsRejected, .pullNotSaved, .unexpected:
             return nil
         }
         let doublings = min(max(0, consecutiveFailures - 1), 16)

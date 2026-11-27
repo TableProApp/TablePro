@@ -47,6 +47,9 @@ nonisolated enum SyncEngineRules {
             return .offline
         case "sync.icloud.throttled", "sync.state.busy":
             return .busy
+        // The keychain holds the state file's anchor; the core starts the engine again once it answers.
+        case "sync.state.anchor_unsettled", "sync.device_store.locked":
+            return .waitingForKeychain
         case "sync.adapter.store":
             return .pullNotSaved
         case "sync.icloud.account_changed", "sync.cancelled":

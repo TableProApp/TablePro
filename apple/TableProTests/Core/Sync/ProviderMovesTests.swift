@@ -669,6 +669,7 @@ private final class CoordinatedEngine: SyncEngine, SyncMoveEngine, @unchecked Se
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws {}
     func uploadAgain() async throws {}
     func icloudAccount() -> String? { nil }
+    func serviceAccount() -> String? { nil }
     func flushLegacyMarks() async throws {}
     func keyState() async throws -> KeyStateInfo { .approved(av: 1, keyDevice: "DEVICE") }
     func planMoveToService() async throws -> MovePlanInfo { MovePlanInfo(records: 1, stayingBehind: 0, secretsToSeal: 0) }

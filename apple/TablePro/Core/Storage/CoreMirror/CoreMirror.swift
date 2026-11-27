@@ -8,7 +8,7 @@ import Foundation
 import os
 import TableProLogRedaction
 
-// A Swift store the previous stable reads, and the core's copy of it in history.db, each record under its own id
+// A Swift store the previous stable reads, and the core's copy of it in a query store, each record under its own id
 // (core ADR 0010, slices 3 and 9). The Swift store stays what this build reads and writes first; every write
 // reaches the core after it, and a push compares both sides record by record with what they held when they last
 // agreed, so a change on either side, the previous stable's included, goes to the other.

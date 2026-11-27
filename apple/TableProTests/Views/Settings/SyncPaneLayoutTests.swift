@@ -7,12 +7,12 @@ import Testing
 struct SyncPaneLayoutTests {
     private static let everyProvider = PersonalSyncChoices(providers: [.off, .icloud, .tableproSync], forced: nil, locked: false)
 
-    private static func engine(_ provider: SyncProviderTag?, _ phase: SyncPhaseTag = .idle) -> SyncStatusInfo {
+    private static func engine(_ provider: SyncProviderTag?, _ phase: SyncPhaseTag = .idle, problem: String? = nil) -> SyncStatusInfo {
         SyncStatusInfo(
             provider: provider,
             phase: phase,
             lastPassMs: nil,
-            problem: nil,
+            problem: problem,
             waitingApprovals: 0,
             conflicts: 0,
             held: 0,
@@ -185,6 +185,16 @@ struct SyncPaneLayoutTests {
             #expect(layout.serviceStatus == status, "\(phase)")
             #expect(layout.asksNewIdentity == (phase == .newIdentity), "\(phase)")
         }
+    }
+
+    @Test("A keychain that has not answered yet reads as a wait on TablePro Sync, whatever the phase says")
+    func keychainWaitIsARetry() {
+        for problem in ["sync.state.anchor_unsettled", "sync.device_store.locked"] {
+            let layout = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, .unavailable, problem: problem))
+            #expect(layout.serviceStatus == .waiting, "\(problem)")
+        }
+        let failed = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, .unavailable, problem: "sync.server"))
+        #expect(failed.serviceStatus == .unavailable)
     }
 
     @Test("An iCloud account switch asks Move my data or Start empty in place of the status")

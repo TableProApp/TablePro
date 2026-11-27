@@ -8,9 +8,9 @@ import os
 import TableProFFI
 import TableProLogRedaction
 
-// The core's history.db (core ADR 0060): the saved queries and their folders, the favourite tables and databases,
-// the table folders and the history, in one file under `TablePro/Core/`, on the core every store there shares.
-// Opened on first use; a failed open is tried again on the next call.
+// The core's query stores under `TablePro/Core/`, on the core every store there shares (core ADR 0060 as amended): the
+// history in its own folder, and the saved queries and their folders, the favourite tables and databases and the table
+// folders in `saved_queries.db`. Each opens on first use; a failed open is tried again on the next call.
 internal actor CoreHistoryDatabase {
     internal static let shared = CoreHistoryDatabase(host: .shared)
 
@@ -18,6 +18,7 @@ internal actor CoreHistoryDatabase {
 
     private let host: CoreStoreHost
     private var store: QueryHistoryStore?
+    private var savedQueryStores: SavedQueryDatabaseStore?
 
     nonisolated internal var folder: URL { host.folder }
 
@@ -46,16 +47,28 @@ internal actor CoreHistoryDatabase {
         }
     }
 
+    private func savedQueryDatabase() async throws -> SavedQueryDatabaseStore {
+        if let savedQueryStores { return savedQueryStores }
+        do {
+            let opened = try await host.core().savedQueryDatabase()
+            savedQueryStores = opened
+            return opened
+        } catch {
+            Self.logger.error("The core's saved queries store did not open: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            throw error
+        }
+    }
+
     internal func savedQueries() async throws -> SavedQueryStore {
-        try await history().savedQueries()
+        try await savedQueryDatabase().savedQueries()
     }
 
     internal func favourites() async throws -> FavouriteStore {
-        try await history().favourites()
+        try await savedQueryDatabase().favourites()
     }
 
     internal func tableFolders() async throws -> TableFolderStore {
-        try await history().tableFolders()
+        try await savedQueryDatabase().tableFolders()
     }
 }
 
@@ -68,7 +81,7 @@ internal func refusingOutdated(_ work: () async throws -> Void) async throws {
     }
 }
 
-// Nothing in history.db is a secret, and a core opened for that file alone keeps none.
+// Nothing in the query stores is a secret, and a core opened for them alone keeps none.
 private final class NoHistorySecrets: HostSecrets, Sendable {
     func load(connectionId: String, kind: SecretKindTag) throws -> String? { nil }
 

@@ -15,6 +15,10 @@ public enum SyncError: Equatable, Sendable {
     /// iCloud asked TablePro to slow down; the next attempt waits for the time it named.
     case busy
 
+    /// The device's keychain could not give the sync state's keys yet, as while the device is locked. The core tries
+    /// again on its own once it answers.
+    case waitingForKeychain
+
     /// iCloud refused these items one by one. They stay on the device and go again on the next run;
     /// everything else synced.
     case recordsRejected(count: Int)

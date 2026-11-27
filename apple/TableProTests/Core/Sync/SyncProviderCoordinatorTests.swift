@@ -31,6 +31,7 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         // As the core's service opened Off answers every provider call.
         var refusesProviderCalls = false
         var icloudAccount: String?
+        var serviceAccount: String?
         var uploadsAgain = 0
         // How many host changes the engine held at each flush.
         var flushes: [Int] = []
@@ -106,6 +107,10 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         read { $0.icloudAccount }
     }
 
+    func serviceAccount() -> String? {
+        read { $0.serviceAccount }
+    }
+
     func flushLegacyMarks() async throws {
         let flush = state.withLockUnchecked { state in
             state.flushes.append(state.hostChanges.count)
@@ -135,6 +140,7 @@ private final class Fixture {
     var enabled = true
     var settings = SyncSettings.default
     var keptAccounts: [String?] = []
+    var keptServiceAccounts: [String?] = []
     var policy: DisableReason?
     var opens = true
     var listener: (any SyncListener)?
@@ -150,6 +156,7 @@ private final class Fixture {
         let host = SyncEngineHost(
             transport: transport,
             keepICloudAccount: { [unowned self] in keptAccounts.append($0) },
+            keepServiceAccount: { [unowned self] in keptServiceAccounts.append($0) },
             signInChanges: signInChanges.eraseToAnyPublisher(),
             open: { [unowned self] provider, listener in
                 openAttempts.append(provider)
@@ -807,6 +814,36 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.keptAccounts.last == "_alice")
     }
 
+    @Test("The TablePro Sync sign-in the engine follows is kept when it opens and after each status change")
+    func theEnginesServiceAccountIsKept() async throws {
+        let fixture = try Fixture()
+        fixture.engine.update { $0.serviceAccount = "https://api.tablepro.app acct_a" }
+
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        #expect(fixture.keptServiceAccounts.last == "https://api.tablepro.app acct_a")
+
+        fixture.engine.update { $0.serviceAccount = "https://api.tablepro.app acct_b" }
+        fixture.listener?.statusChanged()
+        try await waitUntil { fixture.keptServiceAccounts.last == "https://api.tablepro.app acct_b" }
+    }
+
+    @Test("The open hands the core the sign-in it kept and this Mac's route publisher")
+    func openConfigCarriesTheKeptAccounts() {
+        let publisher = UUID()
+        let config = SyncEngineHost.openConfig(
+            provider: .tableproSync,
+            settings: .default,
+            icloudAccount: "_alice",
+            serviceAccount: "https://api.tablepro.app acct_a",
+            routePublisher: publisher
+        )
+
+        #expect(config.icloudAccount == "_alice")
+        #expect(config.serviceAccount == "https://api.tablepro.app acct_a")
+        #expect(config.routePublisher == publisher.uuidString)
+    }
+
     @Test("A pass whose categories the engine refused sends nothing, so a category turned off never goes up")
     func refusedCategoriesStopThePass() async throws {
         let fixture = try Fixture()
@@ -1024,6 +1061,8 @@ struct SyncProviderCoordinatorStatusTests {
             "sync.icloud.quota_exceeded": .blocked(.storageFull),
             "sync.icloud.network": .offline,
             "sync.icloud.throttled": .busy,
+            "sync.state.anchor_unsettled": .waitingForKeychain,
+            "sync.device_store.locked": .waitingForKeychain,
             "sync.adapter.store": .pullNotSaved,
             "sync.unimplemented": .blocked(.unavailable),
             "sync.icloud.account_changed": nil,

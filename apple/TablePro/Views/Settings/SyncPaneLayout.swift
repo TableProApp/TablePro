@@ -111,7 +111,7 @@ struct SyncPaneLayout: Equatable {
                 : (refused || !serviceLicensed ? nil : Self.serviceNotice(inputs))
             showsICloudStatus = false
             let live = serviceLicensed && !newIdentity && !refused
-            let status = live ? Self.serviceStatus(inputs.engine?.phase) : nil
+            let status = live ? Self.serviceStatus(inputs.engine?.phase, problem: inputs.engine?.problem) : nil
             serviceStatus = status
             showsLastSynced = live
             offersSyncNow = live && status != .syncing
@@ -175,7 +175,11 @@ struct SyncPaneLayout: Equatable {
         return nil
     }
 
-    private static func serviceStatus(_ phase: SyncPhaseTag?) -> SyncServiceStatus {
+    private static func serviceStatus(_ phase: SyncPhaseTag?, problem: String?) -> SyncServiceStatus {
+        // A keychain that has not answered yet is a wait the core retries on its own, never a failure.
+        if let problem, SyncEngineRules.error(forProblem: problem) == .waitingForKeychain {
+            return .waiting
+        }
         switch phase {
         case .idle: .upToDate
         case .syncing: .syncing

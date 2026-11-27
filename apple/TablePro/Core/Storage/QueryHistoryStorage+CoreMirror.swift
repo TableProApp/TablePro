@@ -12,6 +12,14 @@ internal struct CoreHistoryRow: Equatable, Sendable {
     let rowCount: Int
     let wasSuccessful: Bool
     let errorMessage: String?
+    var databaseName = ""
+    var schemaName: String?
+    var source: QueryHistorySource?
+    var statementType: QueryHistoryStatementType?
+    var firstRowTime: TimeInterval?
+    var serverTime: TimeInterval?
+    // The statement's shape as this build's grammar reads it; 0 when it was never read.
+    var shapeHash: Int64 = 0
 }
 
 internal extension QueryHistoryStorage {
@@ -44,7 +52,8 @@ internal extension QueryHistoryStorage {
         guard let db, !ids.isEmpty else { return [] }
         let sql = """
             SELECT id, query, connection_id, database_type, executed_at, execution_time, row_count,
-                   was_successful, error_message
+                   was_successful, error_message, database_name, schema_name, source, statement_type,
+                   first_row_time, server_time, shape_hash
             FROM history WHERE id IN (\(Array(repeating: "?", count: ids.count).joined(separator: ",")));
             """
         var statement: OpaquePointer?
@@ -73,10 +82,22 @@ internal extension QueryHistoryStorage {
                 executionTime: sqlite3_column_double(statement, 5),
                 rowCount: Int(sqlite3_column_int64(statement, 6)),
                 wasSuccessful: sqlite3_column_int(statement, 7) != 0,
-                errorMessage: sqlite3_column_text(statement, 8).map { String(cString: $0) }
+                errorMessage: sqlite3_column_text(statement, 8).map { String(cString: $0) },
+                databaseName: sqlite3_column_text(statement, 9).map { String(cString: $0) } ?? "",
+                schemaName: sqlite3_column_text(statement, 10).map { String(cString: $0) },
+                source: sqlite3_column_text(statement, 11).flatMap { QueryHistorySource(rawValue: String(cString: $0)) },
+                statementType: sqlite3_column_text(statement, 12)
+                    .flatMap { QueryHistoryStatementType(rawValue: String(cString: $0)) },
+                firstRowTime: Self.optionalDouble(statement, 13),
+                serverTime: Self.optionalDouble(statement, 14),
+                shapeHash: sqlite3_column_int64(statement, 15)
             ))
         }
         return rows
+    }
+
+    private static func optionalDouble(_ statement: OpaquePointer?, _ column: Int32) -> Double? {
+        sqlite3_column_type(statement, column) == SQLITE_NULL ? nil : sqlite3_column_double(statement, column)
     }
 
     // The runs this store and the core's copy both held when they last agreed. It lives in this file, so a damaged

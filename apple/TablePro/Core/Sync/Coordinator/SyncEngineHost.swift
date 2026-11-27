@@ -18,6 +18,7 @@ nonisolated protocol SyncEngine: AnyObject, Sendable {
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws
     func uploadAgain() async throws
     func icloudAccount() -> String?
+    func serviceAccount() -> String?
     func flushLegacyMarks() async throws
 }
 
@@ -34,6 +35,9 @@ final class SyncEngineHost {
     // The iCloud account whose state file the engine used last, handed back at the next open so a switch made while the
     // app was closed removes that account's file. Its own key: `lastAccountId` is the downgrade mirror's.
     nonisolated static let icloudAccountKey = "com.TablePro.sync.engineICloudAccount"
+    // The TablePro Sync sign-in whose state file the engine used last, handed back at the next open so another account
+    // or server waits for the person's choice instead of taking this one's state.
+    nonisolated static let serviceAccountKey = "com.TablePro.sync.engineServiceAccount"
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SyncEngineHost")
 
     let transport: CloudKitCoreTransport
@@ -43,6 +47,7 @@ final class SyncEngineHost {
     let reopened = PassthroughSubject<Void, Never>()
     private let open: @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
     private let keepICloudAccount: @MainActor (String?) -> Void
+    private let keepServiceAccount: @MainActor (String?) -> Void
     private typealias Opening = (provider: SyncProviderTag, signIn: Int, task: Task<any SyncEngine, any Error>)
     private var opening: Opening?
     private var opened: (provider: SyncProviderTag, engine: any SyncEngine)?
@@ -60,11 +65,13 @@ final class SyncEngineHost {
     init(
         transport: CloudKitCoreTransport,
         keepICloudAccount: @escaping @MainActor (String?) -> Void = { _ in },
+        keepServiceAccount: @escaping @MainActor (String?) -> Void = { _ in },
         signInChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher(),
         open: @escaping @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
     ) {
         self.transport = transport
         self.keepICloudAccount = keepICloudAccount
+        self.keepServiceAccount = keepServiceAccount
         self.open = open
         signInObserver = signInChanges.sink { [weak self] in self?.signInChanged() }
     }
@@ -166,6 +173,7 @@ final class SyncEngineHost {
             let engine = try await open(provider, listener)
             if let self, signIn == started {
                 opened = (provider, engine)
+                keepServiceAccount(engine.serviceAccount())
             }
             return engine
         }
@@ -181,6 +189,10 @@ final class SyncEngineHost {
         if keys {
             keyChanges.send()
         } else {
+            // The sign-in the state file follows changes once the person chooses for another account.
+            if let opened {
+                keepServiceAccount(opened.engine.serviceAccount())
+            }
             statusChanges.send()
         }
     }
@@ -189,13 +201,17 @@ final class SyncEngineHost {
     nonisolated static func openConfig(
         provider: SyncProviderTag,
         settings: SyncSettings,
-        icloudAccount: String?
+        icloudAccount: String?,
+        serviceAccount: String? = nil,
+        routePublisher: UUID? = nil
     ) -> SyncConfig {
         SyncConfig(
             platform: .macos,
             provider: provider,
             categories: SyncProviderCoordinator.categories(settings),
-            icloudAccount: icloudAccount
+            icloudAccount: icloudAccount,
+            serviceAccount: serviceAccount,
+            routePublisher: routePublisher?.uuidString
         )
     }
 
@@ -218,6 +234,10 @@ final class SyncEngineHost {
                 guard defaults.string(forKey: icloudAccountKey) != account else { return }
                 defaults.set(account, forKey: icloudAccountKey)
             },
+            keepServiceAccount: { account in
+                guard defaults.string(forKey: serviceAccountKey) != account else { return }
+                defaults.set(account, forKey: serviceAccountKey)
+            },
             signInChanges: AccountServices.shared.events.map { _ in }.eraseToAnyPublisher(),
             open: { provider, listener in
                 let settings = AppSettingsStorage.shared.loadSync()
@@ -226,7 +246,9 @@ final class SyncEngineHost {
                     config: openConfig(
                         provider: provider,
                         settings: settings,
-                        icloudAccount: defaults.string(forKey: icloudAccountKey)
+                        icloudAccount: defaults.string(forKey: icloudAccountKey),
+                        serviceAccount: defaults.string(forKey: serviceAccountKey),
+                        routePublisher: ConnectionStorage.shared.sshRoutePublisherId
                     ),
                     account: account,
                     cloudkit: transport,

@@ -9,10 +9,11 @@ import TableProFFI
 import TableProLogRedaction
 
 // The history in `query_history.db` and the core's, entry for entry under the Mac's ids (core ADR 0052, History).
-// The Mac's store keeps what only this device needs (the database, the source, plan and Rewind snapshots, the
-// insights), so it stays what the History pane reads; the core holds the fields that sync. Each run goes to both. A
-// run leaves the core only when it left the Mac's store after both held it: deleted, cleared, dropped by retention,
-// or deleted by the previous stable after a downgrade.
+// The core's is what the History pane reads, with the runs other devices synced; the Mac's store keeps what only this
+// device needs (plan and Rewind snapshots, the insights) and what the previous stable reads. Each run goes to both.
+// The person's deletion leaves a tombstone in the core so it syncs; a run the Mac's store let go on its own (retention,
+// or the previous stable after a downgrade) leaves the core without one. A run the core let go after both held it, as a
+// deletion another device synced, is never put back.
 internal actor QueryHistoryCoreMirror {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryHistoryCoreMirror")
     private static let entriesPerWrite = 500
@@ -65,17 +66,17 @@ internal actor QueryHistoryCoreMirror {
         await serialized { [self] in await pushOnce() }
     }
 
-    // The runs the Mac's store just dropped leave the core too, whatever the last agreement says.
-    internal func dropped(_ ids: Set<UUID>) async -> Bool {
-        await serialized { [self] in await droppedOnce(ids) }
+    // The person deleted these runs, here or from the pane: each leaves the core with a tombstone, so the deletion syncs.
+    internal func deleted(_ ids: Set<UUID>) async -> Bool {
+        await serialized { [self] in await deletedOnce(ids) }
     }
 
-    private func droppedOnce(_ ids: Set<UUID>) async -> Bool {
+    private func deletedOnce(_ ids: Set<UUID>) async -> Bool {
         do {
             let store = try await database.history()
             let gone = ids.map(\.uuidString)
             for start in stride(from: 0, to: gone.count, by: Self.entriesPerWrite) {
-                _ = try await store.removeEntries(recordIds: Array(gone[start..<min(start + Self.entriesPerWrite, gone.count)]))
+                _ = try await store.deleteEntries(recordIds: Array(gone[start..<min(start + Self.entriesPerWrite, gone.count)]))
             }
         } catch {
             Self.logger.error("The core's history kept runs deleted here: \(LogRedaction.publicDescription(of: error), privacy: .public)")
@@ -85,7 +86,8 @@ internal actor QueryHistoryCoreMirror {
         return await pushOnce()
     }
 
-    // After the Mac's store dropped every run, or a connection's: the core drops them too, its own copies included.
+    // The person cleared every run, or a connection's went with it: the core drops them too, other devices' included,
+    // each with a tombstone.
     internal func cleared(connectionId: UUID?) async -> Bool {
         await serialized { [self] in await clearedOnce(connectionId: connectionId) }
     }
@@ -105,6 +107,82 @@ internal actor QueryHistoryCoreMirror {
         return await pushOnce()
     }
 
+    // The pane cleared what it shows: every run the filter matches in the core, other devices' included, and the ones
+    // the Mac's store dropped for the same filter by id, in case its search read one differently.
+    internal func cleared(matching filter: QueryHistoryFilter, localIds: Set<UUID>) async -> Bool {
+        await serialized { [self] in await clearedOnce(matching: filter, localIds: localIds) }
+    }
+
+    private func clearedOnce(matching filter: QueryHistoryFilter, localIds: Set<UUID>) async -> Bool {
+        if let arg = CoreHistoryMapping.filter(filter) {
+            do {
+                _ = try await database.history().deleteMatching(filter: arg)
+            } catch {
+                Self.logger.error("The core's history kept runs cleared here: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+                return false
+            }
+        }
+        return await deletedOnce(localIds)
+    }
+
+    // A page of the core's history for the pane, newest first. Nil when the core's store cannot be read.
+    internal func search(_ filter: QueryHistoryFilter, after cursor: QueryHistoryCursor?, limit: Int) async -> QueryHistoryPage? {
+        guard limit > 0, let arg = CoreHistoryMapping.filter(filter) else { return .empty }
+        let after: HistoryCursorArg?
+        switch cursor {
+        case nil:
+            after = nil
+        case .core(let pinned, let executedAtSecs, let row)?:
+            after = HistoryCursorArg(pinned: pinned, executedAtSecs: executedAtSecs, id: row)
+        // A cursor from the Mac's store means nothing here, so the pane starts over.
+        case .local?:
+            return .empty
+        }
+        do {
+            let page = try await database.history().search(
+                filter: arg,
+                after: after,
+                limit: UInt32(clamping: limit)
+            )
+            return QueryHistoryPage(
+                entries: page.entries.compactMap(CoreHistoryMapping.entry),
+                nextCursor: page.next.map { .core(pinned: $0.pinned, executedAtSecs: $0.executedAtSecs, row: $0.id) }
+            )
+        } catch {
+            Self.logger.error("The core's history did not read: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            return nil
+        }
+    }
+
+    // Runs a pull or an older build brought have no shape, which never leaves a device: this build reads each with its
+    // grammar, a page at a time, until none is left.
+    @discardableResult
+    internal func fillFingerprints() async -> Bool {
+        await serialized { [self] in await fillFingerprintsOnce() }
+    }
+
+    private func fillFingerprintsOnce() async -> Bool {
+        do {
+            let store = try await database.history()
+            while true {
+                let page = try await store.entriesWithoutFingerprint(limit: UInt32(Self.entriesPerWrite))
+                guard !page.isEmpty else { return true }
+                let read = page.map { entry in
+                    HistoryFingerprintArg(
+                        id: entry.id,
+                        fingerprint: SQLQueryFingerprint.hash(entry.sql, databaseType: DatabaseType(rawValue: entry.driverId))
+                    )
+                }
+                try await store.setFingerprints(fingerprints: read)
+                // A short page was the last one; a full one may be followed by more.
+                guard page.count == Self.entriesPerWrite else { return true }
+            }
+        } catch {
+            Self.logger.error("The core's history kept runs without a shape: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            return false
+        }
+    }
+
     private func serialized(_ work: @escaping @Sendable () async -> Bool) async -> Bool {
         let previous = tail
         let run = Task { () -> Bool in
@@ -121,7 +199,8 @@ internal actor QueryHistoryCoreMirror {
         do {
             let store = try await database.history()
             let held = Set(try await store.recordIds().compactMap(UUID.init(uuidString:)))
-            let missing = Array(mine.subtracting(held))
+            // A run both held once and the core no longer has was let go there, so it stays out.
+            let missing = Array(mine.subtracting(held).subtracting(base))
             var written: Set<UUID> = []
             for start in stride(from: 0, to: missing.count, by: Self.entriesPerWrite) {
                 let chunk = Array(missing[start..<min(start + Self.entriesPerWrite, missing.count)])
@@ -132,7 +211,8 @@ internal actor QueryHistoryCoreMirror {
                 let chunk = gone[start..<min(start + Self.entriesPerWrite, gone.count)].map(\.uuidString)
                 _ = try await store.removeEntries(recordIds: chunk)
             }
-            let agreed = mine.intersection(held.union(written).subtracting(gone))
+            // Runs the core let go stay in the agreement, so no later push takes them for new.
+            let agreed = mine.intersection(held.union(written).union(base).subtracting(gone))
             let based = await storage.updateCoreMirrorBase(
                 adding: agreed.subtracting(base),
                 removing: base.subtracting(agreed)
@@ -161,7 +241,8 @@ internal actor QueryHistoryCoreMirror {
                 executedAtMs: CoreMirrorTime.milliseconds(row.executedAt),
                 durationMs: CoreMirrorTime.milliseconds(seconds: row.executionTime),
                 rowsAffected: Int64(row.rowCount),
-                outcome: row.wasSuccessful ? .succeeded : .failed(message: row.errorMessage ?? "")
+                outcome: row.wasSuccessful ? .succeeded : .failed(message: row.errorMessage ?? ""),
+                details: CoreHistoryMapping.details(row)
             )
         }
         let store = try await database.history()
@@ -178,6 +259,136 @@ internal actor QueryHistoryCoreMirror {
             }
             Self.logger.error("The core's history refused \(rows.count - taken.count, privacy: .public) runs")
             return taken
+        }
+    }
+}
+
+// The Mac's history terms and the core's (core ADR 0060, History pane).
+nonisolated enum CoreHistoryMapping {
+    // Nil for a filter that matches nothing, which the core is never asked.
+    static func filter(_ filter: QueryHistoryFilter) -> HistoryFilterArg? {
+        guard !filter.matchesNothing else { return nil }
+        var connections = filter.allowedConnectionIds
+        if let scoped = filter.scope.connectionId {
+            connections = (connections ?? [scoped]).intersection([scoped])
+        }
+        if let connections, connections.isEmpty { return nil }
+        // Every source is no filter at all, so a run another app recorded without one still shows.
+        let sources = filter.sources == Set(QueryHistorySource.allCases) ? nil : filter.sources.map(sourceTag)
+        let status: HistoryStatusTag
+        switch filter.outcome {
+        case .any: status = .any
+        case .succeeded: status = .succeeded
+        case .failed: status = .failed
+        }
+        return HistoryFilterArg(
+            text: filter.searchText ?? "",
+            connectionIds: connections.map { $0.map(\.uuidString).sorted() },
+            sources: sources,
+            status: status,
+            executedAfterMs: filter.since.map(CoreMirrorTime.milliseconds),
+            executedBeforeMs: filter.until.map(CoreMirrorTime.milliseconds)
+        )
+    }
+
+    static func details(_ row: CoreHistoryRow) -> HistoryRunDetails {
+        HistoryRunDetails(
+            database: row.databaseName.isEmpty ? nil : row.databaseName,
+            schema: row.schemaName,
+            source: row.source.map(sourceTag),
+            statementType: row.statementType.map(statementTag),
+            firstRowMs: row.firstRowTime.map { CoreMirrorTime.milliseconds(seconds: $0) },
+            serverMs: row.serverTime.map { CoreMirrorTime.milliseconds(seconds: $0) },
+            fingerprint: row.shapeHash == 0 ? nil : row.shapeHash
+        )
+    }
+
+    // Nil for a run with no connection or an id that is not a UUID, which the pane has no row for.
+    static func entry(_ info: HistoryEntryInfo) -> QueryHistoryEntry? {
+        guard let id = UUID(uuidString: info.recordId),
+              let connectionId = info.connectionId.flatMap(UUID.init(uuidString:))
+        else { return nil }
+        let succeeded: Bool
+        let message: String?
+        switch info.outcome {
+        case .succeeded:
+            succeeded = true
+            message = nil
+        case .failed(let text):
+            succeeded = false
+            message = text.isEmpty ? nil : text
+        case .cancelled:
+            succeeded = false
+            message = nil
+        }
+        return QueryHistoryEntry(
+            id: id,
+            query: info.sql,
+            connectionId: connectionId,
+            databaseName: info.details.database ?? "",
+            databaseType: DatabaseType(rawValue: info.driverId),
+            schemaName: info.details.schema,
+            source: info.details.source.map(source) ?? .editor,
+            statementType: info.details.statementType.map(statementType),
+            executedAt: CoreMirrorTime.date(info.executedAtMs),
+            executionTime: Double(info.durationMs ?? 0) / 1_000,
+            rowCount: info.rowsAffected.map { Int(clamping: $0) } ?? -1,
+            wasSuccessful: succeeded,
+            errorMessage: message,
+            firstRowTime: info.details.firstRowMs.map { Double($0) / 1_000 },
+            serverTime: info.details.serverMs.map { Double($0) / 1_000 }
+        )
+    }
+
+    static func sourceTag(_ source: QueryHistorySource) -> HistorySourceTag {
+        switch source {
+        case .editor: .editor
+        case .explain: .explain
+        case .tableBrowse: .tableBrowse
+        case .rowEdit: .rowEdit
+        case .structureDDL: .structureDdl
+        case .dataImport: .import
+        case .mcp: .mcp
+        case .script: .script
+        case .shortcuts: .shortcuts
+        case .commandLine: .commandLine
+        }
+    }
+
+    static func source(_ tag: HistorySourceTag) -> QueryHistorySource {
+        switch tag {
+        case .editor: .editor
+        case .explain: .explain
+        case .tableBrowse: .tableBrowse
+        case .rowEdit: .rowEdit
+        case .structureDdl: .structureDDL
+        case .import: .dataImport
+        case .mcp: .mcp
+        case .script: .script
+        case .shortcuts: .shortcuts
+        case .commandLine: .commandLine
+        }
+    }
+
+    static func statementTag(_ type: QueryHistoryStatementType) -> StatementTypeTag {
+        switch type {
+        case .select: .select
+        case .insert: .insert
+        case .update: .update
+        case .delete: .delete
+        case .ddl: .ddl
+        case .other: .other
+        }
+    }
+
+    static func statementType(_ tag: StatementTypeTag) -> QueryHistoryStatementType {
+        switch tag {
+        case .select: .select
+        case .insert: .insert
+        case .update: .update
+        case .delete: .delete
+        case .ddl: .ddl
+        case .other: .other
         }
     }
 }
