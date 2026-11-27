@@ -268,7 +268,9 @@ final class MainContentCoordinator: ObservableObject {
 
     // Not published: the editor writes it on every caret move, and a publish re-rendered every view observing this
     // coordinator. Readers take it when they need it.
-    var cursorPositions: [CursorPosition] = []
+    var cursorPositions: [CursorPosition] = [] {
+        didSet { tabManager.notePersistedStateChange() }
+    }
     @Published var activeSheet: ActiveSheet? {
         didSet { releaseImportFileUnlessImporting() }
     }
@@ -337,7 +339,6 @@ final class MainContentCoordinator: ObservableObject {
     // Not on `QueryTab`: that is the persisted shape, and staying out of its `Equatable` keeps a push from re-publishing tabs.
     internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
     internal var redisDatabaseSwitchTask: Task<Void, Never>?
-    var periodicSaveTask: Task<Void, Never>?
     var draftSaveTask: Task<Void, Never>?
     var draftSaveTabIds: Set<UUID> = []
     var draftSaveClock: any Clock<Duration> = ContinuousClock()
@@ -441,6 +442,7 @@ final class MainContentCoordinator: ObservableObject {
 
     private func registerForPersistence() {
         Self.activeCoordinators[instanceId] = self
+        tabManager.onPersistedStateChange = { [weak self] in self?.scheduleDraftSave() }
     }
 
     private func unregisterFromPersistence() {
@@ -483,6 +485,11 @@ final class MainContentCoordinator: ObservableObject {
                     .map(coordinator.enrichedForPersistence)
             }
             .filter { seen.insert($0.id).inserted }
+    }
+
+    // One generation per hosting window, the windows `aggregatedTabs` reads, so a window that joins or leaves counts too.
+    static func persistenceGenerations(for connectionId: UUID) -> [UUID: UInt64] {
+        activeCoordinators.filter { $0.value.connectionId == connectionId }.mapValues(\.tabManager.persistenceGeneration)
     }
 
     func enrichedForPersistence(_ tab: QueryTab) -> QueryTab {
@@ -712,7 +719,6 @@ final class MainContentCoordinator: ObservableObject {
             registerForPersistence()
             // Live coordinators change only here and in `teardown()`, so a switch has nothing new to write.
             SessionRecoveryTracker.sync()
-            startPeriodicSave()
             startFileWatcherIfNeeded()
         }
         setupPluginDriver()
@@ -883,8 +889,8 @@ final class MainContentCoordinator: ObservableObject {
         cancelAllRowCountTasks()
         cancelAllPhase2Work()
         cancelCatalogPageReloads()
-        periodicSaveTask?.cancel()
-        periodicSaveTask = nil
+        // Only the activated owner set the hook; a throwaway instance sharing the manager must not take it away.
+        if isActivated { tabManager.onPersistedStateChange = nil }
         draftSaveTask?.cancel()
         draftSaveTask = nil
         redisDatabaseSwitchTask?.cancel()

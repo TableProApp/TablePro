@@ -372,7 +372,8 @@ extension DatabaseManager {
         let restoreWarning = await restoreSchemaAndDatabase(
             on: driver,
             savedSchema: session.browseSchema,
-            savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.browseDatabase
+            savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.browseDatabase,
+            startupCommands: session.connection.startupCommands
         )
 
         return ReconnectResult(
@@ -411,7 +412,8 @@ extension DatabaseManager {
     func restoreSchemaAndDatabase(
         on driver: DatabaseDriver,
         savedSchema: String?,
-        savedDatabase: String?
+        savedDatabase: String?,
+        startupCommands: String?
     ) async -> String? {
         var warnings: [String?] = []
         // The schema lives inside the database, and a database switch can leave the driver on none.
@@ -427,9 +429,16 @@ extension DatabaseManager {
             }
         }
 
+        // The reconnect asked the driver to land on the schema, so only a move it cannot see is sent again: one by
+        // the user's startup commands, or by the database switch above.
+        let schemaMayHaveMoved = savedDatabase != nil || Self.hasStartupCommands(startupCommands)
         if let savedSchema, let schemaDriver = driver as? SchemaSwitchable {
             do {
-                try await schemaDriver.switchSchema(to: savedSchema)
+                if schemaMayHaveMoved {
+                    try await schemaDriver.switchSchema(to: savedSchema)
+                } else {
+                    try await schemaDriver.switchSchemaIfNeeded(to: savedSchema)
+                }
             } catch {
                 Self.logger.warning("Failed to restore schema '\(savedSchema)' on reconnect: \(error.localizedDescription)")
                 warnings.append(String(
@@ -568,7 +577,8 @@ extension DatabaseManager {
             let restoreWarning = await restoreSchemaAndDatabase(
                 on: driver,
                 savedSchema: activeSessions[sessionId]?.browseSchema,
-                savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.browseDatabase
+                savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.browseDatabase,
+                startupCommands: session.connection.startupCommands
             )
             guard isCurrentAttempt(generation, for: sessionId) else {
                 driver.disconnect()
@@ -648,7 +658,8 @@ extension DatabaseManager {
                     deadline: deadline,
                     timeoutEndpoint: timeoutEndpoint,
                     effectiveQueryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
-                    preparedConfiguration: preparedConfiguration
+                    preparedConfiguration: preparedConfiguration,
+                    initialSchema: Self.hasStartupCommands(session.connection.startupCommands) ? nil : session.browseSchema
                 )
                 driver = candidate
                 try await candidate.connect()
