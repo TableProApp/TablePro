@@ -222,7 +222,7 @@ internal enum TeamKeysFailureText {
             case .failed(let message): return message
             }
         }
-        if error is TeamKeysEngineMissing {
+        if error is KeyServiceUnavailable {
             return String(localized: "Sign in to your TablePro account to use end-to-end keys.")
         }
         guard let error = error as? CoreError else { return generic }

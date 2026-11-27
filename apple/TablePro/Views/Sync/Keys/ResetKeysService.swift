@@ -27,7 +27,7 @@ internal final class ResetKeysLiveService: ResetKeysService {
 
     private let service: @Sendable () async throws -> SyncService
 
-    init(service: @escaping @Sendable () async throws -> SyncService = { try await TeamKeysEngine.service() }) {
+    init(service: @escaping @Sendable () async throws -> SyncService = { try await SyncEngineHost.shared.keyService() }) {
         self.service = service
     }
 

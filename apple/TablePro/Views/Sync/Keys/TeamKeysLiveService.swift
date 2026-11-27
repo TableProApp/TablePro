@@ -6,26 +6,12 @@
 import Foundation
 import TableProFFI
 
-internal struct TeamKeysEngineMissing: Error {}
-
-// The key screens reach the one sync service `SyncEngineHost` opened over the account (core ADR 0054). Key objects live
-// on TablePro Sync whatever the personal provider is (0056, What the server stores), so any opened service serves
-// them, which is what asking for Off returns.
-@MainActor
-internal enum TeamKeysEngine {
-    static func service() async throws -> SyncService {
-        let engine = try await SyncEngineHost.shared.engine(for: .off)
-        guard let service = engine as? SyncService else { throw TeamKeysEngineMissing() }
-        return service
-    }
-}
-
 internal final class TeamKeysLiveService: TeamKeysService {
     static let shared = TeamKeysLiveService()
 
     private let service: @Sendable () async throws -> SyncService
 
-    init(service: @escaping @Sendable () async throws -> SyncService = { try await TeamKeysEngine.service() }) {
+    init(service: @escaping @Sendable () async throws -> SyncService = { try await SyncEngineHost.shared.keyService() }) {
         self.service = service
     }
 

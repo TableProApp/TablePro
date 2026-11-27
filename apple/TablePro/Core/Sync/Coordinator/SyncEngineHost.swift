@@ -23,6 +23,9 @@ nonisolated protocol SyncEngine: AnyObject, Sendable {
 
 extension SyncService: SyncEngine {}
 
+// The open service is not the core's, so no key flow runs on it.
+struct KeyServiceUnavailable: Error {}
+
 // The app's one core sync service (core ADR 0054), opened on first use on the core that holds the stores, with the
 // CloudKit transport and the Swift engine's metadata. Its listener only signals, and the signal reaches the main actor.
 @MainActor
@@ -130,6 +133,19 @@ final class SyncEngineHost {
                 throw error
             }
         }
+    }
+
+    // The service for what lives on TablePro Sync whatever the personal provider is: the account's keys and its team
+    // scopes (core ADR 0054, Providers, and 0056, What the server stores). The open service serves them whichever
+    // provider it was opened for; with none open, one opens Off.
+    func accountScopesEngine() async throws -> any SyncEngine {
+        try await engine(for: .off)
+    }
+
+    // The service the key engine runs on.
+    func keyService() async throws -> SyncService {
+        guard let service = try await accountScopesEngine() as? SyncService else { throw KeyServiceUnavailable() }
+        return service
     }
 
     // The service opened for this provider, or for any with nil, once an open of one in flight ends. It never opens one.

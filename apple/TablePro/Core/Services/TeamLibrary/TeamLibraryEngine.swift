@@ -39,7 +39,6 @@ internal protocol TeamLibraryEngineSource {
 
 internal struct TeamLibraryUnavailable: Error {}
 
-// The app's one sync service, whatever the personal provider: any open one serves the team scopes.
 @MainActor
 internal struct LiveTeamLibraryEngineSource: TeamLibraryEngineSource {
     let host: SyncEngineHost
@@ -51,7 +50,7 @@ internal struct LiveTeamLibraryEngineSource: TeamLibraryEngineSource {
     }
 
     func engine() async throws -> any TeamLibraryEngine {
-        guard let engine = try await host.engine(for: .off) as? any TeamLibraryEngine else {
+        guard let engine = try await host.accountScopesEngine() as? any TeamLibraryEngine else {
             throw TeamLibraryUnavailable()
         }
         return engine
