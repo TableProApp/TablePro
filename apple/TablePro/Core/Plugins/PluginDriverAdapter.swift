@@ -458,7 +458,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         state.withLock { $0.databaseMoves += 1 }
     }
 
-    @concurrent
+    // Both `execute` overloads stay on their caller. A script's statements and the cleanup that must run after Stop
+    // share them, so neither can check for cancellation, and off the caller Stop could land between the checks and
+    // a driver that only cancels a query already running.
     func execute(query: String) async throws -> QueryResult {
         try admit(query)
         let pluginResult = try await pluginDriver.execute(query: query, context: statementContext(query))
@@ -1330,7 +1332,6 @@ private extension PluginDriverAdapter {
 // MARK: - Statements an external caller approved
 
 extension PluginDriverAdapter {
-    @concurrent
     func execute(query: String, context: PluginStatementContext) async throws -> QueryResult {
         try admit(query)
         try refuseUnenforcedPolicy(context)
