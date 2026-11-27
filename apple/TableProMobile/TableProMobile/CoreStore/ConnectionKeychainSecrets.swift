@@ -45,10 +45,9 @@ nonisolated final class ConnectionKeychainSecrets: HostSecrets, @unchecked Senda
     // and files with the rest of its local state, and never the iCloud Keychain copies here.
     func deleteConnection(connectionId: String) throws {}
 
-    // iOS only reads a profile's secrets, the Mac's iCloud Keychain items, and owns no profile: a write that would take
-    // one out is refused rather than deleting the Mac's items or leaving them behind.
-    func deleteProfile(profileId: String, kind: ProfileKindTag) throws {
-        throw HostSecretError.Unavailable(detail: "iOS keeps no profile of its own")
+    // iOS only reads a profile's secrets, the Mac's iCloud Keychain items, and owns no profile, so the Mac deletes them.
+    func deleteProfile(profileId: String, kind: ProfileKindTag) throws -> SecretDeletionTag {
+        .notOwned
     }
 
     func loadItem(item: SecretItemTag) throws -> String? {

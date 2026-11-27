@@ -102,7 +102,8 @@ pub use history::{
     QueryHistoryStore,
 };
 pub use host::{
-    HostConfig, HostSecretError, HostSecretStore, HostSecrets, ProfileKindTag, SecretItemTag, SecretKindTag,
+    HostConfig, HostSecretError, HostSecretStore, HostSecrets, ProfileKindTag, SecretDeletionTag, SecretItemTag,
+    SecretKindTag,
 };
 pub use host_stores::{
     FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,

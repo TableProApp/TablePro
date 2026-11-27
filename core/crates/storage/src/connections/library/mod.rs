@@ -8,7 +8,7 @@ use super::placement::{placed, unique};
 use super::write_guard::WriteGuard;
 use super::{
     ConnectionList, ConnectionStore, ConnectionsDocument, CredentialProfile, RemoveOutcome, SavedConnection,
-    SshProfile, StoreState,
+    SecretOwner, SecretOwnerKind, SshProfile, StoreState,
 };
 use crate::error::StorageError;
 use crate::lenient::{Identified, Lenient};
@@ -61,13 +61,6 @@ pub struct Rebuilt {
     pub set_aside: Option<PathBuf>,
 }
 
-// The profiles a library write takes out, the ones this build cannot read included.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProfilesLeaving {
-    pub ssh: Vec<Uuid>,
-    pub credential: Vec<Uuid>,
-}
-
 impl ConnectionStore {
     pub fn list_blocking(&self) -> Result<ConnectionList, StorageError> {
         let mut state = self.lock();
@@ -84,10 +77,12 @@ impl ConnectionStore {
     }
 
     // Refused unless the file is still the one `over` names (None: no file), so nothing unchecked goes on; `build` reads it.
+    // The secrets of what the write takes out go after it lands (`settle_secrets`), with the file's earlier ones.
     pub fn replace_library_blocking<E: From<StorageError>>(
         &self,
         over: Option<&str>,
         build: impl FnOnce(&ConnectionList) -> Result<LibraryWrite, E>,
+        delete: impl FnMut(SecretOwner) -> bool,
     ) -> Result<Option<String>, E> {
         let mut state = self.lock_to_write();
         let before = self.vouched(&mut state, over)?;
@@ -98,23 +93,8 @@ impl ConnectionStore {
             // Nothing written, so the file must still be the one it answers for.
             return Err(StorageError::LibraryChanged.into());
         }
+        self.settle_secrets(&mut state, delete)?;
         Ok(digest_of(&state))
-    }
-
-    // What `replace_library_blocking` takes out with the same arguments, refused as it would be, so a host can remove
-    // their secrets first. Writes nothing.
-    pub fn profiles_leaving_blocking<E: From<StorageError>>(
-        &self,
-        over: Option<&str>,
-        build: impl FnOnce(&ConnectionList) -> Result<LibraryWrite, E>,
-    ) -> Result<ProfilesLeaving, E> {
-        let mut state = self.lock_to_write();
-        let before = self.vouched(&mut state, over)?;
-        let after = before.written(build(&before.list())?)?;
-        Ok(ProfilesLeaving {
-            ssh: gone(&before.ssh_profiles, &after.ssh_profiles),
-            credential: gone(&before.credential_profiles, &after.credential_profiles),
-        })
     }
 
     // For a file its host cannot vouch for: nothing it held goes on, and a new generation starts, as a restore's does.
@@ -142,6 +122,7 @@ impl ConnectionStore {
         };
         // Told against nothing, so no id from the file it replaces is journaled as a deletion to send.
         *state = StoreState::Unloaded;
+        // The pending deletions go with the file: its ids are not vouched for, so the secrets they name stay.
         let document = ConnectionsDocument {
             connections: Lenient::from(connections),
             groups,
@@ -150,6 +131,7 @@ impl ConnectionStore {
             projects,
             ssh_profiles: Lenient::from(ssh_profiles),
             credential_profiles: Lenient::from(credential_profiles),
+            secrets_to_delete: Lenient::default(),
             store: Some(StoreIdentity::fresh()),
         };
         self.commit(&mut state, document)?;
@@ -157,6 +139,37 @@ impl ConnectionStore {
             digest: digest_of(&state),
             set_aside,
         })
+    }
+
+    // Runs under the write lock the commit took, so no writer can bring an owner back between the check and the delete.
+    // An owner whose id the file holds again keeps its secrets; one `delete` could not clear stays for the next write.
+    fn settle_secrets(
+        &self,
+        state: &mut WriteGuard<'_>,
+        mut delete: impl FnMut(SecretOwner) -> bool,
+    ) -> Result<(), StorageError> {
+        let StoreState::Ready(current, _) = &**state else {
+            return Ok(());
+        };
+        if current.secrets_to_delete.is_empty() {
+            return Ok(());
+        }
+        let mut document = (**current).clone();
+        let held = [
+            ids_of(&document.connections),
+            ids_of(&document.ssh_profiles),
+            ids_of(&document.credential_profiles),
+        ];
+        let pending = std::mem::take(&mut *document.secrets_to_delete);
+        let left: Vec<SecretOwner> = pending
+            .into_iter()
+            .filter(|owner| !held[owner.kind.index()].contains(&owner.id) && !delete(*owner))
+            .collect();
+        *document.secrets_to_delete = left;
+        if document != **current {
+            self.commit(state, document)?;
+        }
+        Ok(())
     }
 
     // The file as the store holds it, refused unless it is still the one `over` names.
@@ -487,6 +500,19 @@ impl ConnectionsDocument {
             .filter(|id| !named.contains(id) && !write.removing.contains(id))
             .collect();
         write.refuse_what_it_would_lose(&held)?;
+        // An id the file holds as two kinds is a crafted collision, and a removal cannot say which one it means.
+        let kinds = [
+            ids_of(&self.connections),
+            ids_of(&self.ssh_profiles),
+            ids_of(&self.credential_profiles),
+        ];
+        if let Some(&id) = write
+            .removing
+            .iter()
+            .find(|id| kinds.iter().filter(|held| held.contains(id)).count() > 1)
+        {
+            return Err(StorageError::RepeatedId { id });
+        }
         let LibraryWrite {
             connections,
             groups,
@@ -498,10 +524,10 @@ impl ConnectionsDocument {
             removing,
         } = write;
         let mut document = self.clone();
-        for id in removing {
-            document.connections.remove_id(id);
-            document.ssh_profiles.remove_id(id);
-            document.credential_profiles.remove_id(id);
+        for id in &removing {
+            document.connections.remove_id(*id);
+            document.ssh_profiles.remove_id(*id);
+            document.credential_profiles.remove_id(*id);
         }
         replace_entries(&mut document.connections, connections);
         replace_entries(&mut document.ssh_profiles, ssh_profiles);
@@ -511,6 +537,26 @@ impl ConnectionsDocument {
         document.favorites = favorites;
         document.projects = projects;
         document.tidy();
+        // A connection counts only when `removing` names it: the host keeps the secrets of the readable ones it leaves out.
+        let leaving = gone(&self.connections, &document.connections)
+            .into_iter()
+            .filter(|id| removing.contains(id))
+            .map(|id| SecretOwner::new(SecretOwnerKind::Connection, id))
+            .chain(
+                gone(&self.ssh_profiles, &document.ssh_profiles)
+                    .into_iter()
+                    .map(|id| SecretOwner::new(SecretOwnerKind::SshProfile, id)),
+            )
+            .chain(
+                gone(&self.credential_profiles, &document.credential_profiles)
+                    .into_iter()
+                    .map(|id| SecretOwner::new(SecretOwnerKind::CredentialProfile, id)),
+            );
+        for owner in leaving {
+            if !document.secrets_to_delete.contains(&owner) {
+                document.secrets_to_delete.push(owner);
+            }
+        }
         Ok(document)
     }
 }
@@ -523,11 +569,19 @@ fn replace_entries<T: Identified>(list: &mut Lenient<T>, entries: Vec<T>) {
     **list = entries;
 }
 
-// Ids `before` holds, read or held, that `after` no longer does.
+fn ids_of<T: Identified>(list: &Lenient<T>) -> HashSet<Uuid> {
+    list.iter().map(Identified::id).chain(list.held_ids()).collect()
+}
+
+// Ids `before` holds, read or held, that `after` no longer does, in the order `before` lists them.
 fn gone<T: Identified>(before: &Lenient<T>, after: &Lenient<T>) -> Vec<Uuid> {
-    let ids = |list: &Lenient<T>| -> Vec<Uuid> { list.iter().map(Identified::id).chain(list.held_ids()).collect() };
-    let kept: HashSet<Uuid> = ids(after).into_iter().collect();
-    ids(before).into_iter().filter(|id| !kept.contains(id)).collect()
+    let kept = ids_of(after);
+    before
+        .iter()
+        .map(Identified::id)
+        .chain(before.held_ids())
+        .filter(|id| !kept.contains(id))
+        .collect()
 }
 
 impl LibraryWrite {

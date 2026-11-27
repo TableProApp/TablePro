@@ -10,8 +10,8 @@ use std::sync::Arc;
 use secrecy::SecretString;
 use tablepro_ffi::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, FileOpenRequest, HistoryOutcomeTag,
-    HistoryRun, HostConfig, HostSecretError, HostSecrets, LibrarySnapshot, ProfileKindTag, SafeModeTag, SecretItemTag,
-    SecretKindTag, TlsModeTag, TlsSettings,
+    HistoryRun, HostConfig, HostSecretError, HostSecrets, LibrarySnapshot, ProfileKindTag, SafeModeTag,
+    SecretDeletionTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings,
 };
 
 struct NoSecrets;
@@ -37,8 +37,8 @@ impl HostSecrets for NoSecrets {
         Ok(())
     }
 
-    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
-        Ok(())
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

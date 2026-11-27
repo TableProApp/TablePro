@@ -13,7 +13,7 @@ use tablepro_ffi::{
     ColumnSort, CombinatorTag, Core, CoreError, DatabaseSession, FileOpenRequest, FilterOpTag, FilterRuleArg,
     FilterValueArg, FollowedReference, HostConfig, HostSecretError, HostSecrets, ObjectEntry, ObjectKindTag,
     ObjectScopeArg, ProfileKindTag, ReferenceRefusal, RowEstimate, RowReferenceChoice, RunEvent, RunListener,
-    RunOutcome, RunSettings, SecretItemTag, SecretKindTag, TableFilterArg, TableName, TablePageRead,
+    RunOutcome, RunSettings, SecretDeletionTag, SecretItemTag, SecretKindTag, TableFilterArg, TableName, TablePageRead,
     TransactionStateTag, TruncationTag,
 };
 
@@ -40,8 +40,8 @@ impl HostSecrets for NoSecrets {
         Ok(())
     }
 
-    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
-        Ok(())
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

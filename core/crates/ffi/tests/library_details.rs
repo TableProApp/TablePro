@@ -15,9 +15,9 @@ use tablepro_ffi::{
     ConnectionSecrets, Core, CredentialPasswordRecord, CredentialProfileRecord, CredentialReferenceRecord,
     DeviceSettingsRecord, ExternalAccessTag, GroupRecord, HostConfig, HostSecretError, HostSecrets,
     LibraryConnectionRecord, LibraryWriteRecord, LocalPasswordSourceRecord, ProfileKindTag, ProjectRecord,
-    RemoteFileAccessTag, SafeModeTag, SecretItemTag, SecretKindTag, SshAuthTag, SshJumpAuthTag, SshJumpHostRecord,
-    SshOptionsRecord, SshProfileRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord,
-    TableFolderItemRecord, TableRefRecord, TagRecord, TlsModeTag, TlsSettings, VaultAuthRecord,
+    RemoteFileAccessTag, SafeModeTag, SecretDeletionTag, SecretItemTag, SecretKindTag, SshAuthTag, SshJumpAuthTag,
+    SshJumpHostRecord, SshOptionsRecord, SshProfileRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag,
+    SshTotpRecord, TableFolderItemRecord, TableRefRecord, TagRecord, TlsModeTag, TlsSettings, VaultAuthRecord,
     library_icon_for_symbol, library_icon_symbol, parse_jump_hosts,
 };
 
@@ -44,8 +44,8 @@ impl HostSecrets for NoSecrets {
         Ok(())
     }
 
-    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
-        Ok(())
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
@@ -61,12 +61,14 @@ impl HostSecrets for NoSecrets {
     }
 }
 
-// The deletes the core asks for, refused while `refusing` is set, as a locked keychain does.
+// The deletes the core asks for, refused while `refusing` is set, as a locked keychain does, and answered as another
+// app's while `not_owned` is, as iOS answers for the Mac's profile items.
 #[derive(Default, Clone)]
 struct DeleteLog {
     connections: Arc<Mutex<Vec<String>>>,
     profiles: Arc<Mutex<Vec<(String, ProfileKindTag)>>>,
     refusing: Arc<AtomicBool>,
+    not_owned: Arc<AtomicBool>,
 }
 
 impl DeleteLog {
@@ -99,12 +101,15 @@ impl HostSecrets for DeleteLog {
         Ok(())
     }
 
-    fn delete_profile(&self, profile_id: String, kind: ProfileKindTag) -> Result<(), HostSecretError> {
+    fn delete_profile(&self, profile_id: String, kind: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
         if self.refusing.load(Ordering::SeqCst) {
             return Err(HostSecretError::Locked);
         }
         self.profiles.lock().unwrap().push((profile_id, kind));
-        Ok(())
+        Ok(match self.not_owned.load(Ordering::SeqCst) {
+            true => SecretDeletionTag::NotOwned,
+            false => SecretDeletionTag::Deleted,
+        })
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
@@ -448,13 +453,17 @@ async fn a_library_write_after_a_profile_write_goes_on_over_the_digest_it_return
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_profile_the_write_takes_out_loses_its_secrets_first() {
+async fn what_the_write_takes_out_loses_its_secrets_once_the_write_lands() {
     let dir = tempfile::tempdir().unwrap();
     let held = "1d5c9e2a-7b3f-4a8e-b6d1-0f2e3c4a5b6d";
+    let held_connection = "6f0b6a4e-3a52-4c2f-9d1e-0c6a2b7f9e11";
+    let entry = format!(
+        r#"{{"id":"{held_connection}","name":"prod","driver_id":"postgres","host":"db","port":5432,"database":"d","username":"u","tls":{{"mode":"disable"}},"safe_mode":"paranoid","external_access":"read_only","ai_policy":"ask"}}"#
+    );
     std::fs::write(
         dir.path().join("connections.json"),
         format!(
-            r#"{{"version": 1, "connections": [],
+            r#"{{"version": 1, "connections": [{entry}],
                 "ssh_profiles": [{{"id":"{held}","name":"p","host":"h","auth":{{"kind":"quantum"}}}}]}}"#
         ),
     )
@@ -481,11 +490,11 @@ async fn a_profile_the_write_takes_out_loses_its_secrets_first() {
         "a write that keeps every profile took secrets"
     );
 
-    library
+    let landed = library
         .replace_library(
             LibraryWriteRecord {
                 ssh_profiles: vec![kept.clone()],
-                removing: vec![held.to_owned()],
+                removing: vec![held.to_owned(), held_connection.to_owned()],
                 ..mac_library()
             },
             written.digest,
@@ -501,34 +510,74 @@ async fn a_profile_the_write_takes_out_loses_its_secrets_first() {
             (CREDENTIAL_PROFILE.to_owned(), ProfileKindTag::Credential),
         ]
     );
-    assert!(
-        secrets.connections.lock().unwrap().is_empty(),
-        "a profile's id reached a connection's secrets"
-    );
+    assert_eq!(*secrets.connections.lock().unwrap(), vec![held_connection.to_owned()]);
     let read = library.library_contents().await.unwrap();
+    assert_eq!(read.digest, landed.digest);
     assert_eq!(read.ssh_profiles, vec![kept]);
-    assert!(read.unreadable_profiles.is_empty());
+    assert!(read.unreadable_profiles.is_empty() && read.unreadable.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_profile_whose_secrets_the_store_will_not_delete_stays() {
+async fn a_secret_the_store_would_not_delete_is_tried_again_by_the_next_write() {
     let dir = tempfile::tempdir().unwrap();
     let secrets = DeleteLog::default();
     let core = started_with(dir.path(), secrets.clone());
     let library = core.library().unwrap();
-    let with_profile = LibraryWriteRecord {
-        credential_profiles: vec![credential_profile(CREDENTIAL_PROFILE)],
-        ..mac_library()
-    };
-    let written = library.replace_library(with_profile.clone(), None).await.unwrap();
+    let written = library
+        .replace_library(
+            LibraryWriteRecord {
+                credential_profiles: vec![credential_profile(CREDENTIAL_PROFILE)],
+                ..mac_library()
+            },
+            None,
+        )
+        .await
+        .unwrap();
     secrets.refusing.store(true, Ordering::SeqCst);
 
-    let refused = library.replace_library(mac_library(), written.digest.clone()).await;
+    let landed = library.replace_library(mac_library(), written.digest).await.unwrap();
 
-    assert!(refused.is_err(), "{refused:?}");
     let read = library.library_contents().await.unwrap();
-    assert_eq!(read.digest, written.digest);
-    assert_eq!(read.credential_profiles, with_profile.credential_profiles);
+    assert_eq!(read.digest, landed.digest, "the digest is the final file's");
+    assert_eq!(read.credential_profiles, mac_library().credential_profiles);
+    assert!(secrets.profiles().is_empty());
+    let file = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
+    assert!(
+        file.contains(CREDENTIAL_PROFILE),
+        "a failed delete was forgotten: {file}"
+    );
+    secrets.refusing.store(false, Ordering::SeqCst);
+    library.replace_library(mac_library(), landed.digest).await.unwrap();
+    assert_eq!(
+        secrets.profiles(),
+        vec![(CREDENTIAL_PROFILE.to_owned(), ProfileKindTag::Credential)]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_host_that_says_a_profile_s_secrets_are_another_app_s_is_not_asked_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = DeleteLog::default();
+    let core = started_with(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let written = library
+        .replace_library(
+            LibraryWriteRecord {
+                ssh_profiles: vec![ssh_profile(SSH_PROFILE, "bastion")],
+                ..mac_library()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    secrets.not_owned.store(true, Ordering::SeqCst);
+
+    let landed = library.replace_library(mac_library(), written.digest).await.unwrap();
+    library.replace_library(mac_library(), landed.digest).await.unwrap();
+
+    assert_eq!(secrets.profiles(), vec![(SSH_PROFILE.to_owned(), ProfileKindTag::Ssh)]);
+    let file = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
+    assert!(!file.contains("secrets_to_delete"), "{file}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

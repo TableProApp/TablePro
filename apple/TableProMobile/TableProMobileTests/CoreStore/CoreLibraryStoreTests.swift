@@ -421,8 +421,8 @@ struct CoreLibraryStoreTests {
         #expect(try secureStore.retrieve(forKey: account) == "from the Mac")
     }
 
-    @Test("A core write that would take a profile out through the iOS secrets host is refused and keeps it")
-    func profileRemovalIsRefusedOnIOS() async throws {
+    @Test("A core write that takes a profile out through the iOS secrets host keeps the Mac's items and lists nothing")
+    func profileRemovalOnIOSKeepsTheMacItems() async throws {
         let profile = bastionProfile()
         try await addProfiles([profile], [])
         let profileId = try #require(UUID(uuidString: profile.id))
@@ -435,30 +435,26 @@ struct CoreLibraryStoreTests {
         let direct = try core.library()
         let contents = try await direct.libraryContents()
 
-        var refusal: String?
-        do {
-            _ = try await direct.replaceLibrary(
-                library: LibraryWriteRecord(
-                    connections: contents.connections,
-                    groups: contents.groups,
-                    tags: contents.tags,
-                    favorites: contents.favorites,
-                    projects: contents.projects,
-                    sshProfiles: [],
-                    credentialProfiles: [],
-                    removing: []
-                ),
-                over: contents.digest
-            )
-        } catch let CoreError.Failed(info) {
-            refusal = info.code
-        }
+        let written = try await direct.replaceLibrary(
+            library: LibraryWriteRecord(
+                connections: contents.connections,
+                groups: contents.groups,
+                tags: contents.tags,
+                favorites: contents.favorites,
+                projects: contents.projects,
+                sshProfiles: [],
+                credentialProfiles: [],
+                removing: []
+            ),
+            over: contents.digest
+        )
 
-        #expect(refusal == "secret.service_unavailable")
         let after = try await direct.libraryContents()
-        #expect(after.digest == contents.digest)
-        #expect(after.sshProfiles.map(\.id) == [profile.id])
+        #expect(after.digest == written.digest)
+        #expect(after.sshProfiles.isEmpty)
         #expect(try secureStore.retrieve(forKey: account) == "from the Mac")
+        let file = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: coreFile)) as? [String: Any])
+        #expect(file["secrets_to_delete"] == nil, "a deletion the Mac owns stays listed on iOS")
     }
 
     @Test("A write that drops a connection the core holds unread lands over the file the deletion left")

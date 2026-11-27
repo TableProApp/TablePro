@@ -202,9 +202,7 @@ internal sealed class CoreDatabase : IAsyncDisposable
         {
         }
 
-        public void DeleteProfile(Guid profileId, ProfileKind kind)
-        {
-        }
+        public SecretDeletion DeleteProfile(Guid profileId, ProfileKind kind) => SecretDeletion.Deleted;
 
         public string? LoadItem(SecretItem item) => null;
 

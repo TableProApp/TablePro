@@ -12,7 +12,7 @@ use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
     Core, ForeignAppDirsArg, ForeignAppTag, ForeignImportRequest, ForeignSourceInfo, HostConfig, HostSecretError,
     HostSecrets, PasswordOfferTag, PasswordOutcomeTag, ProfileKindTag, QueryAvailabilityTag, ResolutionTag,
-    ScanDepthTag, SecretItemTag, SecretKindTag, SourceAvailabilityTag,
+    ScanDepthTag, SecretDeletionTag, SecretItemTag, SecretKindTag, SourceAvailabilityTag,
 };
 
 #[derive(Default)]
@@ -57,8 +57,8 @@ impl HostSecrets for Shared {
         Ok(())
     }
 
-    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
-        Ok(())
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

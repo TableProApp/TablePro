@@ -36,10 +36,12 @@ pub trait HostSecrets: Send + Sync {
 
     fn delete(&self, connection_id: String, kind: SecretKindTag) -> Result<(), HostSecretError>;
 
+    // A library write calls it, and delete_profile, while it holds the library's lock, so neither may call the library.
     fn delete_connection(&self, connection_id: String) -> Result<(), HostSecretError>;
 
-    // Every secret of an SSH or credential profile, which the store keeps apart from connections'.
-    fn delete_profile(&self, profile_id: String, kind: ProfileKindTag) -> Result<(), HostSecretError>;
+    // Every secret of an SSH or credential profile, which the store keeps apart from connections'. NotOwned is a host's
+    // answer for secrets another app keeps, as the Mac keeps those iOS reads: the core then stops asking.
+    fn delete_profile(&self, profile_id: String, kind: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError>;
 
     fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError>;
 
@@ -60,6 +62,12 @@ pub enum SecretKindTag {
 pub enum ProfileKindTag {
     Ssh,
     Credential,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SecretDeletionTag {
+    Deleted,
+    NotOwned,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -194,12 +202,12 @@ impl SecretVault for HostSecretStore {
 // Where a store keeps the secrets of SSH and credential profiles.
 #[async_trait]
 pub(crate) trait ProfileSecrets: Send + Sync {
-    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<(), SecretError>;
+    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<SecretDeletionTag, SecretError>;
 }
 
 #[async_trait]
 impl ProfileSecrets for HostSecretStore {
-    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<(), SecretError> {
+    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<SecretDeletionTag, SecretError> {
         self.call(move |host| host.delete_profile(id.to_string(), kind)).await
     }
 }
@@ -319,12 +327,19 @@ mod tests {
             Ok(())
         }
 
-        fn delete_profile(&self, profile_id: String, kind: ProfileKindTag) -> Result<(), HostSecretError> {
+        fn delete_profile(
+            &self,
+            profile_id: String,
+            kind: ProfileKindTag,
+        ) -> Result<SecretDeletionTag, HostSecretError> {
             if self.locked {
                 return Err(HostSecretError::Locked);
             }
             self.profiles_deleted.lock().unwrap().push((profile_id, kind));
-            Ok(())
+            Ok(match kind {
+                ProfileKindTag::Ssh => SecretDeletionTag::Deleted,
+                ProfileKindTag::Credential => SecretDeletionTag::NotOwned,
+            })
         }
 
         fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
@@ -376,7 +391,7 @@ mod tests {
         };
         let id = Uuid::new_v4();
 
-        store.delete_profile(id, ProfileKindTag::Credential).await.unwrap();
+        let answer = store.delete_profile(id, ProfileKindTag::Credential).await.unwrap();
         let locked = HostSecretStore::new(
             Box::new(MemorySecrets {
                 locked: true,
@@ -387,6 +402,7 @@ mod tests {
         .delete_profile(id, ProfileKindTag::Ssh)
         .await;
 
+        assert_eq!(answer, SecretDeletionTag::NotOwned, "the host's own answer comes back");
         assert_eq!(
             *host.profiles_deleted.lock().unwrap(),
             [(id.to_string(), ProfileKindTag::Credential)]

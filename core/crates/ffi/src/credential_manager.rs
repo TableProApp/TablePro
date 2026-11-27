@@ -16,7 +16,7 @@ use windows_sys::Win32::Security::Credentials::{
 };
 
 use crate::credential_parts::{self, Layout, PartStore, Stored};
-use crate::host::{ProfileKindTag, ProfileSecrets};
+use crate::host::{ProfileKindTag, ProfileSecrets, SecretDeletionTag};
 
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -379,13 +379,14 @@ impl SecretVault for CredentialManager {
 
 #[async_trait]
 impl ProfileSecrets for CredentialManager {
-    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<(), SecretError> {
+    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<SecretDeletionTag, SecretError> {
         let targets: Vec<String> = SecretKind::ALL
             .iter()
             .map(|secret| self.profile_target(id, kind, *secret))
             .collect();
         self.blocking(move || targets.iter().try_for_each(|target| delete(target)))
-            .await
+            .await?;
+        Ok(SecretDeletionTag::Deleted)
     }
 }
 

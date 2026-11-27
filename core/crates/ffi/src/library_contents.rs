@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::SystemTime;
 
 use chrono::DateTime;
@@ -94,30 +94,18 @@ impl ConnectionLibrary {
         .await
     }
 
-    // Values as given, unlike a save; `over` is the digest of the file the host vouched for, None for no file.
+    // Values as given, unlike a save; `over` is the digest of the file the host vouched for, None for no file. The
+    // secrets of what it takes out go once it lands (`ConnectionStore::replace_library_blocking`).
     pub async fn replace_library(
         &self,
         library: LibraryWriteRecord,
         over: Option<String>,
     ) -> Result<LibraryWritten, CoreError> {
         let _held = self.hold_writes().await;
-        let removing = parse_ids(&library.removing)?;
-        let (planned, checked) = (library.clone(), over.clone());
-        // Refused here as the write would be, so no secret goes for a write that cannot land.
-        let leaving = self
-            .blocking(move |store| {
-                store.profiles_leaving_blocking(checked.as_deref(), |list| library_write(planned, Some(list)))
-            })
-            .await?;
-        let profiles: HashSet<Uuid> = leaving.ssh.iter().chain(&leaving.credential).copied().collect();
-        let connections: Vec<Uuid> = removing.into_iter().filter(|id| !profiles.contains(id)).collect();
-        // Their secrets go first, as a delete's do; a write refused after leaves entries already on their way out.
-        if !connections.is_empty() {
-            self.delete_secrets(connections).await?;
-        }
-        self.delete_profile_secrets(leaving).await?;
+        let delete = self.secret_deleter();
         self.blocking(move |store| {
-            let digest = store.replace_library_blocking(over.as_deref(), |list| library_write(library, Some(list)))?;
+            let digest =
+                store.replace_library_blocking(over.as_deref(), |list| library_write(library, Some(list)), delete)?;
             Ok(LibraryWritten {
                 digest,
                 set_aside: None,

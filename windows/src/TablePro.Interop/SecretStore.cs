@@ -15,8 +15,9 @@ public interface ISecretStore
 
     void DeleteConnection(Guid connectionId);
 
-    // Every secret of an SSH or credential profile, which the store keeps apart from connections'.
-    void DeleteProfile(Guid profileId, ProfileKind kind);
+    // Every secret of an SSH or credential profile, which the store keeps apart from connections'. NotOwned says another
+    // app keeps them, and the core stops asking.
+    SecretDeletion DeleteProfile(Guid profileId, ProfileKind kind);
 
     string? LoadItem(SecretItem item);
 
@@ -37,6 +38,12 @@ public enum ProfileKind
 {
     Ssh,
     Credential,
+}
+
+public enum SecretDeletion
+{
+    Deleted,
+    NotOwned,
 }
 
 public enum SecretItemKind
@@ -106,8 +113,8 @@ internal sealed class SecretStoreAdapter(ISecretStore store) : Native.HostSecret
     public void DeleteConnection(string connectionId) =>
         Call(() => store.DeleteConnection(Guid.Parse(connectionId)));
 
-    public void DeleteProfile(string profileId, Native.ProfileKindTag kind) =>
-        Call(() => store.DeleteProfile(Guid.Parse(profileId), Mapping.Profile(kind)));
+    public Native.SecretDeletionTag DeleteProfile(string profileId, Native.ProfileKindTag kind) =>
+        Call(() => Mapping.Deletion(store.DeleteProfile(Guid.Parse(profileId), Mapping.Profile(kind))));
 
     public string? LoadItem(Native.SecretItemTag item) => Call(() => store.LoadItem(Mapping.Item(item)));
 

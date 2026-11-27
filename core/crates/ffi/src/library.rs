@@ -13,15 +13,16 @@ use tablepro_core::{
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionList, ConnectionProject,
-    ConnectionProjectName, ConnectionStore, ConnectionTag, ConnectionTagName, LibraryIcon, ProfilesLeaving,
-    ProjectMembership, RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost,
-    SshRemoteFile, SshTotp, SshTotpAlgorithm, SshTotpMode, StorageError, SymbolName, english_secret_label, shown_name,
+    ConnectionProjectName, ConnectionStore, ConnectionTag, ConnectionTagName, LibraryIcon, ProjectMembership,
+    RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig, SecretOwner, SecretOwnerKind, SshJumpAuth,
+    SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm, SshTotpMode, StorageError, SymbolName, english_secret_label,
+    shown_name,
 };
 use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::export::write_whole_file;
-use crate::host::{ProfileKindTag, ProfileSecrets};
+use crate::host::{ProfileKindTag, ProfileSecrets, SecretDeletionTag};
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -495,24 +496,33 @@ impl ConnectionLibrary {
         .await
     }
 
-    pub(crate) async fn delete_profile_secrets(&self, leaving: ProfilesLeaving) -> Result<(), CoreError> {
-        let vault = self.profile_secrets.clone();
-        on_runtime(&self.tasks, async move {
-            for id in leaving.ssh {
-                vault
-                    .delete_profile(id, ProfileKindTag::Ssh)
-                    .await
-                    .map_err(secret_error)?;
+    // Called by a library write while it holds the store's lock, on the blocking thread the write runs on, so it waits
+    // for the host here; the host's delete must not call the library back.
+    pub(crate) fn secret_deleter(&self) -> impl FnMut(SecretOwner) -> bool + Send + 'static {
+        let (vault, profiles) = (self.secrets.clone(), self.profile_secrets.clone());
+        let handle = self.tasks.handle().clone();
+        move |owner| {
+            let answered = handle.block_on(async {
+                match owner.kind {
+                    SecretOwnerKind::Connection => vault
+                        .delete_connection(owner.id)
+                        .await
+                        .map(|()| SecretDeletionTag::Deleted),
+                    SecretOwnerKind::SshProfile => profiles.delete_profile(owner.id, ProfileKindTag::Ssh).await,
+                    SecretOwnerKind::CredentialProfile => {
+                        profiles.delete_profile(owner.id, ProfileKindTag::Credential).await
+                    }
+                }
+            });
+            match answered {
+                // Secrets another app keeps are that app's to delete, so the list lets them go too.
+                Ok(SecretDeletionTag::Deleted | SecretDeletionTag::NotOwned) => true,
+                Err(error) => {
+                    tracing::warn!(%error, kind = ?owner.kind, "kept a removed record's secrets for the next library write");
+                    false
+                }
             }
-            for id in leaving.credential {
-                vault
-                    .delete_profile(id, ProfileKindTag::Credential)
-                    .await
-                    .map_err(secret_error)?;
-            }
-            Ok(())
-        })
-        .await
+        }
     }
 
     // A secret the store cannot read stops the copy, which would otherwise fail to connect for no reason it shows.

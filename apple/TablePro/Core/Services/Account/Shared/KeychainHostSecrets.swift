@@ -68,7 +68,7 @@ nonisolated internal final class KeychainHostSecrets: HostSecrets, @unchecked Se
         throw Self.notHere
     }
 
-    func deleteProfile(profileId: String, kind: ProfileKindTag) throws {
+    func deleteProfile(profileId: String, kind: ProfileKindTag) throws -> SecretDeletionTag {
         throw Self.notHere
     }
 

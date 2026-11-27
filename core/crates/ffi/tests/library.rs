@@ -16,8 +16,8 @@ use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
     ConnectionRecord, ConnectionSecrets, Core, CoreError, FileOpenRequest, HostConfig, HostPrompter, HostSecretError,
     HostSecrets, ObjectScopeArg, ProfileKindTag, PromptAnswer, PromptPurposeTag, PromptRequest, RunOutcome,
-    RunSettings, SafeModeTag, SecretItemTag, SecretKindTag, SshAuthTag, SshSettings, TableName, TlsModeTag,
-    TlsSettings,
+    RunSettings, SafeModeTag, SecretDeletionTag, SecretItemTag, SecretKindTag, SshAuthTag, SshSettings, TableName,
+    TlsModeTag, TlsSettings,
 };
 use tokio::net::TcpListener;
 
@@ -56,8 +56,8 @@ impl HostSecrets for MemorySecrets {
         Ok(())
     }
 
-    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
-        Ok(())
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
@@ -145,8 +145,8 @@ impl HostSecrets for RefusingSecrets {
         self.memory.delete_connection(connection_id)
     }
 
-    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
-        Ok(())
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

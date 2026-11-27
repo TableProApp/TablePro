@@ -45,8 +45,8 @@ pub use connections::{
     CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionList,
     ConnectionListSnapshot, ConnectionListState, ConnectionOrigin, ConnectionStore, CredentialPassword,
     CredentialProfile, CredentialReference, DeviceOnly, ImportChange, ImportEntry, ImportPreview, ImportReport,
-    ImportedConnection, KnownOrigin, LibraryRead, LibraryWrite, LocalPasswordSource, ProfilesLeaving,
-    ProjectMembership, Rebuilt, RemoteFileAccess, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig,
+    ImportedConnection, KnownOrigin, LibraryRead, LibraryWrite, LocalPasswordSource, ProjectMembership, Rebuilt,
+    RemoteFileAccess, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig, SecretOwner, SecretOwnerKind,
     SocksProxy, SshJumpAuth, SshJumpHost, SshProfile, SshRemoteFile, SshRoute, SshRouteHop, SshRouteTarget, SshTotp,
     SshTotpAlgorithm, SshTotpMode, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
 };

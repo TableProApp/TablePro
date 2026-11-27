@@ -15,7 +15,8 @@ use tablepro_ffi::window_abi::{TpCursor, TpWindow, tablepro_cursor_fetch, tablep
 use tablepro_ffi::{
     ColumnSort, CompletionKindTag, Core, CoreError, DatabaseSession, EndpointInfo, FileOpenRequest, HostConfig,
     HostSecretError, HostSecrets, ObjectKindTag, ObjectScopeArg, ProfileKindTag, QueryEditor, RunEvent, RunListener,
-    RunOutcome, RunSettings, SecretItemTag, SecretKindTag, SessionHealthTag, TableName, TransactionStateTag, ValueKind,
+    RunOutcome, RunSettings, SecretDeletionTag, SecretItemTag, SecretKindTag, SessionHealthTag, TableName,
+    TransactionStateTag, ValueKind,
 };
 
 struct NoSecrets;
@@ -41,8 +42,8 @@ impl HostSecrets for NoSecrets {
         Ok(())
     }
 
-    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
-        Ok(())
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

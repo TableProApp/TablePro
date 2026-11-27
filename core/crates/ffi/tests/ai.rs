@@ -16,7 +16,7 @@ use tablepro_ffi::{
     AiChatArg, AiConversationArg, AiMessageArg, AiPolicyTag, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener,
     AiRoleTag, AiSettingsArg, AiStopTag, ConnectionRecord, ConnectionSecrets, Core, CoreError, DatabaseSession,
     FileOpenRequest, HostConfig, HostSecretError, HostSecrets, ObjectScopeArg, ProfileKindTag, RunListener, RunOutcome,
-    RunSettings, SafeModeTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings,
+    RunSettings, SafeModeTag, SecretDeletionTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings,
 };
 
 #[derive(Clone, Default)]
@@ -45,8 +45,8 @@ impl HostSecrets for MemorySecrets {
         Ok(())
     }
 
-    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
-        Ok(())
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

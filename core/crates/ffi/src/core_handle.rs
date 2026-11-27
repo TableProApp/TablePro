@@ -706,8 +706,12 @@ mod tests {
 
     #[async_trait]
     impl ProfileSecrets for NoItems {
-        async fn delete_profile(&self, _: Uuid, _: crate::host::ProfileKindTag) -> Result<(), SecretError> {
-            Ok(())
+        async fn delete_profile(
+            &self,
+            _: Uuid,
+            _: crate::host::ProfileKindTag,
+        ) -> Result<crate::host::SecretDeletionTag, SecretError> {
+            Ok(crate::host::SecretDeletionTag::Deleted)
         }
     }
 

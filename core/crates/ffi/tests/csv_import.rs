@@ -11,7 +11,8 @@ use secrecy::SecretString;
 use tablepro_ffi::{
     ConnectionRecord, ConnectionSecrets, Core, CsvDelimiterTag, CsvImportCheck, CsvImportOutcome, CsvReadOptions,
     DatabaseSession, FileOpenRequest, HostConfig, HostSecretError, HostSecrets, ProfileKindTag, ResultSet, RunListener,
-    RunOutcome, RunSettings, SafeModeTag, SaveGate, SecretItemTag, SecretKindTag, TableName, TlsModeTag, TlsSettings,
+    RunOutcome, RunSettings, SafeModeTag, SaveGate, SecretDeletionTag, SecretItemTag, SecretKindTag, TableName,
+    TlsModeTag, TlsSettings,
 };
 
 struct NoSecrets;
@@ -37,8 +38,8 @@ impl HostSecrets for NoSecrets {
         Ok(())
     }
 
-    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
-        Ok(())
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
