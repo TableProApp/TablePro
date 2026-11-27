@@ -17,10 +17,18 @@ internal struct MachineDescription: Equatable, Sendable {
     static func current() -> MachineDescription {
         MachineDescription(
             machineID: MachineIdentity.shared.machineID,
-            name: SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "Mac",
+            name: name(
+                computer: SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "Mac",
+                deviceProfile: AppStorageEnvironment.shared.deviceProfile
+            ),
             appVersion: Bundle.main.appVersion,
             osVersion: osVersion(ProcessInfo.processInfo.operatingSystemVersion)
         )
+    }
+
+    // Device profiles on one Mac are told apart in the device lists and the approval sheets.
+    static func name(computer: String, deviceProfile: String?) -> String {
+        deviceProfile.map { "\(computer) (\($0))" } ?? computer
     }
 
     static func osVersion(_ version: OperatingSystemVersion) -> String {
