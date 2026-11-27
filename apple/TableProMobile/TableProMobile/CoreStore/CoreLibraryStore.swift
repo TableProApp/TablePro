@@ -406,6 +406,11 @@ final class CoreLibraryStore {
     // As Rust's `is_ascii_whitespace`, which the core's reader skips.
     nonisolated private static let asciiWhitespace: Set<UInt8> = [0x09, 0x0A, 0x0C, 0x0D, 0x20]
 
+    nonisolated static func isChangedSinceRead(_ error: any Error) -> Bool {
+        guard case let CoreError.Failed(info) = error else { return false }
+        return info.code == "storage.library_changed"
+    }
+
     nonisolated static func isDamaged(_ error: any Error) -> Bool {
         guard case let CoreError.Failed(info) = error else { return false }
         return damagedFileCodes.contains(info.code)
