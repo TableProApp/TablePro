@@ -4,13 +4,13 @@ use std::path::PathBuf;
 use tablepro_storage::{
     CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionOrigin,
     CredentialPassword, CredentialProfile, CredentialReference, DeviceOnly, KnownOrigin, LocalPasswordSource,
-    RemoveOutcome, SocksProxy, SshProfile, SshRoute, SshRouteHop, SshRouteTarget, StorageError, TunnelCommand,
-    TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
+    SocksProxy, SshProfile, SshRoute, SshRouteHop, SshRouteTarget, StorageError, TunnelCommand, TunnelCommandMethod,
+    VaultAuth, VaultDatabaseRole,
 };
 use uuid::Uuid;
 
 use crate::error::CoreError;
-use crate::library::{ConnectionLibrary, SshSettings, edited_ssh, parse_id, ssh_settings};
+use crate::library::{ConnectionLibrary, SshSettings, parse_id, ssh_settings};
 
 // What a connection carries beyond the form's fields: what runs and what is sent from it, its profile
 // links and its plugin fields. Every app keeps these, and the ones it shows nothing for come back unchanged.
@@ -178,7 +178,6 @@ pub struct TunnelCommandRecord {
 // SSH settings kept under a name, which connections follow by their details' ssh_profile_id.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SshProfileRecord {
-    // Empty for a profile not saved yet.
     pub id: String,
     pub name: String,
     pub ssh: SshSettings,
@@ -187,7 +186,6 @@ pub struct SshProfileRecord {
 // A user and a password kept once, shared by every connection linked to it.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct CredentialProfileRecord {
-    // Empty for a profile not saved yet.
     pub id: String,
     pub name: String,
     pub username: String,
@@ -250,106 +248,6 @@ impl ConnectionLibrary {
         })
         .await
     }
-
-    pub async fn ssh_profiles(&self) -> Result<Vec<SshProfileRecord>, CoreError> {
-        self.blocking(|store| {
-            Ok(store
-                .list_blocking()?
-                .ssh_profiles
-                .iter()
-                .map(SshProfileRecord::from)
-                .collect())
-        })
-        .await
-    }
-
-    // Creates the profile when its id is empty or unknown; keys a newer build stored in it stay.
-    pub async fn save_ssh_profile(&self, profile: SshProfileRecord) -> Result<SshProfileRecord, CoreError> {
-        let id = new_or_parsed(&profile.id)?;
-        let name = required_name(&profile.name)?;
-        let _held = self.hold_writes().await;
-        self.blocking(move |store| {
-            let list = store.list_blocking()?;
-            let id = unclaimed(&list, id);
-            let stored = list
-                .ssh_profiles
-                .iter()
-                .find(|held| held.id == id)
-                .map(|held| &held.ssh);
-            let saved = SshProfile {
-                id,
-                name,
-                ssh: edited_ssh(&profile.ssh, stored),
-            };
-            store.save_ssh_profile_blocking(saved.clone())?;
-            Ok(SshProfileRecord::from(&saved))
-        })
-        .await
-    }
-
-    // Returns whether the profile was there.
-    pub async fn delete_ssh_profile(&self, id: String) -> Result<bool, CoreError> {
-        let id = parse_id(&id)?;
-        let _held = self.hold_writes().await;
-        self.blocking(move |store| Ok(store.delete_ssh_profile_blocking(id)? == RemoveOutcome::Removed))
-            .await
-    }
-
-    pub async fn credential_profiles(&self) -> Result<Vec<CredentialProfileRecord>, CoreError> {
-        self.blocking(|store| {
-            Ok(store
-                .list_blocking()?
-                .credential_profiles
-                .iter()
-                .map(CredentialProfileRecord::from)
-                .collect())
-        })
-        .await
-    }
-
-    // Creates the profile when its id is empty or unknown; keys a newer build stored in it stay.
-    pub async fn save_credential_profile(
-        &self,
-        profile: CredentialProfileRecord,
-    ) -> Result<CredentialProfileRecord, CoreError> {
-        let id = new_or_parsed(&profile.id)?;
-        let name = required_name(&profile.name)?;
-        let password = CredentialPassword::from(profile.password);
-        let username = profile.username;
-        let secure_field_ids = profile.secure_field_ids;
-        let order = profile.order;
-        let _held = self.hold_writes().await;
-        self.blocking(move |store| {
-            let list = store.list_blocking()?;
-            let id = unclaimed(&list, id);
-            let unknown = list
-                .credential_profiles
-                .iter()
-                .find(|held| held.id == id)
-                .map(|held| held.unknown.clone())
-                .unwrap_or_default();
-            let saved = CredentialProfile {
-                id,
-                name,
-                username,
-                password,
-                secure_field_ids,
-                order,
-                unknown,
-            };
-            store.save_credential_profile_blocking(saved.clone())?;
-            Ok(CredentialProfileRecord::from(&saved))
-        })
-        .await
-    }
-
-    // Returns whether the profile was there. Its stored password stays until the app deletes it.
-    pub async fn delete_credential_profile(&self, id: String) -> Result<bool, CoreError> {
-        let id = parse_id(&id)?;
-        let _held = self.hold_writes().await;
-        self.blocking(move |store| Ok(store.delete_credential_profile_blocking(id)? == RemoveOutcome::Removed))
-            .await
-    }
 }
 
 fn stored(store: &tablepro_storage::ConnectionStore, id: Uuid) -> Result<tablepro_storage::SavedConnection, CoreError> {
@@ -360,30 +258,6 @@ fn stored(store: &tablepro_storage::ConnectionStore, id: Uuid) -> Result<tablepr
         .find(|saved| saved.id == id)
         .cloned()
         .ok_or_else(|| StorageError::ConnectionNotFound { id }.into())
-}
-
-// A profile this build cannot read keeps its id, and the links and secrets filed under it.
-fn unclaimed(list: &tablepro_storage::ConnectionList, id: Uuid) -> Uuid {
-    if list.unreadable_profiles.contains(&id) {
-        Uuid::new_v4()
-    } else {
-        id
-    }
-}
-
-fn new_or_parsed(id: &str) -> Result<Uuid, CoreError> {
-    match id.trim() {
-        "" => Ok(Uuid::new_v4()),
-        id => parse_id(id),
-    }
-}
-
-fn required_name(name: &str) -> Result<String, CoreError> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err(CoreError::failed("library.name_required", "a profile needs a name"));
-    }
-    Ok(name.to_owned())
 }
 
 fn optional_uuid(id: Option<&str>) -> Result<Option<Uuid>, CoreError> {

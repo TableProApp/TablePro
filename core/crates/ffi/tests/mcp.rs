@@ -16,8 +16,9 @@ use secrecy::{ExposeSecret, SecretString};
 use tablepro_cli::{Exit, Host, HostError, Terminal};
 use tablepro_ffi::{
     ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, ExternalAccessTag, FileOpenRequest, HostConfig,
-    HostSecretError, HostSecrets, McpAppHost, McpListener, McpService, McpStatusTag, McpWriteRequest, RunListener,
-    RunOutcome, RunSettings, SafeModeTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings, mcp_address,
+    HostSecretError, HostSecrets, McpAppHost, McpListener, McpService, McpStatusTag, McpWriteRequest, ProfileKindTag,
+    RunListener, RunOutcome, RunSettings, SafeModeTag, SecretDeletionTag, SecretItemTag, SecretKindTag, TlsModeTag,
+    TlsSettings, mcp_address,
 };
 
 fn shown(text: impl Into<String>, connection: Option<String>) -> tablepro_ffi::HistoryFilterArg {
@@ -58,6 +59,10 @@ impl HostSecrets for MemorySecrets {
 
     fn delete_connection(&self, _: String) -> Result<(), HostSecretError> {
         Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

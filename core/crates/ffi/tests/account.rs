@@ -19,7 +19,8 @@ use tablepro_account::{MachineId, fakes};
 use tablepro_ffi::{
     AccountConfig, AccountListener, AccountService, AccountStateTag, AppClientTag, CancelToken, Core, CoreError,
     FeatureAccessTag, HostBrowser, HostBrowserError, HostConfig, HostSecretError, HostSecrets, HostWebAuthenticator,
-    ManagedPolicyArg, ManagedPolicyValues, SecretItemTag, SecretKindTag, SignOutCauseTag,
+    ManagedPolicyArg, ManagedPolicyValues, ProfileKindTag, SecretDeletionTag, SecretItemTag, SecretKindTag,
+    SignOutCauseTag,
 };
 
 const GUID: &str = "d3b07384-d113-4ec6-a2f1-6a3f0c2e9b7a";
@@ -52,6 +53,10 @@ impl HostSecrets for MemorySecrets {
 
     fn delete_connection(&self, _: String) -> Result<(), HostSecretError> {
         Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

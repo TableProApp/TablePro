@@ -11,7 +11,8 @@ use secrecy::SecretString;
 use tablepro_ffi::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, FileOpenRequest, HistoryFilterArg,
     HistoryOutcomeTag, HistoryRun, HistoryRunDetails, HistoryStatusTag, HostConfig, HostSecretError, HostSecrets,
-    LibrarySnapshot, SafeModeTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings,
+    LibrarySnapshot, ProfileKindTag, SafeModeTag, SecretDeletionTag, SecretItemTag, SecretKindTag, TlsModeTag,
+    TlsSettings,
 };
 
 fn in_project(project: Option<String>) -> HistoryFilterArg {
@@ -47,6 +48,10 @@ impl HostSecrets for NoSecrets {
 
     fn delete_connection(&self, _: String) -> Result<(), HostSecretError> {
         Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

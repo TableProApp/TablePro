@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
     Core, ForeignAppDirsArg, ForeignAppTag, ForeignImportRequest, ForeignSourceInfo, HostConfig, HostSecretError,
-    HostSecrets, PasswordOfferTag, PasswordOutcomeTag, QueryAvailabilityTag, ResolutionTag, ScanDepthTag,
-    SecretItemTag, SecretKindTag, SourceAvailabilityTag,
+    HostSecrets, PasswordOfferTag, PasswordOutcomeTag, ProfileKindTag, QueryAvailabilityTag, ResolutionTag,
+    ScanDepthTag, SecretDeletionTag, SecretItemTag, SecretKindTag, SourceAvailabilityTag,
 };
 
 #[derive(Default)]
@@ -55,6 +55,10 @@ impl HostSecrets for Shared {
     fn delete_connection(&self, id: String) -> Result<(), HostSecretError> {
         self.0.stored.lock().unwrap().retain(|(stored, _), _| *stored != id);
         Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
