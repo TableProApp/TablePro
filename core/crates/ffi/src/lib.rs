@@ -106,9 +106,9 @@ pub use history::{
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
 pub use host_stores::{
     FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,
-    FavouriteStoreContents, FavouriteTableRecord, HistoryDetailsRecord, HistoryEntryRecord, SavedQueryFolderRecord,
-    SavedQueryRecord, SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome, TableFolderRecordWrite,
-    TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
+    FavouriteStoreContents, FavouriteTableRecord, HistoryDetailsRecord, HistoryEntryRecord, HistoryIdentityInfo,
+    SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome,
+    TableFolderRecordWrite, TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
 };
 pub use import::{
     CsvDelimiterTag, CsvImport, CsvImportCheck, CsvImportOutcome, CsvPreview, CsvReadOptions, CsvRowFault,
