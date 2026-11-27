@@ -9,7 +9,7 @@ use super::{decode_error, text_rows};
 pub(super) const OWNERS_SQL: &str = "\
 SELECT r.rolname::text
 FROM pg_catalog.pg_roles r
-WHERE NOT pg_catalog.starts_with(r.rolname, 'pg_')
+WHERE pg_catalog.left(r.rolname::text, 3) <> 'pg_'
 ORDER BY 1";
 
 pub(super) const TEMPLATES_SQL: &str = "\

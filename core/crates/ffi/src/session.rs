@@ -1019,7 +1019,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_eq!(refused.code(), "driver.unsupported");
+        assert_eq!(refused.code(), "unsupported.database_switching");
         assert!(editor.is_closed(), "the editor was left open in the wrong database");
     }
 
