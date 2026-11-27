@@ -171,8 +171,8 @@ struct PluginMetadataSnapshot: Sendable {
         // False where users and roles are different kinds: there a role never logs in, and Can log in is a user's lock.
         var supportsRoleLogin: Bool = true
 
-        // Set, a table page reads a large binary value's size through it and loads the value on demand.
-        var binaryLengthFunction: String?
+        // Set, a table page reads a large value's size and the start of its text through them, and loads the value on demand.
+        var largeValueFunctions: LargeValueFunctions?
 
         // Whether a table's DDL can state a CHECK value list in the form `QuerySqlParser` reads. False where the
         // server rewrites the clause into another shape, or where the driver fills `allowedValues` itself.
@@ -865,7 +865,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
                     .supportsPrincipalConnectionLimit ?? true,
                 supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
-                binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction,
+                largeValueFunctions: existingSnapshot?.capabilities.largeValueFunctions,
                 readsCheckListsFromDDL: existingSnapshot?.capabilities.readsCheckListsFromDDL ?? true,
                 readOnlyEnforcement: existingSnapshot?.capabilities.readOnlyEnforcement ?? .loginPrivileges,
                 statementPolicyInDriver: existingSnapshot?.capabilities.statementPolicyInDriver ?? false,

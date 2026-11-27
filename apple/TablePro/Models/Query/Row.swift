@@ -38,10 +38,12 @@ struct SparseRowState: Equatable, Sendable {
     private(set) var absentColumns: [RowID: Set<Int>] = [:]
     // Column to byte length of a value the page left on the server; it reads `.null` until loaded.
     private(set) var unloadedColumns: [RowID: [Int: Int]] = [:]
+    // The first characters of an unloaded text, for the grid to show. Never a value: a reader of the row sees `.null`.
+    private(set) var unloadedHeads: [RowID: [Int: String]] = [:]
     private(set) var exportSnapshots: [RowID: DocumentExportSnapshot] = [:]
 
     var isEmpty: Bool {
-        absentColumns.isEmpty && unloadedColumns.isEmpty && exportSnapshots.isEmpty
+        absentColumns.isEmpty && unloadedColumns.isEmpty && unloadedHeads.isEmpty && exportSnapshots.isEmpty
     }
 
     mutating func setAbsentColumns(_ columns: Set<Int>, for id: RowID) {
@@ -50,6 +52,21 @@ struct SparseRowState: Equatable, Sendable {
 
     mutating func setUnloadedColumns(_ columns: [Int: Int], for id: RowID) {
         Self.set(columns, for: id, in: &unloadedColumns)
+        guard var heads = unloadedHeads[id] else { return }
+        heads = heads.filter { columns[$0.key] != nil }
+        Self.set(heads, for: id, in: &unloadedHeads)
+    }
+
+    mutating func setUnloadedHeads(_ heads: [Int: String], for id: RowID) {
+        Self.set(heads, for: id, in: &unloadedHeads)
+    }
+
+    // A column masked after its rows arrived shows only the sizes of its cut values.
+    mutating func dropUnloadedHeads(inColumns columns: Set<Int>) {
+        guard !unloadedHeads.isEmpty, !columns.isEmpty else { return }
+        for (id, heads) in unloadedHeads {
+            Self.set(heads.filter { !columns.contains($0.key) }, for: id, in: &unloadedHeads)
+        }
     }
 
     mutating func setExportSnapshot(_ snapshot: DocumentExportSnapshot?, for id: RowID) {
@@ -86,6 +103,7 @@ struct SparseRowState: Equatable, Sendable {
         guard !isEmpty else { return }
         absentColumns.removeValue(forKey: id)
         unloadedColumns.removeValue(forKey: id)
+        unloadedHeads.removeValue(forKey: id)
         exportSnapshots.removeValue(forKey: id)
     }
 
