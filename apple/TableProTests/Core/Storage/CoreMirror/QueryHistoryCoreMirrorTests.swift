@@ -180,6 +180,22 @@ struct QueryHistoryCoreMirrorTests {
         #expect(await storage.entryIds() == [])
     }
 
+    @Test("A core history replaced since the last agreement is refilled from this store, never read as deletions")
+    func replacedCoreIsRefilled() async throws {
+        let entry = run("SELECT 1", at: 1_700_000_000)
+        #expect(await storage.record(entry))
+        #expect(await mirror.push())
+        let agreed = try #require(await storage.coreIdentity())
+
+        _ = try await fixture.core.history().removeEntries(recordIds: [entry.id.uuidString])
+        #expect(await storage.setCoreIdentity(generation: "a-file-restored-from-elsewhere", sequence: agreed.sequence))
+        #expect(await mirror.push())
+
+        #expect(await storage.entryIds() == [entry.id])
+        #expect(try await coreIds() == [entry.id])
+        #expect(await storage.coreIdentity()?.generation == agreed.generation)
+    }
+
     @Test("A run mirrored before the core kept details gets them from this store once")
     func detailsAreBackfilled() async throws {
         let entry = run("SELECT 1", at: 1_700_000_000)

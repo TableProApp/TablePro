@@ -268,6 +268,61 @@ internal extension QueryHistoryStorage {
             && execute("INSERT OR IGNORE INTO core_mirror_meta (key, value) VALUES ('details_filled', '1');")
     }
 
+    // The core history's generation and write sequence when the agreement was last written, so a replaced or rolled
+    // back `history.db` is told from deletions. Nil before the first agreement.
+    func coreIdentity() -> (generation: String, sequence: UInt64)? {
+        guard let db, execute(Self.metaTableSql) else { return nil }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT key, value FROM core_mirror_meta WHERE key IN ('core_generation', 'core_sequence');",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else { return nil }
+        var generation: String?
+        var sequence: UInt64?
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let key = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
+                  let value = sqlite3_column_text(statement, 1).map({ String(cString: $0) })
+            else { continue }
+            if key == "core_generation" { generation = value }
+            if key == "core_sequence" { sequence = UInt64(value) }
+        }
+        guard let generation, let sequence else { return nil }
+        return (generation, sequence)
+    }
+
+    @discardableResult
+    func setCoreIdentity(generation: String, sequence: UInt64) -> Bool {
+        guard let db, execute(Self.metaTableSql), execute("BEGIN IMMEDIATE;") else { return false }
+        let written = Self.put("core_generation", generation, in: db) && Self.put("core_sequence", String(sequence), in: db)
+        guard written, execute("COMMIT;") else {
+            execute("ROLLBACK;")
+            return false
+        }
+        return true
+    }
+
+    // Forgets what both stores held, for a core history that was replaced: every run either holds is then new to the
+    // other, and none reads as deleted.
+    @discardableResult
+    func resetCoreMirrorBase() -> Bool {
+        execute("CREATE TABLE IF NOT EXISTS core_mirror (id TEXT PRIMARY KEY) WITHOUT ROWID;")
+            && execute("DELETE FROM core_mirror;")
+    }
+
+    private static func put(_ key: String, _ value: String, in db: OpaquePointer) -> Bool {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO core_mirror_meta (key, value) VALUES (?, ?);", -1, &statement, nil)
+            == SQLITE_OK else { return false }
+        QueryHistorySqlBinding.text(key).bind(to: statement, at: 1)
+        QueryHistorySqlBinding.text(value).bind(to: statement, at: 2)
+        return sqlite3_step(statement) == SQLITE_DONE
+    }
+
     private static let pendingTableSql = "CREATE TABLE IF NOT EXISTS core_mirror_deleted (id TEXT PRIMARY KEY) WITHOUT ROWID;"
     private static let metaTableSql = "CREATE TABLE IF NOT EXISTS core_mirror_meta (key TEXT PRIMARY KEY, value TEXT) WITHOUT ROWID;"
     private static let clearsTableSql = "CREATE TABLE IF NOT EXISTS core_mirror_cleared (scope TEXT PRIMARY KEY) WITHOUT ROWID;"

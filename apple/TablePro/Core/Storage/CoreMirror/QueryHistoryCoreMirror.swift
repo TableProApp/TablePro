@@ -265,6 +265,14 @@ internal actor QueryHistoryCoreMirror {
                       await storage.clearPendingCoreDeletions(pending)
                 else { return false }
             }
+            // A core history replaced or rolled back since the last agreement lost runs nobody deleted: what both held
+            // then means nothing now, so every run either side holds goes to the other.
+            let identity = try await store.identity()
+            if let agreed = await storage.coreIdentity(),
+               agreed.generation != identity.generation || identity.sequence < agreed.sequence {
+                Self.logger.notice("The core's history was replaced or rolled back; its runs and this Mac's agree again from both")
+                guard await storage.resetCoreMirrorBase() else { return false }
+            }
             guard let mine = await storage.entryIds(), let base = await storage.coreMirrorBase() else { return false }
             let held = Set(try await store.recordIds().compactMap(UUID.init(uuidString:)))
             let filled = try await fillDetailsOnce(store, agreed: base.intersection(mine).intersection(held))
@@ -299,6 +307,8 @@ internal actor QueryHistoryCoreMirror {
                 adding: agreed.subtracting(base),
                 removing: base.subtracting(agreed)
             )
+            let settled = try await store.identity()
+            guard await storage.setCoreIdentity(generation: settled.generation, sequence: settled.sequence) else { return false }
             if !written.isEmpty || !gone.isEmpty || !lost.isEmpty || !taken.isEmpty || !pending.isEmpty || filled > 0 {
                 Self.logger.info("""
                     The history agreed: \(written.count, privacy: .public) up, \(taken.count, privacy: .public) down, \
