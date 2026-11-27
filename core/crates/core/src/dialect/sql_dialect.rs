@@ -87,8 +87,8 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
 
     /// Whether SQL the user ran may be kept in the query history. Each
     /// engine names the statements that can hold a password or a
-    /// connection secret (`classify_for_history` with its own
-    /// `CredentialRules`), and those are never recorded.
+    /// connection secret (`SqlGrammar::history_recording`), and those
+    /// are never recorded.
     fn history_recording(&self, sql: &str) -> HistoryRecording;
 
     /// The engine's structure-change spelling, or `None` where the app

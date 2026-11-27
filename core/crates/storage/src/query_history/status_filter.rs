@@ -6,6 +6,8 @@ pub enum StatusFilter {
     Succeeded,
     Failed,
     Cancelled,
+    // Every run that did not succeed, cancelled ones included, as the macOS History pane's Failed reads.
+    Unsuccessful,
 }
 
 impl StatusFilter {
@@ -17,6 +19,7 @@ impl StatusFilter {
             Self::Succeeded => Some("h.success = 1 AND h.cancelled = 0"),
             Self::Failed => Some("h.success = 0 AND h.cancelled = 0"),
             Self::Cancelled => Some("h.cancelled = 1"),
+            Self::Unsuccessful => Some("h.success = 0"),
         }
     }
 }

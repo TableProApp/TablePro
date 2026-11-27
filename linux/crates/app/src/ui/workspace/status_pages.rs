@@ -89,7 +89,7 @@ impl WorkspaceModel {
             return;
         }
         let dialog = SavedQueriesDialog::new(SavedQueriesDialogInit {
-            store: self.history.store().map(|history| history.saved_queries()),
+            store: self.history.saved().map(|saved| saved.saved_queries()),
             active_connection: self.context.active.metadata().map(|metadata| metadata.id),
             saved: self.saved_connections.clone(),
             tasks: self.tasks.clone(),
@@ -244,9 +244,9 @@ impl WorkspaceModel {
         // The save lands even when the workspace is gone by then; only
         // its toast is dropped. A database still opening is waited for.
         let input = self.input.clone();
-        let (ready, availability) = (self.history.ready_store(), self.history.availability());
+        let (ready, availability) = (self.history.ready_saved(), self.history.availability());
         crate::runtime::spawn_held(&self.tasks, &*self.context.hold, async move {
-            let Some(store) = ready.await.map(|history| history.saved_queries()) else {
+            let Some(store) = ready.await.map(|saved| saved.saved_queries()) else {
                 let reason = availability.borrow().failure().map(str::to_owned).unwrap_or_default();
                 input.deliver(WorkspaceInput::ShowAlert {
                     title: crate::i18n::gettext("Could Not Save Query"),
@@ -335,7 +335,7 @@ mod tests {
         assert_eq!(test.hold.live(), 1, "the save started without holding the process");
         wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
 
-        let store = history.store().expect("the query database").saved_queries();
+        let store = history.saved().expect("the saved queries").saved_queries();
         let listing = test.services.tasks.spawn_task(async move { store.list(None).await });
         let saved = finish_on_main(WAIT, listing)
             .expect("the list to load")
@@ -359,7 +359,7 @@ mod tests {
             wait_until(WAIT, || test.hold.live() == 0).expect("save complete");
         };
         let read = || {
-            let store = test.services.history().store().expect("history").saved_queries();
+            let store = test.services.history().saved().expect("saved queries").saved_queries();
             let reading = test.services.tasks.spawn_task(async move { store.list(None).await });
             finish_on_main(WAIT, reading)
                 .expect("read complete")
@@ -393,14 +393,14 @@ mod tests {
         test.workspace()
             .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
         wait_until(WAIT, || favorites.names() == ["Orders"]).expect("saved query listed");
-        let store = history.store().expect("history").saved_queries();
+        let store = history.saved().expect("saved queries").saved_queries();
         let work = test.services.tasks.spawn_task(async move {
             let saved = store.list(None).await.expect("list");
             store.rename(saved[0].id, "Renamed").await.expect("rename");
         });
         finish_on_main(WAIT, work).expect("rename finished").expect("task");
         wait_until(WAIT, || favorites.names() == ["Renamed"]).expect("external rename listed");
-        let store = history.store().expect("history").saved_queries();
+        let store = history.saved().expect("saved queries").saved_queries();
         let work = test.services.tasks.spawn_task(async move {
             let saved = store.list(None).await.expect("list");
             store.delete(saved[0].id).await.expect("delete");
@@ -479,7 +479,12 @@ mod tests {
         shell.create_folder("Reports".to_owned(), None);
         wait_until(WAIT, || favorites.folder_destinations().len() == 1).expect("the folder to be listed");
         let folder = favorites.folder_destinations()[0].0;
-        let store = test.services.history().store().expect("history").saved_query_folders();
+        let store = test
+            .services
+            .history()
+            .saved()
+            .expect("saved queries")
+            .saved_query_folders();
         let owner = test.workspace().connection_id().expect("connection");
         let work = test
             .services

@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::StorageError;
 use crate::journal::{JournalEntry, RecordKind, RecordRef};
-use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
+use crate::query_history::{Bind, CopyDelete, trim_saved_copies};
 use crate::unix_time::to_unix;
 
 use super::{DatabaseEnvironment, FavouriteDatabase, FavouriteTable, Favourites, database_record};
@@ -133,7 +133,7 @@ impl Favourites {
         {
             return Err(StorageError::EmptyName);
         }
-        trim_upgrade_copies(&self.path, &copy_deletes(&removed_tables, &removed_databases)).await?;
+        trim_saved_copies(&self.files, &copy_deletes(&removed_tables, &removed_databases)).await?;
         let (gone_tables, gone_databases) = remove(&mut transaction, &removed_tables, &removed_databases).await?;
         let (marked_tables, marked_databases) = mark(&mut transaction, write).await?;
         let digests = read_contents(&mut transaction).await?.digests;
@@ -333,10 +333,10 @@ fn digests(tables: &[FavouriteTable], databases: &[FavouriteDatabase]) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{QueryHistory, StoragePaths};
+    use crate::{SavedQueryDatabase, StoragePaths};
 
     async fn favourites(root: &tempfile::TempDir) -> Favourites {
-        QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+        SavedQueryDatabase::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
             .await
             .expect("open")
             .favourites()

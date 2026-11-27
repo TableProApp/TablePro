@@ -653,6 +653,49 @@ async fn a_reserved_kind_outside_its_scopes_and_a_value_the_rules_refuse_are_rej
 }
 
 #[tokio::test]
+async fn a_null_in_a_patch_removes_its_member_and_a_null_the_record_would_keep_is_refused() {
+    let server = FakeServer::new();
+    let mac = device(&server, "dev_mac", true);
+    let created = mac
+        .push(
+            ScopeName::Personal,
+            vec![write(
+                "saved_query",
+                CONNECTION,
+                None,
+                json!({"name": "q", "keyword": "rev"}),
+            )],
+        )
+        .await
+        .unwrap();
+    let tag = tag_of(&created[0]);
+    let mut released = write("saved_query", CONNECTION, Some(tag.clone()), json!({"name": "q"}));
+    released.op = ChangeOp::Write {
+        fields: json!({"name": "q"}),
+        patch: json!({"keyword": null}),
+    };
+    let mut kept_null = write("saved_query", CONNECTION, None, json!({}));
+    kept_null.record_id = "E6C12C96-3CBD-4A0E-9F41-E36B47F35D84".to_owned();
+    kept_null.op = ChangeOp::Write {
+        fields: json!({"tags": [null]}),
+        patch: json!({"tags": [null]}),
+    };
+
+    let outcomes = mac.push(ScopeName::Personal, vec![released, kept_null]).await.unwrap();
+
+    assert!(
+        matches!(&outcomes[0], ChangeOutcome::Applied { .. }),
+        "{:?}",
+        outcomes[0]
+    );
+    assert_eq!(rejected(&outcomes[1]), RejectedCode::BadValue);
+    let stored = server
+        .stored(ScopeOwner::Personal(account()), "saved_query", CONNECTION)
+        .unwrap();
+    assert_eq!(stored.fields, Some(json!({"name": "q"})));
+}
+
+#[tokio::test]
 async fn a_switch_turned_off_tombstones_with_policy_and_refuses_the_kind() {
     let server = FakeServer::new();
     let mac = device(&server, "dev_mac", true);

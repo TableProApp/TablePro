@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use super::error::SyncError;
 use super::ids::{KindName, RecordKey};
@@ -62,9 +63,18 @@ pub trait SyncControl: Send + Sync {
         unimplemented("sync.move_to_icloud")
     }
 
-    // Another account or server: Move my data or Start empty. Nothing goes up without this choice.
-    async fn choose_for_new_identity(&self, choice: NewIdentityChoice) -> Result<(), SyncError> {
-        let _ = choice;
+    // What the choice after another account weighs: the changes the last account's file held unsent, and the account
+    // the prompt is for.
+    async fn plan_new_identity(&self) -> Result<NewIdentityPlan, SyncError> {
+        unimplemented("sync.plan_new_identity")
+    }
+
+    // Another account or server: Move my data or Start empty. Nothing goes up without this choice. Start empty takes
+    // the synced records off this device, where the last account keeps them, keeps the Local only ones, and fills
+    // from the new account (orchestrator ruling on 0066). `account` is the plan's: an answer shown for another account
+    // than the one signed in now changes nothing and answers `sync.changed`.
+    async fn choose_for_new_identity(&self, choice: NewIdentityChoice, account: String) -> Result<(), SyncError> {
+        let _ = (choice, account);
         unimplemented("sync.choose_for_new_identity")
     }
 
@@ -82,9 +92,17 @@ pub trait SyncControl: Send + Sync {
         unimplemented("sync.approvals")
     }
 
-    // A rejection keeps the device's own value as a local override.
-    async fn decide_approval(&self, key: RecordKey, field: String, approve: bool) -> Result<(), SyncError> {
-        let _ = (key, field, approve);
+    // A rejection keeps the device's own value as a local override. `seen` is the `digest` of the value the person saw:
+    // when a pull changed it since, the decision applies to nothing and answers `sync.changed`, and the person is asked
+    // again (0066, Rules).
+    async fn decide_approval(
+        &self,
+        key: RecordKey,
+        field: String,
+        seen: [u8; 32],
+        approve: bool,
+    ) -> Result<(), SyncError> {
+        let _ = (key, field, seen, approve);
         unimplemented("sync.decide_approval")
     }
 
@@ -92,8 +110,10 @@ pub trait SyncControl: Send + Sync {
         unimplemented("sync.conflicts")
     }
 
-    async fn resolve_conflict(&self, key: RecordKey, keep: ConflictChoice) -> Result<(), SyncError> {
-        let _ = (key, keep);
+    // `seen` is the `digest` of the conflict the person saw. A pull that replaced it since resolves nothing and answers
+    // `sync.changed`, so the person sees the conflict as it is now.
+    async fn resolve_conflict(&self, key: RecordKey, seen: [u8; 32], keep: ConflictChoice) -> Result<(), SyncError> {
+        let _ = (key, seen, keep);
         unimplemented("sync.resolve_conflict")
     }
 
@@ -199,11 +219,26 @@ pub struct MoveBackPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewIdentityPlan {
+    // Changes the last account's file held that never went up; Start empty leaves them behind.
+    pub unsent: u64,
+    // The account the choice is for, which the answer names back.
+    pub account: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingApproval {
     pub key: RecordKey,
     pub field: String,
     pub pulled: Value,
+    // `approval_digest(&pulled)`, which `decide_approval` carries back.
+    pub digest: [u8; 32],
     pub current: Option<Value>,
+}
+
+// SHA-256 of a pulled value as its JSON text, which names the value a person decided on.
+pub fn approval_digest(pulled: &Value) -> [u8; 32] {
+    Sha256::digest(pulled.to_string().as_bytes()).into()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -212,6 +247,26 @@ pub struct TeamConflict {
     pub fields: Vec<String>,
     pub mine: Option<Value>,
     pub theirs: Option<Value>,
+    // `conflict_digest` of the conflict as the state holds it, which `resolve_conflict` carries back.
+    pub digest: [u8; 32],
+}
+
+// SHA-256 over a conflict's base, mine and theirs, each framed as one byte for none or a deletion and otherwise its
+// JSON text after a length, which names the conflict a person resolved.
+pub fn conflict_digest(base: Option<&Value>, mine: Option<&Value>, theirs: Option<&Value>) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    for side in [base, mine, theirs] {
+        match side {
+            None => hasher.update([0]),
+            Some(value) => {
+                let text = value.to_string();
+                hasher.update([1]);
+                hasher.update(u64::try_from(text.len()).unwrap_or(u64::MAX).to_be_bytes());
+                hasher.update(text.as_bytes());
+            }
+        }
+    }
+    hasher.finalize().into()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

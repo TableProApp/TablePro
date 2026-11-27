@@ -2,7 +2,7 @@ import Foundation
 @testable import TablePro
 import TableProFFI
 
-// A folder of its own for each test's stores and the core's history.db beside them.
+// A folder of its own for each test's stores and the core's query stores beside them.
 final class CoreMirrorFixture {
     let directory: URL
     let core: CoreHistoryDatabase

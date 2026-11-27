@@ -161,7 +161,16 @@ internal actor QueryHistoryCoreMirror {
                 executedAtMs: CoreMirrorTime.milliseconds(row.executedAt),
                 durationMs: CoreMirrorTime.milliseconds(seconds: row.executionTime),
                 rowsAffected: Int64(row.rowCount),
-                outcome: row.wasSuccessful ? .succeeded : .failed(message: row.errorMessage ?? "")
+                outcome: row.wasSuccessful ? .succeeded : .failed(message: row.errorMessage ?? ""),
+                details: HistoryRunDetails(
+                    database: nil,
+                    schema: nil,
+                    source: nil,
+                    statementType: nil,
+                    firstRowMs: nil,
+                    serverMs: nil,
+                    fingerprint: nil
+                )
             )
         }
         let store = try await database.history()

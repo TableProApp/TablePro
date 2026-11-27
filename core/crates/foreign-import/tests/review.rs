@@ -25,7 +25,7 @@ use tablepro_foreign_import::{
 use tablepro_storage::saved_queries::NewSavedQuery;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionProject, ConnectionProjectName,
-    ConnectionStore, QueryHistory, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpHost, StorageError,
+    ConnectionStore, SavedConnection, SavedQueryDatabase, SavedSshAuth, SavedSshConfig, SshJumpHost, StorageError,
     StoragePaths,
 };
 use tokio_util::sync::CancellationToken;
@@ -2011,7 +2011,10 @@ fn queries_land_on_their_connections_and_a_name_the_connection_holds_is_left_alo
         .expect("a runtime");
     let outcome = runtime.block_on(async {
         let paths = StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
-        let saved_queries = QueryHistory::open(&paths).await.expect("the history").saved_queries();
+        let saved_queries = SavedQueryDatabase::open(&paths)
+            .await
+            .expect("the saved queries")
+            .saved_queries();
         saved_queries
             .save(NewSavedQuery {
                 name: "Locks".to_owned(),

@@ -28,7 +28,7 @@ public sealed partial class SavedQueriesPane : UserControl
     // Clearing the rows reports them collapsed, which is not the user's doing.
     private bool _rebuilding;
 
-    // Null store: the history's database could not open, so nothing is kept or shown.
+    // Null store: the saved queries' database could not open, so nothing is kept or shown.
     internal SavedQueriesPane(SavedQueries? store, Guid connectionId, Func<string> connectionName)
     {
         InitializeComponent();

@@ -1725,9 +1725,9 @@ mod tests {
 
     async fn query_store(fixture: &Fixture) -> SavedQueries {
         let paths = StoragePaths::under(fixture._root.path(), "tablepro-test", "app.tablepro.Test");
-        tablepro_storage::QueryHistory::open(&paths)
+        tablepro_storage::SavedQueryDatabase::open(&paths)
             .await
-            .expect("history")
+            .expect("the saved queries")
             .saved_queries()
     }
 
@@ -1771,7 +1771,9 @@ mod tests {
         let queries = query_store(&fixture).await;
         let paths = StoragePaths::under(fixture._root.path(), "tablepro-test", "app.tablepro.Test");
         let options = ConnectOptions {
-            target: ConnectTarget::File(FileEndpoint::open_existing(paths.history_database()).expect("history file")),
+            target: ConnectTarget::File(
+                FileEndpoint::open_existing(paths.saved_query_database()).expect("the saved queries file"),
+            ),
             workspace_settings: WorkspaceSettings::workspace(false),
             liveness: tablepro_core::LivenessPolicy::DESKTOP,
             environment: ConnectEnvironment::new("test"),

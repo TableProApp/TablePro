@@ -5,7 +5,7 @@ use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::HistoryRecording;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::query_history::{MAX_QUERY_BYTES, NewEntry, Outcome};
-use tablepro_storage::{QueryHistory, StoragePaths};
+use tablepro_storage::{QueryHistory, SavedQueryDatabase, StoragePaths};
 use tokio::sync::watch;
 
 use super::history_availability::HistoryAvailability;
@@ -16,16 +16,16 @@ use super::telemetry::Telemetry;
 /// one pass, and this keeps a long session from growing without bound.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
 
-/// Opens the query history off the GTK thread, prunes it on a timer and
-/// decides what goes into it.
+/// Opens the query history and the saved queries' store off the GTK
+/// thread, prunes the history on a timer and decides what goes into it.
 ///
 /// Opening runs a migration and a prune, which is too slow to block
-/// startup on, so the app starts and this reports when the database is
-/// usable.
+/// startup on, so the app starts and this reports when both are usable.
 #[derive(Clone)]
 pub struct HistoryService {
     availability: watch::Receiver<HistoryAvailability>,
     store: Arc<Mutex<Option<QueryHistory>>>,
+    saved: Arc<Mutex<Option<SavedQueryDatabase>>>,
     save: watch::Receiver<bool>,
     _worker: Arc<tokio_util::task::AbortOnDropHandle<()>>,
     // Every editor run comes through here, history on or off, so the first query that worked is counted here.
@@ -43,7 +43,8 @@ impl HistoryService {
         } = preferences;
         let (sender, availability) = watch::channel(HistoryAvailability::Starting);
         let store: Arc<Mutex<Option<QueryHistory>>> = Arc::new(Mutex::new(None));
-        let store_for_worker = store.clone();
+        let saved: Arc<Mutex<Option<SavedQueryDatabase>>> = Arc::new(Mutex::new(None));
+        let (store_for_worker, saved_for_worker) = (store.clone(), saved.clone());
 
         let worker = tasks.spawn_owned(async move {
             let history = match QueryHistory::open(&paths).await {
@@ -54,7 +55,18 @@ impl HistoryService {
                     return;
                 }
             };
+            let saved_queries = match SavedQueryDatabase::open(&paths).await {
+                Ok(saved_queries) => saved_queries,
+                Err(error) => {
+                    tracing::warn!(%error, "saved queries unavailable");
+                    sender.send_replace(HistoryAvailability::failed(&error));
+                    return;
+                }
+            };
             prune_now(&history, &retention).await;
+            if let Ok(mut guard) = saved_for_worker.lock() {
+                *guard = Some(saved_queries);
+            }
             if let Ok(mut guard) = store_for_worker.lock() {
                 *guard = Some(history.clone());
             }
@@ -73,6 +85,7 @@ impl HistoryService {
         Self {
             availability,
             store,
+            saved,
             save,
             _worker: Arc::new(worker),
             telemetry: Telemetry::default(),
@@ -142,15 +155,27 @@ impl HistoryService {
     /// when it failed, for work that must not skip the history just
     /// because it ran early.
     pub fn ready_store(&self) -> impl Future<Output = Option<QueryHistory>> + use<> {
-        let mut availability = self.availability.clone();
-        let store = self.store.clone();
-        async move {
-            // A sender gone means the worker ended, which it does only
-            // after it has said how the open went.
-            let _ = availability.wait_for(HistoryAvailability::is_settled).await;
-            store.lock().ok().and_then(|guard| guard.clone())
-        }
+        settled(self.availability.clone(), self.store.clone())
     }
+
+    /// The saved queries, their folders and the favourites, as `store`.
+    pub fn saved(&self) -> Option<SavedQueryDatabase> {
+        self.saved.lock().ok().and_then(|guard| guard.clone())
+    }
+
+    /// As `ready_store`.
+    pub fn ready_saved(&self) -> impl Future<Output = Option<SavedQueryDatabase>> + use<> {
+        settled(self.availability.clone(), self.saved.clone())
+    }
+}
+
+async fn settled<T: Clone>(
+    mut availability: watch::Receiver<HistoryAvailability>,
+    store: Arc<Mutex<Option<T>>>,
+) -> Option<T> {
+    // A sender gone means the worker ended, which it does only after it has said how the open went.
+    let _ = availability.wait_for(HistoryAvailability::is_settled).await;
+    store.lock().ok().and_then(|guard| guard.clone())
 }
 
 /// One prune at the retention the user has set right now.
@@ -254,6 +279,7 @@ mod tests {
                 duration_ms: Some(1),
                 rows_affected: Some(0),
                 outcome: tablepro_storage::query_history::Outcome::Success,
+                details: Default::default(),
             })
             .await
             .expect("record");
@@ -359,6 +385,7 @@ mod tests {
             duration_ms: Some(1),
             rows_affected: None,
             outcome: tablepro_storage::query_history::Outcome::Success,
+            details: Default::default(),
         }
     }
 

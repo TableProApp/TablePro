@@ -450,6 +450,10 @@ fn history_entry(
         duration_ms: i64::try_from(elapsed.as_millis()).ok(),
         rows_affected,
         outcome,
+        details: tablepro_storage::query_history::RunDetails {
+            source: Some(tablepro_storage::query_history::RunSource::Mcp),
+            ..Default::default()
+        },
     }
 }
 

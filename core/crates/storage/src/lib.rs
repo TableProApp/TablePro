@@ -24,6 +24,7 @@ mod paths;
 mod project_name_error;
 pub mod query_history;
 pub mod saved_queries;
+mod saved_query_database;
 pub mod store_identity;
 mod stored_id;
 pub mod table_folders;
@@ -42,13 +43,14 @@ pub use connection_tag::ConnectionTag;
 pub use connection_tag_name::ConnectionTagName;
 pub use connections::field_trust;
 pub use connections::{
-    CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionList,
+    CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, CommittedWrite, ConnectionDetails, ConnectionList,
     ConnectionListSnapshot, ConnectionListState, ConnectionOrigin, ConnectionStore, CredentialPassword,
     CredentialProfile, CredentialReference, DeviceOnly, ImportChange, ImportEntry, ImportPreview, ImportReport,
-    ImportedConnection, KnownOrigin, LibraryRead, LibraryWrite, LocalPasswordSource, ProjectMembership, Rebuilt,
-    RemoteFileAccess, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig, SecretOwner, SecretOwnerKind,
-    SocksProxy, SshJumpAuth, SshJumpHost, SshProfile, SshRemoteFile, SshRoute, SshRouteHop, SshRouteTarget, SshTotp,
-    SshTotpAlgorithm, SshTotpMode, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
+    ImportedConnection, KnownOrigin, LibraryChange, LibraryRead, LibraryWrite, LocalPasswordSource, ProjectMembership,
+    Rebuilt, RemoteFileAccess, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig, SecretOwner,
+    SecretOwnerKind, SocksProxy, SshJumpAuth, SshJumpHost, SshProfile, SshRemoteFile, SshRoute, SshRouteHop,
+    SshRouteTarget, SshTotp, SshTotpAlgorithm, SshTotpMode, SyncedLibrary, TunnelCommand, TunnelCommandMethod,
+    VaultAuth, VaultDatabaseRole,
 };
 pub use credentials::{
     CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretItemLabeler,
@@ -73,9 +75,14 @@ pub use saved_queries::{
     SavedQueries, SavedQueriesSnapshot, SavedQueryContents, SavedQueryFolder, SavedQueryFolders, SavedQuerySettlement,
     SavedQueryWrite,
 };
+pub use saved_query_database::SavedQueryDatabase;
 pub use store_identity::{StoreContinuity, StoreIdentity};
 pub use table_folders::{
     TableFolder, TableFolderContents, TableFolderItem, TableFolderWrite, TableFolders, TableRef, TableScope,
 };
 pub use tag_name_error::TagNameError;
-pub use team_library::{TeamLibraryItem, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore, TeamLibraryTeam};
+pub use team_library::{
+    TeamLibraryCopy, TeamLibraryImported, TeamLibraryItem, TeamLibraryKind, TeamLibraryLocal, TeamLibraryOwner,
+    TeamLibraryRef, TeamLibraryStore, TeamLibraryTeam, TeamLibraryWriter,
+    delete_other_owners_blocking as delete_other_team_library_owners_blocking,
+};

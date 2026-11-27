@@ -8,14 +8,16 @@ use crate::paths::StoragePaths;
 pub(super) const BETA_3: usize = 1;
 pub(super) const BETA_5: usize = 3;
 
+// Where those builds kept it, in the state folder.
 pub(super) async fn old_database(root: &tempfile::TempDir, migrations: usize) -> (StoragePaths, SqlitePool) {
     let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
-    crate::fs::create_private_file_if_missing(&paths.history_database()).expect("file");
+    let path = super::split::history_before_move(&paths);
+    crate::fs::create_private_file_if_missing(&path).expect("file");
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(
             SqliteConnectOptions::new()
-                .filename(paths.history_database())
+                .filename(&path)
                 .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal),
         )
         .await

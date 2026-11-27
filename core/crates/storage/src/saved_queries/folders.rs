@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::time::SystemTime;
 
 use sqlx::{AssertSqlSafe, Connection, Row, SqliteConnection, SqlitePool};
@@ -32,13 +31,13 @@ const MAX_NAME_CHARS: usize = 200;
 #[derive(Debug, Clone)]
 pub struct SavedQueryFolders {
     pool: SqlitePool,
-    path: PathBuf,
+    files: crate::query_history::LiveFiles,
     signals: Signals,
 }
 
 impl SavedQueryFolders {
-    pub(crate) fn new(pool: SqlitePool, path: PathBuf, signals: Signals) -> Self {
-        Self { pool, path, signals }
+    pub(crate) fn new(pool: SqlitePool, files: crate::query_history::LiveFiles, signals: Signals) -> Self {
+        Self { pool, files, signals }
     }
 
     pub fn changes(&self) -> watch::Receiver<u64> {
@@ -164,7 +163,7 @@ impl SavedQueryFolders {
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), StorageError> {
-        let changed = super::deletion::delete_folder(&self.pool, &self.path, id).await?;
+        let changed = super::deletion::delete_folder(&self.pool, &self.files, id).await?;
         self.signals.changed(&changed);
         Ok(())
     }

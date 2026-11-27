@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use tablepro_storage::{ConnectionGroup, ConnectionList, LibraryIcon, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroup, ConnectionList, LibraryIcon, SavedConnection};
 use uuid::Uuid;
 
 use crate::cycles::cyclic;
@@ -30,6 +30,16 @@ pub fn icon_for_symbol(symbol: &str) -> Option<LibraryIcon> {
 // The SF Symbol a Mac draws for the icon.
 pub fn symbol_for_icon(icon: &LibraryIcon) -> Option<String> {
     icon_value(Some(icon))
+}
+
+// The colour a Mac's name stands for; `None` for "None" and for a name this build does not know.
+pub fn color_named(name: &str) -> Option<ConnectionColor> {
+    color(Some(name))
+}
+
+// The name a Mac writes for the colour, "None" for none.
+pub fn color_name(color: Option<ConnectionColor>) -> String {
+    color_value(color)
 }
 
 // A `ConnectionGroup` record's fields. `None` is a field the record lacks.

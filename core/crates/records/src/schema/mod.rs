@@ -5,10 +5,14 @@ use crate::kind::{Kind, Scope};
 mod keys;
 pub mod model;
 mod personal;
+mod readable;
 mod sealed;
 mod team;
 
-pub use personal::{AI_POLICIES, COLORS, EXTERNAL_ACCESS, SAFE_MODE_LEVELS, SSL_MODES};
+pub use personal::{
+    AI_POLICIES, COLORS, DRIVER_TYPES, EXTERNAL_ACCESS, SAFE_MODE_LEVELS, SSL_MODES, core_driver, wire_type,
+};
+pub use readable::readable;
 pub use sealed::HISTORY_ENTRY;
 
 // A kind's explicit wire schema (0051, What syncs): every member a record of it may carry, with its JSON type, its

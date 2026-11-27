@@ -9,10 +9,23 @@ use std::sync::Arc;
 
 use secrecy::SecretString;
 use tablepro_ffi::{
-    ConnectionLibrary, ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, FileOpenRequest, HistoryOutcomeTag,
-    HistoryRun, HostConfig, HostSecretError, HostSecrets, LibrarySnapshot, ProfileKindTag, SafeModeTag,
-    SecretDeletionTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings,
+    ConnectionLibrary, ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, FileOpenRequest, HistoryFilterArg,
+    HistoryOutcomeTag, HistoryRun, HistoryRunDetails, HistoryStatusTag, HostConfig, HostSecretError, HostSecrets,
+    LibrarySnapshot, ProfileKindTag, SafeModeTag, SecretDeletionTag, SecretItemTag, SecretKindTag, TlsModeTag,
+    TlsSettings,
 };
+
+fn in_project(project: Option<String>) -> HistoryFilterArg {
+    HistoryFilterArg {
+        text: String::new(),
+        connection_ids: None,
+        project_id: project,
+        sources: None,
+        status: HistoryStatusTag::Any,
+        executed_after_ms: None,
+        executed_before_ms: None,
+    }
+}
 
 struct NoSecrets;
 
@@ -160,6 +173,7 @@ fn ran(sql: &str, at_secs: i64) -> HistoryRun {
         duration_ms: Some(1),
         rows_affected: None,
         outcome: HistoryOutcomeTag::Succeeded,
+        details: HistoryRunDetails::default(),
     }
 }
 
@@ -448,7 +462,7 @@ async fn recent_and_the_history_follow_the_project_and_a_deleted_connections_run
     let search = |project: Option<String>| {
         let history = history.clone();
         async move {
-            let page = history.search(String::new(), None, project, None, 50).await.unwrap();
+            let page = history.search(in_project(project), None, 50).await.unwrap();
             page.entries.into_iter().map(|entry| entry.sql).collect::<Vec<_>>()
         }
     };
@@ -471,4 +485,42 @@ async fn recent_and_the_history_follow_the_project_and_a_deleted_connections_run
     assert_eq!((removed, again), (1, 0));
     assert_eq!(after, ["SELECT 2"]);
     assert_eq!(malformed.code(), "library.invalid_id");
+}
+
+#[tokio::test]
+async fn a_project_narrows_the_picked_connections_and_what_a_clear_deletes() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path());
+    let library = core.library().unwrap();
+    let acme = library.create_project("Acme".to_owned(), None).await.unwrap();
+    let inside = connected(&core, dir.path(), "inside", Some(&acme.id)).await;
+    let outside = connected(&core, dir.path(), "outside", None).await;
+    let history = core.history().await.unwrap();
+    for (session, sql, at) in [
+        (&inside, "SELECT 1", 1_700_000_000),
+        (&outside, "SELECT 2", 1_700_000_001),
+    ] {
+        history.record(session.clone(), ran(sql, at)).await.unwrap().unwrap();
+    }
+    let picking = |connection: &Arc<DatabaseSession>| HistoryFilterArg {
+        connection_ids: Some(vec![connection.id()]),
+        ..in_project(Some(acme.id.clone()))
+    };
+    let sql = |page: tablepro_ffi::HistoryPageInfo| page.entries.into_iter().map(|entry| entry.sql).collect::<Vec<_>>();
+
+    let picked_inside = sql(history.search(picking(&inside), None, 50).await.unwrap());
+    let picked_outside = sql(history.search(picking(&outside), None, 50).await.unwrap());
+    let cleared = history
+        .delete_matching(in_project(Some(acme.id.clone())))
+        .await
+        .unwrap();
+    let left = sql(history.search(in_project(None), None, 50).await.unwrap());
+
+    assert_eq!(picked_inside, ["SELECT 1"]);
+    assert!(
+        picked_outside.is_empty(),
+        "a connection outside the project shows nothing"
+    );
+    assert_eq!(cleared.len(), 1);
+    assert_eq!(left, ["SELECT 2"], "a clear in a project keeps the other runs");
 }

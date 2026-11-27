@@ -2199,7 +2199,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         client: "keys.retired_ik; taken",
         server: "none",
         layer: &["flow"],
-        given: obj(vec![("pin", obj(vec![("account", s("A")), ("replaced", arr(vec![s("A's IK")]))]))]),
+        given: obj(vec![("pin", obj(vec![("account", s("A")), ("replaced", arr(vec![obj(vec![("ik", s("A's IK")), ("av", n(4))])]))]))]),
         steps: vec![step("server", "pull", vec![w.account("A's certificate at av 3 under its old IK", "A", 3)], "keys.retired_ik as the newest; taken for objects signed under it before the replace", "none")],
     }));
 
@@ -2308,7 +2308,7 @@ fn approval_rows(
         purpose: KeyPurpose::Personal,
         version: v(version),
     };
-    let pin = |who: &Person, av: u32, how: PinHow, alert: bool, replaced: Vec<Ed25519Public>| TrustPin {
+    let pin = |who: &Person, av: u32, how: PinHow, alert: bool, replaced: Vec<crate::trust::Replaced>| TrustPin {
         account: who.id,
         ik: who.ik.public().expect("public"),
         av: v(av),
@@ -2411,7 +2411,7 @@ fn approval_rows(
         layer: &["flow"],
         given: obj(vec![("device_pins", arr(vec![obj(vec![("account", s("A")), ("ik_hex", h(&other_ik_a.0))])]))]),
         steps: vec![step("B approves N", "pull", w.approval("B with A's old IK replaced", "P", 2, dev_n, dev_b, &trust(
-            vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new()), pin(&w.a, 3, PinHow::Replaced, false, vec![other_ik_a])],
+            vec![pin(&w.p, 2, PinHow::Compared, false, Vec::new()), pin(&w.a, 3, PinHow::Replaced, false, vec![crate::trust::Replaced { ik: other_ik_a, av: v(3) }])],
             vec![pv(2, "P PK2")],
         )), "with the endorsement held: follows the new IK; without it: an alert", "none")],
     }));

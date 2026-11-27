@@ -27,6 +27,22 @@ pub trait RecordAdapter: Send + Sync {
 
     // A create-once kind's tombstones the provider took, which the store drops.
     async fn tombstones_pushed(&self, scope: ScopeName, record_ids: Vec<String>) -> Result<(), AdapterError>;
+
+    // Who last wrote each live record a pull brought and when, after the store took the page: on the service the
+    // writer the server names for the caller's role (0051, Pull). Only a store that shows it keeps it.
+    async fn pulled_writers(&self, scope: ScopeName, writers: Vec<PulledWriter>) -> Result<(), AdapterError> {
+        let _ = (scope, writers);
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PulledWriter {
+    pub record_id: String,
+    // None when the server names no one to this caller.
+    pub name: Option<String>,
+    // Milliseconds since the Unix epoch.
+    pub at_ms: i64,
 }
 
 // A store's generation id and write sequence. A new generation is a restored, replaced or copied file; a lower
@@ -70,6 +86,8 @@ pub enum LocalChange {
 pub trait HostSettings: Send + Sync {
     fn kind(&self) -> Kind;
 
+    // Every category the host holds a value for. One its platform's registry does not name, such as a newer build's,
+    // comes back as it was applied, unchanged, so the diff never reads its absence as a deletion (0066, Rules).
     async fn categories(&self) -> Result<Vec<SettingsDocument>, AdapterError>;
 
     // None removes the category's synced document, as a deleted theme.

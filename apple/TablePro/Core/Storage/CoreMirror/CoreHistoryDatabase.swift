@@ -8,9 +8,9 @@ import os
 import TableProFFI
 import TableProLogRedaction
 
-// The core's history.db (core ADR 0060): the saved queries and their folders, the favourite tables and databases,
-// the table folders and the history, in one file under `TablePro/Core/`. Opened on first use; a failed open is
-// tried again on the next call.
+// The core's query stores under `TablePro/Core/` (core ADR 0060 as amended): history.db holds the history, and
+// saved_queries.db the saved queries and their folders, the favourite tables and databases and the table folders.
+// Each opens on first use; a failed open is tried again on the next call.
 internal actor CoreHistoryDatabase {
     internal static let shared = CoreHistoryDatabase(
         folder: AppStorageEnvironment.shared.supportDirectory.appendingPathComponent("Core", isDirectory: true)
@@ -22,6 +22,7 @@ internal actor CoreHistoryDatabase {
     private let clientVersion: String
     private var core: Core?
     private var store: QueryHistoryStore?
+    private var savedQueryStore: SavedQueryDatabaseStore?
 
     internal init(folder: URL, clientVersion: String = CoreHistoryDatabase.appVersion) {
         self.folder = folder
@@ -35,18 +36,7 @@ internal actor CoreHistoryDatabase {
     internal func history() async throws -> QueryHistoryStore {
         if let store { return store }
         do {
-            // Private as the core keeps its own folders, since history.db holds the SQL a person ran.
-            try FileManager.default.createDirectory(
-                at: folder,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-            let core = try self.core ?? Core(
-                config: HostConfig(clientVersion: clientVersion, storageDir: folder.path),
-                secrets: NoHistorySecrets()
-            )
-            self.core = core
-            let opened = try await core.history()
+            let opened = try await openedCore().history()
             store = opened
             return opened
         } catch {
@@ -56,15 +46,43 @@ internal actor CoreHistoryDatabase {
     }
 
     internal func savedQueries() async throws -> SavedQueryStore {
-        try await history().savedQueries()
+        try await savedQueryDatabase().savedQueries()
     }
 
     internal func favourites() async throws -> FavouriteStore {
-        try await history().favourites()
+        try await savedQueryDatabase().favourites()
     }
 
     internal func tableFolders() async throws -> TableFolderStore {
-        try await history().tableFolders()
+        try await savedQueryDatabase().tableFolders()
+    }
+
+    private func savedQueryDatabase() async throws -> SavedQueryDatabaseStore {
+        if let savedQueryStore { return savedQueryStore }
+        do {
+            let opened = try await openedCore().savedQueryDatabase()
+            savedQueryStore = opened
+            return opened
+        } catch {
+            Self.logger.error("The core's saved query store did not open: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            throw error
+        }
+    }
+
+    private func openedCore() throws -> Core {
+        if let core { return core }
+        // Private as the core keeps its own folders, since history.db holds the SQL a person ran.
+        try FileManager.default.createDirectory(
+            at: folder,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let opened = try Core(
+            config: HostConfig(clientVersion: clientVersion, storageDir: folder.path),
+            secrets: NoHistorySecrets()
+        )
+        core = opened
+        return opened
     }
 }
 
@@ -77,7 +95,7 @@ internal func refusingOutdated(_ work: () async throws -> Void) async throws {
     }
 }
 
-// Nothing in history.db is a secret, and this core is opened for that file alone.
+// Nothing in the query stores is a secret, and this core is opened for those files alone.
 private final class NoHistorySecrets: HostSecrets, Sendable {
     func load(connectionId: String, kind: SecretKindTag) throws -> String? { nil }
 

@@ -222,6 +222,8 @@ async fn details_and_device_settings_round_trip_and_a_form_save_keeps_them() {
         cloud_sql_proxy: None,
         socks_proxy: None,
         tunnel_command: None,
+        tls_mode_unsettled: true,
+        ssh_profile_unlinked: true,
     };
 
     library
@@ -610,7 +612,7 @@ async fn a_rebuild_takes_no_secret_by_an_id_from_the_file_it_replaces() {
 async fn table_folders_file_tables_and_keep_a_folder_brought_in() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let folders = core.history().await.unwrap().table_folders();
+    let folders = core.saved_query_database().await.unwrap().table_folders();
     let connection = "6f0b6a4e-3a52-4c2f-9d1e-0c6a2b7f9e11".to_owned();
     let orders = TableRefRecord {
         database: "shop".to_owned(),
@@ -1136,4 +1138,34 @@ async fn a_form_that_sends_a_tunnel_turns_one_switched_off_back_on() {
         off.ssh.map(|ssh| (ssh.enabled, ssh.host)),
         Some((Some(false), "bastion".to_owned()))
     );
+}
+
+// The core's own write to the library is reported once to a host that tags the file; the host's own write returns
+// its digest instead, and a core opened later on the same folder reads what an earlier one recorded.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_core_s_own_library_writes_are_reported_once_and_the_host_s_are_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let key = || SecretString::from("the mac's key".to_owned());
+    let core = started(dir.path());
+    core.report_library_writes(key()).unwrap();
+    let library = core.library().unwrap();
+    let file = dir.path().join("connections.json");
+
+    let vouched = library.replace_library(mac_library(), None).await.unwrap();
+    assert!(core.take_library_writes().await.unwrap().is_empty());
+    library.create_group("Core side".to_owned(), None, None).await.unwrap();
+    let on_disk = sha256_hex(&std::fs::read(&file).unwrap());
+    drop(library);
+    drop(core);
+
+    let core = started(dir.path());
+    assert!(core.take_library_writes().await.unwrap().is_empty());
+    core.report_library_writes(key()).unwrap();
+    let taken = core.take_library_writes().await.unwrap();
+
+    assert_eq!(taken.len(), 1);
+    assert_eq!(taken[0].digest, on_disk);
+    assert_eq!(taken[0].over, vouched.digest);
+    assert!(taken[0].at_ms > 0);
+    assert!(core.take_library_writes().await.unwrap().is_empty());
 }

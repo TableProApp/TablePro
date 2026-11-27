@@ -17,6 +17,7 @@ use windows_sys::Win32::Security::Credentials::{
 
 use crate::credential_parts::{self, Layout, PartStore, Stored};
 use crate::host::{ProfileKindTag, SecretDeleter, SecretDeletionTag};
+use crate::sync::{DeviceItemClassTag, DeviceItemTag, device_item_target, device_store_error};
 
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -412,6 +413,51 @@ impl SecretItems for CredentialManager {
     }
 }
 
+// The sync engine's device store on Windows (core ARCHITECTURE.md, Platforms): the device and account keys and the
+// state file's anchor as bytes, on this machine only, never in a credential that roams.
+pub(crate) struct DeviceItems(pub(crate) Arc<CredentialManager>);
+
+const DEVICE_KEYS_LABEL: &str = "TablePro Sync keys";
+const DEVICE_ANCHOR_LABEL: &str = "TablePro Sync state anchor";
+
+#[async_trait]
+impl tablepro_sync::api::HostDeviceStore for DeviceItems {
+    async fn load(
+        &self,
+        item: tablepro_sync::api::DeviceItem,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, tablepro_sync::api::DeviceStoreError> {
+        let target = device_item_target(&self.0.prefix, &item);
+        self.0
+            .blocking(move || credential_parts::read_secret(&Credentials, &target))
+            .await
+            .map_err(device_store_error)
+    }
+
+    async fn store(
+        &self,
+        item: tablepro_sync::api::DeviceItem,
+        value: Zeroizing<Vec<u8>>,
+    ) -> Result<(), tablepro_sync::api::DeviceStoreError> {
+        let label = match DeviceItemTag::of(&item).class() {
+            DeviceItemClassTag::Keys => DEVICE_KEYS_LABEL,
+            DeviceItemClassTag::Anchor => DEVICE_ANCHOR_LABEL,
+        };
+        let target = device_item_target(&self.0.prefix, &item);
+        self.0
+            .blocking(move || credential_parts::write_secret(&Credentials, &target, &value, label, PART_SIZE))
+            .await
+            .map_err(device_store_error)
+    }
+
+    async fn delete(&self, item: tablepro_sync::api::DeviceItem) -> Result<(), tablepro_sync::api::DeviceStoreError> {
+        let target = device_item_target(&self.0.prefix, &item);
+        self.0
+            .blocking(move || credential_parts::delete_secret(&Credentials, &target))
+            .await
+            .map_err(device_store_error)
+    }
+}
+
 // Each sign-in's item in Credential Manager.
 pub(crate) struct SignInTokens(pub(crate) Arc<CredentialManager>);
 
@@ -668,6 +714,38 @@ mod tests {
         );
         assert!(not_text.is_err());
         assert!(gone.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_device_item_is_kept_as_bytes_and_one_past_a_blob_s_size_comes_back_whole() {
+        use tablepro_sync::api::{DeviceItem, HostDeviceStore as _};
+
+        let store = DeviceItems(Arc::new(manager()));
+        let short = DeviceItem::StateMacKey {
+            state: tablepro_sync::api::ids::StateName("ab".repeat(32)),
+        };
+        let long = DeviceItem::AnchorRoot {
+            state: tablepro_sync::api::ids::StateName("cd".repeat(32)),
+        };
+        let bytes: Vec<u8> = (0..=255).cycle().take(PART_SIZE * 2 + 7).collect();
+
+        store
+            .store(short.clone(), Zeroizing::new(vec![0, 255, 1]))
+            .await
+            .unwrap();
+        store.store(long.clone(), Zeroizing::new(bytes.clone())).await.unwrap();
+        let read = (
+            store.load(short.clone()).await.unwrap(),
+            store.load(long.clone()).await.unwrap(),
+        );
+        store.delete(short.clone()).await.unwrap();
+        store.delete(long.clone()).await.unwrap();
+        store.delete(long.clone()).await.unwrap();
+
+        assert_eq!(read.0.as_deref().map(Vec::as_slice), Some(&[0, 255, 1][..]));
+        assert_eq!(read.1.as_deref(), Some(&bytes));
+        assert!(store.load(short).await.unwrap().is_none());
+        assert!(store.load(long).await.unwrap().is_none());
     }
 
     #[tokio::test]

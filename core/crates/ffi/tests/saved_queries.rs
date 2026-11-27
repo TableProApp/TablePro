@@ -14,6 +14,18 @@ use tablepro_ffi::{
     SecretItemTag, SecretKindTag,
 };
 
+fn shown(text: impl Into<String>, connection: Option<String>) -> tablepro_ffi::HistoryFilterArg {
+    tablepro_ffi::HistoryFilterArg {
+        text: text.into(),
+        connection_ids: connection.map(|id| vec![id]),
+        project_id: None,
+        sources: None,
+        status: tablepro_ffi::HistoryStatusTag::Any,
+        executed_after_ms: None,
+        executed_before_ms: None,
+    }
+}
+
 struct NoSecrets;
 
 impl HostSecrets for NoSecrets {
@@ -81,7 +93,7 @@ fn draft(connection: &str, name: &str, sql: &str) -> SavedQueryDraft {
 async fn a_saved_query_comes_back_for_its_connection_only() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let queries = core.history().await.unwrap().saved_queries();
+    let queries = core.saved_query_database().await.unwrap().saved_queries();
 
     let id = queries
         .save(draft(SHOP, "Orders today", "SELECT * FROM orders"), false)
@@ -112,7 +124,7 @@ async fn a_saved_query_comes_back_for_its_connection_only() {
 async fn a_taken_name_is_replaced_only_when_asked_and_keeps_its_id() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let queries = core.history().await.unwrap().saved_queries();
+    let queries = core.saved_query_database().await.unwrap().saved_queries();
     let first = queries
         .save(draft(SHOP, "Daily", "SELECT 1"), false)
         .await
@@ -135,7 +147,7 @@ async fn a_taken_name_is_replaced_only_when_asked_and_keeps_its_id() {
 async fn folders_nest_hold_queries_in_order_and_give_them_back_to_the_top_when_deleted() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let queries = core.history().await.unwrap().saved_queries();
+    let queries = core.saved_query_database().await.unwrap().saved_queries();
     let reports = queries
         .create_folder(Some(SHOP.to_owned()), "Reports".to_owned(), None)
         .await
@@ -185,7 +197,7 @@ async fn folders_nest_hold_queries_in_order_and_give_them_back_to_the_top_when_d
 async fn a_rename_a_keyword_or_a_folder_name_already_taken_is_refused_by_code() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let queries = core.history().await.unwrap().saved_queries();
+    let queries = core.saved_query_database().await.unwrap().saved_queries();
     let one = queries
         .save(draft(SHOP, "One", "SELECT 1"), false)
         .await
@@ -239,7 +251,7 @@ async fn a_rename_a_keyword_or_a_folder_name_already_taken_is_refused_by_code() 
 async fn ids_are_uuid_text_and_a_query_with_no_connection_shows_in_every_connection() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let queries = core.history().await.unwrap().saved_queries();
+    let queries = core.saved_query_database().await.unwrap().saved_queries();
     let mut everywhere = draft(SHOP, "Everywhere", "SELECT 1");
     everywhere.connection_id = None;
 
@@ -268,9 +280,9 @@ async fn ids_are_uuid_text_and_a_query_with_no_connection_shows_in_every_connect
 async fn deleting_a_connections_data_takes_its_queries_folders_and_favourites_only() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let history = core.history().await.unwrap();
-    let queries = history.saved_queries();
-    let favourites = history.favourites();
+    let database = core.saved_query_database().await.unwrap();
+    let queries = database.saved_queries();
+    let favourites = database.favourites();
     queries.save(draft(SHOP, "Mine", "SELECT 1"), false).await.unwrap();
     queries
         .create_folder(Some(SHOP.to_owned()), "Reports".to_owned(), None)
@@ -299,7 +311,7 @@ async fn deleting_a_connections_data_takes_its_queries_folders_and_favourites_on
 async fn favourite_tables_and_databases_are_kept_per_connection() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let favourites = core.history().await.unwrap().favourites();
+    let favourites = core.saved_query_database().await.unwrap().favourites();
     let orders = FavouriteTableInfo {
         database: Some("shop".to_owned()),
         schema: Some(String::new()),
@@ -360,6 +372,7 @@ async fn a_pinned_run_comes_first_and_an_export_writes_the_runs_asked_for() {
         duration_ms: None,
         rows_affected: None,
         outcome: HistoryOutcomeTag::Succeeded,
+        details: Default::default(),
     };
     let old = history
         .record(session.clone(), ran("SELECT 'old'", 1_700_000_000))
@@ -373,9 +386,9 @@ async fn a_pinned_run_comes_first_and_an_export_writes_the_runs_asked_for() {
         .unwrap();
 
     history.set_pinned(old, true).await.unwrap();
-    let pinned = history.search(String::new(), None, None, None, 50).await.unwrap();
+    let pinned = history.search(shown(String::new(), None), None, 50).await.unwrap();
     history.set_pinned(old, false).await.unwrap();
-    let unpinned = history.search(String::new(), None, None, None, 50).await.unwrap();
+    let unpinned = history.search(shown(String::new(), None), None, 50).await.unwrap();
     let sql_file = dir.path().join("history.sql");
     let csv_file = dir.path().join("history.csv");
     history
@@ -411,7 +424,7 @@ async fn a_pinned_run_comes_first_and_an_export_writes_the_runs_asked_for() {
 async fn an_edit_by_id_reaches_the_query_after_a_rename_elsewhere() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let queries = core.history().await.unwrap().saved_queries();
+    let queries = core.saved_query_database().await.unwrap().saved_queries();
     let id = queries
         .save(draft(SHOP, "Daily", "SELECT 1"), false)
         .await

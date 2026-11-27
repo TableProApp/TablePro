@@ -629,9 +629,9 @@ async fn write(
     if applied.queries.is_empty() {
         return Ok(outcome);
     }
-    match core.history().await {
-        Ok(history) => {
-            let saved = save_queries(&applied, &history.saved_query_rows()).await;
+    match core.saved_query_database().await {
+        Ok(database) => {
+            let saved = save_queries(&applied, &database.database.saved_queries()).await;
             outcome.queries_added = count(saved.added);
             outcome.queries_already_saved = count(saved.already_saved);
             outcome.queries_failed = count(saved.failed);

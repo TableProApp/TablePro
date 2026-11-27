@@ -84,7 +84,7 @@ impl SessionWindow {
             return;
         };
         let editor = state.services.saved_connection_editor.clone();
-        let history = state.services.history().ready_store();
+        let saved = state.services.history().ready_saved();
         // Another app has no projects, so what it adds lands in the active one.
         let project = state
             .services
@@ -100,8 +100,8 @@ impl SessionWindow {
                     Ok(imported) => {
                         let (queries, queries_available) = if imported.applied.queries.is_empty() {
                             (None, false)
-                        } else if let Some(history) = history.await {
-                            let store = history.saved_queries();
+                        } else if let Some(saved) = saved.await {
+                            let store = saved.saved_queries();
                             (
                                 Some(editor.save_imported_queries(&imported.applied, &store).await),
                                 true,

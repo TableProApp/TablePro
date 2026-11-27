@@ -7,7 +7,7 @@ use uuid::Uuid;
 use super::placement::{placed, unique};
 use super::write_guard::WriteGuard;
 use super::{
-    ConnectionList, ConnectionStore, ConnectionsDocument, CredentialProfile, RemoveOutcome, SavedConnection,
+    ConnectionList, ConnectionStore, ConnectionsDocument, CredentialProfile, RemoveOutcome, Reported, SavedConnection,
     SecretOwner, SecretOwnerKind, SshProfile, StoreState,
 };
 use crate::error::StorageError;
@@ -88,12 +88,16 @@ impl ConnectionStore {
         let before = self.vouched(&mut state, over)?;
         let document = before.written(build(&before.list())?)?;
         if document != before {
-            self.commit(&mut state, document)?;
+            self.commit_as(&mut state, document, Reported::ToCaller)?;
         } else if self.digest_on_disk()?.as_deref() != over {
             // Nothing written, so the file must still be the one it answers for.
             return Err(StorageError::LibraryChanged.into());
         }
-        self.settle_secrets(&mut state, delete)?;
+        // The write has landed, so a cleanup that cannot be written stays listed for the next write, and the host still
+        // gets the digest the file holds; an error here would leave it a tag for bytes the file no longer has.
+        if let Err(error) = self.settle_secrets(&mut state, delete) {
+            tracing::warn!(%error, "the secrets a library write took out stay listed for the next write");
+        }
         Ok(digest_of(&state))
     }
 
@@ -134,7 +138,7 @@ impl ConnectionStore {
             secrets_to_delete: Lenient::default(),
             store: Some(StoreIdentity::fresh()),
         };
-        self.commit(&mut state, document)?;
+        self.commit_as(&mut state, document, Reported::ToCaller)?;
         Ok(Rebuilt {
             digest: digest_of(&state),
             set_aside,
@@ -171,7 +175,8 @@ impl ConnectionStore {
             .collect();
         *document.secrets_to_delete = left;
         if document != **current {
-            self.commit(state, document)?;
+            // Part of the host's own write, whose digest goes back to it.
+            self.commit_as(state, document, Reported::ToCaller)?;
         }
         Ok(())
     }
@@ -635,14 +640,14 @@ fn digest_of(state: &StoreState) -> Option<String> {
 }
 
 // Of the bytes the store last read, whether they decoded or not.
-fn bytes_digest(state: &StoreState) -> Option<String> {
+pub(super) fn bytes_digest(state: &StoreState) -> Option<String> {
     match state {
         StoreState::Ready(_, Some(bytes)) | StoreState::Unavailable(_, Some(Some(bytes))) => Some(sha256_hex(bytes)),
         StoreState::Ready(_, None) | StoreState::Unloaded | StoreState::Unavailable(..) => None,
     }
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(super) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(bytes))
 }

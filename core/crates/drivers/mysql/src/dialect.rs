@@ -13,8 +13,8 @@ use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
-    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
-    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
+    ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError,
+    parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
@@ -227,7 +227,7 @@ impl SqlDialect for MySqlDialect {
     }
 
     fn history_recording(&self, sql: &str) -> HistoryRecording {
-        classify_for_history(SqlGrammar::MySql, &CREDENTIAL_RULES, sql)
+        SqlGrammar::MySql.history_recording(sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -443,42 +443,6 @@ fn string_literal(text: &str) -> String {
     }
     format!("'{}'", text.replace('\'', "''"))
 }
-
-/// Statements whose text can hold a password or a connection string. A
-/// FEDERATED or CONNECT table keeps its remote login in `CONNECTION`, and
-/// `PASSWORD()` takes the password it hashes.
-const CREDENTIAL_RULES: CredentialRules = CredentialRules {
-    statement_prefixes: &[
-        &["CREATE", "USER"],
-        &["ALTER", "USER"],
-        &["CREATE", "SERVER"],
-        &["ALTER", "SERVER"],
-        &["SET", "PASSWORD"],
-        &["CHANGE", "MASTER"],
-        &["CHANGE", "REPLICATION", "SOURCE"],
-    ],
-    conditional_prefixes: &[
-        (&["GRANT"], &["IDENTIFIED"]),
-        (&["START", "SLAVE"], &["PASSWORD"]),
-        (&["START", "REPLICA"], &["PASSWORD"]),
-        (&["START", "GROUP_REPLICATION"], &["PASSWORD"]),
-        (&["CREATE"], &["CONNECTION"]),
-        (&["ALTER"], &["CONNECTION"]),
-        (&["CLONE"], &["IDENTIFIED"]),
-    ],
-    carriers: &[
-        "PASSWORD",
-        "OLD_PASSWORD",
-        "AES_ENCRYPT",
-        "AES_DECRYPT",
-        "DES_ENCRYPT",
-        "DES_DECRYPT",
-        "ENCODE",
-        "DECODE",
-        "VALIDATE_PASSWORD_STRENGTH",
-    ],
-    secret_parameters: &[],
-};
 
 #[cfg(test)]
 mod tests {

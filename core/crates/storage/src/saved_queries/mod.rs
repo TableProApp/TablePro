@@ -60,7 +60,7 @@ pub struct SavedQueriesSnapshot {
 #[derive(Debug, Clone)]
 pub struct SavedQueries {
     pool: SqlitePool,
-    path: std::path::PathBuf,
+    files: crate::query_history::LiveFiles,
     signals: Signals,
 }
 
@@ -72,8 +72,8 @@ struct Held {
 }
 
 impl SavedQueries {
-    pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf, signals: Signals) -> Self {
-        Self { pool, path, signals }
+    pub(crate) fn new(pool: SqlitePool, files: crate::query_history::LiveFiles, signals: Signals) -> Self {
+        Self { pool, files, signals }
     }
 
     pub fn changes(&self) -> watch::Receiver<u64> {
@@ -437,8 +437,8 @@ impl SavedQueries {
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         let Held { rowid, owner, folder } = held(&mut transaction, id).await?;
-        crate::query_history::trim_upgrade_copies(
-            &self.path,
+        crate::query_history::trim_saved_copies(
+            &self.files,
             &[crate::query_history::CopyDelete {
                 table: "saved_queries",
                 sql: "DELETE FROM main.saved_queries WHERE id = ?".to_owned(),
@@ -458,7 +458,7 @@ impl SavedQueries {
 
     // The connection's own queries, folders and favourites; those with no connection stay for the others.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
-        let (count, changed) = deletion::delete_connection(&self.pool, &self.path, connection).await?;
+        let (count, changed) = deletion::delete_connection(&self.pool, &self.files, connection).await?;
         if !changed.is_empty() {
             self.signals.changed(&changed);
         }
@@ -595,12 +595,12 @@ fn row_to_saved_query(row: &sqlx::sqlite::SqliteRow) -> Result<SavedQuery, Stora
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SavedQueryDatabase;
     use crate::paths::StoragePaths;
-    use crate::query_history::QueryHistory;
 
     async fn store(root: &tempfile::TempDir) -> SavedQueries {
         let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
-        QueryHistory::open(&paths).await.expect("open").saved_queries()
+        SavedQueryDatabase::open(&paths).await.expect("open").saved_queries()
     }
 
     fn new_query(name: &str, sql: &str, connection: Uuid) -> NewSavedQuery {
@@ -690,7 +690,7 @@ mod tests {
     #[tokio::test]
     async fn queries_are_filed_in_folders_that_nest_and_go_with_their_parent() {
         let root = tempfile::tempdir().expect("tempdir");
-        let history = QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+        let history = SavedQueryDatabase::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
             .await
             .expect("open");
         let (store, folders) = (history.saved_queries(), history.saved_query_folders());
@@ -754,7 +754,7 @@ mod tests {
     #[tokio::test]
     async fn favourite_tables_and_databases_are_kept_per_connection_and_go_with_it() {
         let root = tempfile::tempdir().expect("tempdir");
-        let history = QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+        let history = SavedQueryDatabase::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
             .await
             .expect("open");
         let favourites = history.favourites();
@@ -1101,7 +1101,7 @@ mod tests {
     async fn every_write_moves_the_revision_every_handle_follows() {
         let root = tempfile::tempdir().expect("tempdir");
         let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
-        let history = QueryHistory::open(&paths).await.expect("open");
+        let history = SavedQueryDatabase::open(&paths).await.expect("open");
         let (writer, follower) = (history.saved_queries(), history.saved_queries());
         let mut changes = follower.changes();
         let connection = Uuid::new_v4();

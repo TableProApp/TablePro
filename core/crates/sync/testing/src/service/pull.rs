@@ -57,7 +57,17 @@ impl FakeClient {
             pre_approval,
             limit,
         };
-        Ok(page.read(&self.server, &data, phase))
+        let mut read = page.read(&self.server, &data, phase);
+        // A team record names its writer, as the facade's rule names them to this caller.
+        if matches!(owner, ScopeOwner::Team(_)) {
+            for meta in read.records.iter_mut().filter_map(|record| record.service.as_mut()) {
+                meta.updated_by_name = meta
+                    .updated_by
+                    .as_ref()
+                    .and_then(|account| state.writer_names.get(account).cloned());
+            }
+        }
+        Ok(read)
     }
 
     fn resume(

@@ -45,6 +45,37 @@ pub const EXTERNAL_ACCESS: &[&str] = &["blocked", "readOnly", "readWrite"];
 
 pub const SSL_MODES: &[&str] = &["Disabled", "Preferred", "Required", "Verify CA", "Verify Identity"];
 
+// A connection's `type` is the Mac's `DatabaseType` name; these are the names of the engines the core links, by the
+// core's driver id, as the Linux app's usage data names them. MariaDB runs on the MySQL driver and ScyllaDB on
+// Cassandra's, so each reads as its driver's name.
+pub const DRIVER_TYPES: &[(&str, &str)] = &[
+    ("cassandra", "Cassandra"),
+    ("clickhouse", "ClickHouse"),
+    ("duckdb", "DuckDB"),
+    ("mongodb", "MongoDB"),
+    ("mssql", "SQL Server"),
+    ("mysql", "MySQL"),
+    ("postgres", "PostgreSQL"),
+    ("redis", "Redis"),
+    ("sqlite", "SQLite"),
+];
+
+// The wire's name for a core driver id; another id goes as it is.
+pub fn wire_type(driver: &str) -> &str {
+    DRIVER_TYPES
+        .iter()
+        .find(|(id, _)| *id == driver)
+        .map_or(driver, |(_, name)| name)
+}
+
+// The core driver id for a wire name; a name no linked engine has stays as it is.
+pub fn core_driver(name: &str) -> &str {
+    DRIVER_TYPES
+        .iter()
+        .find(|(_, known)| *known == name)
+        .map_or(name, |(id, _)| id)
+}
+
 const SSH_AUTH_METHODS: &[&str] = &["Password", "Private Key", "SSH Agent", "Keyboard Interactive", "None"];
 const JUMP_AUTH_METHODS: &[&str] = &["Private Key", "SSH Agent"];
 const TOTP_MODES: &[&str] = &["none", "auto_generate", "prompt_at_connect"];
@@ -210,6 +241,11 @@ pub const CONNECTION: &[Field] = &[
     field("cloud_sql_proxy_mode", Type::Text, DeviceOnly),
     field("socks_proxy_mode", Type::Text, DeviceOnly),
     field("tunnel_command_mode", Type::Text, DeviceOnly),
+    // The device's marks on a copy an earlier iOS build wrote, which the engine reads against the base.
+    field("tls_mode_unsettled", Type::Boolean, DeviceOnly),
+    field("ssh_profile_unlinked", Type::Boolean, DeviceOnly),
+    // This device's id, which names the SSH routes it publishes, so the engine knows a route it may clear.
+    field("route_publisher", Type::Text, DeviceOnly),
 ];
 
 pub const GROUP: &[Field] = &[

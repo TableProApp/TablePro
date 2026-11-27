@@ -142,7 +142,7 @@ pub enum LicenseStateTag {
     Active,
     // Past its end, inside the grace: everything still works.
     Grace,
-    // Past the grace: only the Team Library's pull and export.
+    // Past the grace: pulls of the sync features, and key-object writes.
     Lapsed,
 }
 

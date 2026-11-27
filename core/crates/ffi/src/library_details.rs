@@ -103,6 +103,12 @@ pub struct DeviceSettingsRecord {
     pub cloud_sql_proxy: Option<CloudSqlProxyRecord>,
     pub socks_proxy: Option<SocksProxyRecord>,
     pub tunnel_command: Option<TunnelCommandRecord>,
+    // Required may stand for the Mac's Preferred, as an earlier iOS build wrote both, until a pull shows which.
+    #[uniffi(default = false)]
+    pub tls_mode_unsettled: bool,
+    // This device removed the SSH profile link, and no pull has shown the record without it yet.
+    #[uniffi(default = false)]
+    pub ssh_profile_unlinked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -519,6 +525,8 @@ impl From<&DeviceOnly> for DeviceSettingsRecord {
                 aws_profile: command.aws_profile.clone(),
                 aws_region: command.aws_region.clone(),
             }),
+            tls_mode_unsettled: device.tls_mode_unsettled,
+            ssh_profile_unlinked: device.ssh_profile_unlinked,
         }
     }
 }
@@ -571,6 +579,8 @@ impl From<DeviceSettingsRecord> for DeviceOnly {
                 aws_profile: command.aws_profile,
                 aws_region: command.aws_region,
             }),
+            tls_mode_unsettled: record.tls_mode_unsettled,
+            ssh_profile_unlinked: record.ssh_profile_unlinked,
         }
     }
 }

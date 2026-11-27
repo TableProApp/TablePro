@@ -152,6 +152,18 @@ pub trait AccountFlows: Send + Sync {
         let _ = (entry, fields);
         unimplemented("keys.open_history_entry")
     }
+
+    // The DSK of the device keys in force, which every personal and history call and every key-object or envelope
+    // write carries (0051, DPoP); None while the device holds no keys (0066, Rules).
+    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
+        unimplemented("keys.dpop_key")
+    }
+
+    // A stale file's key tables still rebuild, so no envelope opens yet: the ones held meanwhile are read again once
+    // the rebuild ends, though no key row moved (0054, A stale file).
+    fn rebuilding(&self) -> bool {
+        false
+    }
 }
 
 // K7-2: Approving a device.
@@ -573,6 +585,8 @@ pub enum KeyNoticeKind {
     // "The team key was started over by Ana. Compare her words before using it." (0064)
     RestartHeld { team: TeamId, signer: AccountId },
     ResetPending { reset: ResetId },
+    // A kind 3 reset a restore lost, which this device proposes again only after a fresh step-up (0065).
+    ResetWaitsForStepUp { reset: ResetId },
     ResetEnded { reset: ResetId, state: ResetState },
     DeviceRemoved { device: DeviceRowId },
     // A wrap or version addressed to one of this account's superseded `av`s: the member copied its certificate again.
@@ -591,6 +605,10 @@ pub struct KeyArrival {
     pub scope: ScopeName,
     pub records: Vec<PulledRecord>,
     pub order: ArrivalOrder,
+    // In order, the version in force at the first record as the engine has it for the page so far: a page can carry
+    // several runs of key objects, and the state file holds only the position its last commit left. None in a
+    // snapshot, which carries no order.
+    pub in_force: Option<Version>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -790,6 +808,9 @@ pub struct Roster {
     // The stop reports, which the server serves to owners and admins only (0051, A stopped device).
     pub stopped: Vec<StopReport>,
     caught_up: bool,
+    // The epoch of the body it came from, the last of the scope's lineage (0051, Epochs). A roster decides nothing
+    // in another epoch than the one the device synced the team in.
+    epoch: Option<EpochId>,
 }
 
 impl Roster {
@@ -802,11 +823,16 @@ impl Roster {
             rotation_due: scope.rotation_due,
             stopped: scope.stopped.clone(),
             caught_up: pull.is_some_and(|pull| pull.scope == scope.scope),
+            epoch: scope.epochs.last().map(|epoch| epoch.id),
         }
     }
 
     pub fn caught_up(&self) -> bool {
         self.caught_up
+    }
+
+    pub fn epoch(&self) -> Option<EpochId> {
+        self.epoch
     }
 }
 

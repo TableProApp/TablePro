@@ -17,6 +17,7 @@ use tablepro_sync::api::key_flows::{
     KeyNoticeKind, KeyState, MemberKeyStatus, NoticeId, OpenedEnvelope, RecoveryKeyDraft, ReviewedDevice,
     RotationDraft, SignOutOutcome, TypedBack,
 };
+use tablepro_sync::api::transport::DpopKey;
 use uuid::Uuid;
 
 use super::{
@@ -365,6 +366,17 @@ impl AccountFlows for FakeKeyFlows {
             }));
         }
         Ok(plaintext.get("entry").cloned().unwrap_or(Value::Null))
+    }
+
+    // A DSK fixed by the key device id; none with no device store, as the real flows give.
+    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
+        let model = self.lock();
+        if model.key_state == KeyState::NoDeviceStore {
+            return Ok(None);
+        }
+        let mut seed = [0_u8; 32];
+        seed[..16].copy_from_slice(model.key_device.0.as_bytes());
+        Ok(Some(DpopKey(std::sync::Arc::new(Ed25519Seed::from_bytes(seed)))))
     }
 }
 

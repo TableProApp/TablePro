@@ -74,6 +74,12 @@ pub enum StorageError {
     #[error("could not migrate the query history: {0}")]
     HistoryMigration(#[source] sqlx::migrate::MigrateError),
 
+    #[error("the saved queries were written by a newer version of TablePro (schema {version})")]
+    SavedQueriesNewerThanApp { version: i64 },
+
+    #[error("could not migrate the saved queries: {0}")]
+    SavedQueriesMigration(#[source] sqlx::migrate::MigrateError),
+
     #[error("{0}")]
     DocumentUnavailable(#[source] crate::document_problem::DocumentProblem),
 
@@ -119,6 +125,10 @@ pub enum StorageError {
     #[error("{} belongs to another account", .path.display())]
     StoreOwnerMismatch { path: std::path::PathBuf },
 
+    // A delete of the account's data was cut off: nothing reads it until a delete finishes.
+    #[error("{} waits for its delete", .path.display())]
+    DeletePending { path: std::path::PathBuf },
+
     #[error("the library names {id} twice")]
     RepeatedId { id: uuid::Uuid },
 
@@ -151,6 +161,8 @@ impl StorageError {
             Self::Encode(..) => "storage.encode",
             Self::HistoryNewerThanApp { .. } => "storage.history_newer_than_app",
             Self::HistoryMigration(..) => "storage.history_migration",
+            Self::SavedQueriesNewerThanApp { .. } => "storage.saved_queries_newer_than_app",
+            Self::SavedQueriesMigration(..) => "storage.saved_queries_migration",
             Self::DocumentUnavailable(problem) => problem.code(),
             Self::DraftNotUtf8 { .. } => "storage.draft_not_utf8",
             Self::ImportOutdated => "storage.import_outdated",
@@ -166,6 +178,7 @@ impl StorageError {
             Self::ConnectionGrouped { .. } => "storage.connection_grouped",
             Self::GroupNotTopLevel { .. } => "storage.group_not_top_level",
             Self::StoreOwnerMismatch { .. } => "storage.store_owner_mismatch",
+            Self::DeletePending { .. } => "storage.delete_pending",
             Self::RepeatedId { .. } => "storage.repeated_id",
             Self::LibraryChanged => "storage.library_changed",
         }
