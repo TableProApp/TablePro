@@ -9,6 +9,7 @@ use tablepro_sync::SyncError;
 use tablepro_sync::adapters::library::{DriverNames, StoreStanding};
 use tablepro_sync::adapters::settings::ConnectionStanding;
 use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
+use tablepro_sync::api::control::SyncCategories;
 use tablepro_sync::api::{self as sync, StateFiles, TransportError};
 use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::engine::{JournalObserver, SystemClock};
@@ -17,7 +18,7 @@ use tablepro_sync::state::SqliteStateFiles;
 
 use super::cloudkit::{CloudKitBridge, CloudKitTransport};
 use super::engines::{
-    Hosts, IcloudEngine, Restart, ServiceEngine, ServiceLink, ServiceSlot, identity_of, service_link,
+    Hosts, IcloudEngine, Restart, ServiceEngine, ServiceLink, ServiceSlot, WaitingStart, identity_of, service_link,
 };
 use super::events::{Signals, forward};
 use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
@@ -285,6 +286,32 @@ fn marks_alone(
     (Some(marks), hear)
 }
 
+// The service engine's first start, with what it ran over for the slot to start it again under the same sign-in.
+async fn first_start(
+    link: Result<ServiceLink, SyncError>,
+    hosts: &Result<Hosts, SyncError>,
+    categories: Result<SyncCategories, SyncError>,
+    mode: ServiceMode,
+    last: Option<tablepro_sync::api::state::StateIdentity>,
+) -> (Result<ServiceEngine, SyncError>, Option<WaitingStart>) {
+    match (link, hosts, categories) {
+        (Ok(link), Ok(hosts), Ok(categories)) => {
+            let waiting = WaitingStart {
+                hosts: hosts.clone(),
+                link: link.clone(),
+                mode,
+                last: last.clone(),
+            };
+            (
+                ServiceEngine::start(hosts, link, categories, mode, last).await,
+                Some(waiting),
+            )
+        }
+        (Err(error), ..) | (_, _, Err(error)) => (Err(error), None),
+        (_, Err(error), _) => (Err(error.clone()), None),
+    }
+}
+
 impl SyncService {
     // On the runtime. An engine that cannot start keeps why, which its calls answer; the others run.
     pub(crate) async fn open(tasks: Tasks, mut parts: OpenParts) -> Arc<Self> {
@@ -346,12 +373,8 @@ impl SyncService {
             }),
             _ => None,
         };
-        let first = match (parts.link, &hosts, categories) {
-            (Ok(link), Ok(hosts), Ok(categories)) => ServiceEngine::start(hosts, link, categories, mode, last).await,
-            (Err(error), ..) | (_, _, Err(error)) => Err(error),
-            (_, Err(error), _) => Err(error.clone()),
-        };
-        let slot = ServiceSlot::new(first, restart, kept);
+        let (first, waiting) = first_start(parts.link, &hosts, categories, mode, last).await;
+        let slot = ServiceSlot::new(first, restart, waiting, kept);
         if matches!(mode, ServiceMode::TeamsOnly) {
             slot.forbid_personal();
         }
@@ -376,6 +399,13 @@ impl SyncService {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(watching);
         service.acknowledge_moves().await;
         drop(service.tasks.spawn_task(resume_open_move(&Arc::downgrade(&service))));
+        if service.service.waits_for_file() {
+            drop(
+                service
+                    .tasks
+                    .spawn_task(ServiceSlot::start_when_free(Arc::downgrade(&service.service))),
+            );
+        }
         service
     }
 }

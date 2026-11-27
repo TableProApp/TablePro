@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use super::scheduler::Wake;
 use crate::api::control::PassReason;
 use crate::api::ids::{EpochId, ScopeName};
-use crate::api::key_flows::{KeyHooks, KeyNotice, LockCause};
+use crate::api::key_flows::{KeyHooks, KeyNotice, KeyState, LockCause};
 use crate::api::state::StoppedCause;
 
 // What the app is told: it only schedules a read (core ADR 0002).
@@ -28,6 +28,8 @@ struct HookState {
     stopped: HashMap<ScopeName, StoppedCause>,
     ended: HashMap<ScopeName, Option<EpochId>>,
     notices: Vec<KeyNotice>,
+    // What the key state read after the last pass.
+    keys: Option<KeyState>,
 }
 
 impl std::fmt::Debug for EngineHooks {
@@ -85,6 +87,18 @@ impl EngineHooks {
         state.lock = lock;
         state.stopped = stopped;
         state.ended = ended;
+        drop(state);
+        if changed {
+            self.keys_changed();
+        }
+    }
+
+    // A pull can move the key state with no flow, as the first one after a sign-in does from unknown to needing
+    // approval, and the app hears that as a key change.
+    pub fn read_keys(&self, keys: KeyState) {
+        let mut state = self.state();
+        let changed = state.keys.as_ref() != Some(&keys);
+        state.keys = Some(keys);
         drop(state);
         if changed {
             self.keys_changed();
