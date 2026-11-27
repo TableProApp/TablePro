@@ -315,9 +315,12 @@ fn markers_that_cannot_be_listed_keep_the_owner_unread() {
     std::fs::write(&folder, b"not a folder").expect("a file in the folder's place");
 
     let pending = store.delete_pending_blocking();
+    // The listing itself answers the failure, rather than an empty list that would read as no delete.
+    let listed = store.database_markers();
     std::fs::remove_file(&folder).expect("the file goes");
 
     assert!(pending);
+    assert!(listed.is_err(), "{listed:?}");
     assert!(!store.delete_pending_blocking());
 }
 

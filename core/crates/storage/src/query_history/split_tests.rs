@@ -525,13 +525,38 @@ async fn a_history_entry_deleted_after_the_move_leaves_the_copy_and_its_saved_qu
     assert_eq!(kept, old.rows);
 }
 
+// Files locked away: each is set aside and a regular file no one can read as a database stands in its place, so an
+// open fails for any user, root included, as the Linux container runs. Put back however the test ends.
+struct LockedAway {
+    aside: tempfile::TempDir,
+    files: Vec<std::path::PathBuf>,
+}
+
+impl LockedAway {
+    fn new(files: Vec<std::path::PathBuf>) -> Self {
+        let aside = tempfile::tempdir().expect("a folder outside the state");
+        for (index, file) in files.iter().enumerate() {
+            std::fs::rename(file, aside.path().join(index.to_string())).expect("set aside");
+            std::fs::write(file, b"locked away, not a database").expect("lock");
+        }
+        Self { aside, files }
+    }
+}
+
+impl Drop for LockedAway {
+    fn drop(&mut self) {
+        for (index, file) in self.files.iter().enumerate() {
+            let _ = std::fs::remove_file(file);
+            let _ = std::fs::rename(self.aside.path().join(index.to_string()), file);
+        }
+    }
+}
+
 // On iOS the history stays locked while the saved queries sync: their deletions open neither the live history nor a
-// copy of it made after the move, and so delete no healthy copy for failing to. A folder stands where each file was,
-// so the open fails for any user, root included, as the Linux container runs.
+// copy of it made after the move, and so delete no healthy copy for failing to.
 #[tokio::test]
 async fn a_saved_query_deleted_while_the_history_is_locked_away_trims_and_keeps_every_copy() {
     let root = tempfile::tempdir().expect("tempdir");
-    let aside = tempfile::tempdir().expect("a folder outside the state");
     let old = old_file(&root).await;
     let history = QueryHistory::open(&old.paths).await.expect("history");
     let saved = SavedQueryDatabase::open(&old.paths).await.expect("saved queries");
@@ -542,11 +567,7 @@ async fn a_saved_query_deleted_while_the_history_is_locked_away_trims_and_keeps_
         .await
         .expect("a later copy");
     history.pool().close().await;
-    let locked = [old.paths.history_database(), after_move.clone()];
-    for (index, file) in locked.iter().enumerate() {
-        std::fs::rename(file, aside.path().join(index.to_string())).expect("set aside");
-        std::fs::create_dir(file).expect("lock");
-    }
+    let locked = LockedAway::new(vec![old.paths.history_database(), after_move.clone()]);
     let daily = saved
         .saved_queries()
         .list(Some(old.connection))
@@ -559,10 +580,7 @@ async fn a_saved_query_deleted_while_the_history_is_locked_away_trims_and_keeps_
 
     let deleted = saved.saved_queries().delete(daily).await;
 
-    for (index, file) in locked.iter().enumerate() {
-        std::fs::remove_dir(file).expect("unlock");
-        std::fs::rename(aside.path().join(index.to_string()), file).expect("put back");
-    }
+    drop(locked);
     deleted.expect("delete");
     assert!(
         after_move.exists(),
