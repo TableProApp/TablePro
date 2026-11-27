@@ -7,7 +7,7 @@ use tablepro_account::RefreshTokenVault;
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::english_item_label;
+use tablepro_storage::{SecretOwner, SecretOwnerKind, english_item_label};
 use uuid::Uuid;
 use windows_sys::Win32::Foundation::{ERROR_NOT_FOUND, GetLastError};
 use windows_sys::Win32::Security::Credentials::{
@@ -16,6 +16,7 @@ use windows_sys::Win32::Security::Credentials::{
 };
 
 use crate::credential_parts::{self, Layout, PartStore, Stored};
+use crate::host::{ProfileKindTag, SecretDeleter, SecretDeletionTag};
 
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -52,6 +53,15 @@ impl CredentialManager {
 
     fn connection_target(&self, id: Uuid, kind: SecretKind) -> String {
         format!("{}/connection/{id}/{}", self.prefix, kind_name(kind))
+    }
+
+    // Named like a connection's, under the profile's kind, so no profile id can reach a connection's secrets.
+    fn profile_target(&self, id: Uuid, profile: ProfileKindTag, kind: SecretKind) -> String {
+        let parent = match profile {
+            ProfileKindTag::Ssh => "ssh-profile",
+            ProfileKindTag::Credential => "credential-profile",
+        };
+        format!("{}/{parent}/{id}/{}", self.prefix, kind_name(kind))
     }
 
     fn item_target(&self, item: SecretItem) -> String {
@@ -367,6 +377,20 @@ impl SecretVault for CredentialManager {
     }
 }
 
+impl SecretDeleter for CredentialManager {
+    fn delete_secrets(&self, owner: SecretOwner) -> Result<SecretDeletionTag, SecretError> {
+        let target = |secret: &SecretKind| match owner.kind {
+            SecretOwnerKind::Connection => self.connection_target(owner.id, *secret),
+            SecretOwnerKind::SshProfile => self.profile_target(owner.id, ProfileKindTag::Ssh, *secret),
+            SecretOwnerKind::CredentialProfile => self.profile_target(owner.id, ProfileKindTag::Credential, *secret),
+        };
+        let targets: Vec<String> = SecretKind::ALL.iter().map(target).collect();
+        let _held = STORE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        targets.iter().try_for_each(|target| delete(target))?;
+        Ok(SecretDeletionTag::Deleted)
+    }
+}
+
 #[async_trait]
 impl SecretItems for CredentialManager {
     async fn load_item(&self, item: SecretItem) -> Result<Option<SecretString>, SecretError> {
@@ -486,6 +510,32 @@ mod tests {
             Some("p\u{e4}ss \u{1f511}".to_owned())
         );
         assert!(!gone.is_stored());
+    }
+
+    #[tokio::test]
+    async fn a_profile_delete_takes_its_own_credentials_and_never_a_connection_s() {
+        let manager = manager();
+        let id = Uuid::new_v4();
+        let target = manager.profile_target(id, ProfileKindTag::Ssh, SecretKind::SshPassword);
+        manager
+            .store(id, SecretKind::SshPassword, &SecretString::from("connection"), "label")
+            .await
+            .unwrap();
+        let written = target.clone();
+        manager
+            .blocking(move || write(&written, "profile", "label"))
+            .await
+            .unwrap();
+
+        manager
+            .delete_secrets(SecretOwner::new(SecretOwnerKind::SshProfile, id))
+            .unwrap();
+
+        let profile = manager.blocking(move || read(&target)).await.unwrap();
+        let connection = manager.load(id, SecretKind::SshPassword).await.unwrap();
+        manager.delete_connection(id).await.unwrap();
+        assert!(profile.is_none());
+        assert!(connection.is_stored());
     }
 
     #[tokio::test]

@@ -14,13 +14,14 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionList, ConnectionProject,
     ConnectionProjectName, ConnectionStore, ConnectionTag, ConnectionTagName, LibraryIcon, ProjectMembership,
-    RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost, SshRemoteFile, SshTotp,
-    SshTotpAlgorithm, SshTotpMode, StorageError, SymbolName, english_secret_label, shown_name,
+    RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig, SecretOwner, SshJumpAuth, SshJumpHost,
+    SshRemoteFile, SshTotp, SshTotpAlgorithm, SshTotpMode, StorageError, SymbolName, english_secret_label, shown_name,
 };
 use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::export::write_whole_file;
+use crate::host::{SecretDeleter, SecretDeletionTag};
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -457,6 +458,7 @@ pub(crate) async fn keep_proved_secrets(
 pub struct ConnectionLibrary {
     store: ConnectionStore,
     secrets: Arc<dyn SecretVault>,
+    deleter: Arc<dyn SecretDeleter>,
     tasks: Tasks,
     writes: LibraryWrites,
 }
@@ -465,12 +467,14 @@ impl ConnectionLibrary {
     pub(crate) fn new(
         store: ConnectionStore,
         secrets: Arc<dyn SecretVault>,
+        deleter: Arc<dyn SecretDeleter>,
         tasks: Tasks,
         writes: LibraryWrites,
     ) -> Self {
         Self {
             store,
             secrets,
+            deleter,
             tasks,
             writes,
         }
@@ -489,6 +493,19 @@ impl ConnectionLibrary {
             Ok(())
         })
         .await
+    }
+
+    // A library write calls it while it holds the store's lock, on the blocking thread the write runs on.
+    pub(crate) fn secret_deleter(&self) -> impl FnMut(SecretOwner) -> bool + Send + 'static {
+        let deleter = self.deleter.clone();
+        move |owner| match deleter.delete_secrets(owner) {
+            // Secrets another app keeps are that app's to delete, so the list lets them go too.
+            Ok(SecretDeletionTag::Deleted | SecretDeletionTag::NotOwned) => true,
+            Err(error) => {
+                tracing::warn!(%error, kind = ?owner.kind, "kept a removed record's secrets for the next library write");
+                false
+            }
+        }
     }
 
     // A secret the store cannot read stops the copy, which would otherwise fail to connect for no reason it shows.

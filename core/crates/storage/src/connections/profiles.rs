@@ -4,9 +4,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use super::SavedSshConfig;
 use super::details::{CredentialReference, LocalPasswordSource};
-use super::{ConnectionStore, RemoveOutcome, SavedSshConfig};
-use crate::error::StorageError;
 use crate::lenient::Identified;
 
 /// SSH settings saved under a name, which connections follow by `ConnectionDetails::ssh_profile_id`.
@@ -63,55 +62,5 @@ impl Identified for SshProfile {
 impl Identified for CredentialProfile {
     fn id(&self) -> Uuid {
         self.id
-    }
-}
-
-impl ConnectionStore {
-    /// Adds the profile, or replaces the one with its id.
-    pub fn save_ssh_profile_blocking(&self, profile: SshProfile) -> Result<(), StorageError> {
-        self.edit(|document| {
-            document.ssh_profiles.release(profile.id);
-            match document.ssh_profiles.iter_mut().find(|held| held.id == profile.id) {
-                Some(held) => *held = profile,
-                None => document.ssh_profiles.push(profile),
-            }
-            Ok(())
-        })
-    }
-
-    /// Connections that follow it keep its id and the settings they last applied. A profile this
-    /// build cannot read is deleted too.
-    pub fn delete_ssh_profile_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
-        self.edit(|document| Ok(removed(document.ssh_profiles.remove_id(id))))
-    }
-
-    /// Adds the profile, or replaces the one with its id.
-    pub fn save_credential_profile_blocking(&self, profile: CredentialProfile) -> Result<(), StorageError> {
-        self.edit(|document| {
-            document.credential_profiles.release(profile.id);
-            match document
-                .credential_profiles
-                .iter_mut()
-                .find(|held| held.id == profile.id)
-            {
-                Some(held) => *held = profile,
-                None => document.credential_profiles.push(profile),
-            }
-            Ok(())
-        })
-    }
-
-    /// A connection linked to it keeps the link, which reads as no profile until one with that id
-    /// comes back, as a pull can bring a connection before its profile.
-    pub fn delete_credential_profile_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
-        self.edit(|document| Ok(removed(document.credential_profiles.remove_id(id))))
-    }
-}
-
-fn removed(found: bool) -> RemoveOutcome {
-    if found {
-        RemoveOutcome::Removed
-    } else {
-        RemoveOutcome::NotPresent
     }
 }

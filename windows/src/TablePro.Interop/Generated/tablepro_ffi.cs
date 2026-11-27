@@ -795,14 +795,18 @@ static class _UniFFILib {
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceHostSecretsMethod5(
-        ulong @uniffiHandle,RustBuffer @item,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
+        ulong @uniffiHandle,RustBuffer @profileId,RustBuffer @kind,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceHostSecretsMethod6(
-        ulong @uniffiHandle,RustBuffer @item,RustBuffer @secret,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
+        ulong @uniffiHandle,RustBuffer @item,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceHostSecretsMethod7(
+        ulong @uniffiHandle,RustBuffer @item,RustBuffer @secret,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
+    );
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void UniffiCallbackInterfaceHostSecretsMethod8(
         ulong @uniffiHandle,RustBuffer @item,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -937,6 +941,7 @@ static class _UniFFILib {
         public IntPtr @relabel;
         public IntPtr @delete;
         public IntPtr @deleteConnection;
+        public IntPtr @deleteProfile;
         public IntPtr @loadItem;
         public IntPtr @storeItem;
         public IntPtr @deleteItem;
@@ -1018,17 +1023,6 @@ static class _UniFFILib {
         public IntPtr @fetchRecords;
         public IntPtr @modify;
     }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     
     
@@ -3784,62 +3778,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_credential_profiles(ulong @ptr
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_credential_profile(ulong @ptr,RustBuffer @id
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_ssh_profile(ulong @ptr,RustBuffer @id
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_device_settings(ulong @ptr,RustBuffer @id
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_save_credential_profile(ulong @ptr,RustBuffer @profile
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_save_ssh_profile(ulong @ptr,RustBuffer @profile
     );
 
     #if NET8_0_OR_GREATER
@@ -3862,17 +3801,6 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_set_device_settings(ulong @ptr,RustBuffer @id,RustBuffer @settings
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_ssh_profiles(ulong @ptr
     );
 
     #if NET8_0_OR_GREATER
@@ -8910,62 +8838,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_credential_profiles(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_credential_profile(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_ssh_profile(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_device_settings(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_credential_profile(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_ssh_profile(
     );
 
     #if NET8_0_OR_GREATER
@@ -8988,17 +8861,6 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_device_settings(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_ssh_profiles(
     );
 
     #if NET8_0_OR_GREATER
@@ -11088,6 +10950,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_profile(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_hostsecrets_load_item(
     );
 
@@ -12305,39 +12178,9 @@ static class _UniFFILib {
             }
         }
         {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_credential_profiles();
-            if (checksum != 11632) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_credential_profiles` checksum `11632`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_credential_profile();
-            if (checksum != 26864) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_credential_profile` checksum `26864`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_ssh_profile();
-            if (checksum != 2869) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_ssh_profile` checksum `2869`, library returned `{checksum}`");
-            }
-        }
-        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_device_settings();
             if (checksum != 24615) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_device_settings` checksum `24615`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_credential_profile();
-            if (checksum != 36548) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_credential_profile` checksum `36548`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_ssh_profile();
-            if (checksum != 9652) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_ssh_profile` checksum `9652`, library returned `{checksum}`");
             }
         }
         {
@@ -12350,12 +12193,6 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_device_settings();
             if (checksum != 57428) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_device_settings` checksum `57428`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_ssh_profiles();
-            if (checksum != 48811) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_ssh_profiles` checksum `48811`, library returned `{checksum}`");
             }
         }
         {
@@ -13493,21 +13330,27 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_profile();
+            if (checksum != 57464) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_profile` checksum `57464`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_load_item();
-            if (checksum != 56817) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_load_item` checksum `56817`, library returned `{checksum}`");
+            if (checksum != 53457) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_load_item` checksum `53457`, library returned `{checksum}`");
             }
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_store_item();
-            if (checksum != 48405) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_store_item` checksum `48405`, library returned `{checksum}`");
+            if (checksum != 64444) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_store_item` checksum `64444`, library returned `{checksum}`");
             }
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_item();
-            if (checksum != 58541) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_item` checksum `58541`, library returned `{checksum}`");
+            if (checksum != 24069) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_item` checksum `24069`, library returned `{checksum}`");
             }
         }
         {
@@ -16166,23 +16009,11 @@ internal interface IConnectionLibrary {
     /// <exception cref="CoreException"></exception>
     Task<ConnectionDetailsRecord> ConnectionDetails(string @id);
     /// <exception cref="CoreException"></exception>
-    Task<CredentialProfileRecord[]> CredentialProfiles();
-    /// <exception cref="CoreException"></exception>
-    Task<bool> DeleteCredentialProfile(string @id);
-    /// <exception cref="CoreException"></exception>
-    Task<bool> DeleteSshProfile(string @id);
-    /// <exception cref="CoreException"></exception>
     Task<DeviceSettingsRecord> DeviceSettings(string @id);
-    /// <exception cref="CoreException"></exception>
-    Task<CredentialProfileRecord> SaveCredentialProfile(CredentialProfileRecord @profile);
-    /// <exception cref="CoreException"></exception>
-    Task<SshProfileRecord> SaveSshProfile(SshProfileRecord @profile);
     /// <exception cref="CoreException"></exception>
     Task SetConnectionDetails(string @id, ConnectionDetailsRecord @details);
     /// <exception cref="CoreException"></exception>
     Task SetDeviceSettings(string @id, DeviceSettingsRecord @settings);
-    /// <exception cref="CoreException"></exception>
-    Task<SshProfileRecord[]> SshProfiles();
 }
 internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     protected ulong pointer;
@@ -16942,72 +16773,6 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<CredentialProfileRecord[]> CredentialProfiles() {
-    return await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_credential_profiles(thisPtr);
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {
-            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
-        // Lift
-        (result) => FfiConverterSequenceTypeCredentialProfileRecord.INSTANCE.Lift(result),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task<bool> DeleteCredentialProfile(string @id) {
-    return await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_credential_profile(thisPtr, FfiConverterString.INSTANCE.Lower(@id));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_i8(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {
-            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_i8(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_i8(future),
-        // Lift
-        (result) => FfiConverterBoolean.INSTANCE.Lift(result),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task<bool> DeleteSshProfile(string @id) {
-    return await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_ssh_profile(thisPtr, FfiConverterString.INSTANCE.Lower(@id));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_i8(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {
-            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_i8(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_i8(future),
-        // Lift
-        (result) => FfiConverterBoolean.INSTANCE.Lift(result),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
     public async Task<DeviceSettingsRecord> DeviceSettings(string @id) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
@@ -17024,50 +16789,6 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
         // Lift
         (result) => FfiConverterTypeDeviceSettingsRecord.INSTANCE.Lift(result),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task<CredentialProfileRecord> SaveCredentialProfile(CredentialProfileRecord @profile) {
-    return await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_save_credential_profile(thisPtr, FfiConverterTypeCredentialProfileRecord.INSTANCE.Lower(@profile));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {
-            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
-        // Lift
-        (result) => FfiConverterTypeCredentialProfileRecord.INSTANCE.Lift(result),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task<SshProfileRecord> SaveSshProfile(SshProfileRecord @profile) {
-    return await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_save_ssh_profile(thisPtr, FfiConverterTypeSshProfileRecord.INSTANCE.Lower(@profile));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {
-            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
-        // Lift
-        (result) => FfiConverterTypeSshProfileRecord.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -17104,28 +16825,6 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
         },
         // Free
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
-        // Error
-        FfiConverterTypeCoreError.INSTANCE
-    );
-    }
-    
-    /// <exception cref="CoreException"></exception>
-    public async Task<SshProfileRecord[]> SshProfiles() {
-    return await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_ssh_profiles(thisPtr);
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {
-            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
-        // Lift
-        (result) => FfiConverterSequenceTypeSshProfileRecord.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -28010,7 +27709,10 @@ internal record LibraryContents (
     TagRecord[] Tags, 
     string[] Favorites, 
     ProjectRecord[] Projects, 
+    SshProfileRecord[] SshProfiles, 
+    CredentialProfileRecord[] CredentialProfiles, 
     string[] Unreadable, 
+    string[] UnreadableProfiles, 
     string? Digest
 ) {
 }
@@ -28025,7 +27727,10 @@ class FfiConverterTypeLibraryContents: FfiConverterRustBuffer<LibraryContents> {
             Tags: FfiConverterSequenceTypeTagRecord.INSTANCE.Read(stream),
             Favorites: FfiConverterSequenceString.INSTANCE.Read(stream),
             Projects: FfiConverterSequenceTypeProjectRecord.INSTANCE.Read(stream),
+            SshProfiles: FfiConverterSequenceTypeSshProfileRecord.INSTANCE.Read(stream),
+            CredentialProfiles: FfiConverterSequenceTypeCredentialProfileRecord.INSTANCE.Read(stream),
             Unreadable: FfiConverterSequenceString.INSTANCE.Read(stream),
+            UnreadableProfiles: FfiConverterSequenceString.INSTANCE.Read(stream),
             Digest: FfiConverterOptionalString.INSTANCE.Read(stream)
         );
     }
@@ -28037,7 +27742,10 @@ class FfiConverterTypeLibraryContents: FfiConverterRustBuffer<LibraryContents> {
             + FfiConverterSequenceTypeTagRecord.INSTANCE.AllocationSize(value.Tags)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Favorites)
             + FfiConverterSequenceTypeProjectRecord.INSTANCE.AllocationSize(value.Projects)
+            + FfiConverterSequenceTypeSshProfileRecord.INSTANCE.AllocationSize(value.SshProfiles)
+            + FfiConverterSequenceTypeCredentialProfileRecord.INSTANCE.AllocationSize(value.CredentialProfiles)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Unreadable)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.UnreadableProfiles)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Digest);
     }
 
@@ -28047,7 +27755,10 @@ class FfiConverterTypeLibraryContents: FfiConverterRustBuffer<LibraryContents> {
             FfiConverterSequenceTypeTagRecord.INSTANCE.Write(value.Tags, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.Favorites, stream);
             FfiConverterSequenceTypeProjectRecord.INSTANCE.Write(value.Projects, stream);
+            FfiConverterSequenceTypeSshProfileRecord.INSTANCE.Write(value.SshProfiles, stream);
+            FfiConverterSequenceTypeCredentialProfileRecord.INSTANCE.Write(value.CredentialProfiles, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.Unreadable, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.UnreadableProfiles, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Digest, stream);
     }
 }
@@ -28110,6 +27821,8 @@ internal record LibraryWriteRecord (
     TagRecord[] Tags, 
     string[] Favorites, 
     ProjectRecord[] Projects, 
+    SshProfileRecord[] SshProfiles, 
+    CredentialProfileRecord[] CredentialProfiles, 
     string[] Removing
 ) {
 }
@@ -28124,6 +27837,8 @@ class FfiConverterTypeLibraryWriteRecord: FfiConverterRustBuffer<LibraryWriteRec
             Tags: FfiConverterSequenceTypeTagRecord.INSTANCE.Read(stream),
             Favorites: FfiConverterSequenceString.INSTANCE.Read(stream),
             Projects: FfiConverterSequenceTypeProjectRecord.INSTANCE.Read(stream),
+            SshProfiles: FfiConverterSequenceTypeSshProfileRecord.INSTANCE.Read(stream),
+            CredentialProfiles: FfiConverterSequenceTypeCredentialProfileRecord.INSTANCE.Read(stream),
             Removing: FfiConverterSequenceString.INSTANCE.Read(stream)
         );
     }
@@ -28135,6 +27850,8 @@ class FfiConverterTypeLibraryWriteRecord: FfiConverterRustBuffer<LibraryWriteRec
             + FfiConverterSequenceTypeTagRecord.INSTANCE.AllocationSize(value.Tags)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Favorites)
             + FfiConverterSequenceTypeProjectRecord.INSTANCE.AllocationSize(value.Projects)
+            + FfiConverterSequenceTypeSshProfileRecord.INSTANCE.AllocationSize(value.SshProfiles)
+            + FfiConverterSequenceTypeCredentialProfileRecord.INSTANCE.AllocationSize(value.CredentialProfiles)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Removing);
     }
 
@@ -28144,6 +27861,8 @@ class FfiConverterTypeLibraryWriteRecord: FfiConverterRustBuffer<LibraryWriteRec
             FfiConverterSequenceTypeTagRecord.INSTANCE.Write(value.Tags, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.Favorites, stream);
             FfiConverterSequenceTypeProjectRecord.INSTANCE.Write(value.Projects, stream);
+            FfiConverterSequenceTypeSshProfileRecord.INSTANCE.Write(value.SshProfiles, stream);
+            FfiConverterSequenceTypeCredentialProfileRecord.INSTANCE.Write(value.CredentialProfiles, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.Removing, stream);
     }
 }
@@ -37357,6 +37076,42 @@ class FfiConverterTypePasswordSourceTag: FfiConverterRustBuffer<PasswordSourceTa
 
 
 
+internal enum ProfileKindTag: int {
+    Ssh,
+    Credential
+}
+
+class FfiConverterTypeProfileKindTag: FfiConverterRustBuffer<ProfileKindTag> {
+    public static FfiConverterTypeProfileKindTag INSTANCE = new FfiConverterTypeProfileKindTag();
+
+    public override ProfileKindTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return ProfileKindTag.Ssh;
+            case 2: return ProfileKindTag.Credential;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeProfileKindTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(ProfileKindTag value) {
+        return 4;
+    }
+
+    public override void Write(ProfileKindTag value, BigEndianStream stream) {
+        switch (value) {
+            case ProfileKindTag.Ssh: stream.WriteInt(1); break;
+            case ProfileKindTag.Credential: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeProfileKindTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal record PromptAnswer {
     
     public record Submitted (
@@ -39151,6 +38906,42 @@ class FfiConverterTypeScanDepthTag: FfiConverterRustBuffer<ScanDepthTag> {
             case ScanDepthTag.Presence: stream.WriteInt(1); break;
             case ScanDepthTag.Inventory: stream.WriteInt(2); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeScanDepthTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal enum SecretDeletionTag: int {
+    Deleted,
+    NotOwned
+}
+
+class FfiConverterTypeSecretDeletionTag: FfiConverterRustBuffer<SecretDeletionTag> {
+    public static FfiConverterTypeSecretDeletionTag INSTANCE = new FfiConverterTypeSecretDeletionTag();
+
+    public override SecretDeletionTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return SecretDeletionTag.Deleted;
+            case 2: return SecretDeletionTag.NotOwned;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSecretDeletionTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(SecretDeletionTag value) {
+        return 4;
+    }
+
+    public override void Write(SecretDeletionTag value, BigEndianStream stream) {
+        switch (value) {
+            case SecretDeletionTag.Deleted: stream.WriteInt(1); break;
+            case SecretDeletionTag.NotOwned: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSecretDeletionTag.Write()", value));
         }
     }
 }
@@ -42141,6 +41932,8 @@ internal interface HostSecrets {
     /// <exception cref="HostSecretException"></exception>
     void DeleteConnection(string @connectionId);
     /// <exception cref="HostSecretException"></exception>
+    SecretDeletionTag DeleteProfile(string @profileId, ProfileKindTag @kind);
+    /// <exception cref="HostSecretException"></exception>
     SecretString? LoadItem(SecretItemTag @item);
     /// <summary>
     /// The app names the item in its own words.
@@ -42303,6 +42096,39 @@ class UniffiCallbackInterfaceHostSecrets {
             }
         }
     }
+    static void DeleteProfile(ulong @uniffiHandle,RustBuffer @profileId,RustBuffer @kind,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
+        var handle = @uniffiHandle;
+        try {
+            if (!FfiConverterTypeHostSecrets.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
+                throw new InternalException($"No callback in handlemap '{handle}'");
+            }
+            var result =
+            uniffiObject.DeleteProfile(
+                FfiConverterString.INSTANCE.Lift(@profileId), 
+                FfiConverterTypeProfileKindTag.INSTANCE.Lift(@kind));
+            unsafe {
+                *(RustBuffer*)uniffiOutReturn = FfiConverterTypeSecretDeletionTag.INSTANCE.Lower(result);
+            }
+
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
+        }
+        catch (HostSecretException e) {
+            try {
+                _uniffi_out_err.code = UniffiCallbackResponseStatus.ERROR;
+                _uniffi_out_err.error_buf = FfiConverterTypeHostSecretError.INSTANCE.Lower(e);
+            } catch {
+                _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+            }
+        }
+        catch (System.Exception e){
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+            try {
+                _uniffi_out_err.error_buf = FfiConverterString.INSTANCE.Lower(e.Message);
+            }
+            catch {
+            }
+        }
+    }
     static void LoadItem(ulong @uniffiHandle,RustBuffer @item,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
         var handle = @uniffiHandle;
         try {
@@ -42412,9 +42238,10 @@ class UniffiCallbackInterfaceHostSecrets {
     static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod2 _m2 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod2(Relabel);
     static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod3 _m3 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod3(Delete);
     static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod4 _m4 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod4(DeleteConnection);
-    static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod5 _m5 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod5(LoadItem);
-    static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod6 _m6 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod6(StoreItem);
-    static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod7 _m7 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod7(DeleteItem);
+    static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod5 _m5 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod5(DeleteProfile);
+    static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod6 _m6 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod6(LoadItem);
+    static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod7 _m7 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod7(StoreItem);
+    static _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod8 _m8 = new _UniFFILib.UniffiCallbackInterfaceHostSecretsMethod8(DeleteItem);
     static _UniFFILib.UniffiCallbackInterfaceFree _callback_interface_free = new _UniFFILib.UniffiCallbackInterfaceFree(UniffiFree);
     static _UniFFILib.UniffiCallbackInterfaceClone _callback_interface_clone = new _UniFFILib.UniffiCallbackInterfaceClone(UniffiClone);
 
@@ -42428,9 +42255,10 @@ class UniffiCallbackInterfaceHostSecrets {
             @relabel = Marshal.GetFunctionPointerForDelegate(_m2),
             @delete = Marshal.GetFunctionPointerForDelegate(_m3),
             @deleteConnection = Marshal.GetFunctionPointerForDelegate(_m4),
-            @loadItem = Marshal.GetFunctionPointerForDelegate(_m5),
-            @storeItem = Marshal.GetFunctionPointerForDelegate(_m6),
-            @deleteItem = Marshal.GetFunctionPointerForDelegate(_m7),
+            @deleteProfile = Marshal.GetFunctionPointerForDelegate(_m5),
+            @loadItem = Marshal.GetFunctionPointerForDelegate(_m6),
+            @storeItem = Marshal.GetFunctionPointerForDelegate(_m7),
+            @deleteItem = Marshal.GetFunctionPointerForDelegate(_m8),
             @uniffiFree = Marshal.GetFunctionPointerForDelegate(_callback_interface_free),
             @uniffiClone = Marshal.GetFunctionPointerForDelegate(_callback_interface_clone),
         };

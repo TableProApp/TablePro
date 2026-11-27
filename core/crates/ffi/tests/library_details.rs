@@ -6,18 +6,19 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use secrecy::SecretString;
 use tablepro_ffi::{
     AiPolicyTag, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord, ConnectionRecord,
     ConnectionSecrets, Core, CredentialPasswordRecord, CredentialProfileRecord, CredentialReferenceRecord,
     DeviceSettingsRecord, ExternalAccessTag, GroupRecord, HostConfig, HostSecretError, HostSecrets,
-    LibraryConnectionRecord, LibraryWriteRecord, LocalPasswordSourceRecord, ProjectRecord, RemoteFileAccessTag,
-    SafeModeTag, SecretItemTag, SecretKindTag, SshAuthTag, SshJumpAuthTag, SshJumpHostRecord, SshOptionsRecord,
-    SshProfileRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TableFolderItemRecord,
-    TableRefRecord, TagRecord, TlsModeTag, TlsSettings, VaultAuthRecord, library_icon_for_symbol, library_icon_symbol,
-    parse_jump_hosts,
+    LibraryConnectionRecord, LibraryWriteRecord, LocalPasswordSourceRecord, ProfileKindTag, ProjectRecord,
+    RemoteFileAccessTag, SafeModeTag, SecretDeletionTag, SecretItemTag, SecretKindTag, SshAuthTag, SshJumpAuthTag,
+    SshJumpHostRecord, SshOptionsRecord, SshProfileRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag,
+    SshTotpRecord, TableFolderItemRecord, TableRefRecord, TagRecord, TlsModeTag, TlsSettings, VaultAuthRecord,
+    library_icon_for_symbol, library_icon_symbol, parse_jump_hosts,
 };
 
 struct NoSecrets;
@@ -43,6 +44,74 @@ impl HostSecrets for NoSecrets {
         Ok(())
     }
 
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
+    }
+
+    fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
+        Ok(None)
+    }
+
+    fn store_item(&self, _: SecretItemTag, _: SecretString) -> Result<(), HostSecretError> {
+        Ok(())
+    }
+
+    fn delete_item(&self, _: SecretItemTag) -> Result<(), HostSecretError> {
+        Ok(())
+    }
+}
+
+// The deletes the core asks for, refused while `refusing` is set, as a locked keychain does, and answered as another
+// app's while `not_owned` is, as iOS answers for the Mac's profile items.
+#[derive(Default, Clone)]
+struct DeleteLog {
+    connections: Arc<Mutex<Vec<String>>>,
+    profiles: Arc<Mutex<Vec<(String, ProfileKindTag)>>>,
+    refusing: Arc<AtomicBool>,
+    not_owned: Arc<AtomicBool>,
+}
+
+impl DeleteLog {
+    fn profiles(&self) -> Vec<(String, ProfileKindTag)> {
+        let mut deleted = self.profiles.lock().unwrap().clone();
+        deleted.sort_by(|left, right| left.0.cmp(&right.0));
+        deleted
+    }
+}
+
+impl HostSecrets for DeleteLog {
+    fn load(&self, _: String, _: SecretKindTag) -> Result<Option<SecretString>, HostSecretError> {
+        Ok(None)
+    }
+
+    fn store(&self, _: String, _: SecretKindTag, _: SecretString, _: String) -> Result<(), HostSecretError> {
+        Ok(())
+    }
+
+    fn relabel(&self, _: String, _: SecretKindTag, _: String) -> Result<(), HostSecretError> {
+        Ok(())
+    }
+
+    fn delete(&self, _: String, _: SecretKindTag) -> Result<(), HostSecretError> {
+        Ok(())
+    }
+
+    fn delete_connection(&self, connection_id: String) -> Result<(), HostSecretError> {
+        self.connections.lock().unwrap().push(connection_id);
+        Ok(())
+    }
+
+    fn delete_profile(&self, profile_id: String, kind: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        if self.refusing.load(Ordering::SeqCst) {
+            return Err(HostSecretError::Locked);
+        }
+        self.profiles.lock().unwrap().push((profile_id, kind));
+        Ok(match self.not_owned.load(Ordering::SeqCst) {
+            true => SecretDeletionTag::NotOwned,
+            false => SecretDeletionTag::Deleted,
+        })
+    }
+
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(None)
     }
@@ -57,12 +126,16 @@ impl HostSecrets for NoSecrets {
 }
 
 fn started(dir: &Path) -> Arc<Core> {
+    started_with(dir, NoSecrets)
+}
+
+fn started_with(dir: &Path, secrets: impl HostSecrets + 'static) -> Arc<Core> {
     Core::new(
         HostConfig {
             client_version: "test".to_owned(),
             storage_dir: Some(dir.display().to_string()),
         },
-        Box::new(NoSecrets),
+        Box::new(secrets),
     )
     .unwrap()
 }
@@ -215,58 +288,322 @@ async fn details_of_a_missing_connection_are_refused_by_code() {
     assert_eq!(refused.code(), "storage.connection_not_found");
 }
 
+// As a read gives them back, so a profile reads back as it was written.
+fn ssh_options() -> SshOptionsRecord {
+    SshOptionsRecord {
+        kept_key_path: None,
+        agent_socket: None,
+        totp: SshTotpRecord {
+            mode: SshTotpModeTag::Off,
+            algorithm: SshTotpAlgorithmTag::Sha1,
+            digits: 6,
+            period: 30,
+        },
+        remote_file_path: None,
+        remote_file_access: RemoteFileAccessTag::ReadOnlyCopy,
+    }
+}
+
+fn ssh_profile(id: &str, host: &str) -> SshProfileRecord {
+    SshProfileRecord {
+        id: id.to_owned(),
+        name: " Bastion ".to_owned(),
+        ssh: SshSettings {
+            host: host.to_owned(),
+            port: Some(22),
+            username: Some("ops".to_owned()),
+            jump_hosts: Vec::new(),
+            auth: SshAuthTag::Password,
+            enabled: Some(true),
+            options: Some(ssh_options()),
+        },
+    }
+}
+
+fn credential_profile(id: &str) -> CredentialProfileRecord {
+    CredentialProfileRecord {
+        id: id.to_owned(),
+        name: "Readonly".to_owned(),
+        username: "reader".to_owned(),
+        password: CredentialPasswordRecord::Stored,
+        secure_field_ids: vec!["token".to_owned()],
+        order: 2,
+    }
+}
+
+const SSH_PROFILE: &str = "3fd0b191-5cf8-4760-84a9-92779983f3cf";
+const OTHER_SSH_PROFILE: &str = "8f0b2c51-4e7a-4d3b-9b1e-2a6c5d7e8f90";
+const CREDENTIAL_PROFILE: &str = "c00996e7-3992-4501-99a1-03cf155ab59a";
+
 #[tokio::test(flavor = "multi_thread")]
-async fn profiles_are_created_replaced_and_deleted() {
+async fn profiles_are_written_read_and_taken_out_with_the_library() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
     let library = core.library().unwrap();
-    let ssh = library
-        .save_ssh_profile(SshProfileRecord {
-            id: String::new(),
-            name: " Bastion ".to_owned(),
-            ssh: SshSettings {
-                host: "bastion".to_owned(),
-                port: Some(22),
-                username: Some("ops".to_owned()),
-                jump_hosts: Vec::new(),
-                auth: SshAuthTag::Agent,
-                enabled: None,
-                options: None,
+    let ssh = ssh_profile(SSH_PROFILE, "bastion");
+    let credential = credential_profile(CREDENTIAL_PROFILE);
+
+    let first = library
+        .replace_library(
+            LibraryWriteRecord {
+                ssh_profiles: vec![ssh.clone()],
+                credential_profiles: vec![credential.clone()],
+                ..mac_library()
             },
-        })
+            None,
+        )
         .await
         .unwrap();
-    let credential = library
-        .save_credential_profile(CredentialProfileRecord {
-            id: String::new(),
-            name: "Readonly".to_owned(),
-            username: "reader".to_owned(),
-            password: CredentialPasswordRecord::Reference {
-                reference: CredentialReferenceRecord::Env {
-                    variable: "DB_PASSWORD".to_owned(),
-                },
+    let read = library.library_contents().await.unwrap();
+    assert_eq!(read.ssh_profiles, vec![ssh.clone()]);
+    assert_eq!(read.credential_profiles, vec![credential.clone()]);
+    let renamed = SshProfileRecord {
+        name: "Edge".to_owned(),
+        ..ssh
+    };
+    library
+        .replace_library(
+            LibraryWriteRecord {
+                ssh_profiles: vec![renamed.clone()],
+                credential_profiles: Vec::new(),
+                ..mac_library()
             },
-            secure_field_ids: Vec::new(),
-            order: 0,
-        })
+            first.digest,
+        )
         .await
         .unwrap();
 
-    let renamed = library
-        .save_ssh_profile(SshProfileRecord {
-            name: "Edge".to_owned(),
-            ..ssh.clone()
-        })
+    let read = library.library_contents().await.unwrap();
+    assert_eq!(read.ssh_profiles, vec![renamed]);
+    assert!(read.credential_profiles.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_profile_write_over_a_file_changed_since_it_was_read_is_refused_and_no_secret_goes() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = DeleteLog::default();
+    let core = started_with(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let vouched = library
+        .replace_library(
+            LibraryWriteRecord {
+                ssh_profiles: vec![ssh_profile(SSH_PROFILE, "bastion")],
+                ..mac_library()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let file = dir.path().join("connections.json");
+    let swapped = std::fs::read_to_string(&file)
+        .unwrap()
+        .replace("bastion", "attacker.example");
+    std::fs::write(&file, &swapped).unwrap();
+
+    let refused = library
+        .replace_library(
+            LibraryWriteRecord {
+                removing: vec!["6f0b6a4e-3a52-4c2f-9d1e-0c6a2b7f9e11".to_owned()],
+                ..mac_library()
+            },
+            vouched.digest,
+        )
+        .await;
+
+    assert_eq!(
+        refused.err().map(|error| error.code().to_owned()),
+        Some("storage.library_changed".to_owned())
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), swapped);
+    assert!(secrets.profiles().is_empty());
+    assert!(secrets.connections.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_after_a_profile_write_goes_on_over_the_digest_it_returned() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let with_profile = LibraryWriteRecord {
+        ssh_profiles: vec![ssh_profile(SSH_PROFILE, "bastion")],
+        ..mac_library()
+    };
+
+    let first = library.replace_library(mac_library(), None).await.unwrap();
+    let profiled = library
+        .replace_library(with_profile.clone(), first.digest.clone())
+        .await
+        .unwrap();
+    let next = library
+        .replace_library(
+            LibraryWriteRecord {
+                favorites: Vec::new(),
+                ..with_profile.clone()
+            },
+            profiled.digest.clone(),
+        )
         .await
         .unwrap();
 
-    assert_eq!(ssh.name, "Bastion");
-    assert_eq!(library.ssh_profiles().await.unwrap(), vec![renamed.clone()]);
-    assert_eq!(library.credential_profiles().await.unwrap(), vec![credential.clone()]);
-    assert!(library.delete_ssh_profile(renamed.id.clone()).await.unwrap());
-    assert!(!library.delete_ssh_profile(renamed.id).await.unwrap());
-    assert!(library.delete_credential_profile(credential.id).await.unwrap());
-    assert!(library.credential_profiles().await.unwrap().is_empty());
+    assert_ne!(profiled.digest, first.digest);
+    let read = library.library_contents().await.unwrap();
+    assert_eq!(read.digest, next.digest);
+    assert_eq!(read.ssh_profiles, with_profile.ssh_profiles);
+    assert!(read.favorites.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn what_the_write_takes_out_loses_its_secrets_once_the_write_lands() {
+    let dir = tempfile::tempdir().unwrap();
+    let held = "1d5c9e2a-7b3f-4a8e-b6d1-0f2e3c4a5b6d";
+    let held_connection = "6f0b6a4e-3a52-4c2f-9d1e-0c6a2b7f9e11";
+    let entry = format!(
+        r#"{{"id":"{held_connection}","name":"prod","driver_id":"postgres","host":"db","port":5432,"database":"d","username":"u","tls":{{"mode":"disable"}},"safe_mode":"paranoid","external_access":"read_only","ai_policy":"ask"}}"#
+    );
+    std::fs::write(
+        dir.path().join("connections.json"),
+        format!(
+            r#"{{"version": 1, "connections": [{entry}],
+                "ssh_profiles": [{{"id":"{held}","name":"p","host":"h","auth":{{"kind":"quantum"}}}}]}}"#
+        ),
+    )
+    .unwrap();
+    let secrets = DeleteLog::default();
+    let core = started_with(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let read = library.library_contents().await.unwrap();
+    assert_eq!(read.unreadable_profiles, vec![held.to_owned()]);
+    let kept = ssh_profile(SSH_PROFILE, "bastion");
+    let written = library
+        .replace_library(
+            LibraryWriteRecord {
+                ssh_profiles: vec![kept.clone(), ssh_profile(OTHER_SSH_PROFILE, "edge")],
+                credential_profiles: vec![credential_profile(CREDENTIAL_PROFILE)],
+                ..mac_library()
+            },
+            read.digest,
+        )
+        .await
+        .unwrap();
+    assert!(
+        secrets.profiles().is_empty(),
+        "a write that keeps every profile took secrets"
+    );
+
+    let landed = library
+        .replace_library(
+            LibraryWriteRecord {
+                ssh_profiles: vec![kept.clone()],
+                removing: vec![held.to_owned(), held_connection.to_owned()],
+                ..mac_library()
+            },
+            written.digest,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        secrets.profiles(),
+        vec![
+            (held.to_owned(), ProfileKindTag::Ssh),
+            (OTHER_SSH_PROFILE.to_owned(), ProfileKindTag::Ssh),
+            (CREDENTIAL_PROFILE.to_owned(), ProfileKindTag::Credential),
+        ]
+    );
+    assert_eq!(*secrets.connections.lock().unwrap(), vec![held_connection.to_owned()]);
+    let read = library.library_contents().await.unwrap();
+    assert_eq!(read.digest, landed.digest);
+    assert_eq!(read.ssh_profiles, vec![kept]);
+    assert!(read.unreadable_profiles.is_empty() && read.unreadable.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_secret_the_store_would_not_delete_is_tried_again_by_the_next_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = DeleteLog::default();
+    let core = started_with(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let written = library
+        .replace_library(
+            LibraryWriteRecord {
+                credential_profiles: vec![credential_profile(CREDENTIAL_PROFILE)],
+                ..mac_library()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    secrets.refusing.store(true, Ordering::SeqCst);
+
+    let landed = library.replace_library(mac_library(), written.digest).await.unwrap();
+
+    let read = library.library_contents().await.unwrap();
+    assert_eq!(read.digest, landed.digest, "the digest is the final file's");
+    assert_eq!(read.credential_profiles, mac_library().credential_profiles);
+    assert!(secrets.profiles().is_empty());
+    let file = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
+    assert!(
+        file.contains(CREDENTIAL_PROFILE),
+        "a failed delete was forgotten: {file}"
+    );
+    secrets.refusing.store(false, Ordering::SeqCst);
+    library.replace_library(mac_library(), landed.digest).await.unwrap();
+    assert_eq!(
+        secrets.profiles(),
+        vec![(CREDENTIAL_PROFILE.to_owned(), ProfileKindTag::Credential)]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_host_that_says_a_profile_s_secrets_are_another_app_s_is_not_asked_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = DeleteLog::default();
+    let core = started_with(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    let written = library
+        .replace_library(
+            LibraryWriteRecord {
+                ssh_profiles: vec![ssh_profile(SSH_PROFILE, "bastion")],
+                ..mac_library()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    secrets.not_owned.store(true, Ordering::SeqCst);
+
+    let landed = library.replace_library(mac_library(), written.digest).await.unwrap();
+    library.replace_library(mac_library(), landed.digest).await.unwrap();
+
+    assert_eq!(secrets.profiles(), vec![(SSH_PROFILE.to_owned(), ProfileKindTag::Ssh)]);
+    let file = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
+    assert!(!file.contains("secrets_to_delete"), "{file}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rebuild_takes_no_secret_by_an_id_from_the_file_it_replaces() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = DeleteLog::default();
+    let core = started_with(dir.path(), secrets.clone());
+    let library = core.library().unwrap();
+    library
+        .replace_library(
+            LibraryWriteRecord {
+                ssh_profiles: vec![ssh_profile(SSH_PROFILE, "bastion")],
+                credential_profiles: vec![credential_profile(CREDENTIAL_PROFILE)],
+                ..mac_library()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    library.rebuild_library(mac_library()).await.unwrap();
+
+    assert!(secrets.profiles().is_empty());
+    assert!(secrets.connections.lock().unwrap().is_empty());
+    let read = library.library_contents().await.unwrap();
+    assert_eq!(read.ssh_profiles, mac_library().ssh_profiles);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -344,55 +681,63 @@ async fn a_save_never_takes_the_id_of_a_connection_this_build_cannot_read() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_profile_save_never_takes_the_id_of_a_profile_this_build_cannot_read() {
+async fn a_library_write_keeps_a_profile_this_build_cannot_read_and_lists_its_id() {
     let dir = tempfile::tempdir().unwrap();
-    let ssh = "3fd0b191-5cf8-4760-84a9-92779983f3cf";
-    let credential = "c00996e7-3992-4501-99a1-03cf155ab59a";
     std::fs::write(
         dir.path().join("connections.json"),
         format!(
             r#"{{"version": 1, "connections": [],
-                "ssh_profiles": [{{"id":"{ssh}","name":"p","host":"h","auth":{{"kind":"quantum"}}}}],
-                "credential_profiles": [{{"id":"{credential}","name":"c","password":{{"mode":"hardware_key"}}}}]}}"#
+                "ssh_profiles": [{{"id":"{SSH_PROFILE}","name":"p","host":"h","auth":{{"kind":"quantum"}}}}],
+                "credential_profiles": [{{"id":"{CREDENTIAL_PROFILE}","name":"c","password":{{"mode":"hardware_key"}}}}]}}"#
         ),
     )
     .unwrap();
     let core = started(dir.path());
     let library = core.library().unwrap();
+    let read = library.library_contents().await.unwrap();
 
-    let saved_ssh = library
-        .save_ssh_profile(SshProfileRecord {
-            id: ssh.to_owned(),
-            name: "stale".to_owned(),
-            ssh: SshSettings {
-                host: "attacker.example".to_owned(),
-                port: None,
-                username: None,
-                jump_hosts: Vec::new(),
-                auth: SshAuthTag::Agent,
-                enabled: None,
-                options: None,
-            },
-        })
-        .await
-        .unwrap();
-    let saved_credential = library
-        .save_credential_profile(CredentialProfileRecord {
-            id: credential.to_owned(),
-            name: "stale".to_owned(),
-            username: "u".to_owned(),
-            password: CredentialPasswordRecord::Stored,
-            secure_field_ids: Vec::new(),
-            order: 0,
-        })
-        .await
-        .unwrap();
+    library.replace_library(mac_library(), read.digest).await.unwrap();
 
-    assert_ne!(saved_ssh.id, ssh);
-    assert_ne!(saved_credential.id, credential);
+    let mut held = read.unreadable_profiles.clone();
+    held.sort();
+    assert_eq!(held, vec![SSH_PROFILE.to_owned(), CREDENTIAL_PROFILE.to_owned()]);
+    assert!(read.ssh_profiles.is_empty() && read.credential_profiles.is_empty());
     let file = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
     assert!(file.contains("quantum"));
     assert!(file.contains("hardware_key"));
+}
+
+// A profile of each kind with values no form would write, as a Mac's library holds them.
+fn mac_ssh_profile() -> SshProfileRecord {
+    SshProfileRecord {
+        id: "2b7e4f1a-9c3d-4e5f-8a6b-1c2d3e4f5a6b".to_owned(),
+        name: " jump\t(EU) ".to_owned(),
+        ssh: SshSettings {
+            host: " jump.internal ".to_owned(),
+            port: Some(2222),
+            username: None,
+            jump_hosts: Vec::new(),
+            auth: SshAuthTag::KeyboardInteractive,
+            enabled: Some(false),
+            options: Some(ssh_options()),
+        },
+    }
+}
+
+fn mac_credential_profile() -> CredentialProfileRecord {
+    CredentialProfileRecord {
+        id: "5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9".to_owned(),
+        name: " ".to_owned(),
+        username: String::new(),
+        password: CredentialPasswordRecord::Local {
+            source: LocalPasswordSourceRecord::Command {
+                shell: "op read op://db/password".to_owned(),
+                reuse_seconds: Some(60),
+            },
+        },
+        secure_field_ids: Vec::new(),
+        order: 9,
+    }
 }
 
 fn mac_library() -> LibraryWriteRecord {
@@ -470,6 +815,8 @@ fn mac_library() -> LibraryWriteRecord {
         }],
         favorites: vec!["6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44".to_owned()],
         projects: Vec::new(),
+        ssh_profiles: vec![mac_ssh_profile()],
+        credential_profiles: vec![mac_credential_profile()],
         removing: Vec::new(),
     }
 }
@@ -615,23 +962,9 @@ async fn a_rebuild_keeps_only_what_the_write_names() {
     let core = started(dir.path());
     let library = core.library().unwrap();
     let written = mac_library();
-    library.replace_library(written.clone(), None).await.unwrap();
-    library
-        .save_ssh_profile(SshProfileRecord {
-            id: String::new(),
-            name: "jump".to_owned(),
-            ssh: SshSettings {
-                host: "jump.example".to_owned(),
-                port: None,
-                username: None,
-                jump_hosts: Vec::new(),
-                auth: SshAuthTag::Agent,
-                enabled: None,
-                options: None,
-            },
-        })
-        .await
-        .unwrap();
+    let mut extra = written.clone();
+    extra.ssh_profiles.push(ssh_profile(SSH_PROFILE, "jump.example"));
+    library.replace_library(extra, None).await.unwrap();
     let file = dir.path().join("connections.json");
     let mut stored: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
     stored["connections"][0]["from_a_newer_build"] = serde_json::json!(true);
@@ -665,7 +998,10 @@ async fn a_library_written_whole_reads_back_as_it_was_written() {
     assert_eq!(read.groups, written.groups);
     assert_eq!(read.tags, written.tags);
     assert_eq!(read.favorites, written.favorites);
+    assert_eq!(read.ssh_profiles, written.ssh_profiles);
+    assert_eq!(read.credential_profiles, written.credential_profiles);
     assert!(read.unreadable.is_empty());
+    assert!(read.unreadable_profiles.is_empty());
     assert_eq!(
         library_icon_symbol(read.groups[0].icon.clone().unwrap())
             .unwrap()

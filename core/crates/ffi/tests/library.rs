@@ -15,8 +15,9 @@ use russh::keys::ssh_key::private::Ed25519Keypair;
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
     ConnectionRecord, ConnectionSecrets, Core, CoreError, FileOpenRequest, HostConfig, HostPrompter, HostSecretError,
-    HostSecrets, ObjectScopeArg, PromptAnswer, PromptPurposeTag, PromptRequest, RunOutcome, RunSettings, SafeModeTag,
-    SecretItemTag, SecretKindTag, SshAuthTag, SshSettings, TableName, TlsModeTag, TlsSettings,
+    HostSecrets, ObjectScopeArg, ProfileKindTag, PromptAnswer, PromptPurposeTag, PromptRequest, RunOutcome,
+    RunSettings, SafeModeTag, SecretDeletionTag, SecretItemTag, SecretKindTag, SshAuthTag, SshSettings, TableName,
+    TlsModeTag, TlsSettings,
 };
 use tokio::net::TcpListener;
 
@@ -53,6 +54,10 @@ impl HostSecrets for MemorySecrets {
     fn delete_connection(&self, connection_id: String) -> Result<(), HostSecretError> {
         self.0.lock().unwrap().retain(|(id, _), _| *id != connection_id);
         Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
@@ -138,6 +143,10 @@ impl HostSecrets for RefusingSecrets {
     fn delete_connection(&self, connection_id: String) -> Result<(), HostSecretError> {
         self.deleting()?;
         self.memory.delete_connection(connection_id)
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

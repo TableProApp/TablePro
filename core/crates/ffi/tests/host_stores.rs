@@ -10,8 +10,8 @@ use secrecy::SecretString;
 use tablepro_ffi::{
     Core, DatabaseEnvironmentTag, FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteRecordWrite,
     FavouriteTableRecord, HistoryEntryRecord, HistoryOutcomeTag, HostConfig, HostSecretError, HostSecrets,
-    SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SecretItemTag, SecretKindTag, TableFolderRecord,
-    TableFolderRecordWrite, TableKeyRecord, TablePlacementRecord, TableRefRecord,
+    ProfileKindTag, SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SecretDeletionTag, SecretItemTag,
+    SecretKindTag, TableFolderRecord, TableFolderRecordWrite, TableKeyRecord, TablePlacementRecord, TableRefRecord,
 };
 
 struct NoSecrets;
@@ -35,6 +35,10 @@ impl HostSecrets for NoSecrets {
 
     fn delete_connection(&self, _: String) -> Result<(), HostSecretError> {
         Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

@@ -251,8 +251,50 @@ struct ConnectionsDocument {
     ssh_profiles: Lenient<SshProfile>,
     #[serde(default, skip_serializing_if = "is_empty_list")]
     credential_profiles: Lenient<CredentialProfile>,
+    // Records a library write took out whose secrets have not gone yet. A build that does not know the list leaves it
+    // out of its next write, which can leave those secrets behind but loses nothing else.
+    #[serde(default, skip_serializing_if = "is_empty_list")]
+    secrets_to_delete: Lenient<SecretOwner>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     store: Option<StoreIdentity>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretOwnerKind {
+    Connection,
+    SshProfile,
+    CredentialProfile,
+}
+
+/// A record whose secrets a library write takes out with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SecretOwner {
+    pub kind: SecretOwnerKind,
+    pub id: Uuid,
+}
+
+impl SecretOwner {
+    pub fn new(kind: SecretOwnerKind, id: Uuid) -> Self {
+        Self { kind, id }
+    }
+}
+
+impl SecretOwnerKind {
+    // Its place in a list of the three kinds' ids.
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Self::Connection => 0,
+            Self::SshProfile => 1,
+            Self::CredentialProfile => 2,
+        }
+    }
+}
+
+impl Identified for SecretOwner {
+    fn id(&self) -> Uuid {
+        self.id
+    }
 }
 
 fn is_empty_list<T>(list: &Lenient<T>) -> bool {
