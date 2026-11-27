@@ -183,7 +183,7 @@ final class AppSettingsManager {
             storage.loadTypography(systemIsDark: NSApp?.effectiveAppearance.isDarkTheme ?? false)
         )
 
-        generalSlice.value.language.apply()
+        Self.apply(generalSlice.value.language)
 
         themeEngine.apply(typography: typographySlice.value)
         themeEngine.apply(
@@ -264,10 +264,16 @@ final class AppSettingsManager {
         }
     }
 
+    // AppleLanguages lives in the standard domain, which a device profile shares with the real store.
+    private static func apply(_ language: AppLanguage) {
+        guard AppStorageEnvironment.shared.deviceProfile == nil else { return }
+        language.apply()
+    }
+
     private func commitGeneral(from old: GeneralSettings, to new: GeneralSettings) {
         storage.saveGeneral(new)
         if old.language != new.language {
-            new.language.apply()
+            Self.apply(new.language)
         }
         if old.showWorkspaceRail != new.showWorkspaceRail {
             appEvents.workspaceRailVisibilityChanged.send(())

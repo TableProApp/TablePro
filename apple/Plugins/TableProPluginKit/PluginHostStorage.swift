@@ -18,12 +18,21 @@ public enum PluginHostStorage {
     }
 
     public static func resolveDefaults() -> UserDefaults {
-        let path = ProcessInfo.processInfo.environment[sandboxVariable]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let path, !path.isEmpty,
-              let sandboxed = UserDefaults(suiteName: suiteName(forSandboxAt: path))
-        else { return .standard }
-        return sandboxed
+        let environment = ProcessInfo.processInfo.environment
+        let path = environment[sandboxVariable]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let path, !path.isEmpty {
+            return UserDefaults(suiteName: suiteName(forSandboxAt: path)) ?? .standard
+        }
+        #if DEBUG
+        // A Debug build's device profile, whose suite the app names the same way (AppStorageEnvironment); the app
+        // refuses to launch with a name that is not one.
+        if let profile = environment["TABLEPRO_DEVICE_PROFILE"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !profile.isEmpty, environment["TABLEPRO_UI_TESTING"] != "1",
+           let profiled = UserDefaults(suiteName: "com.TablePro.profile.\(profile)") {
+            return profiled
+        }
+        #endif
+        return .standard
     }
 
     /// FNV-1a, because `Hasher` is seeded per process and the app, its plugins and the next run must agree.

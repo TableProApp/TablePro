@@ -16,6 +16,22 @@ struct MachineIdentityTests {
         #expect(id.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil)
     }
 
+    @Test("A device profile is a machine of its own, the same at every launch and apart from every other profile")
+    func deviceProfileHasItsOwnID() {
+        let machine = "12b9377cbe7e5c94e8a70d9d23929523d14afa954793130f8a3959c7b849aca8"
+        let first = MachineIdentity.profiled(machine, deviceProfile: "device-a")
+        #expect(first != machine)
+        #expect(first == MachineIdentity.profiled(machine, deviceProfile: "device-a"))
+        #expect(first != MachineIdentity.profiled(machine, deviceProfile: "device-b"))
+        #expect(first.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil)
+    }
+
+    @Test("A device profile's name follows the Mac's, so profiles on one Mac are told apart")
+    func deviceProfileName() {
+        #expect(MachineDescription.name(computer: "Ada's Mac", deviceProfile: nil) == "Ada's Mac")
+        #expect(MachineDescription.name(computer: "Ada's Mac", deviceProfile: "device-a") == "Ada's Mac (device-a)")
+    }
+
     @Test("Without a hardware UUID the fallback ID is made once and kept")
     func fallbackIsStable() throws {
         let defaults = try EphemeralDefaults()

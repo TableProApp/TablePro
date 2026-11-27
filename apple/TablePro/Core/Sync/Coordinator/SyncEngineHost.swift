@@ -217,15 +217,18 @@ final class SyncEngineHost {
 
     // The account is optional, since iCloud needs none (core ADR 0054, Providers).
     private static func live() -> SyncEngineHost {
-        let transport = CloudKitCoreTransport()
+        let environment = AppStorageEnvironment.shared
+        let transport = environment.deviceProfile == nil
+            ? CloudKitCoreTransport()
+            : CloudKitCoreTransport(database: SignedOutCloudKitDatabase())
         let mirror = LegacySyncMetadataMirror(
             metadata: .appDefault,
             recordCache: SyncProviderCoordinator.makeRecordCache()
         )
-        let defaults = AppStorageEnvironment.shared.defaults
+        let defaults = environment.defaults
         let settingsHost = HostSettingsBridge.live()
         let deviceStore = KeychainDeviceStore(
-            items: AppStorageEnvironment.shared.deviceItems,
+            items: environment.deviceItems,
             accessGroup: KeychainHelper.resolveAccessGroup()
         )
         return SyncEngineHost(

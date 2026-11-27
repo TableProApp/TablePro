@@ -22,6 +22,17 @@ struct CompanyServerAddressTests {
         #expect(CompanyServerAddress.parse("http://tablepro.example.com") == nil)
     }
 
+    @Test("Http reaches every host the core counts as this Mac: *.localhost, 127.0.0.0/8 and ::1")
+    func httpTakesTheCoresLoopbackHosts() {
+        #expect(CompanyServerAddress.parse("http://api.localhost:8080") == URL(string: "http://api.localhost:8080"))
+        #expect(CompanyServerAddress.parse("http://API.Localhost:8080/") == URL(string: "http://api.localhost:8080"))
+        #expect(CompanyServerAddress.parse("http://127.0.0.2:8080") == URL(string: "http://127.0.0.2:8080"))
+        #expect(CompanyServerAddress.parse("http://[::1]:8080") == URL(string: "http://[::1]:8080"))
+        #expect(CompanyServerAddress.parse("http://localhost.example.com") == nil)
+        #expect(CompanyServerAddress.parse("http://127.0.0.1.example.com") == nil)
+        #expect(CompanyServerAddress.parse("http://128.0.0.1") == nil)
+    }
+
     @Test("Anything that is not an origin is refused", arguments: [
         "",
         "   ",

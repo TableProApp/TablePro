@@ -24,7 +24,7 @@ struct RewindCipher {
 
     private let keychain: any KeychainStoring
 
-    init(keychain: any KeychainStoring = KeychainHelper.shared) {
+    init(keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain) {
         self.keychain = keychain
     }
 

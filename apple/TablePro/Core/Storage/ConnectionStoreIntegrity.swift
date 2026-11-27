@@ -209,11 +209,12 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
         ]
     }
 
-    /// A sandboxed run keeps its key inside the sandbox. The production query is left exactly as it
-    /// is: the key it finds is the one that stamped the user's existing store, and looking somewhere
-    /// else would mint a new key, fail every verification against it, and drop `storeIsTrusted`.
+    /// A sandboxed run or a device profile keeps its key in its own keychain. The production query is
+    /// left exactly as it is: the key it finds is the one that stamped the user's existing store, and
+    /// looking somewhere else would mint a new key, fail every verification against it, and drop
+    /// `storeIsTrusted`.
     private static var isolatedStore: (any KeychainStoring)? {
-        AppStorageEnvironment.shared.isIsolated ? AppStorageEnvironment.shared.keychain : nil
+        AppStorageEnvironment.shared.isProductionStore ? nil : AppStorageEnvironment.shared.keychain
     }
 
     private static func read() -> SymmetricKey? {
