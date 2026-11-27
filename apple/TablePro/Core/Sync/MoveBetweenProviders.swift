@@ -93,23 +93,12 @@ internal final class ProviderMoves: ObservableObject {
             }
         // iCloud's service hears the categories from the coordinator; any other open service hears them here.
         categoriesWatch = settings.publisher
-            .map(Self.categories)
+            .map(SyncProviderCoordinator.categories)
             .removeDuplicates()
             .dropFirst()
             .sink { [weak self] categories in
                 Task { @MainActor [weak self] in await self?.tell(categories) }
             }
-    }
-
-    // On TablePro Sync a password goes up sealed in an envelope, so it follows its own switch rather than iCloud
-    // Keychain's (core ADR 0054, Providers).
-    nonisolated static func categories(_ settings: SyncSettings) -> SyncCategoriesArg {
-        let categories = SyncProviderCoordinator.categories(settings)
-        guard settings.provider == .tableproSync else { return categories }
-        return SyncCategoriesArg(
-            offKinds: categories.offKinds,
-            passwords: settings.syncConnections && settings.syncPasswords
-        )
     }
 
     private func tell(_ categories: SyncCategoriesArg) async {

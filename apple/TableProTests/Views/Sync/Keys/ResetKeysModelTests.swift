@@ -104,7 +104,10 @@ struct ResetKeysModelTests {
         )
         await model.load()
         model.pendingCancel = model.pending
-        service.update { $0.failures["keyState"] = [F.failure("sync.network")] }
+        service.update { state in
+            state.failures["keyState"] = [F.failure("sync.network")]
+            state.failures["keyNotices"] = [F.failure("sync.network")]
+        }
 
         accountChanges.send()
 

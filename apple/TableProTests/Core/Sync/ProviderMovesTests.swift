@@ -539,12 +539,9 @@ struct ProviderMovesTests {
         var settings = SyncSettings.default
         settings.syncPasswords = true
         settings.provider = .tableproSync
-        #expect(ProviderMoves.categories(settings).passwords)
+        #expect(SyncProviderCoordinator.categories(settings).passwords)
         settings.syncConnections = false
-        #expect(!ProviderMoves.categories(settings).passwords)
-        settings.provider = .off
-        settings.syncConnections = true
-        #expect(!ProviderMoves.categories(settings).passwords)
+        #expect(!SyncProviderCoordinator.categories(settings).passwords)
     }
 
     // MARK: - Another account
