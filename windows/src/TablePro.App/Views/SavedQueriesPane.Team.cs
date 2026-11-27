@@ -35,6 +35,16 @@ public sealed partial class SavedQueriesPane
             workbench.RefreshTeamLibrary();
         };
         Unloaded += (_, _) => workbench.TeamLibraryChanged -= OnTeamLibraryChanged;
+        // A publish's outcome stays until closed; the bar below it then shows what still waits.
+        TeamBar.Closed += (_, args) =>
+        {
+            if (args.Reason == InfoBarCloseReason.CloseButton)
+            {
+                _outcome = null;
+                _teamFailure = null;
+                ShowTeams();
+            }
+        };
     }
 
     private void OnTeamLibraryChanged(object? sender, EventArgs e) => ShowTeams();
@@ -108,6 +118,7 @@ public sealed partial class SavedQueriesPane
         }
 
         TeamBar.Visibility = Visibility.Visible;
+        TeamBar.IsClosable = !library.IsPublishing && (_teamFailure is not null || _outcome is not null);
         TeamBar.Severity = shown.Severity;
         TeamBar.ActionButton = shown.Action;
         if (TeamBar.IsOpen && TeamBar.Message == shown.Message)

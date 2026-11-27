@@ -127,6 +127,8 @@ public sealed class SyncHost : IDisposable
     // Null until the service opens, and after it closed for a sign-in change.
     public SyncStatus? Status => _engine?.Status;
 
+    public bool IsOpen => _engine is not null;
+
     public IReadOnlyList<SyncScopeStatus> Scopes => _engine?.Scopes ?? [];
 
     // Null until read from the open service.

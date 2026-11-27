@@ -47,6 +47,8 @@ public sealed partial class SettingsView : UserControl
             _workbench.SyncChanged += OnSyncChanged;
             _workbench.TeamLibraryChanged -= OnSyncChanged;
             _workbench.TeamLibraryChanged += OnSyncChanged;
+            // The Team keys card shows once the teams are read.
+            _workbench.RefreshTeamLibrary();
             ShowAccount();
             ShowSync();
             ShowMcp();
