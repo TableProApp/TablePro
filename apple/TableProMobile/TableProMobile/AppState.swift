@@ -786,6 +786,8 @@ final class AppState {
     }
 
     func setCloudSyncEnabled(_ enabled: Bool) {
+        // From TablePro Sync, iCloud comes back only through the move back, which shows what it deletes there.
+        if enabled, onboarding.syncProvider == .tableproSync { return }
         onboarding.setSyncChoice(enabled)
         syncCoordinator.setEnabled(onboarding.isCloudSyncEnabled)
         providerMoves.providerChangedElsewhere()
