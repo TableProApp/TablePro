@@ -82,7 +82,7 @@ struct SyncSettingsPage: View {
             switch sheet {
             case .moveToService(let fromICloud, let session):
                 SyncMoveSheet(moves: moves, fromICloud: fromICloud, session: session) { state, finished in
-                    AnyView(SyncKeysStep(state: state, finished: finished))
+                    AnyView(KeysStepSheet(state: state, onFinished: finished))
                 }
             case .moveToICloud(let session):
                 SyncMoveBackSheet(moves: moves, session: session)
@@ -258,7 +258,7 @@ struct SyncSettingsPage: View {
         }
         if status == .needsApproval {
             NavigationLink(String(localized: "End-to-End Encryption")) {
-                SyncEncryptionDestination()
+                AccountEncryptionPage()
             }
         }
     }

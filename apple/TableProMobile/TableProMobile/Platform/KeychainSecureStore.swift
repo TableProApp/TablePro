@@ -16,7 +16,20 @@ nonisolated protocol KeychainItemStore: Sendable {
     func copyItem(_ query: [String: Any]) -> KeychainCopiedItem
     // Every item's account the query matches; none when the read fails.
     func accounts(_ query: [String: Any]) -> [String]
+    // The same listing with the read's status, for a caller that must tell a locked Keychain from an empty one.
+    func accountList(_ query: [String: Any]) -> KeychainAccountList
     func delete(_ query: [String: Any]) -> OSStatus
+}
+
+nonisolated struct KeychainAccountList: Sendable {
+    let status: OSStatus
+    let accounts: [String]
+}
+
+extension KeychainItemStore {
+    func accountList(_ query: [String: Any]) -> KeychainAccountList {
+        KeychainAccountList(status: errSecSuccess, accounts: accounts(query))
+    }
 }
 
 nonisolated struct SystemKeychainItemStore: KeychainItemStore {
@@ -44,13 +57,23 @@ nonisolated struct SystemKeychainItemStore: KeychainItemStore {
     }
 
     func accounts(_ query: [String: Any]) -> [String] {
+        accountList(query).accounts
+    }
+
+    // No item is an empty listing, not a failure.
+    func accountList(_ query: [String: Any]) -> KeychainAccountList {
         var query = query
         query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
         var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let items = result as? [[String: Any]] else { return [] }
-        return items.compactMap { $0[kSecAttrAccount as String] as? String }
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound {
+            return KeychainAccountList(status: errSecSuccess, accounts: [])
+        }
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else {
+            return KeychainAccountList(status: status, accounts: [])
+        }
+        return KeychainAccountList(status: status, accounts: items.compactMap { $0[kSecAttrAccount as String] as? String })
     }
 
     func delete(_ query: [String: Any]) -> OSStatus {
@@ -224,8 +247,14 @@ nonisolated final class KeychainSecureStore: SecureStore {
         var query = baseQuery(forKey: "")
         query.removeValue(forKey: kSecAttrAccount as String)
         query[kSecAttrSynchronizable as String] = true
+        // A locked Keychain lists nothing, which must not count as every copy made.
+        let listed = items.accountList(query)
+        guard listed.status == errSecSuccess else {
+            Self.logger.notice("Listing the iCloud Keychain items failed: \(listed.status)")
+            return false
+        }
         var complete = true
-        for key in Set(items.accounts(query)).sorted() where !addDeviceOnlyCopy(forKey: key) {
+        for key in Set(listed.accounts).sorted() where !addDeviceOnlyCopy(forKey: key) {
             complete = false
         }
         return complete

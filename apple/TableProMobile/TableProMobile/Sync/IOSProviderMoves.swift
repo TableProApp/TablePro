@@ -41,6 +41,8 @@ struct IOSProviderMoveHost {
     var provider: @MainActor () -> SyncProviderTag
     var setProvider: @MainActor (SyncProviderTag) -> Void
     var session: @MainActor () -> String?
+    // Closes the open service, so the next one opens for the provider stored then.
+    var closeEngine: @MainActor () -> Void = {}
 }
 
 // Moves this device's personal data between iCloud and TablePro Sync (core ADR 0054, Moving between providers), and
@@ -202,8 +204,12 @@ final class IOSProviderMoves {
 
     // MARK: - Back to iCloud
 
+    // The plan reads the iCloud account and fetches the records it would delete, so CloudKit opens for it as for the move.
     func planMoveToICloud() async throws -> MoveBackPlanInfo {
-        try await host.engine(.tableproSync).planMoveToIcloud()
+        let engine = try await host.engine(.tableproSync)
+        return try await withCloudKit(choice) {
+            try await engine.planMoveToIcloud()
+        }
     }
 
     // The move back fetches and deletes on CloudKit while iCloud is still off here, so the transport opens for it.
@@ -326,6 +332,11 @@ final class IOSProviderMoves {
                 Self.logger.error("The engine did not take TablePro Sync off: \(LogRedaction.publicDescription(of: error), privacy: .public)")
             }
             guard let self else { return }
+            // A service opened for TablePro Sync keeps that provider for its life and takes choosing it again as done,
+            // so a later upload opens a new one from Off, where choosing TablePro Sync runs the first upload.
+            if host.openedEngine(.off) === engine {
+                host.closeEngine()
+            }
             reconciling = nil
             engineStatus = host.openedEngine(.off)?.status()
         }
@@ -388,7 +399,8 @@ extension IOSProviderMoveHost {
             choices: { onboarding.managed.syncChoices },
             provider: { onboarding.syncProvider },
             setProvider: setProvider,
-            session: { account.snapshot.sessionID }
+            session: { account.snapshot.sessionID },
+            closeEngine: { engines.close() }
         )
     }
 }

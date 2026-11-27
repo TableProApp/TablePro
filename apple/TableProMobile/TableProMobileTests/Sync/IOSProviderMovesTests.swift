@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import os
 import TableProFFI
 @testable import TableProMobile
 import TableProSyncTransport
@@ -17,6 +18,7 @@ private final class Fixture {
     var session: String? = "session_a"
     var managed = ManagedAppConfiguration.unmanaged
     var passesFinished = 0
+    var closes = 0
     private(set) var moves: IOSProviderMoves!
 
     init(provider: SyncProviderTag) {
@@ -35,7 +37,8 @@ private final class Fixture {
                 self.provider = next
                 stored.append(next)
             },
-            session: { [unowned self] in session }
+            session: { [unowned self] in session },
+            closeEngine: { [unowned self] in closes += 1 }
         ))
     }
 }
@@ -122,6 +125,24 @@ struct IOSProviderMovesTests {
 
         #expect(fixture.stored == [.off])
         #expect(fixture.engine.read { $0.providers } == [.off])
+        // The service keeps TablePro Sync for its life, so a later upload must open a new one.
+        #expect(fixture.closes == 1)
+    }
+
+    @Test("The move-back plan reads iCloud with CloudKit open, which closes again after while iCloud does not run")
+    func moveBackPlanOpensCloudKit() async throws {
+        let fixture = Fixture(provider: .tableproSync)
+        let transport = fixture.transport
+        let seen = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+        fixture.engine.update { state in
+            state.planningBack = { seen.withLock { $0 = transport.isClosed } }
+        }
+
+        let plan = try await fixture.moves.planMoveToICloud()
+
+        #expect(plan.icloudDeletions == 4)
+        #expect(seen.withLock { $0 } == false)
+        #expect(fixture.transport.isClosed)
     }
 
     @Test("The move back opens CloudKit for the deletions, stores iCloud, and leaves the transport to the coordinator")

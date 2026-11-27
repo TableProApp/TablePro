@@ -59,6 +59,15 @@ struct KeychainTableProSyncTests {
         #expect(try store.retrieve(forKey: account) == "from-icloud")
     }
 
+    @Test("A Keychain that refuses the listing, as before the first unlock, never counts as every copy made")
+    func refusedListingIsNotComplete() {
+        items.seed("from-icloud", account: account, synchronizable: true)
+        items.failedListing = errSecInteractionNotAllowed
+
+        #expect(!store.addDeviceOnlyCopies())
+        #expect(items.value(account: account, synchronizable: false) == nil)
+    }
+
     @Test("Off TablePro Sync again, a removal reaches the iCloud item as before")
     func offTableProSyncRemovesBoth() throws {
         provider.store(.followsPasswordSync)

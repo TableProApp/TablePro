@@ -99,6 +99,13 @@ final class IOSSyncEngineHost {
         }
     }
 
+    // The open service goes, with its flush; the next caller opens one for the provider it asks for.
+    func close() {
+        guard let old = opened?.engine else { return }
+        retire(old)
+        opened = nil
+    }
+
     private func retire(_ engine: any IOSSyncEngine) {
         let id = UUID()
         retiring[id] = Task { [weak self] in
@@ -142,8 +149,15 @@ final class IOSSyncEngineHost {
         return service
     }
 
-    // The service the categories go to now, whichever provider opened it.
+    // The service the categories go to now, whichever provider opened it. One opening meanwhile may have read the
+    // earlier categories, so it hears them once it is open.
     func setCategories(_ categories: SyncCategoriesArg) async {
+        while let pending = opening {
+            _ = await pending.task.result
+            if opening?.task == pending.task {
+                opening = nil
+            }
+        }
         guard let engine = openedEngine(for: .off) else { return }
         do {
             try await engine.setCategories(categories: categories)

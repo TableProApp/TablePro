@@ -28,6 +28,8 @@ nonisolated final class FakeIOSSyncEngine: IOSSyncEngine, SyncMoveEngine, @unche
         var movesBack: [UInt64] = []
         var zoneDeletions = 0
         var identityChoices: [NewIdentityChoiceTag] = []
+        // Runs inside the move-back plan, as the core's CloudKit reads would.
+        var planningBack: (@Sendable () -> Void)?
         var pass: (@Sendable (PassReasonTag) async -> Void)?
     }
 
@@ -99,7 +101,8 @@ nonisolated final class FakeIOSSyncEngine: IOSSyncEngine, SyncMoveEngine, @unche
     }
 
     func planMoveToIcloud() async throws -> MoveBackPlanInfo {
-        MoveBackPlanInfo(icloudDeletions: 4)
+        read { $0.planningBack }?()
+        return MoveBackPlanInfo(icloudDeletions: 4)
     }
 
     func moveToIcloud(confirmedDeletions: UInt64) async throws {

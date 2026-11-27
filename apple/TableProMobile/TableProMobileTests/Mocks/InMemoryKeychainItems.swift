@@ -29,6 +29,7 @@ final class InMemoryKeychainItems: KeychainItemStore, @unchecked Sendable {
     private var items: [Item] = []
     private var refusedAdd: OSStatus?
     private var refusedUpdate: OSStatus?
+    private var refusedListing: OSStatus?
     private var writes = 0
     private var callsOnMainThread = 0
     private var listingHook: (@Sendable () -> Void)?
@@ -62,6 +63,12 @@ final class InMemoryKeychainItems: KeychainItemStore, @unchecked Sendable {
     var failedUpdate: OSStatus? {
         get { lock.withLock { refusedUpdate } }
         set { lock.withLock { refusedUpdate = newValue } }
+    }
+
+    // A listing the Keychain refuses, as before the first unlock.
+    var failedListing: OSStatus? {
+        get { lock.withLock { refusedListing } }
+        set { lock.withLock { refusedListing = newValue } }
     }
 
     func seed(_ value: String, service: String = "com.TablePro", account: String, synchronizable: Bool) {
@@ -159,6 +166,13 @@ final class InMemoryKeychainItems: KeychainItemStore, @unchecked Sendable {
         }
         hook?()
         return lock.withLock { matches(query).map { items[$0].account } }
+    }
+
+    func accountList(_ query: [String: Any]) -> KeychainAccountList {
+        if let refused = failedListing {
+            return KeychainAccountList(status: refused, accounts: [])
+        }
+        return KeychainAccountList(status: errSecSuccess, accounts: accounts(query))
     }
 
     func delete(_ query: [String: Any]) -> OSStatus {
