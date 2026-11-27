@@ -15,6 +15,9 @@ struct StubCatalog: SQLCompletionCatalog {
     var qualifiesInScope = false
     // Like the iOS catalog, which quotes a mixed-case name itself because nothing spells it later.
     var writesNames = false
+    var views: Set<String> = []
+    // Like the macOS catalog, which hands SQL completion its table list as a folded index.
+    var indexesTables = false
     // Runs where the provider reads the table list, which is where the request runs.
     var onTableRead: (@Sendable () -> Void)?
     let keyReads = KeyReads()
@@ -64,7 +67,13 @@ struct StubCatalog: SQLCompletionCatalog {
 
     func tableCompletionItems() -> [SQLCompletionItem] {
         onTableRead?()
-        return tables.map { SQLCompletionItem.table($0) }
+        return tables.map { SQLCompletionItem.table($0, isView: views.contains($0)) }
+    }
+
+    func tableNameIndex() -> SQLCompletionNameIndex? {
+        guard indexesTables else { return nil }
+        onTableRead?()
+        return SQLCompletionNameIndex(tables: tables.map { ($0, views.contains($0)) })
     }
 
     func tableCompletionItems(inSchema schema: String) -> [SQLCompletionItem] {

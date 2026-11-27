@@ -5,7 +5,7 @@ use std::time::Duration;
 use secrecy::ExposeSecret;
 use tablepro_core::{
     APPLICATION_NAME, ConfigError, Credentials, DriverError, LivenessPolicy, NetworkTarget, ServerInfo, TimeoutPhase,
-    Transport,
+    Transport, UnsupportedFeature,
 };
 use tokio_postgres::config::ChannelBinding;
 use tokio_postgres::{CancelToken, Client, Config, SimpleQueryMessage};
@@ -190,8 +190,25 @@ pub(crate) async fn server_info(client: &Client) -> Result<ServerInfo, DriverErr
             "the server did not report server_version_num".to_owned(),
         ));
     };
+    check_server_version(number)?;
     let (major, minor) = split_version_number(number);
     Ok(ServerInfo::new("PostgreSQL", version, major, minor, 0))
+}
+
+// The oldest release the catalog reads are written for. 9.6 has no
+// identity columns, no declarative partitions and no `pg_sequences`.
+const MIN_SERVER_VERSION_NUM: u32 = 100_000;
+
+/// Refuse a server older than the catalog reads, before any of them runs.
+fn check_server_version(number: u32) -> Result<(), DriverError> {
+    if number < MIN_SERVER_VERSION_NUM {
+        return Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::MinimumVersion {
+                required: "PostgreSQL 10",
+            },
+        });
+    }
+    Ok(())
 }
 
 /// `server_version_num` is major * 10000 + minor from PostgreSQL 10 on,
@@ -203,6 +220,20 @@ fn split_version_number(number: u32) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_server_before_10_is_refused() {
+        assert!(matches!(
+            check_server_version(90_624),
+            Err(DriverError::Unsupported {
+                feature: UnsupportedFeature::MinimumVersion {
+                    required: "PostgreSQL 10"
+                }
+            })
+        ));
+        assert!(check_server_version(100_000).is_ok());
+        assert!(check_server_version(120_022).is_ok());
+    }
 
     #[test]
     fn version_numbers_split_into_major_and_minor() {

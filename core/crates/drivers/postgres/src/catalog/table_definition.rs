@@ -3,6 +3,7 @@ use tablepro_core::ddl::InboundForeignKey;
 use tablepro_core::meta::TableRef;
 use tokio_postgres::Row;
 
+use crate::catalog_release::CatalogRelease;
 use crate::codec::TextArray;
 
 /// The primary key constraint's name and its columns in key order.
@@ -37,11 +38,11 @@ JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
 JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
 WHERE c.confrelid = $1::text::oid AND c.contype = 'f'
   AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint p
-                   WHERE p.oid = c.conparentid AND p.confrelid = c.confrelid)
+                   WHERE p.oid = {c.conparentid} AND p.confrelid = c.confrelid)
 ORDER BY n.nspname, t.relname, c.conname";
 
-pub(crate) fn inbound_foreign_keys_sql() -> String {
-    INBOUND_FOREIGN_KEYS_SQL.replace("{child_compares_alike}", &compares_alike_sql(CHILD_HOLDS_PARENT))
+pub(crate) fn inbound_foreign_keys_sql(release: CatalogRelease) -> String {
+    release.render(&INBOUND_FOREIGN_KEYS_SQL.replace("{child_compares_alike}", &compares_alike_sql(CHILD_HOLDS_PARENT)))
 }
 
 /// Whether every column pair of the key `c` compares alike when the
@@ -63,7 +64,9 @@ NOT coalesce((pg_catalog.to_jsonb(c) OPERATOR(pg_catalog.->>) 'conperiod')::bool
            JOIN pg_catalog.pg_type ct ON ct.oid = ca.atttypid
            JOIN pg_catalog.pg_type pt ON pt.oid = pa.atttypid
           WHERE NOT (ca.attcollation = pa.attcollation
-                     OR (SELECT pg_catalog.bool_and(l.collisdeterministic) FROM pg_catalog.pg_collation l
+                     OR (SELECT pg_catalog.bool_and(
+                                   COALESCE((pg_catalog.to_jsonb(l) OPERATOR(pg_catalog.->>) 'collisdeterministic')::boolean, true))
+                           FROM pg_catalog.pg_collation l
                           WHERE l.oid IN (ca.attcollation, pa.attcollation)))
              OR NOT (ca.atttypid = pa.atttypid
                      OR (ca.atttypid IN ('pg_catalog.text'::regtype::oid, 'pg_catalog.varchar'::regtype::oid)

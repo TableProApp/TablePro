@@ -225,4 +225,19 @@ struct ClickHouseTabSeparatedRowDecoderTests {
         #expect(bytewise(body) == buffered.rows)
         #expect(buffered.rows.count == 4)
     }
+
+    // MARK: - Row Capacity
+
+    @Test("Each streamed row is allocated at its column count, with no spare slots")
+    func streamedRowHasExactCapacity() throws {
+        let columns = 0..<20
+        var body = Data(columns.map { "c\($0)" }.joined(separator: "\t").utf8)
+        body.append(contentsOf: Data(("\n" + columns.map { _ in "String" }.joined(separator: "\t") + "\n").utf8))
+        body.append(contentsOf: Data((columns.map { "v\($0)" }.joined(separator: "\t") + "\n").utf8))
+
+        let row = try #require(decodeAll(body).rows.first)
+
+        #expect(row.count == 20)
+        #expect(row.capacity == row.count)
+    }
 }
