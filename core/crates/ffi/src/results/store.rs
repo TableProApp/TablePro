@@ -198,6 +198,16 @@ impl ResultStore {
         Some(self.read().cell(row, column)?.bytes.len())
     }
 
+    // The value a copy renders: `cell_value` reads back the text the grid
+    // showed, so a copy writes what the user saw. Null for a cell past the
+    // held rows.
+    pub(crate) fn copy_value(&self, row: u64, column: usize) -> Value {
+        match self.read().cell(row, column) {
+            Some(cell) => cell_value(cell),
+            None => Value::Null,
+        }
+    }
+
     // The kind of the value in a cell, `None` for null; a dynamically typed column can hold any.
     pub(crate) fn cell_kind(&self, row: u64, column: usize) -> Option<Option<ValueKind>> {
         Some(self.read().cell(row, column)?.kind)
