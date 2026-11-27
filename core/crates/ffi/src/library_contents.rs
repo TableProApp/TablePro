@@ -218,7 +218,7 @@ impl From<&SavedConnection> for LibraryConnectionRecord {
     }
 }
 
-fn stored_connection(
+pub(crate) fn stored_connection(
     id: Uuid,
     record: LibraryConnectionRecord,
     before: Option<&SavedConnection>,
