@@ -1852,6 +1852,10 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -6380,6 +6384,28 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_explain_variants(RustBuffer @engine,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_parse_query_plan(RustBuffer @format,RustBuffer @rawText,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      RustBuffer uniffi_tablepro_ffi_fn_func_device_item_class(RustBuffer @item,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -7217,6 +7243,28 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_func_mcp_default_port(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_explain_variants(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_parse_query_plan(
     );
 
     #if NET8_0_OR_GREATER
@@ -11198,6 +11246,18 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_mcp_default_port();
             if (checksum != 46423) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_mcp_default_port` checksum `46423`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_explain_variants();
+            if (checksum != 48842) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_explain_variants` checksum `48842`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_parse_query_plan();
+            if (checksum != 26033) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_parse_query_plan` checksum `26033`, library returned `{checksum}`");
             }
         }
         {
@@ -25652,6 +25712,69 @@ class FfiConverterTypeExistingConnectionInfo: FfiConverterRustBuffer<ExistingCon
 
 
 
+/// <summary>
+/// One EXPLAIN option an engine offers, for the plan menu.
+/// </summary>
+/// <param name="IsSqlPrefix">
+/// The app prepends `sql_prefix` and runs the statement for a prefix variant.
+/// A driver variant needs engine support the Windows app does not have yet.
+/// </param>
+/// <param name="RunsStatement">
+/// Running the variant executes the user's statement, so the app gates it.
+/// </param>
+internal record ExplainVariantInfo (
+    string Id, 
+    string Label, 
+    string SqlPrefix, 
+    string Format, 
+    /// <summary>
+    /// The app prepends `sql_prefix` and runs the statement for a prefix variant.
+    /// A driver variant needs engine support the Windows app does not have yet.
+    /// </summary>
+    bool IsSqlPrefix, 
+    /// <summary>
+    /// Running the variant executes the user's statement, so the app gates it.
+    /// </summary>
+    bool RunsStatement
+) {
+}
+
+class FfiConverterTypeExplainVariantInfo: FfiConverterRustBuffer<ExplainVariantInfo> {
+    public static FfiConverterTypeExplainVariantInfo INSTANCE = new FfiConverterTypeExplainVariantInfo();
+
+    public override ExplainVariantInfo Read(BigEndianStream stream) {
+        return new ExplainVariantInfo(
+            Id: FfiConverterString.INSTANCE.Read(stream),
+            Label: FfiConverterString.INSTANCE.Read(stream),
+            SqlPrefix: FfiConverterString.INSTANCE.Read(stream),
+            Format: FfiConverterString.INSTANCE.Read(stream),
+            IsSqlPrefix: FfiConverterBoolean.INSTANCE.Read(stream),
+            RunsStatement: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(ExplainVariantInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Label)
+            + FfiConverterString.INSTANCE.AllocationSize(value.SqlPrefix)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Format)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.IsSqlPrefix)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.RunsStatement);
+    }
+
+    public override void Write(ExplainVariantInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.Label, stream);
+            FfiConverterString.INSTANCE.Write(value.SqlPrefix, stream);
+            FfiConverterString.INSTANCE.Write(value.Format, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.IsSqlPrefix, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.RunsStatement, stream);
+    }
+}
+
+
+
 internal record FavouriteDatabaseInfo (
     string Database, 
     DatabaseEnvironmentTag Environment
@@ -28382,6 +28505,180 @@ class FfiConverterTypePromptRequest: FfiConverterRustBuffer<PromptRequest> {
             FfiConverterString.INSTANCE.Write(value.Target, stream);
             FfiConverterSequenceTypePromptFieldInfo.INSTANCE.Write(value.Fields, stream);
             FfiConverterBoolean.INSTANCE.Write(value.OfferRemember, stream);
+    }
+}
+
+
+
+/// <summary>
+/// A parsed EXPLAIN query plan, for the plan view.
+/// </summary>
+internal record QueryPlanInfo (
+    QueryPlanNodeInfo Root, 
+    double? PlanningTime, 
+    double? ExecutionTime, 
+    string RawText
+) {
+}
+
+class FfiConverterTypeQueryPlanInfo: FfiConverterRustBuffer<QueryPlanInfo> {
+    public static FfiConverterTypeQueryPlanInfo INSTANCE = new FfiConverterTypeQueryPlanInfo();
+
+    public override QueryPlanInfo Read(BigEndianStream stream) {
+        return new QueryPlanInfo(
+            Root: FfiConverterTypeQueryPlanNodeInfo.INSTANCE.Read(stream),
+            PlanningTime: FfiConverterOptionalDouble.INSTANCE.Read(stream),
+            ExecutionTime: FfiConverterOptionalDouble.INSTANCE.Read(stream),
+            RawText: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(QueryPlanInfo value) {
+        return 0
+            + FfiConverterTypeQueryPlanNodeInfo.INSTANCE.AllocationSize(value.Root)
+            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.PlanningTime)
+            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.ExecutionTime)
+            + FfiConverterString.INSTANCE.AllocationSize(value.RawText);
+    }
+
+    public override void Write(QueryPlanInfo value, BigEndianStream stream) {
+            FfiConverterTypeQueryPlanNodeInfo.INSTANCE.Write(value.Root, stream);
+            FfiConverterOptionalDouble.INSTANCE.Write(value.PlanningTime, stream);
+            FfiConverterOptionalDouble.INSTANCE.Write(value.ExecutionTime, stream);
+            FfiConverterString.INSTANCE.Write(value.RawText, stream);
+    }
+}
+
+
+
+internal record QueryPlanMissingIndexInfo (
+    double? Impact, 
+    string CreateStatement
+) {
+}
+
+class FfiConverterTypeQueryPlanMissingIndexInfo: FfiConverterRustBuffer<QueryPlanMissingIndexInfo> {
+    public static FfiConverterTypeQueryPlanMissingIndexInfo INSTANCE = new FfiConverterTypeQueryPlanMissingIndexInfo();
+
+    public override QueryPlanMissingIndexInfo Read(BigEndianStream stream) {
+        return new QueryPlanMissingIndexInfo(
+            Impact: FfiConverterOptionalDouble.INSTANCE.Read(stream),
+            CreateStatement: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(QueryPlanMissingIndexInfo value) {
+        return 0
+            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.Impact)
+            + FfiConverterString.INSTANCE.AllocationSize(value.CreateStatement);
+    }
+
+    public override void Write(QueryPlanMissingIndexInfo value, BigEndianStream stream) {
+            FfiConverterOptionalDouble.INSTANCE.Write(value.Impact, stream);
+            FfiConverterString.INSTANCE.Write(value.CreateStatement, stream);
+    }
+}
+
+
+
+/// <summary>
+/// One node of the plan tree. `children` makes it recursive.
+/// </summary>
+/// <param name="CostFraction">
+/// This node's share of the plan's total work (0.0-1.0), None when no cost was reported.
+/// </param>
+internal record QueryPlanNodeInfo (
+    string Operation, 
+    string? Relation, 
+    string? Schema, 
+    string? Alias, 
+    double? EstimatedStartupCost, 
+    double? EstimatedTotalCost, 
+    long? EstimatedRows, 
+    long? EstimatedWidth, 
+    double? ActualStartupTime, 
+    double? ActualTotalTime, 
+    long? ActualRows, 
+    long? ActualLoops, 
+    /// <summary>
+    /// This node's share of the plan's total work (0.0-1.0), None when no cost was reported.
+    /// </summary>
+    double? CostFraction, 
+    Dictionary<string, string> Properties, 
+    string[] Warnings, 
+    long? ReportedTotalActualRows, 
+    QueryPlanMissingIndexInfo[] MissingIndexes, 
+    QueryPlanNodeInfo[] Children
+) {
+}
+
+class FfiConverterTypeQueryPlanNodeInfo: FfiConverterRustBuffer<QueryPlanNodeInfo> {
+    public static FfiConverterTypeQueryPlanNodeInfo INSTANCE = new FfiConverterTypeQueryPlanNodeInfo();
+
+    public override QueryPlanNodeInfo Read(BigEndianStream stream) {
+        return new QueryPlanNodeInfo(
+            Operation: FfiConverterString.INSTANCE.Read(stream),
+            Relation: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Schema: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Alias: FfiConverterOptionalString.INSTANCE.Read(stream),
+            EstimatedStartupCost: FfiConverterOptionalDouble.INSTANCE.Read(stream),
+            EstimatedTotalCost: FfiConverterOptionalDouble.INSTANCE.Read(stream),
+            EstimatedRows: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            EstimatedWidth: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            ActualStartupTime: FfiConverterOptionalDouble.INSTANCE.Read(stream),
+            ActualTotalTime: FfiConverterOptionalDouble.INSTANCE.Read(stream),
+            ActualRows: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            ActualLoops: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            CostFraction: FfiConverterOptionalDouble.INSTANCE.Read(stream),
+            Properties: FfiConverterDictionaryStringString.INSTANCE.Read(stream),
+            Warnings: FfiConverterSequenceString.INSTANCE.Read(stream),
+            ReportedTotalActualRows: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            MissingIndexes: FfiConverterSequenceTypeQueryPlanMissingIndexInfo.INSTANCE.Read(stream),
+            Children: FfiConverterSequenceTypeQueryPlanNodeInfo.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(QueryPlanNodeInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Operation)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Relation)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Schema)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Alias)
+            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.EstimatedStartupCost)
+            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.EstimatedTotalCost)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.EstimatedRows)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.EstimatedWidth)
+            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.ActualStartupTime)
+            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.ActualTotalTime)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.ActualRows)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.ActualLoops)
+            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.CostFraction)
+            + FfiConverterDictionaryStringString.INSTANCE.AllocationSize(value.Properties)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Warnings)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.ReportedTotalActualRows)
+            + FfiConverterSequenceTypeQueryPlanMissingIndexInfo.INSTANCE.AllocationSize(value.MissingIndexes)
+            + FfiConverterSequenceTypeQueryPlanNodeInfo.INSTANCE.AllocationSize(value.Children);
+    }
+
+    public override void Write(QueryPlanNodeInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Operation, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Relation, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Schema, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Alias, stream);
+            FfiConverterOptionalDouble.INSTANCE.Write(value.EstimatedStartupCost, stream);
+            FfiConverterOptionalDouble.INSTANCE.Write(value.EstimatedTotalCost, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.EstimatedRows, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.EstimatedWidth, stream);
+            FfiConverterOptionalDouble.INSTANCE.Write(value.ActualStartupTime, stream);
+            FfiConverterOptionalDouble.INSTANCE.Write(value.ActualTotalTime, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.ActualRows, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.ActualLoops, stream);
+            FfiConverterOptionalDouble.INSTANCE.Write(value.CostFraction, stream);
+            FfiConverterDictionaryStringString.INSTANCE.Write(value.Properties, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.Warnings, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.ReportedTotalActualRows, stream);
+            FfiConverterSequenceTypeQueryPlanMissingIndexInfo.INSTANCE.Write(value.MissingIndexes, stream);
+            FfiConverterSequenceTypeQueryPlanNodeInfo.INSTANCE.Write(value.Children, stream);
     }
 }
 
@@ -42557,6 +42854,37 @@ class FfiConverterOptionalInt64: FfiConverterRustBuffer<long?> {
 
 
 
+class FfiConverterOptionalDouble: FfiConverterRustBuffer<double?> {
+    public static FfiConverterOptionalDouble INSTANCE = new FfiConverterOptionalDouble();
+
+    public override double? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterDouble.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(double? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterDouble.INSTANCE.AllocationSize((double)value);
+        }
+    }
+
+    public override void Write(double? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterDouble.INSTANCE.Write((double)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalBoolean: FfiConverterRustBuffer<bool?> {
     public static FfiConverterOptionalBoolean INSTANCE = new FfiConverterOptionalBoolean();
 
@@ -43387,6 +43715,37 @@ class FfiConverterOptionalTypePendingResetInfo: FfiConverterRustBuffer<PendingRe
         } else {
             stream.WriteByte(1);
             FfiConverterTypePendingResetInfo.INSTANCE.Write((PendingResetInfo)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeQueryPlanInfo: FfiConverterRustBuffer<QueryPlanInfo?> {
+    public static FfiConverterOptionalTypeQueryPlanInfo INSTANCE = new FfiConverterOptionalTypeQueryPlanInfo();
+
+    public override QueryPlanInfo? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeQueryPlanInfo.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(QueryPlanInfo? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeQueryPlanInfo.INSTANCE.AllocationSize((QueryPlanInfo)value);
+        }
+    }
+
+    public override void Write(QueryPlanInfo? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeQueryPlanInfo.INSTANCE.Write((QueryPlanInfo)value, stream);
         }
     }
 }
@@ -45723,6 +46082,52 @@ class FfiConverterSequenceTypeEditColumnInfo: FfiConverterRustBuffer<EditColumnI
 
 
 
+class FfiConverterSequenceTypeExplainVariantInfo: FfiConverterRustBuffer<ExplainVariantInfo[]> {
+    public static FfiConverterSequenceTypeExplainVariantInfo INSTANCE = new FfiConverterSequenceTypeExplainVariantInfo();
+
+    public override ExplainVariantInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new ExplainVariantInfo[length];
+        var readFn = FfiConverterTypeExplainVariantInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(ExplainVariantInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeExplainVariantInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(ExplainVariantInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeExplainVariantInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeFavouriteDatabaseInfo: FfiConverterRustBuffer<FavouriteDatabaseInfo[]> {
     public static FfiConverterSequenceTypeFavouriteDatabaseInfo INSTANCE = new FfiConverterSequenceTypeFavouriteDatabaseInfo();
 
@@ -47234,6 +47639,98 @@ class FfiConverterSequenceTypePromptFieldInfo: FfiConverterRustBuffer<PromptFiel
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypePromptFieldInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeQueryPlanMissingIndexInfo: FfiConverterRustBuffer<QueryPlanMissingIndexInfo[]> {
+    public static FfiConverterSequenceTypeQueryPlanMissingIndexInfo INSTANCE = new FfiConverterSequenceTypeQueryPlanMissingIndexInfo();
+
+    public override QueryPlanMissingIndexInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new QueryPlanMissingIndexInfo[length];
+        var readFn = FfiConverterTypeQueryPlanMissingIndexInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(QueryPlanMissingIndexInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeQueryPlanMissingIndexInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(QueryPlanMissingIndexInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeQueryPlanMissingIndexInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeQueryPlanNodeInfo: FfiConverterRustBuffer<QueryPlanNodeInfo[]> {
+    public static FfiConverterSequenceTypeQueryPlanNodeInfo INSTANCE = new FfiConverterSequenceTypeQueryPlanNodeInfo();
+
+    public override QueryPlanNodeInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new QueryPlanNodeInfo[length];
+        var readFn = FfiConverterTypeQueryPlanNodeInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(QueryPlanNodeInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeQueryPlanNodeInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(QueryPlanNodeInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeQueryPlanNodeInfo.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }
@@ -49796,6 +50293,31 @@ internal static class CoreMethods {
         return FfiConverterUInt16.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_func_mcp_default_port( ref _status)
+));
+    }
+
+
+    /// <summary>
+    /// The EXPLAIN options the engine offers, in menu order. Empty for an unknown
+    /// engine or one without query-plan support.
+    /// </summary>
+    public static ExplainVariantInfo[] ExplainVariants(string @engine) {
+        return FfiConverterSequenceTypeExplainVariantInfo.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_explain_variants(FfiConverterString.INSTANCE.Lower(@engine), ref _status)
+));
+    }
+
+
+    /// <summary>
+    /// Parse an engine's EXPLAIN output into a plan tree, keyed by the variant's
+    /// format. None when the format has no parser or the text does not parse (the app
+    /// shows the raw text instead).
+    /// </summary>
+    public static QueryPlanInfo? ParseQueryPlan(string @format, string @rawText) {
+        return FfiConverterOptionalTypeQueryPlanInfo.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_parse_query_plan(FfiConverterString.INSTANCE.Lower(@format), FfiConverterString.INSTANCE.Lower(@rawText), ref _status)
 ));
     }
 
