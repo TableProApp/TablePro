@@ -2,12 +2,11 @@ use std::path::Path;
 
 use secrecy::SecretString;
 use tempfile::TempDir;
-use uuid::Uuid;
 
-use super::super::store_tests::plain;
+use super::super::store_tests::{plain, ssh_profile};
 use super::*;
 use crate::StoragePaths;
-use crate::connections::{LibraryChange, LibraryWrite, SshProfile};
+use crate::connections::{LibraryChange, LibraryWrite};
 
 fn paths(root: &TempDir) -> StoragePaths {
     StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro")
@@ -66,10 +65,8 @@ fn a_pull_reports_what_it_wrote_once() {
 fn a_host_write_is_not_reported() {
     let root = TempDir::new().expect("tempdir");
     let store = reporting(&root);
-    let profile: SshProfile = serde_json::from_value(serde_json::json!({
-        "id": Uuid::from_u128(7), "name": "edge", "host": "edge.example.com", "auth": {"kind": "agent"},
-    }))
-    .expect("a profile");
+    let profile = ssh_profile();
+    let profile_id = profile.id;
 
     let with_profile = store
         .replace_library_blocking::<StorageError>(
@@ -110,7 +107,7 @@ fn a_host_write_is_not_reported() {
         .expect("a rebuild");
 
     assert!(written.is_some());
-    assert_eq!(deleted, [Uuid::from_u128(7)]);
+    assert_eq!(deleted, [profile_id]);
     assert!(store.take_written_blocking().expect("take").is_empty());
 }
 
