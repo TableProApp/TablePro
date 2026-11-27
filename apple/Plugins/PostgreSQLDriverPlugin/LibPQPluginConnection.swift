@@ -802,7 +802,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
-            return try singleRowReadSync(queryToRun, parameters: [], keeping: keeping, probesBeforeBlock: probesBeforeBlock)
+            return try rowByRowReadSync(queryToRun, parameters: [], keeping: keeping, probesBeforeBlock: probesBeforeBlock)
         }
     }
 
@@ -907,7 +907,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 send: { try runReadOnlyControl($0, on: conn) }
             ) {
                 guard let params else { return try executeQuerySync(statementToRun, singleStatement: true) }
-                return try singleRowReadSync(statementToRun, parameters: params)
+                return try rowByRowReadSync(statementToRun, parameters: params)
             }
         }
     }
@@ -945,12 +945,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let state = transactionStateOnQueue()
             if requiresIdleSession, state != .idle { throw PostgreSQLSessionScopeError.sessionNotIdle }
             guard state == .inTransaction else {
-                return try singleRowReadSync(statementToRun, parameters: params)
+                return try rowByRowReadSync(statementToRun, parameters: params)
             }
             _ = try executeQuerySync(PostgreSQLSessionScopeSQL.settingSavepoint)
             let result: LibPQPluginQueryResult
             do {
-                result = try singleRowReadSync(statementToRun, parameters: params)
+                result = try rowByRowReadSync(statementToRun, parameters: params)
             } catch {
                 _ = try? executeQuerySync(PostgreSQLSessionScopeSQL.settingRollback)
                 throw error
@@ -1032,7 +1032,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
-            return try singleRowReadSync(queryToRun, parameters: params, keeping: keeping)
+            return try rowByRowReadSync(queryToRun, parameters: params, keeping: keeping)
         }
     }
 
@@ -1138,7 +1138,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         singleStatement: Bool = false,
         probesBeforeBlock: Bool = false
     ) throws -> LibPQPluginQueryResult {
-        if singleStatement { return try singleRowReadSync(query, parameters: [], probesBeforeBlock: probesBeforeBlock) }
+        if singleStatement { return try rowByRowReadSync(query, parameters: [], probesBeforeBlock: probesBeforeBlock) }
         let conn = connectionHandle
 
         guard !isShuttingDown, let conn else {
@@ -1331,9 +1331,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
         }
 
-        guard PQsetSingleRowMode(conn) != 0 else {
+        guard LibPQRowMode.enter(conn) else {
             _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var metadata: ColumnMetadata?
@@ -1350,22 +1350,15 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let status = PQresultStatus(result)
             if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
 
-            if status == PGRES_SINGLE_TUPLE {
+            if LibPQRowMode.carriesRows(status) {
                 let columns = metadata ?? readColumnMetadata(from: result)
                 metadata = columns
 
-                var row: [PluginCellValue] = []
-                row.reserveCapacity(columns.columnOids.count)
-                for columnIndex in columns.columnOids.indices {
-                    row.append(Self.decodeCell(
-                        from: result,
-                        row: 0,
-                        column: Int32(columnIndex),
-                        oid: columns.columnOids[columnIndex]
-                    ))
+                // One past the cap tells "exactly `rowCap`" from "more"; the rest of the chunk is never decoded.
+                for rowIndex in 0..<PQntuples(result) where rows.count <= rowCap {
+                    rows.append(Self.row(rowIndex, of: result, oids: columns.columnOids))
                 }
                 PQclear(result)
-                rows.append(row)
 
                 if cancellationGate.isCancelled(generation) {
                     _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
@@ -1525,10 +1518,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
         guard sendOk != 0 else {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
         }
-        guard PQsetSingleRowMode(conn) != 0 else {
+        guard LibPQRowMode.enter(conn) else {
             _ = finishPendingResults(conn, cancellingOutput: false)
             recordTransactionState(of: conn)
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var metadata: ColumnMetadata?
@@ -1540,22 +1533,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         while let result = PQgetResult(conn) {
             let status = PQresultStatus(result)
-            if status == PGRES_SINGLE_TUPLE || status == PGRES_TUPLES_OK {
+            if LibPQRowMode.carriesRows(status) || status == PGRES_TUPLES_OK {
                 if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
                 let columns = metadata ?? readColumnMetadata(from: result)
                 metadata = columns
                 for rowIndex in 0..<PQntuples(result) {
-                    var row: [PluginCellValue] = []
-                    row.reserveCapacity(columns.columnOids.count)
-                    for columnIndex in columns.columnOids.indices {
-                        row.append(Self.decodeCell(
-                            from: result,
-                            row: rowIndex,
-                            column: Int32(columnIndex),
-                            oid: columns.columnOids[columnIndex]
-                        ))
-                    }
-                    rows.append(row)
+                    rows.append(Self.row(rowIndex, of: result, oids: columns.columnOids))
                 }
             } else if status == PGRES_COMMAND_OK {
                 if getCommandTag(from: result) == "DECLARE CURSOR" { declared = true }
@@ -1757,10 +1740,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let cancelsOutput: Bool
     }
 
-    // In single-row mode a result with no rows arrives as one zero-row PGRES_TUPLES_OK, which carries the same row
-    // description every PGRES_SINGLE_TUPLE does.
+    // In row-by-row mode a result with no rows arrives as one zero-row PGRES_TUPLES_OK, which carries the same row
+    // description every chunk of rows does.
     static func carriesRowDescription(_ status: ExecStatusType) -> Bool {
-        status == PGRES_SINGLE_TUPLE || status == PGRES_TUPLES_OK
+        LibPQRowMode.carriesRows(status) || status == PGRES_TUPLES_OK
     }
 
     func streamHeader(from result: OpaquePointer) -> (header: PluginStreamHeader, columnOids: [UInt32]) {
@@ -1800,10 +1783,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
         }
 
-        if PQsetSingleRowMode(conn) == 0 {
+        if !LibPQRowMode.enter(conn) {
             _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
             if holdsSavepoint, let aborted = endStreamSavepoint(conn, undoing: true) { throw aborted }
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var headerSent = false
@@ -1822,26 +1805,16 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 headerSent = true
             }
 
-            if status == PGRES_SINGLE_TUPLE {
-                let numFields = Int(PQnfields(result))
-                var row: [PluginCellValue] = []
-                row.reserveCapacity(numFields)
-
-                for colIndex in 0..<numFields {
-                    row.append(Self.decodeCell(
-                        from: result,
-                        row: 0,
-                        column: Int32(colIndex),
-                        oid: columnOids[colIndex]
-                    ))
-                }
-
-                PQclear(result)
-                // A reader that left or a Stop is handled just below.
-                if batch.append(row),
-                   PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops) {
+            if LibPQRowMode.carriesRows(status) {
+                for rowIndex in 0..<PQntuples(result) {
+                    guard batch.append(Self.row(rowIndex, of: result, oids: columnOids)) else { continue }
+                    // A reader that left or a Stop is handled just below, so the rest of the chunk is dropped.
+                    guard PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops) else {
+                        break
+                    }
                     batch.removeAll()
                 }
+                PQclear(result)
 
                 if run.abort.isAborted || cancellationGate.isCancelled(generation) {
                     _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
@@ -2124,7 +2097,7 @@ extension LibPQPluginConnection {
     // the block is this read's own and ends in ROLLBACK, so the server is cancelled wherever it takes a cancel, which
     // `cancelsAbandonedOutput` would refuse inside a block the user opened. A server that takes none reaches this only
     // for a statement no cursor can hold or whose DECLARE it refused, and its rest is drained. The column sources come
-    // from the first row description, as every single-row result carries one.
+    // from the first row description, as every chunk of rows carries one.
     private func boundedReadSync(
         _ query: String,
         parameters: [PluginCellValue],
@@ -2147,10 +2120,10 @@ extension LibPQPluginConnection {
         guard sent != 0 else {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
         }
-        guard PQsetSingleRowMode(conn) != 0 else {
+        guard LibPQRowMode.enter(conn, chunked: bound.byteLimit == nil) else {
             _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
             recordTransactionState(of: conn)
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var read = BoundedRead()
@@ -2168,21 +2141,22 @@ extension LibPQPluginConnection {
                 read.columnSources = PostgreSQLColumnOrigins.sources(of: result)
             }
 
-            if status == PGRES_SINGLE_TUPLE {
-                let row = Self.singleRow(of: result, oids: read.metadata?.columnOids ?? [])
+            if LibPQRowMode.carriesRows(status) {
+                let oids = read.metadata?.columnOids ?? []
+                for rowIndex in 0..<PQntuples(result) where !stopped {
+                    let row = Self.row(rowIndex, of: result, oids: oids)
+                    bytes += LibPQReadBound.byteCount(of: row)
+                    read.rows.append(row)
+                    stopped = bound.isReached(rows: read.rows.count, bytes: bytes)
+                }
                 PQclear(result)
-                bytes += LibPQReadBound.byteCount(of: row)
-                read.rows.append(row)
 
                 if cancellationGate.isCancelled(generation) {
                     _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
                     recordTransactionState(of: conn)
                     throw CancellationError()
                 }
-                if bound.isReached(rows: read.rows.count, bytes: bytes) {
-                    stopped = true
-                    break
-                }
+                if stopped { break }
                 continue
             }
 
@@ -2281,7 +2255,7 @@ extension LibPQPluginConnection {
         return read
     }
 
-    // One FETCH in single-row mode. A stop inside it drains only the rest of this batch, since the server takes no
+    // One FETCH read row by row. A stop inside it drains only the rest of this batch, since the server takes no
     // cancel; the cursor keeps everything after it unproduced.
     private func fetchCursorBatch(
         count: Int,
@@ -2294,10 +2268,10 @@ extension LibPQPluginConnection {
     ) throws -> (received: Int, stopped: Bool) {
         let sendOk = LibPQBoundedCursor.fetch(count).withCString { PQsendQuery(conn, $0) }
         guard sendOk != 0 else { throw lostConnection(getError(from: conn), on: conn, sent: false) }
-        guard PQsetSingleRowMode(conn) != 0 else {
+        guard LibPQRowMode.enter(conn, chunked: bound.byteLimit == nil) else {
             _ = finishPendingResults(conn, cancellingOutput: false)
             recordTransactionState(of: conn)
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var received = 0
@@ -2310,17 +2284,17 @@ extension LibPQPluginConnection {
                 read.metadata = readColumnMetadata(from: result)
                 read.columnSources = PostgreSQLColumnOrigins.sources(of: result)
             }
-            if status == PGRES_SINGLE_TUPLE {
-                let row = Self.singleRow(of: result, oids: read.metadata?.columnOids ?? [])
-                PQclear(result)
-                received += 1
-                bytes += LibPQReadBound.byteCount(of: row)
-                read.rows.append(row)
-                if cancellationGate.isCancelled(generation) { break }
-                if bound.isReached(rows: read.rows.count, bytes: bytes) {
-                    stopped = true
-                    break
+            if LibPQRowMode.carriesRows(status) {
+                let oids = read.metadata?.columnOids ?? []
+                for rowIndex in 0..<PQntuples(result) where !stopped {
+                    let row = Self.row(rowIndex, of: result, oids: oids)
+                    received += 1
+                    bytes += LibPQReadBound.byteCount(of: row)
+                    read.rows.append(row)
+                    stopped = bound.isReached(rows: read.rows.count, bytes: bytes)
                 }
+                PQclear(result)
+                if stopped || cancellationGate.isCancelled(generation) { break }
                 continue
             }
             if status != PGRES_TUPLES_OK, status != PGRES_COMMAND_OK { failure = getResultError(from: result) }
@@ -2334,12 +2308,12 @@ extension LibPQPluginConnection {
     }
 }
 
-// MARK: - Single-Row Read
+// MARK: - Row-By-Row Read
 
-// Outside the class body, which is at its length limit. libpq hands each row over as it arrives, so an uncapped result
+// Outside the class body, which is at its length limit. libpq hands the rows over a chunk at a time, so an uncapped result
 // is never held twice, once in libpq's buffer and once decoded.
 extension LibPQPluginConnection {
-    private struct SingleRowRead {
+    private struct RowByRowRead {
         var metadata: ColumnMetadata?
         var columnSources: [PostgreSQLColumnOrigins.Source?] = []
         var rows: [[PluginCellValue]] = []
@@ -2351,7 +2325,7 @@ extension LibPQPluginConnection {
 
     // Every row counts toward the affected rows, and the ones past `keeping` are read and dropped without decoding: a
     // cancel would stop an `INSERT ... RETURNING` part way.
-    fileprivate func singleRowReadSync(
+    fileprivate func rowByRowReadSync(
         _ query: String,
         parameters: [PluginCellValue],
         keeping: Int = PluginRowLimits.emergencyMax,
@@ -2374,13 +2348,13 @@ extension LibPQPluginConnection {
             }
         }
         guard sent != 0 else { throw lostConnection(getError(from: conn), on: conn, sent: false) }
-        guard PQsetSingleRowMode(conn) != 0 else {
+        guard LibPQRowMode.enter(conn) else {
             _ = cancelAndDrain(conn, suppressCancel: !cancelsOutput)
             recordTransactionState(of: conn)
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
-        var read = SingleRowRead()
+        var read = RowByRowRead()
         let maxRows = max(keeping, 0)
         var failure: LibPQPluginError?
 
@@ -2392,10 +2366,11 @@ extension LibPQPluginConnection {
                 read.columnSources = PostgreSQLColumnOrigins.sources(of: result)
             }
 
-            if status == PGRES_SINGLE_TUPLE {
-                read.rowCount += 1
-                if read.rowCount <= maxRows {
-                    read.rows.append(Self.singleRow(of: result, oids: read.metadata?.columnOids ?? []))
+            if LibPQRowMode.carriesRows(status) {
+                let oids = read.metadata?.columnOids ?? []
+                for rowIndex in 0..<PQntuples(result) {
+                    read.rowCount += 1
+                    if read.rowCount <= maxRows { read.rows.append(Self.row(rowIndex, of: result, oids: oids)) }
                 }
                 PQclear(result)
                 // Stop already sent the server its cancel, and a second one could land on the next statement.
@@ -2433,7 +2408,7 @@ extension LibPQPluginConnection {
         return finishedRead(read, maxRows: maxRows, conn: conn)
     }
 
-    private func finishedRead(_ read: SingleRowRead, maxRows: Int, conn: OpaquePointer) -> LibPQPluginQueryResult {
+    private func finishedRead(_ read: RowByRowRead, maxRows: Int, conn: OpaquePointer) -> LibPQPluginQueryResult {
         guard let rawMetadata = read.metadata else {
             noteCommandTag(read.commandTag, conn: conn)
             return LibPQPluginQueryResult(
@@ -2652,15 +2627,15 @@ extension LibPQPluginConnection {
     // For the statement whose replies come next, before any of them is read; libpq refuses once one has been, and an
     // aborted statement has none to read.
     private func readsRowByRow(_ conn: OpaquePointer) {
-        _ = PQsetSingleRowMode(conn)
+        _ = LibPQRowMode.enter(conn)
     }
 
     private func take(_ result: OpaquePointer, into tally: inout LibPQPipelineTally, conn: OpaquePointer, generation: Int) {
         defer { PQclear(result) }
         let status = PQresultStatus(result)
         switch status {
-        case PGRES_SINGLE_TUPLE:
-            tally.takeRow()
+        case PGRES_SINGLE_TUPLE, PGRES_TUPLES_CHUNK:
+            tally.takeRows(Int(PQntuples(result)))
         case PGRES_PIPELINE_SYNC:
             tally.takeSync()
         case PGRES_PIPELINE_ABORTED:
