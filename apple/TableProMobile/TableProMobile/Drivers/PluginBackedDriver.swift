@@ -422,9 +422,9 @@ nonisolated struct PluginRowEmitter {
             guard index < row.count, case .text(let value) = row[index] else { return nil }
             return value
         }
-        let cells = row.enumerated().map { index, value -> Cell in
+        let cells = row.indices.map { index -> Cell in
             let ref = ref(column: index < columns.count ? columns[index] : "", keyText: keyText, locator: locator)
-            switch value {
+            switch row[index] {
             case .null:
                 return .null
             // Bytes stay binary: shown as hex text they would read as an editable value and match no row.

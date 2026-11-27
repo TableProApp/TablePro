@@ -55,6 +55,8 @@ public struct OracleConnectionOptions: Sendable, Equatable {
     public var tls: OracleTLSDescription
     public var networkEncryption: NetworkEncryption
     public var loginTimeoutSeconds: Double
+    // Off when the dial is a tunnel's forward: the address a listener redirects to is one only the far side reaches.
+    public var followsListenerRedirects: Bool
 
     public init(
         host: String,
@@ -68,7 +70,8 @@ public struct OracleConnectionOptions: Sendable, Equatable {
         role: Role = .normal,
         tls: OracleTLSDescription = OracleTLSDescription(),
         networkEncryption: NetworkEncryption = .accepted,
-        loginTimeoutSeconds: Double = OracleConnectionOptions.defaultLoginTimeoutSeconds
+        loginTimeoutSeconds: Double = OracleConnectionOptions.defaultLoginTimeoutSeconds,
+        followsListenerRedirects: Bool = true
     ) {
         self.host = host
         self.port = port
@@ -82,6 +85,7 @@ public struct OracleConnectionOptions: Sendable, Equatable {
         self.tls = tls
         self.networkEncryption = networkEncryption
         self.loginTimeoutSeconds = loginTimeoutSeconds
+        self.followsListenerRedirects = followsListenerRedirects
     }
 
     public var identifier: String {

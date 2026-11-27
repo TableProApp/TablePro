@@ -73,9 +73,9 @@ nonisolated final class PluginGridSink: @unchecked Sendable {
             guard index < row.count, case .text(let value) = row[index] else { return nil }
             return value
         }
-        return row.enumerated().map { index, value -> Cell in
+        return row.indices.map { index -> Cell in
             let ref = rows.ref(column: rows.column(at: index), keyText: keyText, locator: nil)
-            switch value {
+            switch row[index] {
             case .null:
                 return .null
             case .text(let text):
