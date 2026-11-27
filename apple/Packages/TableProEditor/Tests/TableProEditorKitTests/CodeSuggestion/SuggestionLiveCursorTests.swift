@@ -181,6 +181,124 @@ final class SuggestionLiveCursorTests: XCTestCase {
         XCTAssertEqual(model.items.map(\.label), ["ab_target"])
     }
 
+    // With no wait before a request, a refresh per key would stack work on prefixes already typed past.
+    @MainActor
+    func test_refresh_typingDuringItStartsNoSecondRequestAndThenAsksOnceForTheNewestCaret() async throws {
+        let editor = FocusedEditor(text: "ab x")
+        defer { editor.close() }
+        editor.controller.setCursorPositions([CursorPosition(range: NSRange(location: 2, length: 0))])
+        let delegate = ParkingDelegate(
+            answers: ["ab": ["ab1"], "a": ["a1", "ab1"]],
+            reranked: ["a": ["a1", "ab1"], "ab": ["ab1"]],
+            needsFresh: ["a"]
+        )
+        let model = SuggestionViewModel()
+
+        model.showCompletions(textView: editor.controller, delegate: delegate, cursorPosition: editor.cursor) { _, _ in }
+        let first = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await first.value
+
+        editor.deleteBackward(reportingTo: model, delegate: delegate)
+        let refresh = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.needsFresh = ["a", "ab"]
+        editor.type("b", reportingTo: model, delegate: delegate) {}
+
+        XCTAssertEqual(model.itemsRequestTask, refresh)
+        delegate.answer()
+        await refresh.value
+        let again = try XCTUnwrap(model.itemsRequestTask)
+        XCTAssertNotEqual(again, refresh)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await again.value
+
+        XCTAssertTrue(model.isPresented)
+        XCTAssertEqual(model.items.map(\.label), ["ab1"])
+        XCTAssertEqual(delegate.askedAt, [2, 1, 2])
+    }
+
+    // The refresh found nothing for `a`, but `ac` was typed while it ran and still has answers.
+    @MainActor
+    func test_refresh_answeringNothingAsksAgainForAKeyTypedWhileItRan() async throws {
+        let editor = FocusedEditor(text: "ab x")
+        defer { editor.close() }
+        editor.controller.setCursorPositions([CursorPosition(range: NSRange(location: 2, length: 0))])
+        let delegate = ParkingDelegate(
+            answers: ["ab": ["ab1"], "ac": ["ac1"]],
+            reranked: ["a": ["a1"], "ac": ["ac0"]],
+            needsFresh: ["a", "ac"]
+        )
+        let model = SuggestionViewModel()
+        var closeRequests = 0
+        model.onRequestClose = { closeRequests += 1 }
+
+        model.showCompletions(textView: editor.controller, delegate: delegate, cursorPosition: editor.cursor) { _, _ in }
+        let first = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await first.value
+
+        editor.deleteBackward(reportingTo: model, delegate: delegate)
+        let refresh = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        editor.type("c", reportingTo: model, delegate: delegate) {}
+        delegate.answer()
+        await refresh.value
+
+        let again = try XCTUnwrap(model.itemsRequestTask)
+        XCTAssertNotEqual(again, refresh)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await again.value
+
+        XCTAssertEqual(closeRequests, 0)
+        XCTAssertTrue(model.isPresented)
+        XCTAssertEqual(model.items.map(\.label), ["ac1"])
+        XCTAssertEqual(delegate.askedAt, [2, 1, 2])
+    }
+
+    // A typed key reports its caret with no line or column, so only the range can say the caret has not moved.
+    @MainActor
+    func test_refresh_answeringNothingWithTheCaretUnmovedClosesWithoutAskingAgain() async throws {
+        let editor = FocusedEditor(text: "ab x")
+        defer { editor.close() }
+        editor.controller.setCursorPositions([CursorPosition(range: NSRange(location: 2, length: 0))])
+        let delegate = ParkingDelegate(
+            answers: ["ab": ["ab1"]],
+            reranked: ["ab": ["ab1"], "abc": ["abc0"]],
+            needsFresh: ["abc"]
+        )
+        let model = SuggestionViewModel()
+        var closeRequests = 0
+        model.onRequestClose = { closeRequests += 1 }
+
+        model.showCompletions(textView: editor.controller, delegate: delegate, cursorPosition: editor.cursor) { _, _ in }
+        let first = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await first.value
+
+        editor.controller.textView.replaceCharacters(in: NSRange(location: 2, length: 0), with: "c")
+        editor.controller.setCursorPositions([CursorPosition(range: NSRange(location: 3, length: 0))])
+        model.cursorsUpdated(
+            textView: editor.controller,
+            delegate: delegate,
+            position: CursorPosition(range: NSRange(location: 3, length: 0)),
+            presentIfNot: true
+        ) {}
+        let refresh = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await refresh.value
+
+        XCTAssertEqual(closeRequests, 1)
+        XCTAssertNil(model.itemsRequestTask)
+        XCTAssertEqual(delegate.askedAt, [2, 3])
+    }
+
     @MainActor
     func test_refresh_asksAgainInsteadOfClosingWhenItsAnswerCannotRankARetypedPrefix() async throws {
         let editor = FocusedEditor(text: "ab x")

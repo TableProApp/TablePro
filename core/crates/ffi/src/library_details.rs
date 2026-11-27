@@ -10,7 +10,7 @@ use tablepro_storage::{
 use uuid::Uuid;
 
 use crate::error::CoreError;
-use crate::library::{ConnectionLibrary, SshSettings, parse_id, saved_ssh, ssh_settings};
+use crate::library::{ConnectionLibrary, SshSettings, edited_ssh, parse_id, ssh_settings};
 
 // What a connection carries beyond the form's fields: what runs and what is sent from it, its profile
 // links and its plugin fields. Every app keeps these, and the ones it shows nothing for come back unchanged.
@@ -261,18 +261,20 @@ impl ConnectionLibrary {
     pub async fn save_ssh_profile(&self, profile: SshProfileRecord) -> Result<SshProfileRecord, CoreError> {
         let id = new_or_parsed(&profile.id)?;
         let name = required_name(&profile.name)?;
-        let ssh = saved_ssh(&profile.ssh);
         let _held = self.hold_writes().await;
         self.blocking(move |store| {
             let list = store.list_blocking()?;
             let id = unclaimed(&list, id);
-            let unknown = list
+            let stored = list
                 .ssh_profiles
                 .iter()
                 .find(|held| held.id == id)
-                .map(|held| held.unknown.clone())
-                .unwrap_or_default();
-            let saved = SshProfile { id, name, ssh, unknown };
+                .map(|held| &held.ssh);
+            let saved = SshProfile {
+                id,
+                name,
+                ssh: edited_ssh(&profile.ssh, stored),
+            };
             store.save_ssh_profile_blocking(saved.clone())?;
             Ok(SshProfileRecord::from(&saved))
         })

@@ -111,6 +111,7 @@ fn verify_full(fixture: &MssqlFixture, ca: Option<PkiFile>, server_name: &str) -
         ca_file: ca.map(|file| fixture.pki().path(file)),
         client_identity: None,
         server_name: Some(server_name.to_owned()),
+        unknown: Default::default(),
     }
 }
 

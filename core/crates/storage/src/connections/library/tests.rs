@@ -7,7 +7,7 @@ use uuid::Uuid;
 use super::super::{ConnectionStore, ConnectionsDocument, RemoveOutcome, SavedConnection};
 use crate::error::StorageError;
 use crate::{
-    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, GroupIcon, StoragePaths, SymbolName,
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, LibraryIcon, StoragePaths, SymbolName,
 };
 
 struct Library {
@@ -102,7 +102,7 @@ fn connection(name: &str) -> SavedConnection {
         database: "app".to_owned(),
         username: "postgres".to_owned(),
         tls: TlsConfig::verify_full(),
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
         external_access: ExternalAccess::ReadOnly,
         ai_policy: AiPolicy::Ask,
         query_timeout_secs: None,
@@ -176,7 +176,7 @@ fn a_group_is_renamed_recoloured_and_given_an_icon() {
     let library = Library::new();
     let work = library.group("Work", None);
     library.group("Home", None);
-    let symbol = GroupIcon::Symbol(SymbolName::new("briefcase.fill").expect("a symbol"));
+    let symbol = LibraryIcon::Symbol(SymbolName::new("briefcase.fill").expect("a symbol"));
 
     library
         .store
@@ -207,12 +207,12 @@ fn a_group_is_renamed_recoloured_and_given_an_icon() {
         .expect("no colour");
     library
         .store
-        .set_group_icon_blocking(work.id, Some(GroupIcon::Named(ConnectionIcon::Folder)))
+        .set_group_icon_blocking(work.id, Some(LibraryIcon::Named(ConnectionIcon::Folder)))
         .expect("a named icon");
     let list = library.store.list_blocking().expect("the list");
     let stored = list.group_tree().get(work.id).cloned().expect("the group");
     assert_eq!(stored.color, None);
-    assert_eq!(stored.icon, Some(GroupIcon::Named(ConnectionIcon::Folder)));
+    assert_eq!(stored.icon, Some(LibraryIcon::Named(ConnectionIcon::Folder)));
 }
 
 #[test]
@@ -723,7 +723,10 @@ fn an_insert_after_an_entry_the_list_lacks_is_saved_as_an_upsert_would_save_it()
         .iter()
         .find(|saved| saved.id == copy.id)
         .expect("the copy");
-    assert!(stored.tags.is_empty(), "a tag the list lacks was kept");
+    assert_eq!(
+        stored.tags, copy.tags,
+        "a tag the list lacks stays, as a pull can bring it later"
+    );
 }
 
 #[test]
@@ -763,21 +766,24 @@ fn a_crafted_tree_reads_without_cycles_strays_or_doubles() {
 
     let list = ConnectionStore::new(&paths).list_blocking().expect("the list");
 
+    // Each reads at the top in its stored place, and keeps the parent, group and place it was stored with.
     let tops: Vec<(&str, u32)> = list
         .group_tree()
         .children(None)
         .iter()
         .map(|group| (group.name.as_str(), group.order))
         .collect();
-    assert_eq!(tops, [("First", 0), ("Second", 1), ("Stray", 2), ("Selfish", 3)]);
+    assert_eq!(tops, [("First", 0), ("Second", 0), ("Stray", 0), ("Selfish", 7)]);
     assert_eq!(list.groups.len(), 4, "a doubled id was kept");
-    assert_eq!(list.connections[0].group_id, None);
+    assert_eq!(list.groups.to_vec(), document.groups[..4].to_vec());
+    assert_eq!(list.connections[0].group_id, a.group_id);
+    assert_eq!(list.group_of(&list.connections[0]), None);
     let orders: Vec<(&str, u32)> = list
         .connections_in(None)
         .iter()
         .map(|saved| (saved.name.as_str(), saved.order))
         .collect();
-    assert_eq!(orders, [("a", 0), ("b", 1)]);
+    assert_eq!(orders, [("a", 9), ("b", 9)]);
     assert_eq!(list.favorites.to_vec(), [b.id]);
 }
 
@@ -790,7 +796,7 @@ fn groups_and_favourites_survive_an_export_and_an_import_twice() {
         .store
         .set_group_icon_blocking(
             staging.id,
-            Some(GroupIcon::Symbol(SymbolName::new("server.rack").expect("a symbol"))),
+            Some(LibraryIcon::Symbol(SymbolName::new("server.rack").expect("a symbol"))),
         )
         .expect("the icon");
     source
