@@ -267,14 +267,14 @@ public static class KeysSignOut
 
                 // The core decides whether anything is there to erase, whatever the key state reads.
                 await bound.SignOutKeysAsync().ConfigureAwait(true);
-                return true;
+                return isCurrent();
             }
             catch (Exception exception) when (KeyErrors.Of(exception) is { } error)
             {
                 // No key engine runs on a service with no sign-in, so it never made a key device here to erase.
                 if (error.Code is "sync.unimplemented" or "sync.signed_out")
                 {
-                    return true;
+                    return isCurrent();
                 }
 
                 failure = error;

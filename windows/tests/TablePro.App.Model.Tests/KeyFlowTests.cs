@@ -347,6 +347,27 @@ public sealed class KeyFlowTests
         Assert.Equal(["sign out keys", "sign out keys", "sign out keys"], _keys.Calls);
     }
 
+    [Fact]
+    public void AClosedSignInPageAndAClosedServiceReadAsTheirOwnWords()
+    {
+        Assert.Equal("account.sign_in_canceled", KeyErrors.Of(new OperationCanceledException())?.Code);
+        Assert.Equal("sync.changed", KeyErrors.Of(new ObjectDisposedException("service"))?.Code);
+        Assert.Null(KeyErrors.Of(new InvalidOperationException()));
+    }
+
+    [Fact]
+    public async Task AResetActionKeepsItsFailureWhenTheKeysChangeMeanwhile()
+    {
+        var resets = new ResetKeys(Flows, new StepUpRetry(_ => Task.CompletedTask), () => DateTimeOffset.UnixEpoch);
+        var reset = FakeKeyFlows.Pending("RESET-1", mine: true);
+        _keys.Fails["activate"] = SyncErrors.Of("sync.network");
+
+        var activated = await resets.ActivateAsync(reset);
+
+        Assert.False(activated);
+        Assert.Equal("sync.network", resets.Failure?.Code);
+    }
+
     private static ApprovalSession Session(ApprovalPhase phase) =>
         new("REQ-NEW", ApprovalRole.NewDevice, phase, DateTimeOffset.UnixEpoch.AddMinutes(10));
 

@@ -33,8 +33,9 @@ internal static class KeyDialogs
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(workbench);
-        var flow = new RecoveryKeyFlow(purpose, workbench.Sync.GetKeyFlowsAsync);
         var dialog = Dialog(owner, "RecoveryKeyDialog");
+        using var guard = new SessionGuard(workbench, dialog);
+        var flow = new RecoveryKeyFlow(purpose, guard.FlowsAsync);
         var result = KeyDialogResult.Closed;
 
         void Render()
@@ -163,8 +164,9 @@ internal static class KeyDialogs
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(workbench);
-        var flow = new RecoverFlow(workbench.Sync.GetKeyFlowsAsync);
         var dialog = Dialog(owner, "RecoverDialog");
+        using var guard = new SessionGuard(workbench, dialog);
+        var flow = new RecoverFlow(guard.FlowsAsync);
 
         void Render()
         {
@@ -230,17 +232,20 @@ internal static class KeyDialogs
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(workbench);
         static Task Delay(TimeSpan span, CancellationToken token) => Task.Delay(span, token);
-        using var flow = picked is null
-            ? new ApprovalFlow(workbench.Sync.GetKeyFlowsAsync, Delay, openRequest)
-            : new ApprovalFlow(workbench.Sync.GetKeyFlowsAsync, Delay, picked);
-        var other = picked is null ? string.Empty : KeysText.DeviceName(picked.DeviceName);
         var dialog = Dialog(owner, "ApprovalDialog");
+        using var guard = new SessionGuard(workbench, dialog);
+        using var flow = picked is null
+            ? new ApprovalFlow(guard.FlowsAsync, Delay, openRequest)
+            : new ApprovalFlow(guard.FlowsAsync, Delay, picked);
+        var other = picked is null ? string.Empty : KeysText.DeviceName(picked.DeviceName);
         var result = KeyDialogResult.Closed;
         var timeLeft = new TextBlock { Style = Caption() };
         AutomationProperties.SetAutomationId(timeLeft, "ApprovalTimeLeft");
 
         void Render()
         {
+            // The countdown moves from the last layout to this one.
+            (timeLeft.Parent as Panel)?.Children.Remove(timeLeft);
             var body = new StackPanel { Spacing = 12, MaxWidth = 480 };
             dialog.Title = KeysText.ApprovalTitle(flow, other);
             if (KeysText.ApprovalMessage(flow, other) is { Length: > 0 } message)
@@ -353,9 +358,10 @@ internal static class KeyDialogs
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(workbench);
         ArgumentNullException.ThrowIfNull(lost);
-        var flow = new RemovalFlow(lost, workbench.Sync.GetKeyFlowsAsync);
-        var name = KeysText.DeviceName(lost.Name);
         var dialog = Dialog(owner, "RemovalDialog");
+        using var guard = new SessionGuard(workbench, dialog);
+        var flow = new RemovalFlow(lost, guard.FlowsAsync);
+        var name = KeysText.DeviceName(lost.Name);
 
         void Render()
         {
@@ -479,8 +485,9 @@ internal static class KeyDialogs
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(workbench);
-        var proposal = new ResetProposal(kind, workbench.Sync.GetKeyFlowsAsync, workbench.StepUp);
         var dialog = Dialog(owner, "ResetDialog");
+        using var guard = new SessionGuard(workbench, dialog);
+        var proposal = new ResetProposal(kind, guard.FlowsAsync, workbench.StepUp);
 
         void Render()
         {
@@ -640,6 +647,37 @@ internal static class KeyDialogs
         };
     }
 
+    // A flow's calls go to the sign-in its dialog opened under: once another holds the account they refuse, and the
+    // dialog closes, so nothing of the earlier account shows or reaches the next one.
+    private sealed class SessionGuard : IDisposable
+    {
+        private readonly Workbench _workbench;
+        private readonly ContentDialog _dialog;
+        private readonly string? _session;
+
+        public SessionGuard(Workbench workbench, ContentDialog dialog)
+        {
+            _workbench = workbench;
+            _dialog = dialog;
+            _session = workbench.SignInSession;
+            workbench.AccountChanged += OnAccountChanged;
+        }
+
+        public Task<IKeyFlows> FlowsAsync() => _workbench.SignInSession == _session
+            ? _workbench.Sync.GetKeyFlowsAsync()
+            : Task.FromException<IKeyFlows>(new TableProException(KeyErrors.Changed));
+
+        public void Dispose() => _workbench.AccountChanged -= OnAccountChanged;
+
+        private void OnAccountChanged(object? sender, EventArgs e)
+        {
+            if (_workbench.SignInSession != _session)
+            {
+                _dialog.Hide();
+            }
+        }
+    }
+
     private static ContentDialog Dialog(FrameworkElement owner, string automationId)
     {
         var dialog = new ContentDialog
@@ -721,6 +759,9 @@ internal static class KeyDialogs
         };
         AutomationProperties.SetAutomationId(box, "RecoveryKeyGroup" + (group + 1));
         box.TextChanged += (_, _) => typed(box.Text);
+        // Part of the recovery key: it never reaches the clipboard from here.
+        box.CopyingToClipboard += (_, args) => args.Handled = true;
+        box.CuttingToClipboard += (_, args) => args.Handled = true;
         return box;
     }
 
@@ -758,13 +799,13 @@ internal static class KeyDialogs
             {
                 Text = Strings.Format("KeysGroupLine", index + 1, groups[index]),
                 FontFamily = Monospace,
-                IsTextSelectionEnabled = true,
             };
             Grid.SetRow(cell, index / 2);
             Grid.SetColumn(cell, index % 2);
             grid.Children.Add(cell);
         }
 
+        // Not selectable: a copy goes only through Copy, which keeps it out of the clipboard's history.
         AutomationProperties.SetAutomationId(grid, "RecoveryKeyGroups");
         AutomationProperties.SetName(grid, Strings.Get("KeysRecoveryKeyHeader"));
         return grid;
@@ -784,10 +825,10 @@ internal static class KeyDialogs
             package.SetText(key);
             try
             {
-                Clipboard.SetContentWithOptions(
+                var copied = Clipboard.SetContentWithOptions(
                     package,
                     new ClipboardContentOptions { IsAllowedInHistory = false, IsRoamable = false });
-                note.Text = Strings.Get("KeysCopied");
+                note.Text = Strings.Get(copied ? "KeysCopied" : "McpCopyFailed");
             }
             catch (COMException)
             {

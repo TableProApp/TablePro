@@ -66,11 +66,16 @@ public static class KeyErrors
     public static CoreError Changed { get; } =
         new("sync.changed", ["sync.changed"], "the sign-in changed during the call", null, null);
 
+    // A step-up whose sign-in page the person closed ends the call as cancelled.
+    public static CoreError Cancelled { get; } =
+        new("account.sign_in_canceled", ["account.sign_in_canceled"], "the step-up was cancelled", null, null);
+
     // The core's error, or null for an exception the flows do not word.
     public static CoreError? Of(Exception exception) => exception switch
     {
         TableProException core => core.Error,
         ObjectDisposedException => Changed,
+        OperationCanceledException => Cancelled,
         _ => null,
     };
 }

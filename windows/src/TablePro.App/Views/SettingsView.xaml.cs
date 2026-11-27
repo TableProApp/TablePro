@@ -654,7 +654,8 @@ public sealed partial class SettingsView : UserControl
             _accountBusy = false;
         }
 
-        if (erased)
+        // Another sign-in meanwhile was not the one asked to end, and its keys were not erased.
+        if (erased && _workbench.SignInSession == session)
         {
             await RunAccountAsync(account => account.SignOutAsync());
         }

@@ -21,7 +21,10 @@ public sealed class ResetKeys
     private readonly Func<Task<IKeyFlows>> _flows;
     private readonly StepUpRetry _stepUp;
     private readonly Func<DateTimeOffset> _now;
+    // Each load takes the next, so a slow answer never overwrites a newer one.
     private int _generation;
+    // Each account change takes the next, so what an action for the old one answers lands nowhere.
+    private int _account;
 
     public ResetKeys(Func<Task<IKeyFlows>> flows, StepUpRetry stepUp, Func<DateTimeOffset> now)
     {
@@ -69,6 +72,7 @@ public sealed class ResetKeys
     // Another account's reset and notices never show under the next one.
     public void ForgetAccount()
     {
+        _account++;
         _generation++;
         KeyState = null;
         Pending = null;
@@ -149,7 +153,7 @@ public sealed class ResetKeys
             return false;
         }
 
-        var generation = _generation;
+        var account = _account;
         Work = work;
         Failure = null;
         Changed?.Invoke(this, EventArgs.Empty);
@@ -161,7 +165,7 @@ public sealed class ResetKeys
         }
         catch (Exception exception) when (KeyErrors.Of(exception) is { } error)
         {
-            if (generation == _generation)
+            if (account == _account)
             {
                 Failure = error;
             }
@@ -171,7 +175,7 @@ public sealed class ResetKeys
             Work = null;
         }
 
-        if (generation != _generation)
+        if (account != _account)
         {
             return false;
         }

@@ -59,10 +59,11 @@ public sealed partial class AccountKeysView : UserControl
         Render();
     }
 
-    // Read again each time the page comes back.
+    // Read again each time the page comes back; another account's keys never show while it reads.
     public void Refresh()
     {
         Scroller.ChangeView(null, 0, null, disableAnimation: true);
+        ForgetIfSignInChanged();
         _ = ReloadAsync();
     }
 
@@ -74,18 +75,27 @@ public sealed partial class AccountKeysView : UserControl
 
     private void OnKeysChanged(object? sender, EventArgs e) => _ = ReloadAsync();
 
-    // Another account's keys, devices and requests never show under this one.
     private void OnAccountChanged(object? sender, EventArgs e)
+    {
+        if (ForgetIfSignInChanged())
+        {
+            _ = ReloadAsync();
+        }
+    }
+
+    // Another account's keys, devices and requests never show under this one.
+    private bool ForgetIfSignInChanged()
     {
         if (_workbench.SignInSession == _session)
         {
-            return;
+            return false;
         }
 
         _session = _workbench.SignInSession;
+        _failure = null;
         _page.ForgetAccount();
         _resets.ForgetAccount();
-        _ = ReloadAsync();
+        return true;
     }
 
     private void Render()
