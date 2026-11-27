@@ -80,7 +80,8 @@
         "text": "QGJQ-CX5R-1DHZ-D03F-8ZBM-T3VW-G170-9Z15-N7KJ-F7NA-5N84-9A2Q-4P34-9852"
       },
       "error": "keys.recovery_key",
-      "server": null
+      "server": null,
+      "clause": "Recovery key text with a bad checksum or length"
     },
     {
       "name": "a symbol short",
@@ -90,7 +91,8 @@
         "text": "QGJQ-CX5R-1DHZ-D03F-8ZBM-T3VW-G170-9Z15-N7KJ-F7NA-5N84-9A2Q-4P34-985"
       },
       "error": "keys.recovery_key",
-      "server": null
+      "server": null,
+      "clause": "Recovery key text with a bad checksum or length"
     },
     {
       "name": "a symbol over",
@@ -100,7 +102,8 @@
         "text": "QGJQ-CX5R-1DHZ-D03F-8ZBM-T3VW-G170-9Z15-N7KJ-F7NA-5N84-9A2Q-4P34-985N0"
       },
       "error": "keys.recovery_key",
-      "server": null
+      "server": null,
+      "clause": "Recovery key text with a bad checksum or length"
     },
     {
       "name": "U is not a symbol",
@@ -110,7 +113,8 @@
         "text": "UGJQ-CX5R-1DHZ-D03F-8ZBM-T3VW-G170-9Z15-N7KJ-F7NA-5N84-9A2Q-4P34-985N"
       },
       "error": "keys.recovery_key",
-      "server": null
+      "server": null,
+      "clause": "Recovery key text with a bad checksum or length"
     }
   ],
   "identity": [
@@ -175,7 +179,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A blob for another origin, account or `av`"
     },
     {
       "name": "another account",
@@ -193,7 +198,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A blob for another origin, account or `av`"
     },
     {
       "name": "another av",
@@ -211,7 +217,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A blob for another origin, account or `av`"
     },
     {
       "name": "blob keys that do not give the certificate's public keys",
@@ -231,7 +238,8 @@
         "certificate_aek_hex": "83df86002ba38ca588970cd91e5a671202220680a962cd856b17fd7b64404438"
       },
       "error": "keys.mismatch",
-      "server": null
+      "server": null,
+      "clause": "Account keys in a wrap or blob that do not match their certificate"
     }
   ]
 }

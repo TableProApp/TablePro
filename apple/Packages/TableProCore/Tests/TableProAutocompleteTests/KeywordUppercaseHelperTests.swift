@@ -348,4 +348,19 @@ struct KeywordUppercaseHelperTests {
         #expect(folds("/*!50001 select", mySQL))
         #expect(!folds("/* select", mySQL))
     }
+
+    @Test("Reading from a statement start finds the same answer as reading from the top")
+    func codeStartMatchesReadingFromTheTop() {
+        let head = "SELECT 'it''s';\n-- a note; with a quote '\n"
+        let start = (head as NSString).length
+        let text = (head + "SELECT 'from' from") as NSString
+        let literal = start + 9
+        let keyword = text.length
+
+        #expect(KeywordUppercaseHelper.isInsideProtectedContext(text, at: literal, from: start, grammar: .ansi))
+        #expect(KeywordUppercaseHelper.isInsideProtectedContext(text, at: literal, grammar: .ansi))
+        #expect(!KeywordUppercaseHelper.isInsideProtectedContext(text, at: keyword - 4, from: start, grammar: .ansi))
+        #expect(!KeywordUppercaseHelper.isInsideProtectedContext(text, at: keyword - 4, grammar: .ansi))
+        #expect(KeywordUppercaseHelper.keywordBeforePosition(text, at: keyword, codeStart: start, grammar: .ansi)?.word == "from")
+    }
 }

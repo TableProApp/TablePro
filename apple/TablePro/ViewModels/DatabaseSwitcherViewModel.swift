@@ -105,6 +105,10 @@ final class DatabaseSwitcherViewModel: ObservableObject {
     /// A refresh never blanks the list it is refreshing, and a failed one never replaces data the
     /// popover is still showing. Only a load that has nothing to fall back on reports either state.
     func fetchDatabases() async {
+        await load(refreshing: false)
+    }
+
+    private func load(refreshing: Bool) async {
         let token = UUID()
         loadToken = token
         if !hasLoadedOnce {
@@ -113,12 +117,7 @@ final class DatabaseSwitcherViewModel: ObservableObject {
 
         do {
             let target = switchTarget
-            let names = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                switch target {
-                case .database: try await driver.fetchDatabases()
-                case .schema: try await driver.fetchSchemas()
-                }
-            }
+            let names = try await listedNames(refreshing: refreshing)
             guard loadToken == token else { return }
             let systemNames = services.pluginManager.systemContainerNames(for: databaseType, target: target)
             applyFetched(names.sorted().map { DatabaseMetadata.minimal(name: $0, isSystem: systemNames.contains($0)) })
@@ -142,7 +141,25 @@ final class DatabaseSwitcherViewModel: ObservableObject {
     }
 
     func refreshDatabases() async {
-        await fetchDatabases()
+        await load(refreshing: true)
+    }
+
+    /// The database list is the tree's, which the sidebar read on connect: opening the switcher does not read it
+    /// again, and Refresh rereads it through the tree, so every list it feeds moves together. The schema list is read
+    /// here, since the tree's refresh does not reach the schema service's copy.
+    private func listedNames(refreshing: Bool) async throws -> [String] {
+        switch switchTarget {
+        case .database:
+            let tree = DatabaseTreeMetadataService.shared
+            if refreshing {
+                await tree.refreshDatabases(connectionId: connectionId, databaseType: databaseType)
+            }
+            return try await tree.databaseNames(connectionId: connectionId, databaseType: databaseType)
+        case .schema:
+            return try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                try await driver.fetchSchemas()
+            }
+        }
     }
 
     func loadCreateDatabaseForm() async throws -> CreateDatabaseFormSpec? {

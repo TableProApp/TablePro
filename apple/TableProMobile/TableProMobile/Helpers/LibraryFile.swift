@@ -50,11 +50,13 @@ final class LibraryFile<Element: Codable> {
 
     // `finishing` rewrites the encoded list before it is written, as the pasted SSH key migration does.
     // `removingUnreadable` drops kept records by id, as a deletion another device made does.
+    // `willWrite` sees the bytes just before they replace the file.
     func save(
         _ elements: [Element],
         using encoder: JSONEncoder = JSONEncoder(),
         removingSecrets: Bool = false,
         removingUnreadable removedIds: Set<UUID> = [],
+        willWrite: (Data) -> Void = { _ in },
         finishing finish: (Data) throws -> Data = { $0 }
     ) throws {
         if removingSecrets {
@@ -69,6 +71,7 @@ final class LibraryFile<Element: Codable> {
             try removeIfPresent(unreadableURL)
             backupHoldsRemovedSecrets = false
         }
+        willWrite(data)
         try data.write(to: fileURL, options: Self.writeOptions)
         unreadable = encoded.kept
         mirrorToBackup(data)

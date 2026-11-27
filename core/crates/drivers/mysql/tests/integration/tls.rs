@@ -232,6 +232,7 @@ fn verify_full(fixture: &MysqlFixture, server_name: Option<&str>) -> TlsConfig {
         ca_file: Some(fixture.pki().path(PkiFile::Ca)),
         client_identity: None,
         server_name: server_name.map(str::to_owned),
+        unknown: Default::default(),
     }
 }
 

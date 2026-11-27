@@ -67,7 +67,7 @@ pub async fn list_connections(context: &ToolContext, _args: NoArgs) -> Result<St
                 group: connection.group_id.and_then(|group| groups.label(group)),
                 is_open: session.is_some(),
                 external_access: connection.external_access,
-                safe_mode: session.map_or(connection.safe_mode, |session| session.safe_mode()),
+                safe_mode: session.map_or(connection.safe_mode.enforced(), |session| session.safe_mode()),
                 name: connection.name,
             }
         })

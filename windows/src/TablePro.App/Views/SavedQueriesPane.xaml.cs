@@ -19,9 +19,9 @@ public sealed partial class SavedQueriesPane : UserControl
     private readonly Func<string> _connectionName;
 
     // Folders the user opened, kept across the rebuild each change makes.
-    private readonly HashSet<long> _expanded = [];
+    private readonly HashSet<Guid> _expanded = [];
     private SavedQueryList _list = new([], []);
-    private long? _reveal;
+    private Guid? _reveal;
     private int _reading;
     private int _rebuild;
 
@@ -382,7 +382,7 @@ public sealed partial class SavedQueriesPane : UserControl
         }
     }
 
-    private async Task MoveAsync(SavedQuery query, long? folderId)
+    private async Task MoveAsync(SavedQuery query, Guid? folderId)
     {
         _reveal = folderId;
         await ChangeAsync(store => store.MoveAsync(query.Id, folderId)).ConfigureAwait(true);
@@ -400,7 +400,7 @@ public sealed partial class SavedQueriesPane : UserControl
     }
 
     // Null parent: a folder at the top level.
-    private async Task NewFolderAsync(long? parentId)
+    private async Task NewFolderAsync(Guid? parentId)
     {
         if (_store is not { } store)
         {

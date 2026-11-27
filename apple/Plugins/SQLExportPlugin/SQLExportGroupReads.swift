@@ -40,6 +40,7 @@ nonisolated final class SQLExportGroupReads {
     private let commentDDLReads: GroupRead<String>
     private let sequenceReads: GroupRead<PluginSequenceInfo>
     private let typeReads: GroupRead<PluginEnumTypeInfo>
+    private let tableDDLReads: GroupRead<String>
 
     init(
         dataSource: any PluginExportDataSource,
@@ -72,6 +73,9 @@ nonisolated final class SQLExportGroupReads {
         }
         typeReads = GroupRead(kind: .dependentTypes, objects: tables, twins: twins) {
             try await dataSource.fetchAllDependentTypes(databaseName: $0)
+        }
+        tableDDLReads = GroupRead(kind: .tableDDL, objects: tables, twins: twins) {
+            try await dataSource.fetchAllTableDDL(databaseName: $0).mapValues { [$0] }
         }
     }
 
@@ -109,6 +113,19 @@ nonisolated final class SQLExportGroupReads {
         try await answer(typeReads, for: table) {
             try await dataSource.fetchDependentTypes(table: table.name, databaseName: table.databaseName)
         }
+    }
+
+    // The schema-wide read covers only the tables the driver renders from its snapshot, so a table it leaves out is
+    // read alone rather than taken as having no DDL.
+    func tableDDL(for table: PluginExportTable) async throws -> String {
+        let alone = { try await self.dataSource.fetchTableDDL(table: table.name, databaseName: table.databaseName) }
+        guard !twins.contains(PluginExportSpelling.ObjectKey(table)),
+              let group = try await groupAnswer(tableDDLReads, databaseName: table.databaseName),
+              case .answered(let values) = PluginExportSpelling.entry(table.name, in: group),
+              let ddl = values.first else {
+            return try await alone()
+        }
+        return ddl
     }
 
     private func answer<Value>(

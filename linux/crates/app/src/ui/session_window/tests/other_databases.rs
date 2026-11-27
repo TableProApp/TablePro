@@ -210,14 +210,14 @@ fn a_level_picked_in_another_database_moves_the_connection() {
 
     test.window.send(SessionWindowInput::SetSafeMode {
         key: sibling.clone(),
-        level: tablepro_core::SafeModeLevel::ConfirmWrites,
+        level: tablepro_core::SafeModeLevel::Alert,
     });
 
     for key in [test.key(), sibling] {
         wait_until(WAIT, || {
             test.window
                 .held_session(&key)
-                .is_some_and(|session| session.safe_mode() == tablepro_core::SafeModeLevel::ConfirmWrites)
+                .is_some_and(|session| session.safe_mode() == tablepro_core::SafeModeLevel::Alert)
         })
         .unwrap_or_else(|_| panic!("{key:?} kept its level"));
     }

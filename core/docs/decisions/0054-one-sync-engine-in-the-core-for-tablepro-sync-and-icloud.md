@@ -1,6 +1,6 @@
 # 0054: One sync engine in the core for TablePro Sync and iCloud
 
-- **Status**: Accepted; amends 0010 and 0044; the change journal, what a store is and the restore path amended by 0060; `colorTag` and the personal wire names and values amended by 0061; the stop's cause amended by 0062
+- **Status**: Accepted; amends 0010 and 0044; the change journal, what a store is and the restore path amended by 0060; `colorTag` and the personal wire names and values amended by 0061; the stop's cause amended by 0062; `pending_bases`, `stores` rows and the restart hold amended by 0064; refused changes, per-kind refills, `deferred`, the iCloud holds, approval digests, unknown settings categories, the DPoP key, two key table columns and the integrity readings amended by 0066
 - **Date**: 2026-11-25
 
 ## Context

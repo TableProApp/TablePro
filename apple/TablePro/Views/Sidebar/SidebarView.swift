@@ -61,7 +61,8 @@ struct SidebarView: View {
                     connectionId: connectionId,
                     database: database,
                     schema: schema,
-                    searchText: searchText
+                    searchText: searchText,
+                    filter: { viewModel.containerBuckets(database: database, schema: schema, source: $0) }
                 )
             }
         )
@@ -99,7 +100,8 @@ struct SidebarView: View {
                     database: database,
                     schema: schema,
                     searchText: searchText,
-                    listingMatches: listingMatches
+                    listingMatches: listingMatches,
+                    filter: { viewModel.containerBuckets(database: database, schema: schema, source: $0) }
                 )
             }
         )

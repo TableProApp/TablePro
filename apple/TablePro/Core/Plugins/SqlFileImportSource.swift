@@ -19,24 +19,17 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     private let family: TransactionEngineFamily
     private let parser = SQLFileParser()
 
-    private let externalDecompressedURL: URL?
-    private let _decompressedURL = OSAllocatedUnfairLock<URL?>(initialState: nil)
-    private let ownsDecompressedFile: Bool
-
+    // A `.gz` is read through the parser's inflater, so no expanded copy is written to disk.
     init(
         url: URL,
         encoding: String.Encoding,
         grammar: @escaping @Sendable () -> SQLLexicalGrammar = { .ansi },
-        family: TransactionEngineFamily = .other,
-        decompressedURL: URL? = nil,
-        ownsDecompressedFile: Bool? = nil
+        family: TransactionEngineFamily = .other
     ) {
         self.url = url
         self.encoding = encoding
         self.grammar = OSAllocatedUnfairLock(initialState: grammar)
         self.family = family
-        self.externalDecompressedURL = decompressedURL
-        self.ownsDecompressedFile = ownsDecompressedFile ?? (decompressedURL == nil)
     }
 
     func fileURL() -> URL {
@@ -44,12 +37,11 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     }
 
     func fileSizeBytes() -> Int64 {
-        let targetURL = effectiveURL
         do {
-            let attrs = try FileManager.default.attributesOfItem(atPath: targetURL.path(percentEncoded: false))
+            let attrs = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
             return attrs[.size] as? Int64 ?? 0
         } catch {
-            Self.logger.warning("Failed to get file size for \(targetURL.path(percentEncoded: false)): \(error.localizedDescription)")
+            Self.logger.warning("Failed to get file size for \(self.url.path(percentEncoded: false)): \(error.localizedDescription)")
             return 0
         }
     }
@@ -59,25 +51,23 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
         grammar.withLock { $0 = provider }
     }
 
-    // Bytes read from the file the parser opens, which for a `.gz` is the decompressed copy.
+    // Bytes read from the file on disk, which for a `.gz` are its compressed bytes.
     func reportsReading(to handler: @escaping @Sendable (_ bytesRead: Int64, _ fileSize: Int64) -> Void) {
         readReporter.withLock { $0 = handler }
     }
 
     func statements() async throws -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
-        let fileURL = try await resolveURL()
         let grammar = self.grammar.withLock { $0 }
         let onRead = readReporter.withLock { $0 }
-        let parsed = parser.parseFile(url: fileURL, encoding: encoding, grammar: grammar, onRead: onRead)
+        let parsed = parser.parseFile(url: url, encoding: encoding, grammar: grammar, onRead: onRead)
         guard SQLDumpStatementRewriter.rewrites(fileDecodedFrom: encoding) else { return parsed }
         return rewriter(grammar: grammar).rewriting(parsed)
     }
 
     func elements() async throws -> AsyncThrowingStream<PluginImportElement, Error> {
-        let fileURL = try await resolveURL()
         let grammar = self.grammar.withLock { $0 }
         let onRead = readReporter.withLock { $0 }
-        var parsed = parser.parseElements(url: fileURL, encoding: encoding, grammar: grammar, onRead: onRead)
+        var parsed = parser.parseElements(url: url, encoding: encoding, grammar: grammar, onRead: onRead)
         if SQLDumpStatementRewriter.rewrites(fileDecodedFrom: encoding) {
             parsed = rewriter(grammar: grammar).rewriting(parsed)
         }
@@ -89,63 +79,6 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
 
     private func rewriter(grammar: @escaping @Sendable () -> SQLLexicalGrammar) -> SQLDumpStatementRewriter {
         SQLDumpStatementRewriter(encoding: encoding, family: family.dumpFamily, grammar: grammar)
-    }
-
-    // A file this source decompressed is always its own to remove: a retry arrives with the flag off, and gating on it
-    // leaked the whole expanded dump.
-    func cleanup() {
-        let tempURL = _decompressedURL.withLock {
-            let url = $0
-            $0 = nil
-            return url
-        }
-        let external = ownsDecompressedFile ? externalDecompressedURL : nil
-
-        for fileURL in [tempURL, external].compactMap({ $0 }) {
-            do {
-                try FileManager.default.removeItem(at: fileURL)
-            } catch {
-                Self.logger.warning("Failed to clean up temp file: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    deinit {
-        let tempURL = _decompressedURL.withLock { $0 }
-        let external = ownsDecompressedFile ? externalDecompressedURL : nil
-        for fileURL in [tempURL, external].compactMap({ $0 }) {
-            try? FileManager.default.removeItem(at: fileURL)
-        }
-    }
-
-    // MARK: - Private
-
-    private var effectiveURL: URL {
-        if let external = externalDecompressedURL {
-            return external
-        }
-        if let decompressed = _decompressedURL.withLock({ $0 }) {
-            return decompressed
-        }
-        return url
-    }
-
-    private func resolveURL() async throws -> URL {
-        if let external = externalDecompressedURL {
-            return external
-        }
-
-        if let existing = _decompressedURL.withLock({ $0 }) {
-            return existing
-        }
-
-        let result = try await FileDecompressor.decompressIfNeeded(url)
-
-        if result != url {
-            _decompressedURL.withLock { $0 = result }
-        }
-
-        return result
     }
 }
 
