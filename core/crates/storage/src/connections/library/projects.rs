@@ -60,6 +60,7 @@ impl ConnectionStore {
             if document.projects.len() == before {
                 return Ok(RemoveOutcome::NotPresent);
             }
+            document.number_projects();
             for group in &mut document.groups {
                 if group.project_id == Some(id) {
                     group.project_id = None;

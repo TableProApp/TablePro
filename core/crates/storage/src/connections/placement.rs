@@ -20,6 +20,20 @@ impl ConnectionsDocument {
         self.favorites.retain(|id| saved.contains(id) && listed.insert(*id));
     }
 
+    // From 0, ties in file order, for a write the person makes that leaves a gap or a tie (core ADR 0067).
+    pub(super) fn number_projects(&mut self) {
+        let mut ranked: Vec<(u32, usize)> = self
+            .projects
+            .iter()
+            .enumerate()
+            .map(|(index, project)| (project.order, index))
+            .collect();
+        ranked.sort_unstable();
+        for (rank, (_, index)) in ranked.into_iter().enumerate() {
+            self.projects[index].order = u32::try_from(rank).unwrap_or(u32::MAX);
+        }
+    }
+
     /// `kept` is the group and place the entry had, which it keeps when
     /// it stays in that group.
     pub(super) fn settle_place(&self, connection: &mut SavedConnection, kept: Option<(Option<Uuid>, u32)>) {
