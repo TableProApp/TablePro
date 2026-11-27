@@ -127,6 +127,9 @@ async fn hold(path: &Path) -> Result<SqliteConnection, StorageError> {
         .locking_mode(SqliteLockingMode::Exclusive)
         .journal_mode(SqliteJournalMode::Delete)
         .pragma("secure_delete", "ON")
+        // With foreign keys on, a drop first deletes every row and runs each cascade, which a deep folder tree takes
+        // past SQLite's recursion limit.
+        .foreign_keys(false)
         .disable_statement_logging()
         .connect()
         .await;
@@ -430,7 +433,7 @@ async fn compact_if_owed(pool: &SqlitePool) -> Result<(), StorageError> {
     if blocked != 0 || frames != folded {
         return Ok(());
     }
-    sqlx::query(AssertSqlSafe(format!("DROP TABLE {COMPACTION_OWED}")))
+    sqlx::query(AssertSqlSafe(format!("DROP TABLE IF EXISTS {COMPACTION_OWED}")))
         .execute(&mut *connection)
         .await?;
     Ok(())
