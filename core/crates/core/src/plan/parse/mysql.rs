@@ -186,8 +186,7 @@ static ACTUAL_METRICS_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
 });
 static COST_METRICS_RE: LazyLock<Option<Regex>> =
     LazyLock::new(|| Regex::new(&format!(r"\s+\(cost=({NUMBER})\s+rows=({NUMBER})\)\s*$")).ok());
-static NEVER_EXECUTED_RE: LazyLock<Option<Regex>> =
-    LazyLock::new(|| Regex::new(r"(?i)\s+\(never executed\)\s*$").ok());
+static NEVER_EXECUTED_RE: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"(?i)\s+\(never executed\)\s*$").ok());
 
 struct RawNode {
     depth: usize,
@@ -370,7 +369,10 @@ fn leading_identifier(text: &str) -> Option<String> {
             return Some(trimmed[..end].to_string());
         }
     }
-    let identifier: String = trimmed.chars().take_while(|&c| !c.is_whitespace() && c != '(').collect();
+    let identifier: String = trimmed
+        .chars()
+        .take_while(|&c| !c.is_whitespace() && c != '(')
+        .collect();
     (!identifier.is_empty()).then_some(identifier)
 }
 
@@ -381,8 +383,7 @@ fn find_ascii_ci(haystack: &str, needle: &str) -> Option<usize> {
     if need.is_empty() || hay.len() < need.len() {
         return None;
     }
-    (0..=hay.len() - need.len())
-        .find(|&start| hay[start..start + need.len()].eq_ignore_ascii_case(need))
+    (0..=hay.len() - need.len()).find(|&start| hay[start..start + need.len()].eq_ignore_ascii_case(need))
 }
 
 fn nonnegative_f64(capture: Option<regex::Match>) -> Option<f64> {
@@ -501,7 +502,10 @@ mod tests {
         let lookup = &plan.root.children[1];
         assert_eq!(lookup.operation, "Index lookup");
         assert_eq!(lookup.relation.as_deref(), Some("items"));
-        assert_eq!(lookup.properties.get("Index Name").map(String::as_str), Some("fk_order"));
+        assert_eq!(
+            lookup.properties.get("Index Name").map(String::as_str),
+            Some("fk_order")
+        );
         assert_eq!(lookup.actual_loops, Some(4));
     }
 
@@ -512,7 +516,10 @@ mod tests {
         assert_eq!(plan.root.operation, "Index lookup");
         assert_eq!(plan.root.estimated_total_cost, Some(0.35));
         assert_eq!(plan.root.actual_total_time, None);
-        assert_eq!(plan.root.properties.get("Execution").map(String::as_str), Some("Never executed"));
+        assert_eq!(
+            plan.root.properties.get("Execution").map(String::as_str),
+            Some("Never executed")
+        );
     }
 
     #[test]
