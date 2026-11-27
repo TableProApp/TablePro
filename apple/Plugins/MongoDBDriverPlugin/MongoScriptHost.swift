@@ -330,7 +330,7 @@ nonisolated final class MongoScriptHost {
         guard !MongoScriptAccessPolicy.writesThroughPipeline(decorated),
               let counted = cursor.options.countedPipeline(cursor.pipelineJson) else {
             let drained = try cursor.remaining { try load($0, ceiling: iterationCeiling) }
-            return String(drained.json.count)
+            return String(drained.count)
         }
         let options = cursor.options.countingOptions
         try refuseUnapprovedAggregate(pipeline: counted, options: options)

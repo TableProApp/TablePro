@@ -13,7 +13,7 @@ nonisolated enum MongoScriptResultBuilder {
         emptyColumns: [(name: String, typeName: String)] = [(name: "_id", typeName: "ObjectId")],
         documents build: (MongoReadDocuments, String, Bool) -> PluginQueryResult
     ) -> PluginQueryResult {
-        if outcome.producedDocuments, outcome.documents.json.isEmpty {
+        if outcome.producedDocuments, outcome.documents.isEmpty {
             // Zero columns reads as write-success in the result pane, so a query that matched
             // nothing has to keep its row-producing shape.
             return PluginQueryResult(
@@ -25,10 +25,7 @@ nonisolated enum MongoScriptResultBuilder {
 
         if outcome.producedDocuments {
             var read = outcome.documents.readDocuments
-            // Taken once: the grid's row locators and the number kinds the build records both need them.
-            let locators = outcome.documents.holdsStoredDocuments
-                ? read.texts.map(MongoDocumentIdentity.locator(inDocument:))
-                : nil
+            let locators = outcome.documents.holdsStoredDocuments ? read.identifiers : nil
             read.locators = locators
             let grid = build(
                 read,

@@ -37,7 +37,10 @@ struct Probe {
         let nested: [String: Any] = ["text": large, "long": Int64(42), "oid": MongoDBObjectId(hex: "65a1b2c3d4e5f60718293a4b"), "date": Date(timeIntervalSince1970: -0.001), "decimal": MongoDBDecimal128(digits: "1.50")]
         let text = #"{"v":{"$numberInt":"42"},"10":null,"2":"true","__proto__":\#(canonical),"late":{"$numberLong":"42"}}"#
         let dictionary: [String: Any] = ["v": Int32(42), "10": NSNull(), "2": "true", "__proto__": nested, "late": Int64(42)]
-        let document = try MongoExportDocument.read(canonicalJSON: text, dictionary: dictionary, representation: .unspecified)
+        let stored = try MongoDocumentText(parsing: text)
+        let document = try MongoExportDocument.read(
+            canonical: stored, dictionary: dictionary, representation: .unspecified, bsonSizeUpperBound: nil
+        )
         precondition(document.fields.map(\.name) == ["v", "10", "2", "__proto__", "late"])
         precondition(document.fields[0].typeName == "INTEGER")
         precondition(document.fields[0].canonicalJSON == #"{"$numberInt":"42"}"#)
@@ -46,12 +49,12 @@ struct Probe {
         precondition(document.fields[3].canonicalJSON == canonical)
         precondition(document.fields[3].cellValue.asText?.contains(large) == true)
         precondition(document.fields[4].typeName == "BIGINT")
-        let rows = BsonDocumentFlattener.flatten(documents: [dictionary], columns: ["v", "__proto__"], kinds: [.string, .document], representation: .unspecified, storedTexts: [text])
+        let rows = BsonDocumentFlattener.flatten(documents: [dictionary], columns: ["v", "__proto__"], kinds: [.string, .document], representation: .unspecified, stored: [stored])
         precondition(rows[0][1].asText?.contains(large) == true)
         let code = #"{"v":{"$code":"return x","$scope":{"x":{"$numberLong":"42"}}}}"#
         let codeRows = BsonDocumentFlattener.flatten(
             documents: [["v": ["$code": "return x", "$scope": ["x": Int64(42)]]]],
-            columns: ["v"], kinds: [.document], representation: .unspecified, storedTexts: [code]
+            columns: ["v"], kinds: [.document], representation: .unspecified, stored: [try MongoDocumentText(parsing: code)]
         )
         precondition(codeRows[0][0].asText?.contains(#""$numberLong":"42""#) == true)
         print("PASS driver export values: long nested text, mixed types, stored null, nested BSON values and late fields")
@@ -67,5 +70,6 @@ xcrun swiftc -parse-as-library -I "$WORK" -L "$WORK" -lTableProNumberFormatting 
     "$PLUGIN/BsonDocumentFlattener.swift" "$PLUGIN/MongoDocumentText.swift" \
     "$PLUGIN/MongoExtendedJsonForm.swift" "$PLUGIN/MongoExtendedJsonType.swift" \
     "$PLUGIN/MongoDBWriteRefusal.swift" "$PLUGIN/MongoDBDecimal128.swift" "$PLUGIN/MongoExportDocument.swift" \
+    "$PLUGIN/MongoBsonDocumentReader.swift" "$PLUGIN/MongoDocumentIdentity.swift" "$PLUGIN/MongoDBDocumentEditingError.swift" \
     "$WORK/unrelated.swift" "$WORK/main.swift" -o "$WORK/probe"
 "$WORK/probe"
