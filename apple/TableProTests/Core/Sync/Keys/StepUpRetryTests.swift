@@ -74,7 +74,7 @@ struct StepUpRetryTests {
         let challenged = Self.failure("sync.step_up_required", sync: .stepUp(acrValues: Self.passkey, maxAgeSecs: 300))
 
         await #expect(throws: CoreError.self) {
-            try await retry.run { () throws -> Void in
+            try await retry.run { () throws in
                 calls.made += 1
                 throw challenged
             }
@@ -91,7 +91,7 @@ struct StepUpRetryTests {
         let retry = StepUpRetry { calls.stepUps.append($0) }
 
         await #expect(throws: CoreError.self) {
-            try await retry.run { () throws -> Void in
+            try await retry.run { () throws in
                 calls.made += 1
                 throw Self.failure("sync.device_not_approved")
             }
@@ -108,7 +108,7 @@ struct StepUpRetryTests {
         let retry = StepUpRetry { _ in throw AccountError.canceled }
 
         await #expect(throws: AccountError.canceled) {
-            try await retry.run { () throws -> Void in
+            try await retry.run { () throws in
                 calls.made += 1
                 throw Self.failure("sync.step_up_required", sync: .stepUp(acrValues: Self.passkey, maxAgeSecs: 300))
             }

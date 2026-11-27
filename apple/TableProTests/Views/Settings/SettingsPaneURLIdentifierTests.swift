@@ -37,6 +37,7 @@ struct SettingsPaneURLIdentifierTests {
         .accountFeatures: "license/features",
         .accountDevices: "license/devices",
         .accountTeams: "license/teams",
+        .accountEncryption: "license/encryption",
         .accountOffline: "license/offline",
     ]
 

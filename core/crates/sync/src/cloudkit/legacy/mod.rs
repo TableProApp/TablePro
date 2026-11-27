@@ -320,32 +320,6 @@ impl LegacyLink {
     }
 }
 
-// The downgrade mirror's marks on a device whose provider is not iCloud (0054, Downgrade mirror: on every journal
-// signal, offline too): the previous stable marks what the app writes whatever its switch says, so the marks go to the
-// Swift metadata with no iCloud engine, and the quit drains them.
-pub struct LegacyMarks {
-    link: LegacyLink,
-    queue: Arc<dyn JournalObserver>,
-}
-
-impl LegacyMarks {
-    // On the runtime: the marks go out on a task of their own.
-    pub fn new(host: Arc<dyn LegacyMirror>, clock: Arc<dyn Clock>) -> Self {
-        let (link, queue) = LegacyLink::new(host, clock);
-        Self { link, queue }
-    }
-
-    // After the store write landed, as the journal's signal.
-    pub fn changed(&self, entries: &[JournalEntry]) {
-        self.queue.changed(entries);
-    }
-
-    // Once every write named so far has marked the host; fails while the host refuses a mark.
-    pub async fn flush(&self) -> Result<(), SyncError> {
-        self.link.flush().await
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

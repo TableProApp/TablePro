@@ -546,7 +546,7 @@ fn a_credential_to_rotate_names_its_connection_while_the_store_holds_it() {
 }
 
 // An edit the app reported just before it quits reaches the Swift metadata before the quit goes on, and a mark the app
-// still refuses when the quit sends it again is the quit call's failure.
+// refused is the quit call's failure.
 #[tokio::test]
 async fn the_quit_call_waits_for_the_downgrade_marks_and_says_when_one_failed() {
     let tasks = runtime::tasks().unwrap();
@@ -567,74 +567,14 @@ async fn the_quit_call_waits_for_the_downgrade_marks_and_says_when_one_failed() 
         .unwrap();
     opened.service.flush_legacy_marks().await.unwrap();
     let marked = mirror.marks();
-    // The mark the write sent and the one the quit sends again are both refused.
-    mirror.fail_marks(2);
+    mirror.fail_marks(1);
     opened
         .service
         .record_host_changes("connection".to_owned(), Vec::new(), vec![id])
         .await
         .unwrap();
     let refused = opened.service.flush_legacy_marks().await;
-    let later = opened.service.flush_legacy_marks().await;
 
     assert!(marked >= 1, "no mark reached the Swift metadata");
     assert!(refused.is_err(), "{refused:?}");
-    assert!(later.is_ok(), "{later:?}");
-}
-
-// Off to TablePro Sync is the first upload; the move back needs the count the person confirmed; a zone this device never
-// used is not one to delete.
-#[tokio::test]
-async fn a_provider_change_runs_its_own_move_and_refuses_the_ones_that_need_the_person() {
-    let tasks = runtime::tasks().unwrap();
-    let server = FakeServer::new();
-    let off = open(&tasks, |parts| OpenParts {
-        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
-        ..parts
-    })
-    .await;
-    let on = open(&tasks, |parts| OpenParts {
-        config: config(SyncProviderTag::TableproSync),
-        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
-        cloudkit: Some(Arc::new(FakeCloudKit::signed_in("_a")) as Arc<dyn tablepro_sync::api::CloudKitTransport>),
-        ..parts
-    })
-    .await;
-
-    let first = off.service.choose_provider(SyncProviderTag::TableproSync).await;
-    let back = on.service.choose_provider(SyncProviderTag::Icloud).await.unwrap_err();
-    let zone = on.service.delete_icloud_zone().await.unwrap_err();
-    let same = on.service.choose_provider(SyncProviderTag::TableproSync).await;
-
-    assert!(first.is_ok(), "{first:?}");
-    assert_eq!(code(&back), "sync.not_allowed");
-    assert_eq!(code(&zone), "sync.not_allowed");
-    assert!(same.is_ok(), "{same:?}");
-}
-
-// The previous stable marks every write whatever the switch says, so a deletion with iCloud off still reaches the Swift
-// metadata by the time the quit returns.
-#[tokio::test]
-async fn with_icloud_off_a_deletion_still_marks_the_swift_metadata_by_the_quit() {
-    let tasks = runtime::tasks().unwrap();
-    let mirror = Arc::new(tablepro_sync_testing::FakeLegacyMirror::new());
-    let opened = open(&tasks, |parts| OpenParts {
-        legacy_mirror: Some(mirror.clone() as Arc<dyn tablepro_sync::api::LegacyMirror>),
-        ..parts
-    })
-    .await;
-    let id = "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_owned();
-
-    opened
-        .service
-        .record_host_changes("connection".to_owned(), Vec::new(), vec![id.clone()])
-        .await
-        .unwrap();
-    opened.service.flush_legacy_marks().await.unwrap();
-
-    let tombstones = mirror.metadata().tombstones;
-    assert!(
-        tombstones.iter().any(|tombstone| tombstone.record.id == id),
-        "{tombstones:?}"
-    );
 }

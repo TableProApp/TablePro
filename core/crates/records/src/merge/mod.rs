@@ -6,7 +6,6 @@ use std::collections::BTreeSet;
 use serde_json::Value;
 
 use crate::kind::Kind;
-use crate::move_marker::MoveMarker;
 use crate::schema::{Role, Schema, Type, schema};
 use crate::settings::{self, Merge};
 
@@ -59,92 +58,6 @@ pub fn merge(kind: Kind, mode: Mode, sides: Sides<'_>) -> Merged {
         (base, Some(local), Some(server)) => fields(&schema, mode, base, local, server),
         (Some(base), None, Some(server)) => against_deletion(&schema, mode, base, server, true),
         (Some(base), Some(local), None) => against_deletion(&schema, mode, base, local, false),
-    }
-}
-
-// The first meet after a move from iCloud whose service copy carries a move marker (0054, Moving between providers):
-// the base is the copy the marker names, known only by its members' digests, so a member counts as changed on a side
-// when its digest differs. A settings document merges whole here, not option by option. Kinds iCloud never carries
-// merge with no base.
-pub fn merge_against_marker(
-    kind: Kind,
-    mode: Mode,
-    marker: &MoveMarker,
-    local: Option<&Value>,
-    server: Option<&Value>,
-) -> Merged {
-    if kind == Kind::SecretEnvelope || kind.is_create_once() {
-        return merge(
-            kind,
-            mode,
-            Sides {
-                base: None,
-                local,
-                server,
-            },
-        );
-    }
-    let schema = schema(kind);
-    match (local, server) {
-        (None, None) => Merged::Deleted,
-        (Some(local), None) => against_marked_deletion(&schema, mode, marker, local, false),
-        (None, Some(server)) => against_marked_deletion(&schema, mode, marker, server, true),
-        (Some(local), Some(server)) => {
-            let mut merged = serde_json::Map::new();
-            let mut contested = Vec::new();
-            let mut names = keys(None, Some(local), Some(server));
-            names.extend(marker.members().cloned());
-            for key in names {
-                let (mine, theirs) = (local.get(&key), server.get(&key));
-                let value = if mine == theirs || marker.holds(&key, mine) {
-                    theirs.cloned()
-                } else if marker.holds(&key, theirs) {
-                    mine.cloned()
-                } else if mode == Mode::Team {
-                    contested.push(key.clone());
-                    theirs.cloned()
-                } else {
-                    mine.cloned()
-                };
-                if let Some(value) = value {
-                    merged.insert(key, value);
-                }
-            }
-            let record = Value::Object(merged);
-            if contested.is_empty() {
-                Merged::Record(record)
-            } else {
-                Merged::Contested {
-                    record,
-                    fields: contested,
-                }
-            }
-        }
-    }
-}
-
-// As `against_deletion`, with the marked copy as the base.
-fn against_marked_deletion(
-    schema: &Schema,
-    mode: Mode,
-    marker: &MoveMarker,
-    edited: &Value,
-    deleted_here: bool,
-) -> Merged {
-    let mut names = keys(None, Some(edited), None);
-    names.extend(marker.members().cloned());
-    let content = names
-        .iter()
-        .any(|key| schema.role(key) == Role::Content && !marker.holds(key, edited.get(key)));
-    if !content {
-        return Merged::Deleted;
-    }
-    match mode {
-        Mode::Personal => Merged::Record(edited.clone()),
-        Mode::Team => Merged::DeletionContested {
-            kept: edited.clone(),
-            deleted_here,
-        },
     }
 }
 

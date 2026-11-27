@@ -29,7 +29,6 @@ mod rebase;
 mod settle;
 mod stores;
 
-pub(crate) use copy::{key_of_name as listed_key, wire_fields};
 pub use rebase::{RebaseFailure, Rebased, ServerChanged};
 pub(in crate::cloudkit) use stores::{carried, stored_id};
 

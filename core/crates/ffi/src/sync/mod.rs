@@ -8,7 +8,6 @@ mod host;
 mod key_records;
 mod keys;
 mod legacy;
-mod moves;
 mod names;
 mod open;
 mod service;

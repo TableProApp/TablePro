@@ -6,8 +6,6 @@ use tablepro_records::Kind;
 use tablepro_session::runtime::Tasks;
 use tablepro_sync::SyncError;
 use tablepro_sync::api::{self as sync, StateFiles, TransportError};
-use tablepro_sync::cloudkit::LegacyMarks;
-use tablepro_sync::engine::SystemClock;
 use tablepro_sync::service::ServiceMode;
 use tablepro_sync::state::SqliteStateFiles;
 
@@ -127,7 +125,6 @@ fn own_device_store(_: &Tasks) -> Option<Arc<dyn sync::HostDeviceStore>> {
 impl SyncService {
     // On the runtime. An engine that cannot start keeps why, which its calls answer; the others run.
     pub(crate) async fn open(tasks: Tasks, parts: OpenParts) -> Arc<Self> {
-        let (cloudkit, files) = (parts.cloudkit.clone(), parts.files.clone());
         let signals = Arc::new(Signals::default());
         let forwarding = forward(Arc::clone(&signals), parts.listener, &tasks);
         let hosts = match (parts.files, parts.device_store) {
@@ -145,14 +142,13 @@ impl SyncService {
             }),
         };
         let categories = categories_arg(&parts.config.categories);
-        let mirror = parts.legacy_mirror;
         let icloud = match (parts.config.provider, parts.cloudkit, &hosts, &categories) {
             (SyncProviderTag::Icloud, Some(transport), Ok(hosts), Ok(categories)) => Ok(IcloudEngine::start(
                 hosts,
                 transport,
                 categories,
                 parts.config.icloud_account.clone(),
-                mirror.clone(),
+                parts.legacy_mirror,
             )),
             (SyncProviderTag::Icloud, None, _, _) => Err(SyncError::NotAllowed {
                 what: "sync with iCloud without a CloudKit transport",
@@ -163,12 +159,6 @@ impl SyncService {
             (SyncProviderTag::Off | SyncProviderTag::TableproSync, ..) => Err(SyncError::NotAllowed {
                 what: "sync with iCloud while it is not the chosen provider",
             }),
-        };
-        // The previous stable marks every write whatever its provider, so with no iCloud engine to carry the marks
-        // they go on their own (0054, Downgrade mirror).
-        let legacy_marks = match (&icloud, mirror) {
-            (Err(_), Some(mirror)) => Some(Arc::new(LegacyMarks::new(mirror, Arc::new(SystemClock)))),
-            _ => None,
         };
         let kept = categories.clone().unwrap_or_default();
         let mode = match parts.config.provider {
@@ -196,9 +186,6 @@ impl SyncService {
             icloud,
             service: Arc::new(ServiceSlot::new(first, restart, kept)),
             connections: parts.connections,
-            legacy_marks,
-            cloudkit,
-            files,
             _forward: forwarding,
         })
     }
