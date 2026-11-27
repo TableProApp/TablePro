@@ -1942,6 +1942,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -3347,6 +3349,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_fill_details(ulong @ptr,RustBuffer @entries
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_identity(ulong @ptr
     );
 
     #if NET8_0_OR_GREATER
@@ -8923,6 +8936,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_identity(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_put_entries(
     );
 
@@ -12829,6 +12853,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_fill_details();
             if (checksum != 9994) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_fill_details` checksum `9994`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_identity();
+            if (checksum != 59684) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_identity` checksum `59684`, library returned `{checksum}`");
             }
         }
         {
@@ -21423,6 +21453,8 @@ internal interface IQueryHistoryStore {
     /// <exception cref="CoreException"></exception>
     Task<ulong> FillDetails(HistoryDetailsRecord[] @entries);
     /// <exception cref="CoreException"></exception>
+    Task<HistoryIdentityInfo> Identity();
+    /// <exception cref="CoreException"></exception>
     Task<ulong> PutEntries(HistoryEntryRecord[] @entries);
     /// <exception cref="CoreException"></exception>
     Task<string[]> RecordIds();
@@ -21801,6 +21833,28 @@ internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u64(future),
         // Lift
         (result) => FfiConverterUInt64.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<HistoryIdentityInfo> Identity() {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_identity(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeHistoryIdentityInfo.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -29527,6 +29581,36 @@ class FfiConverterTypeHistoryFingerprintArg: FfiConverterRustBuffer<HistoryFinge
     public override void Write(HistoryFingerprintArg value, BigEndianStream stream) {
             FfiConverterInt64.INSTANCE.Write(value.Id, stream);
             FfiConverterInt64.INSTANCE.Write(value.Fingerprint, stream);
+    }
+}
+
+
+
+internal record HistoryIdentityInfo (
+    string Generation, 
+    ulong Sequence
+) {
+}
+
+class FfiConverterTypeHistoryIdentityInfo: FfiConverterRustBuffer<HistoryIdentityInfo> {
+    public static FfiConverterTypeHistoryIdentityInfo INSTANCE = new FfiConverterTypeHistoryIdentityInfo();
+
+    public override HistoryIdentityInfo Read(BigEndianStream stream) {
+        return new HistoryIdentityInfo(
+            Generation: FfiConverterString.INSTANCE.Read(stream),
+            Sequence: FfiConverterUInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(HistoryIdentityInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Generation)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Sequence);
+    }
+
+    public override void Write(HistoryIdentityInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Generation, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.Sequence, stream);
     }
 }
 

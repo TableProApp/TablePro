@@ -10,9 +10,10 @@ use secrecy::SecretString;
 use tablepro_ffi::{
     Core, DatabaseEnvironmentTag, FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteRecordWrite,
     FavouriteTableRecord, HistoryDetailsRecord, HistoryEntryRecord, HistoryFilterArg, HistoryFingerprintArg,
-    HistoryOutcomeTag, HistoryRunDetails, HistorySourceTag, HistoryStatusTag, HostConfig, HostSecretError, HostSecrets,
-    SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SecretItemTag, SecretKindTag, StatementTypeTag,
-    TableFolderRecord, TableFolderRecordWrite, TableKeyRecord, TablePlacementRecord, TableRefRecord,
+    HistoryIdentityInfo, HistoryOutcomeTag, HistoryRunDetails, HistorySourceTag, HistoryStatusTag, HostConfig,
+    HostSecretError, HostSecrets, SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SecretItemTag,
+    SecretKindTag, StatementTypeTag, TableFolderRecord, TableFolderRecordWrite, TableKeyRecord, TablePlacementRecord,
+    TableRefRecord,
 };
 
 struct NoSecrets;
@@ -588,4 +589,78 @@ async fn store_files_make_nothing_and_the_history_keeps_to_a_folder_made_first()
         Path::new(&files.history_folder).join("marker").is_file(),
         "the core made the folder again"
     );
+}
+
+async fn identity_of(dir: &Path) -> HistoryIdentityInfo {
+    started(dir).history().await.unwrap().identity().await.unwrap()
+}
+
+// The history's files as they stand under another storage folder, as a backup or another device's copy brings them
+// back. Nothing writes meanwhile, so the database and its WAL agree.
+fn copied(from: &Arc<Core>, to: &Path) {
+    let database = std::path::PathBuf::from(from.store_files().unwrap().history_database);
+    let target = std::path::PathBuf::from(started(to).store_files().unwrap().history_database);
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    for suffix in ["", "-wal"] {
+        let source = format!("{}{suffix}", database.display());
+        if Path::new(&source).exists() {
+            std::fs::copy(&source, format!("{}{suffix}", target.display())).unwrap();
+        }
+    }
+}
+
+// The Mac keeps the history's identity with what it agreed with the core: the same file keeps its generation across
+// opens, and each write raises the sequence.
+#[tokio::test]
+async fn the_history_s_identity_holds_across_opens_and_rises_with_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = identity_of(dir.path()).await;
+
+    assert_eq!(identity_of(dir.path()).await, first);
+    let history = started(dir.path()).history().await.unwrap();
+    history
+        .put_entries(vec![moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor)])
+        .await
+        .unwrap();
+    let written = history.identity().await.unwrap();
+
+    assert_eq!(written.generation, first.generation);
+    assert!(written.sequence > first.sequence, "{written:?} after {first:?}");
+    assert!(uuid::Uuid::parse_str(&written.generation).is_ok());
+}
+
+// Another file in the history's place reads as another generation, and an older copy of the same file as a lower
+// sequence: either way the runs it lacks are not deletions.
+#[tokio::test]
+async fn a_replaced_history_reads_as_another_generation_and_a_rolled_back_one_as_a_lower_sequence() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let history = core.history().await.unwrap();
+    history
+        .put_entries(vec![moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor)])
+        .await
+        .unwrap();
+    let kept = history.identity().await.unwrap();
+    let rolled_back_dir = tempfile::tempdir().unwrap();
+    copied(&core, rolled_back_dir.path());
+    history
+        .put_entries(vec![moved_in(QUERY, 1_700_000_060_000, HistorySourceTag::Editor)])
+        .await
+        .unwrap();
+    let later = history.identity().await.unwrap();
+
+    let rolled_back = identity_of(rolled_back_dir.path()).await;
+    assert_eq!(rolled_back.generation, later.generation);
+    assert_eq!(rolled_back.sequence, kept.sequence);
+    assert!(rolled_back.sequence < later.sequence);
+
+    let elsewhere = tempfile::tempdir().unwrap();
+    let other_core = started(elsewhere.path());
+    let theirs = other_core.history().await.unwrap().identity().await.unwrap();
+    let replaced_dir = tempfile::tempdir().unwrap();
+    copied(&other_core, replaced_dir.path());
+
+    let replaced = identity_of(replaced_dir.path()).await;
+    assert_eq!(replaced, theirs);
+    assert_ne!(replaced.generation, later.generation);
 }
