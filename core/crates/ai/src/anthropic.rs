@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::chat_request::{ChatMessage, ContentBlock};
 use crate::reply::{StopReason, Usage};
 use crate::{AiError, ChatRequest};
 
@@ -15,13 +16,73 @@ pub(crate) struct RequestBody<'a> {
     max_tokens: u32,
     system: &'a str,
     messages: Vec<WireMessage<'a>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<WireTool<'a>>,
     stream: bool,
 }
 
 #[derive(Serialize)]
 pub(crate) struct WireMessage<'a> {
     role: &'static str,
-    content: &'a str,
+    content: WireContent<'a>,
+}
+
+/// A plain text turn stays a bare string, as the API also accepts; a
+/// turn with a tool block becomes an array of typed blocks.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum WireContent<'a> {
+    Text(&'a str),
+    Blocks(Vec<WireBlock<'a>>),
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum WireBlock<'a> {
+    Text {
+        text: &'a str,
+    },
+    ToolUse {
+        id: &'a str,
+        name: &'a str,
+        input: &'a serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: &'a str,
+        content: &'a str,
+        #[serde(skip_serializing_if = "is_false")]
+        is_error: bool,
+    },
+}
+
+#[derive(Serialize)]
+struct WireTool<'a> {
+    name: &'a str,
+    description: &'a str,
+    input_schema: &'a serde_json::Value,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+fn wire_content(message: &ChatMessage) -> WireContent<'_> {
+    if let [ContentBlock::Text(text)] = message.content.as_slice() {
+        return WireContent::Text(text);
+    }
+    WireContent::Blocks(message.content.iter().map(wire_block).collect())
+}
+
+fn wire_block(block: &ContentBlock) -> WireBlock<'_> {
+    match block {
+        ContentBlock::Text(text) => WireBlock::Text { text },
+        ContentBlock::ToolUse { id, name, input } => WireBlock::ToolUse { id, name, input },
+        ContentBlock::ToolResult { id, content, is_error } => WireBlock::ToolResult {
+            tool_use_id: id,
+            content,
+            is_error: *is_error,
+        },
+    }
 }
 
 pub(crate) fn request_body<'a>(
@@ -30,8 +91,6 @@ pub(crate) fn request_body<'a>(
     max_tokens: u32,
     stream: bool,
 ) -> RequestBody<'a> {
-    // Text only: a thinking block from an earlier turn is never sent
-    // back, so no history check can refuse an edited conversation.
     RequestBody {
         model,
         max_tokens,
@@ -41,17 +100,31 @@ pub(crate) fn request_body<'a>(
             .iter()
             .map(|message| WireMessage {
                 role: message.role.wire_name(),
-                content: &message.text,
+                content: wire_content(message),
+            })
+            .collect(),
+        tools: request
+            .tools
+            .iter()
+            .map(|tool| WireTool {
+                name: &tool.name,
+                description: &tool.description,
+                input_schema: &tool.input_schema,
             })
             .collect(),
         stream,
     }
 }
 
-/// What one server-sent event means for the reply.
+/// What one server-sent event means for the reply. A tool_use block
+/// arrives as a `ToolStart`, a run of `ToolInput` fragments and a
+/// `ToolStop`, assembled into a `ReplyEvent::ToolCall` by the reader.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Step {
     Text(String),
+    ToolStart { index: usize, id: String, name: String },
+    ToolInput { index: usize, partial_json: String },
+    ToolStop { index: usize },
     Usage(Usage),
     Stop(StopReason),
     Done,
@@ -63,7 +136,11 @@ struct Event {
     #[serde(rename = "type")]
     kind: String,
     #[serde(default)]
+    index: Option<usize>,
+    #[serde(default)]
     delta: Option<Delta>,
+    #[serde(default)]
+    content_block: Option<ContentBlockStart>,
     #[serde(default)]
     usage: Option<WireUsage>,
     #[serde(default)]
@@ -73,11 +150,23 @@ struct Event {
 }
 
 #[derive(Deserialize)]
+struct ContentBlockStart {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct Delta {
     #[serde(rename = "type", default)]
     kind: Option<String>,
     #[serde(default)]
     text: Option<String>,
+    #[serde(default)]
+    partial_json: Option<String>,
     #[serde(default)]
     stop_reason: Option<String>,
 }
@@ -114,20 +203,40 @@ pub(crate) fn decode_event(data: &str) -> Result<Vec<Step>, AiError> {
                 }));
             }
         }
-        "content_block_delta" => {
-            // Thinking and signature deltas are the model's own and are
-            // not shown.
-            if let Some(Delta {
-                kind: Some(kind),
-                text: Some(text),
-                ..
-            }) = event.delta
-                && kind == "text_delta"
-                && !text.is_empty()
-            {
-                steps.push(Step::Text(text));
+        "content_block_start" => {
+            if let Some(block) = event.content_block.filter(|block| block.kind == "tool_use") {
+                steps.push(Step::ToolStart {
+                    index: event.index.unwrap_or_default(),
+                    id: block.id.unwrap_or_default(),
+                    name: block.name.unwrap_or_default(),
+                });
             }
         }
+        "content_block_delta" => {
+            if let Some(delta) = event.delta {
+                match delta.kind.as_deref() {
+                    Some("text_delta") => {
+                        if let Some(text) = delta.text.filter(|text| !text.is_empty()) {
+                            steps.push(Step::Text(text));
+                        }
+                    }
+                    Some("input_json_delta") => {
+                        if let Some(partial_json) = delta.partial_json {
+                            steps.push(Step::ToolInput {
+                                index: event.index.unwrap_or_default(),
+                                partial_json,
+                            });
+                        }
+                    }
+                    // Thinking and signature deltas are the model's own and
+                    // are not shown.
+                    _ => {}
+                }
+            }
+        }
+        "content_block_stop" => steps.push(Step::ToolStop {
+            index: event.index.unwrap_or_default(),
+        }),
         "message_delta" => {
             if let Some(usage) = event.usage {
                 steps.push(Step::Usage(Usage {
@@ -156,6 +265,7 @@ fn stop_reason(reason: &str) -> StopReason {
     match reason {
         "max_tokens" | "model_context_window_exceeded" => StopReason::LengthLimit,
         "refusal" => StopReason::Refused,
+        "tool_use" => StopReason::ToolUse,
         _ => StopReason::Complete,
     }
 }
@@ -163,7 +273,12 @@ fn stop_reason(reason: &str) -> StopReason {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_request::{ContentBlock, Role, ToolSpec};
     use crate::ChatMessage;
+
+    fn parse(json: &str) -> serde_json::Value {
+        serde_json::from_str(json).unwrap()
+    }
 
     #[test]
     fn the_body_sends_the_system_prompt_and_the_turns_as_text() {
@@ -175,6 +290,7 @@ mod tests {
                 ChatMessage::user("more"),
             ],
             max_tokens: 1000,
+            tools: Vec::new(),
         };
 
         let body = serde_json::to_value(request_body("claude-opus-5-5", &request, request.max_tokens, true)).unwrap();
@@ -186,6 +302,59 @@ mod tests {
         assert_eq!(body["messages"][1]["role"], "assistant");
         assert_eq!(body["messages"][2]["content"], "more");
         assert!(body.get("temperature").is_none());
+        assert!(body.get("tools").is_none(), "no tools, no field");
+    }
+
+    #[test]
+    fn the_body_carries_tools_and_tool_use_and_tool_result_blocks() {
+        let request = ChatRequest {
+            system: "help".to_owned(),
+            messages: vec![
+                ChatMessage::user("list tables"),
+                ChatMessage {
+                    role: Role::Assistant,
+                    content: vec![ContentBlock::ToolUse {
+                        id: "toolu_1".to_owned(),
+                        name: "run_sql".to_owned(),
+                        input: parse(r#"{"query":"SELECT 1"}"#),
+                    }],
+                },
+                ChatMessage {
+                    role: Role::User,
+                    content: vec![ContentBlock::ToolResult {
+                        id: "toolu_1".to_owned(),
+                        content: "1".to_owned(),
+                        is_error: false,
+                    }],
+                },
+            ],
+            max_tokens: 1000,
+            tools: vec![ToolSpec {
+                name: "run_sql".to_owned(),
+                description: "Run a query".to_owned(),
+                input_schema: parse(r#"{"type":"object","properties":{"query":{"type":"string"}}}"#),
+            }],
+        };
+
+        let body = serde_json::to_value(request_body("m", &request, 1000, true)).unwrap();
+
+        assert_eq!(body["tools"][0]["name"], "run_sql");
+        assert_eq!(body["tools"][0]["description"], "Run a query");
+        assert_eq!(body["tools"][0]["input_schema"]["type"], "object");
+        // A plain text turn stays a bare string.
+        assert_eq!(body["messages"][0]["content"], "list tables");
+        // The model's call is a tool_use block with the input as JSON.
+        assert_eq!(body["messages"][1]["content"][0]["type"], "tool_use");
+        assert_eq!(body["messages"][1]["content"][0]["id"], "toolu_1");
+        assert_eq!(body["messages"][1]["content"][0]["input"]["query"], "SELECT 1");
+        // Its result is a tool_result block keyed by tool_use_id.
+        assert_eq!(body["messages"][2]["content"][0]["type"], "tool_result");
+        assert_eq!(body["messages"][2]["content"][0]["tool_use_id"], "toolu_1");
+        assert_eq!(body["messages"][2]["content"][0]["content"], "1");
+        assert!(
+            body["messages"][2]["content"][0].get("is_error").is_none(),
+            "a success omits is_error"
+        );
     }
 
     #[test]
@@ -195,6 +364,30 @@ mod tests {
 
         assert_eq!(decode_event(text).unwrap(), vec![Step::Text("SELECT".to_owned())]);
         assert_eq!(decode_event(thinking).unwrap(), Vec::<Step>::new());
+    }
+
+    #[test]
+    fn a_tool_use_block_decodes_to_start_input_and_stop_steps() {
+        let start = r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"run_sql","input":{}}}"#;
+        let input = r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"q\":"}}"#;
+        let stop = r#"{"type":"content_block_stop","index":1}"#;
+
+        assert_eq!(
+            decode_event(start).unwrap(),
+            vec![Step::ToolStart {
+                index: 1,
+                id: "toolu_1".to_owned(),
+                name: "run_sql".to_owned(),
+            }]
+        );
+        assert_eq!(
+            decode_event(input).unwrap(),
+            vec![Step::ToolInput {
+                index: 1,
+                partial_json: "{\"q\":".to_owned(),
+            }]
+        );
+        assert_eq!(decode_event(stop).unwrap(), vec![Step::ToolStop { index: 1 }]);
     }
 
     #[test]
@@ -220,6 +413,22 @@ mod tests {
             ]
         );
         assert_eq!(decode_event(r#"{"type":"message_stop"}"#).unwrap(), vec![Step::Done]);
+    }
+
+    #[test]
+    fn the_tool_use_stop_reason_maps_to_tool_use() {
+        let delta = r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":3}}"#;
+
+        assert_eq!(
+            decode_event(delta).unwrap(),
+            vec![
+                Step::Usage(Usage {
+                    input_tokens: None,
+                    output_tokens: Some(3)
+                }),
+                Step::Stop(StopReason::ToolUse)
+            ]
+        );
     }
 
     #[test]
