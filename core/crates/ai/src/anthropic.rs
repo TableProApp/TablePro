@@ -273,8 +273,8 @@ fn stop_reason(reason: &str) -> StopReason {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat_request::{ContentBlock, Role, ToolSpec};
     use crate::ChatMessage;
+    use crate::chat_request::{ContentBlock, Role, ToolSpec};
 
     fn parse(json: &str) -> serde_json::Value {
         serde_json::from_str(json).unwrap()
@@ -369,7 +369,8 @@ mod tests {
     #[test]
     fn a_tool_use_block_decodes_to_start_input_and_stop_steps() {
         let start = r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"run_sql","input":{}}}"#;
-        let input = r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"q\":"}}"#;
+        let input =
+            r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"q\":"}}"#;
         let stop = r#"{"type":"content_block_stop","index":1}"#;
 
         assert_eq!(

@@ -292,8 +292,8 @@ pub(crate) fn decode_chunk(data: &str) -> Result<Vec<Step>, AiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat_request::{ContentBlock, Role, ToolSpec};
     use crate::ChatMessage;
+    use crate::chat_request::{ContentBlock, Role, ToolSpec};
 
     fn parse(json: &str) -> serde_json::Value {
         serde_json::from_str(json).unwrap()

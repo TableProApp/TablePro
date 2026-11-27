@@ -20,8 +20,16 @@ impl Role {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ContentBlock {
     Text(String),
-    ToolUse { id: String, name: String, input: Value },
-    ToolResult { id: String, content: String, is_error: bool },
+    ToolUse {
+        id: String,
+        name: String,
+        input: Value,
+    },
+    ToolResult {
+        id: String,
+        content: String,
+        is_error: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
