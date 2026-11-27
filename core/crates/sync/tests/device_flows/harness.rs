@@ -27,6 +27,7 @@ use tablepro_sync::api::transport::{
     ServiceTransport, Transport, TransportError,
 };
 use tablepro_sync::keys::{Clock, KeyService, KeyServiceParts};
+use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
 use tablepro_sync_testing::{FakeClient, FakeDeviceStore, FakeServer, MemoryStateFiles, RecordingHooks};
 use zeroize::Zeroizing;
@@ -327,6 +328,17 @@ impl ServiceTransport for Wire {
     }
 }
 
+// Where a device keeps its state file: in memory, or on disk as the apps keep it, behind the real file's one
+// connection.
+#[derive(Clone)]
+enum Files {
+    Memory(Arc<MemoryStateFiles>),
+    Disk {
+        files: Arc<SqliteStateFiles>,
+        _dir: Arc<tempfile::TempDir>,
+    },
+}
+
 pub struct Device {
     pub service: KeyService,
     pub server: Arc<FakeServer>,
@@ -336,7 +348,7 @@ pub struct Device {
     pub store: Arc<Store>,
     pub row: DeviceRowId,
     pub account: AccountId,
-    files: Arc<MemoryStateFiles>,
+    files: Files,
     fail_commit: Arc<AtomicI64>,
     yield_begin: Arc<AtomicBool>,
     skew: Arc<ServerClock>,
@@ -344,6 +356,15 @@ pub struct Device {
 
 impl Device {
     pub async fn new(server: &Arc<FakeServer>, account: AccountId, row: &str) -> Self {
+        Self::create(server, account, row, false).await
+    }
+
+    // A device whose state file is the real one on disk.
+    pub async fn on_disk(server: &Arc<FakeServer>, account: AccountId, row: &str) -> Self {
+        Self::create(server, account, row, true).await
+    }
+
+    async fn create(server: &Arc<FakeServer>, account: AccountId, row: &str, on_disk: bool) -> Self {
         let row = DeviceRowId(row.to_owned());
         let wire = Arc::new(Wire {
             client: server.client(account, row.clone()),
@@ -361,17 +382,17 @@ impl Device {
             pause_erase: Mutex::new(None),
         });
         let clock = Arc::new(ServerClock(Arc::clone(server), AtomicI64::new(0)));
-        Self::open(
-            server,
-            account,
-            row,
-            wire,
-            store,
-            Arc::new(MemoryStateFiles::new()),
-            clock,
-            Opened::FRESH,
-        )
-        .await
+        let files = if on_disk {
+            let dir = Arc::new(tempfile::tempdir().unwrap());
+            let files = SqliteStateFiles::at(dir.path().to_path_buf(), store.clone() as Arc<dyn HostDeviceStore>);
+            Files::Disk {
+                files: Arc::new(files),
+                _dir: dir,
+            }
+        } else {
+            Files::Memory(Arc::new(MemoryStateFiles::new()))
+        };
+        Self::open(server, account, row, wire, store, files, clock, Opened::FRESH).await
     }
 
     #[expect(
@@ -384,7 +405,7 @@ impl Device {
         row: DeviceRowId,
         wire: Arc<Wire>,
         store: Arc<Store>,
-        files: Arc<MemoryStateFiles>,
+        files: Files,
         clock: Arc<ServerClock>,
         opened: Opened,
     ) -> Self {
@@ -394,11 +415,18 @@ impl Device {
             account,
             device_row: row.clone(),
         };
-        files.set_opened(identity.clone(), opened);
+        // A file on disk opens as its own anchor finds it.
+        let inner = match &files {
+            Files::Memory(files) => {
+                files.set_opened(identity.clone(), opened);
+                files.open(identity).await.unwrap()
+            }
+            Files::Disk { files, .. } => files.open(identity).await.unwrap(),
+        };
         let fail_commit = Arc::new(AtomicI64::new(-1));
         let yield_begin = Arc::new(AtomicBool::new(false));
         let state: Arc<dyn StateStore> = Arc::new(Flaky {
-            inner: files.open(identity).await.unwrap(),
+            inner,
             fail_commit: Arc::clone(&fail_commit),
             yield_begin: Arc::clone(&yield_begin),
         });
@@ -431,17 +459,22 @@ impl Device {
 
     // The same device after a restart whose state file opened as `opened` says, its device store as it was.
     pub async fn reopen(self, opened: Opened) -> Self {
-        Self::open(
-            &self.server,
-            self.account,
-            self.row,
-            self.wire,
-            self.store,
-            self.files,
-            self.skew,
-            opened,
-        )
-        .await
+        let Self {
+            service,
+            server,
+            wire,
+            state,
+            store,
+            row,
+            account,
+            files,
+            skew,
+            ..
+        } = self;
+        // A file on disk is held by one store at a time, as by one process.
+        drop(service);
+        drop(state);
+        Self::open(&server, account, row, wire, store, files, skew, opened).await
     }
 
     // The next transaction gives way once before it starts, so a call running beside it queues behind the lock the

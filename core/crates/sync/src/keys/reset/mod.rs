@@ -325,21 +325,28 @@ impl KeyService {
 
     // This device's own activation applied, adopted never before `held_until`.
     pub(super) async fn own_activation_applied(&self, record: &ResetRecord) -> Result<bool, SyncError> {
-        Ok(self.now_us() >= record.held_until_us && self.activation_present(record).await?)
+        if self.now_us() < record.held_until_us {
+            return Ok(false);
+        }
+        let mut txn = self.begin().await?;
+        self.activation_present(txn.as_mut(), record).await
     }
 
     // The activation's records are in force: the certificate at the reset's `av` is its proposal's under the IK it
     // proposed, the device certificate there names its reset device keys, and the personal and history versions there
     // are signed under the reset's ASK, which only this device holds. The proposal's own records are public, so they
     // alone never decide it. Whatever the clock says, a reset whose activation is present is never ended.
-    pub(super) async fn activation_present(&self, record: &ResetRecord) -> Result<bool, SyncError> {
+    pub(super) async fn activation_present(
+        &self,
+        txn: &mut dyn StateTxn,
+        record: &ResetRecord,
+    ) -> Result<bool, SyncError> {
         let Some(keys) = self.reset_keys(record.reset).await? else {
             return Ok(false);
         };
         let public = keys.account.public()?;
         let account = self.account();
-        let mut txn = self.begin().await?;
-        let Some(certificate) = self.own_certificate(txn.as_mut(), record.av).await? else {
+        let Some(certificate) = self.own_certificate(txn, record.av).await? else {
             return Ok(false);
         };
         if certificate.verify(self.origin()).is_err()
@@ -355,7 +362,7 @@ impl KeyService {
             av: record.av,
         };
         let certified = match self
-            .applied_object(txn.as_mut(), ScopeName::Personal, KeyKind::Device, &device.to_wire())
+            .applied_object(txn, ScopeName::Personal, KeyKind::Device, &device.to_wire())
             .await?
             .map(|object| object.body)
         {
@@ -370,9 +377,7 @@ impl KeyService {
         if !certified {
             return Ok(false);
         }
-        let versions = self
-            .applied_objects(txn.as_mut(), ScopeName::Personal, KeyKind::Version)
-            .await?;
+        let versions = self.applied_objects(txn, ScopeName::Personal, KeyKind::Version).await?;
         Ok([KeyPurpose::Personal, KeyPurpose::History].iter().all(|purpose| {
             versions.iter().filter_map(KeyObject::version_record).any(|version| {
                 version.key.purpose == *purpose

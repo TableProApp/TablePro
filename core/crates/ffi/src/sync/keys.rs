@@ -606,9 +606,17 @@ impl SyncService {
     }
 
     pub async fn approval_requests(&self) -> Result<Vec<ApprovalRequestInfo>, CoreError> {
-        self.on_keys(move |keys| async move {
-            let requests = keys.approval_requests().await?;
-            Ok(requests.into_iter().map(ApprovalRequestInfo::from).collect())
+        let account = self.names_account();
+        self.on_engine(move |engine| async move {
+            let requests = engine.keys.approval_requests().await?;
+            if requests.is_empty() {
+                return Ok(Vec::new());
+            }
+            let rows = DeviceRows::read(account.as_ref(), engine.binding.as_ref()).await;
+            Ok(requests
+                .into_iter()
+                .map(|request| ApprovalRequestInfo::from(rows.name_request(request)))
+                .collect())
         })
         .await
     }

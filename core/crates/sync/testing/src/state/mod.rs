@@ -1,9 +1,11 @@
 // A state file in memory: one per identity, refusing none it was not made for, with transactions that commit whole
 // and raise the counter, and an `Opened` a test sets to stand for what an anchor check found. It computes no MAC and
-// keeps no anchor; those are the real file's (K6a-1, K6d).
+// keeps no anchor; those are the real file's (K6a-1, K6d). Like the real file's one connection, it holds one
+// transaction at a time, and a begin waits for the one open before it.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_sync::api::error::StateError;
@@ -12,7 +14,12 @@ use tablepro_sync::api::state::{
     BindingRow, Committed, Opened, Provider, Row, RowKey, RowRange, StateFiles, StateIdentity, StateStore, StateTxn,
     Table,
 };
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
+
+// No transaction here waits on anything slow, so a begin still waiting after this long waits on one its own caller
+// holds: the real file then stalls for sqlx's 30 s acquire timeout and fails with `sync.state.io`.
+const NESTED_BEGIN: Duration = Duration::from_secs(2);
 
 type Rows = BTreeMap<(Table, Vec<u8>), Row>;
 
@@ -82,6 +89,7 @@ impl StateFiles for MemoryStateFiles {
                     identity: identity.clone(),
                     opened: opened.clone(),
                     rows: Arc::new(Mutex::new(rows)),
+                    writer: Arc::new(Semaphore::new(1)),
                 })
             })
             .clone();
@@ -89,6 +97,7 @@ impl StateFiles for MemoryStateFiles {
             identity: file.identity.clone(),
             opened,
             rows: Arc::clone(&file.rows),
+            writer: Arc::clone(&file.writer),
         };
         Ok(Arc::new(reopened))
     }
@@ -104,6 +113,7 @@ pub struct MemoryState {
     identity: StateIdentity,
     opened: Opened,
     rows: Arc<Mutex<Rows>>,
+    writer: Arc<Semaphore>,
 }
 
 #[async_trait]
@@ -116,12 +126,26 @@ impl StateStore for MemoryState {
         &self.opened
     }
 
+    #[expect(
+        clippy::panic,
+        reason = "a begin under a transaction its caller holds is a bug the panic's backtrace names"
+    )]
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError> {
+        let writer = match tokio::time::timeout(NESTED_BEGIN, Arc::clone(&self.writer).acquire_owned()).await {
+            Ok(Ok(writer)) => writer,
+            Ok(Err(closed)) => {
+                return Err(StateError::Io {
+                    detail: closed.to_string(),
+                });
+            }
+            Err(_) => panic!("a state transaction began while its caller held one open"),
+        };
         let view = lock(&self.rows).clone();
         Ok(Box::new(MemoryTxn {
             rows: Arc::clone(&self.rows),
             view,
             writes: Vec::new(),
+            _writer: writer,
         }))
     }
 }
@@ -139,6 +163,7 @@ struct MemoryTxn {
     // The rows as this transaction sees them, its own writes included.
     view: Rows,
     writes: Vec<Write>,
+    _writer: OwnedSemaphorePermit,
 }
 
 fn slot(key: &RowKey) -> (Table, Vec<u8>) {

@@ -466,6 +466,43 @@ fn a_key_device_takes_the_name_platform_and_row_of_the_row_that_holds_it() {
     assert_eq!((removed.device, removed.name), (None, None));
 }
 
+// A new device's request is named by the row that wrote it, as the server serves it beside the request; its key device
+// is on no row yet. A request served with no row stays unnamed.
+#[test]
+fn an_approval_request_takes_the_name_and_platform_of_the_row_that_wrote_it() {
+    use tablepro_keys::encoding::RequestId;
+    use tablepro_sync::api::key_flows::ApprovalRequest;
+
+    let rows = super::names::DeviceRows::of(vec![tablepro_account::Device {
+        id: "dev_n".to_owned(),
+        machine_id: "0".repeat(64),
+        platform: "macos".to_owned(),
+        name: "Lab (n)".to_owned(),
+        app_version: "1.0.0".to_owned(),
+        os_version: "26.1".to_owned(),
+        last_seen_at: chrono::DateTime::from_timestamp(1_800_000_000, 0).unwrap(),
+        licensed_at: None,
+        offline_until: None,
+        key_device: None,
+    }]);
+    let request = |device: Option<&str>| ApprovalRequest {
+        request: RequestId(Uuid::from_u128(7)),
+        device: device.map(|id| DeviceRowId(id.to_owned())),
+        device_name: None,
+        platform: None,
+        requested_at_us: 0,
+    };
+
+    let named = rows.name_request(request(Some("dev_n")));
+    let unknown = rows.name_request(request(Some("dev_gone")));
+    let unwritten = rows.name_request(request(None));
+
+    assert_eq!(named.device_name.as_deref(), Some("Lab (n)"));
+    assert_eq!(named.platform.as_deref(), Some("macos"));
+    assert_eq!((unknown.device_name, unknown.platform), (None, None));
+    assert_eq!((unwritten.device_name, unwritten.platform), (None, None));
+}
+
 // The same account on another device row, as a second Mac signed in to it.
 fn second_link(server: &Arc<FakeServer>, account: AccountId) -> ServiceLink {
     let device_row = DeviceRowId("dev_01k8d6wpggfd68tbhz818p4ww5".to_owned());

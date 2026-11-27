@@ -442,9 +442,9 @@ impl Device {
     // K7-2's approval, stood in for: `approver` certifies this device at its `av` and wraps the account keys to it
     // under its own DSK, and each side keeps the other as an own-device pin.
     pub async fn approved_by(&self, approver: &Device) {
+        let pin = approver.pin(approver.account).await.unwrap();
         let mut txn = approver.txn().await;
         let own = approver.service.own_account(txn.as_mut()).await.unwrap().unwrap();
-        let pin = approver.pin(approver.account).await.unwrap();
         let mut versions = Vec::new();
         for purpose in [
             tablepro_keys::encoding::KeyPurpose::Personal,
