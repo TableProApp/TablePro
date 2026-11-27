@@ -2,11 +2,8 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
+use super::json::{Object, object, str_field, value_to_string};
 use crate::plan::{QueryPlan, QueryPlanNode};
-
-/// A JSON object. `BTreeMap`, not `serde_json::Map`, which the core disallows for
-/// its key order; a plan's property order does not matter.
-type Object = BTreeMap<String, Value>;
 
 /// Keys read into named fields, so they do not repeat in `properties`.
 const KNOWN_KEYS: &[&str] = &[
@@ -77,23 +74,6 @@ fn parse_node(dict: Object) -> QueryPlanNode {
         properties,
         children,
         ..Default::default()
-    }
-}
-
-/// Read a JSON object from a value, or None when it is not an object.
-fn object(value: &Value) -> Option<Object> {
-    serde_json::from_value(value.clone()).ok()
-}
-
-fn str_field(dict: &Object, key: &str) -> Option<String> {
-    dict.get(key).and_then(Value::as_str).map(str::to_string)
-}
-
-fn value_to_string(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        Value::Null => "null".to_string(),
-        other => other.to_string(),
     }
 }
 

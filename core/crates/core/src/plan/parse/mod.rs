@@ -1,6 +1,8 @@
 //! Parsers that turn an engine's EXPLAIN output into a [`QueryPlan`]. One per
 //! [`ExplainPlanFormat`]; the driver's variant names the format.
 
+mod json;
+mod mysql;
 mod postgres;
 mod sqlite;
 mod tree;
@@ -13,6 +15,8 @@ use super::{ExplainPlanFormat, QueryPlan};
 pub fn parse(format: ExplainPlanFormat, raw_text: &str) -> Option<QueryPlan> {
     if format == ExplainPlanFormat::POSTGRES_JSON {
         postgres::parse(raw_text)
+    } else if format == ExplainPlanFormat::MYSQL_COMPOSITE {
+        mysql::parse(raw_text)
     } else if format == ExplainPlanFormat::SQLITE_QUERY_PLAN {
         sqlite::parse(raw_text)
     } else {
