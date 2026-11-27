@@ -107,4 +107,37 @@ struct MySQLStopBeforeStatementTests {
         #expect(!queries.contains("SELECT 'stopped'"))
         #expect(queries.last == "ROLLBACK")
     }
+
+    @Test("A statement a Stop held back releases nothing the session holds")
+    func heldBackStatementKeepsTheFootprint() async throws {
+        let box = StopBox()
+        let server = try Self.server(stoppingAt: { $0 == "START TRANSACTION READ ONLY" }, box: box)
+        defer { server.close() }
+        async let session = server.serveOneSession()
+        let driver = Self.driver(port: server.port)
+        try await driver.connect()
+        _ = try await driver.executeUserQuery(
+            query: "SELECT GET_LOCK('job', 1)", rowCap: nil, parameters: nil, context: PluginStatementContext()
+        )
+        box.arm(driver)
+
+        var failure: Error?
+        do {
+            _ = try await driver.executeUserQuery(
+                query: "SELECT RELEASE_ALL_LOCKS()",
+                rowCap: nil,
+                parameters: nil,
+                context: PluginStatementContext(enforcesReadOnly: true)
+            )
+        } catch {
+            failure = error
+        }
+        let release = try await driver.releaseIdleResource()
+        driver.disconnect()
+
+        let queries = await session.queries
+        #expect(failure is CancellationError)
+        #expect(!queries.contains("SELECT RELEASE_ALL_LOCKS()"))
+        #expect(!release.didRelease)
+    }
 }
