@@ -159,7 +159,7 @@ internal actor QueryHistoryCoreMirror {
                 connectionId: row.connectionId.uuidString,
                 connectionName: names[row.connectionId] ?? "",
                 executedAtMs: CoreMirrorTime.milliseconds(row.executedAt),
-                durationMs: CoreMirrorTime.milliseconds(seconds: row.executionTime),
+                durationUs: CoreMirrorTime.microseconds(seconds: row.executionTime),
                 rowsAffected: Int64(row.rowCount),
                 outcome: row.wasSuccessful ? .succeeded : .failed(message: row.errorMessage ?? ""),
                 details: HistoryRunDetails(
@@ -167,8 +167,8 @@ internal actor QueryHistoryCoreMirror {
                     schema: nil,
                     source: nil,
                     statementType: nil,
-                    firstRowMs: nil,
-                    serverMs: nil,
+                    firstRowUs: nil,
+                    serverUs: nil,
                     fingerprint: nil
                 )
             )

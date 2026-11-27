@@ -239,7 +239,7 @@ const HISTORY_ENTRY: &[(&str, Target)] = &[
     ("connection_id", Wire("connection_id")),
     ("connection_name", Wire("connection_name")),
     ("executed_at", Wire("executed_at")),
-    ("duration_ms", Wire("duration_ms")),
+    ("duration_us", Wire("duration_us")),
     ("rows_affected", Wire("row_count")),
     ("success", Wire("succeeded")),
     ("cancelled", Wire("cancelled")),
@@ -249,8 +249,8 @@ const HISTORY_ENTRY: &[(&str, Target)] = &[
     ("details.schema", Wire("schema")),
     ("details.source", Wire("source")),
     ("details.statement_type", Wire("statement_type")),
-    ("details.first_row_ms", Wire("first_row_ms")),
-    ("details.server_ms", Wire("server_ms")),
+    ("details.first_row_us", Wire("first_row_us")),
+    ("details.server_us", Wire("server_us")),
     // Read with each app's own grammar, so another device's reading would not match its own.
     ("details.fingerprint", DeviceOnly),
 ];

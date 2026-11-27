@@ -6,8 +6,8 @@ pub struct RunDetails {
     pub schema: Option<String>,
     pub source: Option<RunSource>,
     pub statement_type: Option<StatementType>,
-    pub first_row_ms: Option<i64>,
-    pub server_ms: Option<i64>,
+    pub first_row_us: Option<i64>,
+    pub server_us: Option<i64>,
     // The statement's shape as the app's grammar reads it, so runs that differ only in their values group together.
     // It never leaves the device: another device reads the shape with its own grammar.
     pub fingerprint: Option<i64>,

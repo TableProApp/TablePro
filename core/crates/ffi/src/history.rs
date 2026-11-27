@@ -27,12 +27,13 @@ pub struct QueryHistoryStore {
     connections: Option<ConnectionStore>,
 }
 
-// A run as the editor saw it end. Times are milliseconds from the Unix epoch; the store keeps whole seconds.
+// A run as the editor saw it end. Instants are milliseconds from the Unix epoch, which the store keeps as whole
+// seconds; durations are microseconds, so a run under a millisecond keeps its time.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct HistoryRun {
     pub sql: String,
     pub executed_at_ms: i64,
-    pub duration_ms: Option<i64>,
+    pub duration_us: Option<i64>,
     pub rows_affected: Option<i64>,
     pub outcome: HistoryOutcomeTag,
     pub details: HistoryRunDetails,
@@ -46,8 +47,8 @@ pub struct HistoryRunDetails {
     pub source: Option<HistorySourceTag>,
     pub statement_type: Option<StatementTypeTag>,
     // The client's time to the first row, and the time the engine reported, where its protocol carries one.
-    pub first_row_ms: Option<i64>,
-    pub server_ms: Option<i64>,
+    pub first_row_us: Option<i64>,
+    pub server_us: Option<i64>,
     // The statement's shape as the app's grammar reads it. It never leaves the device, so a run another device
     // recorded comes without one (`QueryHistoryStore::entries_without_fingerprint`).
     pub fingerprint: Option<i64>,
@@ -125,7 +126,7 @@ pub struct HistoryEntryInfo {
     pub connection_name: String,
     pub driver_id: String,
     pub executed_at_ms: i64,
-    pub duration_ms: Option<i64>,
+    pub duration_us: Option<i64>,
     pub rows_affected: Option<i64>,
     pub outcome: HistoryOutcomeTag,
     pub pinned: bool,
@@ -386,7 +387,7 @@ fn kept(session: &Session, run: HistoryRun) -> Option<NewEntry> {
         connection_id: metadata.id,
         connection_name: metadata.name.clone(),
         executed_at: from_millis(run.executed_at_ms),
-        duration_ms: run.duration_ms,
+        duration_us: run.duration_us,
         rows_affected: run.rows_affected,
         outcome: run.outcome.into(),
         details: run.details.into(),
@@ -412,7 +413,7 @@ impl HistoryCursorArg {
             connection_id: Uuid::nil(),
             connection_name: String::new(),
             executed_at: from_seconds(self.executed_at_secs),
-            duration_ms: None,
+            duration_us: None,
             rows_affected: None,
             success: true,
             cancelled: false,
@@ -440,7 +441,7 @@ impl From<Entry> for HistoryEntryInfo {
             connection_name: entry.connection_name,
             driver_id: entry.driver_id,
             executed_at_ms: millis(entry.executed_at),
-            duration_ms: entry.duration_ms,
+            duration_us: entry.duration_us,
             rows_affected: entry.rows_affected,
             outcome,
             pinned: entry.pinned,
@@ -456,8 +457,8 @@ impl From<RunDetails> for HistoryRunDetails {
             schema: details.schema,
             source: details.source.map(HistorySourceTag::from),
             statement_type: details.statement_type.map(StatementTypeTag::from),
-            first_row_ms: details.first_row_ms,
-            server_ms: details.server_ms,
+            first_row_us: details.first_row_us,
+            server_us: details.server_us,
             fingerprint: details.fingerprint,
         }
     }
@@ -470,8 +471,8 @@ impl From<HistoryRunDetails> for RunDetails {
             schema: details.schema,
             source: details.source.map(RunSource::from),
             statement_type: details.statement_type.map(StatementType::from),
-            first_row_ms: details.first_row_ms,
-            server_ms: details.server_ms,
+            first_row_us: details.first_row_us,
+            server_us: details.server_us,
             fingerprint: details.fingerprint,
         }
     }

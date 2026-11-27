@@ -23,7 +23,7 @@ fn entry(query: &str, connection: Uuid, seconds: u64) -> NewEntry {
         connection_id: connection,
         connection_name: "shop".to_owned(),
         executed_at: SystemTime::UNIX_EPOCH + Duration::from_secs(seconds),
-        duration_ms: Some(5),
+        duration_us: Some(5),
         rows_affected: None,
         outcome: Outcome::Success,
         details: RunDetails::default(),

@@ -24,7 +24,7 @@ fn entry(query: &str, seconds: u64) -> NewEntry {
         connection_id: Uuid::new_v4(),
         connection_name: "shop".to_owned(),
         executed_at: SystemTime::UNIX_EPOCH + Duration::from_secs(seconds),
-        duration_ms: Some(12),
+        duration_us: Some(12),
         rows_affected: Some(3),
         outcome: Outcome::Error("syntax".to_owned()),
         details: RunDetails::default(),
@@ -84,8 +84,8 @@ fn details() -> RunDetails {
         schema: Some("public".to_owned()),
         source: Some(RunSource::Editor),
         statement_type: Some(StatementType::Select),
-        first_row_ms: Some(12),
-        server_ms: Some(9),
+        first_row_us: Some(12),
+        server_us: Some(9),
         fingerprint: Some(-42),
     }
 }

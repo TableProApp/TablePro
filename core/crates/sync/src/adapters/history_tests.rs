@@ -38,7 +38,7 @@ fn wire(query: &str, connection: &str, seconds: i64) -> Value {
         "connection_name": "shop",
         "database_type": "PostgreSQL",
         "executed_at": seconds * 1000,
-        "duration_ms": 12,
+        "duration_us": 12,
         "row_count": 3,
         "succeeded": false,
         "cancelled": false,
@@ -172,7 +172,7 @@ async fn a_run_this_device_recorded_reads_as_its_wire_entry_in_whole_seconds() {
         connection_id: Uuid::parse_str(SHOP).unwrap(),
         connection_name: "shop".to_owned(),
         executed_at: SystemTime::UNIX_EPOCH + Duration::from_millis(1_767_225_600_999),
-        duration_ms: None,
+        duration_us: None,
         rows_affected: None,
         outcome: Outcome::Success,
         details: RunDetails::default(),
@@ -220,7 +220,7 @@ fn ran_on(engine: &str, query: &str) -> NewEntry {
         connection_id: Uuid::parse_str(SHOP).unwrap(),
         connection_name: "shop".to_owned(),
         executed_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_767_225_600),
-        duration_ms: None,
+        duration_us: None,
         rows_affected: None,
         outcome: Outcome::Success,
         details: RunDetails::default(),
@@ -374,8 +374,8 @@ async fn a_run_s_details_go_up_and_come_back_and_its_fingerprint_stays_here() {
         schema: Some("public".to_owned()),
         source: Some(RunSource::TableBrowse),
         statement_type: Some(StatementType::Select),
-        first_row_ms: Some(7),
-        server_ms: Some(5),
+        first_row_us: Some(7),
+        server_us: Some(5),
         fingerprint: Some(99),
     };
     history.record(ran.clone()).await.unwrap();
@@ -389,8 +389,8 @@ async fn a_run_s_details_go_up_and_come_back_and_its_fingerprint_stays_here() {
         ("schema", json!("public")),
         ("source", json!("table_browse")),
         ("statement_type", json!("select")),
-        ("first_row_ms", json!(7)),
-        ("server_ms", json!(5)),
+        ("first_row_us", json!(7)),
+        ("server_us", json!(5)),
     ] {
         assert_eq!(fields[member], value, "{member}");
     }
@@ -402,6 +402,41 @@ async fn a_run_s_details_go_up_and_come_back_and_its_fingerprint_stays_here() {
             fingerprint: None,
             ..ran.details
         }
+    );
+}
+
+#[tokio::test]
+async fn a_run_under_a_millisecond_reaches_another_device_with_its_microseconds() {
+    let here = tempfile::tempdir().unwrap();
+    let there = tempfile::tempdir().unwrap();
+    let (history, adapter) = adapter(here.path()).await;
+    let (other_history, other) = adapter(there.path()).await;
+    let mut ran = ran_on("PostgreSQL", "SELECT 1");
+    ran.duration_us = Some(90);
+    ran.details.first_row_us = Some(70);
+    ran.details.server_us = Some(40);
+    history.record(ran.clone()).await.unwrap();
+
+    let sent = adapter.records(ScopeName::History).await.unwrap().records.remove(0);
+    other
+        .apply(ScopeName::History, vec![put(&sent.record_id, sent.fields.clone())])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        (
+            &sent.fields["duration_us"],
+            &sent.fields["first_row_us"],
+            &sent.fields["server_us"]
+        ),
+        (&json!(90), &json!(70), &json!(40))
+    );
+    // A pulled run comes without a fingerprint, so this reads every run the other device holds.
+    let arrived = &other_history.without_fingerprint(10).await.unwrap()[0];
+    assert_eq!(arrived.duration_us, Some(90));
+    assert_eq!(
+        (arrived.details.first_row_us, arrived.details.server_us),
+        (Some(70), Some(40))
     );
 }
 

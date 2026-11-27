@@ -12,6 +12,8 @@ mod history_query;
 mod host_entries;
 #[cfg(test)]
 mod identity_tests;
+#[cfg(test)]
+mod microseconds_migration_tests;
 mod new_entry;
 mod outcome;
 #[cfg(test)]
@@ -71,13 +73,13 @@ const MAX_UNPINNED_ENTRIES: i64 = 100_000;
 const IDS_PER_STATEMENT: usize = 500;
 
 const ENTRY_COLUMNS: &str = "h.id, h.record_id, h.query, h.driver_id, h.connection_id, h.connection_name, \
-     h.executed_at, h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error, h.database, h.schema, \
-     h.source, h.statement_type, h.first_row_ms, h.server_ms, h.fingerprint";
+     h.executed_at, h.duration_us, h.rows_affected, h.success, h.cancelled, h.pinned, h.error, h.database, h.schema, \
+     h.source, h.statement_type, h.first_row_us, h.server_us, h.fingerprint";
 
 // The columns a new entry writes, in the order `bind_entry!` binds them.
 const INSERT_COLUMNS: &str = "record_id, query, query_folded, driver_id, connection_id, connection_name, executed_at, \
-     duration_ms, rows_affected, success, cancelled, error, database, schema, source, statement_type, first_row_ms, \
-     server_ms, fingerprint";
+     duration_us, rows_affected, success, cancelled, error, database, schema, source, statement_type, first_row_us, \
+     server_us, fingerprint";
 const INSERT_VALUES: &str = "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
 
 // Macros, since sqlx's query and scalar query share no trait for `bind`.
@@ -89,8 +91,8 @@ macro_rules! bind_details {
             .bind(details.schema.clone())
             .bind(details.source.map($crate::query_history::RunSource::as_str))
             .bind(details.statement_type.map($crate::query_history::StatementType::as_str))
-            .bind(details.first_row_ms)
-            .bind(details.server_ms)
+            .bind(details.first_row_us)
+            .bind(details.server_us)
             .bind(details.fingerprint)
     }};
 }
@@ -107,7 +109,7 @@ macro_rules! bind_entry {
             .bind(entry.connection_id.to_string())
             .bind(entry.connection_name.clone())
             .bind($crate::unix_time::to_unix(entry.executed_at))
-            .bind(entry.duration_ms)
+            .bind(entry.duration_us)
             .bind(entry.rows_affected)
             .bind(success)
             .bind(cancelled)
@@ -313,7 +315,7 @@ impl QueryHistory {
             connection_id,
             connection_name: row.try_get("connection_name")?,
             executed_at: from_unix(executed_at),
-            duration_ms: row.try_get::<Option<i64>, _>("duration_ms")?,
+            duration_us: row.try_get::<Option<i64>, _>("duration_us")?,
             rows_affected: row.try_get::<Option<i64>, _>("rows_affected")?,
             success: success_i != 0,
             cancelled: cancelled_i != 0,
@@ -330,8 +332,8 @@ impl QueryHistory {
                     .try_get::<Option<String>, _>("statement_type")?
                     .as_deref()
                     .and_then(StatementType::parse),
-                first_row_ms: row.try_get("first_row_ms")?,
-                server_ms: row.try_get("server_ms")?,
+                first_row_us: row.try_get("first_row_us")?,
+                server_us: row.try_get("server_us")?,
                 fingerprint: row.try_get("fingerprint")?,
             },
         })
@@ -492,7 +494,7 @@ impl QueryHistory {
                 .bind(entry.connection_id.to_string())
                 .bind(&entry.connection_name)
                 .bind(to_unix(entry.executed_at))
-                .bind(entry.duration_ms)
+                .bind(entry.duration_us)
                 .bind(entry.rows_affected)
                 .bind(i64::from(entry.success))
                 .bind(i64::from(entry.cancelled))
@@ -1087,7 +1089,7 @@ mod tests {
             connection_id: connection,
             connection_name: "test".to_owned(),
             executed_at: SystemTime::now(),
-            duration_ms: Some(3),
+            duration_us: Some(3),
             rows_affected: Some(1),
             outcome: Outcome::Success,
             details: RunDetails::default(),

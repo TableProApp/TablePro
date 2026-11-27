@@ -141,8 +141,8 @@ pub struct TableFolderRecordWrite {
     pub removed_items: Vec<TableKeyRecord>,
 }
 
-// A run another store kept, under its own record id. Times are milliseconds from the Unix epoch; the store keeps
-// whole seconds.
+// A run another store kept, under its own record id. Instants are milliseconds from the Unix epoch, which the store
+// keeps as whole seconds; durations are microseconds, so a run under a millisecond keeps its time.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct HistoryEntryRecord {
     pub record_id: String,
@@ -151,7 +151,7 @@ pub struct HistoryEntryRecord {
     pub connection_id: String,
     pub connection_name: String,
     pub executed_at_ms: i64,
-    pub duration_ms: Option<i64>,
+    pub duration_us: Option<i64>,
     pub rows_affected: Option<i64>,
     pub outcome: HistoryOutcomeTag,
     pub details: HistoryRunDetails,
@@ -632,7 +632,7 @@ impl TryFrom<HistoryEntryRecord> for NewEntry {
             connection_id: parse_id(&record.connection_id)?,
             connection_name: record.connection_name,
             executed_at: from_millis(record.executed_at_ms),
-            duration_ms: record.duration_ms,
+            duration_us: record.duration_us,
             rows_affected: record.rows_affected,
             outcome: Outcome::from(record.outcome),
             details: record.details.into(),

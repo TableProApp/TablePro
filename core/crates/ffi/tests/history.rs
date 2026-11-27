@@ -91,7 +91,7 @@ fn ran(sql: &str, at_secs: i64) -> HistoryRun {
     HistoryRun {
         sql: sql.to_owned(),
         executed_at_ms: at_secs * 1_000,
-        duration_ms: Some(12),
+        duration_us: Some(12),
         rows_affected: Some(3),
         outcome: HistoryOutcomeTag::Succeeded,
         details: Default::default(),
@@ -135,7 +135,7 @@ async fn a_recorded_run_is_found_by_its_words() {
     assert_eq!(entry.connection_name, session.name());
     assert_eq!(entry.driver_id, "sqlite");
     assert_eq!(entry.executed_at_ms, 1_700_000_000_000);
-    assert_eq!((entry.duration_ms, entry.rows_affected), (Some(12), Some(3)));
+    assert_eq!((entry.duration_us, entry.rows_affected), (Some(12), Some(3)));
     assert_eq!(entry.outcome, HistoryOutcomeTag::Succeeded);
     assert!(!entry.pinned);
     assert_eq!(named.next, None);

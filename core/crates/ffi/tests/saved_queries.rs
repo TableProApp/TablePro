@@ -369,7 +369,7 @@ async fn a_pinned_run_comes_first_and_an_export_writes_the_runs_asked_for() {
     let ran = |sql: &str, at_secs: i64| HistoryRun {
         sql: sql.to_owned(),
         executed_at_ms: at_secs * 1_000,
-        duration_ms: None,
+        duration_us: None,
         rows_affected: None,
         outcome: HistoryOutcomeTag::Succeeded,
         details: Default::default(),

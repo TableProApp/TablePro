@@ -58,7 +58,7 @@ impl QueryHistory {
         for (record_id, given) in details {
             let empty: Option<(bool, bool, bool, bool, bool, bool, bool)> = sqlx::query_as(
                 "SELECT database IS NULL, schema IS NULL, source IS NULL, statement_type IS NULL, \
-                 first_row_ms IS NULL, server_ms IS NULL, fingerprint IS NULL FROM history h WHERE h.record_id = ? \
+                 first_row_us IS NULL, server_us IS NULL, fingerprint IS NULL FROM history h WHERE h.record_id = ? \
                  AND NOT EXISTS (SELECT 1 FROM history_tombstones t WHERE t.record_id = h.record_id)",
             )
             .bind(record_id.to_string())
@@ -71,15 +71,15 @@ impl QueryHistory {
                 || (schema && given.schema.is_some())
                 || (source && given.source.is_some())
                 || (statement_type && given.statement_type.is_some())
-                || (first_row && given.first_row_ms.is_some())
-                || (server && given.server_ms.is_some());
+                || (first_row && given.first_row_us.is_some())
+                || (server && given.server_us.is_some());
             if !fills_synced && !(fingerprint && given.fingerprint.is_some()) {
                 continue;
             }
             let statement = sqlx::query(
                 "UPDATE history SET database = COALESCE(database, ?), schema = COALESCE(schema, ?), \
                  source = COALESCE(source, ?), statement_type = COALESCE(statement_type, ?), \
-                 first_row_ms = COALESCE(first_row_ms, ?), server_ms = COALESCE(server_ms, ?), \
+                 first_row_us = COALESCE(first_row_us, ?), server_us = COALESCE(server_us, ?), \
                  fingerprint = COALESCE(fingerprint, ?) WHERE record_id = ?",
             );
             bind_details!(statement, given)

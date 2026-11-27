@@ -264,7 +264,7 @@ mod tests {
             connection_id: connection,
             connection_name: "Prod".to_owned(),
             executed_at: std::time::SystemTime::now(),
-            duration_ms: Some(1),
+            duration_us: Some(1),
             rows_affected: Some(0),
             outcome: Outcome::Success,
             details: Default::default(),

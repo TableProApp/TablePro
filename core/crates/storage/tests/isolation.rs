@@ -30,7 +30,7 @@ fn entry(query: &str, connection_id: Uuid, connection_name: &str) -> NewEntry {
         connection_id,
         connection_name: connection_name.to_owned(),
         executed_at: SystemTime::now(),
-        duration_ms: Some(3),
+        duration_us: Some(3),
         rows_affected: Some(1),
         outcome: Outcome::Success,
         details: tablepro_storage::query_history::RunDetails::default(),

@@ -19,7 +19,7 @@ fn entry(connection: Uuid, query: &str, outcome: Outcome) -> NewEntry {
         connection_id: connection,
         connection_name: "Test".into(),
         executed_at: SystemTime::now(),
-        duration_ms: Some(1),
+        duration_us: Some(1),
         rows_affected: None,
         outcome,
         details: Default::default(),

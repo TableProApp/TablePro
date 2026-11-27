@@ -169,7 +169,7 @@ public sealed class QueryHistory : IDisposable
     private static Native.HistoryRun Run(HistoryRun run) => new(
         run.Sql,
         run.ExecutedAt.ToUnixTimeMilliseconds(),
-        run.Duration is { } duration ? checked((long)duration.TotalMilliseconds) : null,
+        run.Duration is { } duration ? checked((long)duration.TotalMicroseconds) : null,
         run.RowsAffected,
         Outcome(run.Outcome),
         new Native.HistoryRunDetails(null, null, Native.HistorySourceTag.Editor, null, null, null, null));
@@ -181,7 +181,7 @@ public sealed class QueryHistory : IDisposable
         entry.ConnectionName,
         entry.DriverId,
         DateTimeOffset.FromUnixTimeMilliseconds(entry.ExecutedAtMs),
-        entry.DurationMs is { } duration ? TimeSpan.FromMilliseconds(duration) : null,
+        entry.DurationUs is { } duration ? TimeSpan.FromMicroseconds(duration) : null,
         entry.RowsAffected,
         Outcome(entry.Outcome),
         entry.Pinned);

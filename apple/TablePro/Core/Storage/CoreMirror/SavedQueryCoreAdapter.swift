@@ -188,6 +188,15 @@ internal enum CoreMirrorTime {
     static func date(_ milliseconds: Int64) -> Date {
         Date(timeIntervalSince1970: Double(milliseconds) / 1_000)
     }
+
+    // A run's time crosses in microseconds: in milliseconds a run under one would read as no time at all.
+    static func microseconds(seconds: Double) -> Int64 {
+        let value = (seconds * 1_000_000).rounded()
+        guard value.isFinite else { return 0 }
+        guard value < Double(Int64.max) else { return .max }
+        guard value > Double(Int64.min) else { return .min }
+        return Int64(value)
+    }
 }
 
 extension SavedQueryMirrorValue.Query {

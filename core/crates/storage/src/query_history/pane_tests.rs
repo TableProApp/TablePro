@@ -18,7 +18,7 @@ fn run(query: &str, connection: Uuid, source: RunSource) -> NewEntry {
         connection_id: connection,
         connection_name: "shop".to_owned(),
         executed_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000),
-        duration_ms: Some(40),
+        duration_us: Some(40),
         rows_affected: Some(3),
         outcome: Outcome::Success,
         details: RunDetails {
@@ -26,8 +26,8 @@ fn run(query: &str, connection: Uuid, source: RunSource) -> NewEntry {
             schema: Some("public".to_owned()),
             source: Some(source),
             statement_type: Some(StatementType::Select),
-            first_row_ms: Some(12),
-            server_ms: Some(9),
+            first_row_us: Some(12),
+            server_us: Some(9),
             fingerprint: Some(-42),
         },
     }

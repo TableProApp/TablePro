@@ -20,7 +20,12 @@ struct QueryHistoryCoreMirrorTests {
         manager = QueryHistoryManager(storage: storage, isCapturePaused: { false }, coreMirror: mirror)
     }
 
-    private func run(_ query: String, succeeded: Bool = true, at seconds: TimeInterval) -> QueryHistoryEntry {
+    private func run(
+        _ query: String,
+        succeeded: Bool = true,
+        at seconds: TimeInterval,
+        taking executionTime: TimeInterval = 0.25
+    ) -> QueryHistoryEntry {
         QueryHistoryEntry(
             query: query,
             connectionId: connectionId,
@@ -28,7 +33,7 @@ struct QueryHistoryCoreMirrorTests {
             databaseType: .postgresql,
             source: .editor,
             executedAt: Date(timeIntervalSince1970: seconds),
-            executionTime: 0.25,
+            executionTime: executionTime,
             rowCount: 3,
             wasSuccessful: succeeded,
             errorMessage: succeeded ? nil : "syntax error"
@@ -65,8 +70,28 @@ struct QueryHistoryCoreMirrorTests {
         #expect(entry.connectionName == "shop")
         #expect(entry.driverId == DatabaseType.postgresql.rawValue)
         #expect(entry.executedAtMs == 1_700_000_000_000)
-        #expect(entry.durationMs == 250)
+        #expect(entry.durationUs == 250_000)
         #expect(entry.outcome == .failed(message: "syntax error"))
+    }
+
+    @Test("A run under a millisecond reaches the core in microseconds, not as no time")
+    func aRunUnderAMillisecondKeepsItsMicroseconds() async throws {
+        #expect(await storage.record(run("SELECT quick", at: 1_700_000_000, taking: 0.000_09)))
+
+        await mirror.push()
+
+        let filter = HistoryFilterArg(
+            text: "quick",
+            connectionIds: nil,
+            projectId: nil,
+            sources: nil,
+            status: .any,
+            executedAfterMs: nil,
+            executedBeforeMs: nil
+        )
+        let page = try await fixture.core.history().search(filter: filter, after: nil, limit: 10)
+        let entry = try #require(page.entries.first)
+        #expect(entry.durationUs == 90)
     }
 
     @Test("A run recorded through the manager reaches the core, and a deleted one leaves it")

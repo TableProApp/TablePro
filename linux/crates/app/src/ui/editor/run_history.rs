@@ -19,10 +19,10 @@ pub fn history_entry(query: String, metadata: &ConnectionMetadata, executed_at: 
     } else {
         Outcome::Success
     };
-    let duration_ms = SystemTime::now()
+    let duration_us = SystemTime::now()
         .duration_since(executed_at)
         .ok()
-        .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok());
+        .and_then(|elapsed| i64::try_from(elapsed.as_micros()).ok());
     NewEntry {
         record_id: uuid::Uuid::new_v4(),
         query,
@@ -30,7 +30,7 @@ pub fn history_entry(query: String, metadata: &ConnectionMetadata, executed_at: 
         connection_id: metadata.id,
         connection_name: metadata.name.clone(),
         executed_at,
-        duration_ms,
+        duration_us,
         rows_affected: log.rows_for_history(),
         outcome,
         details: RunDetails {

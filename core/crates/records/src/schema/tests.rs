@@ -587,7 +587,7 @@ fn the_history_table_names_every_member_the_store_holds() {
             connection_id: _,
             connection_name: _,
             executed_at: _,
-            duration_ms: _,
+            duration_us: _,
             rows_affected: _,
             success: _,
             cancelled: _,
@@ -600,8 +600,8 @@ fn the_history_table_names_every_member_the_store_holds() {
             schema: _,
             source: _,
             statement_type: _,
-            first_row_ms: _,
-            server_ms: _,
+            first_row_us: _,
+            server_us: _,
             fingerprint: _,
         } = details;
     };
@@ -616,7 +616,7 @@ fn the_history_table_names_every_member_the_store_holds() {
             "connection_id",
             "connection_name",
             "executed_at",
-            "duration_ms",
+            "duration_us",
             "rows_affected",
             "success",
             "cancelled",
@@ -626,8 +626,8 @@ fn the_history_table_names_every_member_the_store_holds() {
             "details.schema",
             "details.source",
             "details.statement_type",
-            "details.first_row_ms",
-            "details.server_ms",
+            "details.first_row_us",
+            "details.server_us",
             "details.fingerprint",
         ])
     );
