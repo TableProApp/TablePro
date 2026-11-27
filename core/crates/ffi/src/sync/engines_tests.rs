@@ -167,6 +167,7 @@ async fn saved_queries_sync_without_the_history() {
         saved_queries: Some(saved),
         standing: Some(Arc::new(Syncs)),
         store_journal: StoreJournal::new(),
+        team_library: None,
     };
 
     let found = kinds(&hosts.adapters(Provider::ICloud));
