@@ -44,13 +44,12 @@ final class WelcomeViewModelTests {
         self.connectionStorage = connectionStorage
         // The parameter is an @escaping @autoclosure: `self.connectionStorage` would capture self.
         groupStorage = GroupStorage(
-            userDefaults: defaults,
             syncJournal: tracker.journal,
             connectionStorage: connectionStorage
         )
         welcomeRouter = WelcomeRouter()
         recents = RecentConnectionsStore(defaults: defaults, appEvents: AppEvents())
-        preferences = ConnectionListPreferences(defaults: defaults, appEvents: AppEvents())
+        preferences = ConnectionListPreferences(defaults: defaults, connectionStorage: connectionStorage, appEvents: AppEvents())
         viewModel = makeViewModel()
     }
 
@@ -958,10 +957,8 @@ final class WelcomeViewModelTests {
         #expect(viewModel.connections.map(\.id) == [connection.id])
 
         let directory = connectionFileURL.deletingLastPathComponent()
-        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
-        defer {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-        }
+        try LibraryWriteRefusal.set(true, in: directory)
+        defer { try? LibraryWriteRefusal.set(false, in: directory) }
 
         connectionStorage.invalidateCache()
         viewModel.connectionsToDelete = [connection]

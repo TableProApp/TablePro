@@ -29,8 +29,8 @@ private final class WelcomeLibraryFixture {
             userDefaults: defaults,
             syncJournal: tracker.journal
         )
-        let groupStorage = GroupStorage(userDefaults: defaults, syncJournal: tracker.journal, connectionStorage: connectionStorage)
-        let tagStorage = TagStorage(userDefaults: defaults, syncJournal: tracker.journal, appEvents: events)
+        let groupStorage = GroupStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage)
+        let tagStorage = TagStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage, appEvents: events)
         let prod = ConnectionTag(name: "prod", color: .red)
         let euWest = ConnectionTag(name: "eu-west", color: .blue)
         let unused = ConnectionTag(name: "unused-prod", color: .gray)
@@ -85,7 +85,7 @@ private final class WelcomeLibraryFixture {
             importableAppDetector: { false },
             groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults),
             recentConnections: RecentConnectionsStore(defaults: defaults, appEvents: events),
-            listPreferences: ConnectionListPreferences(defaults: defaults, appEvents: events)
+            listPreferences: ConnectionListPreferences(defaults: defaults, connectionStorage: connectionStorage, appEvents: events)
         )
         viewModel.loadConnections()
     }

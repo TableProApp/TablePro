@@ -31,7 +31,8 @@ struct ConnectionLibraryStorageTests {
         let tracker = SyncJournalRecorder()
         let storeURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("library-connections_\(unique).json")
+            .appendingPathComponent("library-connections_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: storeURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -51,7 +52,6 @@ struct ConnectionLibraryStorageTests {
         appEvents = events
         storage = connectionStorage
         groupStorage = GroupStorage(
-            userDefaults: suiteDefaults,
             syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             appEvents: events

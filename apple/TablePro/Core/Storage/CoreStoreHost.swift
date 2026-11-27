@@ -16,7 +16,14 @@ nonisolated final class CoreStoreHost: @unchecked Sendable {
 
     static let shared = CoreStoreHost(
         folder: AppStorageEnvironment.shared.supportDirectory.appendingPathComponent("Core", isDirectory: true),
-        makeSecrets: { KeychainHostSecrets(keychain: AccountKeychain(keychain: AppStorageEnvironment.shared.deviceOnlyKeychain)) }
+        makeSecrets: {
+            CoreStoreSecrets(
+                items: KeychainHostSecrets(keychain: AccountKeychain(keychain: AppStorageEnvironment.shared.deviceOnlyKeychain)),
+                connections: ConnectionKeychainSecrets(keychain: AppStorageEnvironment.shared.keychain) { id in
+                    LocalOnlyConnections.shared.isLocalOnly(id)
+                }
+            )
+        }
     )
 
     let folder: URL

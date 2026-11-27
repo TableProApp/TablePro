@@ -1,14 +1,25 @@
 import Foundation
+import os
 import TableProSQLGrammar
 import TableProSQLQuoting
 
-public final class SQLCompletionProvider {
+// Sendable so a request runs off the caller's actor: an editor asks on the main thread, and analysis, the catalog
+// reads and ranking would otherwise all run there, re-entering it after every catalog read.
+public final class SQLCompletionProvider: Sendable {
+    private struct State {
+        var functionItems: [SQLCompletionItem]?
+        var favoriteKeywords: [String: (name: String, query: String)] = [:]
+    }
+
     private let contextAnalyzer = SQLContextAnalyzer()
     private let catalog: (any SQLCompletionCatalog)?
-    public private(set) var grammar: SQLLexicalGrammar
-    private var vocabulary: SQLCompletionVocabulary
-    private var cachedFunctionItems: [SQLCompletionItem]?
-    private var favoriteKeywords: [String: (name: String, query: String)] = [:]
+    public let grammar: SQLLexicalGrammar
+    private let vocabulary: SQLCompletionVocabulary
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    private var favoriteKeywords: [String: (name: String, query: String)] {
+        state.withLock { $0.favoriteKeywords }
+    }
 
     private let defaultMaxSuggestions = 20
 
@@ -32,14 +43,8 @@ public final class SQLCompletionProvider {
         self.vocabulary = vocabulary
     }
 
-    public func update(grammar: SQLLexicalGrammar, vocabulary: SQLCompletionVocabulary) {
-        self.grammar = grammar
-        self.vocabulary = vocabulary
-        self.cachedFunctionItems = nil
-    }
-
     public func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
-        self.favoriteKeywords = keywords
+        state.withLock { $0.favoriteKeywords = keywords }
     }
 
     // `forcedTableReferences` stands in for the FROM clause when the caller already knows the table, as a
@@ -57,6 +62,9 @@ public final class SQLCompletionProvider {
         return (session.items, session.context)
     }
 
+    // Off the caller's actor from start to end, so a catalog read returns to this request, not to the caller.
+    // A request a newer one replaced stops between the steps that cost.
+    @concurrent
     public func completionSession(
         text: String,
         cursorPosition: Int,
@@ -67,13 +75,17 @@ public final class SQLCompletionProvider {
             context = context.replacingTableReferences(forcedTableReferences)
         }
 
-        if context.isInsideString || context.isInsideComment {
+        if context.isInsideString || context.isInsideComment || Task.isCancelled {
             return SQLCompletionSession(items: [], candidates: [], context: context, candidatesTruncated: false)
         }
 
         let limit = maxSuggestions(for: context.clauseType)
+        let candidates = await getCandidates(for: context)
+        guard !Task.isCancelled else {
+            return SQLCompletionSession(items: [], candidates: [], context: context, candidatesTruncated: false)
+        }
         return await Self.rankedSession(
-            await getCandidates(for: context),
+            candidates,
             context: context,
             limit: limit,
             pool: sessionPool(for: limit)
@@ -121,7 +133,7 @@ public final class SQLCompletionProvider {
     private func sessionPool(for limit: Int) -> Int { limit * 10 }
 
     private func functionItems() -> [SQLCompletionItem] {
-        if let cachedFunctionItems { return cachedFunctionItems }
+        if let cached = state.withLock({ $0.functionItems }) { return cached }
         // The generic list writes SYSDATE() and CURRENT_DATE() too, which the engine may reject.
         var items = SQLKeywords.functionItems().map { item in
             guard vocabulary.bareFunctions.contains(item.label.uppercased()) else { return item }
@@ -136,8 +148,9 @@ public final class SQLCompletionProvider {
                 items.append(SQLCompletionItem.function(name, signature: signature, caseFolding: folding))
             }
         }
-        cachedFunctionItems = items
-        return items
+        let built = items
+        state.withLock { $0.functionItems = built }
+        return built
     }
 
     // MARK: - Candidate Generation
