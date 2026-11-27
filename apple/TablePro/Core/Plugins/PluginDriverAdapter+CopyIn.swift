@@ -11,6 +11,7 @@ extension PluginDriverAdapter {
         pluginDriver.capabilities.contains(.copyFromStandardInput)
     }
 
+    @concurrent
     func copyFromStandardInput(
         statement: String,
         rows: PluginCopyData,
