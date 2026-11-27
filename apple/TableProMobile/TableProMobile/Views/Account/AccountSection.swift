@@ -1,15 +1,22 @@
 import SwiftUI
 import UIKit
 
-// Settings' TablePro Account: sign in to tablepro.app or the organization's server, this account's devices, sign out.
+// Settings' TablePro Account: sign in to tablepro.app or the organization's server, this account's devices, its
+// end-to-end keys, sign out.
 struct AccountSection: View {
     let account: AccountModel
     let managed: ManagedAppConfiguration
 
+    @Environment(AppState.self) private var appState
     @EnvironmentObject private var sceneDelegate: TableProSceneDelegate
 
     @State private var failure: String?
     @State private var confirmsSignOut = false
+    // Sign Out erases this device's keys, which the question says before the person answers.
+    @State private var signOutErasesKeys = false
+    @State private var isCheckingKeys = false
+    @State private var isErasingKeys = false
+    @State private var keysPrompt = AccountKeysSignOutPrompt()
 
     var body: some View {
         Section {
@@ -52,8 +59,26 @@ struct AccountSection: View {
             titleVisibility: .visible
         ) {
             Button(String(localized: "Sign Out"), role: .destructive) {
-                Task { await account.signOut() }
+                Task { await signOut() }
             }
+        } message: {
+            if signOutErasesKeys {
+                Text("This device's end-to-end keys are erased. After you sign in again, approve it from another device or use your recovery key.")
+            }
+        }
+        .alert(
+            String(localized: "This Device's Keys Weren't Erased"),
+            // Only its buttons answer: an alert on iOS has no other way to close.
+            isPresented: Binding(get: { keysPrompt.isAsking }, set: { _ in })
+        ) {
+            Button(String(localized: "Try Again")) { keysPrompt.settle(.retry) }
+            Button(String(localized: "Sign Out Anyway"), role: .destructive) { keysPrompt.settle(.signOutAnyway) }
+            Button(String(localized: "Cancel"), role: .cancel) { keysPrompt.settle(.cancel) }
+        } message: {
+            Text(String(
+                format: String(localized: "%@ If you sign out anyway, the keys stay on this device until another account signs in here."),
+                keysPrompt.reason ?? ""
+            ))
         }
     }
 
@@ -94,10 +119,14 @@ struct AccountSection: View {
         NavigationLink(String(localized: "Devices")) {
             AccountDevicesPage(account: account)
         }
-        Button(String(localized: "Sign Out"), role: .destructive) {
-            confirmsSignOut = true
+        NavigationLink(String(localized: "End-to-End Encryption")) {
+            AccountEncryptionPage()
         }
-        .disabled(account.isBusy)
+        .accessibilityIdentifier("account-encryption")
+        Button(String(localized: "Sign Out"), role: .destructive) {
+            Task { await askToSignOut() }
+        }
+        .disabled(account.isBusy || isCheckingKeys || isErasingKeys)
     }
 
     private var serverRow: some View {
@@ -149,6 +178,26 @@ struct AccountSection: View {
         case .user, nil:
             nil
         }
+    }
+
+    // Whether this device holds keys is read first, so the question can say Sign Out erases them.
+    private func askToSignOut() async {
+        isCheckingKeys = true
+        signOutErasesKeys = await appState.keysSignOut(askAfterFailure: keysPrompt.ask).holdsKeys()
+        isCheckingKeys = false
+        confirmsSignOut = true
+    }
+
+    // The keys go before the sign-in (core ADR 0056, Sign Out). Kept signed in when the person cancels after the keys
+    // could not be erased, or when another sign-in took this one's place meanwhile.
+    private func signOut() async {
+        let session = account.snapshot.sessionID
+        let keys = appState.keysSignOut(askAfterFailure: keysPrompt.ask)
+        isErasingKeys = true
+        let erased = await keys.signOut({ account.snapshot.sessionID == session })
+        isErasingKeys = false
+        guard erased else { return }
+        await account.signOut()
     }
 
     private func signIn() async {
