@@ -480,6 +480,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) async throws -> PluginQueryResult {
         let conn = try await requireConnection()
         defer { endOperation(on: conn) }
+        let earlier = currentFootprint
         noteActivity(query)
         let startTime = Date()
         let result: MariaDBPluginQueryResult
@@ -487,6 +488,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             result = try await conn.executeParameterizedQuery(
                 query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit, ticket: ticket
             )
+        } catch is MySQLStatementTickets.HeldBack {
+            throw heldBack(since: earlier)
         } catch {
             noteFailure(query)
             await refreshTransactionFlag(after: error, on: conn)
@@ -552,6 +555,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let conn = try await requireConnection()
         defer { endOperation(on: conn) }
+        let earlier = currentFootprint
         if countsAsActivity {
             noteActivity(query)
         }
@@ -571,6 +575,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 countsAsActivity: countsAsActivity,
                 ticket: ticket
             )
+        } catch is MySQLStatementTickets.HeldBack {
+            throw heldBack(since: earlier)
         } catch {
             if countsAsActivity {
                 noteFailure(query)
@@ -630,6 +636,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             footprint.observe(sql, lexicalFeatures: features)
             lastActivity = ContinuousClock.now
         }
+    }
+
+    private var currentFootprint: MySQLSessionFootprint {
+        sessionLock.withLock { footprint }
+    }
+
+    // A statement a Stop held back never reached the server, so the footprint keeps what it would have released.
+    private func heldBack(since earlier: MySQLSessionFootprint) -> CancellationError {
+        sessionLock.withLock { footprint.keepHolding(earlier) }
+        return CancellationError()
     }
 
     /// The footprint reads the statement before it runs, so a statement the server refused has to
@@ -1605,6 +1621,7 @@ extension MySQLPluginDriver {
 
         let conn = try await requireConnection()
         defer { endOperation(on: conn) }
+        let earlier = currentFootprint
         noteActivity(query)
 
         do {
@@ -1620,6 +1637,8 @@ extension MySQLPluginDriver {
             return try await executeReadOnly(
                 query: query, parameters: nil, rowCap: rowCap, byteLimit: byteLimit, scope: scope, isRetry: true, ticket: ticket
             )
+        } catch is MySQLStatementTickets.HeldBack {
+            throw heldBack(since: earlier)
         } catch {
             noteFailure(query)
             await refreshTransactionFlag(after: error, on: conn)

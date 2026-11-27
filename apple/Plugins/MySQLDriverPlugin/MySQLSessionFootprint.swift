@@ -191,6 +191,11 @@ nonisolated struct MySQLSessionFootprint: Equatable {
         hasLockedTables = false
     }
 
+    // For a statement observed but never sent: whatever it would have released, the session still holds.
+    mutating func keepHolding(_ earlier: MySQLSessionFootprint) {
+        self = holding(earlier)
+    }
+
     /// What the session holds, for a caller deciding whether it may open a transaction of its own.
     ///
     /// The open transaction is the server's own answer, from `observeServerTransaction`. The lock

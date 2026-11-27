@@ -12,6 +12,9 @@ final class MySQLStatementTickets: @unchecked Sendable {
         fileprivate let number: UInt64
     }
 
+    // Not a `CancellationError` yet: the driver first takes the statement back out of its session footprint.
+    struct HeldBack: Error {}
+
     private let lock = NSLock()
     private var issued: UInt64 = 0
     private var stoppedThrough: UInt64 = 0
@@ -33,7 +36,7 @@ final class MySQLStatementTickets: @unchecked Sendable {
     // A statement without a ticket is the driver's own and is never held back.
     func admit<T>(_ ticket: Ticket?, registering register: () -> T) throws -> T {
         try lock.withLock {
-            if let ticket, ticket.number <= stoppedThrough { throw CancellationError() }
+            if let ticket, ticket.number <= stoppedThrough { throw HeldBack() }
             return register()
         }
     }
