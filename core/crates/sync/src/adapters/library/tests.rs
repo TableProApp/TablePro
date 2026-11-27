@@ -648,3 +648,46 @@ async fn a_pull_s_write_is_reported_once_to_a_host_that_tags_the_file() {
     );
     assert!(store.take_written_blocking().unwrap().is_empty());
 }
+
+// A pulled `project_id`, which no build sends yet, never reaches this device's membership, the file on disk included.
+#[tokio::test]
+async fn a_pulled_project_id_never_replaces_this_device_s_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let connections = adapter(&store, Kind::Connection);
+    let mut loose = mac_connection();
+    loose.as_object_mut().unwrap().remove("group_id");
+    connections
+        .apply(
+            ScopeName::Personal,
+            vec![LocalChange::Put {
+                record_id: CONNECTION.to_owned(),
+                fields: loose.clone(),
+            }],
+        )
+        .await
+        .unwrap();
+    let here = Uuid::from_u128(1);
+    store
+        .update_blocking(id(), |saved| saved.project_id = Some(here))
+        .unwrap();
+    let mut pulled = loose;
+    pulled["name"] = json!("Shop 2");
+    pulled["project_id"] = json!(Uuid::from_u128(2).to_string());
+
+    connections
+        .apply(
+            ScopeName::Personal,
+            vec![LocalChange::Put {
+                record_id: CONNECTION.to_owned(),
+                fields: pulled,
+            }],
+        )
+        .await
+        .unwrap();
+    let reopened = self::store(dir.path()).list_blocking().unwrap().connections[0].clone();
+
+    assert_eq!(reopened.name, "Shop 2");
+    assert_eq!(reopened.project_id, Some(here));
+    assert!(!reopened.unknown.contains_key("project_id"));
+}

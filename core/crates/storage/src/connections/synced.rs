@@ -56,6 +56,7 @@ impl ConnectionStore {
         for change in settle(&before.list()) {
             document.apply_synced(change);
         }
+        document.keep_membership_of_released(&before);
         document.tidy();
         if document != before {
             self.commit(&mut state, document)?;
@@ -76,7 +77,21 @@ impl ConnectionsDocument {
                 self.favorites.retain(|held| *held != id);
             }
             LibraryChange::Group(group) => put_by_id(&mut self.groups, group, |group| group.id),
-            LibraryChange::GroupGone(id) => self.groups.retain(|group| group.id != id),
+            // As the device that deleted it did, what the group held moves to the top; `keep_membership_of_released`
+            // then keeps it in the group's project.
+            LibraryChange::GroupGone(id) => {
+                self.groups.retain(|group| group.id != id);
+                for group in &mut self.groups {
+                    if group.parent_id == Some(id) {
+                        group.parent_id = None;
+                    }
+                }
+                for connection in self.connections.iter_mut() {
+                    if connection.group_id == Some(id) {
+                        connection.group_id = None;
+                    }
+                }
+            }
             LibraryChange::Tag(tag) => put_by_id(&mut self.tags, tag, |tag| tag.id),
             LibraryChange::TagGone(id) => self.tags.retain(|tag| tag.id != id),
             LibraryChange::SshProfile(profile) => {
@@ -259,6 +274,42 @@ mod tests {
             .unwrap();
         let list = store.list_blocking().unwrap();
         assert!(list.groups.is_empty() && list.tags.is_empty() && list.ssh_profiles.is_empty());
+    }
+
+    #[test]
+    fn a_pulled_group_deletion_moves_what_it_held_to_the_top_in_its_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(dir.path());
+        let acme = store
+            .create_project_blocking(crate::ConnectionProject::new(
+                crate::ConnectionProjectName::new("Acme").unwrap(),
+            ))
+            .unwrap();
+        let mut work = ConnectionGroup::new(ConnectionGroupName::new("Work").unwrap(), None);
+        work.project_id = Some(acme.id);
+        let work = store.create_group_blocking(work).unwrap();
+        let europe = store
+            .create_group_blocking(ConnectionGroup::new(
+                ConnectionGroupName::new("Europe").unwrap(),
+                Some(work.id),
+            ))
+            .unwrap();
+        let mut member = saved(1, "prod");
+        member.group_id = Some(work.id);
+        member.device.local_only = true;
+        store.upsert_blocking(member.clone()).unwrap();
+
+        store
+            .apply_synced_blocking(|_| vec![LibraryChange::GroupGone(work.id)])
+            .unwrap();
+        let list = store.list_blocking().unwrap();
+
+        let held = &list.connections[0];
+        assert_eq!(held.group_id, None);
+        assert_eq!(list.effective_project(held), Some(acme.id));
+        let kept = list.groups.iter().find(|group| group.id == europe.id).unwrap();
+        assert_eq!(kept.parent_id, None);
+        assert_eq!(list.effective_group_project(europe.id), Some(acme.id));
     }
 
     #[test]

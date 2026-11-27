@@ -25,9 +25,10 @@ use super::tunnel::{
 use super::values::{Object, boolean, clamped, integer, text, unknown_members, uuid_at, uuid_value};
 use crate::adapters::unsettled::{ROUTE_PUBLISHER, SSH_PROFILE_UNLINKED, TLS_MODE_UNSETTLED};
 
-// Every member the store's model reads, so the rest are kept as a newer build wrote them: `project_id`, which the
-// model does not hold yet, and the format stamp among them.
+// Every member the store's model reads, so the rest are kept as a newer build wrote them, the format stamp among them.
+// `project_id` is the model's own, so a pulled one is dropped rather than kept beside this device's.
 const MEMBERS: &[&str] = &[
+    "project_id",
     "name",
     "type",
     "host",
