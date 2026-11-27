@@ -262,7 +262,7 @@ fn a_delete_cut_off_after_its_mark_keeps_the_owner_s_file_unread_until_the_mark_
     let reopened = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
     let while_marked = reopened.teams_blocking();
     let write_while_marked = reopened.put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q2", "b")]);
-    reopened.delete_owed_blocking(false).expect("deleted");
+    reopened.delete_owed_blocking("db1", false).expect("deleted");
     reopened.clear_deleting_blocking("db1").expect("cleared");
 
     assert!(matches!(while_marked, Err(StorageError::DeletePending { .. })));
@@ -286,13 +286,13 @@ fn each_state_database_keeps_its_own_delete_marker() {
     store.mark_deleting_blocking("db1").expect("marked");
     store.mark_deleting_blocking("db2").expect("marked");
     let before_settled = store.delete_pending_blocking();
-    store.delete_owed_blocking(false).expect("deleted");
+    store.delete_owed_blocking("db1", false).expect("deleted");
     let after_settled = store.delete_pending_blocking();
     store.clear_deleting_blocking("db1").expect("cleared");
     store
         .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q2", "b")])
         .expect("refilled");
-    store.delete_owed_blocking(false).expect("nothing owed");
+    store.delete_owed_blocking("db2", true).expect("nothing owed");
 
     assert!(before_settled);
     assert!(!after_settled);

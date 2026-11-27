@@ -408,6 +408,7 @@ impl<'a> Fetcher<'a> {
                 wrote = true;
             }
         }
+        wrote |= carry_marks(txn.as_mut(), &self.adapters).await?;
         for (kind, adapter) in &self.adapters {
             let owed = txn
                 .get(&RowKey::StoresKind(adapter.store().to_owned(), KindName::of(*kind)))
@@ -472,6 +473,32 @@ impl<'a> Fetcher<'a> {
 // Clears the zone's token, so the next fetch reads the whole zone. Called when a category turns on or the build
 // stores a kind it did not: a delta never sends again what earlier pulls passed over, and the deletions that waited
 // for that category apply once a full fetch read it.
+// A refill a kind owed under the store its records lived in before, as the saved queries split out of the history's
+// file, moves to the store that holds them now, so a split never drops one (K4h; Codex review round 2).
+async fn carry_marks(
+    txn: &mut dyn StateTxn,
+    adapters: &BTreeMap<Kind, Arc<dyn RecordAdapter>>,
+) -> Result<bool, SyncError> {
+    let mut wrote = false;
+    for row in txn.scan(&RowRange::Table(Table::StoresKinds)).await? {
+        let Row::StoresKind(owed) = row else { continue };
+        let Some(adapter) = owed.kind.known().and_then(|kind| adapters.get(&kind)) else {
+            continue;
+        };
+        if adapter.store() != owed.store {
+            txn.delete(&RowKey::StoresKind(owed.store.clone(), owed.kind.clone()))
+                .await?;
+            txn.put(Row::StoresKind(StoresKindRow {
+                store: adapter.store().to_owned(),
+                kind: owed.kind,
+            }))
+            .await?;
+            wrote = true;
+        }
+    }
+    Ok(wrote)
+}
+
 // Records a refill's store refused, which take the pull on whatever page brings them.
 async fn held_in_refill(txn: &mut dyn StateTxn) -> Result<BTreeSet<RecordKey>, SyncError> {
     Ok(txn

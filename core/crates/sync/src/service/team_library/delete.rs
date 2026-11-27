@@ -55,17 +55,17 @@ impl ServiceSync {
     pub(super) async fn delete_all(&self) -> Result<(), SyncError> {
         self.team_library.off.store(true, Ordering::SeqCst);
         let database = self.database();
-        if let Err(error) = self
+        let marked = self
             .store_call(move |store| store.mark_deleting_blocking(&database))
-            .await
-        {
+            .await;
+        // With no mark to say the file is owed, this run owes it until it went. A mark that landed says so itself, and
+        // once another database saw the file go it owes only this database's rows, whatever this run thought.
+        self.team_library.file_owed.store(marked.is_err(), Ordering::SeqCst);
+        if let Err(error) = marked {
             tracing::warn!(
                 code = error.code(),
                 "the team library delete goes ahead without its mark"
             );
-            // With no mark to say the file is owed, this run owes it until it went. A mark that landed says so itself,
-            // and once another database saw the file go it owes only this database's rows.
-            self.team_library.file_owed.store(true, Ordering::SeqCst);
         }
         self.finish_delete().await
     }
@@ -91,8 +91,9 @@ impl ServiceSync {
     // finishing late never takes a file another sign-in has refilled since. A delete whose mark did not land owes the
     // file all the same.
     async fn delete_store_file(&self) -> Result<(), SyncError> {
-        let owed = self.team_library.file_owed.load(Ordering::SeqCst);
-        self.store_call(move |store| store.delete_owed_blocking(owed)).await?;
+        let (owed, database) = (self.team_library.file_owed.load(Ordering::SeqCst), self.database());
+        self.store_call(move |store| store.delete_owed_blocking(&database, owed))
+            .await?;
         self.team_library.file_owed.store(false, Ordering::SeqCst);
         Ok(())
     }

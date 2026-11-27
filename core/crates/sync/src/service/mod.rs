@@ -220,6 +220,44 @@ pub(crate) async fn begin(state: &Arc<dyn StateStore>) -> Result<Box<dyn StateTx
     state.begin().await.map_err(SyncError::from)
 }
 
+// The stores whose records another store held before: the saved queries, their folders and favourites split out of
+// the history's file (K4h).
+const SPLIT_FROM: [(&str, &str); 1] = [(
+    crate::adapters::saved_queries::SAVED_QUERY_STORE,
+    crate::adapters::history::HISTORY_STORE,
+)];
+
+// A store this file never saw, split out of one the file did see: its kinds keep their bases and merge as before, so
+// an edit made offline before the split still goes up, and a refill the old store's name still owed moves with it
+// (K4h; Codex review round 2). A file that never saw the old store either, as a new or stale one, refills as usual.
+async fn carried_over(
+    txn: &mut dyn StateTxn,
+    store: &str,
+    kind: Kind,
+    known: &HashSet<String>,
+) -> Result<bool, SyncError> {
+    let Some((_, old)) = SPLIT_FROM.iter().find(|(new, _)| *new == store) else {
+        return Ok(false);
+    };
+    if !known.contains(*old) {
+        return Ok(false);
+    }
+    let name = KindName::of(kind);
+    if txn
+        .get(&RowKey::StoresKind((*old).to_owned(), name.clone()))
+        .await?
+        .is_some()
+    {
+        txn.delete(&RowKey::StoresKind((*old).to_owned(), name.clone())).await?;
+        txn.put(Row::StoresKind(StoresKindRow {
+            store: store.to_owned(),
+            kind: name,
+        }))
+        .await?;
+    }
+    Ok(true)
+}
+
 impl ServiceSync {
     pub fn new(parts: ServiceParts) -> Self {
         Self {
@@ -902,6 +940,17 @@ impl ServiceSync {
     // refill in `stores_kinds`, in the commit that moves its row (0066, Per-kind refills). A kind takes it once its
     // category is on, so a pass cut short, or a kind that is off, refills later.
     async fn read_stores(&self, ctx: &mut PassCtx, scopes: &[ScopeInfo]) -> Result<(), SyncError> {
+        // The stores the file held rows of as this pass began, before it writes any.
+        let known: HashSet<String> = begin(&self.state)
+            .await?
+            .scan(&RowRange::Table(Table::Stores))
+            .await?
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Store(row) => Some(row.store),
+                _ => None,
+            })
+            .collect();
         let mut kinds: HashMap<String, BTreeSet<Kind>> = HashMap::new();
         for info in scopes {
             for adapter in self.adapters.in_scope(info.scope) {
@@ -930,6 +979,9 @@ impl ServiceSync {
                 let marked = stored.is_none_or(|stored| start.needs_refill(stored));
                 if marked {
                     for kind in kinds.get(&store).into_iter().flatten() {
+                        if stored.is_none() && carried_over(txn.as_mut(), &store, *kind, &known).await? {
+                            continue;
+                        }
                         txn.put(Row::StoresKind(StoresKindRow {
                             store: store.clone(),
                             kind: KindName::of(*kind),

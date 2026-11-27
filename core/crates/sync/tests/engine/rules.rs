@@ -466,6 +466,48 @@ async fn a_refill_s_refused_value_takes_the_pull_in_a_later_snapshot() {
     );
 }
 
+// The saved queries move out of the history's file into a store of their own (K4h): the state file synced them under
+// the old store's name, so their kind keeps its bases and merges as before. An edit made offline before the move goes
+// up, and the move refills nothing (Codex review round 2).
+#[tokio::test]
+async fn a_kind_whose_records_moved_to_another_store_keeps_its_bases_and_sends_its_offline_edit() {
+    let server = FakeServer::new();
+    let before = MemoryAdapter::new(Kind::SavedQuery, "history.db", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&before))
+        .build()
+        .await;
+    let query = |text: &str| json!({"name": "Orders", "query": text});
+    before.put(&id(1), query("select 1"));
+    mac.sync().await;
+    before.put(&id(1), query("select 2"));
+    let (state, seed) = (Arc::clone(&mac.state), Arc::clone(&mac.seed));
+    drop(mac);
+
+    let moved = MemoryAdapter::new(Kind::SavedQuery, "saved_queries.db", StoreFile::new());
+    moved.put(&id(1), query("select 2"));
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .state(state)
+        .seed(seed)
+        .adapter(ScopeName::Personal, Arc::clone(&moved))
+        .build()
+        .await;
+    mac.sync().await;
+
+    assert_eq!(moved.get(&id(1)), Some(query("select 2")));
+    assert_eq!(
+        stored(&server, Kind::SavedQuery.as_str(), &id(1)),
+        Some(query("select 2"))
+    );
+    let owed: Vec<Row> = mac
+        .rows(RowRange::Table(Table::StoresKinds))
+        .await
+        .into_iter()
+        .filter(|row| matches!(row, Row::StoresKind(row) if row.kind == KindName::of(Kind::SavedQuery)))
+        .collect();
+    assert!(owed.is_empty(), "{owed:?}");
+}
+
 #[tokio::test]
 async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
     let server = FakeServer::new();

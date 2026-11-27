@@ -273,12 +273,15 @@ impl TeamLibraryStore {
         crate::fs::write_private_blocking(&self.database_marker(database)?, STORE_OWED)
     }
 
-    // The owner's file and any write a crash left beside it, when `owed` or while a delete still owes it, then each
-    // database's marker moves on to owing only that database's rows. Checked, deleted and moved on under the locks a
-    // write holds, so a database finishing late never takes a file another has refilled since.
-    pub fn delete_owed_blocking(&self, owed: bool) -> Result<(), StorageError> {
+    // The owner's file and any write a crash left beside it while a delete still owes it, then each database's marker
+    // moves on to owing only that database's rows. `database`'s own marker, once there, says what it owes; `owed`
+    // stands for it only while none is there. Checked, deleted and moved on under the locks a write holds, so a
+    // database finishing late never takes a file another has refilled since.
+    pub fn delete_owed_blocking(&self, database: &str, owed: bool) -> Result<(), StorageError> {
         let _held = self.lock();
         let _file = lock_for_delete(&self.inner.path)?;
+        let own = self.database_marker(database)?;
+        let owed = owed && !standing(&own);
         if !owed && !self.delete_pending_blocking() {
             return Ok(());
         }
