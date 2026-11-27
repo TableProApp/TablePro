@@ -526,13 +526,12 @@ async fn a_history_entry_deleted_after_the_move_leaves_the_copy_and_its_saved_qu
 }
 
 // On iOS the history stays locked while the saved queries sync: their deletions open neither the live history nor a
-// copy of it made after the move, and so delete no healthy copy for failing to.
-#[cfg(unix)]
+// copy of it made after the move, and so delete no healthy copy for failing to. A folder stands where each file was,
+// so the open fails for any user, root included, as the Linux container runs.
 #[tokio::test]
 async fn a_saved_query_deleted_while_the_history_is_locked_away_trims_and_keeps_every_copy() {
-    use std::os::unix::fs::PermissionsExt;
-
     let root = tempfile::tempdir().expect("tempdir");
+    let aside = tempfile::tempdir().expect("a folder outside the state");
     let old = old_file(&root).await;
     let history = QueryHistory::open(&old.paths).await.expect("history");
     let saved = SavedQueryDatabase::open(&old.paths).await.expect("saved queries");
@@ -543,9 +542,10 @@ async fn a_saved_query_deleted_while_the_history_is_locked_away_trims_and_keeps_
         .await
         .expect("a later copy");
     history.pool().close().await;
-    let locked = std::fs::Permissions::from_mode(0o000);
-    for file in [old.paths.history_database(), after_move.clone()] {
-        std::fs::set_permissions(&file, locked.clone()).expect("lock");
+    let locked = [old.paths.history_database(), after_move.clone()];
+    for (index, file) in locked.iter().enumerate() {
+        std::fs::rename(file, aside.path().join(index.to_string())).expect("set aside");
+        std::fs::create_dir(file).expect("lock");
     }
     let daily = saved
         .saved_queries()
@@ -559,9 +559,9 @@ async fn a_saved_query_deleted_while_the_history_is_locked_away_trims_and_keeps_
 
     let deleted = saved.saved_queries().delete(daily).await;
 
-    let open = std::fs::Permissions::from_mode(0o600);
-    for file in [old.paths.history_database(), after_move.clone()] {
-        std::fs::set_permissions(&file, open.clone()).expect("unlock");
+    for (index, file) in locked.iter().enumerate() {
+        std::fs::remove_dir(file).expect("unlock");
+        std::fs::rename(aside.path().join(index.to_string()), file).expect("put back");
     }
     deleted.expect("delete");
     assert!(
