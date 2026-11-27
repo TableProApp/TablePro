@@ -37,6 +37,8 @@ env:
   CARGO_SHEAR_VERSION: 1.13.4
   LYCHEE_VERSION: 0.24.2
   LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+  # The fixtures' Docker Hub images, as the job images below (.claude/rules/ci.md, Writing workflow and lint code).
+  TABLEPRO_TEST_DOCKER_HUB_MIRROR: mirror.gcr.io
 
 jobs:
   docs:
@@ -70,7 +72,7 @@ jobs:
     # ubuntu:26.04 gives GLib 2.88 plus the meson, appstream and
     # desktop-file-utils packages the data suite validates with.
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
     defaults:
@@ -256,7 +258,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
     defaults:
@@ -294,7 +296,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
     # The runner passes a step's working directory to docker exec unquoted,
@@ -384,7 +386,7 @@ jobs:
     # 0.26 read Rust but skip those calls, and an older one falls back to
     # its C lexer.
     container:
-      image: ubuntu:26.10
+      image: mirror.gcr.io/library/ubuntu:26.10
       env:
         DEBIAN_FRONTEND: noninteractive
     defaults:
@@ -663,7 +665,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
       options: -v /var/run/docker.sock:/var/run/docker.sock
@@ -727,7 +729,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
       options: -v /var/run/docker.sock:/var/run/docker.sock
