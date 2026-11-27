@@ -15,6 +15,7 @@ mod tracker_edit;
 mod undo_op;
 
 pub use cell_overlay::{CellMarks, CellOverlay};
+pub use column_relayout::{ColumnRelayout, Misfit};
 pub use outcome::{PendingState, SaveOutcome, SaveSnapshot, TrackerRejection, UnknownCause};
 pub use save_batch::{SaveBatch, SaveTarget};
 pub use touch::Touch;

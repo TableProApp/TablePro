@@ -1186,11 +1186,8 @@ fn insert_cells(columns: &[ColumnInfo], draft: &DraftRow) -> Vec<CellInput> {
 #[cfg(test)]
 mod tests {
     /// A column carrying the server's spelling and the kind it means,
-    /// which is what these tests exercise.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a test fixture stands in for the catalogue, which is where this text comes from in production"
-    )]
+    /// which is what these tests exercise. The fixture stands in for the
+    /// catalogue, which is where this catalog text comes from in production.
     fn test_column(name: &str, type_name: &str) -> crate::ColumnInfo {
         let kind = crate::column::classify_type_name(type_name);
         crate::ColumnInfo {
@@ -1861,11 +1858,8 @@ mod tests {
         );
     }
 
+    // A test fixture stands in for the catalogue, which is where a default expression comes from.
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a test fixture stands in for the catalogue, which is where a default expression comes from"
-    )]
     fn a_draft_leaves_server_filled_columns_to_the_server() {
         let mut t = TabChangeTracker::default();
         let mut stamped = data_col("created_at");

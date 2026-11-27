@@ -10,7 +10,7 @@ use super::tracker::RowKey;
 /// with the columns it read since. Columns are matched by name: once a
 /// column is dropped or added, a position names another column.
 #[derive(Debug)]
-pub(crate) struct ColumnRelayout<'a> {
+pub struct ColumnRelayout<'a> {
     old: &'a [ColumnInfo],
     new: &'a [ColumnInfo],
     /// Each old column's position among the new ones.
@@ -22,7 +22,7 @@ pub(crate) struct ColumnRelayout<'a> {
 
 /// Why a pending change has no place under the new columns.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Misfit {
+pub enum Misfit {
     /// These columns are gone, or no longer take the value.
     Columns(Vec<String>),
     /// The primary key changed, so a row key read under the old one
@@ -31,7 +31,7 @@ pub(crate) enum Misfit {
 }
 
 impl<'a> ColumnRelayout<'a> {
-    pub(crate) fn new(old: &'a [ColumnInfo], new: &'a [ColumnInfo]) -> Self {
+    pub fn new(old: &'a [ColumnInfo], new: &'a [ColumnInfo]) -> Self {
         let position = |name: &str, columns: &[ColumnInfo]| columns.iter().position(|column| column.name == name);
         Self {
             old,
@@ -68,7 +68,7 @@ impl<'a> ColumnRelayout<'a> {
 
     /// Whether a row key read under the old primary key names the same
     /// row under the new one.
-    pub(crate) fn key(&self, key: &RowKey) -> Result<(), Misfit> {
+    pub fn key(&self, key: &RowKey) -> Result<(), Misfit> {
         let RowKey::Persisted(parts) = key else {
             return Ok(());
         };
@@ -134,7 +134,7 @@ impl<'a> ColumnRelayout<'a> {
 
     /// A row as read under the old columns, under the new ones. A new
     /// column reads as NULL.
-    pub(crate) fn fetched(&self, values: &[Value]) -> Vec<Value> {
+    pub fn fetched(&self, values: &[Value]) -> Vec<Value> {
         self.sources
             .iter()
             .map(|source| source.and_then(|col| values.get(col)).cloned().unwrap_or(Value::Null))
