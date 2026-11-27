@@ -148,7 +148,7 @@ public abstract record SyncFailure
 // One per app over the core's stores, bound to the sign-in it opened with: after a sign-in, a sign-out or another
 // account the app opens it again. Disposing it stops the engines. Every call throws TableProException with a sync.*
 // or keys.* code.
-public sealed class TableProSync : IDisposable
+public sealed partial class TableProSync : IDisposable
 {
     private readonly Native.SyncService _service;
     private readonly SyncWake _wake;

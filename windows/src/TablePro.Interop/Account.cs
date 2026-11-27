@@ -166,6 +166,17 @@ public sealed class TableProAccount : IDisposable
     public Task SignInAsync(CancellationToken cancellationToken = default) =>
         CoreCall.RunAsync(token => _service.SignIn(token), cancellationToken);
 
+    // After a call failed with a StepUp challenge: the sign-in page opens for it, and once this returns the caller runs
+    // its call again. The cancel ends only the wait for the browser.
+    public Task StepUpAsync(StepUpChallenge challenge, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(challenge);
+        var native = new Native.StepUpChallengeInfo(
+            [.. challenge.AcrValues],
+            challenge.MaxAge is { } age ? (ulong)age.TotalSeconds : null);
+        return CoreCall.RunAsync(token => _service.StepUp(native, token), cancellationToken);
+    }
+
     // Signs out here even when the server could not be told, which the error then says.
     public Task SignOutAsync() => CoreCall.RunAsync(() => _service.SignOut());
 

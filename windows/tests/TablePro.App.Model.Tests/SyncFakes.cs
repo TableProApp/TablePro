@@ -39,6 +39,10 @@ internal sealed class FakeSyncEngine : ISyncEngine
 
     public int? HistoryWindow { get; private set; }
 
+    public FakeKeyFlows KeyFlows { get; } = new();
+
+    public IKeyFlows Keys => KeyFlows;
+
     public IReadOnlyList<string> Calls
     {
         get
@@ -204,6 +208,158 @@ internal sealed class FakeSyncApp : ISyncHostApp
         lock (_gate)
         {
             _notes.Add($"{what}: {failure.Code}");
+        }
+    }
+}
+
+// The key calls as a script: each call is noted, its answer set beforehand, and Fails makes the named call throw.
+internal sealed class FakeKeyFlows : IKeyFlows
+{
+    private readonly Lock _gate = new();
+    private readonly List<string> _calls = [];
+
+    public KeyState State { get; set; } = new KeyState.Approved(1, "D-THIS");
+
+    public RecoveryKeyDraft Draft { get; set; } = new("DRAFT", Key, [2, 9]);
+
+    public GenesisOutcome Genesis { get; set; } = GenesisOutcome.Created;
+
+    public IReadOnlyList<ReviewedDevice> Reviewed { get; set; } = [];
+
+    public IReadOnlyList<ReviewedMember> Members { get; set; } = [];
+
+    public IReadOnlyList<KeyDevice> Devices { get; set; } = [];
+
+    public IReadOnlyList<ApprovalRequest> Requests { get; set; } = [];
+
+    public IReadOnlyList<KeyNotice> Notices { get; set; } = [];
+
+    public PendingReset? Reset { get; set; }
+
+    // Each session read answers the next of these, then the last again.
+    public Queue<ApprovalSession> Sessions { get; } = new();
+
+    // The call that throws, by name, with the error it throws, as often as Times says.
+    public Dictionary<string, CoreError> Fails { get; } = new(StringComparer.Ordinal);
+
+    public int StepUpsAsked { get; set; }
+
+    public const string Key = "AAAA-BBBB-CCCC-DDDD-EEEE-FFFF-GGGG-HHHH-JJJJ-KKKK-MMMM-NNNN-PPPP-QQQQ";
+
+    public IReadOnlyList<string> Calls
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _calls];
+            }
+        }
+    }
+
+    public Task<KeyState> GetKeyStateAsync() => Answer("key state", State);
+
+    public Task<RecoveryKeyDraft> BeginGenesisAsync() => Answer("begin genesis", Draft);
+
+    public Task<GenesisOutcome> FinishGenesisAsync(string draft, IReadOnlyList<string> typed) =>
+        Answer($"finish genesis {draft} {string.Join(',', typed)}", Genesis);
+
+    public void DiscardKeyDraft(string draft) => Note($"discard {draft}");
+
+    public Task<KeysSignOutOutcome> SignOutKeysAsync() => Answer("sign out keys", KeysSignOutOutcome.Revoked);
+
+    public Task<RotationDraft> BeginReplaceRecoveryKeyAsync(string recoveryKey) =>
+        Answer($"begin replace {recoveryKey}", new RotationDraft(Draft, Reviewed));
+
+    public Task FinishReplaceRecoveryKeyAsync(string draft, IReadOnlyList<string> typed, IReadOnlyList<string> keep) =>
+        Answer($"finish replace {draft} {string.Join(',', typed)} keep {string.Join(',', keep)}", true);
+
+    public Task<IReadOnlyList<KeyNotice>> GetKeyNoticesAsync() => Answer("notices", Notices);
+
+    public Task DismissKeyNoticeAsync(string notice) => Answer($"dismiss {notice}", true);
+
+    public Task<string> RequestApprovalAsync() => Answer("request approval", "REQ-NEW");
+
+    public Task<IReadOnlyList<ApprovalRequest>> GetApprovalRequestsAsync() => Answer("requests", Requests);
+
+    public Task<ApprovalSession> ChooseApprovalRequestAsync(string request) =>
+        Answer($"choose {request}", NextSession());
+
+    public Task<ApprovalSession> GetApprovalSessionAsync(string request) =>
+        Answer($"session {request}", NextSession());
+
+    public Task<ApprovalSession> ConfirmApprovalSessionAsync(string request) =>
+        Answer($"confirm {request}", NextSession());
+
+    public Task ApprovalWordsDifferAsync(string request) => Answer($"differ {request}", true);
+
+    public Task CancelApprovalSessionAsync(string request) => Answer($"cancel {request}", true);
+
+    public Task<IReadOnlyList<KeyDevice>> GetAccountDevicesAsync() => Answer("devices", Devices);
+
+    public Task RemoveDeviceRowAsync(string device) => Answer($"remove row {device}", true);
+
+    public Task<RemovalReview> BeginDeviceRemovalAsync(string recoveryKey, IReadOnlyList<string> lost) =>
+        Answer($"begin removal {recoveryKey} {string.Join(',', lost)}", new RemovalReview("REVIEW", Reviewed, Members));
+
+    public Task FinishDeviceRemovalAsync(string review, IReadOnlyList<string> keep, IReadOnlyList<ReviewedMember> remove) =>
+        Answer(
+            $"finish removal {review} keep {string.Join(',', keep)} remove {string.Join(',', remove.Select(member => member.Account))}",
+            true);
+
+    public Task RecoverWithRecoveryKeyAsync(string recoveryKey) => Answer($"recover {recoveryKey}", true);
+
+    public Task<PendingReset?> GetPendingResetAsync() => Answer("pending reset", Reset);
+
+    public Task<RecoveryKeyDraft> BeginResetAsync(ResetKind kind) => Answer($"begin reset {kind}", Draft);
+
+    public Task<PendingReset> FinishResetProposalAsync(string draft, IReadOnlyList<string> typed) =>
+        Answer($"finish reset {draft} {string.Join(',', typed)}", Reset ?? Pending("RESET", mine: true));
+
+    public Task CancelResetAsync(string reset, string? recoveryKey) =>
+        Answer($"cancel reset {reset} {recoveryKey ?? "this device"}", true);
+
+    public Task ActivateResetAsync(string reset) => Answer($"activate {reset}", true);
+
+    public Task ResumeResetAsync(string reset) => Answer($"resume {reset}", true);
+
+    public static PendingReset Pending(string reset, bool mine, DateTimeOffset? heldUntil = null) => new(
+        reset,
+        ResetKind.KeepScopeKeys,
+        ResetState.Pending,
+        mine,
+        mine ? null : "Mac mini",
+        DateTimeOffset.UnixEpoch,
+        heldUntil ?? DateTimeOffset.UnixEpoch.AddDays(7));
+
+    private ApprovalSession NextSession()
+    {
+        lock (_gate)
+        {
+            return Sessions.Count > 1 ? Sessions.Dequeue() : Sessions.Peek();
+        }
+    }
+
+    private Task<T> Answer<T>(string call, T value)
+    {
+        Note(call);
+        var name = call.Split(' ')[0] + (call.Contains(' ', StringComparison.Ordinal) ? " " + call.Split(' ')[1] : string.Empty);
+        lock (_gate)
+        {
+            if (Fails.Remove(name, out var error) || Fails.Remove(call.Split(' ')[0], out error))
+            {
+                return Task.FromException<T>(new TableProException(error));
+            }
+        }
+
+        return Task.FromResult(value);
+    }
+
+    private void Note(string call)
+    {
+        lock (_gate)
+        {
+            _calls.Add(call);
         }
     }
 }
