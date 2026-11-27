@@ -52,6 +52,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private readonly SessionEnd? _sessionEnd;
     private TimeSpan _nextRetry = SaveDelay;
     private SettingsView? _settings;
+    private KeyboardShortcutsView? _keyboard;
     private OpenConnection? _front;
 
     // The connection whose cue the title bar shows, painted again when the theme changes.
@@ -654,6 +655,21 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
+    // A sub-page of Settings: it leads back there, as Settings leads back to the Connections page.
+    public void ShowKeyboardShortcuts()
+    {
+        if (!IsPrimary)
+        {
+            _primary.Activate();
+            _primary.ShowKeyboardShortcuts();
+            return;
+        }
+
+        var page = _keyboard ??= new KeyboardShortcutsView(_workbench);
+        page.Refresh();
+        Show(page);
+    }
+
     WindowId IWorkspaceHost.TearOutWindow(OpenConnection connection) => _primary.SpareFor(connection);
 
     void IWorkspaceHost.TearOut(TabViewItem tab, WindowId window) => _primary.Receive(tab, window);
@@ -1097,10 +1113,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         SetContent(page);
         AppTitleBar.Subtitle = ReferenceEquals(page, _home) ? ProjectSubtitle() : string.Empty;
         ShowCue(null);
-        // While the rail is hidden, Settings is reached from the Connections page, so the title bar leads back.
+        // The keyboard page always leads back to Settings; while the rail is hidden, Settings is reached from the
+        // Connections page, so the title bar leads back from it too.
         AppTitleBar.IsBackButtonVisible = page is SetupView setup
             ? setup.CanGoBack
-            : !Rail.IsPaneVisible && ReferenceEquals(page, _settings);
+            : ReferenceEquals(page, _keyboard)
+                || (!Rail.IsPaneVisible && ReferenceEquals(page, _settings));
         UpdateCommands();
     }
 
@@ -1458,6 +1476,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         if (Rail.Content is SetupView setup)
         {
             setup.Back();
+            return;
+        }
+
+        if (Rail.Content is KeyboardShortcutsView)
+        {
+            Show(Settings());
             return;
         }
 
