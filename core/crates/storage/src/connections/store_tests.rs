@@ -556,7 +556,7 @@ fn journaled(root: &TempDir) -> (ConnectionStore, Arc<Recording>) {
     (store, journal)
 }
 
-fn ssh_profile() -> SshProfile {
+pub(super) fn ssh_profile() -> SshProfile {
     SshProfile {
         id: Uuid::new_v4(),
         name: "p".to_owned(),

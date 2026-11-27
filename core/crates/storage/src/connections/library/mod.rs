@@ -93,8 +93,9 @@ impl ConnectionStore {
             // Nothing written, so the file must still be the one it answers for.
             return Err(StorageError::LibraryChanged.into());
         }
-        // The write has landed, so a cleanup that cannot be written stays listed for the next write, and the host still
-        // gets the digest the file holds; an error here would leave it a tag for bytes the file no longer has.
+        // The write has landed, so a cleanup that cannot be written stays listed for the next write and the host still
+        // gets the landed write's digest. One that fails after its rename leaves bytes the host is not given, so its
+        // next write is refused as a change: bytes read back from the file are never vouched for.
         if let Err(error) = self.settle_secrets(&mut state, delete) {
             tracing::warn!(%error, "the secrets a library write took out stay listed for the next write");
         }
