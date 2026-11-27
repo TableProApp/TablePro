@@ -100,7 +100,7 @@ mod tests {
         let request = conversation.request(100);
 
         let roles: Vec<Role> = request.messages.iter().map(|message| message.role).collect();
-        let texts: Vec<&str> = request.messages.iter().map(|message| message.text.as_str()).collect();
+        let texts: Vec<String> = request.messages.iter().map(|message| message.text()).collect();
         assert_eq!(request.system, "system");
         assert_eq!(roles, [Role::User, Role::Assistant, Role::User]);
         assert_eq!(texts, ["first", "one", "second"]);
@@ -117,7 +117,7 @@ mod tests {
 
         let request = conversation.request(100);
 
-        assert!(request.messages[0].text.contains("SELEC 1"));
-        assert!(request.messages[0].text.contains("syntax error"));
+        assert!(request.messages[0].text().contains("SELEC 1"));
+        assert!(request.messages[0].text().contains("syntax error"));
     }
 }
