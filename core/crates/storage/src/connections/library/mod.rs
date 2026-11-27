@@ -93,7 +93,11 @@ impl ConnectionStore {
             // Nothing written, so the file must still be the one it answers for.
             return Err(StorageError::LibraryChanged.into());
         }
-        self.settle_secrets(&mut state, delete)?;
+        // The write has landed, so a cleanup that cannot be written stays listed for the next write, and the host still
+        // gets the digest the file holds; an error here would leave it a tag for bytes the file no longer has.
+        if let Err(error) = self.settle_secrets(&mut state, delete) {
+            tracing::warn!(%error, "the secrets a library write took out stay listed for the next write");
+        }
         Ok(digest_of(&state))
     }
 
