@@ -53,7 +53,7 @@ final class CoreLibraryFixture {
         ProjectStorage(
             syncJournal: journal.journal,
             connectionStorage: storage,
-            groupStorage: groups(storage),
+            groupStorage: self.groups(storage),
             appEvents: events
         )
     }
