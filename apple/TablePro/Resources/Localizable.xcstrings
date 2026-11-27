@@ -208569,6 +208569,9 @@
     "TablePro Sync deletes everything you synced to it, passwords and query history included. This can't be undone." : {
 
     },
+    "TablePro Sync is still reading your account's keys. Check again in a moment." : {
+
+    },
     "TablePro Sync takes changes until %@. Ask your administrator to renew it." : {
 
     },
