@@ -157,6 +157,15 @@ pub struct HistoryEntryRecord {
     pub details: HistoryRunDetails,
 }
 
+// Which copy of `history.db` the store is, and how far its writes have gone (core ADR 0054, The engine). Another
+// generation than the one the app kept, or a lower sequence, means the file was replaced or rolled back, so the runs it
+// lacks are not deletions.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HistoryIdentityInfo {
+    pub generation: String,
+    pub sequence: u64,
+}
+
 // Details the app learned for a run it already mirrored, under the run's record id.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct HistoryDetailsRecord {
@@ -383,6 +392,18 @@ impl QueryHistoryStore {
                 .into_iter()
                 .map(HistoryEntryInfo::from)
                 .collect())
+        })
+        .await
+    }
+
+    pub async fn identity(&self) -> Result<HistoryIdentityInfo, CoreError> {
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move {
+            let identity = history.identity().await?;
+            Ok(HistoryIdentityInfo {
+                generation: identity.generation.to_string(),
+                sequence: identity.sequence,
+            })
         })
         .await
     }
