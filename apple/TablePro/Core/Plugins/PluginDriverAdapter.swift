@@ -521,6 +521,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     @concurrent
     private func executeBatch(query: String, rowCap: Int?, cellValues: [PluginCellValue]?) async throws -> QueryBatchResult? {
         try admit(query)
+        try Task.checkCancellation()
         guard let batch = try await pluginDriver.executeBatch(
             query: query,
             rowCap: rowCap,
@@ -558,6 +559,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         }
         guard !items.isEmpty else { return refusal.map { [.failed($0)] } }
         noteDatabaseMoves(items.map(\.query))
+        try Task.checkCancellation()
         guard let answered = try await pluginDriver.executeStatements(items) else { return nil }
         var outcomes: [BatchedStatementOutcome] = []
         for answer in answered.prefix(items.count) {
@@ -1341,7 +1343,9 @@ extension PluginDriverAdapter {
     }
 
     // `[Any?]` is not Sendable, so only its conversion stays on the caller's actor; the checks, the statement's
-    // description and the driver call leave it with the Sendable values.
+    // description and the driver call leave it with the Sendable values. Stop can land while they run off the main
+    // actor, and a driver that only cancels a running query would still start this one, so a user statement checks
+    // for cancellation last, just before the driver gets it.
     func executeParameterized(
         query: String,
         parameters: [Any?],
@@ -1364,11 +1368,9 @@ extension PluginDriverAdapter {
     ) async throws -> QueryResult {
         try admit(query)
         try refuseUnenforcedPolicy(context)
-        let pluginResult = try await pluginDriver.executeParameterized(
-            query: query,
-            parameters: cellValues,
-            context: statementContext(query, approvedAs: context, parameterKinds: parameterKinds)
-        )
+        let described = statementContext(query, approvedAs: context, parameterKinds: parameterKinds)
+        try Task.checkCancellation()
+        let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: cellValues, context: described)
         return mapQueryResult(pluginResult)
     }
 
@@ -1397,11 +1399,10 @@ extension PluginDriverAdapter {
     ) async throws -> QueryResult {
         try admit(query)
         try refuseUnenforcedPolicy(context)
+        let described = statementContext(query, approvedAs: context, parameterKinds: parameterKinds)
+        try Task.checkCancellation()
         let pluginResult = try await pluginDriver.executeUserQuery(
-            query: query,
-            rowCap: rowCap,
-            parameters: cellValues,
-            context: statementContext(query, approvedAs: context, parameterKinds: parameterKinds)
+            query: query, rowCap: rowCap, parameters: cellValues, context: described
         )
         return mapQueryResult(pluginResult)
     }

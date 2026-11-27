@@ -47,6 +47,22 @@ struct PluginDriverAdapterIsolationTests {
         #expect(driver.calls() == ["adapter": false, "executeBoundedQuery": false])
     }
 
+    @Test("A user statement whose task was stopped never reaches the driver", arguments: [false, true])
+    func stoppedStatementIsNotDispatched(parameterized: Bool) async {
+        let driver = ThreadRecordingDriver()
+        let adapter = makeAdapter(driver)
+        let task = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            if parameterized {
+                return try await adapter.executeParameterized(query: "DELETE FROM t WHERE id = ?", parameters: [1])
+            }
+            return try await adapter.executeUserQuery(query: "DELETE FROM t", rowCap: nil, parameters: nil)
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(driver.calls()["executeUserQuery"] == nil)
+        #expect(driver.calls()["executeParameterized"] == nil)
+    }
+
     @Test("A catalog read runs off the main thread")
     func catalogReadRunsOffMain() async throws {
         let driver = ThreadRecordingDriver()
@@ -91,6 +107,11 @@ private final class ThreadRecordingDriver: PluginDriverStub, @unchecked Sendable
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
         await Task.yield()
         record("executeUserQuery")
+        return Self.result
+    }
+
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        record("executeParameterized")
         return Self.result
     }
 
