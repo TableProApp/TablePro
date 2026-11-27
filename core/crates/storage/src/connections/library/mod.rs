@@ -5,7 +5,9 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 use super::placement::{placed, unique};
-use super::{ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome, SavedConnection, StoreState};
+use super::{
+    ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome, Reported, SavedConnection, StoreState,
+};
 use crate::error::StorageError;
 use crate::lenient::Lenient;
 use crate::store_identity::StoreIdentity;
@@ -98,7 +100,7 @@ impl ConnectionStore {
         document.favorites = favorites;
         document.tidy();
         if document != before {
-            self.commit(&mut state, document)?;
+            self.commit_as(&mut state, document, Reported::ToCaller)?;
         } else if self.digest_on_disk()?.as_deref() != over {
             // Nothing written, so the file must still be the one it answers for.
             return Err(StorageError::LibraryChanged.into());
@@ -136,7 +138,7 @@ impl ConnectionStore {
             store: Some(StoreIdentity::fresh()),
             ..ConnectionsDocument::default()
         };
-        self.commit(&mut state, document)?;
+        self.commit_as(&mut state, document, Reported::ToCaller)?;
         Ok(Rebuilt {
             digest: digest_of(&state),
             set_aside,
@@ -459,14 +461,14 @@ fn digest_of(state: &StoreState) -> Option<String> {
 }
 
 // Of the bytes the store last read, whether they decoded or not.
-fn bytes_digest(state: &StoreState) -> Option<String> {
+pub(super) fn bytes_digest(state: &StoreState) -> Option<String> {
     match state {
         StoreState::Ready(_, Some(bytes)) | StoreState::Unavailable(_, Some(Some(bytes))) => Some(sha256_hex(bytes)),
         StoreState::Ready(_, None) | StoreState::Unloaded | StoreState::Unavailable(..) => None,
     }
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(super) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(bytes))
 }

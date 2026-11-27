@@ -30,6 +30,7 @@ mod ssh;
 mod store_tests;
 mod synced;
 mod write_guard;
+mod written;
 
 pub use additions::ImportedConnection;
 pub use details::{
@@ -45,6 +46,7 @@ pub use ssh::{
 };
 pub use synced::{LibraryChange, SyncedLibrary};
 use write_guard::WriteGuard;
+pub use written::CommittedWrite;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {
@@ -631,6 +633,13 @@ enum StoreState {
     Unavailable(DocumentProblem, Option<FileBytes>),
 }
 
+// Whether a commit is recorded for a host that tags the file, or its digest goes back to the host that asked for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reported {
+    Recorded,
+    ToCaller,
+}
+
 // A write holds the mutex and a lock file from its re-read of the list to its rename, so no writer loses an entry.
 #[derive(Clone)]
 pub struct ConnectionStore {
@@ -642,6 +651,8 @@ struct StoreInner {
     state: Mutex<StoreState>,
     snapshot: watch::Sender<ConnectionListSnapshot>,
     journal: JournalSlot,
+    // Set by a host that tags the file, which then hears of the writes the core commits itself (`written`).
+    report_key: Mutex<Option<secrecy::SecretString>>,
 }
 
 impl ConnectionStore {
@@ -656,6 +667,7 @@ impl ConnectionStore {
                 state: Mutex::new(StoreState::Unloaded),
                 snapshot,
                 journal: JournalSlot::default(),
+                report_key: Mutex::new(None),
             }),
         }
     }
@@ -1099,8 +1111,17 @@ impl ConnectionStore {
         Ok(outcome)
     }
 
+    fn commit(&self, state: &mut WriteGuard<'_>, document: ConnectionsDocument) -> Result<(), StorageError> {
+        self.commit_as(state, document, Reported::Recorded)
+    }
+
     // Write first, then adopt, so a failed write leaves the file and the cache as they were.
-    fn commit(&self, state: &mut WriteGuard<'_>, mut document: ConnectionsDocument) -> Result<(), StorageError> {
+    fn commit_as(
+        &self,
+        state: &mut WriteGuard<'_>,
+        mut document: ConnectionsDocument,
+        reported: Reported,
+    ) -> Result<(), StorageError> {
         document.tidy();
         let changed = match &**state {
             StoreState::Ready(before, _) => document.changes(before),
@@ -1113,7 +1134,16 @@ impl ConnectionStore {
         // copy, and a failed trim leaves both as they were for the next write to try again.
         let kept = document.connection_ids().iter().map(Uuid::to_string).collect();
         crate::upgrade_copies::trim_connection_copies_blocking(&self.inner.path, &kept)?;
-        crate::fs::write_private_blocking(&self.inner.path, &bytes)?;
+        let recorded = match reported {
+            Reported::Recorded => self.record_write(state, library::bytes_digest(state), &bytes),
+            Reported::ToCaller => None,
+        };
+        if let Err(error) = crate::fs::write_private_blocking(&self.inner.path, &bytes) {
+            if let Some(digest) = recorded {
+                self.forget_write(&digest);
+            }
+            return Err(error);
+        }
         state.changed(changed);
         **state = StoreState::Ready(Box::new(document), Some(bytes));
         self.publish(state);

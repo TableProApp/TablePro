@@ -33,6 +33,7 @@ mod keymap;
 mod library;
 mod library_contents;
 mod library_details;
+mod library_writes;
 mod masking;
 mod mcp;
 mod prompter;
@@ -131,6 +132,7 @@ pub use library_details::{
     LocalPasswordSourceRecord, SocksProxyRecord, SshProfileRecord, SshRouteHopRecord, SshRouteRecord,
     SshRouteTargetRecord, TunnelCommandMethodTag, TunnelCommandRecord, VaultAuthRecord,
 };
+pub use library_writes::LibraryWriteReport;
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,
     ShareColumnMasking, ShareRefusal, ShareSummary,

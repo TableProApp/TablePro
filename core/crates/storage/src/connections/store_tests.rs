@@ -26,7 +26,7 @@ fn store(root: &TempDir) -> ConnectionStore {
     ConnectionStore::new(&paths(root))
 }
 
-fn plain(name: &str) -> SavedConnection {
+pub(super) fn plain(name: &str) -> SavedConnection {
     SavedConnection {
         id: Uuid::new_v4(),
         name: name.to_owned(),

@@ -38,7 +38,7 @@ pub use connection_tag::ConnectionTag;
 pub use connection_tag_name::ConnectionTagName;
 pub use connections::field_trust;
 pub use connections::{
-    CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionList,
+    CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, CommittedWrite, ConnectionDetails, ConnectionList,
     ConnectionListSnapshot, ConnectionListState, ConnectionOrigin, ConnectionStore, CredentialPassword,
     CredentialProfile, CredentialReference, DeviceOnly, ImportChange, ImportEntry, ImportPreview, ImportReport,
     ImportedConnection, KnownOrigin, LibraryChange, LibraryRead, LibraryWrite, LocalPasswordSource, Rebuilt,

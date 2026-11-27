@@ -26,6 +26,11 @@ impl<'a> WriteGuard<'a> {
         }
     }
 
+    // Whether the lock beside the file is held, which no other process's write passes.
+    pub(super) fn holds_file_lock(&self) -> bool {
+        self.file.is_some()
+    }
+
     pub(super) fn changed(&mut self, entries: impl IntoIterator<Item = JournalEntry>) {
         for entry in entries {
             match self.changed.iter_mut().find(|held| held.kind == entry.kind) {
