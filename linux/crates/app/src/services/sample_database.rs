@@ -47,7 +47,7 @@ pub(crate) fn ensure_blocking(
         database,
         username: String::new(),
         tls: TlsConfig::disabled(),
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
         external_access: ExternalAccess::default(),
         ai_policy: AiPolicy::default(),
         query_timeout_secs: None,

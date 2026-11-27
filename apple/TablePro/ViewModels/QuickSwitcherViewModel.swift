@@ -333,9 +333,10 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         /// twice and the copy labelled "Database" failed with the driver's own error (#2262).
         if switchTarget != .schema {
             do {
-                let databases = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                    try await driver.fetchDatabases()
-                }
+                // The tree's list, which the sidebar read on connect: the switcher reads it only when nothing has.
+                let databases = try await DatabaseTreeMetadataService.shared.databaseNames(
+                    connectionId: connectionId, databaseType: databaseType
+                )
                 let databaseSubtitle = switchTarget == .database
                     ? services.pluginManager.containerEntityName(for: databaseType)
                     : String(localized: "Database")

@@ -505,6 +505,9 @@ fn every_ssh_destination_problem_has_its_own_words() {
         SshDestinationProblem::PortZero,
         SshDestinationProblem::NotAPort { text: "ssh".to_owned() },
         SshDestinationProblem::UnclosedBracket,
+        SshDestinationProblem::JumpHostKey {
+            host: "jump".to_owned(),
+        },
     ];
 
     let texts: Vec<String> = problems.iter().map(ssh_destination_problem_text).collect();

@@ -16,4 +16,5 @@ public struct PluginExportBulkReads: OptionSet, Sendable {
     public static let commentDDL = PluginExportBulkReads(rawValue: 1 << 4)
     public static let dependentSequences = PluginExportBulkReads(rawValue: 1 << 5)
     public static let dependentTypes = PluginExportBulkReads(rawValue: 1 << 6)
+    public static let tableDDL = PluginExportBulkReads(rawValue: 1 << 7)
 }

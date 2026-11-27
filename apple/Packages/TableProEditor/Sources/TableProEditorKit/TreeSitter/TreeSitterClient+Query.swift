@@ -84,9 +84,10 @@ public extension TreeSitterClient {
     /// - Returns: Any matching nodes from the query.
     func query(_ query: Query, matchingLanguages: Set<GrammarID> = []) throws -> [QueryResult] {
         try executor.execSync({
-            guard let readCallback = self.readCallback else { return [] }
+            let (state, text) = self.pipeline.withValue { ($0.state, $0.stateText) }
+            guard let state, let readCallback = text?.readCallback else { return [] }
             var result: [QueryResult] = []
-            for layer in self.state?.layers ?? [] {
+            for layer in state.layers {
                 guard matchingLanguages.isEmpty || matchingLanguages.contains(layer.id) else { continue }
                 guard let tree = layer.tree else { continue }
                 let cursor = query.execute(in: tree)
@@ -105,9 +106,10 @@ public extension TreeSitterClient {
     /// - Returns: Any matching nodes from the query.
     func query(_ query: Query, matchingLanguages: Set<GrammarID> = []) async throws -> [QueryResult] {
         try await executor.exec {
-            guard let readCallback = self.readCallback else { return [] }
+            let (state, text) = self.pipeline.withValue { ($0.state, $0.stateText) }
+            guard let state, let readCallback = text?.readCallback else { return [] }
             var result: [QueryResult] = []
-            for layer in self.state?.layers ?? [] {
+            for layer in state.layers {
                 guard matchingLanguages.isEmpty || matchingLanguages.contains(layer.id) else { continue }
                 guard let tree = layer.tree else { continue }
                 let cursor = query.execute(in: tree)

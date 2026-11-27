@@ -113,6 +113,12 @@ extension MainContentCoordinator {
             )
             return
         }
+        // Read beside the catalog rather than after it, so the database switcher and completion's namespaces do not
+        // wait for every side kind first. It runs on, harmlessly, if the load fails.
+        let databaseType = connection.type
+        let databases = Task { [connectionId] in
+            await DatabaseTreeMetadataService.shared.loadDatabases(connectionId: connectionId, databaseType: databaseType)
+        }
         do {
             // Completion takes the table list as soon as it lands, so the column seed does not wait for the rest.
             try await services.schemaService.load(
@@ -140,11 +146,8 @@ extension MainContentCoordinator {
             }
             return
         }
+        await databases.value
         await services.schemaRefreshService.syncAutocompleteNamespaces(connectionId: connectionId)
-        await DatabaseTreeMetadataService.shared.loadDatabases(
-            connectionId: connectionId,
-            databaseType: connection.type
-        )
         pruneStaleSidebarState()
     }
 

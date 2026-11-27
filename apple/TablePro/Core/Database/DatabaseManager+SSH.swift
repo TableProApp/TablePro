@@ -77,24 +77,24 @@ extension DatabaseManager {
         // The stored flag alone is not enough: a driver that dials no forwarded port goes around the tunnel.
         guard enabledKinds.first == .ssh, sshConfig.enabled else { return connection }
 
-        let storedSshPassword: String?
-        let keyPassphrase: String?
-        let totpSecret: String?
+        if case .disabled = connection.sshTunnelMode { return connection }
+        return try await openSSHTunnel(
+            for: connection,
+            sshConfig: sshConfig,
+            sshPasswordOverride: sshPasswordOverride,
+            deadline: deadline,
+            ownsAttempt: ownsAttempt
+        )
+    }
 
-        switch connection.sshTunnelMode {
-        case .disabled:
-            return connection
-        case .profile(let profileId, _):
-            storedSshPassword = SSHProfileStorage.shared.loadSSHPassword(for: profileId)
-            keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profileId)
-            totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profileId)
-        case .inline:
-            storedSshPassword = connectionStorage.loadSSHPassword(for: connection.id)
-            keyPassphrase = connectionStorage.loadKeyPassphrase(for: connection.id)
-            totpSecret = connectionStorage.loadTOTPSecret(for: connection.id)
-        }
-
-        let sshPassword = sshPasswordOverride ?? storedSshPassword
+    private func openSSHTunnel(
+        for connection: DatabaseConnection,
+        sshConfig: SSHConfiguration,
+        sshPasswordOverride: String?,
+        deadline: ConnectionDeadline,
+        ownsAttempt: () -> Bool
+    ) async throws -> DatabaseConnection {
+        let credentials = await sshCredentials(for: connection, passwordOverride: sshPasswordOverride)
         let destination = connection.sshForwardDestination
 
         guard ownsAttempt() else { throw CancellationError() }
@@ -105,13 +105,13 @@ extension DatabaseManager {
             sshUsername: sshConfig.username,
             authMethod: sshConfig.authMethod,
             privateKeyPath: sshConfig.privateKeyPath,
-            keyPassphrase: keyPassphrase,
-            sshPassword: sshPassword,
+            keyPassphrase: credentials.keyPassphrase,
+            sshPassword: credentials.sshPassword,
             agentSocketPath: sshConfig.agentSocketPath,
             destination: destination,
             jumpHosts: sshConfig.jumpHosts,
             totpMode: sshConfig.totpMode,
-            totpSecret: totpSecret,
+            totpSecret: credentials.totpSecret,
             totpAlgorithm: sshConfig.totpAlgorithm,
             totpDigits: sshConfig.totpDigits,
             totpPeriod: sshConfig.totpPeriod,

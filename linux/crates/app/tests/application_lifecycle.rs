@@ -470,7 +470,7 @@ fn saved_connection(database: &Path) -> SavedConnection {
         database: database.display().to_string(),
         username: String::new(),
         tls: TlsConfig::verify_full(),
-        safe_mode: tablepro_core::SafeModeLevel::Off,
+        safe_mode: tablepro_core::SafeModeLevel::Silent,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,

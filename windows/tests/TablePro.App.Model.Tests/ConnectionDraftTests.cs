@@ -354,6 +354,21 @@ public sealed class ConnectionDraftTests
     }
 
     [Fact]
+    public void AModeTheEngineDoesNotOfferRoundsUpRatherThanToAWeakerDefault()
+    {
+        var saved = new SavedConnection(
+            Guid.NewGuid(), "RDS", "postgres", "db.example.com", 5432, "app", "app",
+            new TlsSettings(TlsMode.VerifyCa));
+        var draft = ConnectionDraft.From(saved, Postgres);
+
+        draft.FollowTlsDefault(Postgres);
+
+        Assert.Equal(TlsMode.VerifyFull, draft.TlsMode);
+        Assert.Equal(TlsMode.VerifyFull, TlsModes.AtLeastIn(TlsMode.VerifyCa, Postgres.SupportedTlsModes));
+        Assert.Equal(TlsMode.Require, TlsModes.AtLeastIn(TlsMode.Prefer, ClickHouse.SupportedTlsModes));
+    }
+
+    [Fact]
     public void ASavedModeStaysWhenThePortMoves()
     {
         var saved = new SavedConnection(

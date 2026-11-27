@@ -161,3 +161,26 @@ func rawDeflateRoundTrips(count: Int) throws {
         #expect(try rawInflate(packed, expectedCount: input.count) == input)
     }
 }
+
+@Test("A sync flush writes out every byte taken so far, and the stream still finishes whole")
+func syncFlushWritesEverythingTaken() throws {
+    let first = DeflaterFixture.dumpText(lines: 20_000)
+    let second = DeflaterFixture.dumpText(lines: 500)
+    let deflater = try GzipDeflater()
+    var output = Data()
+    let sink: (UnsafeRawBufferPointer) throws -> Void = { output.append($0.assumingMemoryBound(to: UInt8.self)) }
+    try first.withUnsafeBytes { try deflater.deflate($0, into: sink) }
+    try deflater.flush(into: sink)
+    let flushed = output
+
+    var inflatedPrefix = Data()
+    let inflater = try GzipInflater(budget: .init(limit: .max, ratioLimit: .max, grace: .max))
+    try flushed.withUnsafeBytes { raw in
+        try inflater.inflate(raw) { inflatedPrefix.append($0.assumingMemoryBound(to: UInt8.self)) }
+    }
+    #expect(inflatedPrefix == first)
+
+    try second.withUnsafeBytes { try deflater.deflate($0, into: sink) }
+    try deflater.finish(into: sink)
+    #expect(try GzipInflater.decompress(output, budget: .init(limit: .max, ratioLimit: .max, grace: .max)) == first + second)
+}

@@ -10,14 +10,13 @@ use crate::error::StorageError;
 use crate::lenient::Identified;
 
 /// SSH settings saved under a name, which connections follow by `ConnectionDetails::ssh_profile_id`.
+// A key a newer build wrote lands in `ssh.unknown`: a second map beside a flattened one would read each key twice.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SshProfile {
     pub id: Uuid,
     pub name: String,
     #[serde(flatten)]
     pub ssh: SavedSshConfig,
-    #[serde(flatten)]
-    pub unknown: BTreeMap<String, Value>,
 }
 
 /// A user and a password kept once and shared by every connection that links to it. A linked

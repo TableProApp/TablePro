@@ -163,7 +163,9 @@ impl Reader<'_> {
         self.expect(b'{')?;
         // Wiped if a later member fails, since a plaintext's values can be secrets.
         let mut object = Zeroizing::new(JsonValue::Object(Vec::new()));
-        let mut names = HashSet::new();
+        // Hashes, not copies: a member name stays only in the tree, which is wiped.
+        let hasher = std::hash::RandomState::new();
+        let mut names: HashSet<u64> = HashSet::new();
         self.whitespace();
         if self.peek() == Some(b'}') {
             self.at += 1;
@@ -171,14 +173,17 @@ impl Reader<'_> {
         }
         loop {
             self.whitespace();
-            let name = self.string()?;
-            if !names.insert(name.clone()) {
+            let mut name = Zeroizing::new(self.string()?);
+            let seen = !names.insert(std::hash::BuildHasher::hash_one(&hasher, name.as_str()))
+                && matches!(&*object, JsonValue::Object(members) if members.iter().any(|(member, _)| *member == *name));
+            if seen {
                 return Err(KeysError::encoding("a duplicate member name"));
             }
             self.whitespace();
             self.expect(b':')?;
             self.whitespace();
             let value = self.value(depth)?;
+            let name = std::mem::take(&mut *name);
             if let JsonValue::Object(members) = &mut *object {
                 members.push((name, value));
             }
@@ -373,31 +378,12 @@ impl JsonValue {
 
     // The length `to_json` writes, so a buffer for a secret can be made at its final size.
     pub fn encoded_len(&self) -> usize {
-        match self {
-            Self::Null => 4,
-            Self::Bool(value) => {
-                if *value {
-                    4
-                } else {
-                    5
-                }
-            }
-            Self::Number(value) => value.as_str().len(),
-            Self::String(value) => string_len(value),
-            Self::Array(items) => {
-                2 + items.iter().map(Self::encoded_len).sum::<usize>() + items.len().saturating_sub(1)
-            }
-            Self::Object(members) => {
-                2 + members
-                    .iter()
-                    .map(|(name, value)| string_len(name) + 1 + value.encoded_len())
-                    .sum::<usize>()
-                    + members.len().saturating_sub(1)
-            }
-        }
+        let mut count = Count::default();
+        self.write(&mut count);
+        count.0
     }
 
-    pub(crate) fn write(&self, out: &mut String) {
+    pub(crate) fn write(&self, out: &mut impl Sink) {
         match self {
             Self::Null => out.push_str("null"),
             Self::Bool(value) => out.push_str(if *value { "true" } else { "false" }),
@@ -465,24 +451,49 @@ impl Zeroize for JsonValue {
                 name.zeroize();
                 value.zeroize();
             }),
-            Self::Null | Self::Bool(_) => {}
+            Self::Bool(value) => value.zeroize(),
+            Self::Null => {}
         }
     }
 }
 
 pub(crate) fn string_len(value: &str) -> usize {
-    2 + value
-        .chars()
-        .map(|character| match character {
-            '"' | '\\' | '\n' | '\r' | '\t' | '\u{8}' | '\u{c}' => 2,
-            control if control < '\u{20}' => 6,
-            other => other.len_utf8(),
-        })
-        .sum::<usize>()
+    let mut count = Count::default();
+    push_string(&mut count, value);
+    count.0
+}
+
+pub(crate) trait Sink {
+    fn push(&mut self, character: char);
+    fn push_str(&mut self, text: &str);
+}
+
+impl Sink for String {
+    fn push(&mut self, character: char) {
+        String::push(self, character);
+    }
+
+    fn push_str(&mut self, text: &str) {
+        String::push_str(self, text);
+    }
+}
+
+// Counts what a writer would write, so the real buffer is sized once and never moves.
+#[derive(Default)]
+pub(crate) struct Count(pub(crate) usize);
+
+impl Sink for Count {
+    fn push(&mut self, character: char) {
+        self.0 += character.len_utf8();
+    }
+
+    fn push_str(&mut self, text: &str) {
+        self.0 += text.len();
+    }
 }
 
 // A JSON string with the escapes RFC 8259 requires: the quote, the backslash and control characters.
-pub(crate) fn push_string(out: &mut String, value: &str) {
+pub(crate) fn push_string(out: &mut impl Sink, value: &str) {
     out.push('"');
     for character in value.chars() {
         match character {
@@ -493,7 +504,13 @@ pub(crate) fn push_string(out: &mut String, value: &str) {
             '\t' => out.push_str("\\t"),
             '\u{8}' => out.push_str("\\b"),
             '\u{c}' => out.push_str("\\f"),
-            control if control < '\u{20}' => out.push_str(&format!("\\u{:04x}", u32::from(control))),
+            control if control < '\u{20}' => {
+                const HEX: &[u8; 16] = b"0123456789abcdef";
+                let code = u32::from(control);
+                out.push_str("\\u00");
+                out.push(char::from(HEX[(code >> 4) as usize & 0xf]));
+                out.push(char::from(HEX[code as usize & 0xf]));
+            }
             other => out.push(other),
         }
     }
@@ -644,8 +661,10 @@ mod tests {
 
     #[test]
     fn writing_keeps_member_order_and_number_text() {
-        let text = r#"{"z":1,"a":[true,null,"\"q\"\u0001"],"m":{},"n":2.6626666666626666662e19}"#;
-        assert_eq!(parse(text.as_bytes()).unwrap().to_json(), text);
+        let text = r#"{"z":1,"a":[true,null,"\"q\"\u0001\u001f\n"],"m":{},"n":2.6626666666626666662e19}"#;
+        let value = parse(text.as_bytes()).unwrap();
+        assert_eq!(value.to_json(), text);
+        assert_eq!(value.encoded_len(), text.len());
     }
 
     #[test]

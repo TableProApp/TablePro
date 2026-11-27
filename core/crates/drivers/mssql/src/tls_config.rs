@@ -76,7 +76,8 @@ impl TlsPlan {
                 config.encryption(EncryptionLevel::Required);
                 config.trust_cert();
             }
-            TlsMode::VerifyFull => {
+            // The capabilities refuse Verify CA first; reached anyway, it checks the name too rather than less.
+            TlsMode::VerifyCa | TlsMode::VerifyFull => {
                 config.encryption(EncryptionLevel::Required);
                 self.verify(config);
             }
@@ -142,7 +143,7 @@ impl TlsPlan {
     fn handshake_failure(&self, failure: TlsFailure) -> TlsFailure {
         match self.mode {
             TlsMode::Disable => TlsFailure::ServerRequiresTls,
-            TlsMode::Prefer | TlsMode::Require | TlsMode::VerifyFull | TlsMode::Strict => failure,
+            TlsMode::Prefer | TlsMode::Require | TlsMode::VerifyCa | TlsMode::VerifyFull | TlsMode::Strict => failure,
         }
     }
 
@@ -152,7 +153,7 @@ impl TlsPlan {
     pub(crate) fn opening_refused(&self, detail: String) -> DriverError {
         let failure = match self.mode {
             TlsMode::Strict => TlsFailure::ServerRefusedStrict,
-            TlsMode::Disable | TlsMode::Prefer | TlsMode::Require | TlsMode::VerifyFull => {
+            TlsMode::Disable | TlsMode::Prefer | TlsMode::Require | TlsMode::VerifyCa | TlsMode::VerifyFull => {
                 TlsFailure::ServerRequiresStrict
             }
         };

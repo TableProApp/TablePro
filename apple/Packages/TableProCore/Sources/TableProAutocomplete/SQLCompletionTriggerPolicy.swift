@@ -27,8 +27,13 @@ public enum SQLCompletionTriggerPolicy {
         let semicolon = UInt16(UnicodeScalar(";").value)
         let newline = UInt16(UnicodeScalar("\n").value)
         guard previous == semicolon || previous == newline else { return false }
-        guard offset < text.length else { return true }
-
-        return text.substring(from: offset).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // Stops at the first character that is not blank instead of copying the rest of the document.
+        var index = offset
+        while index < text.length {
+            guard let scalar = Unicode.Scalar(text.character(at: index)),
+                  CharacterSet.whitespacesAndNewlines.contains(scalar) else { return false }
+            index += 1
+        }
+        return true
     }
 }

@@ -101,7 +101,8 @@ final class TextBindingSync {
         controller: TextViewController
     ) {
         guard !phase.isEditorChangePending else { return }
-        let isSameDocument = documentID == self.documentID
+        let outgoing = self.documentID
+        let isSameDocument = documentID == outgoing
         self.documentID = documentID
         // Compare with NSString literal equality. The text can be multiple megabytes and bridged from NSTextStorage,
         // so Swift's canonical `!=` walks the whole string through Unicode normalization on every representable update.
@@ -113,7 +114,7 @@ final class TextBindingSync {
             if isSameDocument, documentID != nil {
                 controller.replaceDocumentText(newValue)
             } else {
-                controller.setText(newValue)
+                controller.showDocument(newValue, id: documentID, replacing: outgoing)
             }
         }
         lastSyncedText = newValue
