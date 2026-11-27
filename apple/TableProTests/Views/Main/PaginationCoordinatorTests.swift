@@ -178,12 +178,17 @@ struct PaginationCoordinatorTests {
         return KeyedPage(coordinator: fixture.coordinator, tabManager: fixture.tabManager, tabId: tab.id, driver: driver)
     }
 
-    // The read a move started, once it has run.
+    // The read a move started, once it has run. The row count a loaded page starts goes to the same driver, and can land
+    // before the next page read, so it is left out.
     private func pageRead(_ page: KeyedPage, after earlier: Int = 0) async throws -> SentRead {
         try await waitUntil {
-            page.driver.reads.count > earlier && !page.coordinator.tabExecution.isExecuting(page.tabId)
+            pageReads(page).count > earlier && !page.coordinator.tabExecution.isExecuting(page.tabId)
         }
-        return page.driver.reads[earlier]
+        return pageReads(page)[earlier]
+    }
+
+    private func pageReads(_ page: KeyedPage) -> [SentRead] {
+        page.driver.reads.filter { !$0.sql.hasPrefix("SELECT COUNT(") }
     }
 
     private func query(_ page: KeyedPage) -> String? {
