@@ -168,7 +168,7 @@ To give the older release its files back:
    done
    ```
 
-   The copies of the history sit in that folder, so look for them in `history.newer/` from here on.
+   The copies of the history sit in that folder, so look for them in `history.newer/` from here on. The `history.db` a newer release leaves in `~/.local/state/tablepro/` holds no history. It is there so an older release refuses it as written by a newer version instead of writing history the newer release never reads, so move it aside too, as above.
 
 4. Copy the newest copy back under the file's own name. For the connection list:
 

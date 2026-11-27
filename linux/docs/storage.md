@@ -276,6 +276,12 @@ as amended). The rows move first, once and without loss, whichever of
   and AUTOINCREMENT counters into `.saved_queries.db.partial`, which is
   synced. The drop then commits in the same lock, and only after that is the
   build renamed to `saved_queries.db`, so the store never exists half made.
+- The drop's transaction also makes the table `compaction_owed`. Every open
+  of `history.db`, whichever store opens it, runs `VACUUM` and a truncating
+  WAL checkpoint while that table is there, and drops it only once both
+  finish, so the saved queries' text leaves the file and its WAL. A crash, a
+  failed `VACUUM` or a reader that blocks the checkpoint leaves it for a
+  later open and does not fail this one.
 - A build left by a crash before the drop is removed and made again from
   `history.db`. One left after the drop is renamed into place by the next
   open of either store.
@@ -290,14 +296,39 @@ as amended). The rows move first, once and without loss, whichever of
   generation, and the history's identity does not move.
 - In the same move `history.db` leaves `$XDG_STATE_HOME/<dir>/` for
   `history/`, so a platform that protects files by folder covers every file
-  made beside it. Before either store opens it there, the upgrade copies move
-  first, then the database, once a rollback journal set while no other
-  connection holds it has folded its WAL in, so the one file renamed carries
-  every commit. A crash leaves each file whole on one side and the next open
-  finishes. Another process holding the old file fails the open and moves
-  nothing. Once the folder holds the history, a file an older release makes
-  where it used to be is left alone. The core makes the folder only when it
-  is missing.
+  made beside it. Before either store opens it there, the old file is opened
+  with exclusive locking and a truncating rollback journal. Setting that
+  journal needs the only connection to the file and folds its WAL in, and
+  the connection keeps the lock until the move is done, so no other process
+  reads or writes the file meanwhile. Under exclusive locking a deleting
+  journal would keep the pages it saved until the connection closes; a
+  truncating one is emptied at every commit. Under that lock:
+  1. A copy at `history/.history.db.partial` left by an earlier attempt is
+     removed, and `VACUUM INTO` copies the file there again, synced.
+  2. One transaction drops every table it holds, with `secure_delete` on,
+     makes `compaction_owed`, and adds a migration row whose version no
+     build has (`i64::MAX`). An older release reads that row as a file a
+     newer release wrote and refuses to open it.
+  3. Its upgrade copies move into the folder, each with its journals and the
+     journals first, and the copy is renamed to `history/history.db`.
+- Once the lock is let go, and on every later open, the old file is
+  compacted while it owes it, and a rollback journal beside it is removed
+  under its write lock once it is marked. Neither holds back the open, and
+  neither touches a file an older release made there, which carries no
+  mark.
+- A crash before the mark leaves the old file whole, and the next open
+  removes the copy and makes it again. One after it leaves the synced copy,
+  which the next open renames. Another process holding the old file fails
+  the open and moves nothing, the copies included, so an older release's
+  cleanup still finds them. Once the folder holds the history, a file an
+  older release makes where it used to be is left alone. The core makes the
+  folder only when it is missing.
+- One gap is left. A crash between the copy and the mark, followed by a
+  return to an older release before this one opens again, leaves
+  `history/.history.db.partial` with the history's text in it. The older
+  release does not know the file, and the next open of this release removes
+  it under the lock. It cannot be removed sooner: without the lock, a copy
+  there may be another process's move in progress.
 
 `20261128000001_run_details.sql` adds what the app knew of a run beyond its
 outcome (`RunDetails`): its database and schema, what started it

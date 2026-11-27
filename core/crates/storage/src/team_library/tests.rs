@@ -304,24 +304,23 @@ fn each_state_database_keeps_its_own_delete_marker() {
     assert!(store.mark_deleting_blocking("../db").is_err());
 }
 
-// A folder whose markers cannot be listed hides no delete: the owner stays unread (K8t leftover, Codex round 1).
-#[cfg(unix)]
+// A folder whose markers cannot be listed hides no delete: the owner stays unread (K8t leftover, Codex round 1). A
+// file where the folder should be fails the listing for any user, root included, as the Linux container runs.
 #[test]
 fn markers_that_cannot_be_listed_keep_the_owner_unread() {
-    use std::os::unix::fs::PermissionsExt;
-
     let root = tempfile::tempdir().expect("tempdir");
     let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
-    store
-        .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q1", "a")])
-        .expect("put");
     let folder = store.path().parent().expect("folder").to_owned();
+    std::fs::create_dir_all(folder.parent().expect("the state folder")).expect("the state folder");
+    std::fs::write(&folder, b"not a folder").expect("a file in the folder's place");
 
-    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o300)).expect("unlisted");
     let pending = store.delete_pending_blocking();
-    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o700)).expect("listed");
+    // The listing itself answers the failure, rather than an empty list that would read as no delete.
+    let listed = store.database_markers();
+    std::fs::remove_file(&folder).expect("the file goes");
 
     assert!(pending);
+    assert!(listed.is_err(), "{listed:?}");
     assert!(!store.delete_pending_blocking());
 }
 

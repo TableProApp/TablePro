@@ -129,7 +129,10 @@ pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) 
 
 // The SQLite documentation allows a target that exists if it is empty, and macOS 27's SQLite refuses
 // one even then, so SQLite only ever gets a name that is free. A file already there is not ours to remove.
-async fn vacuum_into_new_file(pool: &SqlitePool, target: &Path) -> std::io::Result<()> {
+pub(crate) async fn vacuum_into_new_file<'c>(
+    database: impl sqlx::SqliteExecutor<'c>,
+    target: &Path,
+) -> std::io::Result<()> {
     match std::fs::symlink_metadata(target) {
         Err(error) if error.kind() == ErrorKind::NotFound => {}
         Ok(_) => return Err(std::io::Error::from(ErrorKind::AlreadyExists)),
@@ -138,7 +141,7 @@ async fn vacuum_into_new_file(pool: &SqlitePool, target: &Path) -> std::io::Resu
     let name = target
         .to_str()
         .ok_or_else(|| std::io::Error::new(ErrorKind::InvalidInput, "the path is not UTF-8"))?;
-    if let Err(error) = sqlx::query("VACUUM INTO ?").bind(name).execute(pool).await {
+    if let Err(error) = sqlx::query("VACUUM INTO ?").bind(name).execute(database).await {
         let _ = remove_with_sidecars(target);
         return Err(database_io_error(&error));
     }
@@ -349,6 +352,30 @@ fn parent_of(path: &Path) -> &Path {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
     }
+}
+
+// Journals first: one left behind its copy would be removed as the journal of a copy that is gone, and the copy would
+// then read as whole without the pages it rolls back to.
+pub(crate) fn move_with_sidecars_blocking(from: &Path, to: &Path) -> Result<(), StorageError> {
+    for sidecar in SIDECARS {
+        let (mut source, mut target) = (from.as_os_str().to_owned(), to.as_os_str().to_owned());
+        source.push(sidecar);
+        target.push(sidecar);
+        match std::fs::rename(&source, &target) {
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(source) => {
+                return Err(StorageError::Write {
+                    path: PathBuf::from(target),
+                    source,
+                });
+            }
+            Ok(()) => {}
+        }
+    }
+    std::fs::rename(from, to).map_err(|source| StorageError::Write {
+        path: to.to_owned(),
+        source,
+    })
 }
 
 pub(crate) fn remove_copy_blocking(path: &Path) -> Result<(), StorageError> {

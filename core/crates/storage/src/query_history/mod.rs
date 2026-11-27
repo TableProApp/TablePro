@@ -146,6 +146,7 @@ impl QueryHistory {
                 crate::upgrade_copies::keep_database(&pool, &path, version).await?;
             }
             split::move_out(&pool, paths).await?;
+            split::compact_if_owed(&pool, &path).await;
             pool
         };
         schema::migrate(&pool).await?;
