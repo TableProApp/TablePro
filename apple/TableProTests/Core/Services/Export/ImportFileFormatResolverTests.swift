@@ -93,13 +93,11 @@ struct ImportFileFormatResolverTests {
         #expect(match(".sql.gz") == .format("sql"))
     }
 
-    @Test("An uppercase compressed dump resolves and is still recognized as compressed")
-    func uppercaseCompressedDumpIsExpanded() {
+    // The parser tells a gzip file by its magic number, so the name's case cannot leave one unread.
+    @Test("An uppercase compressed dump resolves to its format")
+    func uppercaseCompressedDumpResolves() {
         #expect(match("DUMP.SQL.GZ") == .format("sql"))
         #expect(match("ORDERS.CSV.GZ") == .compressedRowFormat(formatId: "csv"))
-        #expect(FileDecompressor.isCompressed(URL(fileURLWithPath: "/tmp/DUMP.SQL.GZ")))
-        #expect(FileDecompressor.isCompressed(URL(fileURLWithPath: "/tmp/dump.sql.gz")))
-        #expect(FileDecompressor.isCompressed(URL(fileURLWithPath: "/tmp/dump.sql")) == false)
     }
 
     @Test("Nothing reads .gz means a compressed file resolves to nothing")

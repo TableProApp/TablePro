@@ -267,6 +267,24 @@ struct MetadataConnectionPoolSchemaTests {
         #expect(backwardRan.inner.driver != forwardRan.outer.driver)
     }
 
+    // A driver that lands on the schema while it signs in then needs no switch on the first lease (#4544).
+    @Test("A pooled connection opens on the schema its first lease wants, unless startup commands run after it")
+    func connectionOpensOnTheLeasesSchema() async throws {
+        for startupCommands in [nil, "SET search_path = app"] as [String?] {
+            let connection = makeSession(startupCommands: startupCommands)
+            let opener = CountingOpener()
+            var openedFor: [String?] = []
+            opener.afterOpen = { openedFor.append($0.schema) }
+            let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+
+            try await pool.withDriver(scope: scope(connection, "sales")) { _ in }
+
+            #expect(openedFor == [startupCommands == nil ? "sales" : nil])
+            pool.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+    }
+
     @Test("A lease with no schema runs on a connection no lease ever moves")
     func leaseWithNoSchemaNeverMovesItsConnection() async throws {
         let connection = makeSession()

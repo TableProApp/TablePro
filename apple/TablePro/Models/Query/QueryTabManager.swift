@@ -28,13 +28,26 @@ final class QueryTabManager: ObservableObject {
             publishAnchorChange(oldTabs: oldValue, newTabs: _tabs)
             syncTabSessionRegistry(oldTabs: oldValue, newTabs: _tabs)
             reconcileVisibleContainer()
+            notePersistedStateChange()
         }
+    }
+
+    // Moves on every write to what a tab save reads, so a save can tell that nothing changed without building it.
+    private(set) var persistenceGeneration: UInt64 = 0
+
+    // The owner's change-driven save; a window that is not showing still saves what changed in it.
+    var onPersistedStateChange: (() -> Void)?
+
+    func notePersistedStateChange() {
+        persistenceGeneration &+= 1
+        onPersistedStateChange?()
     }
 
     // Every selection writer lands here; a view modifier can't, as a connection the window isn't showing has no views.
     @Published var selectedTabId: UUID? {
         didSet {
             guard selectedTabId != oldValue else { return }
+            notePersistedStateChange()
             recordSelectedTabContainer()
             reconcileVisibleContainer()
             scheduleActivationRecord()
@@ -813,6 +826,7 @@ final class QueryTabManager: ObservableObject {
         if let visibleIndex = _visibleTabs?.firstIndex(where: { $0.id == tabId }) {
             _visibleTabs?[visibleIndex].content = edited.content
         }
+        notePersistedStateChange()
         return true
     }
 
