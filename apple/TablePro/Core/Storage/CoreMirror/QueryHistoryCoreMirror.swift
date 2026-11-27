@@ -272,7 +272,8 @@ internal actor QueryHistoryCoreMirror {
     // Runs mirrored before the core kept their details get them once, from this store's rows; the core fills only what
     // it lacks.
     private func fillDetailsOnce(_ store: QueryHistoryStore, agreed: Set<UUID>) async throws {
-        guard !agreed.isEmpty, await !storage.coreDetailsFilled() else { return }
+        guard !agreed.isEmpty else { return }
+        guard await storage.coreDetailsFilled() == false else { return }
         let ids = Array(agreed)
         for start in stride(from: 0, to: ids.count, by: Self.entriesPerWrite) {
             let rows = await storage.coreRows(ids: Array(ids[start..<min(start + Self.entriesPerWrite, ids.count)]))
