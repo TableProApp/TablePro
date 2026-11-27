@@ -79,6 +79,10 @@ struct TableKeysetPageQueryTests {
         )
     }
 
+    private static func integer(_ text: String) -> TypedParameterValue {
+        TypedParameterValue(text: text, kind: .integer)
+    }
+
     private static func equals(_ value: String) -> TableFilter {
         var filter = TableFilter()
         filter.columnName = "name"
@@ -92,7 +96,7 @@ struct TableKeysetPageQueryTests {
     func nextPageSeeksPastTheKey() {
         #expect(Self.query(Self.seek(["100"])) == KeyedPageStatement(
             sql: #"SELECT * FROM "users" WHERE "id" > $1 ORDER BY "id" ASC LIMIT 100 OFFSET 0"#,
-            keyValues: ["100"],
+            keyValues: [Self.integer("100")],
             readsBackward: false
         ))
     }
@@ -101,7 +105,7 @@ struct TableKeysetPageQueryTests {
     func previousPageReadsBackward() {
         #expect(Self.query(Self.seek(["201"], backward: true)) == KeyedPageStatement(
             sql: #"SELECT * FROM "users" WHERE "id" < $1 ORDER BY "id" DESC LIMIT 100 OFFSET 0"#,
-            keyValues: ["201"],
+            keyValues: [Self.integer("201")],
             readsBackward: true
         ))
     }
@@ -130,7 +134,7 @@ struct TableKeysetPageQueryTests {
         )
         #expect(Self.query(seek) == KeyedPageStatement(
             sql: #"SELECT * FROM "users" WHERE ("id", "name") > ($1, $2) ORDER BY "id" ASC, "name" ASC LIMIT 100 OFFSET 0"#,
-            keyValues: ["7", "o'neil"],
+            keyValues: [Self.integer("7"), TypedParameterValue(text: "o'neil", kind: nil)],
             readsBackward: false
         ))
     }
@@ -170,7 +174,7 @@ struct TableKeysetPageQueryTests {
         let seek = Self.seek([.text(key)], columns: ["name"], types: [.text(rawType: "text")])
         let statement = try #require(Self.query(seek, builder: Self.builder(session: session)))
         #expect(statement.sql == #"SELECT * FROM "users" WHERE "name" > $1 ORDER BY "name" ASC LIMIT 100 OFFSET 0"#)
-        #expect(statement.keyValues == [key])
+        #expect(statement.keyValues == [TypedParameterValue(text: key, kind: nil)])
         #expect(!statement.sql.contains("OR 1=1"))
     }
 
@@ -180,7 +184,7 @@ struct TableKeysetPageQueryTests {
             Self.query(Self.seek(["5"]), filters: [Self.equals("a"), Self.equals("b")], logicMode: .or)
         )
         #expect(statement.sql.contains("WHERE (\"name\" = 'a' OR \"name\" = 'b') AND \"id\" > $1 ORDER BY"))
-        #expect(statement.keyValues == ["5"])
+        #expect(statement.keyValues == [Self.integer("5")])
     }
 
     @Test("A raw condition keeps the offset, since a marker in it would take the key's place")
@@ -190,7 +194,7 @@ struct TableKeysetPageQueryTests {
 
     @Test("A decimal key of digits alone seeks")
     func wholeDecimalKey() {
-        #expect(Self.query(Self.seek(["42"], types: [.decimal(rawType: "DECIMAL(10,0)")]))?.keyValues == ["42"])
+        #expect(Self.query(Self.seek(["42"], types: [.decimal(rawType: "DECIMAL(10,0)")]))?.keyValues.map(\.text) == ["42"])
     }
 
     // An older SQLite prints a REAL near a whole number as `1.0`, so `> 1.0` reads the edge row again.
@@ -202,7 +206,7 @@ struct TableKeysetPageQueryTests {
         #expect(Self.query(Self.seek(["3.0"], types: [.date(rawType: "DATE")])) == nil)
         #expect(Self.query(Self.seek(["1e5"], types: [.text(rawType: "STRING")])) == nil)
         #expect(Self.query(Self.seek(["1234567890123456"], types: [.decimal(rawType: "NUMERIC")])) == nil)
-        #expect(Self.query(Self.seek(["20240102"], types: [.date(rawType: "DATE")]))?.keyValues == ["20240102"])
+        #expect(Self.query(Self.seek(["20240102"], types: [.date(rawType: "DATE")]))?.keyValues.map(\.text) == ["20240102"])
     }
 
     // `é` written as one scalar and as `e` with a combining accent are equal to Swift and two columns to the engine.

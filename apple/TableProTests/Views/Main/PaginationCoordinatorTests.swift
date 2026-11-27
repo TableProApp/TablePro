@@ -206,15 +206,17 @@ struct PaginationCoordinatorTests {
         #expect(page.driver.keyQuestions == 1)
     }
 
-    @Test("The driver is asked about a table's key once, and a failed ask keeps the offset")
-    func keyAnswerIsKeptPerTable() async throws {
+    @Test("The driver is asked about the key before every keyed read, and a failed ask keeps the offset")
+    func keyAnswerIsAskedEachRead() async throws {
         let page = makeKeyedPage(page: 3)
         let tab = try #require(page.tabManager.tabs.first { $0.id == page.tabId })
         let scope = try #require(page.coordinator.scope(for: tab))
-        let statement = KeyedPageStatement(sql: "SELECT 1", keyValues: ["1"], readsBackward: false)
+        let statement = KeyedPageStatement(
+            sql: "SELECT 1", keyValues: [TypedParameterValue(text: "1", kind: .integer)], readsBackward: false
+        )
         #expect(await page.coordinator.confirmedKeyedPage(statement, table: "users", scope: scope) == statement)
         #expect(await page.coordinator.confirmedKeyedPage(statement, table: "users", scope: scope) == statement)
-        #expect(page.driver.keyQuestions == 1)
+        #expect(page.driver.keyQuestions == 2)
 
         let elsewhere = DatabaseScope(connectionId: UUID(), database: "nowhere", schema: nil)
         #expect(await page.coordinator.confirmedKeyedPage(statement, table: "users", scope: elsewhere) == nil)

@@ -702,7 +702,9 @@ struct MainContentCoordinatorSortTests {
 
         coordinator.executeQueryInternal(
             pageQuery, onTab: tab.id, isAutoLoad: true,
-            keyedPage: KeyedPageStatement(sql: keyed, keyValues: ["3"], readsBackward: readsBackward)
+            keyedPage: KeyedPageStatement(
+                sql: keyed, keyValues: [TypedParameterValue(text: "3", kind: .integer)], readsBackward: readsBackward
+            )
         )
         try await waitUntil {
             coordinator.tabSessionRegistry.tableRows(for: tab.id).rows.count == 2

@@ -486,6 +486,10 @@ nonisolated final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sen
         try await SQLiteCatalogReads.checkConstraints(table: table, schema: schema, run: catalogRun)
     }
 
+    func primaryKeyNamesOneRow(table: String, schema: String?) async throws -> Bool {
+        try await SQLiteCatalogReads.primaryKeyNamesOneRow(table: table, schema: schema, run: catalogRun)
+    }
+
     var providesBulkColumnFetch: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {

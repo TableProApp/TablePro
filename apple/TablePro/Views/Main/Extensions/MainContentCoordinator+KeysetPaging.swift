@@ -12,12 +12,6 @@ enum PageMove {
     case last
 }
 
-// A table a keyed page reads, as the answer about its key is kept.
-struct KeyedPageTable: Hashable {
-    let scope: DatabaseScope
-    let table: String
-}
-
 extension MainContentCoordinator {
     /// The table's primary key when the page order is that key and nothing else, in one direction. The app's
     /// default sort is such an order. A seek resumes from a row only in an order no two rows share, which holds only
@@ -79,18 +73,14 @@ extension MainContentCoordinator {
     }
 
     /// The keyed statement when the table's key names one row of what it reads, else nil for the page's offset read.
-    /// The driver is asked once per table, and a failed ask is asked again on the next move.
+    /// Asked before every keyed read, never kept: a child table or a collation added since the last move counts.
     func confirmedKeyedPage(_ statement: KeyedPageStatement?, table: String?, scope: DatabaseScope) async
         -> KeyedPageStatement? {
         guard let statement, let table else { return nil }
-        let identity = KeyedPageTable(scope: scope, table: table)
-        if let known = keyNamesOneRowByTable[identity] { return known ? statement : nil }
         let answer = try? await services.databaseManager.withMetadataDriver(scope: scope) { driver in
             try await driver.primaryKeyNamesOneRow(inTable: table, schema: scope.schema)
         }
-        guard let answer else { return nil }
-        keyNamesOneRowByTable[identity] = answer
-        return answer ? statement : nil
+        return answer == true ? statement : nil
     }
 
     // A seek past an edge compares the key, which passes over every NULL one: SQLite takes NULL in a primary key that

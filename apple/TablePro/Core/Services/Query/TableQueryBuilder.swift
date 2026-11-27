@@ -154,12 +154,13 @@ struct TableQueryBuilder {
                 conditions.append("(\(whereClause.dropFirst("WHERE ".count)))")
             }
         }
-        var keyValues: [String] = []
+        var keyValues: [TypedParameterValue] = []
         if let key = seek.key {
             guard key.count == seek.columns.count else { return nil }
             for (value, type) in zip(key, seek.columnTypes) {
                 guard let bound = Self.keyValue(value, type: type) else { return nil }
-                keyValues.append(bound)
+                // Typed, so MySQL 5.7 compares an integer pair in a row value as integers, not as doubles.
+                keyValues.append(TypedParameterValue(text: bound, kind: type.map(Self.isInteger) == true ? .integer : nil))
             }
             conditions.append(seekCondition(seek))
         }
@@ -231,6 +232,11 @@ struct TableQueryBuilder {
         case .timestamp, .boolean, .blob, .json, .enumType, .set, .spatial, .vector, .array:
             return nil
         }
+    }
+
+    private static func isInteger(_ type: ColumnType) -> Bool {
+        if case .integer = type { return true }
+        return false
     }
 
     // Digits alone, at most 15 of them: SQLite stores those as an INTEGER, and a double holds them exactly.
@@ -503,7 +509,7 @@ struct TableQueryBuilder {
 /// The statement one page move sends, with the edge row's key as its bound values. Nothing keeps it past that run.
 struct KeyedPageStatement: Equatable, Sendable {
     let sql: String
-    let keyValues: [String]
+    let keyValues: [TypedParameterValue]
     let readsBackward: Bool
 }
 

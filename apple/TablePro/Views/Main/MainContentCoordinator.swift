@@ -335,8 +335,6 @@ final class MainContentCoordinator: ObservableObject {
     internal var phase2Works: [UUID: [Phase2Work]] = [:]
     internal var firstLoadColumnReads: [UUID: FirstLoadColumnRead] = [:]
     internal var catalogPageReloads: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
-    // What each table's driver said about its key naming one row, so a keyed page asks once per table and window.
-    internal var keyNamesOneRowByTable: [KeyedPageTable: Bool] = [:]
 
     // Not on `QueryTab`: that is the persisted shape, and staying out of its `Equatable` keeps a push from re-publishing tabs.
     internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
