@@ -371,6 +371,11 @@ const COMPARISON_ROLES: [(ComparisonRole, &str); 2] = [
     (ComparisonRole::Approver, "approver"),
 ];
 
+// The name the state file keeps a held reason under, which the pass's log names it by too.
+pub(crate) fn held_reason_name(reason: HeldReason) -> &'static str {
+    name_of(&HELD_REASONS, reason)
+}
+
 fn name_of<T: PartialEq + Copy>(table: &[(T, &'static str)], value: T) -> &'static str {
     table
         .iter()

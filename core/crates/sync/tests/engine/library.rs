@@ -87,7 +87,7 @@ fn connection(id: u128, name: &str) -> SavedConnection {
 async fn take_everything(device: &Device) {
     for _ in 0..8 {
         device.sync().await;
-        let waiting = device.sync.approvals().await.unwrap();
+        let waiting = device.waiting().await;
         if waiting.is_empty() {
             return;
         }
@@ -541,7 +541,7 @@ async fn a_looser_level_pulled_over_one_a_newer_build_named_waits_for_the_person
     newer.sync().await;
     mac.sync().await;
 
-    let waiting = mac.sync.approvals().await.unwrap();
+    let waiting = mac.waiting().await;
     assert_eq!(enforced, tablepro_core::SafeModeLevel::Alert);
     assert_eq!(
         mac_library.store.list_blocking().unwrap().connections[0].safe_mode,
@@ -583,7 +583,7 @@ async fn a_profile_link_waiting_for_the_person_stays_waiting_through_a_later_edi
     mac.sync().await;
 
     let saved = mac_library.store.list_blocking().unwrap().connections[0].clone();
-    let waiting = mac.sync.approvals().await.unwrap();
+    let waiting = mac.waiting().await;
     assert_eq!(saved.name, "Shop 2");
     assert_eq!(saved.details.ssh_profile_id, None);
     assert!(

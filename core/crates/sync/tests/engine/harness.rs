@@ -12,7 +12,7 @@ use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Seed;
 use tablepro_records::Kind;
 use tablepro_sync::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
-use tablepro_sync::api::control::{ConflictChoice, SyncControl};
+use tablepro_sync::api::control::{ConflictChoice, RecordApproval, SyncControl};
 use tablepro_sync::api::device_store::HostDeviceStore;
 use tablepro_sync::api::error::{AdapterError, StateError, SyncError};
 use tablepro_sync::api::ids::{ChangeTag, DeviceRowId, IdempotencyKey, KindName, RecordKey, ScopeName};
@@ -28,7 +28,7 @@ use tablepro_sync::api::transport::{
     Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PullRequest, PulledPage, PushAnswer, PushBatch, ServiceTransport,
     Transport, TransportError,
 };
-use tablepro_sync::engine::{Adapters, Clock, EngineHooks, Journal, StopSignal, Wake};
+use tablepro_sync::engine::{Adapters, Clock, EngineEvents, EngineHooks, Journal, StopSignal, Wake};
 use tablepro_sync::service::{PassReport, ServiceMode, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
@@ -855,6 +855,7 @@ pub struct DeviceBuilder {
     keys: Option<Arc<KeyLog>>,
     seed: Option<Arc<Ed25519Seed>>,
     follows: Option<u64>,
+    events: Option<Arc<dyn EngineEvents>>,
 }
 
 impl DeviceBuilder {
@@ -872,7 +873,14 @@ impl DeviceBuilder {
             keys: None,
             seed: None,
             follows: None,
+            events: None,
         }
+    }
+
+    // What the app hears from the engine.
+    pub fn events(mut self, events: Arc<dyn EngineEvents>) -> Self {
+        self.events = Some(events);
+        self
     }
 
     // The core's own stores in place of the in-memory connections, as an app opens the engine over them.
@@ -972,7 +980,7 @@ impl DeviceBuilder {
             clock: Arc::clone(&clock) as Arc<dyn Clock>,
             stop: stop.clone(),
             journal: Journal::new(wake),
-            events: None,
+            events: self.events,
             categories: tablepro_sync::api::control::SyncCategories {
                 off: Vec::new(),
                 passwords: true,
@@ -1003,14 +1011,33 @@ impl Device {
 
     // Decides the approval as the person would: on the value `approvals` shows now.
     pub async fn decide(&self, key: RecordKey, field: &str, approve: bool) -> Result<(), SyncError> {
-        let seen = self
-            .sync
-            .approvals()
-            .await?
+        let seen = values(self.sync.approvals().await?)
             .into_iter()
             .find(|approval| approval.key == key && approval.field == field)
             .map_or([0; 32], |approval| approval.digest);
         self.sync.decide_approval(key, field.to_owned(), seen, approve).await
+    }
+
+    // Decides every value of a connection that waits, as the review listed it now.
+    pub async fn decide_record(&self, record: &str, approve: bool) {
+        let key = RecordKey::new(ScopeName::Personal, Kind::Connection, record);
+        let listed = self
+            .sync
+            .approvals()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|listed| listed.key == key)
+            .unwrap();
+        self.sync
+            .decide_record_approval(key, listed.digest, approve)
+            .await
+            .unwrap();
+    }
+
+    // The values waiting, one per field, as `approvals` lists them record by record.
+    pub async fn waiting(&self) -> Vec<WaitingValue> {
+        values(self.sync.approvals().await.unwrap())
     }
 
     // Resolves the conflict as the person would: as `conflicts` shows it now.
@@ -1070,6 +1097,32 @@ pub fn write(kind: &str, id: &str, base: Option<ChangeTag>, fields: Value) -> Ch
             fields,
         },
     }
+}
+
+// A value waiting for the person, with the record it belongs to.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WaitingValue {
+    pub key: RecordKey,
+    pub field: String,
+    pub pulled: Value,
+    pub digest: [u8; 32],
+    pub current: Option<Value>,
+}
+
+pub fn values(records: Vec<RecordApproval>) -> Vec<WaitingValue> {
+    records
+        .into_iter()
+        .flat_map(|record| {
+            let key = record.key;
+            record.fields.into_iter().map(move |field| WaitingValue {
+                key: key.clone(),
+                field: field.field,
+                pulled: field.pulled,
+                digest: field.digest,
+                current: field.current,
+            })
+        })
+        .collect()
 }
 
 pub fn connection(name: &str) -> Value {
