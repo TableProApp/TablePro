@@ -156,6 +156,7 @@ fn ran(sql: &str, at_secs: i64) -> HistoryRun {
         duration_ms: Some(1),
         rows_affected: None,
         outcome: HistoryOutcomeTag::Succeeded,
+        details: Default::default(),
     }
 }
 

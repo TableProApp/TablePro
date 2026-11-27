@@ -14,7 +14,6 @@ use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::export::write_whole_file;
-use crate::favourites::FavouriteStore;
 use crate::library::{optional_id, parse_ids};
 use crate::runtime::on_runtime;
 use crate::session::DatabaseSession;
@@ -154,10 +153,6 @@ pub struct HistoryCursorArg {
 
 impl QueryHistoryStore {
     // The prune keeps every entry however old and drops the oldest past the store's cap.
-    pub(crate) fn saved_query_rows(&self) -> tablepro_storage::SavedQueries {
-        self.history.saved_queries()
-    }
-
     pub(crate) async fn open(
         paths: StoragePaths,
         tasks: Tasks,
