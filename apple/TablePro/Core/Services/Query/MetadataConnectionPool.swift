@@ -642,16 +642,21 @@ final class MetadataConnectionPool {
         entry.inFlightCount == 0 && !isAwaitingItsOpeners(entry)
     }
 
-    // A new entry opens on the connection's own default and each lease moves it, so it can serve every schema.
+    // A new entry still serves every schema: each lease moves it to its own.
     private func startOpen(_ openKey: OpenKey) throws -> PendingOpen {
         let key = openKey.key
         guard let session = DatabaseManager.shared.session(for: key.connectionId) else {
             throw DatabaseError.notConnected
         }
         evictIdleIfNeeded(for: key.connectionId)
-        let scope = DatabaseScope(connectionId: key.connectionId, database: key.database, schema: nil)
         let forcesFirstSwitch = key.slot == .followsSchema
             && DatabaseManager.hasStartupCommands(session.connection.startupCommands)
+        // Opened on the schema it is first wanted for, which a driver that can lands on while it signs in. Not when
+        // a startup command runs after it: the first lease then moves the entry unconditionally.
+        let opensOnSchema = key.slot == .followsSchema && !forcesFirstSwitch
+        let scope = DatabaseScope(
+            connectionId: key.connectionId, database: key.database, schema: opensOnSchema ? openKey.schema : nil
+        )
         let open = PendingOpen()
         open.task = Task { [self] in
             let entry = Entry(driver: try await openDriver(scope), schema: nil, forcesNextSwitch: forcesFirstSwitch)
@@ -865,7 +870,8 @@ final class MetadataConnectionPool {
             deadline: deadline,
             timeoutEndpoint: timeoutEndpoint,
             effectiveQueryTimeoutSeconds: queryTimeout,
-            preparedConfiguration: preparedConfiguration
+            preparedConfiguration: preparedConfiguration,
+            initialSchema: DatabaseManager.hasStartupCommands(session.connection.startupCommands) ? nil : scope.schema
         )
         do {
             try await driver.connect()
