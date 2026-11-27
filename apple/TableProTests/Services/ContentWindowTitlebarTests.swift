@@ -8,8 +8,7 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-/// The four content windows as the app builds them. Never ordered front and never closed: `close()`
-/// on a test window over-releases it.
+// Never ordered front, and closed only with isReleasedWhenClosed off: `close()` on a test window over-releases it.
 @MainActor
 struct ContentWindowTitlebarTests {
     private struct Built {
@@ -73,21 +72,11 @@ struct ContentWindowTitlebarTests {
     }
 
     @Test(
-        "The titlebar stays opaque only in full screen with the toolbar hidden",
-        arguments: [
-            (isFullScreen: false, toolbarVisible: false, transparent: true),
-            (isFullScreen: false, toolbarVisible: true, transparent: true),
-            (isFullScreen: true, toolbarVisible: true, transparent: true),
-            (isFullScreen: true, toolbarVisible: false, transparent: false),
-        ]
+        "The titlebar is transparent in a window and opaque in full screen",
+        arguments: [(isFullScreen: false, transparent: true), (isFullScreen: true, transparent: false)]
     )
-    func transparencyFollowsTheSafeArea(state: (isFullScreen: Bool, toolbarVisible: Bool, transparent: Bool)) {
-        #expect(
-            ContentWindow.titlebarIsTransparent(
-                isFullScreen: state.isFullScreen,
-                toolbarVisible: state.toolbarVisible
-            ) == state.transparent
-        )
+    func transparencyFollowsFullScreen(state: (isFullScreen: Bool, transparent: Bool)) {
+        #expect(ContentWindow.titlebarIsTransparent(isFullScreen: state.isFullScreen) == state.transparent)
     }
 
     @Test(
@@ -113,7 +102,7 @@ struct ContentWindowTitlebarTests {
     }
 
     @Test(
-        "A full-screen window keeps a transparent titlebar while its toolbar is showing",
+        "The main window keeps an opaque titlebar in full screen while its toolbar is showing",
         .enabled(
             if: ProcessInfo.processInfo.isOperatingSystemAtLeast(
                 OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
@@ -122,8 +111,12 @@ struct ContentWindowTitlebarTests {
         )
     )
     func fullScreenWithAToolbar() throws {
-        let window = CompareSyncWindowController.makeWindow()
-        defer { window.toolbar = nil }
+        let window = TabWindowController.makeEditorWindow()
+        window.isReleasedWhenClosed = false
+        defer {
+            window.toolbar = nil
+            window.close()
+        }
         let toolbar = NSToolbar(identifier: "com.TablePro.tests.titlebar.\(UUID().uuidString)")
         toolbar.autosavesConfiguration = false
         window.toolbar = toolbar
@@ -131,10 +124,36 @@ struct ContentWindowTitlebarTests {
         try #require(toolbar.isVisible)
 
         NotificationCenter.default.post(name: NSWindow.willEnterFullScreenNotification, object: window)
-        #expect(window.titlebarAppearsTransparent)
-
-        toolbar.isVisible = false
-        NotificationCenter.default.post(name: NSWindow.willEnterFullScreenNotification, object: window)
         #expect(!window.titlebarAppearsTransparent)
+
+        NotificationCenter.default.post(name: NSWindow.didExitFullScreenNotification, object: window)
+        #expect(window.titlebarAppearsTransparent)
+    }
+
+    @Test(
+        "A full-screen entry AppKit refuses gives the window its transparent titlebar back",
+        .enabled(
+            if: ProcessInfo.processInfo.isOperatingSystemAtLeast(
+                OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
+            ),
+            "the titlebar turns transparent from macOS 26"
+        )
+    )
+    func failedFullScreenEntry() throws {
+        let fixture = try OffscreenConnectionWindow(size: CGSize(width: 1_200, height: 800))
+        defer { fixture.tearDown() }
+        let dataFile = DataFileWindowController(document: DataFileDocument())
+        let dataFileWindow = try #require(dataFile.window)
+        defer { dataFileWindow.delegate = nil }
+        let windows: [(NSWindow, () -> Void)] = [
+            (fixture.window, { fixture.controller.windowDidFailToEnterFullScreen(fixture.window) }),
+            (dataFileWindow, { dataFile.windowDidFailToEnterFullScreen(dataFileWindow) }),
+        ]
+        for (window, fail) in windows {
+            NotificationCenter.default.post(name: NSWindow.willEnterFullScreenNotification, object: window)
+            #expect(!window.titlebarAppearsTransparent)
+            fail()
+            #expect(window.titlebarAppearsTransparent)
+        }
     }
 }

@@ -308,6 +308,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         return false
     }
 
+    internal func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        (window as? ContentWindow)?.fullScreenEntryDidFail()
+    }
+
     internal func windowWillClose(_ notification: Notification) {
         let seq = MainContentCoordinator.nextSwitchSeq()
         let t0 = Date()

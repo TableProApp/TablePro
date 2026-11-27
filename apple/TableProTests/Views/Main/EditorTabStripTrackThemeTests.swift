@@ -84,10 +84,59 @@ struct EditorTabStripTrackThemeTests {
     }
 
     private static func center(of view: NSView) throws -> NSColor {
+        try color(of: view, atFraction: 0.5)
+    }
+
+    // Left of a tab's centred title, inside its capsule.
+    private static func color(of view: NSView, atFraction fraction: CGFloat) throws -> NSColor {
         let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: bitmap)
-        let color = try #require(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2))
+        let x = Int(CGFloat(bitmap.pixelsWide) * fraction)
+        let color = try #require(bitmap.colorAt(x: x, y: bitmap.pixelsHigh / 2))
         return try #require(color.usingColorSpace(.sRGB))
+    }
+
+    @Test(
+        "On an opaque titlebar's vibrant strip the track and the selected tab draw as on the transparent titlebar",
+        arguments: [(NSAppearance.Name.vibrantDark, NSAppearance.Name.darkAqua), (.vibrantLight, .aqua)]
+    )
+    func vibrantStripDrawsLikeTheTransparentTitlebar(names: (vibrant: NSAppearance.Name, plain: NSAppearance.Name)) throws {
+        // Never ordered front and never closed: `close()` on a test window over-releases it.
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: names.plain)
+        let track = EditorTabTrackView(frame: NSRect(x: 0, y: 0, width: 120, height: 40))
+        let tab = EditorTabItemView(item: .sample(isSelected: true))
+        tab.frame = NSRect(x: 0, y: 50, width: 160, height: 28)
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            for view in [track, tab] as [NSView] {
+                window.contentView?.addSubview(view)
+                defer { view.removeFromSuperview() }
+                view.appearance = nil
+                let plain = try Self.color(of: view, atFraction: 0.15)
+                view.appearance = NSAppearance(named: names.vibrant)
+                let vibrant = try Self.color(of: view, atFraction: 0.15)
+                #expect(ThemeTestFixture.matches(plain, vibrant), "\(type(of: view)) drew \(vibrant), not \(plain)")
+            }
+        }
+    }
+
+    @Test("On an opaque titlebar's vibrant strip a window theme leaves the track the system's own")
+    func vibrantStripKeepsTheSystemTrackUnderATheme() throws {
+        try ThemeTestFixture.adopting([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark) {
+            let vibrant = try #require(NSAppearance(named: .vibrantDark))
+            let plain = try #require(NSAppearance(named: .darkAqua))
+            #expect(!EditorTabStripPalette.isOverThemedBackdrop(in: vibrant, highContrast: false))
+            #expect(
+                EditorTabStripPalette.isOverThemedBackdrop(in: plain, highContrast: false)
+                    == EditorTabStripPalette.followsWindowBackdrop
+            )
+        }
     }
 
     @Test("The selected tab stays the system's own fill under a theme")

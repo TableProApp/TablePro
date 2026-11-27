@@ -98,6 +98,10 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
         (contentViewController as? DataFileSplitViewController)?.dismissTransientUI()
     }
 
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        (window as? ContentWindow)?.fullScreenEntryDidFail()
+    }
+
     func focusSearchField() {
         searchItem?.beginSearchInteraction()
     }

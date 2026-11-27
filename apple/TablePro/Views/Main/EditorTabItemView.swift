@@ -278,6 +278,10 @@ internal final class EditorTabItemView: NSView {
     }
 
     override internal func draw(_ dirtyRect: NSRect) {
+        EditorTabStripPalette.drawing(self) { drawFills() }
+    }
+
+    private func drawFills() {
         let metrics = EditorTabStripLayout.self
         if showsLeadingSeparator {
             EditorTabStripPalette.separatorColor.setFill()
