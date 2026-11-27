@@ -18,6 +18,17 @@ public extension TextView {
     /// Set a new text storage object for the view.
     /// - Parameter textStorage: The new text storage to use.
     func setTextStorage(_ textStorage: NSTextStorage) {
+        setTextStorage(textStorage, adopting: nil)
+    }
+
+    /// Set a text storage object the view showed before, with the lines it was laid out in then.
+    ///
+    /// The storage already carries the typing attributes and its styles, and `lines` were detached from this same
+    /// storage, so the text is not split into lines again.
+    /// - Parameters:
+    ///   - textStorage: The text storage to show.
+    ///   - lines: The lines detached from `textStorage`, or `nil` to build them.
+    func setTextStorage(_ textStorage: NSTextStorage, adopting lines: TextLayoutManager.DetachedLines?) {
         self.textStorage = textStorage
 
         if let storageDelegate = textStorage.delegate as? MultiStorageDelegate {
@@ -28,10 +39,16 @@ public extension TextView {
             view.removeFromSuperview()
         }
 
-        textStorage.addAttributes(typingAttributes, range: documentRange)
+        if lines == nil {
+            textStorage.addAttributes(typingAttributes, range: documentRange)
+        }
         layoutManager.attachments.removeAll()
         layoutManager.textStorage = textStorage
-        layoutManager.reset()
+        if let lines {
+            layoutManager.reset(adopting: lines)
+        } else {
+            layoutManager.reset()
+        }
         storageDelegate.addDelegate(layoutManager)
 
         selectionManager.textStorage = textStorage

@@ -178,11 +178,19 @@ pub struct KeyObject {
     pub body: KeyBody,
 }
 
+// No record is longer than 1 MiB (ADR 0051, Limits), so a longer one is refused before its tree is built.
+fn parse_fields(fields: &[u8]) -> Result<JsonValue, KeysError> {
+    if fields.len() > crate::trust::RECORD_LIMIT {
+        return Err(KeysError::encoding("fields longer than the 1 MiB record limit"));
+    }
+    json::parse(fields)
+}
+
 impl KeyObject {
     pub fn parse(kind: &str, record_id: &str, fields: &[u8]) -> Result<Self, KeysError> {
         let kind = KeyKind::parse(kind)?;
         let id = KeyRecordId::parse(kind, record_id)?;
-        let value = json::parse(fields)?;
+        let value = parse_fields(fields)?;
         let body = parse_body(&id, &value)?;
         Ok(Self { id, body })
     }
@@ -403,7 +411,7 @@ fn parse_wrap(target: WrapTarget, value: &JsonValue) -> Result<WrapBody, KeysErr
 
 // The clear fields of a `secret_envelope` or a `history_entry`: `suite`, `kv`, `nonce`, `ct`.
 pub fn parse_sealed(fields: &[u8]) -> Result<Sealed, KeysError> {
-    let value = json::parse(fields)?;
+    let value = parse_fields(fields)?;
     let mut members = Members::of(&value)?;
     check_suite(&mut members)?;
     let kv = members.version("kv")?;
@@ -609,8 +617,8 @@ pub fn check_same_object(
     offered_id: &str,
     offered: &[u8],
 ) -> Result<(), KeysError> {
-    let held = json::parse(held)?;
-    let offered = json::parse(offered)?;
+    let held = parse_fields(held)?;
+    let offered = parse_fields(offered)?;
     if held_kind == offered_kind && held_id == offered_id && held.same_as(&offered) {
         Ok(())
     } else {

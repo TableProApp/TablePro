@@ -511,3 +511,20 @@ struct TableTransferServiceTests {
         #expect(occurrences(of: "`login`", in: insert) == 1)
     }
 }
+
+struct TransferRowCountTests {
+    @Test("The sheet hears the newest count, never one held back, and the total counts every batch")
+    func newestCountReachesTheSheet() async {
+        let written = TransferRowCount()
+        written.add(500)
+        written.add(500)
+        written.add(120)
+        written.finish()
+
+        var heard: [Int] = []
+        for await count in written.updates { heard.append(count) }
+
+        #expect(heard == [1_120])
+        #expect(written.total == 1_120)
+    }
+}

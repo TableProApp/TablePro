@@ -356,22 +356,53 @@ nonisolated final class ImportRowWriter: @unchecked Sendable {
     // MARK: - Mapping
 
     func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
-        var pairs: [(column: String, value: PluginCellValue)] = []
+        let plan = mappingPlan(for: values)
+        return (plan.columns, plan.fields.map { values[$0] ?? .null })
+    }
+
+    // Which field fills which column, sorted by column. It depends only on the row's field names, which every row of
+    // a file shares, so it is resolved once per layout instead of folding and sorting every row's names again.
+    nonisolated private struct MappingPlan {
+        let fieldNames: Set<String>
+        let fields: [String]
+        let columns: [String]
+    }
+
+    private let planLock = NSLock()
+    private var lastPlan: MappingPlan?
+
+    private func mappingPlan(for values: [String: PluginCellValue]) -> MappingPlan {
+        planLock.lock()
+        let cached = lastPlan
+        planLock.unlock()
+        if let cached, cached.fieldNames.count == values.count,
+           values.keys.allSatisfy({ cached.fieldNames.contains($0) }) {
+            return cached
+        }
+        let plan = resolvePlan(fieldNames: Set(values.keys))
+        planLock.lock()
+        lastPlan = plan
+        planLock.unlock()
+        return plan
+    }
+
+    private func resolvePlan(fieldNames: Set<String>) -> MappingPlan {
+        var pairs: [(column: String, field: String)] = []
         var matchedNames = Set<String>()
-        for (field, value) in values {
+        for field in fieldNames {
             guard let column = exactMapping[field] else { continue }
-            pairs.append((column, value))
+            pairs.append((column, field))
             matchedNames.insert(field.lowercased())
         }
-        let unmatched = values.filter { exactMapping[$0.key] == nil && !sourceFields.contains($0.key) }
-        for (folded, group) in Dictionary(grouping: unmatched, by: { $0.key.lowercased() }) {
-            guard group.count == 1, let entry = group.first, !matchedNames.contains(folded),
+        let unmatched = fieldNames.filter { exactMapping[$0] == nil && !sourceFields.contains($0) }
+        for (folded, group) in Dictionary(grouping: unmatched, by: { $0.lowercased() }) {
+            guard group.count == 1, let field = group.first, !matchedNames.contains(folded),
                   sourceFieldsPerFoldedName[folded, default: 0] <= 1,
                   let column = foldedMapping[folded] else { continue }
-            pairs.append((column, entry.value))
+            pairs.append((column, field))
         }
         pairs.sort { $0.column < $1.column }
-        return (pairs.map(\.column), pairs.map(\.value))
+        return MappingPlan(fieldNames: fieldNames, fields: pairs.map(\.field), columns: pairs.map(\.column))
     }
 
     private static var matchingRefusesClearingMessage: String {

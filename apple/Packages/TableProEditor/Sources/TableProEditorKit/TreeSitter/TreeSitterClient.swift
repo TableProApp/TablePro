@@ -5,6 +5,7 @@
 //  Created by Khan Winter on 9/12/22.
 //
 
+import AppKit
 import Foundation
 import OSLog
 import SwiftTreeSitter
@@ -35,29 +36,81 @@ public final class TreeSitterClient: HighlightProviding {
 
     // MARK: - Properties
 
-    /// A callback to use to efficiently fetch portions of text.
-    var readBlock: Parser.ReadBlock?
+    /// The parse pipeline's shared state. A background task reads it when it starts and commits to it, so neither
+    /// the parse nor its commit waits for the main thread.
+    struct Pipeline {
+        /// The committed tree-sitter state.
+        var state: TreeSitterState?
+        /// The text `state` was parsed from, which queries read so their predicates see the text their tree saw.
+        var stateText: TextSnapshot?
+        /// Every edit `state` has not taken yet, in the order the main thread received them.
+        var edits: [InputEdit] = []
+        /// The text after every edit in `edits`.
+        var text: TextSnapshot?
+        /// Bumped by every edit and set up. A parse commits only while no edit has arrived since it read `text`.
+        var revision = 0
+        var setUpGeneration = 0
+    }
 
-    /// A callback used to fetch text for queries.
-    var readCallback: SwiftTreeSitter.Predicate.TextProvider?
+    let pipeline = Atomic(Pipeline())
 
-    /// The internal tree-sitter layer tree object.
-    var state: TreeSitterState?
+    /// The committed tree-sitter state.
+    var state: TreeSitterState? {
+        pipeline.withValue { $0.state }
+    }
+
+    /// Every edit the committed state has not taken yet.
+    var pendingEdits: [InputEdit] {
+        pipeline.withValue { $0.edits }
+    }
 
     package var executor: TreeSitterExecutor = .init()
+
+    /// Main thread only: the document's text, kept in step with every edit so a parse gets it without a copy.
+    private var text: TextSnapshot?
+
+    /// Main thread only: the language the client was last set up with.
+    private var languageID: GrammarID?
+
+    /// Main thread only: a parse to install on the next set up instead of parsing, if that set up is for its storage.
+    private var pendingAdoption: ParkedParse?
+
+    /// A committed parse kept with a document the editor does not show, so showing it again needs no parse.
+    public struct ParkedParse {
+        fileprivate let state: TreeSitterState
+        fileprivate let text: TextSnapshot
+        fileprivate let languageID: GrammarID
+        fileprivate weak var storage: NSTextStorage?
+
+        /// The UTF-16 length of the text the parse is for.
+        public var length: Int { text.length }
+    }
 
     /// The end point of the previous edit.
     private var oldEndPoint: Point?
 
-    // Every edit `state` has not taken yet, in the order the main thread received them.
-    package var pendingEdits: Atomic<[InputEdit]> = Atomic([])
-
-    // Main thread only. A parse commits while no edit or set up has arrived since it was queued.
-    var editRevision = 0
-    private var setUpGeneration = 0
-
     /// Optional flag to force every operation to be done on the caller's thread.
     package var forceSyncOperation: Bool = false
+
+    /// How long a parse may run on the main thread before a background task takes it over and resumes it.
+    package var syncParseBudget: TimeInterval = 0.003
+
+    static let signposter = OSSignposter(subsystem: "com.TablePro", category: "TreeSitter")
+
+    /// Where an interval ran, so a trace separates the main thread's share.
+    static var threadName: String {
+        Thread.isMainThread ? "main" : "background"
+    }
+
+    // Old trees are freed here, so dropping a state never costs the main thread.
+    private static let releaseQueue = DispatchQueue(label: "com.TablePro.TreeSitterClient.release", qos: .utility)
+
+    static func releaseOffMain(_ state: TreeSitterState?) {
+        guard let state, Thread.isMainThread else { return }
+        releaseQueue.async {
+            withExtendedLifetime(state) {}
+        }
+    }
 
     public init() { }
 
@@ -101,12 +154,6 @@ public final class TreeSitterClient: HighlightProviding {
         public static let longParseFinished: Notification.Name = .init(
             "TableProEditorKit.longParseFinishedNotification"
         )
-
-        /// The duration tasks sleep before checking if they're runnable.
-        ///
-        /// Lower than 1ms starts causing bad lock contention, much higher reduces responsiveness with diminishing
-        /// returns on CPU efficiency.
-        public static let taskSleepDuration: Duration = .milliseconds(10)
     }
 
     // MARK: - HighlightProviding
@@ -118,43 +165,95 @@ public final class TreeSitterClient: HighlightProviding {
     ///   - codeLanguage: The language to use for parsing.
     public func setUp(textView: TextView, codeLanguage: CodeLanguage) {
         Self.logger.debug("TreeSitterClient setting up with language: \(codeLanguage.id.rawValue, privacy: .public)")
+        let adoption = pendingAdoption
+        pendingAdoption = nil
+        languageID = codeLanguage.id
+        if let adoption, adoption.storage === textView.textStorage, adoption.languageID == codeLanguage.id,
+           adoption.text.length == textView.textStorage.length {
+            install(adoption)
+            return
+        }
 
-        let readBlock = textView.createReadBlock()
-        let readCallback = textView.createReadCallback()
-        self.readBlock = readBlock
-        self.readCallback = readCallback
-
-        setUpGeneration &+= 1
-        editRevision &+= 1
-        let generation = setUpGeneration
+        let snapshot = Self.signposter.withIntervalSignpost("snapshot", "\(Self.threadName, privacy: .public)") {
+            textView.createTextSnapshot()
+        }
+        text = snapshot
+        // The committed state describes the text set up before this one, so it goes now: a caller that waits for a
+        // state, or a parse task that starts on one, gets this set up's.
+        let (generation, previous) = pipeline.mutate { pipeline in
+            pipeline.setUpGeneration &+= 1
+            pipeline.revision &+= 1
+            pipeline.edits = []
+            pipeline.text = snapshot
+            let previous = pipeline.state
+            pipeline.state = nil
+            pipeline.stateText = nil
+            return (pipeline.setUpGeneration, previous)
+        }
+        Self.releaseOffMain(previous)
 
         executor.cancelAll(below: .all)
-        pendingEdits.mutate { edits in
-            edits = []
+        let operation = { [weak self] in
+            let state = TreeSitterState(
+                codeLanguage: codeLanguage,
+                readCallback: snapshot.readCallback,
+                readBlock: snapshot.readBlock
+            )
+            // Edits made after this set up stay pending: the next edit task applies them on top of this state.
+            let replaced = self?.pipeline.mutate { pipeline -> TreeSitterState? in
+                guard pipeline.setUpGeneration == generation else { return nil }
+                let replaced = pipeline.state
+                pipeline.state = state
+                pipeline.stateText = snapshot
+                return replaced
+            }
+            Self.releaseOffMain(replaced ?? nil)
         }
         if forceSyncOperation {
-            executor.execSync {
-                state = TreeSitterState(codeLanguage: codeLanguage, readCallback: readCallback, readBlock: readBlock)
-            }
+            executor.execSync(operation)
         } else {
-            let snapshot = textView.createTextSnapshot()
             executor.execAsync(
                 priority: .reset,
-                operation: { [weak self] in
-                    let state = TreeSitterState(
-                        codeLanguage: codeLanguage,
-                        readCallback: snapshot.readCallback,
-                        readBlock: snapshot.readBlock
-                    )
-                    DispatchQueue.waitMainIfNot {
-                        guard let self, self.setUpGeneration == generation else { return }
-                        self.state = state
-                    }
+                operation: {
+                    operation()
                     return true
                 },
                 onCancel: {}
             )
         }
+    }
+
+    /// The committed parse of `storage`, to keep while another document is shown. `nil` when it is not committed
+    /// yet: an edit or a set up is still being parsed.
+    public func park(storage: NSTextStorage) -> ParkedParse? {
+        guard let languageID, text?.length == storage.length else { return nil }
+        return pipeline.withValue { pipeline in
+            guard pipeline.edits.isEmpty, let state = pipeline.state, let stateText = pipeline.stateText,
+                  stateText.length == storage.length else { return nil }
+            return ParkedParse(state: state, text: stateText, languageID: languageID, storage: storage)
+        }
+    }
+
+    /// Installs `parked` on the next set up instead of parsing, when that set up is for the storage it was parked
+    /// from, in the same language and length.
+    public func adopt(_ parked: ParkedParse?) {
+        pendingAdoption = parked
+    }
+
+    private func install(_ parked: ParkedParse) {
+        text = parked.text
+        executor.cancelAll(below: .all)
+        let previous = pipeline.mutate { pipeline in
+            pipeline.setUpGeneration &+= 1
+            pipeline.revision &+= 1
+            pipeline.edits = []
+            pipeline.text = parked.text
+            let previous = pipeline.state
+            pipeline.state = parked.state
+            pipeline.stateText = parked.text
+            return previous
+        }
+        Self.releaseOffMain(previous)
     }
 
     // MARK: - HighlightProviding
@@ -187,16 +286,23 @@ public final class TreeSitterClient: HighlightProviding {
         delta: Int,
         completion: @escaping @MainActor (Result<IndexSet, Error>) -> Void
     ) {
+        let interval = Self.signposter.beginInterval("applyEdit", id: Self.signposter.makeSignpostID())
+        defer { Self.signposter.endInterval("applyEdit", interval) }
+
+        let snapshot = updatedText(textView: textView, range: range, delta: delta)
         let oldEndPoint: Point = self.oldEndPoint ?? textView.pointForLocation(range.max) ?? .zero
-        guard let edit = InputEdit(range: range, delta: delta, oldEndPoint: oldEndPoint, textView: textView) else {
+        let edit = InputEdit(range: range, delta: delta, oldEndPoint: oldEndPoint, textView: textView)
+        let revision = pipeline.mutate { pipeline in
+            pipeline.revision &+= 1
+            if let edit {
+                pipeline.edits.append(edit)
+            }
+            pipeline.text = snapshot
+            return pipeline.revision
+        }
+        guard edit != nil else {
             completion(.failure(TreeSitterClientError.invalidEdit))
             return
-        }
-
-        editRevision &+= 1
-        let revision = editRevision
-        pendingEdits.mutate { edits in
-            edits.append(edit)
         }
 
         let execAsync = Self.shouldExecuteAsync(
@@ -206,26 +312,22 @@ public final class TreeSitterClient: HighlightProviding {
         )
 
         if !execAsync || forceSyncOperation {
+            // Bounded, so an edit that re-lexes the rest of the document cannot hold the main thread: a parse that
+            // does not finish in time is resumed by the background task below.
+            let budget = forceSyncOperation ? nil : syncParseBudget
             let result = executor.execSync {
-                applyEdits(
-                    pendingEdits.value(),
-                    revision: revision,
-                    readBlock: readBlock,
-                    readCallback: readCallback
-                )
+                applyEdits(revision: revision, budget: budget)
             }
-            if case .success(let invalidatedRanges) = result, let invalidatedRanges {
+            if case .success(.committed(let invalidatedRanges)) = result {
                 DispatchQueue.dispatchMainIfNot { completion(.success(invalidatedRanges)) }
                 return
             }
         }
 
         if !forceSyncOperation {
-            // A keystroke supersedes the parse the one before it started. Its edit stays on `pendingEdits`, so this
-            // parse applies the burst at once.
+            // A keystroke supersedes the parse the one before it started. Its edit stays pending, so this parse
+            // applies the burst at once.
             executor.cancelAll(below: .reset)
-            let edits = pendingEdits.value()
-            let snapshot = textView.createTextSnapshot()
             executor.execAsync(
                 priority: .edit,
                 operation: { [weak self] in
@@ -233,12 +335,8 @@ public final class TreeSitterClient: HighlightProviding {
                         DispatchQueue.dispatchMainIfNot { completion(.success(IndexSet())) }
                         return true
                     }
-                    guard let invalidatedRanges = self.applyEdits(
-                        edits,
-                        revision: revision,
-                        readBlock: snapshot.readBlock,
-                        readCallback: snapshot.readCallback
-                    ) else { return false }
+                    guard case .committed(let invalidatedRanges) = self.applyEdits(revision: revision, budget: nil)
+                    else { return false }
                     DispatchQueue.dispatchMainIfNot { completion(.success(invalidatedRanges)) }
                     return true
                 },
@@ -248,6 +346,26 @@ public final class TreeSitterClient: HighlightProviding {
                     }
                 }
             )
+        }
+    }
+
+    /// Applies an edit to the main thread's copy of the text and returns it, to hand to a parse as its snapshot.
+    ///
+    /// Only the chunks the edit touches are rebuilt. When the copy does not match the storage, as after an edit that
+    /// never reached this client, it is taken from the storage again.
+    private func updatedText(textView: TextView, range: NSRange, delta: Int) -> TextSnapshot {
+        Self.signposter.withIntervalSignpost("snapshot", "\(Self.threadName, privacy: .public)") {
+            let storage = textView.textStorage.mutableString
+            let replacement = NSRange(location: range.location, length: range.length + delta)
+            if var text, range.max <= text.length, text.length + delta == storage.length, replacement.length >= 0,
+               replacement.max <= storage.length {
+                text.replace(range, with: storage, in: replacement)
+                self.text = text
+                return text
+            }
+            let text = TextSnapshot(string: storage)
+            self.text = text
+            return text
         }
     }
 
@@ -270,8 +388,15 @@ public final class TreeSitterClient: HighlightProviding {
         range: NSRange,
         completion: @escaping @MainActor (Result<[HighlightRange], Error>) -> Void
     ) {
-        let operation = { [weak self] in
-            (self?.queryHighlightsForRange(range: range) ?? []).sorted { $0.range.location < $1.range.location }
+        let operation = { [weak self] () -> [HighlightRange] in
+            guard let self else { return [] }
+            return Self.signposter.withIntervalSignpost(
+                "queryHighlights",
+                id: Self.signposter.makeSignpostID(),
+                "\(Self.threadName, privacy: .public)"
+            ) {
+                self.queryHighlightsForRange(range: range).sorted { $0.range.location < $1.range.location }
+            }
         }
 
         let longQuery = range.length > Constants.maxSyncQueryLength
@@ -294,10 +419,13 @@ public final class TreeSitterClient: HighlightProviding {
         }
 
         if !forceSyncOperation {
+            // The query reads the committed snapshot, not the text view, so it runs here and only its ranges go
+            // to the main thread.
             executor.execAsync(
                 priority: .access,
                 operation: {
-                    DispatchQueue.dispatchMainIfNot { completion(.success(operation())) }
+                    let highlights = operation()
+                    DispatchQueue.dispatchMainIfNot { completion(.success(highlights)) }
                     return true
                 },
                 onCancel: {

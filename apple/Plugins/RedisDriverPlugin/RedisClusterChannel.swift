@@ -189,6 +189,11 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         servedDatabaseCount
     }
 
+    // The count is known without asking, and the keyspace is one read per primary.
+    func databaseCountAndKeyCounts() async throws -> (reported: Int?, keyCounts: [Int: Int]?) {
+        (servedDatabaseCount, try await keyCountsByDatabase())
+    }
+
     /// `INFO keyspace` describes the node that answers it, so each primary's is read and added up.
     func keyCountsByDatabase() async throws -> [Int: Int]? {
         guard supportsDatabaseSelection else { return try await databaseZeroKeyCounts() }
@@ -245,16 +250,32 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             grouped[target]?.append((index, command))
         }
 
+        // Each node has its own connection, so the parts go out together: a page costs one round trip, not one per node.
+        let parts = order.compactMap { target -> (address: RedisNodeAddress, entries: [(index: Int, command: [Data])])? in
+            guard let entries = grouped[target], let address = address(forIdentifier: target) else { return nil }
+            return (address, entries)
+        }
+        let batches = try await withThrowingTaskGroup(of: (Int, [RedisReply]).self) { group in
+            for (position, part) in parts.enumerated() {
+                group.addTask {
+                    let connection = try await self.connection(to: part.address)
+                    return (position, try await connection.executePipeline(part.entries.map(\.command), scope: scope))
+                }
+            }
+            var batches = [[RedisReply]](repeating: [], count: parts.count)
+            for try await (position, batch) in group {
+                batches[position] = batch
+            }
+            return batches
+        }
+
         var replies = [RedisReply](repeating: .null, count: commands.count)
-        for target in order {
-            guard let entries = grouped[target], let address = address(forIdentifier: target) else { continue }
-            let connection = try await connection(to: address)
-            let batch = try await connection.executePipeline(entries.map(\.command), scope: scope)
-            for (entry, reply) in zip(entries, batch) {
+        for (part, batch) in zip(parts, batches) {
+            for (entry, reply) in zip(part.entries, batch) {
                 replies[entry.index] = try await resolveRedirectIfNeeded(
                     reply,
                     command: entry.command,
-                    from: address,
+                    from: part.address,
                     scope: scope
                 )
             }

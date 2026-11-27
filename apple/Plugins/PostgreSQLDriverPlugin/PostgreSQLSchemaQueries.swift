@@ -222,6 +222,16 @@ nonisolated enum PostgreSQLSchemaQueries {
         "SET search_path TO \(quotedSchemaIdentifier(schema))"
     }
 
+    // As `setSearchPath`, unless the session's current schema already is the one named, so a path that names more
+    // schemas than the first keeps them, as a host's `switchSchemaIfNeeded` keeps them. `false` makes it last the
+    // session, as a plain `SET` does.
+    static func setSearchPathUnlessCurrent(toSchema schema: String) -> String {
+        let path = PostgreSQLObjectQueries.quoteLiteral(quotedSchemaIdentifier(schema))
+        let name = PostgreSQLObjectQueries.quoteLiteral(schema)
+        return "SELECT pg_catalog.set_config('search_path', \(path), false) "
+            + "WHERE pg_catalog.current_schema() IS DISTINCT FROM \(name)"
+    }
+
     private static func quotedSchemaIdentifier(_ schema: String) -> String {
         SQLQuoting.identifier(schema)
     }
@@ -530,8 +540,55 @@ nonisolated enum PostgreSQLSchemaQueries {
             WHERE c.relname = \(tableLiteral)
               AND n.nspname = \(schemaLiteral)
               AND con.contype IN ('p', 'u', 'c', 'x')
-            ORDER BY
-              CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 ELSE 3 END
+            ORDER BY \(constraintOrder)
+            """
+    }
+
+    // The name breaks a tie between two constraints of one kind, so the per-table and schema-wide reads list them
+    // alike rather than in whatever order each plan returns them.
+    private static let constraintOrder = """
+        CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 ELSE 3 END, con.conname
+        """
+
+    /// The tables `allTablesDDL` renders: plain tables that are not partitions. A partitioned table, a partition and
+    /// every other kind keeps its own read, which reads the partition tree and the relkind it needs.
+    static func plainTablePredicate(capabilities: PostgreSQLCapabilities) -> String {
+        capabilities.hasDeclarativePartitioning ? "c.relkind = 'r' AND NOT c.relispartition" : "c.relkind = 'r'"
+    }
+
+    // `tableDDLConstraintsQuery` for every plain table of the schema, the table's name last.
+    static func allTablesDDLConstraintsQuery(schema: String, capabilities: PostgreSQLCapabilities) -> String {
+        """
+            SELECT
+                pg_catalog.pg_get_constraintdef(con.oid, true),
+                c.relname
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+              AND \(plainTablePredicate(capabilities: capabilities))
+              AND con.contype IN ('p', 'u', 'c', 'x')
+            ORDER BY c.relname, \(constraintOrder)
+            """
+    }
+
+    // `tableDDLColumnsQuery` for every plain table of the schema, with the persistence its shape reads and the
+    // table's name last.
+    static func allTablesDDLColumnsQuery(schema: String, capabilities: PostgreSQLCapabilities) -> String {
+        """
+            SELECT
+                \(columnDefinition(capabilities: capabilities)),
+                c.relpersistence::text,
+                c.relname
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+            WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+              AND \(plainTablePredicate(capabilities: capabilities))
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY c.relname, a.attnum
             """
     }
 

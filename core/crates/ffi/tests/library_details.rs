@@ -10,10 +10,13 @@ use std::sync::Arc;
 
 use secrecy::SecretString;
 use tablepro_ffi::{
-    CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord, ConnectionRecord, ConnectionSecrets, Core,
-    CredentialPasswordRecord, CredentialProfileRecord, CredentialReferenceRecord, DeviceSettingsRecord, HostConfig,
-    HostSecretError, HostSecrets, LocalPasswordSourceRecord, SafeModeTag, SecretItemTag, SecretKindTag, SshAuthTag,
-    SshProfileRecord, SshSettings, TableFolderItemRecord, TableRefRecord, TlsModeTag, TlsSettings, VaultAuthRecord,
+    AiPolicyTag, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord, ConnectionRecord,
+    ConnectionSecrets, Core, CredentialPasswordRecord, CredentialProfileRecord, CredentialReferenceRecord,
+    DeviceSettingsRecord, ExternalAccessTag, GroupRecord, HostConfig, HostSecretError, HostSecrets,
+    LibraryConnectionRecord, LibraryWriteRecord, LocalPasswordSourceRecord, RemoteFileAccessTag, SafeModeTag,
+    SecretItemTag, SecretKindTag, SshAuthTag, SshJumpAuthTag, SshJumpHostRecord, SshOptionsRecord, SshProfileRecord,
+    SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TableFolderItemRecord, TableRefRecord, TagRecord,
+    TlsModeTag, TlsSettings, VaultAuthRecord, library_icon_for_symbol, library_icon_symbol, parse_jump_hosts,
 };
 
 struct NoSecrets;
@@ -81,7 +84,7 @@ fn record(name: &str) -> ConnectionRecord {
             server_name: None,
         },
         ssh: None,
-        safe_mode: SafeModeTag::Off,
+        safe_mode: SafeModeTag::Silent,
         query_timeout_secs: None,
         color: None,
         group_id: None,
@@ -89,6 +92,8 @@ fn record(name: &str) -> ConnectionRecord {
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        icon: None,
+        order: 0,
     }
 }
 
@@ -223,6 +228,8 @@ async fn profiles_are_created_replaced_and_deleted() {
                 username: Some("ops".to_owned()),
                 jump_hosts: Vec::new(),
                 auth: SshAuthTag::Agent,
+                enabled: None,
+                options: None,
             },
         })
         .await
@@ -361,6 +368,8 @@ async fn a_profile_save_never_takes_the_id_of_a_profile_this_build_cannot_read()
                 username: None,
                 jump_hosts: Vec::new(),
                 auth: SshAuthTag::Agent,
+                enabled: None,
+                options: None,
             },
         })
         .await
@@ -382,4 +391,371 @@ async fn a_profile_save_never_takes_the_id_of_a_profile_this_build_cannot_read()
     let file = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
     assert!(file.contains("quantum"));
     assert!(file.contains("hardware_key"));
+}
+
+fn mac_library() -> LibraryWriteRecord {
+    let group = "E6C12C96-3CBD-4A0E-9F41-E36B47F35D84".to_lowercase();
+    let tag = "00000000-0000-0000-0000-000000000003".to_owned();
+    let mut connection = record(" Prod\t(EU) ");
+    connection.id = "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_lowercase();
+    connection.host = " db.internal ".to_owned();
+    connection.tls = TlsSettings {
+        mode: TlsModeTag::VerifyCa,
+        ca_file: Some("ca.pem".to_owned()),
+        client_certificate: Some("client.pem".to_owned()),
+        client_key: None,
+        server_name: None,
+    };
+    connection.safe_mode = SafeModeTag::SafeModeFull;
+    connection.ai_policy = Some(AiPolicyTag::AppDefault);
+    connection.external_access = Some(ExternalAccessTag::ReadWrite);
+    connection.group_id = Some(group.clone());
+    connection.order = 7;
+    connection.tags = vec![tag.clone(), "84bc7d00-a144-4c18-80c0-a11c6070d4f9".to_owned()];
+    connection.last_opened_ms = Some(1_700_000_000_123);
+    connection.icon = library_icon_for_symbol("cylinder.split.1x2".to_owned());
+    connection.ssh = Some(SshSettings {
+        host: "bastion".to_owned(),
+        port: Some(2222),
+        username: None,
+        jump_hosts: vec![SshJumpHostRecord {
+            id: Some("3FD0B191-5CF8-4760-84A9-92779983F3CF".to_lowercase()),
+            host: "jump".to_owned(),
+            port: None,
+            username: Some("ops".to_owned()),
+            auth: Some(SshJumpAuthTag::PrivateKey),
+            key_path: Some("~/.ssh/hop".to_owned()),
+        }],
+        auth: SshAuthTag::None,
+        enabled: Some(false),
+        options: Some(SshOptionsRecord {
+            kept_key_path: Some("~/.ssh/id_ed25519".to_owned()),
+            agent_socket: Some("~/.1password/agent.sock".to_owned()),
+            totp: SshTotpRecord {
+                mode: SshTotpModeTag::AutoGenerate,
+                algorithm: SshTotpAlgorithmTag::Sha256,
+                digits: 8,
+                period: 60,
+            },
+            remote_file_path: Some("~/app.db".to_owned()),
+            remote_file_access: RemoteFileAccessTag::OnServer,
+        }),
+    });
+    LibraryWriteRecord {
+        connections: vec![LibraryConnectionRecord {
+            connection,
+            details: details(),
+            device: DeviceSettingsRecord {
+                local_only: true,
+                origin: "synced".to_owned(),
+                ..DeviceSettingsRecord::default()
+            },
+        }],
+        groups: vec![GroupRecord {
+            id: group,
+            name: " ".to_owned(),
+            parent_id: Some("380cb783-4b26-48f3-8f84-1468967a9fa3".to_owned()),
+            order: 4,
+            color: None,
+            icon: library_icon_for_symbol("server.rack".to_owned()),
+        }],
+        tags: vec![TagRecord {
+            id: tag,
+            name: "production with a name longer than thirty-two".to_owned(),
+            color: None,
+            is_preset: true,
+        }],
+        favorites: vec!["6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44".to_owned()],
+        removing: Vec::new(),
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write;
+    Sha256::digest(bytes).iter().fold(String::new(), |mut text, byte| {
+        let _ = write!(text, "{byte:02x}");
+        text
+    })
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_read_and_write_give_the_digest_of_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let file = dir.path().join("connections.json");
+    assert_eq!(library.library_contents().await.unwrap().digest, None);
+
+    let written = library.replace_library(mac_library(), None).await.unwrap();
+
+    let on_disk = sha256_hex(&std::fs::read(&file).unwrap());
+    assert_eq!(written.digest.as_deref(), Some(on_disk.as_str()));
+    assert_eq!(library.library_contents().await.unwrap().digest, written.digest);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_keeps_every_path_and_host_as_given() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let mut written = mac_library();
+    let connection = &mut written.connections[0].connection;
+    connection.tls.ca_file = Some(" ca.pem ".to_owned());
+    connection.tls.client_certificate = Some(" client.pem ".to_owned());
+    connection.tls.client_key = Some(" client.key ".to_owned());
+    if let Some(ssh) = connection.ssh.as_mut() {
+        ssh.host = " bastion ".to_owned();
+        ssh.auth = SshAuthTag::PrivateKey {
+            path: Some(" ~/.ssh/id_rsa ".to_owned()),
+            has_passphrase: true,
+        };
+        ssh.jump_hosts[0].key_path = Some(" ~/.ssh/hop ".to_owned());
+        ssh.jump_hosts.push(SshJumpHostRecord {
+            id: None,
+            host: "edge,inner".to_owned(),
+            port: None,
+            username: Some(" ops".to_owned()),
+            auth: None,
+            key_path: None,
+        });
+        if let Some(options) = ssh.options.as_mut() {
+            options.kept_key_path = Some(" ~/.ssh/kept ".to_owned());
+            options.agent_socket = Some(" agent.sock ".to_owned());
+            options.remote_file_path = Some(" ~/app.db ".to_owned());
+        }
+    }
+
+    library.replace_library(written.clone(), None).await.unwrap();
+
+    assert_eq!(
+        library.library_contents().await.unwrap().connections,
+        written.connections
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_over_a_file_changed_since_it_was_read_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let vouched = library.replace_library(mac_library(), None).await.unwrap();
+    let file = dir.path().join("connections.json");
+    let swapped = std::fs::read_to_string(&file)
+        .unwrap()
+        .replace("db.internal", "attacker.example");
+    std::fs::write(&file, &swapped).unwrap();
+
+    let refused = library.replace_library(mac_library(), vouched.digest).await;
+
+    assert_eq!(
+        refused.err().map(|error| error.code().to_owned()),
+        Some("storage.library_changed".to_owned())
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), swapped);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_refuses_a_blank_hop_id_and_a_time_out_of_range() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let mut blank_hop = mac_library();
+    if let Some(ssh) = blank_hop.connections[0].connection.ssh.as_mut() {
+        ssh.jump_hosts[0].id = Some("  ".to_owned());
+    }
+    let mut far_time = mac_library();
+    far_time.connections[0].connection.last_opened_ms = Some(i64::MAX);
+
+    assert!(library.replace_library(blank_hop, None).await.is_err());
+    assert!(library.replace_library(far_time, None).await.is_err());
+    assert_eq!(library.library_contents().await.unwrap().digest, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rebuild_sets_aside_a_file_this_build_cannot_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("connections.json");
+    std::fs::write(&file, b"{ half an edit").unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+
+    let rebuilt = library.rebuild_library(mac_library()).await.unwrap();
+
+    let aside = rebuilt.set_aside.expect("set aside");
+    assert_eq!(std::fs::read(&aside).unwrap(), b"{ half an edit");
+    assert_eq!(
+        library.library_contents().await.unwrap().connections,
+        mac_library().connections
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_refuses_a_hop_id_that_does_not_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let mut written = mac_library();
+    if let Some(ssh) = written.connections[0].connection.ssh.as_mut() {
+        ssh.jump_hosts[0].id = Some("not an id".to_owned());
+    }
+
+    let refused = library.replace_library(written, None).await;
+
+    assert!(refused.is_err(), "{refused:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rebuild_keeps_only_what_the_write_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let written = mac_library();
+    library.replace_library(written.clone(), None).await.unwrap();
+    library
+        .save_ssh_profile(SshProfileRecord {
+            id: String::new(),
+            name: "jump".to_owned(),
+            ssh: SshSettings {
+                host: "jump.example".to_owned(),
+                port: None,
+                username: None,
+                jump_hosts: Vec::new(),
+                auth: SshAuthTag::Agent,
+                enabled: None,
+                options: None,
+            },
+        })
+        .await
+        .unwrap();
+    let file = dir.path().join("connections.json");
+    let mut stored: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    stored["connections"][0]["from_a_newer_build"] = serde_json::json!(true);
+    stored["connections"][0]["tls"]["pinned"] = serde_json::json!("sha256/abc");
+    std::fs::write(&file, serde_json::to_vec(&stored).unwrap()).unwrap();
+
+    let rebuilt = library.rebuild_library(written.clone()).await.unwrap();
+
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(!text.contains("from_a_newer_build"), "{text}");
+    assert!(!text.contains("pinned"), "{text}");
+    assert!(!text.contains("jump.example"), "{text}");
+    assert_eq!(rebuilt.digest.as_deref(), Some(sha256_hex(text.as_bytes()).as_str()));
+    assert_eq!(
+        library.library_contents().await.unwrap().connections,
+        written.connections
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_written_whole_reads_back_as_it_was_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let written = mac_library();
+
+    library.replace_library(written.clone(), None).await.unwrap();
+    let read = library.library_contents().await.unwrap();
+
+    assert_eq!(read.connections, written.connections);
+    assert_eq!(read.groups, written.groups);
+    assert_eq!(read.tags, written.tags);
+    assert_eq!(read.favorites, written.favorites);
+    assert!(read.unreadable.is_empty());
+    assert_eq!(
+        library_icon_symbol(read.groups[0].icon.clone().unwrap())
+            .unwrap()
+            .as_deref(),
+        Some("server.rack")
+    );
+    let snapshot = library.snapshot().await.unwrap();
+    assert_eq!(
+        snapshot.groups[0].parent_id, None,
+        "a parent the library lacks reads as the top"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_form_save_keeps_what_the_form_does_not_show() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let written = mac_library();
+    library.replace_library(written.clone(), None).await.unwrap();
+    let mut form = library.snapshot().await.unwrap().connections.remove(0);
+    form.safe_mode = SafeModeTag::ReadOnly;
+    form.ai_policy = Some(AiPolicyTag::Ask);
+    form.icon = None;
+    if let Some(ssh) = form.ssh.as_mut() {
+        ssh.options = None;
+        ssh.enabled = Some(true);
+        ssh.auth = SshAuthTag::Agent;
+        ssh.jump_hosts = parse_jump_hosts("ops@jump".to_owned()).unwrap();
+    }
+    form.tls.client_certificate = None;
+    form.tls.mode = TlsModeTag::VerifyFull;
+
+    library.save(form, ConnectionSecrets::default()).await.unwrap();
+    let saved = library
+        .library_contents()
+        .await
+        .unwrap()
+        .connections
+        .remove(0)
+        .connection;
+
+    let before = &written.connections[0].connection;
+    assert_eq!(saved.safe_mode, SafeModeTag::SafeModeFull);
+    assert_eq!(saved.tls.mode, TlsModeTag::VerifyCa, "Verify CA shows as Verify full");
+    assert_eq!(saved.ai_policy, Some(AiPolicyTag::AppDefault));
+    assert_eq!(saved.icon, before.icon);
+    let (ssh, held) = (saved.ssh.unwrap(), before.ssh.clone().unwrap());
+    assert_eq!(ssh.auth, SshAuthTag::None);
+    assert_eq!(ssh.options, held.options);
+    assert_eq!(ssh.jump_hosts, held.jump_hosts);
+    assert_eq!(ssh.enabled, Some(true));
+    assert_eq!(saved.name, "Prod (EU)");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_form_that_sends_a_tunnel_turns_one_switched_off_back_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let mut written = mac_library();
+    if let Some(ssh) = written.connections[0].connection.ssh.as_mut() {
+        ssh.options = None;
+    }
+    library.replace_library(written.clone(), None).await.unwrap();
+    let mut form = library.snapshot().await.unwrap().connections.remove(0);
+    let mut ssh = form.ssh.take().unwrap();
+    ssh.enabled = None;
+    ssh.options = None;
+    form.ssh = Some(ssh);
+    // A form save refuses half a client identity, which the library write kept.
+    form.tls.client_certificate = None;
+
+    library.save(form.clone(), ConnectionSecrets::default()).await.unwrap();
+    let saved = library
+        .library_contents()
+        .await
+        .unwrap()
+        .connections
+        .remove(0)
+        .connection;
+    assert_eq!(saved.ssh.and_then(|ssh| ssh.enabled), Some(true));
+
+    form.ssh = None;
+    library.save(form, ConnectionSecrets::default()).await.unwrap();
+    let off = library
+        .library_contents()
+        .await
+        .unwrap()
+        .connections
+        .remove(0)
+        .connection;
+    assert_eq!(
+        off.ssh.map(|ssh| (ssh.enabled, ssh.host)),
+        Some((Some(false), "bastion".to_owned()))
+    );
 }

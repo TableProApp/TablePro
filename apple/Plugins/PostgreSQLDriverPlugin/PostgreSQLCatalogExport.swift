@@ -69,20 +69,22 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
         let resolvedSchema = schema ?? currentSchema
         let query = PostgreSQLObjectQueries.routineList(schema: resolvedSchema, capabilities: catalogCapabilities)
-        return try await rows(query).compactMap { row -> PluginRoutineInfo? in
-            guard let name = row[safe: 1]?.asText else { return nil }
-            let kind: PluginRoutineKind = row[safe: 6]?.asText == "p" ? .procedure : .function
-            return PluginRoutineInfo(
-                name: name,
-                kind: kind,
-                schema: row[safe: 2]?.asText ?? resolvedSchema,
-                returnType: row[safe: 4]?.asText,
-                language: row[safe: 5]?.asText,
-                argumentSignature: row[safe: 3]?.asText,
-                identity: row[safe: 0]?.asText,
-                attributes: Self.routineAttributes(row)
-            )
-        }
+        return try await rows(query).compactMap { Self.routine(from: $0, fallbackSchema: resolvedSchema) }
+    }
+
+    static func routine(from row: [PluginCellValue], fallbackSchema: String) -> PluginRoutineInfo? {
+        guard let name = row[safe: 1]?.asText else { return nil }
+        let kind: PluginRoutineKind = row[safe: 6]?.asText == "p" ? .procedure : .function
+        return PluginRoutineInfo(
+            name: name,
+            kind: kind,
+            schema: row[safe: 2]?.asText ?? fallbackSchema,
+            returnType: row[safe: 4]?.asText,
+            language: row[safe: 5]?.asText,
+            argumentSignature: row[safe: 3]?.asText,
+            identity: row[safe: 0]?.asText,
+            attributes: routineAttributes(row)
+        )
     }
 
     func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String {
@@ -243,7 +245,7 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
 
     // The sequence read only where pg_sequences lists each last value: before it, each is a read of its own.
     var schemaDDLReads: PluginExportBulkReads {
-        let reads: PluginExportBulkReads = [.indexDDL, .commentDDL, .dependentTypes]
+        let reads: PluginExportBulkReads = [.indexDDL, .commentDDL, .dependentTypes, .tableDDL]
         return includesSequencesCatalog ? reads.union(.dependentSequences) : reads
     }
 
@@ -267,6 +269,34 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
             grouped[relation, default: []].append(row)
         }
         return grouped
+    }
+
+    // Two statements for the schema in place of three per table. Each table is rendered by the same `script` the
+    // per-table read uses, from the same column and constraint text, so the two give the same `CREATE TABLE`.
+    func fetchAllTableDDL(schema: String?) async throws -> [String: String] {
+        let resolvedSchema = schema ?? currentSchema
+        async let columnRows = rowsByRelation(PostgreSQLSchemaQueries.allTablesDDLColumnsQuery(
+            schema: resolvedSchema, capabilities: capabilities
+        ))
+        async let constraintRows = rowsByRelation(PostgreSQLSchemaQueries.allTablesDDLConstraintsQuery(
+            schema: resolvedSchema, capabilities: capabilities
+        ))
+        let (columns, constraints) = try await (columnRows, constraintRows)
+        var scripts: [String: String] = [:]
+        for (table, rows) in columns {
+            let definitions = rows.compactMap { $0.first?.asText }
+            guard !definitions.isEmpty else { continue }
+            let shape = PostgreSQLTableDDL.Shape(isUnlogged: rows.first?[safe: 1]?.asText == "u")
+            scripts[table] = PostgreSQLTableDDL.script(
+                name: PostgreSQLObjectQueries.qualifiedName(schema: resolvedSchema, name: table),
+                definitions: definitions + (constraints[table] ?? []).compactMap { $0.first?.asText },
+                shape: shape,
+                partitions: [],
+                partitionIndexes: [],
+                partitionComments: []
+            )
+        }
+        return scripts
     }
 
     func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] {

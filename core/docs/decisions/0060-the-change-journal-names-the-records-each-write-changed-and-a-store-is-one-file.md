@@ -1,6 +1,6 @@
 # 0060: The change journal names the records each write changed, and a store is one file
 
-- **Status**: Accepted; amends 0054
+- **Status**: Accepted; amends 0054; per-kind refills amended by 0066
 - **Date**: 2026-11-26
 
 ## Context

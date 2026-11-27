@@ -26,12 +26,12 @@ public sealed class SavedQueryTreeTests
 
         Assert.Equal<string>(["Admin", "Reports", "Top first", "Top second"], roots.Select(node => node.Name));
         var reports = roots[1];
-        Assert.Equal(10L, reports.Folder?.Id);
+        Assert.Equal(Id(10), reports.Folder?.Id);
         Assert.Equal<string>(["Monthly", "Archive", "Customers", "Invoices"], reports.Children.Select(node => node.Name));
         Assert.Equal<string>(["Monthly totals"], reports.Children[0].Children.Select(node => node.Name));
         Assert.Empty(roots[0].Children);
         Assert.Null(roots[2].Folder);
-        Assert.Equal(3L, roots[2].Query?.Id);
+        Assert.Equal(Id(3), roots[2].Query?.Id);
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public sealed class SavedQueryTreeTests
     {
         var folders = SavedQueryTree.Folders(Library);
 
-        Assert.Equal<long>([12, 10, 11, 13], folders.Select(folder => folder.Id));
+        Assert.Equal<Guid>([Id(12), Id(10), Id(11), Id(13)], folders.Select(folder => folder.Id));
         Assert.Equal<string>(["Admin", "Reports", "Reports / Monthly", "Reports / Archive"], folders.Select(folder => folder.Path));
         Assert.Equal<int>([0, 0, 1, 1], folders.Select(folder => folder.Depth));
         Assert.Equal("Monthly", folders[2].Name);
@@ -65,9 +65,9 @@ public sealed class SavedQueryTreeTests
     [Fact]
     public void AFolderLeadsUpToTheTopLevel()
     {
-        Assert.Equal<long>([11, 10], SavedQueryTree.FolderAndAncestors(11, Library));
-        Assert.Equal<long>([12], SavedQueryTree.FolderAndAncestors(12, Library));
-        Assert.Empty(SavedQueryTree.FolderAndAncestors(99, Library));
+        Assert.Equal<Guid>([Id(11), Id(10)], SavedQueryTree.FolderAndAncestors(Id(11), Library));
+        Assert.Equal<Guid>([Id(12)], SavedQueryTree.FolderAndAncestors(Id(12), Library));
+        Assert.Empty(SavedQueryTree.FolderAndAncestors(Id(99), Library));
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public sealed class SavedQueryTreeTests
     {
         var list = new SavedQueryList([], [Folder(1, "A", 2, 0), Folder(2, "B", 1, 0)]);
 
-        Assert.Equal<long>([1, 2], SavedQueryTree.FolderAndAncestors(1, list));
+        Assert.Equal<Guid>([Id(1), Id(2)], SavedQueryTree.FolderAndAncestors(Id(1), list));
     }
 
     [Theory]
@@ -142,9 +142,12 @@ public sealed class SavedQueryTreeTests
             SavedQueryText.Insertion("SELECT 1", "SELECT * FROM users"));
     }
 
-    private static SavedQuery Query(long id, string name, long? folderId, long order) =>
-        new(id, name, $"SELECT {id}", null, folderId, order, DateTimeOffset.FromUnixTimeSeconds(1_700_000_000));
+    // Record ids are UUIDs (core ADR 0052); a number picks one the test can name.
+    private static Guid Id(int number) => new($"00000000-0000-4000-8000-{number:D12}");
 
-    private static SavedQueryFolder Folder(long id, string name, long? parentId, long order) =>
-        new(id, name, parentId, order);
+    private static SavedQuery Query(int id, string name, int? folderId, long order) =>
+        new(Id(id), name, $"SELECT {id}", null, folderId is { } folder ? Id(folder) : null, order, DateTimeOffset.FromUnixTimeSeconds(1_700_000_000));
+
+    private static SavedQueryFolder Folder(int id, string name, int? parentId, long order) =>
+        new(Id(id), name, parentId is { } parent ? Id(parent) : null, order);
 }

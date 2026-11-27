@@ -1,6 +1,6 @@
 # 0064: A team restart waits for a word comparison, and the sync lanes' readings are settled
 
-- **Status**: Accepted; amends 0051, 0054, 0056 and 0059
+- **Status**: Accepted; amends 0051, 0054, 0056 and 0059; the kind 3 reset's notice amended by 0065; `stores` rows' per-kind refills, other devices' reset times and the Pins reading amended by 0066
 - **Date**: 2026-11-26
 
 ## Context

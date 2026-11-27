@@ -9,6 +9,31 @@ public enum TlsMode
     Require,
     VerifyFull,
     Strict,
+
+    // Stored for a connection another app saved; no engine connects with it yet.
+    VerifyCa,
+}
+
+// The core's TlsMode::BY_STRICTNESS: each mode checks at least what the one before it does.
+public static class TlsModes
+{
+    private static readonly TlsMode[] ByStrictness =
+        [TlsMode.Disable, TlsMode.Prefer, TlsMode.Require, TlsMode.VerifyCa, TlsMode.VerifyFull, TlsMode.Strict];
+
+    public static int Strictness(TlsMode mode) => Array.IndexOf(ByStrictness, mode);
+
+    // The weakest offered mode at least as strict as mode, or the strictest offered when none is, so a form never weakens one.
+    public static TlsMode AtLeastIn(TlsMode mode, IReadOnlyList<TlsMode> offered)
+    {
+        ArgumentNullException.ThrowIfNull(offered);
+        var stricter = offered.Where(candidate => Strictness(candidate) >= Strictness(mode)).ToList();
+        if (stricter.Count > 0)
+        {
+            return stricter.MinBy(Strictness);
+        }
+
+        return offered.Count > 0 ? offered.MaxBy(Strictness) : mode;
+    }
 }
 
 public enum SafeMode
@@ -94,7 +119,8 @@ public sealed record ConnectionSecrets(
 public sealed record ConnectionGroup(Guid Id, string Name, Guid? ParentId, int Order, string? Color);
 
 // A label several connections share. Color is one of the connection colours' ids.
-public sealed record ConnectionTag(Guid Id, string Name, string Color);
+// Color is null for a tag with no colour, which the macOS app can hold.
+public sealed record ConnectionTag(Guid Id, string Name, string? Color);
 
 // Connections come in each group's order, groups depth first in each parent's order, tags in the order they were made.
 public sealed record LibrarySnapshot(

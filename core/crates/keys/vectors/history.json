@@ -455,7 +455,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "another account",
@@ -474,7 +475,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "another kv",
@@ -493,7 +495,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     }
   ],
   "pushed_again": [

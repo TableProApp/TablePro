@@ -704,9 +704,7 @@ extension SQLFileParser {
         private let limits: ReadLimits
         private let onRead: (@Sendable (Int64, Int64) -> Void)?
 
-        private var fileHandle: FileHandle?
-        private var fileSize: Int64 = 0
-        private var bytesRead: Int64 = 0
+        private var reader: SQLFileByteReader?
         private var ctx: ParserContext
         private let nsBuffer = NSMutableString()
         // Text before it is lexed; it is deleted when the next chunk is read, not once per statement.
@@ -882,12 +880,13 @@ extension SQLFileParser {
         }
 
         private func readChunk() throws {
-            let handle = try openFileIfNeeded()
+            let reader = try openFileIfNeeded()
             // A count, a GO scan and a driver's COPY read chunk after chunk with nothing draining the autorelease pool.
-            let rawData = try autoreleasepool { try handle.read(upToCount: limits.chunkSize) } ?? Data()
-            if !rawData.isEmpty, let onRead {
-                bytesRead += Int64(rawData.count)
-                onRead(bytesRead, fileSize)
+            let readBefore = reader.bytesRead
+            let rawData = try autoreleasepool { try reader.read(upToCount: limits.chunkSize) }
+            // A gzip file reports the compressed bytes read against its size on disk.
+            if reader.bytesRead != readBefore, let onRead {
+                onRead(reader.bytesRead, reader.fileSize)
             }
 
             if rawData.isEmpty && !decoder.hasPendingBytes {
@@ -1030,25 +1029,21 @@ extension SQLFileParser {
             }
         }
 
-        private func openFileIfNeeded() throws -> FileHandle {
-            if let fileHandle {
-                return fileHandle
+        // A size of 0, taken from the open handle, leaves the import's bar on statements.
+        private func openFileIfNeeded() throws -> SQLFileByteReader {
+            if let reader {
+                return reader
             }
-            let handle = try FileHandle(forReadingFrom: url)
-            fileHandle = handle
-            // Taken from the open handle; a size of 0 leaves the import's bar on statements.
-            if onRead != nil {
-                var info = stat()
-                fileSize = fstat(handle.fileDescriptor, &info) == 0 ? Int64(info.st_size) : 0
-            }
-            return handle
+            let opened = try SQLFileByteReader(url: url)
+            reader = opened
+            return opened
         }
 
         private func closeFile() {
-            guard let handle = fileHandle else { return }
-            fileHandle = nil
+            guard let opened = reader else { return }
+            reader = nil
             do {
-                try handle.close()
+                try opened.close()
             } catch {
                 SQLFileParser.logger.warning(
                     "Failed to close file handle for \(self.url.path): \(error.localizedDescription)")
