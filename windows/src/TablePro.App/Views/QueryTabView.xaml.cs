@@ -333,9 +333,16 @@ public sealed partial class QueryTabView
         catch (OperationCanceledException)
         {
         }
-        catch (TableProException exception) when (!_closed)
+        catch (ObjectDisposedException)
         {
-            Results.ShowError(exception.Error);
+            // The tab closed while the plan ran, so its session is gone.
+        }
+        catch (TableProException exception)
+        {
+            if (!_closed)
+            {
+                Results.ShowError(exception.Error);
+            }
         }
     }
 
