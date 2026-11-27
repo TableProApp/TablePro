@@ -52,7 +52,7 @@ public sealed partial class KeyboardShortcutsView : UserControl
         var overrides = ShortcutOverrides.From(settings.ShortcutOverrides);
         foreach (var (action, row) in _rows)
         {
-            row.Card.Description = null;
+            row.Card.Description = string.Empty;
             row.Recorder.Configure(action, Strings.Get(Keymap.NameKey(action)), Label(action));
             row.Reset.Visibility = overrides.IsCustomized(action) ? Visibility.Visible : Visibility.Collapsed;
         }
