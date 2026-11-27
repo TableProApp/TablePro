@@ -1950,6 +1950,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2782,7 +2784,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     void uniffi_tablepro_ffi_fn_method_core_report_library_writes(ulong @ptr,RustBuffer @key,ref UniffiRustCallStatus _uniffi_out_err
+     ulong uniffi_tablepro_ffi_fn_method_core_ack_library_writes(ulong @ptr,RustBuffer @throughDigest
     );
 
     #if NET8_0_OR_GREATER
@@ -2793,7 +2795,18 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_core_take_library_writes(ulong @ptr
+     ulong uniffi_tablepro_ffi_fn_method_core_peek_library_writes(ulong @ptr
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_method_core_report_library_writes(ulong @ptr,RustBuffer @key,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -8480,7 +8493,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ushort uniffi_tablepro_ffi_checksum_method_core_report_library_writes(
+     ushort uniffi_tablepro_ffi_checksum_method_core_ack_library_writes(
     );
 
     #if NET8_0_OR_GREATER
@@ -8491,7 +8504,18 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ushort uniffi_tablepro_ffi_checksum_method_core_take_library_writes(
+     ushort uniffi_tablepro_ffi_checksum_method_core_peek_library_writes(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_core_report_library_writes(
     );
 
     #if NET8_0_OR_GREATER
@@ -12621,15 +12645,21 @@ static class _UniFFILib {
             }
         }
         {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_report_library_writes();
-            if (checksum != 26718) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_report_library_writes` checksum `26718`, library returned `{checksum}`");
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_ack_library_writes();
+            if (checksum != 44986) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_ack_library_writes` checksum `44986`, library returned `{checksum}`");
             }
         }
         {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_take_library_writes();
-            if (checksum != 16445) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_take_library_writes` checksum `16445`, library returned `{checksum}`");
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_peek_library_writes();
+            if (checksum != 23205) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_peek_library_writes` checksum `23205`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_report_library_writes();
+            if (checksum != 26718) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_report_library_writes` checksum `26718`, library returned `{checksum}`");
             }
         }
         {
@@ -18031,9 +18061,11 @@ internal interface ICore {
     /// <exception cref="CoreException"></exception>
     Task ForgetChangedHostKey(ConnectionRecord @record, string @host, string @knownHosts);
     /// <exception cref="CoreException"></exception>
-    void ReportLibraryWrites(SecretString @key);
+    Task AckLibraryWrites(string @throughDigest);
     /// <exception cref="CoreException"></exception>
-    Task<LibraryWriteReport[]> TakeLibraryWrites();
+    Task<LibraryWriteReport[]> PeekLibraryWrites();
+    /// <exception cref="CoreException"></exception>
+    void ReportLibraryWrites(SecretString @key);
     /// <exception cref="CoreException"></exception>
     McpService McpServer(McpAppHost @host, McpListener @listener);
     /// <exception cref="CoreException"></exception>
@@ -18360,21 +18392,29 @@ internal class Core : ICore, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public void ReportLibraryWrites(SecretString @key) {
-        CallWithPointer(thisPtr =>
-    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
-    _UniFFILib.uniffi_tablepro_ffi_fn_method_core_report_library_writes(thisPtr, FfiConverterTypeSecretString.INSTANCE.Lower(@key), ref _status)
-));
+    public async Task AckLibraryWrites(string @throughDigest) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_ack_library_writes(thisPtr, FfiConverterString.INSTANCE.Lower(@throughDigest));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
     }
     
-    
-    
     /// <exception cref="CoreException"></exception>
-    public async Task<LibraryWriteReport[]> TakeLibraryWrites() {
+    public async Task<LibraryWriteReport[]> PeekLibraryWrites() {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_take_library_writes(thisPtr);
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_peek_library_writes(thisPtr);
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -18390,6 +18430,16 @@ internal class Core : ICore, IDisposable {
         FfiConverterTypeCoreError.INSTANCE
     );
     }
+    
+    /// <exception cref="CoreException"></exception>
+    public void ReportLibraryWrites(SecretString @key) {
+        CallWithPointer(thisPtr =>
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_core_report_library_writes(thisPtr, FfiConverterTypeSecretString.INSTANCE.Lower(@key), ref _status)
+));
+    }
+    
+    
     
     /// <exception cref="CoreException"></exception>
     public McpService McpServer(McpAppHost @host, McpListener @listener) {

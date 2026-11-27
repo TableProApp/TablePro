@@ -51,6 +51,8 @@ pub struct Device {
     pub last_seen_at: DateTime<Utc>,
     pub licensed_at: Option<DateTime<Utc>>,
     pub offline_until: Option<DateTime<Utc>>,
+    // The TablePro Sync key device the row holds, as key objects name it; None while it holds none.
+    pub key_device: Option<String>,
 }
 
 impl Device {
@@ -92,6 +94,7 @@ impl From<types::Device> for Device {
             last_seen_at: device.last_seen_at,
             licensed_at: device.licensed_at,
             offline_until: device.offline_until,
+            key_device: device.key_device,
         }
     }
 }
@@ -108,6 +111,7 @@ impl From<types::LicensedDevice> for Device {
             last_seen_at: device.last_seen_at,
             licensed_at: Some(device.licensed_at),
             offline_until: device.offline_until,
+            key_device: None,
         }
     }
 }
@@ -218,6 +222,7 @@ mod tests {
             last_seen_at: now,
             licensed_at: Some(now),
             offline_until: Some(now + TimeDelta::days(30)),
+            key_device: None,
         };
 
         assert!(device.offline_file_active(now));

@@ -17,7 +17,8 @@ impl ConnectionProjectName {
         }
     }
 
-    pub(crate) fn from_stored(value: &str) -> Result<Self, ProjectNameError> {
+    // As a file or a pulled record holds it: control characters become spaces, so only a blank name is refused.
+    pub fn from_stored(value: &str) -> Result<Self, ProjectNameError> {
         Self::new(&name_rules::cleaned(value))
     }
 

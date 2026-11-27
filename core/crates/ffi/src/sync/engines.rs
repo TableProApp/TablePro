@@ -2,7 +2,8 @@
 // TablePro Sync for one sign-in, which carries personal data too when it is the personal provider and the team scopes
 // and key objects always, each over this Core's state files, with its own journal, scheduler and stop.
 
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
+use std::time::Duration;
 
 use tablepro_keys::encoding::{AccountId, Origin};
 use tablepro_records::Kind;
@@ -15,7 +16,7 @@ use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
 use tablepro_sync::adapters::settings::{ConnectionStanding, SettingsAdapter};
 use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
 use tablepro_sync::adapters::team_library::TeamLibraryAdapter;
-use tablepro_sync::api::control::{SyncCategories, SyncControl};
+use tablepro_sync::api::control::{PassReason, SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
 use tablepro_sync::api::{
@@ -37,6 +38,7 @@ use super::team_library::TeamLibraryHost;
 use crate::account::AccountService;
 
 // What the service engine runs over for one sign-in: who it is, and the `/v2/sync` transport that signs its calls.
+#[derive(Clone)]
 pub(crate) struct ServiceLink {
     pub(crate) origin: Origin,
     pub(crate) sign_in: String,
@@ -346,6 +348,9 @@ impl ServiceEngine {
             Backoff::STANDARD,
         );
         let stores = hosts.listen(Arc::new(journal.clone()));
+        // Nothing else asks for a pass while sync is off or right after a sign-in, and until one reads the scopes the
+        // key state stays unknown (E2E F8).
+        journal.pass_soon(PassReason::Launch);
         Ok(Self {
             sync,
             keys,
@@ -394,13 +399,31 @@ impl Restart {
     }
 }
 
+// The open's own start, kept while the state file it names is still held by the service the app is closing, as when
+// the app opens TablePro Sync's service before the one it replaces is gone (E2E F7).
+#[derive(Clone)]
+pub(crate) struct WaitingStart {
+    pub(crate) hosts: Hosts,
+    pub(crate) link: ServiceLink,
+    pub(crate) mode: ServiceMode,
+    pub(crate) last: Option<StateIdentity>,
+}
+
+// How often a start waiting for the state file looks again, and how long a call waits for it before it answers
+// `sync.state.busy`. A closing service lets go once its calls in flight end.
+pub(crate) const FILE_POLL: Duration = Duration::from_millis(100);
+const FILE_WAIT_TRIES: u32 = 50;
+const FILE_POLL_MAX: Duration = Duration::from_secs(5);
+
 // The TablePro Sync engine, or why it is not running. A start that failed for a reason that passes, as the network or
 // a locked device store, is tried again by the next call that needs the engine, for the same sign-in only; any other
-// failure holds until the app opens sync again.
+// failure holds until the app opens sync again. A start that found the state file busy goes on by itself once the file
+// is free.
 pub(crate) struct ServiceSlot {
     held: Mutex<Result<Arc<ServiceEngine>, SyncError>>,
     starting: tokio::sync::Mutex<()>,
     restart: Option<Restart>,
+    waiting: Mutex<Option<WaitingStart>>,
     // What the person set while no engine ran, which the next start takes.
     categories: Mutex<SyncCategories>,
     history_window: Mutex<Option<u32>>,
@@ -423,16 +446,23 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+fn busy<T>(result: &Result<T, SyncError>) -> bool {
+    matches!(result, Err(SyncError::State(StateError::Busy)))
+}
+
 impl ServiceSlot {
     pub(crate) fn new(
         first: Result<ServiceEngine, SyncError>,
         restart: Option<Restart>,
+        waiting: Option<WaitingStart>,
         categories: SyncCategories,
     ) -> Self {
+        let waiting = waiting.filter(|_| busy(&first));
         Self {
             held: Mutex::new(first.map(Arc::new)),
             starting: tokio::sync::Mutex::new(()),
             restart,
+            waiting: Mutex::new(waiting),
             categories: Mutex::new(categories),
             history_window: Mutex::new(None),
             personal_forbidden: std::sync::atomic::AtomicBool::new(false),
@@ -453,12 +483,19 @@ impl ServiceSlot {
         lock(&self.held).clone()
     }
 
+    pub(crate) fn waits_for_file(&self) -> bool {
+        lock(&self.waiting).is_some()
+    }
+
     // On the runtime: a start that failed for a reason that passes is tried again first.
     pub(crate) async fn engine(&self) -> Result<Arc<ServiceEngine>, SyncError> {
         let failed = match self.now() {
             Ok(engine) => return Ok(engine),
             Err(error) => error,
         };
+        if self.waits_for_file() {
+            return self.wait_for_file().await;
+        }
         let Some(restart) = self.restart.as_ref().filter(|_| passes(&failed)) else {
             return Err(failed);
         };
@@ -469,17 +506,97 @@ impl ServiceSlot {
         let categories = lock(&self.categories).clone();
         let started = match service_link(Some(&restart.account)).await {
             Ok(link) if restart.session.is_some() && link.session() == restart.session.as_deref() => {
-                let mode = if self.personal_forbidden.load(std::sync::atomic::Ordering::SeqCst) {
-                    ServiceMode::TeamsOnly
-                } else {
-                    restart.mode
-                };
-                ServiceEngine::start(&restart.hosts, link, categories, mode, restart.last.clone()).await
+                ServiceEngine::start(
+                    &restart.hosts,
+                    link,
+                    categories,
+                    self.mode(restart.mode),
+                    restart.last.clone(),
+                )
+                .await
             }
             Ok(_) => Err(TransportError::SignedOut.into()),
             Err(error) => Err(error),
+        };
+        self.adopt(started)
+    }
+
+    // A call waits a moment for the closing service to let go of the file.
+    async fn wait_for_file(&self) -> Result<Arc<ServiceEngine>, SyncError> {
+        let mut started = self.start_waiting().await;
+        for _ in 1..FILE_WAIT_TRIES {
+            if !busy(&started) {
+                break;
+            }
+            tokio::time::sleep(FILE_POLL).await;
+            started = self.start_waiting().await;
         }
-        .map(Arc::new);
+        started
+    }
+
+    // The open's start once more, under the sign-in it opened with; a sign-in changed since gets none.
+    async fn start_waiting(&self) -> Result<Arc<ServiceEngine>, SyncError> {
+        let _starting = self.starting.lock().await;
+        if let Ok(engine) = self.now() {
+            return Ok(engine);
+        }
+        let Some(waiting) = lock(&self.waiting).clone() else {
+            return self.now();
+        };
+        let signed_in_since = self
+            .restart
+            .as_ref()
+            .is_some_and(|restart| Restart::session_of(&restart.account) != restart.session);
+        let started = if signed_in_since {
+            Err(TransportError::SignedOut.into())
+        } else {
+            let categories = lock(&self.categories).clone();
+            ServiceEngine::start(
+                &waiting.hosts,
+                waiting.link,
+                categories,
+                self.mode(waiting.mode),
+                waiting.last,
+            )
+            .await
+        };
+        if !busy(&started) {
+            *lock(&self.waiting) = None;
+        }
+        self.adopt(started)
+    }
+
+    // With no call to wait on it, the engine starts once the file is free, and the app hears the new status.
+    pub(crate) async fn start_when_free(slot: Weak<Self>) {
+        let mut wait = FILE_POLL;
+        loop {
+            tokio::time::sleep(wait).await;
+            let Some(slot) = slot.upgrade() else { return };
+            let Some(events) = lock(&slot.waiting)
+                .as_ref()
+                .map(|waiting| Arc::clone(&waiting.hosts.events))
+            else {
+                return;
+            };
+            if busy(&slot.start_waiting().await) {
+                wait = (wait * 2).min(FILE_POLL_MAX);
+                continue;
+            }
+            events.status_changed();
+            return;
+        }
+    }
+
+    fn mode(&self, opened: ServiceMode) -> ServiceMode {
+        if self.personal_forbidden.load(std::sync::atomic::Ordering::SeqCst) {
+            ServiceMode::TeamsOnly
+        } else {
+            opened
+        }
+    }
+
+    fn adopt(&self, started: Result<ServiceEngine, SyncError>) -> Result<Arc<ServiceEngine>, SyncError> {
+        let started = started.map(Arc::new);
         if let Ok(engine) = &started {
             engine.sync.set_history_window(*lock(&self.history_window));
             if self.policy_forbids.load(std::sync::atomic::Ordering::SeqCst) {
