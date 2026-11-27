@@ -1,6 +1,7 @@
 import CloudKit
 import SwiftUI
 import TableProConnectionLibrary
+import TableProFFI
 import TableProImport
 import TableProModels
 import TableProSyncTransport
@@ -41,6 +42,8 @@ struct ConnectionListView: View {
     @State private var actionErrorMessage: String?
     @State private var iCloudAccountAvailable = false
     @State private var tips = ConnectionListTips.makeGroup()
+    @State private var showsTeamLibrary = false
+    @State private var teamPublishRequest: TeamPublishRequest?
 
     private var selectedConnectionUUID: UUID? {
         selectedConnectionIdString.flatMap { UUID(uuidString: $0) }
@@ -67,6 +70,11 @@ struct ConnectionListView: View {
 
     private var isSyncEnabled: Bool {
         appState.onboarding.isCloudSyncEnabled
+    }
+
+    // iCloud or TablePro Sync: either one pulls when the list is dragged down.
+    private var syncProvider: SyncProviderTag {
+        appState.onboarding.syncProvider
     }
 
     private var isEditing: Bool {
@@ -190,6 +198,12 @@ struct ConnectionListView: View {
         .sheet(item: $presenter.sheet, onDismiss: sheetDidDismiss) { sheet in
             sheetContent(sheet)
         }
+        .sheet(isPresented: $showsTeamLibrary) {
+            TeamLibraryView { id in open(id) }
+        }
+        .teamPublishing($teamPublishRequest, library: appState.teamLibrary) {
+            showsTeamLibrary = true
+        }
         .fileImporter(
             isPresented: $showingFileImporter,
             allowedContentTypes: [.tableproConnectionShare],
@@ -261,7 +275,7 @@ struct ConnectionListView: View {
     private var emptyActions: ConnectionListEmptyActions {
         ConnectionListEmptyActions(
             start: perform,
-            offersICloud: !isSyncEnabled && iCloudAccountAvailable,
+            offersICloud: syncProvider == .off && iCloudAccountAvailable,
             performSyncAction: { appState.performSyncAction($0) },
             retryLoad: { appState.retryLoadIfFailed() }
         )
@@ -331,8 +345,8 @@ struct ConnectionListView: View {
         ) { token in
             Label(token.name, systemImage: "tag")
         }
-        .modifier(SyncRefreshModifier(isEnabled: isSyncEnabled) {
-            await appState.syncCoordinator.sync(.userRequest)
+        .modifier(SyncRefreshModifier(isEnabled: syncProvider != .off) {
+            await refreshSync()
         })
         .confirmationDialog(deletionTitle, isPresented: deletionPresented, titleVisibility: .visible) {
             Button(String(localized: "Delete"), role: .destructive) {
@@ -548,6 +562,11 @@ struct ConnectionListView: View {
                 Label("Duplicate", systemImage: "doc.on.doc")
             }
         }
+        if !connection.isSample {
+            TeamPublishMenu(connections: [connection], library: appState.teamLibrary) { request in
+                teamPublishRequest = request
+            }
+        }
         Divider()
         favoriteButton(for: connection)
         Button {
@@ -676,6 +695,16 @@ struct ConnectionListView: View {
                 }
             }
             .disabled(!appState.isLibraryWritable)
+
+            if appState.teamLibrary.isSignedIn {
+                Section {
+                    Button {
+                        showsTeamLibrary = true
+                    } label: {
+                        Label("Team Library", systemImage: "person.2")
+                    }
+                }
+            }
 
             Section {
                 startMenuItem(.openSample)
@@ -858,6 +887,21 @@ struct ConnectionListView: View {
 
     // MARK: - Actions
 
+    private func refreshSync() async {
+        switch syncProvider {
+        case .icloud:
+            await appState.syncCoordinator.sync(.userRequest)
+        case .tableproSync:
+            do {
+                try await appState.providerMoves.syncNow()
+            } catch {
+                MobileSyncText.log("Pull to refresh on TablePro Sync failed", error)
+            }
+        case .off:
+            break
+        }
+    }
+
     private func open(_ connectionId: UUID) {
         guard !isMacOnly(connectionId) else {
             selectedConnectionIdString = nil
@@ -876,7 +920,7 @@ struct ConnectionListView: View {
     private func perform(_ action: LibraryStartAction) {
         switch action {
         case .turnOnICloud:
-            guard !isSyncEnabled else { return }
+            guard syncProvider == .off else { return }
             appState.setCloudSyncEnabled(true)
         case .importConnections:
             showingFileImporter = true
