@@ -93,7 +93,7 @@ nonisolated final class MongoBsonDocumentReader {
         guard case .document(let dictionary, let members)? = readDocument(iterator, depth: 1, state: &state) else {
             return nil
         }
-        let canonical = buildsCanonical && state.isStrict ? MongoDocumentText(members: members) : nil
+        let canonical = buildsCanonical && state.isStrict ? members.map(MongoDocumentText.init(members:)) : nil
         return MongoReadDocument(
             dictionary: dictionary, canonical: canonical, identifier: state.identifier, bsonSize: length
         )
@@ -105,9 +105,10 @@ nonisolated final class MongoBsonDocumentReader {
         var readsIdentifier = false
     }
 
+    // The canonical parts are nil once a value inside has none: a partial `_id` would name another document.
     private enum Container {
-        case document([String: Any], [MongoDocumentText.Member])
-        case array([Any], [MongoDocumentText.Value])
+        case document([String: Any], [MongoDocumentText.Member]?)
+        case array([Any], [MongoDocumentText.Value]?)
     }
 
     private func iterator(atDepth depth: Int) -> OpaquePointer {
@@ -125,6 +126,7 @@ nonisolated final class MongoBsonDocumentReader {
         if depth > MongoDocumentText.maximumDepth { state.isStrict = false }
         var dictionary: [String: Any] = [:]
         var members: [MongoDocumentText.Member] = []
+        var isComplete = true
         while bson_iter_next(iterator) {
             guard let keyPointer = bson_iter_key(iterator) else { return nil }
             let key = String(cString: keyPointer)
@@ -143,27 +145,34 @@ nonisolated final class MongoBsonDocumentReader {
                     members.append(MongoDocumentText.Member(key: key, value: canonical))
                 } else {
                     state.isStrict = false
+                    isComplete = false
                 }
             }
             dictionary[key] = value.decoded
         }
         guard Self.reachedEnd(iterator) else { return nil }
-        return .document(dictionary, members)
+        return .document(dictionary, isComplete ? members : nil)
     }
 
     private func readArray(_ iterator: OpaquePointer, depth: Int, state: inout State) -> Container? {
         if depth > MongoDocumentText.maximumDepth { state.isStrict = false }
         var decoded: [Any] = []
         var canonical: [MongoDocumentText.Value] = []
+        var isComplete = true
         while bson_iter_next(iterator) {
             guard let value = readValue(iterator, depth: depth, state: &state) else { return nil }
             decoded.append(value.decoded)
             if buildsCanonical {
-                if let value = value.canonical { canonical.append(value) } else { state.isStrict = false }
+                if let value = value.canonical {
+                    canonical.append(value)
+                } else {
+                    state.isStrict = false
+                    isComplete = false
+                }
             }
         }
         guard Self.reachedEnd(iterator) else { return nil }
-        return .array(decoded, canonical)
+        return .array(decoded, isComplete ? canonical : nil)
     }
 
     // libbson stops at a corrupt element and records where; a clean end leaves no error offset.
@@ -194,9 +203,9 @@ nonisolated final class MongoBsonDocumentReader {
                 : readDocument(child, depth: depth + 1, state: &state)
             switch container {
             case .document(let dictionary, let members)?:
-                return Value(decoded: dictionary, canonical: .object(members))
+                return Value(decoded: dictionary, canonical: members.map { .object($0) })
             case .array(let values, let canonical)?:
-                return Value(decoded: values, canonical: .array(canonical))
+                return Value(decoded: values, canonical: canonical.map { .array($0) })
             case nil:
                 return nil
             }

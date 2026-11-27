@@ -97,6 +97,15 @@ struct MongoBsonDocumentReaderTests {
         #expect(read.dictionary["f"] != nil)
     }
 
+    @Test("An _id holding such a code scope gives no locator, never one without that part")
+    func repeatedScopeNameInTheIdGivesNoLocator() throws {
+        let bson = try Self.bson(#"{"_id":{"f":{"$code":"x","$scope":{"x":{"$numberInt":"1"},"x":"again"}},"k":{"$numberInt":"1"}}}"#)
+        let read = try #require(MongoBsonDocumentReader().read(bson))
+        #expect(read.canonical == nil)
+        #expect(read.identifier == nil)
+        #expect(read.dictionary["_id"] != nil)
+    }
+
     @Test("Two spellings of one character are two field names, as BSON compares names by their bytes")
     func namesCompareAsBytes() throws {
         let bson = try Self.bson(#"{"_id":{"$numberInt":"1"},"nested":{"é":"precomposed","é":"combining"}}"#)
