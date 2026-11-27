@@ -142,6 +142,7 @@ struct LibraryRecordMappingTests {
                 groups: contents.groups,
                 tags: contents.tags,
                 favorites: contents.favorites,
+                projects: contents.projects,
                 removing: []
             ),
             over: contents.digest
