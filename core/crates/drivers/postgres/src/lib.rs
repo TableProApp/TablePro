@@ -9,6 +9,7 @@
 mod cancel;
 mod capabilities;
 mod catalog;
+mod catalog_release;
 mod codec;
 mod commit_resolution;
 mod connection;

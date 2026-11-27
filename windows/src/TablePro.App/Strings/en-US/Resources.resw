@@ -2474,6 +2474,9 @@ New fingerprint: {2}</value>
   <data name="Error_driver_unsupported" xml:space="preserve">
     <value>This database doesn't support that.</value>
   </data>
+  <data name="Error_unsupported_minimum_version" xml:space="preserve">
+    <value>This server's version is older than TablePro supports.</value>
+  </data>
   <data name="Error_driver_catalog_too_large" xml:space="preserve">
     <value>The database's structure is larger than TablePro reads at once.</value>
   </data>
