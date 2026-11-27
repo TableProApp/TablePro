@@ -16,7 +16,7 @@ namespace TablePro.App.Controls;
 // while armed it rides its own key events, swallows them before any accelerator fires, reads the modifier state, maps
 // the key through EditorKey and reports the chord; Delete removes the binding, Esc or losing focus cancels, and plain
 // Tab is let through so focus can move on.
-internal sealed class ShortcutRecorderButton : Button
+internal sealed partial class ShortcutRecorderButton : Button
 {
     private bool _armed;
     private bool _swallowing;
