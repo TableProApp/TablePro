@@ -28,6 +28,9 @@ internal sealed class FakeSyncEngine : ISyncEngine
 
     public bool? OpenUpload { get; set; }
 
+    // Another account waits for a choice while this is set; the core answers sync.not_allowed otherwise.
+    public NewIdentityPlan? Choice { get; set; }
+
     public CoreError? ChooseFails { get; set; }
 
     public CoreError? PassFails { get; set; }
@@ -88,11 +91,19 @@ internal sealed class FakeSyncEngine : ISyncEngine
         return Task.FromResult(Keys);
     }
 
-    public Task<NewIdentityPlan> PlanNewIdentityAsync() => Task.FromResult(new NewIdentityPlan(4, "account-2"));
+    public Task<NewIdentityPlan> PlanNewIdentityAsync() => Choice is { } plan
+        ? Task.FromResult(plan)
+        : Task.FromException<NewIdentityPlan>(new TableProException(SyncErrors.Of("sync.not_allowed")));
 
     public Task ChooseForNewIdentityAsync(NewIdentityChoice choice, string account)
     {
         Note($"new identity {choice} {account}");
+        if (Choice?.Account != account)
+        {
+            return Task.FromException(new TableProException(SyncErrors.Of("sync.changed")));
+        }
+
+        Choice = null;
         ServiceAccount = account;
         return Task.CompletedTask;
     }

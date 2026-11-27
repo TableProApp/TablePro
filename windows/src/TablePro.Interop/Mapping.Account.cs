@@ -50,7 +50,10 @@ internal static partial class Mapping
                 new EntitlementProblem.DeviceLimitReached([.. limit.Devices.Select(Device)]),
             _ => null,
         },
-        status.Remembered);
+        status.Remembered)
+    {
+        SessionId = status.SessionId,
+    };
 
     public static FeatureAccess Access(Native.FeatureAccessTag access) => access switch
     {

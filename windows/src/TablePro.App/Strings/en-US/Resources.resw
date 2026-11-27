@@ -7222,4 +7222,7 @@ New fingerprint: {2}</value>
   <data name="Error_account_offline_file_too_large" xml:space="preserve">
     <value>The offline license file is too large.</value>
   </data>
+  <data name="SyncRefusal_AccountChoicePending" xml:space="preserve">
+    <value>Another account's data on this PC waits for your choice. Choose Move my data or Start empty in Settings first.</value>
+  </data>
 </root>

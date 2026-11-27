@@ -168,8 +168,8 @@ public sealed class SyncPaneTests
 
         Assert.Equal(
             [SyncServerPolicy.PasswordsOff, SyncServerPolicy.HistoryOff],
-            SyncPane.ServerPolicies([passwords, history]));
-        Assert.Equal([SyncServerPolicy.PersonalSyncOff], SyncPane.ServerPolicies([personalOff, history]));
+            SyncPane.PoliciesOf([passwords, history]));
+        Assert.Equal([SyncServerPolicy.PersonalSyncOff], SyncPane.PoliciesOf([personalOff, history]));
         var refused = SyncPane.For(Inputs(SyncProvider.TableProSync, FeatureAccess.Available, Idle, Approved) with
         {
             Scopes = [personalOff],
@@ -179,6 +179,20 @@ public sealed class SyncPaneTests
         Assert.True(refused.OffersTableProSync);
         Assert.False(SyncPane.For(Inputs(SyncProvider.Off, FeatureAccess.Available) with { Scopes = [personalOff] })
             .OffersTableProSync);
+    }
+
+    [Fact]
+    public void AnotherAccountIsAskedAboutWhileOffToo()
+    {
+        var off = SyncPane.For(Inputs(SyncProvider.Off, FeatureAccess.Available) with { AwaitsAccountChoice = true });
+        var on = SyncPane.For(Inputs(SyncProvider.TableProSync, FeatureAccess.Available, Idle, Approved) with
+        {
+            AwaitsAccountChoice = true,
+        });
+
+        Assert.Equal(SyncNotice.NewIdentity, off.Notice);
+        Assert.Equal(SyncNotice.NewIdentity, on.Notice);
+        Assert.Null(on.Status);
     }
 
     [Fact]

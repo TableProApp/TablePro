@@ -46,7 +46,9 @@ public sealed record SyncPaneInputs(
     SyncStatus? Status,
     IReadOnlyList<SyncScopeStatus> Scopes,
     KeyState? Keys,
-    CoreError? OpenFailure);
+    CoreError? OpenFailure,
+    // Another account or server waits for Move my data or Start empty, whatever the personal provider is.
+    bool AwaitsAccountChoice = false);
 
 // What Settings' Sync section shows, as the macOS app's SyncPaneLayout decides it for TablePro Sync, so the section's
 // rules are tested without a window.
@@ -74,18 +76,20 @@ public sealed record SyncPane(
     public static SyncPane For(SyncPaneInputs inputs)
     {
         ArgumentNullException.ThrowIfNull(inputs);
-        var policies = ServerPolicies(inputs.Scopes);
+        var policies = PoliciesOf(inputs.Scopes);
         var refused = policies.Contains(SyncServerPolicy.PersonalSyncOff);
         // Past the grace the service still serves pulls, so the provider stays and says so.
         var licensed = inputs.Access is FeatureAccess.Available or FeatureAccess.Expired;
         if (inputs.Provider == SyncProvider.Off)
         {
             // The server's switch takes TablePro Sync away as a new choice, and never moves a PC already on it. The
-            // switches apply before the first upload, so they show while sync is off too.
-            return new SyncPane(!refused, false, null, null, null, null, null, false, licensed, []);
+            // switches apply before the first upload, so they show while sync is off too. The team scopes run while
+            // personal sync is off, so another account's choice is asked here too.
+            SyncNotice? waiting = inputs.AwaitsAccountChoice ? SyncNotice.NewIdentity : null;
+            return new SyncPane(!refused, false, waiting, null, null, null, null, false, licensed, []);
         }
 
-        var newIdentity = inputs.Status?.Phase == SyncPhase.NewIdentity;
+        var newIdentity = inputs.Status?.Phase == SyncPhase.NewIdentity || inputs.AwaitsAccountChoice;
         var writable = inputs.Scopes.FirstOrDefault(scope => scope.Scope == "personal")?.Writable ?? true;
         var pullOnly = inputs.Status?.Phase == SyncPhase.PullOnly
             || inputs.Access == FeatureAccess.Expired
@@ -109,7 +113,7 @@ public sealed record SyncPane(
     }
 
     // personal_sync off holds the history too, so it is the one notice then.
-    public static IReadOnlyList<SyncServerPolicy> ServerPolicies(IReadOnlyList<SyncScopeStatus> scopes)
+    public static IReadOnlyList<SyncServerPolicy> PoliciesOf(IReadOnlyList<SyncScopeStatus> scopes)
     {
         ArgumentNullException.ThrowIfNull(scopes);
         var personal = scopes.FirstOrDefault(scope => scope.Scope == "personal");

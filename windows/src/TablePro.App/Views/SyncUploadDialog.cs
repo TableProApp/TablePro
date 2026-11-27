@@ -15,7 +15,7 @@ internal static class SyncUploadDialog
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(workbench);
-        var signIn = workbench.SignInId;
+        var signIn = workbench.SignInSession;
         var progress = new ProgressRing { Width = 16, Height = 16, IsActive = true };
         var progressText = new TextBlock
         {

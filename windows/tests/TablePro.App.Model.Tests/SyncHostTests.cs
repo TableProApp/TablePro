@@ -134,6 +134,19 @@ public sealed class SyncHostTests
     }
 
     [Fact]
+    public async Task AnUploadWaitsForAnotherAccountsChoice()
+    {
+        _app.Prepare = engine => engine.Choice = new NewIdentityPlan(0, "account-0");
+        using var host = new SyncHost(_app);
+        host.Start();
+
+        var outcome = await host.UploadAsync("account-1");
+
+        Assert.Equal(new UploadOutcome.Refused(SyncRefusal.AccountChoicePending), outcome);
+        Assert.Empty(Assert.Single(_app.Opened).Calls);
+    }
+
+    [Fact]
     public async Task AFailedUploadSaysWhyAndLeavesThePcOff()
     {
         _app.Prepare = engine => engine.ChooseFails = SyncErrors.Of("sync.network");
@@ -181,18 +194,79 @@ public sealed class SyncHostTests
     }
 
     [Fact]
-    public async Task TheSignInTheStateFileFollowsIsKeptForTheNextLaunch()
+    public async Task AnotherAccountsChoiceIsReadAndTheSignInTheStateFileFollowsIsKept()
     {
-        _app.Prepare = engine => engine.ServiceAccount = "service-1";
+        _app.Prepare = engine =>
+        {
+            engine.ServiceAccount = "service-1";
+            engine.Choice = new NewIdentityPlan(4, "account-2");
+        };
         using var host = new SyncHost(_app);
         host.Start();
 
         await host.GetEngineAsync();
-        var plan = await host.PlanNewIdentityAsync();
-        await host.ChooseForNewIdentityAsync(NewIdentityChoice.StartEmpty, plan);
+        var plan = host.AccountChoice;
+        await host.ChooseForNewIdentityAsync(NewIdentityChoice.StartEmpty, plan!);
 
+        Assert.Equal(new NewIdentityPlan(4, "account-2"), plan);
+        Assert.Null(host.AccountChoice);
         Assert.Equal("account-2", _app.Sync.ServiceAccount);
         Assert.Equal(["new identity StartEmpty account-2", "pass Person"], _app.Opened[0].Calls);
+    }
+
+    [Fact]
+    public async Task AnAnswerForAnAccountThatChangedIsRefusedAndTheChoiceReadAgain()
+    {
+        _app.Prepare = engine => engine.Choice = new NewIdentityPlan(4, "account-3");
+        using var host = new SyncHost(_app);
+        host.Start();
+        await host.GetEngineAsync();
+
+        var refused = await Assert.ThrowsAsync<TableProException>(
+            () => host.ChooseForNewIdentityAsync(NewIdentityChoice.MoveMyData, new NewIdentityPlan(4, "account-2")));
+
+        Assert.Equal("sync.changed", refused.Code);
+        Assert.Equal("account-3", host.AccountChoice?.Account);
+    }
+
+    [Fact]
+    public async Task TurningOffWhileAnOpenRunsDropsItAndOpensAgainOff()
+    {
+        // Its continuation runs inside SetResult, so what the open does on landing has happened when it returns.
+        var opening = new TaskCompletionSource<ISyncEngine>();
+        var app = new SlowOpenApp(opening.Task) { Sync = new SyncSettings { Provider = SyncProvider.TableProSync } };
+        using var host = new SyncHost(app);
+        host.Start();
+
+        var off = host.TurnOffAsync();
+        var first = new FakeSyncEngine();
+        opening.SetResult(first);
+        await off;
+        await host.GetEngineAsync();
+
+        Assert.True(first.IsDisposed);
+        Assert.Equal(
+            [SyncProvider.TableProSync, SyncProvider.Off],
+            app.Configurations.Select(configuration => configuration.Provider));
+    }
+
+    [Fact]
+    public async Task ASwitchChangedWhileTheOpenRanReachesTheService()
+    {
+        // Its continuation runs inside SetResult, so what the open does on landing has happened when it returns.
+        var opening = new TaskCompletionSource<ISyncEngine>();
+        var app = new SlowOpenApp(opening.Task) { Sync = new SyncSettings { Provider = SyncProvider.TableProSync } };
+        using var host = new SyncHost(app);
+        host.Start();
+
+        app.Sync = app.Sync with { SavedQueries = false };
+        await host.ApplyCategoriesAsync();
+        var engine = new FakeSyncEngine();
+        opening.SetResult(engine);
+        await host.GetEngineAsync();
+        await host.ApplyCategoriesAsync();
+
+        Assert.Contains("categories saved_query,saved_query_folder passwords False", engine.Calls);
     }
 
     [Fact]
@@ -243,5 +317,31 @@ public sealed class SyncHostTests
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         Assert.Equal(new KeyState.Locked(SyncLockCause.DeviceRemoved), host.Keys);
+    }
+
+    // The first open waits on the test; any later one opens at once.
+    private sealed class SlowOpenApp(Task<ISyncEngine> first) : ISyncHostApp
+    {
+        private readonly List<SyncConfiguration> _configurations = [];
+
+        public SyncSettings Sync { get; set; } = new();
+
+        public int? HistoryWindow => null;
+
+        public string? SignIn => "session-1";
+
+        public IReadOnlyList<SyncConfiguration> Configurations => _configurations;
+
+        public void UpdateSync(Func<SyncSettings, SyncSettings> change) => Sync = change(Sync);
+
+        public Task<ISyncEngine> OpenAsync(SyncConfiguration configuration)
+        {
+            _configurations.Add(configuration);
+            return _configurations.Count == 1 ? first : Task.FromResult<ISyncEngine>(new FakeSyncEngine());
+        }
+
+        public void Note(string what, CoreError error)
+        {
+        }
     }
 }

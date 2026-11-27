@@ -64,6 +64,9 @@ public sealed record AccountStatus(
 {
     public static AccountStatus SignedOut { get; } =
         new(AccountState.SignedOut, null, null, null, [], [], null, null, false);
+
+    // One sign-in of the account, new after each sign-in; TablePro Sync stays bound to the one it opened under.
+    public string? SessionId { get; init; }
 }
 
 public abstract record EntitlementProblem

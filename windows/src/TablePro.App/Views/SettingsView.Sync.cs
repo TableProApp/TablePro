@@ -15,9 +15,7 @@ public sealed partial class SettingsView
     private bool _syncChoosing;
     private bool _syncingNow;
     private bool _identityChoosing;
-    private bool _identityReading;
     private CoreError? _syncProblem;
-    private NewIdentityPlan? _identityPlan;
     private CoreError? _identityProblem;
 
     private void LoadSync()
@@ -44,7 +42,8 @@ public sealed partial class SettingsView
             host.Status,
             host.Scopes,
             host.Keys,
-            host.OpenFailure));
+            host.OpenFailure,
+            host.AccountChoice is not null));
         _loading = true;
         LoadSync();
         _loading = false;
@@ -107,7 +106,6 @@ public sealed partial class SettingsView
     {
         if (notice != SyncNotice.NewIdentity)
         {
-            _identityPlan = null;
             _identityProblem = null;
         }
 
@@ -133,65 +131,40 @@ public sealed partial class SettingsView
     // Nothing goes up to another account or server until the person picks (core ADR 0054, Another account or server).
     private void ShowNewIdentity()
     {
-        if (_identityPlan is null && _identityProblem is null && !_identityChoosing && !_identityReading)
-        {
-            _ = ReadIdentityPlanAsync();
-        }
-
+        var plan = _workbench.Sync.AccountChoice;
         var message = _identityProblem is { } problem
             ? Strings.Error(problem)
-            : _identityPlan is { Unsent: > 0 } plan
+            : plan is { Unsent: > 0 }
                 ? Strings.Sentences(
                     Strings.Get("SyncNewIdentityMessage"),
                     Strings.Plural("SyncNewIdentityUnsent", plan.Unsent, plan.Unsent))
                 : Strings.Get("SyncNewIdentityMessage");
         var choices = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 12) };
-        choices.Children.Add(IdentityButton("SyncStartEmpty", NewIdentityChoice.StartEmpty));
-        choices.Children.Add(IdentityButton("SyncMoveMyData", NewIdentityChoice.MoveMyData));
+        choices.Children.Add(IdentityButton("SyncStartEmpty", NewIdentityChoice.StartEmpty, plan));
+        choices.Children.Add(IdentityButton("SyncMoveMyData", NewIdentityChoice.MoveMyData, plan));
         ShowSyncBar(Strings.Get("SyncNewIdentityTitle"), message, InfoBarSeverity.Warning, null);
         SyncBar.Content = choices;
     }
 
-    private Button IdentityButton(string name, NewIdentityChoice choice)
+    private Button IdentityButton(string name, NewIdentityChoice choice, NewIdentityPlan? plan)
     {
         var button = new Button
         {
             Content = Strings.Get(name),
-            IsEnabled = _identityPlan is not null && !_identityChoosing,
+            IsEnabled = plan is not null && !_identityChoosing,
         };
         AutomationProperties.SetAutomationId(button, name);
-        button.Click += async (_, _) => await ChooseIdentityAsync(choice).ConfigureAwait(true);
+        if (plan is not null)
+        {
+            button.Click += async (_, _) => await ChooseIdentityAsync(choice, plan).ConfigureAwait(true);
+        }
+
         return button;
     }
 
-    // The problem a choice met stays on show over the plan read after it.
-    private async Task ReadIdentityPlanAsync()
+    // An answer for an account that changed meanwhile is refused, and the host reads the choice again.
+    private async Task ChooseIdentityAsync(NewIdentityChoice choice, NewIdentityPlan plan)
     {
-        _identityReading = true;
-        try
-        {
-            _identityPlan = await _workbench.Sync.PlanNewIdentityAsync().ConfigureAwait(true);
-        }
-        catch (TableProException exception)
-        {
-            CrashLog.Note("sync new identity plan", exception.Code);
-            _identityProblem = exception.Error;
-        }
-        finally
-        {
-            _identityReading = false;
-        }
-
-        ShowSync();
-    }
-
-    private async Task ChooseIdentityAsync(NewIdentityChoice choice)
-    {
-        if (_identityPlan is not { } plan)
-        {
-            return;
-        }
-
         _identityChoosing = true;
         _identityProblem = null;
         ShowSync();
@@ -202,15 +175,13 @@ public sealed partial class SettingsView
         catch (TableProException exception)
         {
             CrashLog.Note("sync new identity", exception.Code);
-            // An answer for an account that changed meanwhile asks again with the new one.
             _identityProblem = exception.Error;
-            _identityPlan = null;
+        }
+        finally
+        {
             _identityChoosing = false;
-            await ReadIdentityPlanAsync().ConfigureAwait(true);
-            return;
         }
 
-        _identityChoosing = false;
         ShowSync();
     }
 

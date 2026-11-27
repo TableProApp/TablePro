@@ -16,8 +16,8 @@ internal sealed partial class Workbench
 
     public SyncHost Sync => _sync ??= OpenSyncHost();
 
-    // The signed-in account's id, which a confirmed upload is bound to; null while signed out.
-    public string? SignInId => AccountStatus.State == AccountState.SignedIn ? AccountStatus.AccountId : null;
+    // The sign-in the account holds now, which the service and a confirmed upload are bound to; null while signed out.
+    public string? SignInSession => AccountStatus.State == AccountState.SignedIn ? AccountStatus.SessionId : null;
 
     // The core's answer for TablePro Sync, null while the account is not open; Gate words it.
     public FeatureAccess? SyncAccess => _readAccount?.Access(PlanFeatures.ServiceSync);
@@ -50,7 +50,7 @@ internal sealed partial class Workbench
     // The first word from the account starts sync, and each sign-in, sign-out or switch after opens it again.
     private void FollowSignIn(AccountStatus status)
     {
-        (AccountState, string?) signIn = (status.State, status.State == AccountState.SignedIn ? status.AccountId : null);
+        (AccountState, string?) signIn = (status.State, status.State == AccountState.SignedIn ? status.SessionId : null);
         if (_syncSignIn is null)
         {
             _syncSignIn = signIn;
@@ -94,7 +94,7 @@ internal sealed partial class Workbench
         // The setting's own count, so the history this PC keeps and the history it syncs agree.
         public int? HistoryWindow => workbench.Settings.HistoryMaxEntries is > 0 and var entries ? entries : null;
 
-        public string? SignIn => workbench.SignInId;
+        public string? SignIn => workbench.SignInSession;
 
         public void UpdateSync(Func<SyncSettings, SyncSettings> change) =>
             workbench.UpdateSettings(settings => settings with { Sync = change(settings.Sync) });

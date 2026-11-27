@@ -63,6 +63,9 @@ public enum SyncRefusal
 
     // The server keeps no personal data (core ADR 0051, Policies).
     ServerRefusesPersonalSync,
+
+    // Another account's data waits for Move my data or Start empty, which comes first.
+    AccountChoicePending,
 }
 
 public abstract record UploadOutcome
@@ -98,6 +101,7 @@ public sealed class SyncHost : IDisposable
     private bool _moving;
     private bool _uploadResuming;
     private bool _disposed;
+    private Task _categories = Task.CompletedTask;
 
     public SyncHost(ISyncHostApp app)
     {
@@ -118,6 +122,10 @@ public sealed class SyncHost : IDisposable
 
     // Why the last open failed, until one succeeds.
     public CoreError? OpenFailure { get; private set; }
+
+    // Another account or server waits for Move my data or Start empty, with the account the answer names; read on each
+    // status change, since the team scopes wait for it whatever the personal provider is.
+    public NewIdentityPlan? AccountChoice { get; private set; }
 
     public bool IsMoving => _moving;
 
@@ -209,16 +217,22 @@ public sealed class SyncHost : IDisposable
                 return new UploadOutcome.Refused(SyncRefusal.ServerRefusesPersonalSync);
             }
 
+            await ReadAccountChoiceAsync(engine, _generation).ConfigureAwait(true);
+            if (AccountChoice is not null)
+            {
+                return new UploadOutcome.Refused(SyncRefusal.AccountChoicePending);
+            }
+
             var keys = await engine.GetKeyStateAsync().ConfigureAwait(true);
+            if (_app.SignIn != confirmedSignIn || !ReferenceEquals(engine, _engine))
+            {
+                return new UploadOutcome.Refused(SyncRefusal.SignInChanged);
+            }
+
             Keys = keys;
             if (keys is not KeyState.Approved)
             {
                 return new UploadOutcome.NeedsKeys(keys);
-            }
-
-            if (_app.SignIn != confirmedSignIn || !ReferenceEquals(engine, _engine))
-            {
-                return new UploadOutcome.Refused(SyncRefusal.SignInChanged);
             }
 
             await engine.ChooseProviderAsync(SyncProvider.TableProSync).ConfigureAwait(true);
@@ -249,6 +263,8 @@ public sealed class SyncHost : IDisposable
         }
 
         _app.UpdateSync(sync => sync with { Provider = SyncProvider.Off });
+        // An open still in flight read TablePro Sync, so it is dropped as it lands and the service opens again Off.
+        var reopen = _engine is not null || _opening is not null;
         StartMove();
         try
         {
@@ -266,7 +282,10 @@ public sealed class SyncHost : IDisposable
                 {
                     // A sign-in change closed it; the next open is Off already.
                 }
+            }
 
+            if (reopen)
+            {
                 await ReopenAsync().ConfigureAwait(true);
             }
         }
@@ -326,29 +345,49 @@ public sealed class SyncHost : IDisposable
         }
     }
 
-    // The prompt for another account or server, while the status says NewIdentity. Throws TableProException.
-    public Task<NewIdentityPlan> PlanNewIdentityAsync() => OnEngineAsync(engine => engine.PlanNewIdentityAsync());
-
-    // The answer names the plan's account, so one given for an account signed out meanwhile is refused.
+    // The answer names the plan's account, so one given for an account signed out meanwhile is refused with
+    // sync.changed, and the choice is read again. Throws TableProException.
     public async Task ChooseForNewIdentityAsync(NewIdentityChoice choice, NewIdentityPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        var engine = await OnEngineAsync(async engine =>
+        try
         {
-            await engine.ChooseForNewIdentityAsync(choice, plan.Account).ConfigureAwait(true);
-            return engine;
-        }).ConfigureAwait(true);
-        KeepServiceAccount(engine);
-        Changed?.Invoke(this, EventArgs.Empty);
-        await FirstPassAsync(engine).ConfigureAwait(true);
+            var engine = await OnEngineAsync(async engine =>
+            {
+                await engine.ChooseForNewIdentityAsync(choice, plan.Account).ConfigureAwait(true);
+                return engine;
+            }).ConfigureAwait(true);
+            KeepServiceAccount(engine);
+            await ReadAccountChoiceAsync(engine, _generation).ConfigureAwait(true);
+            Changed?.Invoke(this, EventArgs.Empty);
+            await FirstPassAsync(engine).ConfigureAwait(true);
+        }
+        catch (TableProException)
+        {
+            if (_engine is { } current)
+            {
+                await ReadAccountChoiceAsync(current, _generation).ConfigureAwait(true);
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+
+            throw;
+        }
     }
 
     // What the first upload sends. Throws TableProException.
     public Task<SyncUploadPlan> PlanUploadAsync() => OnEngineAsync(engine => engine.PlanUploadAsync());
 
-    // After the settings changed; the switches apply before the first upload too.
-    public async Task ApplyCategoriesAsync()
+    // After the settings changed; the switches apply before the first upload too. In order, each with the settings as
+    // they are when it runs, so the last change is the one the core keeps.
+    public Task ApplyCategoriesAsync()
     {
+        _categories = ApplyCategoriesAfterAsync(_categories);
+        return _categories;
+    }
+
+    private async Task ApplyCategoriesAfterAsync(Task before)
+    {
+        await before.ConfigureAwait(true);
         if (_engine is not { } engine)
         {
             return;
@@ -449,6 +488,12 @@ public sealed class SyncHost : IDisposable
         _engine = engine;
         OpenFailure = null;
         engine.SetHistoryWindow(_app.HistoryWindow);
+        // A switch changed while the open ran, which it did not read.
+        if (Switches(sync) != Switches(_app.Sync))
+        {
+            _ = ApplyCategoriesAsync();
+        }
+
         KeepServiceAccount(engine);
         _watch = new CancellationTokenSource();
         _ = WatchAsync(engine, generation, _watch.Token);
@@ -457,10 +502,14 @@ public sealed class SyncHost : IDisposable
         return engine;
     }
 
+    private static SyncSettings Switches(SyncSettings sync) =>
+        sync with { Provider = SyncProvider.Off, ServiceAccount = null };
+
     // Apart from the open, since an upload found finished opens the service again.
     private async Task SettleAsync(ISyncEngine engine, int generation, SyncProvider provider)
     {
         await ReadKeysAsync(engine, generation).ConfigureAwait(true);
+        await ReadAccountChoiceAsync(engine, generation).ConfigureAwait(true);
         if (provider == SyncProvider.Off)
         {
             await AdoptFinishedUploadAsync(engine, generation).ConfigureAwait(true);
@@ -490,6 +539,7 @@ public sealed class SyncHost : IDisposable
         _engine?.Dispose();
         _engine = null;
         Keys = null;
+        AccountChoice = null;
         OpenFailure = null;
     }
 
@@ -507,6 +557,7 @@ public sealed class SyncHost : IDisposable
                 if (changes.HasFlag(SyncChanges.Status))
                 {
                     KeepServiceAccount(engine);
+                    await ReadAccountChoiceAsync(engine, generation).ConfigureAwait(true);
                 }
 
                 if (changes.HasFlag(SyncChanges.Keys))
@@ -552,6 +603,29 @@ public sealed class SyncHost : IDisposable
         catch (ObjectDisposedException)
         {
             // Closed meanwhile; the next open reads its own.
+        }
+    }
+
+    // The core answers sync.not_allowed while no choice waits, which is the common case.
+    private async Task ReadAccountChoiceAsync(ISyncEngine engine, int generation)
+    {
+        NewIdentityPlan? plan;
+        try
+        {
+            plan = await engine.PlanNewIdentityAsync().ConfigureAwait(true);
+        }
+        catch (TableProException)
+        {
+            plan = null;
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        if (generation == _generation)
+        {
+            AccountChoice = plan;
         }
     }
 
