@@ -183,7 +183,7 @@ final class CoreSavedQueryStore {
     private func openedStore() throws -> SavedQueryStore {
         if let store { return store }
         let core = try host.core()
-        let opened = try CoreLibraryStore.blocking { try await core.history() }.savedQueries()
+        let opened = try CoreLibraryStore.blocking { try await core.savedQueryDatabase() }.savedQueries()
         store = opened
         return opened
     }

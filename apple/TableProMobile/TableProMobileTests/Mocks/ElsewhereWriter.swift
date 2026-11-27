@@ -46,7 +46,7 @@ nonisolated enum ElsewhereWriter {
     }
 
     private static func write(query: SavedQuery, to core: Core) throws {
-        let queries = try CoreLibraryStore.blocking { try await core.history() }.savedQueries()
+        let queries = try CoreLibraryStore.blocking { try await core.savedQueryDatabase() }.savedQueries()
         let record = SavedQueryRecord(
             id: query.id.uuidString,
             name: query.name,
