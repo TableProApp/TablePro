@@ -6187,6 +6187,190 @@ New fingerprint: {2}</value>
     <value>TablePro</value>
     <comment>The choice that keeps TablePro's own keys.</comment>
   </data>
+  <data name="KeyboardShortcutsTitle.Text" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="ShortcutPresetCard.Header" xml:space="preserve">
+    <value>Preset</value>
+  </data>
+  <data name="ShortcutPresetCard.Description" xml:space="preserve">
+    <value>Start from the keys of the app you're used to. Your changes below stay on top.</value>
+  </data>
+  <data name="ShortcutPresetBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Shortcut preset</value>
+  </data>
+  <data name="ShortcutRestoreButton.Content" xml:space="preserve">
+    <value>Restore defaults</value>
+  </data>
+  <data name="ShortcutNone" xml:space="preserve">
+    <value>None</value>
+    <comment>Shown on a command that has no shortcut.</comment>
+  </data>
+  <data name="ShortcutTypeHint" xml:space="preserve">
+    <value>Type shortcut</value>
+    <comment>Shown on the recorder while it waits for keys.</comment>
+  </data>
+  <data name="ShortcutRecorderHelp" xml:space="preserve">
+    <value>Press to record a shortcut. Delete removes it, Esc cancels.</value>
+  </data>
+  <data name="ShortcutRecording" xml:space="preserve">
+    <value>Recording</value>
+    <comment>Read out by Narrator while the recorder is armed.</comment>
+  </data>
+  <data name="ShortcutRecorderName" xml:space="preserve">
+    <value>Shortcut for {0}</value>
+    <comment>Narrator name of a recorder. {0} is the command.</comment>
+  </data>
+  <data name="ShortcutResetName" xml:space="preserve">
+    <value>Reset {0} to default</value>
+    <comment>Narrator name of a command's reset button. {0} is the command.</comment>
+  </data>
+  <data name="ShortcutResetTip" xml:space="preserve">
+    <value>Reset to default</value>
+  </data>
+  <data name="ShortcutRefusal_NeedsModifier" xml:space="preserve">
+    <value>Add Ctrl, or use a function key.</value>
+  </data>
+  <data name="ShortcutRefusal_UnavailableKey" xml:space="preserve">
+    <value>This key can't be a menu shortcut.</value>
+  </data>
+  <data name="ShortcutRefusal_Reserved" xml:space="preserve">
+    <value>{0} is used by Windows or the editor.</value>
+    <comment>{0} is the shortcut the user pressed.</comment>
+  </data>
+  <data name="ShortcutReassignTitle" xml:space="preserve">
+    <value>Reassign {0}?</value>
+    <comment>{0} is the shortcut being moved.</comment>
+  </data>
+  <data name="ShortcutReassignUsedBy_one" xml:space="preserve">
+    <value>It is used by {0}, which will have no shortcut.</value>
+    <comment>{0} is the command losing the shortcut.</comment>
+  </data>
+  <data name="ShortcutReassignUsedBy_other" xml:space="preserve">
+    <value>It is used by {0}. They will have no shortcut.</value>
+    <comment>{0} is a list of commands losing the shortcut.</comment>
+  </data>
+  <data name="ShortcutReassign" xml:space="preserve">
+    <value>Reassign</value>
+  </data>
+  <data name="ShortcutRestoreTitle" xml:space="preserve">
+    <value>Restore default shortcuts?</value>
+  </data>
+  <data name="ShortcutRestoreMessage" xml:space="preserve">
+    <value>Every shortcut you changed goes back to the preset.</value>
+  </data>
+  <data name="ShortcutRestoreConfirm" xml:space="preserve">
+    <value>Restore defaults</value>
+  </data>
+  <data name="ShortcutSummaryNone" xml:space="preserve">
+    <value>No custom shortcuts</value>
+  </data>
+  <data name="ShortcutSummaryCustom_one" xml:space="preserve">
+    <value>{0:N0} custom shortcut</value>
+  </data>
+  <data name="ShortcutSummaryCustom_other" xml:space="preserve">
+    <value>{0:N0} custom shortcuts</value>
+  </data>
+  <data name="ShortcutSummaryPreset" xml:space="preserve">
+    <value>{0} preset</value>
+    <comment>{0} is the chosen preset's name.</comment>
+  </data>
+  <data name="ShortcutGroup_Global" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="ShortcutGroup_Workspace" xml:space="preserve">
+    <value>Tabs and navigation</value>
+  </data>
+  <data name="ShortcutGroup_QueryTab" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="ShortcutGroup_TableTab" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="ShortcutGroup_Editor" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="ShortcutGroup_Grid" xml:space="preserve">
+    <value>Data grid</value>
+  </data>
+  <data name="ShortcutName_newConnection" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="ShortcutName_openFile" xml:space="preserve">
+    <value>Open file</value>
+  </data>
+  <data name="ShortcutName_newTab" xml:space="preserve">
+    <value>New query tab</value>
+  </data>
+  <data name="ShortcutName_closeTab" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="ShortcutName_reopenClosedTab" xml:space="preserve">
+    <value>Reopen closed tab</value>
+  </data>
+  <data name="ShortcutName_saveChanges" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="ShortcutName_saveAs" xml:space="preserve">
+    <value>Save as</value>
+  </data>
+  <data name="ShortcutName_discardChanges" xml:space="preserve">
+    <value>Discard changes</value>
+  </data>
+  <data name="ShortcutName_exportResults" xml:space="preserve">
+    <value>Export results</value>
+  </data>
+  <data name="ShortcutName_showSettings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="ShortcutName_addRow" xml:space="preserve">
+    <value>Add row</value>
+  </data>
+  <data name="ShortcutName_duplicateRow" xml:space="preserve">
+    <value>Duplicate row</value>
+  </data>
+  <data name="ShortcutName_previewSQL" xml:space="preserve">
+    <value>Preview SQL</value>
+  </data>
+  <data name="ShortcutName_manageConnections" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="ShortcutName_toggleTableBrowser" xml:space="preserve">
+    <value>Object tree</value>
+  </data>
+  <data name="ShortcutName_focusSidebarSearch" xml:space="preserve">
+    <value>Filter objects</value>
+  </data>
+  <data name="ShortcutName_toggleHistory" xml:space="preserve">
+    <value>Show query history</value>
+  </data>
+  <data name="ShortcutName_refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ShortcutName_openDatabase" xml:space="preserve">
+    <value>Switch database</value>
+  </data>
+  <data name="ShortcutName_executeAllStatements" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="ShortcutName_executeQuery" xml:space="preserve">
+    <value>Run statement at cursor</value>
+  </data>
+  <data name="ShortcutName_cancelQuery" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="ShortcutName_toggleFilters" xml:space="preserve">
+    <value>Filter rows</value>
+  </data>
+  <data name="ShortcutName_find" xml:space="preserve">
+    <value>Find</value>
+  </data>
+  <data name="ShortcutName_findAndReplace" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="ShortcutName_formatQuery" xml:space="preserve">
+    <value>Format query</value>
+  </data>
   <data name="SetupSourcesName" xml:space="preserve">
     <value>Apps to import from</value>
   </data>

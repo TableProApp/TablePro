@@ -32,10 +32,11 @@ internal static class DisplaySettings
         ArgumentNullException.ThrowIfNull(settings);
         var before = s_current;
         s_current = settings;
-        var keysMoved = before.ShortcutPreset != settings.ShortcutPreset;
+        var keysMoved = before.ShortcutPreset != settings.ShortcutPreset
+            || !before.ShortcutOverrides.Equals(settings.ShortcutOverrides);
         if (keysMoved)
         {
-            Keymap = Resolve(settings.ShortcutPreset);
+            Keymap = Resolve(settings.ShortcutPreset, settings.ShortcutOverrides);
             s_editorKeymap = EditorKeys(Keymap);
         }
 
@@ -94,22 +95,29 @@ internal static class DisplaySettings
 
     private static string Word(string id) => Strings.Get("Key_" + id);
 
-    // A preset the core does not know, or cannot read, keeps TablePro's keys.
-    private static EffectiveKeymap Resolve(string? preset)
+    // A preset the core does not know, or cannot read, keeps TablePro's keys; the user's overrides lay over the result.
+    private static EffectiveKeymap Resolve(string? preset, ShortcutOverrideMap overrides)
     {
-        if (preset is null)
+        var customs = ShortcutOverrides.From(overrides);
+        if (preset is null && customs.Count == 0)
         {
             return EffectiveKeymap.TablePro;
         }
 
-        try
+        IReadOnlyList<KeymapBinding>? bindings = null;
+        if (preset is not null)
         {
-            return Model.Keymap.Resolve(TableProCore.KeymapPreset(preset, KeymapPlatform.Windows));
+            try
+            {
+                bindings = TableProCore.KeymapPreset(preset, KeymapPlatform.Windows);
+            }
+            catch (TableProException)
+            {
+                bindings = null;
+            }
         }
-        catch (TableProException)
-        {
-            return EffectiveKeymap.TablePro;
-        }
+
+        return Model.Keymap.Resolve(bindings, customs);
     }
 
     private static EditorKeymap EditorKeys(EffectiveKeymap keymap)
