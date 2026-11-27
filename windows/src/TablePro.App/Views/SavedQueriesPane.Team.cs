@@ -141,7 +141,7 @@ public sealed partial class SavedQueriesPane
 
     private Button ResolveButton() => TeamButton("TeamResolveConflicts", "TeamResolveButton", ResolveAsync);
 
-    private Button TeamButton(string automationId, string text, Func<Task> run)
+    private static Button TeamButton(string automationId, string text, Func<Task> run)
     {
         var button = new Button { Content = Strings.Get(text) };
         AutomationProperties.SetAutomationId(button, automationId);
