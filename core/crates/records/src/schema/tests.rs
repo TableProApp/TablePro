@@ -1,6 +1,6 @@
 use serde_json::json;
 use tablepro_core::{ClientIdentity, NetworkOptions, TlsConfig};
-use tablepro_storage::query_history::Entry;
+use tablepro_storage::query_history::{Entry, RunDetails};
 use tablepro_storage::saved_queries::SavedQuery;
 use tablepro_storage::{
     ConnectionDetails, ConnectionGroup, ConnectionTag, CredentialPassword, CredentialProfile, DeviceOnly,
@@ -178,6 +178,8 @@ fn exhaustive_connection(connection: SavedConnection) {
         cloud_sql_proxy: _,
         socks_proxy: _,
         tunnel_command: _,
+        tls_mode_unsettled: _,
+        ssh_profile_unlinked: _,
     } = device;
     let TlsConfig {
         mode: _,
@@ -316,6 +318,8 @@ fn the_connection_table_names_every_member_the_store_holds() {
             "device.cloud_sql_proxy",
             "device.socks_proxy",
             "device.tunnel_command",
+            "device.tls_mode_unsettled",
+            "device.ssh_profile_unlinked",
             "unknown",
         ])
     );
@@ -571,7 +575,17 @@ fn the_history_table_names_every_member_the_store_holds() {
             cancelled: _,
             pinned: _,
             error: _,
+            details,
         } = entry;
+        let RunDetails {
+            database: _,
+            schema: _,
+            source: _,
+            statement_type: _,
+            first_row_ms: _,
+            server_ms: _,
+            fingerprint: _,
+        } = details;
     };
     let _ = exhaustive_entry;
     assert_eq!(
@@ -590,6 +604,13 @@ fn the_history_table_names_every_member_the_store_holds() {
             "cancelled",
             "pinned",
             "error",
+            "details.database",
+            "details.schema",
+            "details.source",
+            "details.statement_type",
+            "details.first_row_ms",
+            "details.server_ms",
+            "details.fingerprint",
         ])
     );
 }

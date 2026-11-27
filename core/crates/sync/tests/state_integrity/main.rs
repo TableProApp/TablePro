@@ -16,3 +16,4 @@ mod freshness;
 mod rebuild;
 mod support;
 mod transitions;
+mod upgrade;

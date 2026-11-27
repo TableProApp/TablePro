@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::time::SystemTime;
 
 use sqlx::{AssertSqlSafe, Connection, Row, SqlitePool};
@@ -75,13 +74,13 @@ pub struct FavouriteDatabase {
 #[derive(Debug, Clone)]
 pub struct Favourites {
     pool: SqlitePool,
-    path: PathBuf,
+    files: crate::query_history::LiveFiles,
     signals: Signals,
 }
 
 impl Favourites {
-    pub(crate) fn new(pool: SqlitePool, path: PathBuf, signals: Signals) -> Self {
-        Self { pool, path, signals }
+    pub(crate) fn new(pool: SqlitePool, files: crate::query_history::LiveFiles, signals: Signals) -> Self {
+        Self { pool, files, signals }
     }
 
     pub fn changes(&self) -> watch::Receiver<u64> {
@@ -120,8 +119,8 @@ impl Favourites {
     pub async fn remove_table(&self, table: &FavouriteTable) -> Result<(), StorageError> {
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        crate::query_history::trim_upgrade_copies(
-            &self.path,
+        crate::query_history::trim_saved_copies(
+            &self.files,
             &[crate::query_history::CopyDelete {
                 table: "favourite_tables",
                 sql: "DELETE FROM main.favourite_tables \
@@ -210,8 +209,8 @@ impl Favourites {
     pub async fn remove_database(&self, connection: Uuid, database: &str) -> Result<(), StorageError> {
         let mut held = self.pool.acquire().await?;
         let mut transaction = held.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        crate::query_history::trim_upgrade_copies(
-            &self.path,
+        crate::query_history::trim_saved_copies(
+            &self.files,
             &[crate::query_history::CopyDelete {
                 table: "favourite_databases",
                 sql: "DELETE FROM main.favourite_databases WHERE connection_id = ? AND database = ?".to_owned(),
@@ -276,8 +275,8 @@ mod tests {
         assert_eq!(DatabaseEnvironment::parse("staging"), None);
     }
 
-    async fn history(root: &tempfile::TempDir) -> crate::QueryHistory {
-        crate::QueryHistory::open(&crate::StoragePaths::under(
+    async fn history(root: &tempfile::TempDir) -> crate::SavedQueryDatabase {
+        crate::SavedQueryDatabase::open(&crate::StoragePaths::under(
             root.path(),
             "tablepro",
             "app.tablepro.TablePro",

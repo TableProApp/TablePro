@@ -139,7 +139,11 @@ async fn a_replace_the_pinned_ik_endorsed_is_followed_with_a_notice_and_the_old_
     let pin = device.pin(member.account).await.unwrap();
     assert_eq!(
         (pin.ik, pin.how, pin.replaced.clone()),
-        (next.public().unwrap(), PinHow::Replaced, vec![Replaced { ik: old, av: av(2) }])
+        (
+            next.public().unwrap(),
+            PinHow::Replaced,
+            vec![Replaced { ik: old, av: av(2) }]
+        )
     );
     assert!(device.service.notices().await.unwrap().iter().any(|notice| notice.kind
         == KeyNoticeKind::RecoveryKeyReplaced {
@@ -462,4 +466,172 @@ async fn a_certificate_under_a_replaced_ik_counts_only_below_the_av_of_its_repla
 
     assert_eq!(before, IkStanding::Replaced);
     assert_eq!(after.code(), "keys.retired_ik");
+}
+
+// 0066, Replace points: an approver's trust names the replace at `av` 3, and the server withholds that certificate,
+// serving one the old IK signed at 3 under a recovery key it kept, then the new IK at 4.
+#[tokio::test]
+async fn a_replace_point_holds_whatever_certificates_the_server_serves_around_it() {
+    let device = device().await;
+    let scope = team();
+    let old = Member::new();
+    let next = Member {
+        account: old.account,
+        ik: Ed25519Seed::generate().unwrap(),
+    };
+    device
+        .put(vec![
+            Row::KeyPin(KeyPinRow {
+                account: old.account,
+                ik: next.ik.public().unwrap(),
+                av: av(4),
+                how: PinHow::Replaced,
+                alert: false,
+                replaced: vec![Replaced {
+                    ik: old.ik.public().unwrap(),
+                    av: av(3),
+                }],
+            }),
+            member_row(scope, &old.certificate(3)),
+            member_row(scope, &next.certificate(4)),
+        ])
+        .await;
+    let mut txn = device.txn().await;
+
+    let forged = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &old.certificate(3))
+        .await;
+    let history = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &old.certificate(2))
+        .await;
+
+    assert_eq!(forged.unwrap_err().code(), "keys.retired_ik");
+    assert_eq!(history.unwrap(), IkStanding::Replaced);
+}
+
+// An accepted alert has no replace certificate: the old IK's point is the `av` after the one this device pinned under
+// it, so a certificate the old IK signed later never verifies, however far the accepted one stands (orchestrator
+// ruling on 0066, Replace points).
+#[tokio::test]
+async fn an_accepted_alert_retires_the_old_ik_just_past_what_the_device_pinned() {
+    let device = device().await;
+    let scope = team();
+    let member = Member::new();
+    offer(&device, scope, &member.certificate(1)).await.unwrap();
+    let reset = Member {
+        account: member.account,
+        ik: Ed25519Seed::generate().unwrap(),
+    };
+    device.put(vec![member_row(scope, &reset.certificate(2))]).await;
+    assert_eq!(offer(&device, scope, &reset.certificate(3)).await, Ok(PinChange::Alert));
+
+    device
+        .service
+        .accept_key_change(member.account, reset.ik.public().unwrap(), Acceptance::Compared)
+        .await
+        .unwrap();
+    let pin = device.pin(member.account).await.unwrap();
+    let mut txn = device.txn().await;
+    let later = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(2))
+        .await;
+    let pinned = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(1))
+        .await;
+
+    assert_eq!((pin.ik, pin.av), (reset.ik.public().unwrap(), av(3)));
+    assert_eq!(
+        pin.replaced,
+        vec![Replaced {
+            ik: member.ik.public().unwrap(),
+            av: av(2)
+        }]
+    );
+    assert_eq!(later.unwrap_err().code(), "keys.retired_ik");
+    assert_eq!(pinned.unwrap(), IkStanding::Replaced);
+}
+
+// An approval merge with no endorsement keeps the pinned IK under an alert while its trust retired it: the pinned IK
+// then signs nothing at or past its point either, for a server holding an old recovery key (Codex security round 1).
+#[tokio::test]
+async fn a_pinned_ik_a_merge_retired_verifies_nothing_at_or_past_its_point() {
+    let device = device().await;
+    let scope = team();
+    let member = Member::new();
+    device
+        .put(vec![
+            Row::KeyPin(KeyPinRow {
+                account: member.account,
+                ik: member.ik.public().unwrap(),
+                av: av(1),
+                how: PinHow::Compared,
+                alert: true,
+                replaced: vec![Replaced {
+                    ik: member.ik.public().unwrap(),
+                    av: av(2),
+                }],
+            }),
+            member_row(scope, &member.certificate(1)),
+            member_row(scope, &member.certificate(2)),
+        ])
+        .await;
+    let mut txn = device.txn().await;
+
+    let past = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(2))
+        .await;
+    let before = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(1))
+        .await;
+    drop(txn);
+    let offered = offer(&device, scope, &member.certificate(3)).await;
+
+    assert_eq!(past.unwrap_err().code(), "keys.retired_ik");
+    assert_eq!(before.unwrap(), IkStanding::Replaced);
+    assert_eq!(offered, Err("keys.retired_ik".to_owned()));
+}
+
+// A retired pinned IK endorses only the replace at its point: a replace a server made past it under an old recovery
+// key is never followed (Codex security round 2).
+#[tokio::test]
+async fn a_replace_past_a_retired_pinned_ik_s_point_is_not_followed() {
+    let device = device().await;
+    let scope = team();
+    let member = Member::new();
+    let forged = Member {
+        account: member.account,
+        ik: Ed25519Seed::generate().unwrap(),
+    };
+    device
+        .put(vec![
+            Row::KeyPin(KeyPinRow {
+                account: member.account,
+                ik: member.ik.public().unwrap(),
+                av: av(2),
+                how: PinHow::Compared,
+                alert: true,
+                replaced: vec![Replaced {
+                    ik: member.ik.public().unwrap(),
+                    av: av(2),
+                }],
+            }),
+            member_row(scope, &member.replace(3, &forged.ik)),
+        ])
+        .await;
+
+    let offered = offer(&device, scope, &forged.certificate(4)).await;
+    let mut txn = device.txn().await;
+    let verified = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &forged.certificate(4))
+        .await;
+
+    assert_eq!(offered, Err("keys.retired_ik".to_owned()));
+    assert_eq!(verified.unwrap_err().code(), "keys.retired_ik");
 }

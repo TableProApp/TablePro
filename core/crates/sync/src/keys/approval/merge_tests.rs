@@ -22,7 +22,10 @@ fn v(value: u32) -> Version {
 }
 
 fn retired(byte: u8, av: u32) -> Replaced {
-    Replaced { ik: ik(byte), av: v(av) }
+    Replaced {
+        ik: ik(byte),
+        av: v(av),
+    }
 }
 
 fn ik(byte: u8) -> Ed25519Public {
@@ -594,4 +597,26 @@ fn an_endorsement_chain_that_does_not_reach_the_approver_s_ik_still_opens_an_ale
     let a = pin_of(&merged, A);
     assert_eq!((a.ik, a.alert), (ik(0xa3), true));
     assert_eq!(merged.alerts_opened, vec![A]);
+}
+
+// A retired IK endorses only the replace at its point: one a server made past it with an old recovery key is not
+// followed, and the pin opens the alert instead (Codex security round 2).
+#[test]
+fn an_endorsement_past_the_retired_ik_s_point_is_not_followed() {
+    let held = HeldTables {
+        pins: vec![pin(P, ik(0xb1), 2), pin(A, ik(0xa1), 1)],
+        versions: Vec::new(),
+    };
+    let mut trust = trust_at_av2();
+    let mut offered = trust_pin(A, ik(0xa2), 2);
+    offered.replaced = vec![retired(0xa1, 2)];
+    trust.pins.push(offered);
+    let forged = facts_av2().endorse(A, ik(0xa1), ik(0xa3), 3);
+
+    let merged = merged(&held, &trust, 2, &forged);
+
+    let a = pin_of(&merged, A);
+    assert_eq!((a.ik, a.alert), (ik(0xa1), true));
+    assert_eq!(a.replaced, vec![retired(0xa1, 2)]);
+    assert!(merged.replaced.is_empty());
 }

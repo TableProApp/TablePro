@@ -23,6 +23,8 @@ struct Inner {
     locked: bool,
     // A Linux session with no Secret Service.
     unavailable: bool,
+    // The host declares no store at all, and answers as one away does.
+    absent: bool,
     fail_mac_key_write: bool,
     // Fails the nth root write from now, counting from 1.
     fail_root_write: Option<usize>,
@@ -30,7 +32,7 @@ struct Inner {
 
 impl Inner {
     fn admit(&self) -> Result<(), DeviceStoreError> {
-        if self.unavailable {
+        if self.unavailable || self.absent {
             return Err(DeviceStoreError::Unavailable {
                 detail: "no secret service".to_owned(),
             });
@@ -68,6 +70,10 @@ impl Store {
 
     pub fn set_unavailable(&self, unavailable: bool) {
         self.lock().unavailable = unavailable;
+    }
+
+    pub fn set_absent(&self, absent: bool) {
+        self.lock().absent = absent;
     }
 
     pub fn fail_mac_key_write(&self) {
@@ -147,6 +153,10 @@ impl HostDeviceStore for Store {
         self.change(&item, |items| {
             items.remove(&item);
         })
+    }
+
+    fn present(&self) -> bool {
+        !self.lock().absent
     }
 }
 

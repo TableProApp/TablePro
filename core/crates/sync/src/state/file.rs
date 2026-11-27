@@ -22,7 +22,9 @@ use crate::api::state::{
     StateTxn, Table,
 };
 
-pub const SCHEMA_VERSION: u32 = 1;
+// 2 since 0066: `stores_kinds` and `refused`, a scope's `push_wait`, a key object's `served` and a replace point per
+// replaced IK. An open reads a schema 1 file and upgrades it (`integrity::upgrade`).
+pub const SCHEMA_VERSION: u32 = 2;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/state");
 
@@ -181,6 +183,8 @@ async fn connect(path: &Path) -> Result<SqlitePool, StateError> {
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Full)
         .pragma("trusted_schema", "OFF")
+        // What a delete removes is overwritten in its pages, so it never lingers in free pages (`purge`).
+        .pragma("secure_delete", "ON")
         .disable_statement_logging();
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -255,10 +259,16 @@ async fn check_schema(pool: &SqlitePool) -> Result<(), StateError> {
 // by this code, and is refused.
 async fn bind(tx: &mut Transaction<'static, Sqlite>, identity: &StateIdentity) -> Result<Bound, StateError> {
     match read(tx, &RowKey::Binding).await? {
-        Some(Row::Binding(binding)) if bound_to(&binding, identity) => Ok(Bound {
-            binding,
-            new_file: false,
-        }),
+        // A newer build's file is not read, and never started over (0012).
+        Some(Row::Binding(binding)) if bound_to(&binding, identity) => {
+            if !(1..=SCHEMA_VERSION).contains(&binding.schema_version) {
+                return Err(StateError::Integrity);
+            }
+            Ok(Bound {
+                binding,
+                new_file: false,
+            })
+        }
         Some(_) => Err(StateError::WrongIdentity),
         None => {
             for table in Table::SYNC.into_iter().chain(Table::KEY) {
@@ -348,6 +358,23 @@ impl StateStore for SqliteState {
             seal: Arc::clone(&self.seal),
             written: Written::default(),
         }))
+    }
+
+    // `secure_delete` zeroes what a delete removes in its pages, but a page freed before it was on can still hold
+    // older copies: the file is rebuilt, then the frames before it leave with a checkpoint that empties the WAL. A
+    // state file is small and held exclusively, so neither waits on a reader or holds the file long.
+    async fn purge(&self) -> Result<(), StateError> {
+        sqlx::query("VACUUM").execute(&self.pool).await.map_err(sql)?;
+        let (busy, _, _): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(sql)?;
+        if busy != 0 {
+            return Err(StateError::Io {
+                detail: "the WAL could not be checkpointed whole".to_owned(),
+            });
+        }
+        Ok(())
     }
 }
 

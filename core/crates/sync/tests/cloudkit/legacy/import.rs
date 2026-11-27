@@ -271,6 +271,27 @@ async fn a_zone_the_swift_engine_saw_removed_stays_removed_and_nothing_goes_up()
     assert!(rig.cloud.record_names(USER).is_empty());
 }
 
+// The Swift engine saw the zone removed, and another device made it again before this build's first pass: nothing
+// goes up until this device's person asks to upload again, and the mirror says removed for the previous stable.
+#[tokio::test]
+async fn a_zone_the_swift_engine_saw_removed_waits_for_upload_again_once_made_again() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Group, A, &group("Work"));
+    let mirror = synced(&rig).await;
+    let mut left = mirror.metadata();
+    left.zone_state = Some("removed".to_owned());
+    mirror.replace(left);
+    rig.store(Kind::Group)
+        .put(B, projected(Kind::Group, B, &group("Only here")));
+    let sync = rig.sync_mirrored(&mirror);
+
+    let _ = sync.run_pass(PassReason::Launch).await;
+    let _ = sync.run_pass(PassReason::Poll).await;
+
+    assert!(rig.zone_fields(Kind::Group, B).is_none());
+    assert_eq!(mirror.metadata().zone_state.as_deref(), Some("removed"));
+}
+
 #[tokio::test]
 async fn a_change_held_for_a_copy_the_swift_engine_could_not_read_is_fetched_by_name() {
     let rig = Rig::new().await;

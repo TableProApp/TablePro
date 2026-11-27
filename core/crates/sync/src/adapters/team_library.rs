@@ -8,11 +8,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 use tablepro_records::Kind;
-use tablepro_storage::{StorageError, TeamLibraryItem, TeamLibraryKind, TeamLibraryStore};
+use tablepro_storage::{StorageError, TeamLibraryItem, TeamLibraryKind, TeamLibraryStore, TeamLibraryWriter};
 use uuid::Uuid;
 
 use super::blocking;
-use crate::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
+use crate::api::adapter::{LocalChange, LocalRecord, LocalRecords, PulledWriter, RecordAdapter, StoreStamp};
 use crate::api::error::AdapterError;
 use crate::api::ids::ScopeName;
 use crate::api::state::Standing;
@@ -154,6 +154,28 @@ impl RecordAdapter for TeamLibraryAdapter {
 
     async fn tombstones_pushed(&self, _scope: ScopeName, _record_ids: Vec<String>) -> Result<(), AdapterError> {
         Ok(())
+    }
+
+    // The team list and the conflict sheet name who last changed each item.
+    async fn pulled_writers(&self, scope: ScopeName, writers: Vec<PulledWriter>) -> Result<(), AdapterError> {
+        let ScopeName::Team(_) = scope else {
+            return Ok(());
+        };
+        let kind = self.library;
+        let writers: Vec<TeamLibraryWriter> = writers
+            .into_iter()
+            .map(|writer| TeamLibraryWriter {
+                kind,
+                id: writer.record_id,
+                name: writer.name,
+                at_ms: writer.at_ms,
+            })
+            .collect();
+        let store = self.store.clone();
+        let team = scope.wire();
+        blocking(move || store.record_writers_blocking(&team, writers))
+            .await?
+            .map_err(store_error)
     }
 }
 

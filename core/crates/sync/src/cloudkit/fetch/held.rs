@@ -25,6 +25,8 @@ struct Recovery {
     release: Vec<RecordKey>,
     // Records held whole whose copy is asked for again.
     awaiting: BTreeSet<RecordKey>,
+    // Records a refill held when their store refused the pulled value: the pull wins when the store takes it.
+    refilled: BTreeSet<RecordKey>,
 }
 
 const fn answer_name(answer: &CloudKitFetched) -> &String {
@@ -119,6 +121,7 @@ impl Fetcher<'_> {
             .settle(Batch {
                 items,
                 pull_wins,
+                pull_wins_keys: recovery.refilled,
                 release,
                 ..Batch::default()
             })
@@ -144,14 +147,29 @@ impl Fetcher<'_> {
             let Some(kind) = kind_of(&held.key).filter(|kind| self.categories.syncs(*kind)) else {
                 continue;
             };
+            // Its store refused it in this fetch: the next pass tries it again.
+            let refused = self
+                .refused
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(&held.key);
             match settle.view(&held.key, kind).await? {
                 View::NoAdapter | View::Unreadable(_) => {}
-                _ if held.record.deleted.is_some() => recovery.deletions.push(held.key),
+                _ if refused => {}
+                _ if held.record.deleted.is_some() => {
+                    if held.reason == HeldReason::RefusedInRefill {
+                        recovery.refilled.insert(held.key.clone());
+                    }
+                    recovery.deletions.push(held.key);
+                }
                 View::Stored(record) if record.standing == Standing::LocalOnly => recovery.release.push(held.key),
                 // CloudKit asked to wait before this record is asked for again.
                 View::Stored(_) | View::Missing if self.waiting.contains(&held.key) => {}
                 View::Stored(_) | View::Missing => {
                     recovery.names.extend(name_of(&held.key));
+                    if held.reason == HeldReason::RefusedInRefill {
+                        recovery.refilled.insert(held.key.clone());
+                    }
                     if awaiting {
                         recovery.awaiting.insert(held.key);
                     }

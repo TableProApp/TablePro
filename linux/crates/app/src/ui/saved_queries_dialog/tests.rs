@@ -9,7 +9,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_storage::saved_queries::{NewSavedQuery, SavedQuery};
-use tablepro_storage::{QueryHistory, StoragePaths};
+use tablepro_storage::{SavedQueryDatabase, StoragePaths};
 use uuid::Uuid;
 
 use super::*;
@@ -38,7 +38,7 @@ impl Harness {
             .build()
             .expect("runtime")
             .block_on(async {
-                let store = QueryHistory::open(&paths).await.expect("open").saved_queries();
+                let store = SavedQueryDatabase::open(&paths).await.expect("open").saved_queries();
                 for &(name, sql, connection_id, connection_name) in queries {
                     store
                         .save(NewSavedQuery {
@@ -370,7 +370,7 @@ fn drop_the_table(root: &tempfile::TempDir) {
     use tokio_util::sync::CancellationToken;
 
     let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
-    let endpoint = FileEndpoint::open_existing(paths.history_database()).expect("the history file");
+    let endpoint = FileEndpoint::open_existing(paths.saved_query_database()).expect("the saved queries file");
     let options = ConnectOptions {
         target: ConnectTarget::File(endpoint),
         workspace_settings: WorkspaceSettings::workspace(false),
@@ -413,7 +413,7 @@ fn a_list_that_cannot_be_read_says_so_and_offers_try_again() {
     assert_eq!(imp.error_page.title(), "Could Not Read Saved Queries");
     assert_eq!(
         imp.error_page.description().as_deref(),
-        Some("The query history file could not be read. It may be damaged.")
+        Some("The saved queries file could not be read. It may be damaged.")
     );
     let retry = imp
         .error_page

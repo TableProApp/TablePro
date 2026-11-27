@@ -16,19 +16,23 @@ use serde_json::Value;
 use tablepro_records::Kind;
 use tablepro_records::cloudkit::{CloudValue, RecordType, from_wire, record_name, record_type_of};
 use tablepro_records::record_id::shortened;
+use uuid::Uuid;
 
-pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync};
+pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync, IcloudCopy, copy_rows};
 
 use super::codes;
 use super::fetch::{Categories, Fetcher, PROFILES, SCOPE, ServerChanged, carried};
-use crate::adapters::approval;
 use crate::adapters::fields::{get, set};
+use crate::adapters::{approval, unsettled};
 use crate::api::adapter::{LocalRecord, LocalRecords};
 use crate::api::cloudkit::{CloudKitFailure, CloudKitField, CloudKitRecord, CloudKitValue};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, KindName, RecordKey};
-use crate::api::state::{BaseRow, Row, RowRange, Standing, Table};
-use crate::engine::{Backoff, JournalIds, Pending, PendingOp, StopSignal, diff};
+use crate::api::state::{BaseRow, Row, RowKey, RowRange, Standing, StandingRow, Table};
+use crate::engine::{
+    Backoff, JournalIds, KeptOff, Pending, PendingOp, StopSignal, diff, forget_kept_off, hold_kept_off,
+    hold_left_behind, kept_off_connections, left_behind_digest,
+};
 
 // A pass sends again what a refusal merged, at most this many times; what is left waits for the next pass.
 const ROUNDS: usize = 3;
@@ -153,6 +157,8 @@ struct Leave<'a> {
     named: Option<&'a JournalIds>,
     // A later round sends only what the earlier one merged.
     only: Option<&'a BTreeSet<RecordKey>>,
+    // Only counting what would go: nothing is committed.
+    counting: bool,
 }
 
 fn cloudkit_value(value: CloudValue) -> CloudKitValue {
@@ -200,6 +206,36 @@ pub(in crate::cloudkit) fn at_base(
     }
 }
 
+// Both copies also take the base's value where the store's copy leaves it unsaid: a copy an earlier build wrote then
+// sends nothing over the value another device holds.
+fn unsettled_at_base(
+    kind: Kind,
+    bases: &[BaseRow],
+    local: &mut LocalRecords,
+    kept: &mut BTreeMap<String, LocalRecord>,
+) {
+    for base in bases {
+        let id = &base.key.record_id;
+        let Some(stored) = kept.get(id) else {
+            continue;
+        };
+        let pointers = unsettled::reading(kind, &stored.fields, base.fields.as_ref());
+        if pointers.is_empty() {
+            continue;
+        }
+        let copies = local
+            .records
+            .iter_mut()
+            .filter(|record| record.record_id == *id)
+            .chain(kept.get_mut(id));
+        for copy in copies {
+            for pointer in &pointers {
+                set(&mut copy.fields, pointer, get(base.fields.as_ref(), pointer).cloned());
+            }
+        }
+    }
+}
+
 pub struct Pusher<'p> {
     fetcher: &'p Fetcher<'p>,
     stop: &'p StopSignal,
@@ -234,6 +270,20 @@ impl<'p> Pusher<'p> {
                 .is_none_or(|live| live.lock().unwrap_or_else(PoisonError::into_inner).syncs(kind))
     }
 
+    // What a push would send now, counted and sent nowhere.
+    pub(super) async fn unsent(&self) -> Result<u64, SyncError> {
+        let (failed, waits) = (BTreeSet::new(), Waits::default());
+        let leave = Leave {
+            failed: &failed,
+            waits: &waits,
+            named: None,
+            only: None,
+            counting: true,
+        };
+        let items = self.pending(&mut PushReport::default(), &leave).await?;
+        Ok(u64::try_from(items.len()).unwrap_or(u64::MAX))
+    }
+
     pub async fn push(&self, waits: &mut Waits, named: Option<&JournalIds>) -> Result<PushReport, SyncError> {
         self.fetcher.settle_pending().await?;
         waits.prune(self.now_ms);
@@ -246,6 +296,7 @@ impl<'p> Pusher<'p> {
                 waits,
                 named,
                 only: only.as_ref(),
+                counting: false,
             };
             let items = self.pending(&mut report, &leave).await?;
             if round == 0 {
@@ -356,6 +407,10 @@ impl<'p> Pusher<'p> {
     async fn pending(&self, report: &mut PushReport, leave: &Leave<'_>) -> Result<Vec<Item>, SyncError> {
         let held = self.held().await?;
         let waiting = approval::held_members(self.fetcher.state.begin().await?.as_mut(), SCOPE).await?;
+        let kept_off = self.kept_off(leave.counting).await?;
+        let left = self.left_behind().await?;
+        let mut left_drops = Vec::new();
+        let mut forgotten = Vec::new();
         let mut items = Vec::new();
         for (kind, adapter) in &self.fetcher.adapters {
             let kind = *kind;
@@ -380,6 +435,7 @@ impl<'p> Pusher<'p> {
             let (mut local, mut kept, unwritten) = Self::carried_copies(kind, stored);
             let bases = self.bases(kind).await?;
             at_base(&name, &waiting, &bases, &mut local, &mut kept);
+            unsettled_at_base(kind, &bases, &mut local, &mut kept);
             let skip: HashSet<String> = held
                 .iter()
                 .chain(leave.failed)
@@ -391,7 +447,11 @@ impl<'p> Pusher<'p> {
             for (id, code) in unwritten {
                 report.refuse(RecordKey::new(SCOPE, kind, id), code);
             }
-            let diffed = diff(SCOPE, kind, &local, &bases, &skip);
+            let mut diffed = diff(SCOPE, kind, &local, &bases, &skip);
+            forget_kept_off(&mut diffed, kind, &kept_off);
+            forgotten.append(&mut diffed.pruned);
+            hold_kept_off(&mut diffed, kind, &kept_off);
+            left_drops.extend(hold_left_behind(&mut diffed, &bases, &left));
             for (key, code) in diffed.refused {
                 report.refuse(key, code);
             }
@@ -409,7 +469,112 @@ impl<'p> Pusher<'p> {
                 }
             }
         }
+        if (!forgotten.is_empty() || !left_drops.is_empty()) && !leave.counting {
+            self.stop.check()?;
+            let mut txn = self.fetcher.state.begin().await?;
+            for key in forgotten {
+                txn.delete(&RowKey::Base(key)).await?;
+            }
+            for key in left_drops {
+                txn.delete(&RowKey::LeftBehind(key)).await?;
+            }
+            self.stop.check()?;
+            txn.commit().await?;
+        }
         Ok(items)
+    }
+
+    async fn left_behind(&self) -> Result<HashMap<RecordKey, [u8; 32]>, SyncError> {
+        let rows = self
+            .fetcher
+            .state
+            .begin()
+            .await?
+            .scan(&RowRange::Scope(Table::LeftBehind, SCOPE))
+            .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::LeftBehind(row) => Some((row.key, row.digest)),
+                _ => None,
+            })
+            .collect())
+    }
+
+    // Start empty keeps the device's settings (orchestrator ruling): each settings kind refills from the new account,
+    // whose copy wins, and the digest of each copy only this device holds is kept, so it goes up only once edited here.
+    pub(super) async fn leave_settings_behind(&self) -> Result<Vec<Row>, SyncError> {
+        let mut rows = Vec::new();
+        for (kind, adapter) in &self.fetcher.adapters {
+            let kind = *kind;
+            if !kind.is_settings() || !record_type_of(kind).is_some_and(|record_type| record_type.deployed) {
+                continue;
+            }
+            rows.push(Row::StoresKind(crate::api::state::StoresKindRow {
+                store: adapter.store().to_owned(),
+                kind: KindName::of(kind),
+            }));
+            let (local, _, _) = Self::carried_copies(kind, adapter.records(SCOPE).await?);
+            for pending in diff(SCOPE, kind, &local, &[], &HashSet::new()).pending {
+                if let PendingOp::Write { fields, .. } = &pending.op {
+                    rows.push(Row::LeftBehind(crate::api::state::LeftBehindRow {
+                        digest: left_behind_digest(fields),
+                        key: pending.key,
+                    }));
+                }
+            }
+        }
+        Ok(rows)
+    }
+
+    // The connections that keep their records on the device; a store that cannot be read keeps all, and an engine with
+    // no connection store leaves that to its adapters. A connection kept off sync that a base names gets its standing
+    // recorded, so once the store no longer holds it its deletion and its records' stay on the device (0054, Rules for
+    // both providers).
+    async fn kept_off(&self, counting: bool) -> Result<KeptOff, SyncError> {
+        let Some(adapter) = self.fetcher.adapters.get(&Kind::Connection) else {
+            return Ok(KeptOff::none());
+        };
+        let connections = adapter.records(SCOPE).await.ok();
+        let name = KindName::of(Kind::Connection);
+        let bases = self.bases(Kind::Connection).await?;
+        let mut txn = self.fetcher.state.begin().await?;
+        let mut recorded: HashMap<String, Standing> = HashMap::new();
+        for row in txn
+            .scan(&RowRange::ScopeKind(Table::Standing, SCOPE, name.clone()))
+            .await?
+        {
+            if let Row::Standing(row) = row {
+                recorded.insert(row.key.record_id, row.standing);
+            }
+        }
+        if let (Some(local), false) = (&connections, counting) {
+            let mut wrote = false;
+            for id in kept_off_connections(local, &bases) {
+                let wire = tablepro_records::record_id::uuid_id(id);
+                let Some(record) = local.records.iter().find(|record| record.record_id == wire) else {
+                    continue;
+                };
+                if recorded.get(&wire) != Some(&record.standing) {
+                    txn.put(Row::Standing(StandingRow {
+                        key: RecordKey::new(SCOPE, name.clone(), wire.clone()),
+                        standing: record.standing,
+                    }))
+                    .await?;
+                    recorded.insert(wire, record.standing);
+                    wrote = true;
+                }
+            }
+            if wrote {
+                self.stop.check()?;
+                txn.commit().await?;
+            }
+        }
+        let kept = recorded
+            .into_iter()
+            .filter(|(_, standing)| *standing != Standing::Syncs)
+            .filter_map(|(id, _)| Uuid::parse_str(&id).ok());
+        Ok(KeptOff::of(connections.as_ref()).recorded(kept))
     }
 
     // The store's copies by the id the zone names them with (0052, Long ids), each as what iCloud carries of it, so a

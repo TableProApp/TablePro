@@ -1,5 +1,5 @@
 use super::*;
-use crate::{DatabaseEnvironment, FavouriteTable, QueryHistory, StoragePaths};
+use crate::{DatabaseEnvironment, FavouriteTable, SavedQueryDatabase, StoragePaths};
 
 fn paths(root: &tempfile::TempDir) -> StoragePaths {
     StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro")
@@ -32,7 +32,7 @@ async fn order(store: &SavedQueries, connection: Uuid, folder: Option<Uuid>) -> 
 #[tokio::test]
 async fn new_saves_append_and_replacement_keeps_identity_and_filing() {
     let root = tempfile::tempdir().expect("tempdir");
-    let history = QueryHistory::open(&paths(&root)).await.expect("open");
+    let history = SavedQueryDatabase::open(&paths(&root)).await.expect("open");
     let store = history.saved_queries();
     let connection = Uuid::new_v4();
     let z = save(&store, connection, "z").await;
@@ -81,7 +81,7 @@ async fn new_saves_append_and_replacement_keeps_identity_and_filing() {
 #[tokio::test]
 async fn moving_and_deleting_queries_compacts_only_their_connection_and_place() {
     let root = tempfile::tempdir().expect("tempdir");
-    let history = QueryHistory::open(&paths(&root)).await.expect("open");
+    let history = SavedQueryDatabase::open(&paths(&root)).await.expect("open");
     let store = history.saved_queries();
     let connection = Uuid::new_v4();
     let other = Uuid::new_v4();
@@ -114,7 +114,7 @@ async fn moving_and_deleting_queries_compacts_only_their_connection_and_place() 
 #[tokio::test]
 async fn invalid_destinations_and_self_before_leave_rows_and_revisions_alone() {
     let root = tempfile::tempdir().expect("tempdir");
-    let history = QueryHistory::open(&paths(&root)).await.expect("open");
+    let history = SavedQueryDatabase::open(&paths(&root)).await.expect("open");
     let store = history.saved_queries();
     let connection = Uuid::new_v4();
     let a = save(&store, connection, "a").await;
@@ -142,8 +142,8 @@ async fn invalid_destinations_and_self_before_leave_rows_and_revisions_alone() {
 #[tokio::test]
 async fn unicode_keywords_share_one_key_even_when_separate_handles_write_together() {
     let root = tempfile::tempdir().expect("tempdir");
-    let first = QueryHistory::open(&paths(&root)).await.expect("first handle");
-    let second = QueryHistory::open(&paths(&root)).await.expect("second handle");
+    let first = SavedQueryDatabase::open(&paths(&root)).await.expect("first handle");
+    let second = SavedQueryDatabase::open(&paths(&root)).await.expect("second handle");
     let first = first.saved_queries();
     let second = second.saved_queries();
     let connection = Uuid::new_v4();
@@ -177,8 +177,8 @@ async fn unicode_keywords_share_one_key_even_when_separate_handles_write_togethe
 #[tokio::test]
 async fn snapshots_never_return_a_query_whose_folder_was_read_from_another_generation() {
     let root = tempfile::tempdir().expect("tempdir");
-    let writer = QueryHistory::open(&paths(&root)).await.expect("writer");
-    let reader = QueryHistory::open(&paths(&root)).await.expect("reader");
+    let writer = SavedQueryDatabase::open(&paths(&root)).await.expect("writer");
+    let reader = SavedQueryDatabase::open(&paths(&root)).await.expect("reader");
     let connection = Uuid::new_v4();
     let id = save(&writer.saved_queries(), connection, "report").await;
     let change = async {
@@ -215,7 +215,7 @@ async fn snapshots_never_return_a_query_whose_folder_was_read_from_another_gener
 #[tokio::test]
 async fn mutation_notifications_are_shared_and_follow_successful_changes() {
     let root = tempfile::tempdir().expect("tempdir");
-    let history = QueryHistory::open(&paths(&root)).await.expect("open");
+    let history = SavedQueryDatabase::open(&paths(&root)).await.expect("open");
     let store = history.saved_queries();
     let connection = Uuid::new_v4();
     let id = save(&store, connection, "report").await;
@@ -250,7 +250,7 @@ async fn mutation_notifications_are_shared_and_follow_successful_changes() {
 #[tokio::test]
 async fn a_failed_connection_purge_preserves_every_kind_of_favorite_and_its_revision() {
     let root = tempfile::tempdir().expect("tempdir");
-    let history = QueryHistory::open(&paths(&root)).await.expect("open");
+    let history = SavedQueryDatabase::open(&paths(&root)).await.expect("open");
     let store = history.saved_queries();
     let folders = history.saved_query_folders();
     let favourites = history.favourites();
@@ -298,7 +298,7 @@ async fn a_failed_connection_purge_preserves_every_kind_of_favorite_and_its_revi
 #[tokio::test]
 async fn assigning_the_same_folder_preserves_position_and_revision() {
     let root = tempfile::tempdir().expect("tempdir");
-    let history = QueryHistory::open(&paths(&root)).await.expect("open");
+    let history = SavedQueryDatabase::open(&paths(&root)).await.expect("open");
     let store = history.saved_queries();
     let connection = Uuid::new_v4();
     let a = save(&store, connection, "a").await;

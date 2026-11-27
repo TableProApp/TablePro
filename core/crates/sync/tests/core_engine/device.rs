@@ -74,6 +74,7 @@ impl Device {
                 passwords: true,
             },
             mode: tablepro_sync::service::ServiceMode::Personal,
+            follows: None,
         });
         Self {
             keys,

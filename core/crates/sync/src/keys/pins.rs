@@ -47,6 +47,18 @@ pub(crate) fn seen_replaced(replaced: &[Replaced], ik: &Ed25519Public) -> bool {
     replace_point(replaced, ik).is_some()
 }
 
+// Whether `certificate` may not stand as the newest past `current`: another IK seen replaced never comes back, the
+// current one, when a merge left it retired under an alert, signs nothing at or past its point, and it endorses no
+// replace past that point, only the one at it that retired it (0066, Replace points; Codex security round 2).
+fn retires(replaced: &[Replaced], current: &Ed25519Public, certificate: &AccountCertificate) -> bool {
+    let past_current = replace_point(replaced, current).is_some_and(|point| certificate.av > point);
+    match replace_point(replaced, &certificate.ik) {
+        Some(_) if certificate.ik != *current => true,
+        Some(point) => certificate.av >= point,
+        None => certificate.ik != *current && past_current,
+    }
+}
+
 // A walk up an account's certificates from its pin: where the pin can move, and what stopped it.
 pub(crate) struct Walk {
     pub(crate) ik: Ed25519Public,
@@ -117,7 +129,7 @@ impl KeyService {
                     }
                 }
             };
-            if certificate.ik != walk.ik && seen_replaced(&walk.replaced, &certificate.ik) {
+            if retires(&walk.replaced, &walk.ik, &certificate) {
                 walk.stop = Some(KeysError::RetiredIk);
                 break;
             }
@@ -138,31 +150,6 @@ impl KeyService {
         Ok(walk)
     }
 
-    // The `av` where `ik` gave way: the first certificate `scope` holds for the account under another IK right after
-    // one under `ik`, at or below `newest`.
-    async fn replaced_at(
-        &self,
-        txn: &mut dyn StateTxn,
-        scope: ScopeName,
-        account: AccountId,
-        ik: &Ed25519Public,
-        newest: Version,
-    ) -> Result<Option<Version>, SyncError> {
-        let mut previous: Option<Ed25519Public> = None;
-        for av in 1..=newest.get() {
-            let av = Version::new(av)?;
-            let Some(held) = self.held_certificate(txn, scope, account, av).await? else {
-                previous = None;
-                continue;
-            };
-            if previous.as_ref() == Some(ik) && held.ik != *ik {
-                return Ok(Some(av));
-            }
-            previous = Some(held.ik);
-        }
-        Ok(None)
-    }
-
     // Verifying: the certificate's signature, then its IK against the pin, through the replace certificates `scope`
     // holds for the account (`key.account` in the personal scope, `key.member` in a team).
     pub async fn verify_certificate(
@@ -175,19 +162,18 @@ impl KeyService {
         let pin = self.pin(txn, certificate.account).await?.ok_or(SyncError::NotAllowed {
             what: "verify a certificate of an account with no pin",
         })?;
+        // An IK seen replaced verifies only certificates below the `av` of the replace certificate that retired it, as
+        // the pin keeps it; the certificates a server serves on either side never move that point (0066, Replace
+        // points). The pinned IK too: a merge with no endorsement keeps it pinned under an alert while it is retired.
+        if let Some(point) = replace_point(&pin.replaced, &certificate.ik) {
+            return if certificate.av < point {
+                Ok(IkStanding::Replaced)
+            } else {
+                Err(KeysError::RetiredIk.into())
+            };
+        }
         if certificate.ik == pin.ik {
             return Ok(IkStanding::Pinned);
-        }
-        // An IK seen replaced verifies only certificates from before its replace (0056, `keys.retired_ik`). Where the
-        // scope does not show the replace, nothing under it counts.
-        if seen_replaced(&pin.replaced, &certificate.ik) {
-            let replaced_at = self
-                .replaced_at(txn, scope, certificate.account, &certificate.ik, pin.av)
-                .await?;
-            return match replaced_at {
-                Some(at) if certificate.av < at => Ok(IkStanding::Replaced),
-                _ => Err(KeysError::RetiredIk.into()),
-            };
         }
         if certificate.av <= pin.av {
             return Err(KeysError::Signature.into());
@@ -247,7 +233,7 @@ impl KeyService {
             self.verify_certificate(txn, scope, certificate).await?;
             return Ok(PinChange::Unchanged);
         }
-        if certificate.ik != pin.ik && seen_replaced(&pin.replaced, &certificate.ik) {
+        if retires(&pin.replaced, &pin.ik, certificate) {
             return Err(KeysError::RetiredIk.into());
         }
         let walk = self.walk(txn, scope, &pin, certificate).await?;

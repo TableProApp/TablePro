@@ -11,8 +11,8 @@ use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
-    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
-    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
+    ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError,
+    parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
@@ -255,7 +255,7 @@ impl SqlDialect for MssqlDialect {
     }
 
     fn history_recording(&self, sql: &str) -> HistoryRecording {
-        classify_for_history(SqlGrammar::MsSql, &CREDENTIAL_RULES, sql)
+        SqlGrammar::MsSql.history_recording(sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -445,106 +445,6 @@ fn integer_param_type(kind: IntegerKind) -> ParamType {
         IntegerWidth::W64 | IntegerWidth::W128 | IntegerWidth::W256 => ParamType::Decimal,
     }
 }
-
-/// Statements whose text can hold a password or a connection string.
-/// The procedures run without EXEC as the first statement of a batch,
-/// and the crypto functions take the passphrase or key password itself.
-const CREDENTIAL_RULES: CredentialRules = CredentialRules {
-    statement_prefixes: &[
-        &["CREATE", "LOGIN"],
-        &["ALTER", "LOGIN"],
-        &["CREATE", "USER"],
-        &["ALTER", "USER"],
-        &["CREATE", "APPLICATION", "ROLE"],
-        &["ALTER", "APPLICATION", "ROLE"],
-        &["CREATE", "CREDENTIAL"],
-        &["ALTER", "CREDENTIAL"],
-        &["CREATE", "DATABASE", "SCOPED", "CREDENTIAL"],
-        &["ALTER", "DATABASE", "SCOPED", "CREDENTIAL"],
-        &["CREATE", "MASTER", "KEY"],
-        &["ALTER", "MASTER", "KEY"],
-        &["ALTER", "SERVICE", "MASTER", "KEY"],
-        &["CREATE", "CERTIFICATE"],
-        &["ALTER", "CERTIFICATE"],
-        &["CREATE", "SYMMETRIC", "KEY"],
-        &["ALTER", "SYMMETRIC", "KEY"],
-        &["CREATE", "ASYMMETRIC", "KEY"],
-        &["ALTER", "ASYMMETRIC", "KEY"],
-        &["OPEN", "MASTER", "KEY"],
-        &["OPEN", "SYMMETRIC", "KEY"],
-    ],
-    conditional_prefixes: &[
-        (&["BACKUP"], &["PASSWORD", "MEDIAPASSWORD", "ENCRYPTION"]),
-        (&["RESTORE"], &["PASSWORD", "MEDIAPASSWORD", "ENCRYPTION"]),
-        (&["ADD", "SIGNATURE"], &["PASSWORD"]),
-        (&["ADD", "COUNTER", "SIGNATURE"], &["PASSWORD"]),
-    ],
-    carriers: &[
-        "sp_addlogin",
-        "sp_password",
-        "sp_addlinkedsrvlogin",
-        "sp_addapprole",
-        "sp_setapprole",
-        "sp_approlepassword",
-        "sp_control_dbmasterkey_password",
-        "sp_change_users_login",
-        "sp_addlinkedserver",
-        "OPENROWSET",
-        "OPENDATASOURCE",
-        "ENCRYPTBYPASSPHRASE",
-        "DECRYPTBYPASSPHRASE",
-        "DECRYPTBYASYMKEY",
-        "DECRYPTBYCERT",
-        "DECRYPTBYKEYAUTOASYMKEY",
-        "DECRYPTBYKEYAUTOCERT",
-        "SIGNBYASYMKEY",
-        "SIGNBYCERT",
-        "CERTPRIVATEKEY",
-        "PWDCOMPARE",
-        "PWDENCRYPT",
-        "sp_xp_cmdshell_proxy_account",
-        "sysmail_add_account_sp",
-        "sysmail_update_account_sp",
-        // Replication and log shipping: the distributor_admin, Publisher,
-        // Subscriber, agent job, snapshot FTP and monitor passwords, as
-        // arguments or as a property value.
-        "sp_adddistributor",
-        "sp_changedistributor_password",
-        "sp_adddistributiondb",
-        "sp_adddistpublisher",
-        "sp_changedistpublisher",
-        "sp_changepublication",
-        "sp_changemergepublication",
-        "sp_addsubscriber",
-        "sp_changesubscriber",
-        "sp_addlogreader_agent",
-        "sp_changelogreader_agent",
-        "sp_addqreader_agent",
-        "sp_changeqreader_agent",
-        "sp_addpublication_snapshot",
-        "sp_changepublication_snapshot",
-        "sp_addpushsubscription_agent",
-        "sp_addpullsubscription_agent",
-        "sp_addmergepushsubscription_agent",
-        "sp_addmergepullsubscription_agent",
-        "sp_changesubscription",
-        "sp_changemergesubscription",
-        "sp_changemergepullsubscription",
-        "sp_change_subscription_properties",
-        "sp_changereplicationserverpasswords",
-        "sp_adddynamicsnapshot_job",
-        "sp_changedynamicsnapshot_job",
-        "sp_attachsubscription",
-        "sp_link_publication",
-        "sp_add_log_shipping_primary_database",
-        "sp_change_log_shipping_primary_database",
-        "sp_add_log_shipping_secondary_primary",
-        "sp_change_log_shipping_secondary_primary",
-        "sp_add_log_shipping_secondary_database",
-        "sp_change_log_shipping_secondary_database",
-    ],
-    secret_parameters: &["PASSWORD", "PASSWD", "PWD"],
-};
 
 #[cfg(test)]
 mod tests {

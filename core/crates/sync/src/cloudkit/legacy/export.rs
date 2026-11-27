@@ -22,7 +22,7 @@ use tablepro_records::record_id::{parse_uuid, shortened, uuid_id};
 use tablepro_records::settings::owner;
 use uuid::Uuid;
 
-use super::super::fetch::{Categories, SCOPE, stored_id};
+use super::super::fetch::{Categories, PRIOR, SCOPE, prior_of, stored_id};
 use super::super::modify::{Pusher, at_base};
 use super::import;
 use super::seen::Frame;
@@ -32,7 +32,7 @@ use crate::api::cloudkit::{CloudKitField, CloudKitRecord, CloudKitValue};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
 use crate::api::legacy::{LegacyMetadata, LegacyRecordRef, LegacyStanding, LegacyTombstone};
-use crate::api::state::{BaseRow, HeldReason, Row, RowKey, RowRange, Standing, StateStore, Table};
+use crate::api::state::{BaseRow, HeldReason, PushWait, Row, RowKey, RowRange, Standing, StateStore, Table};
 use crate::engine::{JournalIds, PendingOp, diff};
 
 // A record type the previous stable knows: one Production holds.
@@ -165,11 +165,15 @@ fn cached(record_type: &RecordType, base: &BaseRow) -> Option<CloudKitRecord> {
 struct Rows {
     token: Option<Vec<u8>>,
     zone_seen: bool,
+    // The zone's push waits for this device's person to upload again, after a restart too.
+    upload_again: bool,
     bases: BTreeMap<Kind, Vec<BaseRow>>,
     held: BTreeMap<RecordKey, (HeldReason, bool)>,
     deferred: Vec<RecordKey>,
     standing: Vec<LegacyStanding>,
     waiting: BTreeMap<(KindName, String), BTreeSet<String>>,
+    // The copy from before the pull that started a wait, by record.
+    prior: HashMap<RecordKey, (Vec<u8>, Value)>,
 }
 
 async fn rows(state: &dyn StateStore) -> Result<Rows, SyncError> {
@@ -177,6 +181,7 @@ async fn rows(state: &dyn StateStore) -> Result<Rows, SyncError> {
     let mut rows = Rows::default();
     if let Some(Row::Scope(scope)) = txn.get(&RowKey::Scope(SCOPE)).await? {
         rows.zone_seen = true;
+        rows.upload_again = scope.push_wait == Some(PushWait::UploadAgain);
         if let Some(Cursor::CloudKit(token)) = scope.cursor {
             rows.token = Some(token);
         }
@@ -213,6 +218,18 @@ async fn rows(state: &dyn StateStore) -> Result<Rows, SyncError> {
         }
     }
     rows.waiting = approval::held_members(txn.as_mut(), SCOPE).await?;
+    for row in txn.scan(&RowRange::Table(Table::LegacyMirror)).await? {
+        let Row::LegacyMirror(row) = row else { continue };
+        let Some((kind, id)) = row.item.strip_prefix(PRIOR).and_then(|rest| rest.split_once('/')) else {
+            continue;
+        };
+        let (Ok(kind), Some(prior)) = (KindName::parse(kind), prior_of(&row.value)) else {
+            continue;
+        };
+        if rows.waiting.contains_key(&(kind.clone(), id.to_owned())) {
+            rows.prior.insert(RecordKey::new(SCOPE, kind, id.to_owned()), prior);
+        }
+    }
     Ok(rows)
 }
 
@@ -380,16 +397,16 @@ impl Builder<'_> {
                 continue;
             };
             match (reason, deleted) {
-                (HeldReason::Unreadable | HeldReason::UnknownKind, true) => {
+                (HeldReason::Unreadable | HeldReason::UnknownKind | HeldReason::RefusedInRefill, true) => {
                     self.out.deletions_held_for_unreadable.push(name);
                 }
-                (HeldReason::Unreadable | HeldReason::UnknownKind, false) => {
+                (HeldReason::Unreadable | HeldReason::UnknownKind | HeldReason::RefusedInRefill, false) => {
                     self.out.changes_held_for_unreadable.push(name);
                 }
                 (HeldReason::AwaitingApproval, _) => {
                     self.unread.insert(record_type.name);
                 }
-                (HeldReason::AwaitingDeviceApproval, _) => {}
+                (HeldReason::AwaitingDeviceApproval | HeldReason::Collides, _) => {}
             }
         }
         for (kind, id) in rows.waiting.keys() {
@@ -497,7 +514,7 @@ pub(super) async fn metadata(cx: &Context<'_>, known: &LegacyMetadata) -> Result
             owners_kept_off_sync: known.owners_kept_off_sync.clone(),
             account: Some(cx.account.to_owned()),
             zone_state: Some(
-                if cx.zone_removed {
+                if cx.zone_removed || rows.upload_again {
                     "removed"
                 } else if rows.zone_seen {
                     "confirmed"
@@ -529,7 +546,21 @@ pub(super) async fn metadata(cx: &Context<'_>, known: &LegacyMetadata) -> Result
         .bases
         .iter()
         .filter_map(|(kind, bases)| Some((mirrored(*kind)?, bases)))
-        .flat_map(|(record_type, bases)| bases.iter().filter_map(move |base| cached(record_type, base)))
+        .flat_map(|(record_type, bases)| {
+            let prior = &rows.prior;
+            bases.iter().filter_map(move |base| match prior.get(&base.key) {
+                // A waiting record goes to the previous stable as it was before the pull that started the wait.
+                Some((tag, fields)) => cached(
+                    record_type,
+                    &BaseRow {
+                        tag: ChangeTag::CloudKit(tag.clone()),
+                        fields: Some(fields.clone()),
+                        ..base.clone()
+                    },
+                ),
+                None => cached(record_type, base),
+            })
+        })
         .collect();
     Ok(builder.finish())
 }

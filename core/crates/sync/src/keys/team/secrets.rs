@@ -7,7 +7,7 @@ use tablepro_keys::cert::AccountCertificate;
 use tablepro_keys::encoding::{AccountId, Origin, TeamId, Version};
 use tablepro_keys::keys::{AccountKeys, ScopeKey};
 use tablepro_keys::scope_key::VersionRecord;
-use tablepro_keys::wrap::Recipient;
+use tablepro_keys::wrap::{Recipient, Wrap};
 
 use super::book::TeamBook;
 use super::build;
@@ -85,20 +85,51 @@ async fn open_own_wrap(
         .cloned()
         .collect();
     for wrap in wraps {
-        let Some(keys) = service.account_keys(wrap.target.recipient_version).await? else {
-            continue;
-        };
-        let Some(own) = verified(facts, me, wrap.target.recipient_version).await? else {
-            continue;
-        };
-        let Some(wrapper) = verified(facts, wrap.wrapper.account, wrap.wrapper.av).await? else {
-            continue;
-        };
-        if let Ok(key) = wrap.open_scope_key(origin, &keys.aek, &own.aek, &wrapper.ask, &record) {
+        if let Some(key) = open_wrap(service, facts, &record, &wrap).await? {
             return Ok(Some(key));
         }
     }
     Ok(None)
+}
+
+// Whether a wrap of `version` to this account opens under its keys to the key the version's record names. A wrap a
+// holder signed still proves nothing of the key inside: one from a rotation of the same version the server refused
+// carries another key.
+pub(crate) async fn own_wrap_opens(
+    service: &dyn Keyring,
+    book: &TeamBook,
+    facts: &mut dyn TeamFacts,
+    version: Version,
+    wrap: &Wrap,
+) -> Result<bool, SyncError> {
+    let Some(record) = verified_record(service.origin(), book, facts, version).await? else {
+        return Ok(false);
+    };
+    if wrap.target.recipient != Recipient::Account(service.account()) {
+        return Ok(false);
+    }
+    Ok(open_wrap(service, facts, &record, wrap).await?.is_some())
+}
+
+async fn open_wrap(
+    service: &dyn Keyring,
+    facts: &mut dyn TeamFacts,
+    record: &VersionRecord,
+    wrap: &Wrap,
+) -> Result<Option<ScopeKey>, SyncError> {
+    let me = service.account();
+    let Some(keys) = service.account_keys(wrap.target.recipient_version).await? else {
+        return Ok(None);
+    };
+    let Some(own) = verified(facts, me, wrap.target.recipient_version).await? else {
+        return Ok(None);
+    };
+    let Some(wrapper) = verified(facts, wrap.wrapper.account, wrap.wrapper.av).await? else {
+        return Ok(None);
+    };
+    Ok(wrap
+        .open_scope_key(service.origin(), &keys.aek, &own.aek, &wrapper.ask, record)
+        .ok())
 }
 
 // `newest` is the version the device advanced to, above which it holds no key. A client reads it through its own wrap

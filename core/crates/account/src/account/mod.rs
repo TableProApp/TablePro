@@ -115,6 +115,8 @@ struct Inner {
     license: watch::Sender<Option<Arc<License>>>,
     // The managed values the host passed last (core ADR 0055).
     policy: watch::Sender<ManagedPolicy>,
+    // A change of them waits for the commits that act on them (`PolicyGate`).
+    gate: Arc<crate::PolicyGate>,
     // Set once those values stop allowing the server, which only a launch changes: from then on the account calls it
     // no more.
     held: AtomicBool,
@@ -246,6 +248,7 @@ impl Account {
                 sign_outs: broadcast::Sender::new(SIGN_OUT_BACKLOG),
                 license: watch::Sender::new(None),
                 policy: watch::Sender::new(policy),
+                gate: Arc::default(),
                 held: AtomicBool::new(held),
                 switching: std::sync::Mutex::new(()),
             }),
@@ -281,6 +284,16 @@ impl Account {
         self.inner.policy.borrow().clone()
     }
 
+    // The values as the host passes them again, for what applies them at once (core ADR 0055, When a value applies).
+    pub fn watch_policy(&self) -> tokio::sync::watch::Receiver<ManagedPolicy> {
+        self.inner.policy.subscribe()
+    }
+
+    // What a commit acting on the values holds from its check until it lands.
+    pub fn policy_gate(&self) -> Arc<crate::PolicyGate> {
+        Arc::clone(&self.inner.gate)
+    }
+
     // Share-link reads and the AI model catalog refresh ask this before any request (core ADR 0055).
     pub fn allows_tablepro_requests(&self) -> bool {
         self.inner.policy.borrow().allows_tablepro_requests()
@@ -291,10 +304,12 @@ impl Account {
     // they stopped it now; `report_stop` then says so in the status, which waits for a call in flight.
     pub fn apply_policy(&self, policy: ManagedPolicy) -> bool {
         let _switching = self.switching();
-        let changed = self.inner.policy.send_if_modified(|held| {
-            let changed = *held != policy;
-            *held = policy.clone();
-            changed
+        let changed = self.inner.gate.change(|| {
+            self.inner.policy.send_if_modified(|held| {
+                let changed = *held != policy;
+                *held = policy.clone();
+                changed
+            })
         });
         let stopped = changed && !self.is_held() && !policy.allows_server(&self.current().target.origin);
         if stopped {

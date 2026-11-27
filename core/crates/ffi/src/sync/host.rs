@@ -41,6 +41,11 @@ pub trait HostDeviceStore: Send + Sync {
 
     // Deleting an item that is not there succeeds.
     fn delete(&self, item: DeviceItemTag) -> Result<(), HostSecretError>;
+
+    // Whether this host keeps a device store at all (`tablepro_sync::api::HostDeviceStore::present`). Mac, iOS and
+    // Windows always do. A Linux session answers false only when no Secret Service provider exists; a locked keyring
+    // is present and answers Locked. Asked once as sync opens.
+    fn present(&self) -> bool;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -200,6 +205,14 @@ fn failed(failure: impl std::fmt::Display) -> DeviceStoreError {
 pub(crate) struct HostDeviceStoreBridge {
     pub(crate) host: Arc<dyn HostDeviceStore>,
     pub(crate) tasks: Tasks,
+    pub(crate) present: bool,
+}
+
+impl HostDeviceStoreBridge {
+    pub(crate) fn new(host: Arc<dyn HostDeviceStore>, tasks: Tasks) -> Self {
+        let present = host.present();
+        Self { host, tasks, present }
+    }
 }
 
 #[async_trait]
@@ -233,6 +246,10 @@ impl sync::HostDeviceStore for HostDeviceStoreBridge {
             .await
             .map_err(failed)?;
         deleted.map_err(store_error)
+    }
+
+    fn present(&self) -> bool {
+        self.present
     }
 }
 
@@ -284,6 +301,65 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
+
+    // A host store that never answers: away for now, or no store at all, as the host declares.
+    struct Away {
+        present: bool,
+    }
+
+    impl HostDeviceStore for Away {
+        fn load(&self, _: DeviceItemTag) -> Result<Option<Vec<u8>>, HostSecretError> {
+            Err(HostSecretError::Unavailable {
+                detail: "no secret service".to_owned(),
+            })
+        }
+
+        fn store(&self, _: DeviceItemTag, _: Vec<u8>) -> Result<(), HostSecretError> {
+            Err(HostSecretError::Unavailable {
+                detail: "no secret service".to_owned(),
+            })
+        }
+
+        fn delete(&self, _: DeviceItemTag) -> Result<(), HostSecretError> {
+            Err(HostSecretError::Unavailable {
+                detail: "no secret service".to_owned(),
+            })
+        }
+
+        fn present(&self) -> bool {
+            self.present
+        }
+    }
+
+    // A host whose store is away gets no new state file until the store answers; one that declares no store opens it
+    // unsealed (orchestrator ruling on 0054).
+    #[tokio::test]
+    async fn a_new_state_file_waits_for_a_store_that_is_away_and_opens_on_a_host_with_none() {
+        use tablepro_sync::api::StateFiles;
+        use tablepro_sync::api::state::{StateIdentity, SyncTrust};
+
+        let tasks = crate::runtime::tasks().unwrap();
+        let identity = StateIdentity::ICloud {
+            user_record_name: "_4e2a".to_owned(),
+        };
+        let open = |present: bool| {
+            let dir = tempfile::tempdir().unwrap();
+            let bridge = HostDeviceStoreBridge::new(Arc::new(Away { present }), tasks.clone());
+            let files = tablepro_sync::state::SqliteStateFiles::at(dir.path().join("sync"), Arc::new(bridge));
+            let identity = identity.clone();
+            async move {
+                let opened = files.open(identity).await.map(|state| state.opened().sync_tables);
+                drop(dir);
+                opened
+            }
+        };
+
+        let away = open(true).await;
+        let none = open(false).await;
+
+        assert_eq!(away.unwrap_err().code(), "sync.state.anchor_unsettled");
+        assert_eq!(none.unwrap(), SyncTrust::Trusted);
+    }
 
     // An app whose write reaches its disk only after its own thread had a turn.
     #[derive(Default)]

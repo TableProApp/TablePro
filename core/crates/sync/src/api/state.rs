@@ -23,6 +23,12 @@ pub trait StateStore: Send + Sync {
     fn opened(&self) -> &Opened;
 
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError>;
+
+    // Once a delete committed, nothing of what it removed stays in the file's WAL frames or free pages, as a verified
+    // delete of an owner's data needs (K8t; 0054, The state file). A store that keeps no file has nothing to purge.
+    async fn purge(&self) -> Result<(), StateError> {
+        Ok(())
+    }
 }
 
 // What ends the distrust an open found of the key tables (0054, A stale file).
@@ -151,6 +157,11 @@ pub enum Table {
     Approvals,
     Conflicts,
     LegacyMirror,
+    // A move between providers this device started: its target and how far it went (0054, Moving between providers).
+    Moves,
+    // Per settings record Start empty left on the device: the digest of the copy it held then, which goes up only once
+    // the person edits it here.
+    LeftBehind,
     KeyObjects,
     KeyPins,
     KeyDevicePins,
@@ -162,7 +173,7 @@ pub enum Table {
 }
 
 impl Table {
-    pub const SYNC: [Self; 14] = [
+    pub const SYNC: [Self; 16] = [
         Self::Binding,
         Self::Scopes,
         Self::Stores,
@@ -177,6 +188,8 @@ impl Table {
         Self::Approvals,
         Self::Conflicts,
         Self::LegacyMirror,
+        Self::Moves,
+        Self::LeftBehind,
     ];
 
     pub const KEY: [Self; 8] = [
@@ -206,6 +219,8 @@ impl Table {
             Self::Approvals => "approvals",
             Self::Conflicts => "conflicts",
             Self::LegacyMirror => "legacy_mirror",
+            Self::Moves => "moves",
+            Self::LeftBehind => "left_behind",
             Self::KeyObjects => "key_objects",
             Self::KeyPins => "key_pins",
             Self::KeyDevicePins => "key_device_pins",
@@ -279,25 +294,23 @@ pub struct ScopeRow {
 // What an iCloud zone's push waits for, kept so a restart waits the same way (0066, Rules).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PushWait {
-    // Another iCloud account: the person picks Move my data or Start empty.
-    AccountChoice,
+    // Another iCloud account: the person picks Move my data or Start empty, told how many changes the last account's
+    // file held unsent.
+    AccountChoice { unsent: u64 },
     // This device saw the zone removed, and nothing goes up until its own person asks to upload again, even after
     // another device made the zone again.
     UploadAgain,
 }
 
 impl PushWait {
-    pub const fn as_str(self) -> &'static str {
+    // The count an integrity recovery's wait holds until an engine counts what the device would send.
+    pub const UNCOUNTED: u64 = u64::MAX;
+
+    pub const fn name(self) -> &'static str {
         match self {
-            Self::AccountChoice => "account_choice",
+            Self::AccountChoice { .. } => "account_choice",
             Self::UploadAgain => "upload_again",
         }
-    }
-
-    pub fn parse(text: &str) -> Option<Self> {
-        [Self::AccountChoice, Self::UploadAgain]
-            .into_iter()
-            .find(|wait| wait.as_str() == text)
     }
 }
 
@@ -377,6 +390,12 @@ pub enum HeldReason {
     AwaitingApproval,
     // This device is not approved yet, so it holds what it may not apply (0056, D8).
     AwaitingDeviceApproval,
+    // The store refused a value a refill pulled: when it takes it, the pull wins as the refill would have, so the
+    // copy the restore left never reads as the device's edit.
+    RefusedInRefill,
+    // A team library record whose id another of its kind holds in other case: neither is applied, listed or sent, as
+    // the publish plan leaves both out (0052, Team scope).
+    Collides,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -439,6 +458,29 @@ pub struct ConflictRow {
     pub base: Option<Value>,
     pub mine: Option<Value>,
     pub theirs: Option<Value>,
+}
+
+// How far a move went. A move to TablePro Sync is `Open` in the iCloud file it leaves once iCloud stopped for it, so
+// that file never syncs again while it is, and in the service file while the arrival's snapshot runs; `Done` in the
+// iCloud file once everything arrived. A move back to iCloud is `Open` in the service file until iCloud holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MovePhase {
+    Open,
+    Done,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeftBehindRow {
+    pub key: RecordKey,
+    pub digest: [u8; 32],
+}
+
+// The one row of `moves`. `from` is None for a first upload from no provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MoveRow {
+    pub from: Option<Provider>,
+    pub target: Provider,
+    pub phase: MovePhase,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -695,6 +737,8 @@ pub enum Row {
     Approval(ApprovalRow),
     Conflict(ConflictRow),
     LegacyMirror(LegacyMirrorRow),
+    Move(MoveRow),
+    LeftBehind(LeftBehindRow),
     KeyObject(KeyObjectRow),
     KeyPin(KeyPinRow),
     KeyDevicePin(KeyDevicePinRow),
@@ -721,6 +765,8 @@ pub enum RowKey {
     Approval(RecordKey, String),
     Conflict(RecordKey),
     LegacyMirror(String),
+    Move,
+    LeftBehind(RecordKey),
     KeyObject(ScopeName, KindName, String),
     KeyPin(AccountId),
     KeyDevicePin(KeyDeviceId),
@@ -748,6 +794,8 @@ impl Row {
             Self::Approval(row) => RowKey::Approval(row.key.clone(), row.field.clone()),
             Self::Conflict(row) => RowKey::Conflict(row.key.clone()),
             Self::LegacyMirror(row) => RowKey::LegacyMirror(row.item.clone()),
+            Self::Move(_) => RowKey::Move,
+            Self::LeftBehind(row) => RowKey::LeftBehind(row.key.clone()),
             Self::KeyObject(row) => RowKey::KeyObject(row.scope, row.kind.clone(), row.record_id.clone()),
             Self::KeyPin(row) => RowKey::KeyPin(row.account),
             Self::KeyDevicePin(row) => RowKey::KeyDevicePin(row.key_device),
@@ -791,6 +839,8 @@ impl RowKey {
             Self::Approval(..) => Table::Approvals,
             Self::Conflict(_) => Table::Conflicts,
             Self::LegacyMirror(_) => Table::LegacyMirror,
+            Self::Move => Table::Moves,
+            Self::LeftBehind(_) => Table::LeftBehind,
             Self::KeyObject(..) => Table::KeyObjects,
             Self::KeyPin(_) => Table::KeyPins,
             Self::KeyDevicePin(_) => Table::KeyDevicePins,
@@ -807,7 +857,7 @@ impl RowKey {
     pub fn encoded(&self) -> Vec<u8> {
         let mut out = Vec::new();
         match self {
-            Self::Binding => {}
+            Self::Binding | Self::Move => {}
             Self::Scope(scope) | Self::Outbox(scope) => column(&mut out, scope.wire().as_bytes()),
             Self::Store(text) | Self::LegacyMirror(text) | Self::DeletedHistory(text) => {
                 column(&mut out, text.as_bytes());
@@ -822,6 +872,7 @@ impl RowKey {
             | Self::Held(key)
             | Self::Deferred(key)
             | Self::Refused(key)
+            | Self::LeftBehind(key)
             | Self::Conflict(key) => {
                 record_columns(&mut out, key);
             }

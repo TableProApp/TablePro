@@ -728,7 +728,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         await ShowSavedQueriesAsync(focus: true).ConfigureAwait(true);
     }
 
-    // The store opens once for the app, in the history's database; a pane without one says they are unavailable.
+    // The store opens once for the app, in the saved queries' database; a pane without one says they are unavailable.
     private async Task ShowSavedQueriesAsync(bool focus)
     {
         if (_session is not { } session || _connection.ConnectionId is not { } connectionId || _openingSaved)

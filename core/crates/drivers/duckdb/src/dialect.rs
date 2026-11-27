@@ -7,8 +7,8 @@ use tablepro_core::dump::DumpDialect;
 use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
-    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
-    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
+    ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError,
+    parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::Value;
@@ -231,7 +231,7 @@ impl SqlDialect for DuckDbDialect {
     }
 
     fn history_recording(&self, sql: &str) -> HistoryRecording {
-        classify_for_history(SqlGrammar::DuckDb, &CREDENTIAL_RULES, sql)
+        SqlGrammar::DuckDb.history_recording(sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -355,49 +355,6 @@ fn non_finite(real: f64) -> &'static str {
         (false, false) => "inf",
     }
 }
-
-/// The settings that hold a credential, and PRAGMA's Parquet key.
-const SECRET_SETTINGS: &[&str] = &[
-    "s3_access_key_id",
-    "s3_secret_access_key",
-    "s3_session_token",
-    "azure_storage_connection_string",
-    "azure_account_key",
-    "azure_proxy_password",
-    "motherduck_token",
-    "http_proxy",
-    "http_proxy_password",
-    "hf_token",
-    "add_parquet_key",
-];
-
-/// Statements and calls whose text can hold a secret: a stored secret,
-/// a setting that is one, and the connection strings of the scanners
-/// that reach other databases. ATTACH names any database, an encrypted
-/// file's key or a server's login among them.
-const CREDENTIAL_RULES: CredentialRules = CredentialRules {
-    statement_prefixes: &[
-        &["CREATE", "SECRET"],
-        &["CREATE", "PERSISTENT", "SECRET"],
-        &["CREATE", "TEMPORARY", "SECRET"],
-        &["CREATE", "TEMP", "SECRET"],
-        &["ATTACH"],
-    ],
-    // A setting is set by SET or by PRAGMA, and PRAGMA also adds a
-    // Parquet key.
-    conditional_prefixes: &[(&["SET"], SECRET_SETTINGS), (&["PRAGMA"], SECRET_SETTINGS)],
-    carriers: &[
-        "postgres_attach",
-        "postgres_scan",
-        "postgres_scan_pushdown",
-        "postgres_query",
-        "postgres_execute",
-        "mysql_query",
-        "mysql_execute",
-        "add_parquet_key",
-    ],
-    secret_parameters: &[],
-};
 
 #[cfg(test)]
 mod tests {

@@ -163,6 +163,8 @@ pub(crate) struct State {
     pub(crate) rows: HashMap<DeviceRowId, AccountId>,
     pub(crate) fail_next: Vec<TransportError>,
     pub(crate) clock_us: i64,
+    // The name a team record's writer goes by, by the writer's account id on the wire.
+    pub(crate) writer_names: HashMap<String, String>,
 }
 
 impl State {
@@ -223,6 +225,7 @@ impl FakeServer {
             rows: HashMap::new(),
             fail_next: Vec::new(),
             clock_us: 1_767_225_600_000_000,
+            writer_names: HashMap::new(),
         };
         state.lineage.push(EpochRow {
             id: EpochId(Uuid::new_v4()),
@@ -345,6 +348,11 @@ impl FakeServer {
         }
     }
 
+    // The name the server gives a team record's writer.
+    pub fn name_writer(&self, account: AccountId, name: &str) {
+        self.lock().writer_names.insert(account.to_wire(), name.to_owned());
+    }
+
     pub fn set_lapsed(&self, lapsed: bool) {
         self.lock().lapsed = lapsed;
     }
@@ -391,6 +399,33 @@ impl FakeServer {
                 }
             }
         }
+    }
+
+    // A record no check of this server's would take, as another build or a hostile server wrote it.
+    pub fn plant(&self, owner: ScopeOwner, kind: tablepro_records::Kind, record_id: &str, fields: Value) {
+        let mut state = self.lock();
+        let revision = state.take_revision();
+        let (now, epoch) = (state.clock_us, state.epoch());
+        let record = StoredRecord {
+            kind: KindName::of(kind),
+            record_id: record_id.to_owned(),
+            version: 1,
+            revision,
+            written_epoch: epoch,
+            write_tag: *Uuid::new_v4().as_bytes(),
+            fields: Some(fields),
+            deleted: None,
+            taken_at_us: now,
+            updated_at_us: now,
+            updated_device: None,
+            updated_by: None,
+        };
+        state
+            .scopes
+            .entry(owner)
+            .or_default()
+            .records
+            .insert((kind.as_str().to_owned(), record_id.to_owned()), record);
     }
 
     pub fn stored(&self, owner: ScopeOwner, kind: &str, record_id: &str) -> Option<StoredRecord> {

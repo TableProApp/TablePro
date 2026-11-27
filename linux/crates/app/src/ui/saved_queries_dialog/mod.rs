@@ -465,7 +465,7 @@ impl SavedQueriesDialog {
 
     fn load_failed(&self) {
         let imp = self.imp();
-        let reason = gettext("The query history file could not be read. It may be damaged.");
+        let reason = gettext("The saved queries file could not be read. It may be damaged.");
         if imp.listed.get() {
             self.add_toast(&reason);
             return;

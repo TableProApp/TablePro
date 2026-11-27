@@ -36,6 +36,7 @@ use crate::mcp::open_sessions::OpenSessions;
 use crate::mcp::{HistoryAccess, StoredTokens};
 use crate::prompter::{HostPrompter, HostPrompterBridge};
 use crate::runtime::{self, on_runtime};
+use crate::saved_query_database::{SavedQueryDatabaseStore, StoreFilesInfo};
 use crate::session::DatabaseSession;
 
 // An app makes one and keeps it.
@@ -53,6 +54,7 @@ pub struct Core {
     writes: LibraryWrites,
     // Opened on first use, so a core that never shows history never migrates or prunes it.
     history: Arc<OnceCell<Arc<QueryHistoryStore>>>,
+    saved_queries: Arc<OnceCell<Arc<SavedQueryDatabaseStore>>>,
     pub(crate) tasks: Tasks,
     pub(crate) ssh: Arc<InProcessSsh>,
     client_version: String,
@@ -146,6 +148,31 @@ impl Core {
                 .cloned()
         })
         .await
+    }
+
+    // Every caller shares one store. A failed open is tried again on the next call.
+    pub async fn saved_query_database(&self) -> Result<Arc<SavedQueryDatabaseStore>, CoreError> {
+        let paths = self.paths.clone().ok_or_else(no_storage)?;
+        let database = self.saved_queries.clone();
+        let tasks = self.tasks.clone();
+        on_runtime(&self.tasks, async move {
+            database
+                .get_or_try_init(|| SavedQueryDatabaseStore::open(paths, tasks))
+                .await
+                .cloned()
+        })
+        .await
+    }
+
+    // Where the stores are, whether or not they are open yet.
+    pub fn store_files(&self) -> Result<StoreFilesInfo, CoreError> {
+        let paths = self.paths.as_ref().ok_or_else(no_storage)?;
+        let text = |path: std::path::PathBuf| path.to_string_lossy().into_owned();
+        Ok(StoreFilesInfo {
+            history_folder: text(paths.history_folder()),
+            history_database: text(paths.history_database()),
+            saved_query_database: text(paths.saved_query_database()),
+        })
     }
 
     pub async fn open_file(
@@ -374,6 +401,7 @@ impl Core {
             store,
             writes: LibraryWrites::default(),
             history: Arc::default(),
+            saved_queries: Arc::default(),
             tasks,
             ssh,
             client_version,

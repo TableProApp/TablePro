@@ -691,7 +691,7 @@ impl Sandbox {
     }
 
     fn history(&self) -> PathBuf {
-        self.storage().join("history.db")
+        self.storage().join("history").join("history.db")
     }
 
     fn workspaces(&self) -> PathBuf {

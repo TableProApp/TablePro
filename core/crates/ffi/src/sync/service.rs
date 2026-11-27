@@ -53,9 +53,20 @@ impl From<SyncError> for CoreError {
             return Self::Cancelled;
         }
         let sync = failure_info(&error);
+        // The challenge goes where an account step-up carries its own, so a host reads it from one place.
+        let step_up = match &error {
+            SyncError::Transport(TransportError::StepUpRequired(challenge)) => {
+                Some(crate::account::StepUpChallengeInfo {
+                    acr_values: challenge.acr_values.clone(),
+                    max_age_secs: Some(challenge.max_age_secs),
+                })
+            }
+            _ => None,
+        };
         match Self::failed(error.code(), error.to_string()) {
             Self::Failed { mut info } => {
                 info.sync = sync;
+                info.step_up = step_up;
                 Self::Failed { info }
             }
             cancelled @ Self::Cancelled => cancelled,
@@ -82,6 +93,13 @@ pub struct SyncConfig {
     // keep; None on first use. A switch made while the app was closed deletes that account's file.
     #[uniffi(default = None)]
     pub icloud_account: Option<String>,
+    // The TablePro Sync sign-in whose state file this device used last, as `SyncService::service_account` gave it;
+    // None on first use. Another account or server then waits for Move my data or Start empty (core ADR 0054).
+    #[uniffi(default = None)]
+    pub service_account: Option<String>,
+    // This device's id as the host keeps it, which names the SSH routes it publishes, so it clears only its own.
+    #[uniffi(default = None)]
+    pub route_publisher: Option<String>,
 }
 
 // The kinds turned off on this device, by their wire names, and the password switch.
@@ -113,7 +131,15 @@ pub struct SyncService {
     pub(crate) service: Arc<ServiceSlot>,
     // This Core's connections, which name what a removed party could read.
     pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
+    // The downgrade mirror's marks while no iCloud engine carries them.
+    pub(crate) legacy_marks: Option<Arc<tablepro_sync::cloudkit::LegacyMarks>>,
+    pub(crate) _marks_hear_stores: Option<tablepro_sync::adapters::store_journal::Listening>,
+    // CloudKit and this Core's state files, which the moves between providers need whatever the provider is.
+    pub(crate) cloudkit: Option<Arc<dyn tablepro_sync::api::CloudKitTransport>>,
+    pub(crate) files: Option<Arc<dyn tablepro_sync::api::StateFiles>>,
     pub(crate) _forward: AbortOnDropHandle<()>,
+    // Leaves a provider as soon as the values the host passes again no longer allow it (core ADR 0055).
+    pub(crate) _policy: std::sync::Mutex<Option<AbortOnDropHandle<()>>>,
 }
 
 impl std::fmt::Debug for SyncService {
@@ -203,6 +229,14 @@ pub struct MovePlanInfo {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MoveBackPlanInfo {
     pub icloud_deletions: u64,
+}
+
+// The changes the last account's file held unsent, for the Move my data or Start empty prompt, and the account the
+// prompt is for, which the answer names back.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NewIdentityPlanInfo {
+    pub unsent: u64,
+    pub account: String,
 }
 
 // Values are JSON text. `digest` names the pulled value the person is shown, as lower-case hex, and goes back with the
@@ -433,49 +467,60 @@ impl SyncService {
             .map(|engine| &engine.journal)
             .chain(service.iter().map(|engine| &engine.journal))
             .collect();
-        journal(&journals, kind, written, deleted);
+        journal(&journals, self.legacy_marks.as_deref(), kind, written, deleted);
         Ok(())
     }
 
-    // Among what the managed policy allows (core ADR 0055).
-    pub async fn choose_provider(&self, provider: SyncProviderTag) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.choose_provider(provider.into()).await })
-            .await
+    // The engine whose file waits for the choice: TablePro Sync's after another account or server, whatever the
+    // personal provider is now, else the personal provider's, as iCloud after another Apple ID.
+    pub async fn plan_new_identity(&self) -> Result<NewIdentityPlanInfo, CoreError> {
+        let (slot, personal) = (Arc::clone(&self.service), self.control_now());
+        on_runtime(&self.tasks, async move {
+            if let Ok(engine) = slot.engine().await
+                && let Ok(plan) = engine.sync.plan_new_identity().await
+            {
+                return Ok(plan.into());
+            }
+            Ok(personal?.plan_new_identity().await?.into())
+        })
+        .await
     }
 
-    pub async fn plan_move_to_service(&self) -> Result<MovePlanInfo, CoreError> {
-        self.on_control(move |control| async move { control.plan_move_to_service().await.map(MovePlanInfo::from) })
-            .await
-    }
-
-    pub async fn move_to_service(&self) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.move_to_service().await })
-            .await
-    }
-
-    pub async fn plan_move_to_icloud(&self) -> Result<MoveBackPlanInfo, CoreError> {
-        self.on_control(move |control| async move { control.plan_move_to_icloud().await.map(MoveBackPlanInfo::from) })
-            .await
-    }
-
-    // Refused unless the count is the plan's, which the person confirmed.
-    pub async fn move_to_icloud(&self, confirmed_deletions: u64) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.move_to_icloud(confirmed_deletions).await })
-            .await
-    }
-
-    pub async fn choose_for_new_identity(&self, choice: NewIdentityChoiceTag) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.choose_for_new_identity(choice.into()).await })
-            .await
+    // `account` is the plan's; an answer for another account than the one signed in now answers `sync.changed`.
+    pub async fn choose_for_new_identity(
+        &self,
+        choice: NewIdentityChoiceTag,
+        account: String,
+    ) -> Result<(), CoreError> {
+        let (slot, personal) = (Arc::clone(&self.service), self.control_now());
+        let last = (
+            self.files.clone(),
+            self.config
+                .service_account
+                .as_deref()
+                .and_then(super::engines::identity_of),
+        );
+        on_runtime(&self.tasks, async move {
+            if let Ok(engine) = slot.engine().await
+                && engine.sync.plan_new_identity().await.is_ok()
+            {
+                engine.sync.choose_for_new_identity(choice.into(), account).await?;
+                // Chosen: the last sign-in's file has told what it held and goes, as iCloud's does. A restored file
+                // can hold a wait under the sign-in the app kept, whose file is this engine's own and stays.
+                if let (Some(files), Some(previous)) = last
+                    && previous != *engine.sync.identity()
+                {
+                    files.delete(previous).await.map_err(SyncError::from)?;
+                }
+                return Ok(());
+            }
+            Ok(personal?.choose_for_new_identity(choice.into(), account).await?)
+        })
+        .await
     }
 
     pub async fn upload_again(&self) -> Result<(), CoreError> {
         self.on_control(move |control| async move { control.upload_again().await })
-            .await
-    }
-
-    pub async fn delete_icloud_zone(&self) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.delete_icloud_zone().await })
             .await
     }
 
@@ -583,11 +628,17 @@ impl SyncService {
     // The app awaits it as it quits: it returns once every write the app reported so far has marked the Swift sync
     // metadata the previous stable reads, and fails while the app refuses a mark (core ADR 0054, Downgrade mirror).
     pub async fn flush_legacy_marks(&self) -> Result<(), CoreError> {
-        let Ok(engine) = &self.icloud else {
-            return Ok(());
+        let flush: std::pin::Pin<Box<dyn Future<Output = Result<(), SyncError>> + Send>> = match &self.icloud {
+            Ok(engine) => {
+                let sync = Arc::clone(&engine.sync);
+                Box::pin(async move { sync.flush_legacy_marks().await })
+            }
+            Err(_) => match self.legacy_marks.clone() {
+                Some(marks) => Box::pin(async move { marks.flush().await }),
+                None => return Ok(()),
+            },
         };
-        let sync = Arc::clone(&engine.sync);
-        on_runtime(&self.tasks, async move { Ok(sync.flush_legacy_marks().await?) }).await
+        on_runtime(&self.tasks, async move { Ok(flush.await?) }).await
     }
 
     // The iCloud account whose state file the device uses now, for the app to keep and pass back as
@@ -596,6 +647,16 @@ impl SyncService {
         match &self.icloud {
             Ok(engine) => engine.sync.account(),
             Err(_) => self.config.icloud_account.clone(),
+        }
+    }
+
+    // The TablePro Sync sign-in whose state file the device uses now, for the app to keep and pass back as
+    // `SyncConfig::service_account` at the next launch.
+    pub fn service_account(&self) -> Option<String> {
+        match self.service.now() {
+            // Until the person chooses, the app keeps the sign-in this one follows, so the next open asks again.
+            Ok(engine) if !engine.sync.awaits_account_choice() => super::engines::identity_text(engine.sync.identity()),
+            Ok(_) | Err(_) => self.config.service_account.clone(),
         }
     }
 }

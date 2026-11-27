@@ -90,6 +90,24 @@ pub trait TeamLibraryControl: Send + Sync {
     }
 }
 
+// The managed policy's word on the server this sign-in reaches (0055), read under the account's gate from a publish's
+// check until its commit lands, as a move's commits are, so a value change lands wholly before the commit or after.
+#[derive(Clone)]
+pub struct TeamLibraryPolicy {
+    pub gate: std::sync::Arc<tablepro_account::PolicyGate>,
+    pub allowed: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+}
+
+impl TeamLibraryPolicy {
+    // With no account there is no policy, and no change to wait for.
+    pub fn none() -> Self {
+        Self {
+            gate: std::sync::Arc::default(),
+            allowed: std::sync::Arc::new(|| true),
+        }
+    }
+}
+
 // Whether the sign-in the service was opened with is still the account's. Reading the teams, a publish, an import and
 // the push of a team's edits check it after every await, so nothing of one sign-in shows or goes out under another.
 // The unsent edits, their discard, the status and the delete touch only this device's files and are kept with the
@@ -238,6 +256,9 @@ pub enum TeamLibraryError {
     DeletePending,
     #[error("the Team Library data could not be deleted: {detail}")]
     DeleteFailed { detail: String },
+    // Two of the team's records share the id once lower-cased, so an edit of it could land on either (0052).
+    #[error("two of the team's items share this id")]
+    IdCaseCollision,
 }
 
 impl TeamLibraryError {
@@ -251,6 +272,7 @@ impl TeamLibraryError {
             Self::Malformed { .. } => "sync.team_library.malformed",
             Self::DeletePending => "sync.team_library.delete_pending",
             Self::DeleteFailed { .. } => "sync.team_library.delete_failed",
+            Self::IdCaseCollision => "sync.team_library.id_case_collision",
         }
     }
 }

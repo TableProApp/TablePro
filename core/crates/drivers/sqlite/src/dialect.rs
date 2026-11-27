@@ -9,8 +9,8 @@ use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
-    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
-    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
+    ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError,
+    parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::Value;
@@ -189,7 +189,7 @@ impl SqlDialect for SqliteDialect {
     }
 
     fn history_recording(&self, sql: &str) -> HistoryRecording {
-        classify_for_history(SqlGrammar::Sqlite, &CREDENTIAL_RULES, sql)
+        SqlGrammar::Sqlite.history_recording(sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -268,21 +268,6 @@ fn value_param(value: Value) -> Result<(Value, ParamType), BindError> {
     };
     Ok((value, param_type))
 }
-
-/// Statements whose text can hold an encryption key, on builds with
-/// SQLCipher or the SQLite Encryption Extension.
-const CREDENTIAL_RULES: CredentialRules = CredentialRules {
-    statement_prefixes: &[],
-    conditional_prefixes: &[
-        (
-            &["PRAGMA"],
-            &["KEY", "REKEY", "HEXKEY", "HEXREKEY", "TEXTKEY", "TEXTREKEY"],
-        ),
-        (&["ATTACH"], &["KEY"]),
-    ],
-    carriers: &[],
-    secret_parameters: &[],
-};
 
 #[cfg(test)]
 mod tests {

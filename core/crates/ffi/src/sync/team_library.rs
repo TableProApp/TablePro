@@ -6,19 +6,23 @@
 use std::sync::Arc;
 
 use serde_json::Value;
-use tablepro_storage::{TeamLibraryKind, TeamLibraryOwner};
+use tablepro_keys::encoding::{AccountId, Origin};
+use tablepro_storage::{ChangeJournal, StoragePaths, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore};
 use tablepro_sync::SyncError;
-use tablepro_sync::api::ids::ScopeName;
+use tablepro_sync::adapters::store_journal::StoreJournal;
+use tablepro_sync::api::ids::{ScopeName, typeid_uuid};
 use tablepro_sync::api::scopes::Role;
 use tablepro_sync::api::team_library::{
-    FacadeBase, ImportedEdit, TeamConnection, TeamFolder, TeamId, TeamItem, TeamItemRef, TeamLibraryControl,
-    TeamLibraryError, TeamLibraryImport, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentState,
-    UnsentTeamEdit,
+    FacadeBase, ImportedEdit, SignInGuard, TeamConnection, TeamFolder, TeamId, TeamItem, TeamItemRef,
+    TeamLibraryControl, TeamLibraryError, TeamLibraryImport, TeamLibraryPolicy, TeamLibraryTeam, TeamPublish,
+    TeamQuery, TeamScopeStatus, UnsentState, UnsentTeamEdit,
 };
+use tablepro_sync::service::ServiceSync;
 use uuid::Uuid;
 
 use super::keys::TeamRoleTag;
 use super::service::SyncService;
+use crate::account::AccountService;
 use crate::core_handle::Core;
 use crate::error::CoreError;
 use crate::runtime::on_runtime;
@@ -158,13 +162,17 @@ pub struct TeamLibraryOwnerArg {
     pub account_id: String,
 }
 
-impl From<TeamLibraryOwnerArg> for TeamLibraryOwner {
-    fn from(owner: TeamLibraryOwnerArg) -> Self {
-        Self {
-            origin: owner.api_origin,
-            account_id: owner.account_id,
-        }
-    }
+// One spelling of each owner, so the app's and the engine's name the same store file: the API's origin, and the
+// account's UUID as the state file binds it, whether the account names it by UUID or by its `acct_` TypeID.
+pub(crate) fn team_library_owner(api_origin: &str, account_id: &str) -> Option<TeamLibraryOwner> {
+    let origin = Origin::of_url(api_origin).ok()?;
+    let account = Uuid::parse_str(account_id)
+        .ok()
+        .or_else(|| typeid_uuid("acct_", account_id))?;
+    Some(TeamLibraryOwner {
+        origin: origin.as_str().to_owned(),
+        account_id: AccountId(account).to_wire(),
+    })
 }
 
 fn malformed(what: &'static str) -> CoreError {
@@ -373,11 +381,105 @@ impl SyncService {
     }
 }
 
+// What the service engine needs to run Team Library for its sign-in: where the store lives and the account whose
+// sign-in it stays bound to.
+#[derive(Clone)]
+pub(crate) struct TeamLibraryHost {
+    pub(crate) paths: StoragePaths,
+    pub(crate) account: Arc<AccountService>,
+}
+
+impl TeamLibraryHost {
+    // The owner's store, which the engine's adapters read and write, and whose writes the engines that listen to this
+    // Core's stores hear (core ADR 0060).
+    pub(crate) fn store(&self, origin: &Origin, account: AccountId, journal: &Arc<StoreJournal>) -> TeamLibraryStore {
+        let store = TeamLibraryStore::new(
+            &self.paths,
+            TeamLibraryOwner {
+                origin: origin.as_str().to_owned(),
+                account_id: account.to_wire(),
+            },
+        );
+        store.set_journal(Some(Arc::clone(journal) as Arc<dyn ChangeJournal>));
+        store
+    }
+
+    // A delete a crash cut off finishes here; until it does, Team Library stays off and the engine runs on. A publish
+    // commits only while the managed policy allows this sign-in's server, under the account's gate (core ADR 0055).
+    pub(crate) async fn attach(
+        &self,
+        sync: &ServiceSync,
+        store: TeamLibraryStore,
+        session: Option<String>,
+        origin: Origin,
+    ) {
+        let guard = SessionGuard {
+            account: Arc::clone(&self.account),
+            session,
+        };
+        let account = self.account.account.clone();
+        let policy = TeamLibraryPolicy {
+            gate: account.policy_gate(),
+            allowed: Arc::new(move || account.policy().allows_server(origin.as_str())),
+        };
+        if let Err(error) = sync.attach_team_library(store, Arc::new(guard), policy).await {
+            tracing::warn!(code = error.code(), "team library is off for this sign-in");
+        }
+    }
+}
+
+// The sign-in the engine started for, by its session id: a sign-out, another sign-in or a restore has another.
+struct SessionGuard {
+    account: Arc<AccountService>,
+    session: Option<String>,
+}
+
+impl SignInGuard for SessionGuard {
+    fn holds(&self) -> bool {
+        self.session.is_some() && self.account.status().session_id == self.session
+    }
+}
+
+async fn name_teams(control: Arc<dyn TeamLibraryControl>, account: tablepro_account::Account) {
+    let due = match control.teams_to_name().await {
+        Ok(due) if !due.is_empty() => due,
+        _ => return,
+    };
+    let profile = match account.profile().await {
+        Ok(profile) => profile,
+        Err(error) => {
+            tracing::debug!(code = error.code(), "the profile gave no team names");
+            return;
+        }
+    };
+    let names = profile
+        .teams
+        .into_iter()
+        .filter_map(|membership| match ScopeName::parse(&membership.team.id) {
+            Ok(ScopeName::Team(team)) if due.contains(&team) => Some((team, membership.team.name)),
+            _ => None,
+        })
+        .collect();
+    if let Err(error) = control.name_teams(names).await {
+        tracing::debug!(code = error.code(), "the team names were not kept");
+    }
+}
+
 #[uniffi::export]
 impl SyncService {
+    // Names come from the profile in the background, so this never waits on the network; the listener says when
+    // they changed.
     pub async fn team_library(&self) -> Result<Vec<TeamLibraryTeamInfo>, CoreError> {
+        let account = self.account.as_ref().map(|service| service.account.clone());
+        let tasks = self.tasks.clone();
         let teams = self
-            .on_team_library(move |control| async move { control.team_library().await })
+            .on_team_library(move |control| async move {
+                let teams = control.team_library().await?;
+                if let Some(account) = account {
+                    drop(tasks.spawn_task(name_teams(control, account)));
+                }
+                Ok(teams)
+            })
             .await?;
         Ok(teams.into_iter().map(team_info).collect())
     }
@@ -471,8 +573,32 @@ impl Core {
     // sign-out needs. Each owner's store file goes now, verified; the team scopes of its state file go before that
     // owner's next sync service reads them, and until then Team Library stays off for it.
     pub async fn delete_other_team_library_data(&self, keep: Option<TeamLibraryOwnerArg>) -> Result<(), CoreError> {
-        let _ = keep.map(TeamLibraryOwner::from);
-        Err(SyncError::unimplemented("sync.delete_other_team_library_data").into())
+        let keep = match keep {
+            Some(owner) => {
+                Some(team_library_owner(&owner.api_origin, &owner.account_id).ok_or_else(|| malformed("owner"))?)
+            }
+            None => None,
+        };
+        let paths = self
+            .paths
+            .clone()
+            .ok_or_else(|| CoreError::failed("ffi.no_storage", "the core was started without a storage folder"))?;
+        let tasks = self.tasks.clone();
+        on_runtime(&self.tasks, async move {
+            tasks
+                .spawn_blocking_task(move || {
+                    tablepro_storage::delete_other_team_library_owners_blocking(&paths, keep.as_ref())
+                })
+                .await
+                .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))?
+                .map_err(|error| {
+                    SyncError::from(TeamLibraryError::DeleteFailed {
+                        detail: error.to_string(),
+                    })
+                    .into()
+                })
+        })
+        .await
     }
 }
 
@@ -594,5 +720,20 @@ mod tests {
             serde_json::from_str::<Value>(&info.items[0].fields_json).unwrap(),
             json!({"name": "Shared"})
         );
+    }
+
+    #[test]
+    fn an_owner_is_spelled_one_way_whether_the_account_names_it_by_uuid_or_typeid() {
+        let uuid = Uuid::from_u128(0x0193_a1b2_c3d4_7e5f_8a9b_0c1d_2e3f_4a5b);
+        let typeid = format!("acct_{}", wire(uuid.as_u128()).trim_start_matches("team_"));
+
+        let by_uuid = team_library_owner("https://api.tablepro.app/v2", &uuid.to_string()).unwrap();
+        let by_typeid = team_library_owner("https://api.tablepro.app:443", &typeid).unwrap();
+
+        assert_eq!(by_uuid, by_typeid);
+        assert_eq!(by_uuid.origin, "https://api.tablepro.app");
+        assert_eq!(by_uuid.account_id, AccountId(uuid).to_wire());
+        assert!(team_library_owner("not a url", &typeid).is_none());
+        assert!(team_library_owner("https://api.tablepro.app", "team_x").is_none());
     }
 }

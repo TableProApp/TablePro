@@ -76,6 +76,11 @@ fn typeid_suffix(uuid: Uuid) -> String {
 }
 
 // A TypeID suffix is 26 symbols whose first carries the two zero bits above 128.
+// The UUID of a TypeID the server names a team or an account by, such as `acct_` and its 26 symbols.
+pub fn typeid_uuid(prefix: &str, text: &str) -> Option<Uuid> {
+    text.strip_prefix(prefix).and_then(parse_typeid_suffix)
+}
+
 fn parse_typeid_suffix(text: &str) -> Option<Uuid> {
     if text.len() != 26 || !text.starts_with(|c: char| ('0'..='7').contains(&c)) {
         return None;

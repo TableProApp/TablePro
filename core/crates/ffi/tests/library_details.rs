@@ -147,6 +147,8 @@ async fn details_and_device_settings_round_trip_and_a_form_save_keeps_them() {
         cloud_sql_proxy: None,
         socks_proxy: None,
         tunnel_command: None,
+        tls_mode_unsettled: true,
+        ssh_profile_unlinked: true,
     };
 
     library
@@ -271,7 +273,7 @@ async fn profiles_are_created_replaced_and_deleted() {
 async fn table_folders_file_tables_and_keep_a_folder_brought_in() {
     let dir = tempfile::tempdir().unwrap();
     let core = started(dir.path());
-    let folders = core.history().await.unwrap().table_folders();
+    let folders = core.saved_query_database().await.unwrap().table_folders();
     let connection = "6f0b6a4e-3a52-4c2f-9d1e-0c6a2b7f9e11".to_owned();
     let orders = TableRefRecord {
         database: "shop".to_owned(),

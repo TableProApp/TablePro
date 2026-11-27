@@ -210,12 +210,18 @@ fn hex(bytes: [u8; 32]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-// Vectors for the key digest (0054, Verification). Each case is the key tables of one file.
-#[test]
-fn key_digest_vectors() {
-    let a = id(0xa);
-    let b = id(0xb);
-    let cases: Vec<(&str, Vec<Row>, &str)> = vec![
+// One case of the key digest vectors: its name, the key tables of one file, and their digest.
+type Case = (&'static str, Vec<Row>, &'static str);
+
+fn retired(byte: u8, av: u32) -> Replaced {
+    Replaced {
+        ik: ik(byte),
+        av: v(av),
+    }
+}
+
+fn table_cases() -> Vec<Case> {
+    vec![
         (
             "a null and an empty value",
             vec![
@@ -257,6 +263,19 @@ fn key_digest_vectors() {
             })],
             "9bb99af21cafadcaa38b239ed09febadc5e5dfce184f2a529a746dce8b965aec",
         ),
+    ]
+}
+
+fn holder_cases() -> Vec<Case> {
+    let a = id(0xa);
+    let b = id(0xb);
+    let holds = |byte: u8| {
+        vec![Holder {
+            account: a,
+            ik: ik(byte),
+        }]
+    };
+    vec![
         (
             "holders in order",
             vec![team_row(
@@ -274,43 +293,34 @@ fn key_digest_vectors() {
         (
             "holders after one endorsed replacement",
             vec![
-                team_row(vec![Holder { account: a, ik: ik(1) }], KeyVersionState::Ok, None),
-                pin(a, ik(2), 2, PinHow::FirstUse, false, vec![Replaced { ik: ik(1), av: v(2) }]),
+                team_row(holds(1), KeyVersionState::Ok, None),
+                pin(a, ik(2), 2, PinHow::FirstUse, false, vec![retired(1, 2)]),
             ],
             "20f6b84a3c15de74ec2ba13caef84083dc3a86382e4b2f36ec3a42a1cb8dd242",
         ),
         (
             "holders after two endorsed replacements during a stop",
             vec![
-                team_row(
-                    vec![Holder { account: a, ik: ik(1) }],
-                    KeyVersionState::Stopped,
-                    Some(StoppedCause::CatchUp),
-                ),
-                pin(
-                    a,
-                    ik(3),
-                    3,
-                    PinHow::FirstUse,
-                    false,
-                    vec![Replaced { ik: ik(1), av: v(2) }, Replaced { ik: ik(2), av: v(3) }],
-                ),
+                team_row(holds(1), KeyVersionState::Stopped, Some(StoppedCause::CatchUp)),
+                pin(a, ik(3), 3, PinHow::FirstUse, false, vec![retired(1, 2), retired(2, 3)]),
             ],
             "54ed04f5871a6a7d09922f5da7fc6128dcbe67decedb0b1fe3e26eee93eab982",
         ),
         (
             "holders after a reset during a stop",
             vec![
-                team_row(
-                    vec![Holder { account: a, ik: ik(1) }],
-                    KeyVersionState::Stopped,
-                    Some(StoppedCause::RestartHeld),
-                ),
+                team_row(holds(1), KeyVersionState::Stopped, Some(StoppedCause::RestartHeld)),
                 pin(a, ik(9), 3, PinHow::FirstUse, true, Vec::new()),
             ],
             "fac60a2ce6ffa01f0ca16e7f95cb8144adc46a661b03f1a8c379b56d18b6ebdc",
         ),
-    ];
+    ]
+}
+
+// Vectors for the key digest (0054, Verification). Each case is the key tables of one file.
+#[test]
+fn key_digest_vectors() {
+    let cases: Vec<Case> = table_cases().into_iter().chain(holder_cases()).collect();
 
     let digests: Vec<(&str, String)> = cases
         .iter()

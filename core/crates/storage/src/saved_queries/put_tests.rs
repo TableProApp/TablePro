@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use super::*;
-use crate::{QueryHistory, StoragePaths};
+use crate::{SavedQueryDatabase, StoragePaths};
 
-async fn history(root: &tempfile::TempDir) -> QueryHistory {
-    QueryHistory::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
+async fn history(root: &tempfile::TempDir) -> SavedQueryDatabase {
+    SavedQueryDatabase::open(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"))
         .await
         .expect("open")
 }

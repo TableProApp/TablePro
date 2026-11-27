@@ -329,7 +329,8 @@ impl SessionWindow {
         let hold = services.hold().acquire();
         glib::spawn_future_local(async move {
             let history = services.history().ready_store().await;
-            match services.connection_deletion(history).run(id, options).await {
+            let saved = services.history().ready_saved().await;
+            match services.connection_deletion(history, saved).run(id, options).await {
                 Ok(report) if report.is_complete() => {}
                 Ok(report) => {
                     for failure in &report.purge_failures {

@@ -2,6 +2,8 @@ use std::time::SystemTime;
 
 use uuid::Uuid;
 
+use super::RunDetails;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     // The rowid the full-text index joins on, which pages and pins use and which never leaves the device.
@@ -19,4 +21,5 @@ pub struct Entry {
     pub cancelled: bool,
     pub pinned: bool,
     pub error: Option<String>,
+    pub details: RunDetails,
 }

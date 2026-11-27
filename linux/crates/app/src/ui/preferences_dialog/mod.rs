@@ -369,6 +369,7 @@ mod tests {
             executed_at: std::time::SystemTime::now(),
             duration_ms: Some(1),
             rows_affected: Some(0),
+            details: Default::default(),
             outcome: tablepro_storage::query_history::Outcome::Success,
         };
         block_on(runtime, history.record(entry)).expect("record");

@@ -9,9 +9,10 @@ use std::sync::Arc;
 use secrecy::SecretString;
 use tablepro_ffi::{
     Core, DatabaseEnvironmentTag, FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteRecordWrite,
-    FavouriteTableRecord, HistoryEntryRecord, HistoryOutcomeTag, HostConfig, HostSecretError, HostSecrets,
-    SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SecretItemTag, SecretKindTag, TableFolderRecord,
-    TableFolderRecordWrite, TableKeyRecord, TablePlacementRecord, TableRefRecord,
+    FavouriteTableRecord, HistoryEntryRecord, HistoryFilterArg, HistoryFingerprintArg, HistoryOutcomeTag,
+    HistoryRunDetails, HistorySourceTag, HistoryStatusTag, HostConfig, HostSecretError, HostSecrets,
+    SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SecretItemTag, SecretKindTag, StatementTypeTag,
+    TableFolderRecord, TableFolderRecordWrite, TableKeyRecord, TablePlacementRecord, TableRefRecord,
 };
 
 struct NoSecrets;
@@ -84,7 +85,11 @@ fn saved_query(name: &str) -> SavedQueryRecord {
 #[tokio::test]
 async fn a_mac_store_moves_in_with_its_ids_times_and_places() {
     let dir = tempfile::tempdir().unwrap();
-    let store = started(dir.path()).history().await.unwrap().saved_queries();
+    let store = started(dir.path())
+        .saved_query_database()
+        .await
+        .unwrap()
+        .saved_queries();
     let folder = SavedQueryFolderRecord {
         id: FOLDER.to_owned(),
         name: "Reports".to_owned(),
@@ -119,7 +124,11 @@ async fn a_mac_store_moves_in_with_its_ids_times_and_places() {
 #[tokio::test]
 async fn a_write_based_on_an_older_read_is_refused() {
     let dir = tempfile::tempdir().unwrap();
-    let store = started(dir.path()).history().await.unwrap().saved_queries();
+    let store = started(dir.path())
+        .saved_query_database()
+        .await
+        .unwrap()
+        .saved_queries();
     let read = store.contents().await.unwrap();
     store
         .write_records(SavedQueryRecordWrite {
@@ -143,7 +152,7 @@ async fn a_write_based_on_an_older_read_is_refused() {
 #[tokio::test]
 async fn favourites_and_table_folders_of_every_connection_read_and_write_whole() {
     let dir = tempfile::tempdir().unwrap();
-    let history = started(dir.path()).history().await.unwrap();
+    let history = started(dir.path()).saved_query_database().await.unwrap();
     let favourites = history.favourites();
     let table = FavouriteTableRecord {
         connection_id: SHOP.to_owned(),
@@ -252,6 +261,7 @@ async fn history_entries_move_in_under_their_record_ids() {
         duration_ms: Some(5),
         rows_affected: Some(1),
         outcome: HistoryOutcomeTag::Succeeded,
+        details: Default::default(),
     };
 
     let added = history.put_entries(vec![run.clone(), run.clone()]).await.unwrap();
@@ -270,4 +280,214 @@ async fn history_entries_move_in_under_their_record_ids() {
     history.put_entries(vec![run, other]).await.unwrap();
     assert_eq!(history.delete_for_connection(SHOP.to_owned()).await.unwrap(), 1);
     assert_eq!(history.record_ids().await.unwrap().len(), 1);
+}
+
+fn moved_in(record_id: &str, executed_at_ms: i64, source: HistorySourceTag) -> HistoryEntryRecord {
+    HistoryEntryRecord {
+        record_id: record_id.to_owned(),
+        sql: "SELECT 1".to_owned(),
+        driver_id: "MySQL".to_owned(),
+        connection_id: SHOP.to_owned(),
+        connection_name: "shop".to_owned(),
+        executed_at_ms,
+        duration_ms: Some(5),
+        rows_affected: Some(1),
+        outcome: HistoryOutcomeTag::Succeeded,
+        details: HistoryRunDetails {
+            database: Some("shop".to_owned()),
+            schema: None,
+            source: Some(source),
+            statement_type: Some(StatementTypeTag::Select),
+            first_row_ms: Some(2),
+            server_ms: Some(1),
+            fingerprint: None,
+        },
+    }
+}
+
+fn everything() -> HistoryFilterArg {
+    HistoryFilterArg {
+        text: String::new(),
+        connection_ids: None,
+        sources: None,
+        status: HistoryStatusTag::Any,
+        executed_after_ms: None,
+        executed_before_ms: None,
+    }
+}
+
+// A deletion the person made stays a deletion: the entry cannot come back under its id until sync has pushed it. One
+// the app's own store let go leaves no such mark.
+#[tokio::test]
+async fn the_person_s_deletion_keeps_the_entry_out_and_a_host_removal_does_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = started(dir.path()).history().await.unwrap();
+    let (deleted, removed) = (
+        moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor),
+        moved_in(QUERY, 1_700_000_001_000, HistorySourceTag::Editor),
+    );
+    history
+        .put_entries(vec![deleted.clone(), removed.clone()])
+        .await
+        .unwrap();
+
+    assert_eq!(history.delete_entries(vec![RUN.to_owned()]).await.unwrap(), 1);
+    assert_eq!(history.remove_entries(vec![QUERY.to_owned()]).await.unwrap(), 1);
+
+    assert_eq!(history.put_entries(vec![deleted, removed]).await.unwrap(), 1);
+    assert_eq!(
+        history
+            .record_ids()
+            .await
+            .unwrap()
+            .iter()
+            .map(|id| id.to_uppercase())
+            .collect::<Vec<_>>(),
+        [QUERY]
+    );
+}
+
+#[tokio::test]
+async fn the_history_pane_reads_and_clears_by_its_filters_and_every_detail_comes_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = started(dir.path()).history().await.unwrap();
+    let editor = moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor);
+    let browse = moved_in(QUERY, 1_700_000_060_000, HistorySourceTag::TableBrowse);
+    history.put_entries(vec![editor.clone(), browse]).await.unwrap();
+
+    let browsing = HistoryFilterArg {
+        sources: Some(vec![HistorySourceTag::TableBrowse]),
+        executed_after_ms: Some(1_700_000_030_000),
+        ..everything()
+    };
+    let found = history.search(browsing.clone(), None, 50).await.unwrap();
+    assert_eq!(found.entries.len(), 1);
+    assert_eq!(found.entries[0].record_id.to_uppercase(), QUERY);
+    let all = history.search(everything(), None, 50).await.unwrap();
+    let first = all
+        .entries
+        .iter()
+        .find(|entry| entry.record_id.to_uppercase() == RUN)
+        .unwrap();
+    assert_eq!(first.details, editor.details);
+
+    assert_eq!(history.delete_matching(browsing).await.unwrap(), 1);
+    assert_eq!(history.search(everything(), None, 50).await.unwrap().entries.len(), 1);
+}
+
+#[tokio::test]
+async fn a_run_with_no_fingerprint_gets_the_one_the_app_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = started(dir.path()).history().await.unwrap();
+    history
+        .put_entries(vec![moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor)])
+        .await
+        .unwrap();
+
+    let missing = history.entries_without_fingerprint(10).await.unwrap();
+    history
+        .set_fingerprints(vec![HistoryFingerprintArg {
+            id: missing[0].id,
+            fingerprint: 42,
+        }])
+        .await
+        .unwrap();
+
+    assert!(history.entries_without_fingerprint(10).await.unwrap().is_empty());
+    let entries = history.search(everything(), None, 50).await.unwrap().entries;
+    assert_eq!(entries[0].details.fingerprint, Some(42));
+}
+
+#[tokio::test]
+async fn each_store_names_its_file_and_the_saved_queries_open_without_the_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+
+    let files = core.store_files().unwrap();
+    core.saved_query_database().await.unwrap();
+
+    assert!(Path::new(&files.saved_query_database).is_file());
+    assert!(
+        !Path::new(&files.history_database).exists(),
+        "the saved queries opened the history"
+    );
+    core.history().await.unwrap();
+    assert!(Path::new(&files.history_database).is_file());
+    assert_ne!(files.history_database, files.saved_query_database);
+}
+
+// The status the macOS pane filters by: Failed holds a cancelled run too, as the pane always read it.
+#[tokio::test]
+async fn the_pane_s_failed_holds_failed_and_cancelled_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = started(dir.path()).history().await.unwrap();
+    let runs = [
+        (RUN, HistoryOutcomeTag::Succeeded),
+        (
+            QUERY,
+            HistoryOutcomeTag::Failed {
+                message: "boom".to_owned(),
+            },
+        ),
+        (FOLDER, HistoryOutcomeTag::Cancelled),
+    ];
+    history
+        .put_entries(
+            runs.iter()
+                .map(|(id, outcome)| HistoryEntryRecord {
+                    outcome: outcome.clone(),
+                    ..moved_in(id, 1_700_000_000_000, HistorySourceTag::Editor)
+                })
+                .collect(),
+        )
+        .await
+        .unwrap();
+
+    let failed = HistoryFilterArg {
+        status: HistoryStatusTag::Failed,
+        ..everything()
+    };
+    let succeeded = HistoryFilterArg {
+        status: HistoryStatusTag::Succeeded,
+        ..everything()
+    };
+    let ids = |page: tablepro_ffi::HistoryPageInfo| {
+        let mut ids: Vec<String> = page
+            .entries
+            .into_iter()
+            .map(|entry| entry.record_id.to_uppercase())
+            .collect();
+        ids.sort();
+        ids
+    };
+    let mut expected = vec![QUERY.to_owned(), FOLDER.to_owned()];
+    expected.sort();
+    assert_eq!(ids(history.search(failed, None, 50).await.unwrap()), expected);
+    assert_eq!(ids(history.search(succeeded, None, 50).await.unwrap()), [RUN]);
+}
+
+// iOS makes the history's folder itself, with the class every file in it then gets, before the core opens anything.
+#[tokio::test]
+async fn store_files_make_nothing_and_the_history_keeps_to_a_folder_made_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+
+    let files = core.store_files().unwrap();
+    assert!(
+        !Path::new(&files.history_folder).exists(),
+        "naming the files made the folder"
+    );
+    std::fs::create_dir_all(&files.history_folder).unwrap();
+    std::fs::write(Path::new(&files.history_folder).join("marker"), b"made by the host").unwrap();
+    core.history().await.unwrap();
+
+    assert_eq!(
+        Path::new(&files.history_database).parent(),
+        Some(Path::new(&files.history_folder))
+    );
+    assert!(Path::new(&files.history_database).is_file());
+    assert!(
+        Path::new(&files.history_folder).join("marker").is_file(),
+        "the core made the folder again"
+    );
 }
