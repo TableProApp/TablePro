@@ -109,7 +109,8 @@ extension DatabaseManager {
                 deadline: deadline,
                 timeoutEndpoint: timeoutEndpoint,
                 effectiveQueryTimeoutSeconds: effectiveQueryTimeoutSeconds,
-                preparedConfiguration: preparedConfiguration
+                preparedConfiguration: preparedConfiguration,
+                initialSchema: initialSchema(restoringLastSessionOf: connection, startupCommands: resolvedConnection.startupCommands)
             )
         } catch {
             let cancelled = isAttemptCancelled(attempt, for: connection.id)
@@ -180,6 +181,7 @@ extension DatabaseManager {
 
             Telemetry.shared.connectionSucceeded(databaseType: connection.type.rawValue)
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connection.id))
+            prewarmMetadataConnection(for: connection.id)
 
             await startHealthMonitor(for: connection.id)
         } catch {
@@ -454,6 +456,20 @@ extension DatabaseManager {
                 }
             }
         }
+    }
+
+    /// The schema a connect can land on while it signs in, which the post-connect restore then finds it on: the one
+    /// the last session browsed, for an engine that restores it. None when the user's startup commands run, since
+    /// one of them may move the search path after the driver set it.
+    func initialSchema(restoringLastSessionOf connection: DatabaseConnection, startupCommands: String?) -> String? {
+        guard !Self.hasStartupCommands(startupCommands) else { return nil }
+        let actions = PluginMetadataRegistry.shared.snapshot(for: connection.type)?.postConnectActions ?? []
+        let restoresSchema = actions.contains { action in
+            if case .selectSchemaFromLastSession = action { return true }
+            return false
+        }
+        guard restoresSchema else { return nil }
+        return appSettingsStorage.loadLastSchema(for: connection.id)
     }
 
     // MARK: - Database / Schema Switching

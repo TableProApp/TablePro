@@ -199,9 +199,43 @@ public class TextLayoutManager: NSObject {
         #endif
     }
 
+    /// The lines a document was laid out in, kept while the editor shows another document.
+    public struct DetachedLines {
+        let lines: TextLineStorage<TextLine>
+        let lineEnding: LineEnding
+
+        /// The number of lines.
+        public var count: Int { lines.count }
+    }
+
+    /// Hands over the line storage and leaves an empty one in its place, so the document can be shown again without
+    /// being split into lines a second time.
+    public func detachLines() -> DetachedLines {
+        let detached = DetachedLines(lines: lineStorage, lineEnding: detectedLineEnding)
+        lineStorage = TextLineStorage()
+        return detached
+    }
+
     /// Resets the layout manager to an initial state, rebuilding line storage from the current text storage.
     public func reset() {
         lineStorage.removeAll()
+        resetLayoutState()
+    }
+
+    /// Resets like ``reset()``, but takes lines detached from the text storage it now shows instead of building them.
+    public func reset(adopting detached: DetachedLines) {
+        lineStorage.removeAll()
+        lineStorage = detached.lines
+        detectedLineEnding = detached.lineEnding
+        // A line typeset before was typeset with the settings and fold attachments of that time, so it is typeset
+        // again when it next comes into view. Splitting the text into lines is what is not repeated.
+        for position in lineStorage {
+            position.data.discardTypesetting()
+        }
+        resetLayoutState()
+    }
+
+    private func resetLayoutState() {
         visibleLineIds.removeAll()
         viewReuseQueue.usedViews.values.forEach { $0.removeFromSuperview() }
         viewReuseQueue.queuedViews.forEach { $0.removeFromSuperview() }

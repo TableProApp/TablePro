@@ -39,8 +39,6 @@ actor CloudSQLProxyManager: TunnelManaging {
 
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
-    private var appNapActivity: NSObjectProtocol?
-
     init(
         runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() },
         managedBinary: @escaping @Sendable () async throws -> String = {
@@ -189,7 +187,6 @@ actor CloudSQLProxyManager: TunnelManaging {
         Self.runnerRegistry.withLock { $0[connectionId] = nil }
         pidRecords.removeValue(forKey: connectionId)
         persistPidRecords()
-        updateAppNapState()
         state.runner.stop()
         deleteCredentialsFile(at: state.credentialsFilePath)
     }
@@ -201,7 +198,6 @@ actor CloudSQLProxyManager: TunnelManaging {
         pidRecords.removeAll()
         persistPidRecords()
         Self.runnerRegistry.withLock { $0.removeAll() }
-        updateAppNapState()
         for (_, state) in current {
             state.runner.stop()
             deleteCredentialsFile(at: state.credentialsFilePath)
@@ -282,7 +278,6 @@ actor CloudSQLProxyManager: TunnelManaging {
             pidRecords[connectionId] = CloudSQLProxyPidRecord(pid: pid, binaryPath: binaryPath)
             persistPidRecords()
         }
-        updateAppNapState()
         startDeathWatch(connectionId: connectionId, runner: runner)
     }
 
@@ -298,7 +293,6 @@ actor CloudSQLProxyManager: TunnelManaging {
         Self.runnerRegistry.withLock { $0[connectionId] = nil }
         pidRecords.removeValue(forKey: connectionId)
         persistPidRecords()
-        updateAppNapState()
         deleteCredentialsFile(at: state.credentialsFilePath)
         guard !result.wasRequested else { return }
         Self.logger.warning("Cloud SQL Auth Proxy died for connection \(connectionId.uuidString, privacy: .public)")
@@ -431,20 +425,6 @@ actor CloudSQLProxyManager: TunnelManaging {
 
     private static func isPortInUse(_ stderrTail: String) -> Bool {
         stderrTail.lowercased().contains("address already in use")
-    }
-
-    // MARK: - Private: App Nap
-
-    private func updateAppNapState() {
-        if !tunnels.isEmpty, appNapActivity == nil {
-            appNapActivity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiatedAllowingIdleSystemSleep,
-                reason: "Cloud SQL Auth Proxy process requires timely execution"
-            )
-        } else if tunnels.isEmpty, let activity = appNapActivity {
-            ProcessInfo.processInfo.endActivity(activity)
-            appNapActivity = nil
-        }
     }
 }
 

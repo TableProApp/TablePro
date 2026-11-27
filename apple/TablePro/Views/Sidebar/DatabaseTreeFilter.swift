@@ -593,7 +593,8 @@ enum DatabaseTreeFilter {
         database: String,
         schema: String?,
         searchText: String,
-        listingMatches: SchemaListingMatches? = nil
+        listingMatches: SchemaListingMatches? = nil,
+        filter: (DatabaseTreeBucketSource) -> DatabaseTreeObjectBuckets = { $0.filtered() }
     ) -> DatabaseTreeObjectBuckets? {
         guard case .loaded(let loaded) = service.tablesLoadState(
             connectionId: connectionId, database: database, schema: schema
@@ -605,7 +606,7 @@ enum DatabaseTreeFilter {
             tables = listingMatches.rowsBySchema[CatalogName(schema)] ?? []
         }
         let serverKinds = service.serverKinds(connectionId: connectionId, database: database, schema: schema)
-        return objectBuckets(
+        return filter(DatabaseTreeBucketSource(
             tables: tables,
             routines: service.routines(connectionId: connectionId, database: database, schema: schema),
             triggers: service.triggers(connectionId: connectionId, database: database, schema: schema),
@@ -615,7 +616,7 @@ enum DatabaseTreeFilter {
             }),
             searchText: searchText,
             database: database
-        )
+        ))
     }
 
     /// The schemas besides the browsed one that a search found objects in, which the flat list adds
