@@ -4,7 +4,7 @@ import Foundation
 import TableProSyncTransport
 
 // Answers every pull with the records it holds and saves every push, recording both.
-actor RecordingSyncTransport: IOSSyncTransport {
+actor RecordingSyncTransport {
     let currentZoneID = CKRecordZone.ID(zoneName: "RecordingZone", ownerName: CKCurrentUserDefaultName)
     private var remoteRecords: [CKRecord]
     private var remoteDeletions: [CKRecord.ID]
@@ -133,3 +133,7 @@ private final class RecordingChangeTokenArchive: NSObject, NSSecureCoding {
 
     func encode(with coder: NSCoder) {}
 }
+
+// Xcode 27.1 fails the conformance written on the actor ("'nonisolated' on an actor") when a test that makes one
+// compiles in the same batch.
+extension RecordingSyncTransport: IOSSyncTransport {}
