@@ -532,10 +532,6 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// when the window appears. A repoint cannot be relied on for this: a window opening with
         /// no session repoints from nothing to nothing, which returns before it reaches the toolbar.
         owner.refreshContext(forcing: true)
-        /// The transparency decision reads `window.toolbar?.isVisible`, so a window that gains its
-        /// toolbar after that decision was taken keeps the opaque titlebar chosen for a
-        /// toolbar-less one, over content that is no longer inset below it.
-        (window as? ContentWindow)?.applyTitlebarPolicy()
     }
 
     /// The window's toolbar goes too. Dropping only the owner left the built `NSToolbar` on the
