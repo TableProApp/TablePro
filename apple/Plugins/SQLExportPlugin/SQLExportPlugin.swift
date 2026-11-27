@@ -153,12 +153,18 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             let finishing = FinishingSteps(
                 progress: progress,
                 total: finishingStepCount(sortedTables: sortedTables, definitionObjects: definitionObjects))
+            // Routines before the indexes and triggers after them, as Oracle Data Pump and pg_dump order them: an
+            // expression index can call a routine, and a schema DDL trigger would fire on every CREATE INDEX.
+            try await writeObjectCreatePhase(
+                objects: definitionObjects,
+                kinds: Self.definitionKindsBeforeIndexes,
+                dataSource: dataSource, to: writer, progress: progress, run: run, finishing: finishing)
             try await writeFinalizationPhase(
                 sortedTables: sortedTables, fkMap: fkMap, columnsByTable: columnsByTable,
                 dataSource: dataSource, to: writer, progress: progress, run: run, finishing: finishing)
             try await writeObjectCreatePhase(
                 objects: definitionObjects,
-                kinds: Self.definitionKindsAfterRows,
+                kinds: Self.definitionKindsAfterIndexes,
                 dataSource: dataSource, to: writer, progress: progress, run: run, finishing: finishing)
             // PostgreSQL needs a materialized view's unique index for `REFRESH ... CONCURRENTLY`; it is not in `sortedTables`.
             if try await writeIndexPhase(
@@ -231,9 +237,8 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         return ExportFormatResult(warnings: warnings, notes: Self.statementSizeNotes(tally: statementTally))
     }
 
-    private static let definitionKindsAfterRows: [PluginExportObjectKind] = [
-        .view, .materializedView, .routine, .trigger, .event
-    ]
+    private static let definitionKindsBeforeIndexes: [PluginExportObjectKind] = [.view, .materializedView, .routine]
+    private static let definitionKindsAfterIndexes: [PluginExportObjectKind] = [.trigger, .event]
 
     // What one export records. Every window and scene shares the plugin, so none of it lives on the instance.
     private final class ExportRun {
@@ -348,7 +353,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
 
     // One step per object the index, definition and grant phases below fetch, with the filters those loops use.
     private func finishingStepCount(sortedTables: [PluginExportTable], definitionObjects: [PluginExportTable]) -> Int {
-        let afterRows = Set(Self.definitionKindsAfterRows)
+        let afterRows = Set(Self.definitionKindsBeforeIndexes + Self.definitionKindsAfterIndexes)
         let wanted = definitionObjects.filter { optionValue($0, at: 0) }
         return sortedTables.filter { optionValue($0, at: 0) }.count
             + wanted.filter { afterRows.contains($0.kind) || $0.kind == .grant }.count

@@ -208,9 +208,8 @@ public enum OracleSchemaQueries {
         }
     }
 
-    // `ALL_PART_TABLES` states the count without reading a LONG column, which this driver cannot
-    // decode. An interval-partitioned table's count is a placeholder for the range the server extends
-    // on demand, so it reports none.
+    // An interval-partitioned table's count is a placeholder for the range the server extends on demand, so it
+    // reports none.
     public static func partitionCounts(owners: [String]) -> [String] {
         stride(from: 0, to: owners.count, by: maxOwnersPerTableListing).map { start in
             let chunk = owners[start..<min(start + maxOwnersPerTableListing, owners.count)]
@@ -249,9 +248,7 @@ public enum OracleSchemaQueries {
         }
     }
 
-    /// One partitioned table's partitions. `HIGH_VALUE` is deliberately absent: it is a LONG
-    /// column, the datatype this driver already avoids reading because OracleNIO cannot decode it,
-    /// so an Oracle partition states its position rather than its bound.
+    // `HIGH_VALUE` is left out: a partition states its position, and `PluginPartitionInfo` has no field for a bound.
     public static func partitions(schema: String, table: String) -> String {
         """
         SELECT p.partition_name, p.partition_position, p.num_rows, p.subpartition_count
@@ -498,23 +495,12 @@ public enum OracleSchemaQueries {
         return "SELECT NVL(SUM(BYTES), 0) FROM \(OracleDictionary.dbaSegments) WHERE \(scoped)OWNER = '\(owner)'"
     }
 
-    /// The view's `SELECT` text, without the LONG `TEXT` column OracleNIO cannot decode. `TEXT_VC` is `VARCHAR2(4000)`
-    /// and cuts a longer text, so its byte length comes back beside `TEXT_LENGTH` for
-    /// ``isViewTextTruncated(storedLength:returnedLength:)``.
+    // The LONG `TEXT` holds the whole text on every release: `TEXT_VC` came with 12.1 and stops at 4,000 bytes.
     public static func viewDefinition(schema: String, view: String) -> String {
         """
-        SELECT TEXT_VC, TEXT_LENGTH, LENGTHB(TEXT_VC) FROM \(OracleDictionary.allViews) \
+        SELECT TEXT FROM \(OracleDictionary.allViews) \
         WHERE VIEW_NAME = '\(escapeLiteral(view))' AND OWNER = '\(escapeLiteral(schema))'
         """
-    }
-
-    /// Measured on Oracle 23 Free: `TEXT_LENGTH` equals `LENGTHB(TEXT_VC)` for a whole text, a 58-byte multibyte one
-    /// included, and a 160-column view read 6892 against 4000.
-    public static func isViewTextTruncated(storedLength: String?, returnedLength: String?) -> Bool {
-        guard let stored = storedLength.flatMap(integer), let returned = returnedLength.flatMap(integer) else {
-            return false
-        }
-        return stored > returned
     }
 
     /// The tables of one schema for the object tree's bulk metadata read.

@@ -12,16 +12,19 @@ import TableProSQLQuoting
 // and a second index on the same columns fails with ORA-01408. A disabled or NOVALIDATE constraint is written disabled
 // and makes none, so an index it kept is written, and a NOVALIDATE one is enabled on it after the rows.
 nonisolated internal enum OracleIndexStatements {
-    // NORMAL and BITMAP only: a function-based index keeps its key in a LONG column OracleNIO cannot decode. A
-    // constraint row with no `INDEX_OWNER` is read as naming an index of its own schema.
+    // A function-based key, and a DESC one, which Oracle keeps as a function-based key too, comes from the LONG
+    // `COLUMN_EXPRESSION` in place of the hidden column it names. A constraint row with no `INDEX_OWNER` is read as
+    // naming an index of its own schema.
     internal static func query(schema: String, table: String) -> String {
         """
-            SELECT i.INDEX_NAME, i.UNIQUENESS, i.INDEX_TYPE, ic.COLUMN_NAME, ic.DESCEND
+            SELECT i.INDEX_NAME, i.UNIQUENESS, i.INDEX_TYPE, ic.COLUMN_NAME, ic.DESCEND, e.COLUMN_EXPRESSION
             FROM \(OracleDictionary.allIndexes) i
             JOIN \(OracleDictionary.allIndColumns) ic ON i.INDEX_NAME = ic.INDEX_NAME AND i.OWNER = ic.INDEX_OWNER
+            LEFT JOIN \(OracleDictionary.allIndExpressions) e ON e.INDEX_OWNER = ic.INDEX_OWNER
+                AND e.INDEX_NAME = ic.INDEX_NAME AND e.COLUMN_POSITION = ic.COLUMN_POSITION
             WHERE i.TABLE_NAME = \(SQLQuoting.stringLiteral(table))
               AND i.OWNER = \(SQLQuoting.stringLiteral(schema))
-              AND i.INDEX_TYPE IN ('NORMAL', 'BITMAP')
+              AND i.INDEX_TYPE IN ('NORMAL', 'BITMAP', 'FUNCTION-BASED NORMAL', 'FUNCTION-BASED BITMAP')
               AND NOT EXISTS (
                   SELECT 1 FROM \(OracleDictionary.allConstraints) c
                   WHERE c.CONSTRAINT_TYPE IN ('P', 'U')
@@ -34,8 +37,8 @@ nonisolated internal enum OracleIndexStatements {
             """
     }
 
-    /// Each row is `INDEX_NAME, UNIQUENESS, INDEX_TYPE, COLUMN_NAME, DESCEND`. Statements come back
-    /// in the order the rows arrive, one per index.
+    // Each row is `INDEX_NAME, UNIQUENESS, INDEX_TYPE, COLUMN_NAME, DESCEND, COLUMN_EXPRESSION`. Statements come
+    // back in the order the rows arrive, one per index. An expression is SQL as Oracle stored it, quotes included.
     internal static func render(
         rows: [[String?]],
         schema: String,
@@ -53,9 +56,9 @@ nonisolated internal enum OracleIndexStatements {
                 order.append(name)
                 columns[name] = []
                 unique[name] = row.element(at: 1)?.uppercased() == "UNIQUE"
-                bitmap[name] = row.element(at: 2)?.uppercased() == "BITMAP"
+                bitmap[name] = row.element(at: 2)?.uppercased().hasSuffix("BITMAP") == true
             }
-            let quoted = quote(column)
+            let quoted = row.element(at: 5) ?? quote(column)
             let descending = row.element(at: 4)?.uppercased() == "DESC"
             columns[name]?.append(descending ? "\(quoted) DESC" : quoted)
         }
