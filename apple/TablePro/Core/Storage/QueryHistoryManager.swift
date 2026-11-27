@@ -202,9 +202,7 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
         } else if let coreMirror {
             let ids = await storage.ids(matching: filter) ?? []
             cleared = await coreMirror.cleared(matching: filter, localIds: ids) { matched in
-                let filtered = await storage.clear(matching: filter)
-                let byId = await storage.deleteRuns(matched)
-                return filtered && byId
+                await storage.deleteRuns(matched)
             }
         } else {
             cleared = await storage.clear(matching: filter)
@@ -273,7 +271,7 @@ final class QueryHistoryPassFollower {
         start(changes: host.statusChanges.eraseToAnyPublisher(), lastPass: { [weak host] in
             host?.openedEngine(for: .off)?.status().lastPassMs
         }) {
-            await QueryHistoryManager.shared.coreMirror?.push()
+            await QueryHistoryManager.shared.coreMirror?.pushSoon()
             await QueryHistoryManager.shared.coreMirror?.fillFingerprints()
         }
     }

@@ -26,6 +26,8 @@ internal actor QueryHistoryCoreMirror {
     private let changed: @Sendable () async -> Void
     private var tail: Task<Void, Never>?
     private var cleanupRunsSeen = 0
+    // A push already waiting covers every pass that finishes before it starts.
+    private var pushWaiting = false
 
     internal init(
         storage: QueryHistoryStorage,
@@ -73,6 +75,20 @@ internal actor QueryHistoryCoreMirror {
         await serialized { [self] in await pushOnce() }
     }
 
+    // After a sync pass: one push for however many passes finish while it waits its turn.
+    internal func pushSoon() async {
+        guard !pushWaiting else { return }
+        pushWaiting = true
+        _ = await serialized { [self] in
+            await startWaitingPush()
+            return await pushOnce()
+        }
+    }
+
+    private func startWaitingPush() {
+        pushWaiting = false
+    }
+
     // MARK: - The person's deletions
 
     // Each deletion is noted before the run leaves this store, then sent with its tombstone; `delete` is the local
@@ -85,45 +101,68 @@ internal actor QueryHistoryCoreMirror {
         }
     }
 
-    // A whole connection's runs, or every run: the core drops other devices' too, each with a tombstone.
+    // A whole connection's runs, or every run: the core drops other devices' too, each with a tombstone. The clear is
+    // noted by its scope before anything goes, so one a crash cut short finishes on the next push.
     internal func cleared(connectionId: UUID?, ids: Set<UUID>, locally delete: @escaping @Sendable () async -> Bool) async -> Bool {
         await serialized { [self] in
-            guard await storage.notePendingCoreDeletions(ids) else { return false }
+            let scope = Self.scope(of: connectionId)
+            guard await storage.notePendingCoreClear(scope), await storage.notePendingCoreDeletions(ids) else { return false }
             guard await delete() else { return false }
-            do {
-                let store = try await database.history()
-                if let connectionId {
-                    _ = try await store.deleteForConnection(connectionId: connectionId.uuidString)
-                } else {
-                    try await store.clear()
-                }
-            } catch {
-                Self.logger.error("The core's history was not cleared: \(LogRedaction.publicDescription(of: error), privacy: .public)")
-                return false
-            }
+            guard await clearInCore(scope) else { return false }
             return await pushOnce()
         }
     }
 
-    // What the pane shows for `filter`, which the core matches, other devices' runs included; this store drops the
-    // same runs by id, and the ones its own search matches, so a run not in the core yet does not come back.
+    // What the pane shows for `filter`: the runs the core matches, other devices' included, leave both stores by id.
+    // Of this store's own matches, only the ones the core does not hold yet go too, so a run the pane did not show as
+    // matching stays.
     internal func cleared(matching filter: QueryHistoryFilter, localIds: Set<UUID>, locally delete: @escaping @Sendable (Set<UUID>) async -> Bool) async -> Bool {
         await serialized { [self] in
-            var coreIds: Set<UUID> = []
-            var reached = true
-            if let arg = CoreHistoryMapping.filter(filter) {
-                do {
-                    coreIds = Set(try await database.history().deleteMatching(filter: arg).compactMap(UUID.init(uuidString:)))
-                } catch {
-                    Self.logger.error("The core's history kept runs cleared here: \(LogRedaction.publicDescription(of: error), privacy: .public)")
-                    reached = false
-                }
+            guard let arg = CoreHistoryMapping.filter(filter) else { return true }
+            let ids: Set<UUID>
+            do {
+                let store = try await database.history()
+                let matched = Set(try await store.deleteMatching(filter: arg).compactMap(UUID.init(uuidString:)))
+                let held = Set(try await store.recordIds().compactMap(UUID.init(uuidString:)))
+                ids = matched.union(localIds.subtracting(held))
+            } catch {
+                Self.logger.error("The core's history kept runs cleared here: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+                return false
             }
-            let ids = localIds.union(coreIds)
             guard await storage.notePendingCoreDeletions(ids) else { return false }
             guard await delete(ids) else { return false }
-            return await pushOnce() && reached
+            return await pushOnce()
         }
+    }
+
+    private static let everyRun = "*"
+
+    private static func scope(of connectionId: UUID?) -> String {
+        connectionId?.uuidString ?? everyRun
+    }
+
+    // The core's half of a noted clear; the note goes once it is done.
+    private func clearInCore(_ scope: String) async -> Bool {
+        do {
+            let store = try await database.history()
+            if scope == Self.everyRun {
+                try await store.clear()
+            } else {
+                _ = try await store.deleteForConnection(connectionId: scope)
+            }
+        } catch {
+            Self.logger.error("The core's history was not cleared: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            return false
+        }
+        return await storage.clearPendingCoreClear(scope)
+    }
+
+    // Both halves of a clear a crash cut short.
+    private func finishClear(_ scope: String) async -> Bool {
+        let connectionId = UUID(uuidString: scope)
+        guard scope == Self.everyRun || connectionId != nil else { return await storage.clearPendingCoreClear(scope) }
+        guard await storage.clearLocally(connectionId: connectionId) else { return false }
+        return await clearInCore(scope)
     }
 
     // MARK: - The pane
@@ -208,10 +247,16 @@ internal actor QueryHistoryCoreMirror {
     // - a run only this store holds goes up (`missing`), one only the core holds comes down (`incoming`).
     private func pushOnce() async -> Bool {
         cleanupRunsSeen = await storage.cleanupRuns
+        guard let clears = await storage.pendingCoreClears() else { return false }
+        for scope in clears {
+            guard await finishClear(scope) else { return false }
+        }
         guard let pending = await storage.pendingCoreDeletions() else { return false }
         do {
             let store = try await database.history()
             if !pending.isEmpty {
+                // The local half first: a deletion noted just before a crash still has its row here.
+                guard await storage.deleteRuns(pending) else { return false }
                 let ids = pending.map(\.uuidString)
                 for start in stride(from: 0, to: ids.count, by: Self.entriesPerWrite) {
                     _ = try await store.deleteEntries(recordIds: Array(ids[start..<min(start + Self.entriesPerWrite, ids.count)]))
@@ -222,7 +267,7 @@ internal actor QueryHistoryCoreMirror {
             }
             guard let mine = await storage.entryIds(), let base = await storage.coreMirrorBase() else { return false }
             let held = Set(try await store.recordIds().compactMap(UUID.init(uuidString:)))
-            try await fillDetailsOnce(store, agreed: base.intersection(mine).intersection(held))
+            let filled = try await fillDetailsOnce(store, agreed: base.intersection(mine).intersection(held))
 
             let gone = base.subtracting(mine).intersection(held)
             let goneIds = gone.map(\.uuidString)
@@ -254,7 +299,7 @@ internal actor QueryHistoryCoreMirror {
                 adding: agreed.subtracting(base),
                 removing: base.subtracting(agreed)
             )
-            if !written.isEmpty || !gone.isEmpty || !lost.isEmpty || !taken.isEmpty || !pending.isEmpty {
+            if !written.isEmpty || !gone.isEmpty || !lost.isEmpty || !taken.isEmpty || !pending.isEmpty || filled > 0 {
                 Self.logger.info("""
                     The history agreed: \(written.count, privacy: .public) up, \(taken.count, privacy: .public) down, \
                     \(gone.count, privacy: .public) let go here, \(lost.count, privacy: .public) let go in the core, \
@@ -270,17 +315,19 @@ internal actor QueryHistoryCoreMirror {
     }
 
     // Runs mirrored before the core kept their details get them once, from this store's rows; the core fills only what
-    // it lacks.
-    private func fillDetailsOnce(_ store: QueryHistoryStore, agreed: Set<UUID>) async throws {
-        guard !agreed.isEmpty else { return }
-        guard await storage.coreDetailsFilled() == false else { return }
+    // it lacks. Returns how many runs changed, which the pane reads again for.
+    private func fillDetailsOnce(_ store: QueryHistoryStore, agreed: Set<UUID>) async throws -> UInt64 {
+        guard !agreed.isEmpty else { return 0 }
+        guard await storage.coreDetailsFilled() == false else { return 0 }
         let ids = Array(agreed)
+        var filled: UInt64 = 0
         for start in stride(from: 0, to: ids.count, by: Self.entriesPerWrite) {
             let rows = await storage.coreRows(ids: Array(ids[start..<min(start + Self.entriesPerWrite, ids.count)]))
             let records = rows.map { HistoryDetailsRecord(recordId: $0.id.uuidString, details: CoreHistoryMapping.details($0)) }
-            _ = try await store.fillDetails(entries: records)
+            filled += try await store.fillDetails(entries: records)
         }
         await storage.markCoreDetailsFilled()
+        return filled
     }
 
     // Returns the ids the core took.

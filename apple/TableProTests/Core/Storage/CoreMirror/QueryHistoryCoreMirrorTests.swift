@@ -132,6 +132,7 @@ struct QueryHistoryCoreMirrorTests {
         #expect(await mirror.push())
 
         #expect(await storage.entryIds() == [foreign])
+        #expect(await storage.coreMirrorBase() == [foreign])
         let local = await storage.fetch(QueryHistoryFilter(scope: .all), after: nil, limit: 10)
         #expect(local.entries.first?.databaseName == "shop")
         #expect(local.entries.first?.rowCount == 7)
@@ -151,14 +152,13 @@ struct QueryHistoryCoreMirrorTests {
         #expect(try await coreIds().isEmpty)
     }
 
-    @Test("A deletion the core never heard of goes up with its tombstone on the next push")
+    @Test("A deletion a crash cut short after it was noted finishes on the next push, here and with its tombstone")
     func pendingDeletionIsReplayed() async throws {
         let entry = run("SELECT 1", at: 1_700_000_000)
         #expect(await storage.record(entry))
         await mirror.push()
 
         #expect(await storage.notePendingCoreDeletions([entry.id]))
-        #expect(await storage.delete(id: entry.id))
         #expect(await mirror.push())
 
         #expect(try await coreIds().isEmpty)
@@ -227,6 +227,31 @@ struct QueryHistoryCoreMirrorTests {
 
         #expect(try await coreIds() == [kept.id])
         #expect(await storage.entryIds() == [kept.id])
+    }
+
+    @Test("A filtered clear leaves a run the core did not match, though this store's search would")
+    func clearKeepsRunsThePaneDidNotShow() async throws {
+        let foreign = try await foreignRun("SELECT theirs", at: 1_700_000_100_000)
+        await mirror.push()
+
+        #expect(await manager.clear(matching: QueryHistoryFilter(scope: .all, sources: [.editor])))
+
+        #expect(try await coreIds() == [foreign])
+        #expect(await storage.entryIds() == [foreign])
+    }
+
+    @Test("A clear of every run a crash cut short finishes on the next push, other devices' runs included")
+    func pendingClearIsReplayed() async throws {
+        #expect(await storage.record(run("SELECT mine", at: 1_700_000_000)))
+        await mirror.push()
+        _ = try await foreignRun("SELECT theirs", at: 1_700_000_100_000)
+
+        #expect(await storage.notePendingCoreClear("*"))
+        #expect(await mirror.push())
+
+        #expect(try await coreIds().isEmpty)
+        #expect(await storage.entryIds() == [])
+        #expect(await storage.pendingCoreClears() == [])
     }
 
     @Test("Runs another device synced get their shape from this Mac's grammar, a page at a time")

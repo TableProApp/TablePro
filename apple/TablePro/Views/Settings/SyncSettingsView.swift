@@ -463,7 +463,7 @@ extension SyncProviderSetting {
         case .iCloud:
             String(localized: "Keep your connections and the items you choose the same on devices signed in to your Apple Account.")
         case .tableproSync:
-            String(localized: "Sync through your TablePro account with every device signed in to it. Passwords and query history are end-to-end encrypted.")
+            String(localized: "Sync through your TablePro account with every device signed in to it. Passwords, other secrets and query history are end-to-end encrypted.")
         }
     }
 }

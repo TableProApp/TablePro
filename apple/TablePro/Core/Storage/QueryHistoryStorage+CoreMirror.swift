@@ -188,19 +188,68 @@ internal extension QueryHistoryStorage {
         writeEach(ids, creating: nil, "DELETE FROM history WHERE id = ?;")
     }
 
-    // Runs other devices recorded, in one commit, so Insights, Rewind and the previous stable see them. Returns the ids
-    // it wrote; one this store already holds keeps its row.
+    // Runs other devices recorded, so Insights, Rewind and the previous stable see them, each in the agreement in the
+    // same commit: one that a crash left out would read as this Mac's own and go up again after another device deleted
+    // it. Returns the ids it wrote; one this store already holds keeps its row.
     func takePulled(_ entries: [QueryHistoryEntry]) -> Set<UUID> {
-        guard !entries.isEmpty, execute("BEGIN IMMEDIATE;") else { return [] }
+        guard let db, !entries.isEmpty,
+              execute("CREATE TABLE IF NOT EXISTS core_mirror (id TEXT PRIMARY KEY) WITHOUT ROWID;"),
+              execute("BEGIN IMMEDIATE;")
+        else { return [] }
         var taken: Set<UUID> = []
         for entry in entries where insertRow(entry, ignoringExisting: true) {
             taken.insert(entry.id)
         }
-        guard execute("COMMIT;") else {
+        guard Self.each(taken, in: db, "INSERT OR IGNORE INTO core_mirror (id) VALUES (?);"), execute("COMMIT;") else {
             execute("ROLLBACK;")
             return []
         }
         return taken
+    }
+
+    // A clear of every run ("*") or of one connection's, noted before anything is deleted and dropped once both stores
+    // took it, so a crash in between finishes on the next push. Nil when the store is closed.
+    func pendingCoreClears() -> [String]? {
+        guard let db, execute(Self.clearsTableSql) else { return nil }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, "SELECT scope FROM core_mirror_cleared;", -1, &statement, nil) == SQLITE_OK else {
+            logSqliteError(context: "prepare pending core clears")
+            return nil
+        }
+        var scopes: [String] = []
+        while true {
+            switch sqlite3_step(statement) {
+            case SQLITE_ROW:
+                if let text = sqlite3_column_text(statement, 0) {
+                    scopes.append(String(cString: text))
+                }
+            case SQLITE_DONE:
+                return scopes
+            default:
+                logSqliteError(context: "pending core clears")
+                return nil
+            }
+        }
+    }
+
+    @discardableResult
+    func notePendingCoreClear(_ scope: String) -> Bool {
+        execute(Self.clearsTableSql) && run("INSERT OR IGNORE INTO core_mirror_cleared (scope) VALUES (?);", scope)
+    }
+
+    @discardableResult
+    func clearPendingCoreClear(_ scope: String) -> Bool {
+        execute(Self.clearsTableSql) && run("DELETE FROM core_mirror_cleared WHERE scope = ?;", scope)
+    }
+
+    private func run(_ sql: String, _ text: String) -> Bool {
+        guard let db else { return false }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return false }
+        QueryHistorySqlBinding.text(text).bind(to: statement, at: 1)
+        return sqlite3_step(statement) == SQLITE_DONE
     }
 
     // Whether the runs mirrored before the core kept their details were filled in, once per store file.
@@ -221,6 +270,7 @@ internal extension QueryHistoryStorage {
 
     private static let pendingTableSql = "CREATE TABLE IF NOT EXISTS core_mirror_deleted (id TEXT PRIMARY KEY) WITHOUT ROWID;"
     private static let metaTableSql = "CREATE TABLE IF NOT EXISTS core_mirror_meta (key TEXT PRIMARY KEY, value TEXT) WITHOUT ROWID;"
+    private static let clearsTableSql = "CREATE TABLE IF NOT EXISTS core_mirror_cleared (scope TEXT PRIMARY KEY) WITHOUT ROWID;"
 
     private func writeEach(_ ids: Set<UUID>, creating table: String?, _ sql: String) -> Bool {
         guard let db else { return false }

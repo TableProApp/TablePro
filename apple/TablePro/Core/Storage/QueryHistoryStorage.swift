@@ -1273,6 +1273,13 @@ actor QueryHistoryStorage {
 
 // Reads and writes the core's history needs, beside the store's own.
 extension QueryHistoryStorage {
+    // The local half of a clear the core's mirror noted: a connection's runs with its snapshots, as the connection's
+    // deletion takes them, or every run.
+    func clearLocally(connectionId: UUID?) -> Bool {
+        guard let connectionId else { return clear(matching: QueryHistoryFilter(scope: .all)) }
+        return deleteEverything(forConnection: connectionId)
+    }
+
     // The runs `clear(matching:)` would delete, read first so their deletion can sync. Nil when the store is closed.
     func ids(matching filter: QueryHistoryFilter) -> Set<UUID>? {
         guard let db else { return nil }
