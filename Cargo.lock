@@ -8217,6 +8217,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "hex",
+ "hmac 0.13.0",
  "secrecy",
  "serde",
  "serde_json",
