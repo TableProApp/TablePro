@@ -54,7 +54,5 @@ pub mod tab_registry;
 pub mod tab_tracker_handle;
 pub mod telemetry;
 pub mod telemetry_connector;
-pub mod touch;
 pub mod tracker_delta;
 pub mod tracker_edit;
-pub mod undo_op;
