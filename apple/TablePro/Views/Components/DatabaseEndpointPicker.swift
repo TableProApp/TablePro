@@ -71,7 +71,15 @@ internal struct DatabaseEndpointPicker: View {
                 }
         }
         .frame(width: Self.contentSize.width, height: Self.contentSize.height)
-        .onAppear { connections = ConnectionStorage.shared.loadConnections() }
+        .onAppear { connections = ConnectionScope.shared.connections }
+        // A sync pull or a switch from the menu bar can change the list under an open popover.
+        .onReceive(ConnectionScope.shared.scopedSetChanged) { _ in
+            connections = ConnectionScope.shared.connections
+            let kept = DatabaseEndpointRoute.path(path, listing: Set(connections.map(\.id)))
+            if kept != path {
+                path = kept
+            }
+        }
         /// Each level filters its own list, so moving between them starts clean rather than
         /// arriving at a database list already narrowed by a connection's name.
         .onChange(of: path) { _ in filter = "" }
@@ -336,4 +344,17 @@ internal struct DatabaseEndpointPicker: View {
 internal enum DatabaseEndpointRoute: Hashable {
     case databases(UUID)
     case schemas(DatabaseEndpoint, UUID)
+
+    internal var connectionId: UUID {
+        switch self {
+        case .databases(let connectionId), .schemas(_, let connectionId):
+            return connectionId
+        }
+    }
+
+    // A level opened on a connection that left the list has nothing to show, so the picker goes back to
+    // the connections.
+    internal static func path(_ path: [DatabaseEndpointRoute], listing listed: Set<UUID>) -> [DatabaseEndpointRoute] {
+        path.allSatisfy { listed.contains($0.connectionId) } ? path : []
+    }
 }

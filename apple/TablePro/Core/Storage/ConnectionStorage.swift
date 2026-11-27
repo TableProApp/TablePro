@@ -347,6 +347,28 @@ final class ConnectionStorage {
         return true
     }
 
+    // For a group or project that goes, by the user or by a pull. Every connection is offered, a Local only
+    // one too, and the caller announces the change. False only when the write failed.
+    @discardableResult
+    func rewriteMembership(byUser: Bool, _ rewrite: (inout DatabaseConnection) -> Void) -> Bool {
+        var connections = loadConnections()
+        var changed: [DatabaseConnection] = []
+        for index in connections.indices {
+            let original = connections[index]
+            rewrite(&connections[index])
+            if connections[index] != original {
+                changed.append(connections[index])
+            }
+        }
+        guard !changed.isEmpty else { return true }
+        guard saveConnections(connections, byUser: byUser) else {
+            Self.logger.error("Aborted rewriteMembership: persistence failed for \(changed.count, privacy: .public) connection(s)")
+            return false
+        }
+        syncTracker.markDirty(.connection, ids: changed.filter(\.participatesInSync).map { $0.id.uuidString })
+        return true
+    }
+
     var sshRoutePublisherId: UUID {
         if let stored = defaults.string(forKey: Self.sshRoutePublisherKey).flatMap(UUID.init(uuidString:)) {
             return stored
@@ -378,9 +400,10 @@ final class ConnectionStorage {
         _ ids: [UUID],
         toGroup groupId: UUID?,
         before: UUID?,
-        validGroupIds: Set<UUID>
+        groups: [ConnectionGroup]
     ) -> Bool {
         let connections = loadConnections()
+        let validGroupIds = Set(groups.map(\.id))
         var seen: Set<UUID> = []
         let moving = ids.filter { id in connections.contains { $0.id == id } && seen.insert(id).inserted }
         guard !moving.isEmpty else { return true }
@@ -405,9 +428,17 @@ final class ConnectionStorage {
             ranks = Dictionary(uniqueKeysWithValues: moving.enumerated().map { ($0.element, start + $0.offset) })
         }
 
+        // Read before the move: a connection that leaves a group keeps the project that group was in.
+        let projects = LibraryProjectNormalizer.movingConnections(
+            moving,
+            toGroup: groupId,
+            connections: connections,
+            groups: groups
+        )
         return mutateConnections(ids: Set(ranks.keys)) { connection in
             if movingSet.contains(connection.id) {
                 connection.groupId = groupId
+                connection.projectId = projects.connectionProjectId(connection.id, current: connection.projectId)
             }
             if let rank = ranks[connection.id] {
                 connection.sortOrder = rank
@@ -508,6 +539,7 @@ final class ConnectionStorage {
             iconName: connection.iconName,
             tagIds: connection.tagIds,
             groupId: connection.groupId,
+            projectId: connection.projectId,
             sshProfileId: connection.sshProfileId,
             sshTunnelMode: connection.sshTunnelMode,
             credentialMode: connection.credentialMode,

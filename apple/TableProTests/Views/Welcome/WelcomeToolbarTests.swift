@@ -11,6 +11,8 @@ import Testing
 private final class WelcomeLibraryFixture {
     let viewModel: WelcomeViewModel
     let tags: [ConnectionTag]
+    let projects: ProjectStorage
+    let scope: ConnectionScope
     private let suite: EphemeralDefaults
     private let directory: URL
 
@@ -46,8 +48,25 @@ private final class WelcomeLibraryFixture {
         let gamma = DatabaseConnection(name: "Gamma", type: .mysql, sortOrder: 2)
         #expect(connectionStorage.saveConnections([alpha, beta, gamma]))
 
+        let projects = ProjectStorage(
+            userDefaults: defaults,
+            syncTracker: tracker,
+            connectionStorage: connectionStorage,
+            groupStorage: groupStorage,
+            appEvents: events
+        )
+        self.projects = projects
+        let scope = ConnectionScope(
+            userDefaults: defaults,
+            connectionStorage: connectionStorage,
+            groupStorage: groupStorage,
+            projectStorage: projects,
+            appEvents: events
+        )
+        self.scope = scope
+
         let live = AppServices.live
-        let services = AppServices(
+        var services = AppServices(
             appEvents: events,
             appSettings: live.appSettings,
             appSettingsStorage: AppSettingsStorage(userDefaults: defaults),
@@ -80,12 +99,14 @@ private final class WelcomeLibraryFixture {
             welcomeRouter: WelcomeRouter(),
             telemetry: live.telemetry
         )
+        services.projectStorage = projects
         viewModel = WelcomeViewModel(
             services: services,
             importableAppDetector: { false },
             groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults),
             recentConnections: RecentConnectionsStore(defaults: defaults, appEvents: events),
-            listPreferences: ConnectionListPreferences(defaults: defaults, connectionStorage: connectionStorage, appEvents: events)
+            listPreferences: ConnectionListPreferences(defaults: defaults, connectionStorage: connectionStorage, appEvents: events),
+            scope: scope
         )
         viewModel.loadConnections()
     }
@@ -154,13 +175,30 @@ struct WelcomeToolbarTests {
         }
     }
 
-    @Test("The buttons lead the list pane and search trails it, as they did")
+    @Test("The project pop-up and the buttons lead the list pane and search trails it")
     func itemsKeepTheirPlaces() throws {
         let identifiers = try #require(window.toolbar).items.map { $0.itemIdentifier }
         #expect(identifiers == [
-            .sidebarTrackingSeparator, .welcomeNewConnection, .welcomeNewGroup, .welcomeViewOptions, .flexibleSpace,
-            .welcomeSearch,
+            .sidebarTrackingSeparator, .welcomeProject, .welcomeNewConnection, .welcomeNewGroup, .welcomeViewOptions,
+            .flexibleSpace, .welcomeSearch,
         ])
+    }
+
+    @Test("The project pop-up shows the scope in force and follows a switch made elsewhere")
+    func projectPopUpFollowsTheScope() throws {
+        let item = try item(.welcomeProject)
+        #expect(item.label == "Project")
+        let button = try #require(item.view as? NSPopUpButton)
+        #expect(button.accessibilityIdentifier() == "welcome-project-switcher")
+        #expect(button.titleOfSelectedItem == "All Connections")
+        #expect(button.itemTitles == ["All Connections", "", "New Project…", "Manage Projects…"])
+
+        let acme = try fixture.projects.createProject(name: "Acme")
+        fixture.scope.setActiveProject(acme.id)
+        fixture.viewModel.loadConnections()
+
+        #expect(button.titleOfSelectedItem == "Acme")
+        #expect(button.itemTitles == ["All Connections", "Acme", "", "New Project…", "Manage Projects…"])
     }
 
     @Test("Each item names itself, which is what VoiceOver and UI tests read")

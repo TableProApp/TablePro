@@ -45,6 +45,7 @@ struct QueryHistoryCoreMirrorTests {
         HistoryFilterArg(
             text: text,
             connectionIds: nil,
+            projectId: nil,
             sources: nil,
             status: .any,
             executedAfterMs: nil,

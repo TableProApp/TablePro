@@ -35,6 +35,7 @@ mod library_contents;
 mod library_details;
 mod masking;
 mod mcp;
+mod plan;
 mod prompter;
 mod references;
 mod results;
@@ -118,7 +119,7 @@ pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use keymap::{KeymapBindingInfo, KeymapPlatformTag, KeymapPresetInfo, keymap_preset, keymap_presets};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
-    LibraryIconRecord, LibrarySnapshot, RemoteFileAccessTag, SafeModeTag, SshAuthTag, SshJumpAuthTag,
+    LibraryIconRecord, LibrarySnapshot, ProjectRecord, RemoteFileAccessTag, SafeModeTag, SshAuthTag, SshJumpAuthTag,
     SshJumpHostRecord, SshOptionsRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TagRecord,
     TlsModeTag, TlsSettings, check_jump_hosts, jump_hosts_text, parse_jump_hosts,
 };

@@ -157,6 +157,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         )
         configuration.mode = authenticationMode(for: options.role)
         configuration.nativeNetworkEncryption = encryptionLevel(for: options.networkEncryption)
+        configuration.followsListenerRedirects = options.followsListenerRedirects
         // The driver owns the channel, so it is the only thing that can end a login the
         // server has stopped answering, and it names the handshake phase when it does.
         // The wrapper in connect() stays a grace period behind it as a backstop for a driver
@@ -248,10 +249,10 @@ public final class OracleCoreConnection: @unchecked Sendable {
         } catch {
             let detail = String(describing: error)
             osLogger.error("Oracle connection failed: \(String(describing: type(of: error)), privacy: .public) \(detail, privacy: .private)")
-            if let kind = OracleSSLClassifier.classifyTLSFailure(detail) {
-                throw OracleCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
+            if let tls = OracleConnectFailureMapping.tlsText(error), let kind = OracleSSLClassifier.classifyTLSFailure(tls) {
+                throw OracleCoreError.tlsHandshakeFailed(kind: kind, serverMessage: tls)
             }
-            throw OracleCoreError.connectionFailed(detail)
+            throw OracleConnectFailureMapping.transportError(error)
         }
     }
 
@@ -334,58 +335,19 @@ public final class OracleCoreConnection: @unchecked Sendable {
     }
 
     private func connectError(from sqlError: OracleSQLError) -> OracleCoreError {
-        let detail = Self.connectFailureDetail(sqlError)
         let phase = sqlError.handshakePhase
         let code = sqlError.code.description
+        let underlying = sqlError.underlying.map { String(describing: $0) } ?? ""
         osLogger.error(
-            "Oracle connection failed at phase \(phase ?? "unknown", privacy: .public) (\(code, privacy: .public))"
+            "Oracle connection failed at phase \(phase ?? "unknown", privacy: .public) (\(code, privacy: .public)): \(underlying, privacy: .private)"
         )
-        if let kind = OracleSSLClassifier.classifyTLSFailure(detail) {
-            return .tlsHandshakeFailed(kind: kind, serverMessage: detail)
-        }
-        let failure = OracleConnectErrorClassifier.classify(sqlError.code.description)
-        if case .loginHandshakeTimedOut = failure {
-            return .loginHandshakeStalled(phase: phase)
-        }
-        if case .advancedNegotiationRequired = failure {
-            return .nativeEncryptionRequired
-        }
-        if OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
-            failure: failure,
-            nativeNetworkEncryptionEnabled: options.networkEncryption != .rejected,
-            timedOut: false
-        ) {
-            return .nativeEncryptionFailed(detail: detail)
-        }
-        switch failure {
-        case .verifierUnsupported(let flag):
-            return .authVerifierUnsupported(flag: flag)
-        case .versionNotSupported:
-            return .authVersionNotSupported
-        case .connectionDropped:
-            return .authConnectionDropped(phase: phase)
-        case .advancedNegotiationFailed:
-            return .nativeEncryptionFailed(detail: detail)
-        case .advancedNegotiationRequired:
-            return .nativeEncryptionRequired
-        case .loginHandshakeTimedOut:
-            return .loginHandshakeStalled(phase: phase)
-        case .connectionFailed:
-            return .connectionFailed(detail)
-        }
-    }
-
-    private static func connectFailureDetail(_ error: OracleSQLError) -> String {
-        if let refused = error.underlying as? OracleListenerRefusedError {
-            return OracleListenerRefusal.detail(code: refused.code)
-        }
-        if let serverMessage = error.serverInfo?.message {
-            return serverMessage
-        }
-        if let underlying = error.underlying {
-            return String(describing: underlying)
-        }
-        return String(format: OracleCoreError.driverErrorFormat, error.code.description)
+        return OracleConnectFailureMapping.connectError(
+            code: code,
+            underlying: sqlError.underlying,
+            serverMessage: sqlError.serverInfo?.message,
+            phase: phase,
+            nativeNetworkEncryptionEnabled: options.networkEncryption != .rejected
+        )
     }
 
     public func disconnect(reason: OracleDisconnectReason = .userRequested) {

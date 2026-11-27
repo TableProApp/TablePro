@@ -34,7 +34,10 @@ pub(crate) use account_fakes::{Approving, MemoryKeyring, deliver};
 pub(crate) use alert_response::{click_response, respond};
 pub(crate) use application_end::end_application;
 pub(crate) use cloud_stub::CloudStub;
-pub(crate) use connection_groups::{NestedLibrary, group_id, library, save_filed, saved_connection, seed_library};
+pub(crate) use connection_groups::{
+    NestedLibrary, detached_list, group_id, library, project_named, save_filed, saved_connection, seed_library,
+    show_projects,
+};
 pub(crate) use fake_clocks::FakeClocks;
 pub(crate) use fake_reachability::{Attached, FakeProbe, attach_remote};
 pub(crate) use fake_session::FakeSession;

@@ -99,7 +99,8 @@ Read this when a verdict, a test name or a red CI check needs explaining. The co
 
 ## Reading CI
 
-- Artifacts exist only for a failed job and are kept 7 days. `macos-tests-<attempt>` holds every `.xcresult` plus `app-diagnostics` (TablePro crash reports and 2 hours of its unified log); `ios-tests-<attempt>` holds `iOS.xcresult`.
+- Artifacts exist only for a failed job and are kept 7 days. `macos-tests-<attempt>` holds every `.xcresult` plus `app-diagnostics` (TablePro crash reports and 2 hours of its unified log); `ios-tests-<attempt>` holds `Build.xcresult` and `iOS.xcresult`.
+- An iOS job red at "Boot a simulator the tests can install on" logs each device it tried and the runtime list. A device that "lost its runtime", or "Run the iOS tests" failing with "simulator runtime is not available" before any test ran, is the image unmounting the runtime (actions/runner-images#14946): re-run the failed job. No device of that name on any listed runtime means the image changed: update `SIMULATOR` in `ios-tests.yml`.
 - The step summary lists build errors, runner failures, failed cases and the slowest cases (`.claude/rules/ci.md`, Summaries). A case that passed only on the UI plan's retry shows as a `Passed only on retry` warning annotation while the job stays green.
 - `xcbeautify` can hide a compiler error behind "exit code 65". Read the check-run annotations, which also work while the run is going: `gh api repos/TableProApp/TablePro/check-runs/<job-id>/annotations`. Or open `Build.xcresult` from the artifact.
 - UI evidence: `gh run download <run-id> -n macos-tests-<attempt>`, then `xcrun xcresulttool get test-results activities --test-id <id> --path UI.xcresult` and `xcrun xcresulttool export attachments --path UI.xcresult --output-path <dir>`. The `element-tree-<n>` attachment shows which window held focus; the recording and the Synthesized Event plists show where each event landed.

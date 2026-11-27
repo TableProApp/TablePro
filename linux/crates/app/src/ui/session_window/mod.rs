@@ -161,6 +161,10 @@ impl SessionWindow {
         let welcome = WelcomeView::new(list.clone(), Some(services.tasks.clone()));
         crate::ui::picker::install_picker_actions(&welcome, list.clone(), input.clone());
         let picker = PickerPage::new(&welcome, self.application().as_ref());
+        picker.set_project_menu(&services.project_menu.section());
+        if let Some(app) = self.application() {
+            services.project_menu.attach(&app);
+        }
         let searching = welcome.downgrade();
         picker.search_entry().connect_search_changed(move |entry| {
             if let Some(welcome) = searching.upgrade() {
@@ -187,7 +191,15 @@ impl SessionWindow {
         imp.list_observer.set(Some(list.connect_state_changed(move |_| {
             if let Some(window) = window.upgrade() {
                 window.show_connection_list_banner();
+                window.show_active_project();
                 window.offer_setup_guide();
+            }
+        })));
+        // A switch publishes no list, so the label and the radio follow the scope apart from it.
+        let window = self.downgrade();
+        imp.scope_observer.set(Some(list.connect_scope_changed(move || {
+            if let Some(window) = window.upgrade() {
+                window.show_active_project();
             }
         })));
         imp.welcome.replace(Some(welcome));
@@ -203,6 +215,7 @@ impl SessionWindow {
 
         self.render();
         self.show_connection_list_banner();
+        self.show_active_project();
         self.watch_state_files();
         input.deliver(SessionWindowInput::LoadConnections);
         self.open_launch(launch, &input);
@@ -252,6 +265,16 @@ impl SessionWindow {
     #[cfg(test)]
     pub(crate) fn manage_tags(&self) -> Option<std::rc::Rc<crate::ui::tags::ManageTagsDialog>> {
         self.imp().manage_tags.borrow().clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn manage_projects(&self) -> Option<std::rc::Rc<crate::ui::projects::ManageProjectsDialog>> {
+        self.imp().manage_projects.borrow().clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn picker_page(&self) -> Option<PickerPage> {
+        self.imp().picker.get().cloned()
     }
 
     /// What the window's actions, pages and background work send it.
@@ -338,6 +361,9 @@ impl SessionWindow {
         }
         if let (Some(observer), Some(state)) = (imp.list_observer.take(), imp.state.get()) {
             state.services.saved_connections.disconnect_state_changed(observer);
+        }
+        if let (Some(observer), Some(state)) = (imp.scope_observer.take(), imp.state.get()) {
+            state.services.saved_connections.disconnect_scope_changed(observer);
         }
         drop(imp.inhibitor.take());
     }
@@ -551,6 +577,8 @@ impl SessionWindow {
             SessionWindowInput::UpdateTag(tag) => self.on_update_tag(tag),
             SessionWindowInput::DeleteTag(id) => self.on_delete_tag(id),
             SessionWindowInput::ManageTags => self.on_manage_tags(),
+            SessionWindowInput::NewProject => self.on_new_project(),
+            SessionWindowInput::ManageProjects => self.on_manage_projects(),
             SessionWindowInput::ExportConnections => self.on_export_connections(),
             SessionWindowInput::ImportConnections => self.on_import_connections(),
             SessionWindowInput::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes),

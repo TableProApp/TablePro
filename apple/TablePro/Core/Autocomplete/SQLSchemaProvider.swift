@@ -130,6 +130,8 @@ actor SQLSchemaProvider {
 
     // Every table-slot request reads all of them, so they are built once per table list, not per keystroke.
     private var unqualifiedTableItems: (defaultSchema: String?, items: [SQLCompletionItem])?
+    // What SQL completion ranks the same tables from: folded names, a small fraction of an item per table.
+    private var unqualifiedTableIndex: (defaultSchema: String?, index: SQLCompletionNameIndex)?
 
     private struct TableColumnItems {
         let defaultSchema: String?
@@ -481,6 +483,7 @@ actor SQLSchemaProvider {
     private func noteTableListWritten() {
         tableListGeneration &+= 1
         unqualifiedTableItems = nil
+        unqualifiedTableIndex = nil
         cachedTableColumnItems = nil
         listedNames = nil
         listedSpellings = nil
@@ -747,11 +750,22 @@ actor SQLSchemaProvider {
         return items
     }
 
+    func tableNameIndex() async -> SQLCompletionNameIndex? {
+        let defaultSchema = getDefaultSchema()
+        if let cached = unqualifiedTableIndex, cached.defaultSchema == defaultSchema { return cached.index }
+        let index = SQLCompletionNameIndex(tables: tablesResolvableUnqualified.map { ($0.name, $0.type == .view) })
+        unqualifiedTableIndex = (defaultSchema, index)
+        return index
+    }
+
     func setNamespaces(schemas: [String], databases: [String]) {
         knownSchemas = schemas
         knownDatabases = databases
         listedSpellings = nil
         listedNames = nil
+        // A schema's spelling decides which tables a bare name reaches.
+        unqualifiedTableItems = nil
+        unqualifiedTableIndex = nil
     }
 
     func isKnownSchema(_ name: String) -> Bool {

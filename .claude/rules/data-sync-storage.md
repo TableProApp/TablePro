@@ -36,6 +36,8 @@ paths:
   - "apple/TablePro/Models/Connection/VaultDatabaseRole.swift"
   - "apple/TablePro/Models/Connection/SafeModeLevel.swift"
   - "apple/TablePro/Models/Connection/ConnectionGroup.swift"
+  - "apple/TablePro/Models/Connection/ConnectionProject.swift"
+  - "apple/TablePro/Core/ConnectionLibrary/ConnectionScope.swift"
   - "apple/TablePro/Models/Connection/ConnectionTag.swift"
   - "apple/TablePro/Models/Connection/ConnectionOrigin.swift"
   - "apple/TablePro/Models/AI/AIConversation.swift"
@@ -231,6 +233,8 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Whether a saved-queries store replaced a damaged file and waits for a full fetch, so the previous stable's push treats it as unreadable | Table `sync_refill` in the saved-queries SQLite store, dropped once that build's full fetch applied | `SQLFavoriteStorage` |
 | Deletions the server reported for a sync category that is off, applied when the category is next read | UserDefaults `com.TablePro.sync.deferredDeletions`, device-local, never synced | `LegacySyncMetadataMirror` on the Mac, `SyncMetadataStorage.deferredDeletions` on iOS |
 | The iCloud account this device last saved the CloudKit change subscription for; cleared when sync turns on, on Upload Again, when the data is found removed, and when an activation brings a change no notice announced | UserDefaults `com.TablePro.sync.subscribedAccountId`, device-local, never synced | `SyncMetadataStorage.subscribedAccountId` through `SyncPushChannel` |
+| Connection projects (iCloud-synced with groups and tags once `ConnectionProject` is in Production). A connection in no group and a top-level group carry `projectId`; an id no project holds is kept and reads as no project. A project, group or tag record this build cannot read stays in its payload as written | UserDefaults `com.TablePro.projects` for the list, `projectId` in `connections.json` and `com.TablePro.groups` | `ProjectStorage`, with `ConnectionStorage` and `GroupStorage` for membership |
+| The active project, which every list of connections follows. A view that shows scoped data reloads on `ConnectionScope.scopedSetChanged`, the one signal for a change of the in-scope set, and on nothing else | UserDefaults `com.TablePro.connectionList.activeProjectId`, device-local, never synced | `ConnectionScope` |
 | Where a connection came from (`origin`): this Mac, imported, iCloud | `Core/connections.json`, never synced or exported | `ConnectionStorage` |
 | Connections opened from a database file or a link and never saved, whose view state, tab state and table-scoped files the next launch removes once no window holds them; never recorded while the library failed to load | UserDefaults `com.TablePro.connections.transientIds`, device-local, never synced | `TransientConnectionLedger`, written by `DatabaseManager.registerPendingSession`, swept by `PostLaunchWork` |
 | Reopen Last Session list (`LastSession.json`, plus `LastOpenConnections.json` holding only the ids that reconnect, which older builds read) | JSON | `LastOpenConnectionsStorage` |

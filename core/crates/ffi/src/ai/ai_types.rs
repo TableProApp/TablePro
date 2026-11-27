@@ -133,6 +133,8 @@ impl From<AiChatArg> for ChatRequest {
                 })
                 .collect(),
             max_tokens: ChatRequest::CHAT_MAX_TOKENS,
+            // Phase 1a: the FFI text-chat path offers no tools yet.
+            tools: Vec::new(),
         }
     }
 }
@@ -170,6 +172,9 @@ impl From<StopReason> for AiStopTag {
             StopReason::Complete => Self::Complete,
             StopReason::LengthLimit => Self::LengthLimit,
             StopReason::Refused => Self::Refused,
+            // Text chat offers no tools, so the model never stops for one;
+            // treat it as a normal end rather than widen the FFI enum.
+            StopReason::ToolUse => Self::Complete,
         }
     }
 }

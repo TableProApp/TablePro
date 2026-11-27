@@ -36,6 +36,8 @@ struct StoredConnection: Codable {
     let tagId: String?
     let tagIds: [String]?
     let groupId: String?
+    // Absent means no project, so a file the previous build wrote reads the same.
+    let projectId: String?
     let sshProfileId: String?
 
     let safeModeLevel: String
@@ -125,6 +127,7 @@ struct StoredConnection: Codable {
         self.tagId = connection.tagIds.first?.uuidString
         self.tagIds = connection.tagIds.isEmpty ? nil : connection.tagIds.map { $0.uuidString }
         self.groupId = connection.groupId?.uuidString
+        self.projectId = connection.projectId?.uuidString
         self.sshProfileId = connection.sshProfileId?.uuidString
 
         self.safeModeLevel = connection.preferredSafeModeLevel.rawValue
@@ -191,7 +194,7 @@ struct StoredConnection: Codable {
         case sshAgentSocketPath
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
         case sslMode, sslCaCertificatePath, sslClientCertificatePath, sslClientKeyPath
-        case color, iconName, tagId, tagIds, groupId, sshProfileId
+        case color, iconName, tagId, tagIds, groupId, projectId, sshProfileId
         case safeModeLevel
         case externalAccess
         case isReadOnly // Legacy key for migration reading only
@@ -244,6 +247,7 @@ struct StoredConnection: Codable {
         try container.encodeIfPresent(tagId, forKey: .tagId)
         try container.encodeIfPresent(tagIds, forKey: .tagIds)
         try container.encodeIfPresent(groupId, forKey: .groupId)
+        try container.encodeIfPresent(projectId, forKey: .projectId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encode(externalAccess, forKey: .externalAccess)
@@ -308,6 +312,7 @@ struct StoredConnection: Codable {
         tagId = try container.decodeIfPresent(String.self, forKey: .tagId)
         tagIds = try container.decodeIfPresent([String].self, forKey: .tagIds)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
+        projectId = try container.decodeIfPresent(String.self, forKey: .projectId)
         sshProfileId = try container.decodeIfPresent(String.self, forKey: .sshProfileId)
         if let levelString = try container.decodeIfPresent(String.self, forKey: .safeModeLevel) {
             safeModeLevel = levelString
@@ -466,6 +471,7 @@ struct StoredConnection: Codable {
             iconName: iconName,
             tagIds: parsedTagIds,
             groupId: parsedGroupId,
+            projectId: projectId.flatMap { UUID(uuidString: $0) },
             sshProfileId: parsedSSHProfileId,
             sshTunnelMode: resolvedTunnelMode,
             credentialMode: resolvedCredentialMode,

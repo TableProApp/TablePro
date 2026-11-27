@@ -100,7 +100,8 @@ enum IOSConnectionExportService {
                     settings: portableSettings(for: connection, keepingLocalCredentials: true),
                     groupId: connection.groupId,
                     tagIds: connection.tagIds,
-                    credentials: includeCredentials ? credentials(of: connection, in: appState.secureStore) : nil
+                    credentials: includeCredentials ? credentials(of: connection, in: appState.secureStore) : nil,
+                    projectId: connection.projectId
                 )
             },
             groups: appState.groups.map {
@@ -109,7 +110,8 @@ enum IOSConnectionExportService {
                     name: $0.name,
                     color: portableColor($0.color),
                     iconName: LibrarySymbolCatalog.normalizedName($0.iconName),
-                    parentId: $0.parentId
+                    parentId: $0.parentId,
+                    projectId: $0.projectId
                 )
             },
             tags: appState.tags.map {
@@ -126,6 +128,14 @@ enum IOSConnectionExportService {
                     keyword: $0.keyword,
                     folderId: $0.folderId,
                     connectionId: $0.connectionId
+                )
+            },
+            projects: appState.projects.map {
+                BundleExportInput.Project(
+                    id: $0.id,
+                    name: $0.name,
+                    color: portableColor($0.color),
+                    iconName: LibrarySymbolCatalog.normalizedName($0.iconName)
                 )
             }
         )

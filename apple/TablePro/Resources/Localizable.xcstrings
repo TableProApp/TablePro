@@ -18577,6 +18577,9 @@
     "A larger binary value stays on the server until you open, copy or export it. Applies to tables with a primary key." : {
 
     },
+    "A larger text, JSON or binary value stays on the server until you open, copy or export it. The grid shows the start of a text value. Applies to tables with a primary key." : {
+
+    },
     "A link you chose Always Allow for connects without asking again. Only connections on this Mac can be trusted." : {
       "localizations" : {
         "fr" : {
@@ -19200,6 +19203,15 @@
           }
         }
       }
+    },
+    "A project named “%@” already exists." : {
+
+    },
+    "A project needs a name." : {
+
+    },
+    "A project shows only its own connections in the list, in search and in history." : {
+
     },
     "A publish to the team library is still running. Try again when it finishes." : {
 
@@ -22661,6 +22673,9 @@
           }
         }
       }
+    },
+    "Add a connection, or move one here from All Connections." : {
+
     },
     "Add a filter row below this one" : {
 
@@ -33112,6 +33127,18 @@
         }
       }
     },
+    "Ask the DBA to check the LOCAL_LISTENER and REMOTE_LISTENER settings, which may point the listeners at each other." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Ask the DBA whether the listener can name an address clients reach, or connect to that address directly." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Ask the DBA whether the service is registered with the listener at the redirect target below." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Ask the DBA which encryption and checksum algorithms the server requires. The driver supports AES with a SHA-2 checksum." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -43500,6 +43527,10 @@
           }
         }
       }
+    },
+    "Check that this device can resolve and reach the redirect target below. RAC node addresses often resolve only on the server's network." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Check the certificate paths in the connection's SSL settings." : {
       "extractionState" : "manual",
@@ -73274,6 +73305,9 @@
         }
       }
     },
+    "Delete Project…" : {
+
+    },
     "DELETE ran. DynamoDB reports whether an item was deleted only with RETURNING ALL OLD *." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -84054,6 +84088,10 @@
     "Enter the file's path on the server." : {
 
     },
+    "Enter the host and port of the redirect target below as this connection's host and port, and keep the tunnel." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enter the Key Passphrase in the connection's SSL/TLS settings." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -93449,6 +93487,10 @@
           }
         }
       }
+    },
+    "File an issue with your Oracle version and how the listener is set up." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "File an issue with your Oracle version and the details below so the driver can add support." : {
       "extractionState" : "manual",
@@ -111971,6 +112013,9 @@
     "Its connection is not imported." : {
 
     },
+    "Its connections are kept and move to All Connections." : {
+
+    },
     "Its definition is written in %1$@'s own SQL, which %2$@ does not parse." : {
       "localizations" : {
         "fr" : {
@@ -115184,6 +115229,9 @@
           }
         }
       }
+    },
+    "Large Value Limit" : {
+
     },
     "Larger tables show an estimated count, which avoids a slow COUNT(*)." : {
       "localizations" : {
@@ -120382,6 +120430,10 @@
     "LISTEN registrations" : {
 
     },
+    "Listener Redirect Not Followed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Listens on all interfaces (0.0.0.0), reachable from your local network." : {
       "localizations" : {
         "fr" : {
@@ -123086,6 +123138,9 @@
           }
         }
       }
+    },
+    "Manage Projects…" : {
+
     },
     "Manage Shared Links…" : {
       "localizations" : {
@@ -129136,6 +129191,9 @@
         }
       }
     },
+    "Move to Project" : {
+
+    },
     "Move to TablePro Sync" : {
 
     },
@@ -131699,6 +131757,15 @@
     "New Profile…" : {
 
     },
+    "New Project" : {
+
+    },
+    "New Project %d" : {
+
+    },
+    "New Project…" : {
+
+    },
     "New Query" : {
       "localizations" : {
         "fr" : {
@@ -132963,6 +133030,10 @@
     "No analyze recorded in the server's statistics, and this user cannot read the table's statistics to confirm it." : {
 
     },
+    "no answer within %lld seconds" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "No approved connections. A connection a client may reach without asking again appears here." : {
       "localizations" : {
         "fr" : {
@@ -133781,6 +133852,9 @@
           }
         }
       }
+    },
+    "No Connections in %@" : {
+
     },
     "No connections match “%@”" : {
       "localizations" : {
@@ -137385,6 +137459,9 @@
           }
         }
       }
+    },
+    "No results in %@" : {
+
     },
     "No Results Yet" : {
       "localizations" : {
@@ -148960,6 +149037,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Or connect without the tunnel if this device reaches the redirect target directly." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "ORA-12516 there can mean that listener tried to redirect the connection again. Ask the DBA to check the listener settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Oracle" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -159218,6 +159303,9 @@
         }
       }
     },
+    "Project" : {
+
+    },
     "Project %@ has no Bigtable instance." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -159266,6 +159354,12 @@
           }
         }
       }
+    },
+    "Project name" : {
+
+    },
+    "Projects" : {
+
     },
     "Prompt at Connect" : {
       "extractionState" : "manual",
@@ -165742,6 +165836,10 @@
           }
         }
       }
+    },
+    "Redirect target" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Redis" : {
       "extractionState" : "stale",
@@ -182977,6 +183075,9 @@
         }
       }
     },
+    "Search All Connections" : {
+
+    },
     "Search All Rows" : {
       "localizations" : {
         "fr" : {
@@ -187663,6 +187764,10 @@
           }
         }
       }
+    },
+    "Set an SSL mode in the connection's SSL settings so it connects over TCPS." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Set as Active" : {
       "localizations" : {
@@ -203424,6 +203529,9 @@
         }
       }
     },
+    "Switch Project" : {
+
+    },
     "switch schema" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -211623,6 +211731,9 @@
         }
       }
     },
+    "That project no longer exists." : {
+
+    },
     "That result is no longer open. Choose another one." : {
 
     },
@@ -214468,7 +214579,13 @@
         }
       }
     },
+    "The connections and groups of this project could not be saved. Nothing was changed." : {
+
+    },
     "The connections could not be saved." : {
+
+    },
+    "The connections in this group could not be saved. Nothing was changed." : {
 
     },
     "the copy failed its integrity check: %@" : {
@@ -216499,6 +216616,10 @@
         }
       }
     },
+    "the host name could not be resolved" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The icon and color mark this connection in the connection list and its window." : {
 
     },
@@ -218220,6 +218341,30 @@
         }
       }
     },
+    "The Oracle listener redirected the connection to %@, which could not be reached." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %@, which expects TLS. Set an SSL mode for this connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %@, which the tunnel does not forward. Enter that host and port as this connection's host and port so the tunnel reaches them." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %1$@, and the listener there refused it. %2$@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %1$@, which could not be reached (%2$@)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to an address TablePro could not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The Oracle listener refused the connection (ORA-%ld)." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -218303,6 +218448,14 @@
           }
         }
       }
+    },
+    "The Oracle listeners redirected the connection too many times." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listeners redirected the connection too many times. The last address was %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The Oracle server accepted the connection but stopped answering during the login." : {
       "extractionState" : "manual",
@@ -220457,6 +220610,9 @@
         }
       }
     },
+    "The saved projects could not be read. Nothing was changed." : {
+
+    },
     "The saved queries could not be read. Nothing was exported." : {
 
     },
@@ -221139,6 +221295,10 @@
     },
     "The server refused a change. The changes before it were saved." : {
 
+    },
+    "The server refused the connection. Check the host and port, and that the Oracle listener is running." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server refused the change. Try again." : {
 
@@ -225794,6 +225954,9 @@
           }
         }
       }
+    },
+    "This connection is in another project. Switch to that project or to All Connections in TablePro to reach it." : {
+
     },
     "This connection is not available." : {
       "localizations" : {

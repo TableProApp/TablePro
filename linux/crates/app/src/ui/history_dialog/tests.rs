@@ -9,14 +9,20 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_storage::query_history::{NewEntry, Outcome};
-use tablepro_storage::{ConnectionStore, QueryHistory, SavedConnection, SavedQueryDatabase, StoragePaths};
+use tablepro_storage::{
+    ConnectionProject, ConnectionStore, QueryHistory, SavedConnection, SavedQueryDatabase, StoragePaths,
+};
 use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::*;
 use crate::runtime::AppRuntime;
 use crate::services::history_preferences::HistoryPreferences;
-use crate::test_support::{assert_access_keys, descendants, drain_main_context, test_runtime, wait_until};
+use crate::services::saved_connection_list::SavedConnectionList;
+use crate::test_support::{
+    assert_access_keys, descendants, detached_list, drain_main_context, project_named, show_projects, test_runtime,
+    wait_until,
+};
 use crate::ui::file_reveal::RecordingRevealer;
 
 /// Long enough that a loaded machine cannot decide the outcome; a
@@ -31,6 +37,8 @@ pub(super) struct Harness {
     pub connections: ConnectionStore,
     pub revealer: Rc<RecordingRevealer>,
     pub window: adw::Window,
+    // The list whose scope a dialog follows; All Connections until a test shows a project.
+    pub saved: Rc<SavedConnectionList>,
     _root: tempfile::TempDir,
 }
 
@@ -65,6 +73,7 @@ impl Harness {
             connections,
             revealer: Rc::new(revealer),
             window,
+            saved: detached_list(root.path()),
             _root: root,
         }
     }
@@ -116,6 +125,7 @@ impl Harness {
                 last_opened_at: None,
                 color: None,
                 group_id: None,
+                project_id: None,
                 order: 0,
                 tags: Vec::new(),
                 icon: None,
@@ -136,6 +146,7 @@ impl Harness {
             history: self.service.clone(),
             connections: self.connections.clone(),
             preferred_connection,
+            saved: self.saved.clone(),
             revealer: self.revealer.clone(),
             tasks: self.runtime.tasks(),
         })
@@ -907,6 +918,171 @@ fn unpinned_row_past_the_pages_read_comes_back_with_its_page() {
     distinct.dedup();
     assert_eq!(distinct.len(), shown.len(), "a row is shown twice");
     assert_eq!(shown.last().map(String::as_str), Some("SELECT 0"));
+}
+
+fn in_project(harness: &Harness, name: &str, connections: &[Uuid]) {
+    let project = project_named(name);
+    show_projects(&harness.saved, &[(&project, connections)]);
+    harness.saved.set_active_project(Some(project.id));
+}
+
+#[gtk4::test]
+fn a_project_lists_only_its_connections_and_their_queries() {
+    let harness = Harness::new();
+    let (acme, side, deleted) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    harness.record_on("SELECT acme", acme, "Acme db");
+    harness.record_on("SELECT side", side, "Side db");
+    harness.record_on("SELECT gone", deleted, "Deleted db");
+    in_project(&harness, "Acme", &[acme]);
+
+    let dialog = harness.dialog();
+
+    wait_until(WAIT, || entries(&dialog) == ["SELECT acme"]).expect("the project's queries");
+    assert_eq!(filter_labels(&dialog), ["All in Acme", "Acme db"]);
+    connection_drop_down(&dialog).set_selected(1);
+    wait_until(WAIT, || entries(&dialog) == ["SELECT acme"]).expect("the connection's queries");
+}
+
+#[gtk4::test]
+fn all_connections_also_lists_the_queries_of_a_deleted_connection() {
+    let harness = Harness::new();
+    let (saved, deleted) = (Uuid::new_v4(), Uuid::new_v4());
+    harness.record_on("SELECT kept", saved, "Warehouse");
+    harness.record_on("SELECT gone", deleted, "Deleted db");
+    harness.save_connection(saved, "Warehouse");
+
+    let dialog = harness.dialog();
+
+    wait_until(WAIT, || entries(&dialog).len() == 2).expect("every query");
+    assert_eq!(filter_labels(&dialog), ["All Connections", "Deleted db", "Warehouse"]);
+}
+
+#[gtk4::test]
+fn a_window_on_a_connection_of_another_project_still_lists_its_own_history() {
+    let harness = Harness::new();
+    let (acme, side) = (Uuid::new_v4(), Uuid::new_v4());
+    harness.record_on("SELECT acme", acme, "Acme db");
+    harness.record_on("SELECT side", side, "Side db");
+    in_project(&harness, "Acme", &[acme]);
+
+    let dialog = harness.dialog_for(Some(side));
+
+    wait_until(WAIT, || entries(&dialog) == ["SELECT side"]).expect("the window's own queries");
+    assert_eq!(filter_labels(&dialog), ["All in Acme", "Acme db", "Side db"]);
+    assert_eq!(connection_drop_down(&dialog).selected(), 2);
+}
+
+#[gtk4::test]
+fn a_project_with_no_history_shows_the_empty_page_and_a_switch_lists_every_query() {
+    let harness = Harness::new();
+    harness.record_on("SELECT acme", Uuid::new_v4(), "Acme db");
+    harness.record_on("SELECT side", Uuid::new_v4(), "Side db");
+    in_project(&harness, "Empty", &[]);
+
+    let dialog = harness.dialog();
+
+    let imp = dialog.imp();
+    wait_until(WAIT, || imp.stack.visible_child_name().as_deref() == Some("empty")).expect("the empty page");
+    assert!(entries(&dialog).is_empty(), "an empty project listed another's queries");
+    assert_eq!(filter_labels(&dialog), ["All in Empty"]);
+
+    harness.saved.set_active_project(None);
+    wait_until(WAIT, || entries(&dialog).len() == 2).expect("every connection's queries");
+    assert_eq!(filter_labels(&dialog), ["All Connections", "Acme db", "Side db"]);
+}
+
+// Acme db in Acme and Side db in Side, a query on each, and a dialog on Acme.
+fn two_projects(harness: &Harness) -> (ConnectionProject, ConnectionProject, Uuid, Uuid, HistoryDialog) {
+    let (acme_db, side_db) = (Uuid::new_v4(), Uuid::new_v4());
+    harness.record_on("SELECT acme", acme_db, "Acme db");
+    harness.record_on("SELECT side", side_db, "Side db");
+    let (acme, side) = (project_named("Acme"), project_named("Side"));
+    show_projects(&harness.saved, &[(&acme, &[acme_db]), (&side, &[side_db])]);
+    harness.saved.set_active_project(Some(acme.id));
+    let dialog = harness.dialog();
+    wait_until(WAIT, || entries(&dialog) == ["SELECT acme"]).expect("Acme's queries");
+    (acme, side, acme_db, side_db, dialog)
+}
+
+#[gtk4::test]
+fn a_switch_made_elsewhere_reads_the_filter_and_the_page_again() {
+    let harness = Harness::new();
+    let (_acme, side, _, _, dialog) = two_projects(&harness);
+    assert_eq!(filter_labels(&dialog), ["All in Acme", "Acme db"]);
+
+    harness.saved.set_active_project(Some(side.id));
+
+    wait_until(WAIT, || entries(&dialog) == ["SELECT side"]).expect("Side's queries");
+    wait_until(WAIT, || filter_labels(&dialog) == ["All in Side", "Side db"]).expect("Side's connections");
+}
+
+#[gtk4::test]
+fn a_switch_takes_the_filter_off_a_connection_the_new_project_lacks() {
+    let harness = Harness::new();
+    let (_acme, side, _, _, dialog) = two_projects(&harness);
+    connection_drop_down(&dialog).set_selected(1);
+    wait_until(WAIT, || dialog.imp().query.borrow().connection.is_some()).expect("the filter on Acme db");
+
+    harness.saved.set_active_project(Some(side.id));
+
+    wait_until(WAIT, || entries(&dialog) == ["SELECT side"]).expect("Side's queries");
+    assert_eq!(connection_drop_down(&dialog).selected(), 0);
+}
+
+#[gtk4::test]
+fn a_connection_moved_between_projects_takes_its_history_along() {
+    let harness = Harness::new();
+    let (acme, side, acme_db, side_db, dialog) = two_projects(&harness);
+
+    show_projects(&harness.saved, &[(&acme, &[acme_db, side_db]), (&side, &[])]);
+
+    wait_until(WAIT, || entries(&dialog).len() == 2).expect("the moved connection's queries");
+    wait_until(WAIT, || filter_labels(&dialog) == ["All in Acme", "Acme db", "Side db"]).expect("its filter choice");
+    show_projects(&harness.saved, &[(&acme, &[]), (&side, &[acme_db, side_db])]);
+    wait_until(WAIT, || entries(&dialog).is_empty()).expect("a project left with nothing");
+}
+
+#[gtk4::test]
+fn a_page_read_before_a_switch_is_dropped() {
+    let harness = Harness::new();
+    let (_acme, side, _, side_db, dialog) = two_projects(&harness);
+    let imp = dialog.imp();
+    let old = imp.paging.borrow_mut().start_refresh();
+
+    harness.saved.set_active_project(Some(side.id));
+
+    assert!(!imp.paging.borrow().is_current(old), "the switch started no read");
+    assert_eq!(
+        imp.query.borrow().connections,
+        Some(vec![side_db]),
+        "the next page would be read with the old project's connections"
+    );
+    dialog.first_page_arrived(
+        old,
+        Ok(Ok(HistoryPage {
+            entries: Vec::new(),
+            next: None,
+        })),
+    );
+    assert_eq!(entries(&dialog), ["SELECT acme"], "a late page was applied");
+    wait_until(WAIT, || entries(&dialog) == ["SELECT side"]).expect("Side's queries");
+}
+
+#[gtk4::test]
+fn an_edit_that_leaves_the_scope_alone_starts_no_read() {
+    let harness = Harness::new();
+    let (acme, side, acme_db, side_db, dialog) = two_projects(&harness);
+    let generation = dialog.imp().paging.borrow_mut().start_refresh();
+
+    show_projects(
+        &harness.saved,
+        &[(&acme, &[acme_db]), (&side, &[side_db, Uuid::new_v4()])],
+    );
+
+    assert!(
+        dialog.imp().paging.borrow().is_current(generation),
+        "a change in another project read the page again"
+    );
 }
 
 #[gtk4::test]

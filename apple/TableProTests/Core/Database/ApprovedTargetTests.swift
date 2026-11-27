@@ -99,14 +99,32 @@ private final class OpenedFilePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "cylinder"
     static let defaultPort = 0
 
-    private static let nextFile = OSAllocatedUnfairLock<String?>(initialState: nil)
+    private struct Dials {
+        var next: String?
+        var afterNext: String??
+    }
+
+    private static let dials = OSAllocatedUnfairLock(initialState: Dials(next: nil, afterNext: nil))
 
     static func opens(_ file: String?) {
-        nextFile.withLock { $0 = file }
+        dials.withLock { $0 = Dials(next: file, afterNext: nil) }
+    }
+
+    // The session's dial opens `first` and every later one `later`, so a pooled connection dialed in the background
+    // right after login already reads the moved path.
+    static func opens(_ first: String?, thenEveryLaterDial later: String?) {
+        dials.withLock { $0 = Dials(next: first, afterNext: .some(later)) }
     }
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
-        OpenedFileDriver(opened: Self.nextFile.withLock { $0 })
+        let file = Self.dials.withLock { dials -> String? in
+            let file = dials.next
+            if let later = dials.afterNext {
+                dials = Dials(next: later, afterNext: nil)
+            }
+            return file
+        }
+        return OpenedFileDriver(opened: file)
     }
 
     override required init() {
@@ -941,13 +959,12 @@ struct ApprovedTargetTests {
             defer { DatabaseManager.shared.removeSession(for: connection.id) }
             let bridge = DatabaseAccessBridge()
 
-            OpenedFilePlugin.opens("b.sqlite")
+            OpenedFilePlugin.opens("b.sqlite", thenEveryLaterDial: reported)
             try await DatabaseManager.shared.ensureConnected(connection)
             let scope = try await bridge.resolveScope(connectionId: connection.id, database: nil, schema: nil)
             let operation = try await ApprovedOperationFixture.approve(
                 [], scope: scope, databaseType: .sqlite, kind: .readQuery
             )
-            OpenedFilePlugin.opens(reported)
             let error = await #expect(throws: DatabaseAccessError.self) {
                 _ = try await bridge.countRows(operation, table: "orders", filters: [], logicMode: .and, exact: true)
             }

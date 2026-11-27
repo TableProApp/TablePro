@@ -42,14 +42,16 @@ enum BundleViolation: Equatable, Sendable {
         credentialProfiles: [BundleCredentialProfile],
         credentials: [BundleRef: ExportableCredentials],
         queryFolders: [BundleQueryFolder],
-        savedQueries: [BundleSavedQuery]
+        savedQueries: [BundleSavedQuery],
+        projects: [BundleProject] = []
     ) -> BundleViolation? {
         let refLists = [
             connections.map(\.ref),
             groups.map(\.ref),
             credentialProfiles.map(\.ref),
             queryFolders.map(\.ref),
-            savedQueries.map(\.ref)
+            savedQueries.map(\.ref),
+            projects.map(\.ref)
         ]
         for refs in refLists {
             if let violation = identityViolation(refs) { return violation }
@@ -62,14 +64,17 @@ enum BundleViolation: Equatable, Sendable {
         let groupRefs = Set(groups.map(\.ref))
         let profileRefs = Set(credentialProfiles.map(\.ref))
         let folderRefs = Set(queryFolders.map(\.ref))
+        let projectRefs = Set(projects.map(\.ref))
 
         var links: [(ref: BundleRef?, referrer: BundleRef, targets: Set<BundleRef>)] = []
         for connection in connections {
             links.append((connection.groupRef, connection.ref, groupRefs))
             links.append((connection.credentialProfileRef, connection.ref, profileRefs))
+            links.append((connection.projectRef, connection.ref, projectRefs))
         }
         for group in groups {
             links.append((group.parentRef, group.ref, groupRefs))
+            links.append((group.projectRef, group.ref, projectRefs))
         }
         for folder in queryFolders {
             links.append((folder.parentRef, folder.ref, folderRefs))

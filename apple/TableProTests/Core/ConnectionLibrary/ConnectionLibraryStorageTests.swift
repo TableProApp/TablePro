@@ -118,7 +118,7 @@ struct ConnectionLibraryStorageTests {
             storage.addConnection(connection)
         }
 
-        #expect(storage.moveConnections([c.id], toGroup: nil, before: a.id, validGroupIds: []))
+        #expect(storage.moveConnections([c.id], toGroup: nil, before: a.id, groups: []))
 
         let order = LibrarySorting.sorted(storage.loadConnections(), mode: .manual).map(\.id)
         #expect(order == [c.id, a.id, b.id])
@@ -134,7 +134,7 @@ struct ConnectionLibraryStorageTests {
         let groupId = UUID()
         #expect(storage.mutateConnections(ids: [moving.id]) { $0.groupId = groupId })
 
-        #expect(storage.moveConnections([moving.id], toGroup: nil, before: nil, validGroupIds: [groupId]))
+        #expect(storage.moveConnections([moving.id], toGroup: nil, before: nil, groups: [ConnectionGroup(id: groupId, name: "Group")]))
 
         let stored = storage.loadConnection(id: moving.id)
         #expect(stored?.groupId == nil)

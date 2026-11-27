@@ -35,6 +35,15 @@ internal final class TabPersistenceCoordinator: ObservableObject {
 
     nonisolated(unsafe) private static var shared: [UUID: TabPersistenceCoordinator] = [:]
 
+    // What the last save that went out was built from; nil until one did.
+    struct PersistenceFingerprint: Equatable {
+        let generations: [UUID: UInt64]
+        let database: String?
+        let schema: String?
+    }
+
+    var savedFingerprint: PersistenceFingerprint?
+
     /// One per connection, however many windows host it.
     ///
     /// The saved tab set is the connection's, not the window's, so two windows on one connection
@@ -67,6 +76,7 @@ internal final class TabPersistenceCoordinator: ObservableObject {
     // window later opened on content alone, which skips the restore, would write its one tab over the saved set.
     internal func endSession() {
         hasObservedTabs = false
+        savedFingerprint = nil
     }
 
     // MARK: - Save
@@ -75,9 +85,10 @@ internal final class TabPersistenceCoordinator: ObservableObject {
     /// disk. A workspace that has not bootstrapped yet, a connection still waiting on its driver,
     /// and a window torn down during quit all present a tab list that says nothing about what the
     /// user wants kept. Only `clearForUserClosedAllTabs()` removes state.
-    internal func saveNow(tabs: [QueryTab], selectedTabId: UUID?) {
+    @discardableResult
+    internal func saveNow(tabs: [QueryTab], selectedTabId: UUID?) -> Bool {
         guard let payload = writablePayload(tabs: tabs, selectedTabId: selectedTabId, path: "saveNow") else {
-            return
+            return false
         }
         scheduleSave(
             tabs: payload.tabs,
@@ -85,11 +96,13 @@ internal final class TabPersistenceCoordinator: ObservableObject {
             lastActiveDatabase: payload.database,
             lastActiveSchema: payload.schema
         )
+        return true
     }
 
-    internal func saveNowSync(tabs: [QueryTab], selectedTabId: UUID?) {
+    @discardableResult
+    internal func saveNowSync(tabs: [QueryTab], selectedTabId: UUID?) -> Bool {
         guard let payload = writablePayload(tabs: tabs, selectedTabId: selectedTabId, path: "saveNowSync") else {
-            return
+            return false
         }
         saveTask?.cancel()
         saveTask = nil
@@ -100,6 +113,7 @@ internal final class TabPersistenceCoordinator: ObservableObject {
             lastActiveDatabase: payload.database,
             lastActiveSchema: payload.schema
         )
+        return true
     }
 
     /// The one gate every save passes. Writing a partial list over a full saved set is how tabs
@@ -157,6 +171,7 @@ internal final class TabPersistenceCoordinator: ObservableObject {
         }
         saveTask?.cancel()
         saveTask = nil
+        savedFingerprint = nil
         let connId = connectionId
         Self.logger.debug("[persist] clearing saved state, user closed all tabs connId=\(connId, privacy: .public)")
         TabDiskActor.clearSync(connectionId: connId)

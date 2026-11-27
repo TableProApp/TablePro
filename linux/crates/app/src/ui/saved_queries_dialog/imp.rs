@@ -11,6 +11,7 @@ use libadwaita::subclass::prelude::*;
 
 use super::DialogParts;
 use super::saved_query_listing::SearchSnapshot;
+use crate::services::saved_connection_list::ScopeObserverId;
 
 #[derive(Default, gtk::CompositeTemplate)]
 #[template(resource = "/app/tablepro/TablePro/ui/saved-queries-dialog.ui")]
@@ -37,6 +38,15 @@ pub struct SavedQueriesDialog {
     pub(super) load_generation: Cell<u64>,
     // Once a read has landed, a failed one keeps the list on screen.
     pub(super) listed: Cell<bool>,
+    pub(super) scope_observer: Cell<Option<ScopeObserverId>>,
+}
+
+impl SavedQueriesDialog {
+    pub(super) fn unfollow_scope(&self) {
+        if let (Some(parts), Some(observer)) = (self.parts.get(), self.scope_observer.take()) {
+            parts.saved.disconnect_scope_changed(observer);
+        }
+    }
 }
 
 #[glib::object_subclass]
@@ -56,6 +66,7 @@ impl ObjectSubclass for SavedQueriesDialog {
 
 impl ObjectImpl for SavedQueriesDialog {
     fn dispose(&self) {
+        self.unfollow_scope();
         self.changes.take();
     }
 

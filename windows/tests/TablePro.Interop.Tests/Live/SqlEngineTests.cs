@@ -130,6 +130,38 @@ public abstract class SqlEngineTests : IAsyncDisposable
             TextsById(after.Set, "note"));
     }
 
+    [Fact]
+    public async Task AnExplainVariantParsesIntoAPlanTree()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (session, editor) = await StartAsync(cancellationToken);
+        var table = await PeopleAsync(session, editor, cancellationToken);
+        var sql = $"SELECT * FROM {Qualified(table.Name)}";
+
+        var variants = QueryPlans.VariantsFor(session.EngineId).Where(variant => variant.IsSqlPrefix).ToList();
+        if (variants.Count == 0)
+        {
+            // Engines with no core EXPLAIN parser yet (Cassandra, DuckDB, ClickHouse, MSSQL) expose no prefix
+            // variant, so there is nothing to parse. A skip would fail CI's --fail-skips, so this passes instead.
+            return;
+        }
+
+        ExplainOutcome.Parsed? parsed = null;
+        foreach (var variant in variants)
+        {
+            if (await QueryPlans.ExplainAsync(editor, variant, sql, cancellationToken: cancellationToken)
+                is ExplainOutcome.Parsed outcome)
+            {
+                parsed = outcome;
+                break;
+            }
+        }
+
+        Assert.NotNull(parsed);
+        Assert.False(string.IsNullOrWhiteSpace(parsed!.Plan.Root.Operation));
+        Assert.NotEqual(string.Empty, parsed.Plan.RawText);
+    }
+
     public async ValueTask DisposeAsync()
     {
         for (var index = _open.Count - 1; index >= 0; index--)

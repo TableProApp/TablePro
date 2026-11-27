@@ -26,7 +26,8 @@ struct ConnectionFormEditsMergeTests {
     }
 
     private static let carriedOver: Set<String> = [
-        "id", "aiAlwaysAllowedTools", "sortOrder", "isSample", "isFavorite", "passwordSource", "sshRoute", "origin"
+        "id", "aiAlwaysAllowedTools", "sortOrder", "isSample", "isFavorite", "passwordSource", "sshRoute", "origin",
+        "projectId"
     ]
 
     private static let pluginKey = "pluginOption"

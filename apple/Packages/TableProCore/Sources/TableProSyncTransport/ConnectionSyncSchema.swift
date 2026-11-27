@@ -31,6 +31,7 @@ public enum ConnectionSyncField: String, SyncSchemaField {
     case sshProfileId
     case sshRouteJson
     case isFavorite
+    case projectId
     case modifiedAtLocal
     case schemaVersion
 
@@ -48,4 +49,6 @@ public extension ConnectionSyncField {
     // In each app's readable content, so the first pull on this build fetches everything once and
     // reads the routes an older build cached without reading them.
     static let sshRouteContentKind = "\(SyncRecordType.connection.rawValue)/\(Self.sshRouteJson.rawValue).v1"
+    // The same refetch for the project a connection is in, which another device may have written first.
+    static let projectContentKind = "\(SyncRecordType.connection.rawValue)/\(Self.projectId.rawValue).v1"
 }

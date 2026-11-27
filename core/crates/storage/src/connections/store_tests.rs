@@ -45,6 +45,7 @@ fn plain(name: &str) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
@@ -215,7 +216,7 @@ fn unknown_keys_survive_a_rewrite_at_every_level() {
         "connections": [{
             "id": id, "name": "n", "driver_id": "postgres", "host": "h", "port": 5432, "database": "d",
             "username": "u", "tls": {"mode": "disable"}, "safe_mode": "off", "external_access": "read_only",
-            "ai_policy": "ask", "project_id": "CBCAF15E-97D4-4B75-8D5D-01D586CADC97",
+            "ai_policy": "ask", "project_id": "CBCAF15E-97D4-4B75-8D5D-01D586CADC97", "workspace_id": "w1",
             "ssh_route": {"version": 1, "publisher": id, "basis": "b", "hops": [],
                 "target": {"alias": "a", "host": "h", "port": 22, "username": "u"}, "signed_by": "newer"},
             "origin": "shared_vault"
@@ -232,7 +233,9 @@ fn unknown_keys_survive_a_rewrite_at_every_level() {
 
     let entry = &raw["connections"][0];
     assert_eq!(entry["name"], "renamed");
-    assert_eq!(entry["project_id"], "CBCAF15E-97D4-4B75-8D5D-01D586CADC97");
+    assert_eq!(entry["workspace_id"], "w1");
+    // A known key now, kept as stored though no project holds it, in the form a write gives a UUID.
+    assert_eq!(entry["project_id"], "cbcaf15e-97d4-4b75-8d5d-01d586cadc97");
     assert_eq!(entry["ssh_route"]["signed_by"], "newer");
     assert_eq!(entry["origin"], "shared_vault");
     assert_eq!(raw["ssh_profiles"][0]["totp_mode"], "prompt_at_connect");
@@ -607,11 +610,40 @@ fn every_group_write_tells_the_journal() {
         .expect("move");
     assert_eq!(journal.take(), vec![vec![RecordKind::Connection]]);
     store
-        .move_connections_to_group_named_blocking(&[other.id], None, name("Lab"))
+        .move_connections_to_group_named_blocking(&[other.id], None, None, name("Lab"))
         .expect("file");
     store.move_groups_blocking(&[group.id], None, None).expect("reorder");
     store.delete_group_blocking(group.id).expect("ungroup");
     assert_eq!(journal.take(), vec![both(), vec![RecordKind::Group], both()]);
+}
+
+#[test]
+fn every_project_write_tells_the_journal_and_a_move_names_the_connection() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, journal) = journaled(&root);
+    let connection = plain("a");
+    store.upsert_blocking(connection.clone()).expect("upsert");
+    journal.take();
+    let name = |text: &str| crate::ConnectionProjectName::new(text).expect("a project name");
+
+    let acme = store
+        .create_project_blocking(crate::ConnectionProject::new(name("Acme")))
+        .expect("project");
+    store
+        .rename_project_blocking(acme.id, name("Acme Corp"))
+        .expect("rename");
+    assert_eq!(journal.take(), vec![vec![RecordKind::ConnectionProject]; 2]);
+
+    store
+        .move_connections_to_project_blocking(&[connection.id], Some(acme.id))
+        .expect("move");
+    assert_eq!(journal.take(), vec![vec![RecordKind::Connection]]);
+
+    store.delete_project_blocking(acme.id).expect("delete");
+    assert_eq!(
+        journal.take(),
+        vec![vec![RecordKind::Connection, RecordKind::ConnectionProject]]
+    );
 }
 
 #[test]
@@ -645,6 +677,7 @@ fn every_profile_import_and_restore_write_tells_the_journal() {
         connection: plain("c"),
         group_path: Vec::new(),
         replaces: None,
+        project_id: None,
     };
     store.add_imported_blocking(&list, vec![imported]).expect("imported");
     let mut file: serde_json::Value = serde_json::from_slice(&store.export_blocking().expect("export")).expect("json");
@@ -792,6 +825,7 @@ fn library_as_another_app_holds_it() -> LibraryWrite {
         order: 9,
         color: None,
         icon: None,
+        project_id: None,
     };
     let preset = ConnectionTag {
         is_preset: true,
@@ -818,6 +852,7 @@ fn library_as_another_app_holds_it() -> LibraryWrite {
         connections: vec![first, second],
         groups: vec![blank],
         tags: vec![preset, long],
+        projects: Vec::new(),
         removing: Vec::new(),
     }
 }
@@ -836,6 +871,7 @@ fn a_library_write_keeps_every_id_and_value_as_given() {
             groups: list.groups.to_vec(),
             tags: list.tags.to_vec(),
             favorites: list.favorites.to_vec(),
+            projects: Vec::new(),
             removing: Vec::new(),
         }
     };
@@ -926,6 +962,44 @@ fn a_library_write_refuses_an_id_named_twice_and_writes_nothing() {
 }
 
 #[test]
+fn a_library_write_holds_its_projects_and_the_project_each_member_names() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let acme = crate::ConnectionProject::new(crate::ConnectionProjectName::new("Acme").expect("a project name"));
+    let mut library = library_as_another_app_holds_it();
+    library.projects = vec![acme.clone(), acme.clone()];
+
+    let repeated = replace(&store, library.clone());
+    assert!(
+        matches!(repeated, Err(StorageError::RepeatedId { id }) if id == acme.id),
+        "{repeated:?}"
+    );
+
+    library.projects = vec![acme.clone()];
+    library.connections[0].group_id = None;
+    library.connections[0].project_id = Some(acme.id);
+    replace(&store, library.clone()).expect("write");
+    let list = store.list_blocking().expect("list");
+    assert_eq!(
+        list.projects.iter().map(|project| project.id).collect::<Vec<_>>(),
+        [acme.id]
+    );
+    assert_eq!(list.connections[0].project_id, Some(acme.id));
+    assert_eq!(list.membership().of_connection(&list.connections[0]), Some(acme.id));
+
+    library.projects = Vec::new();
+    replace(&store, library).expect("write");
+    let list = store.list_blocking().expect("list");
+    assert!(list.projects.is_empty());
+    assert_eq!(
+        list.connections[0].project_id,
+        Some(acme.id),
+        "kept as written, read as no project"
+    );
+    assert_eq!(list.membership().of_connection(&list.connections[0]), None);
+}
+
+#[test]
 fn a_library_write_keeps_a_connection_this_build_cannot_read_unless_it_names_it() {
     let root = TempDir::new().expect("tempdir");
     let (store, held) = seeded_with_unreadable(&root, false);
@@ -998,6 +1072,7 @@ fn an_edit_keeps_a_group_that_has_not_arrived_and_an_orphan_group_reorders_at_th
         order: 0,
         color: None,
         icon: None,
+        project_id: None,
     };
     library.groups.push(orphan.clone());
     replace(&store, library.clone()).expect("write");
@@ -1032,6 +1107,7 @@ fn stored_group(name: &str, parent_id: Option<Uuid>) -> ConnectionGroup {
         order: 0,
         color: None,
         icon: None,
+        project_id: None,
     }
 }
 
@@ -1167,6 +1243,7 @@ fn a_library_read_and_write_give_the_digest_of_the_bytes_on_disk() {
                 groups: read.list.groups.to_vec(),
                 tags: read.list.tags.to_vec(),
                 favorites: read.list.favorites.to_vec(),
+                projects: Vec::new(),
                 removing: Vec::new(),
             }
         )

@@ -78,6 +78,7 @@ impl Conversation {
             system: self.system.clone(),
             messages,
             max_tokens,
+            tools: Vec::new(),
         }
     }
 }

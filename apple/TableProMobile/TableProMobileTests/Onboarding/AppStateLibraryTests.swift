@@ -642,12 +642,14 @@ struct AppStateLibraryTests {
         var renamed = original
         renamed.name = "Renamed"
 
-        try FileManager.default.removeItem(at: fixture.coreConnectionsFile)
-        try FileManager.default.createDirectory(at: fixture.coreConnectionsFile, withIntermediateDirectories: false)
+        // A folder that takes no new file fails the write and keeps the file, so the next write still answers for it.
+        let coreDirectory = fixture.coreConnectionsFile.deletingLastPathComponent().path
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: coreDirectory)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: coreDirectory) }
         #expect(!state.applySyncedConnections([renamed]))
         #expect(!state.applySyncedConnections([renamed]))
 
-        try FileManager.default.removeItem(at: fixture.coreConnectionsFile)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: coreDirectory)
         #expect(state.applySyncedConnections([renamed]))
         let reloaded = try JSONDecoder().decode([DatabaseConnection].self, from: Data(contentsOf: fixture.connectionsFile))
         #expect(reloaded.map(\.name) == ["Renamed"])

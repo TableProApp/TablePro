@@ -33,6 +33,8 @@ struct AppServices {
     let syncJournal: SyncHostJournal
     let welcomeRouter: WelcomeRouter
     let telemetry: Telemetry
+    // Defaulted, so a fixture that never touches projects builds without one.
+    var projectStorage: ProjectStorage = .shared
 
     static let live = AppServices(
         appEvents: .shared,

@@ -42,9 +42,15 @@ nonisolated enum ConnectionLibraryEditing {
     static func adding(
         _ connection: DatabaseConnection,
         to connections: [DatabaseConnection],
-        validGroupIds: Set<UUID>
+        groups: [ConnectionGroup]
     ) -> ConnectionLibraryChange {
+        let validGroupIds = Set(groups.map(\.id))
         var placed = connection
+        placed.projectId = LibraryProjectNormalizer.connectionProjectId(
+            connection.projectId,
+            groupId: connection.groupId,
+            groups: groups
+        )
         placed.sortOrder = nextSortOrder(
             in: connections,
             groupId: effectiveGroupId(of: connection, validGroupIds: validGroupIds),
@@ -56,16 +62,31 @@ nonisolated enum ConnectionLibraryEditing {
     static func mutatingConnection(
         _ id: UUID,
         in connections: [DatabaseConnection],
-        validGroupIds: Set<UUID>,
+        groups: [ConnectionGroup],
         _ mutate: (inout DatabaseConnection) -> Void
     ) -> ConnectionLibraryChange? {
         guard let index = connections.firstIndex(where: { $0.id == id }) else { return nil }
+        let validGroupIds = Set(groups.map(\.id))
         let stored = connections[index]
         var updated = stored
         mutate(&updated)
         updated.id = id
         let targetGroup = effectiveGroupId(of: updated, validGroupIds: validGroupIds)
-        if effectiveGroupId(of: stored, validGroupIds: validGroupIds) != targetGroup {
+        let changesGroup = effectiveGroupId(of: stored, validGroupIds: validGroupIds) != targetGroup
+        // An edit that names no project keeps the one the connection was in when it leaves its group.
+        if changesGroup, updated.projectId == stored.projectId {
+            updated.projectId = LibraryProjectNormalizer
+                .movingConnections([id], toGroup: targetGroup, connections: connections, groups: groups)
+                .connectionProjectId(id, current: stored.projectId)
+        }
+        if updated != stored {
+            updated.projectId = LibraryProjectNormalizer.connectionProjectId(
+                updated.projectId,
+                groupId: updated.groupId,
+                groups: groups
+            )
+        }
+        if changesGroup {
             updated.sortOrder = nextSortOrder(
                 in: connections.filter { $0.id != id },
                 groupId: targetGroup,
@@ -85,8 +106,9 @@ nonisolated enum ConnectionLibraryEditing {
         toGroup groupId: UUID?,
         before: UUID? = nil,
         in connections: [DatabaseConnection],
-        validGroupIds: Set<UUID>
+        groups: [ConnectionGroup]
     ) -> ConnectionLibraryChange {
+        let validGroupIds = Set(groups.map(\.id))
         let existing = Set(connections.map(\.id))
         var seen: Set<UUID> = []
         let moving = ids.filter { existing.contains($0) && seen.insert($0).inserted }
@@ -109,9 +131,16 @@ nonisolated enum ConnectionLibraryEditing {
             ranks = Dictionary(uniqueKeysWithValues: moving.enumerated().map { ($0.element, start + $0.offset) })
         }
 
+        let projects = LibraryProjectNormalizer.movingConnections(
+            moving,
+            toGroup: groupId,
+            connections: connections,
+            groups: groups
+        )
         return applying(to: connections) { connection in
             if movingSet.contains(connection.id) {
                 connection.groupId = groupId
+                connection.projectId = projects.connectionProjectId(connection.id, current: connection.projectId)
             }
             if let rank = ranks[connection.id] {
                 connection.sortOrder = rank
@@ -159,6 +188,7 @@ nonisolated enum ConnectionLibraryEditing {
         in connections: [DatabaseConnection],
         validGroupIds: Set<UUID>
     ) -> (change: ConnectionLibraryChange, copy: DatabaseConnection) {
+        // The copy keeps the source's group and project.
         var copy = source
         copy.id = newId
         copy.name = name
@@ -195,6 +225,11 @@ nonisolated enum ConnectionLibraryEditing {
         let graph = LibraryGroupGraph(groups: groups)
         guard graph.canPlace(group.id, under: group.parentId) else { return nil }
         var placed = group
+        placed.projectId = LibraryProjectNormalizer.groupProjectId(
+            group.projectId,
+            parentId: group.parentId,
+            groups: groups
+        )
         placed.sortOrder = LibraryOrdering.nextSortOrder(
             after: groups.filter { $0.parentId == group.parentId }.map(\.sortOrder)
         )
@@ -213,11 +248,22 @@ nonisolated enum ConnectionLibraryEditing {
         updated.id = id
         if updated.parentId != stored.parentId {
             guard LibraryGroupGraph(groups: groups).canPlace(id, under: updated.parentId) else { return nil }
+            // A subgroup moved to the top level stays in the project of the group it left.
+            if updated.projectId == stored.projectId {
+                updated.projectId = LibraryProjectNormalizer
+                    .movingGroups([id], toParent: updated.parentId, groups: groups)
+                    .groupProjectId(id, current: stored.projectId)
+            }
             updated.sortOrder = LibraryOrdering.nextSortOrder(
                 after: groups.filter { $0.parentId == updated.parentId && $0.id != id }.map(\.sortOrder)
             )
         }
         guard updated != stored else { return (groups, false) }
+        updated.projectId = LibraryProjectNormalizer.groupProjectId(
+            updated.projectId,
+            parentId: updated.parentId,
+            groups: groups
+        )
         var result = groups
         result[index] = updated
         return (result, true)
@@ -260,20 +306,26 @@ nonisolated enum ConnectionLibraryEditing {
         let graph = LibraryGroupGraph(groups: groups)
         let removed = graph.descendantIds(of: groupId).union([groupId])
         let remainingGroups = groups.filter { !removed.contains($0.id) }
-        let remainingGroupIds = Set(remainingGroups.map(\.id))
         let orphaned = connections.filter { connection in
             connection.groupId.map(removed.contains) ?? false
         }
-        let placed = moving(
-            orphaned.map(\.id),
-            toGroup: nil,
-            in: connections,
-            validGroupIds: remainingGroupIds
-        )
+        // Read before the groups go: what they held stays in the project of its top-level group.
+        let projects = LibraryProjectNormalizer.deletingGroups(removed, connections: connections, groups: groups)
+        let stamped = connections.map { connection -> DatabaseConnection in
+            var updated = connection
+            updated.projectId = projects.connectionProjectId(connection.id, current: connection.projectId)
+            return updated
+        }
+        let keptGroups = remainingGroups.map { group -> ConnectionGroup in
+            var updated = group
+            updated.projectId = projects.groupProjectId(group.id, current: group.projectId)
+            return updated
+        }
+        let placed = moving(orphaned.map(\.id), toGroup: nil, in: stamped, groups: keptGroups)
         return GroupLibraryChange(
-            groups: remainingGroups,
+            groups: keptGroups,
             connections: placed.connections,
-            changedGroupIds: [],
+            changedGroupIds: zip(remainingGroups, keptGroups).filter { $0 != $1 }.map(\.0.id),
             removedGroupIds: groups.map(\.id).filter(removed.contains),
             changedConnectionIds: placed.changedConnectionIds
         )

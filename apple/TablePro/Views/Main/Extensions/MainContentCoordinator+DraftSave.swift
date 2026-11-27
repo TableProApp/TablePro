@@ -6,11 +6,10 @@
 import Foundation
 
 extension MainContentCoordinator {
-    static let periodicSaveInterval: Duration = .seconds(30)
     static let draftSaveDebounce: Duration = .seconds(1)
 
-    // Typing changes no tab identity, so without this a scratch query lives only in memory until the 30s timer or quit flush.
-    // Any window may save: `saveAggregated` writes every window's tabs for the connection.
+    // Every write to what a tab save reads lands here through `QueryTabManager.notePersistedStateChange`, so nothing
+    // wakes while nothing changes. Any window may save: `saveAggregated` writes every window's tabs for the connection.
     func scheduleDraftSave(editedTab tabId: UUID? = nil) {
         guard !Self.isAppTerminating, !isTearingDown else { return }
         if let tabId { draftSaveTabIds.insert(tabId) }
@@ -20,19 +19,7 @@ extension MainContentCoordinator {
             try? await clock.sleep(for: Self.draftSaveDebounce)
             guard let self, !Task.isCancelled, !Self.isAppTerminating, !self.isTearingDown else { return }
             self.recordIdleVersions()
-            self.persistence.saveAggregated()
-        }
-    }
-
-    func startPeriodicSave() {
-        guard periodicSaveTask == nil else { return }
-        periodicSaveTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.periodicSaveInterval, tolerance: .seconds(10))
-                guard let self, !Task.isCancelled, !Self.isAppTerminating, !self.isTearingDown else { return }
-                guard self.isFirstCoordinatorForConnection() else { continue }
-                self.persistence.saveAggregated()
-            }
+            self.persistence.saveAggregatedIfChanged()
         }
     }
 
@@ -40,11 +27,6 @@ extension MainContentCoordinator {
         activeCoordinators.values
             .first { $0.connectionId == connectionId && $0.tabManager.selectedTabId != nil }?
             .tabManager.selectedTabId
-    }
-
-    private func isFirstCoordinatorForConnection() -> Bool {
-        Self.activeCoordinators.values
-            .first { $0.connectionId == self.connectionId } === self
     }
 
     private func recordIdleVersions() {

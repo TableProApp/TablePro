@@ -339,7 +339,7 @@ struct ConnectedView: View {
     }
 
     private var importConnectionChoice: ImportConnectionChoice {
-        ImportConnectionChoice(connections: appState.connections.filter { !MacOnlyConnection.isMacOnly($0) }) { id, url in
+        ImportConnectionChoice { id, url in
             dataImportMove = PendingDataImport(connectionId: id, fileURL: url)
         }
     }

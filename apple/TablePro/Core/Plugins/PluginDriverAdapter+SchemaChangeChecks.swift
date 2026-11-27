@@ -7,6 +7,7 @@ import Foundation
 import TableProPluginKit
 
 internal extension PluginDriverAdapter {
+    @concurrent
     func reviewSchemaChange(
         table: String,
         schema: String?,
@@ -15,6 +16,7 @@ internal extension PluginDriverAdapter {
         try await pluginDriver.reviewSchemaChange(table: table, schema: schema, operations: operations)
     }
 
+    @concurrent
     func schemaChangeRefusalBeforeWriting(
         table: String,
         schema: String?,
@@ -29,6 +31,7 @@ internal extension PluginDriverAdapter {
         )
     }
 
+    @concurrent
     func schemaChangeShortfallAfterWriting(
         table: String,
         schema: String?,

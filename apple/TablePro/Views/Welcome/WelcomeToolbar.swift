@@ -8,6 +8,7 @@ import Combine
 import TableProConnectionLibrary
 
 extension NSToolbarItem.Identifier {
+    static let welcomeProject = NSToolbarItem.Identifier("welcome-toolbar-project")
     static let welcomeNewConnection = NSToolbarItem.Identifier("welcome-toolbar-new-connection")
     static let welcomeNewGroup = NSToolbarItem.Identifier("welcome-toolbar-new-group")
     static let welcomeViewOptions = NSToolbarItem.Identifier("welcome-toolbar-view-options")
@@ -24,6 +25,12 @@ internal final class WelcomeToolbarController: NSObject, NSToolbarDelegate, NSSe
     private weak var newConnectionItem: NSToolbarItem?
     private weak var viewOptionsItem: NSMenuToolbarItem?
     private(set) weak var searchItem: NSSearchToolbarItem?
+    private(set) weak var projectButton: NSPopUpButton?
+    private(set) lazy var projectSwitcher = ProjectPopUpController(actions: ProjectPopUpActions(
+        select: { [weak self] in self?.viewModel.selectProject($0) },
+        newProject: { [weak self] in self?.viewModel.requestNewProject() },
+        manageProjects: { [weak self] in self?.viewModel.requestManageProjects() }
+    ))
     private(set) var viewOptionsSymbol = ToolbarSymbols.filter()
     // `suggestionsDelegate` is weak.
     private var tagSuggestions: AnyObject?
@@ -60,6 +67,13 @@ internal final class WelcomeToolbarController: NSObject, NSToolbarDelegate, NSSe
             }
             .store(in: &cancellables)
 
+        viewModel.$projects
+            .combineLatest(viewModel.$activeProjectId)
+            .sink { [weak self] projects, activeProjectId in
+                self?.showProjects(projects, activeProjectId: activeProjectId)
+            }
+            .store(in: &cancellables)
+
         viewModel.$tagFilter
             .map(\.isActive)
             .removeDuplicates()
@@ -81,7 +95,10 @@ internal final class WelcomeToolbarController: NSObject, NSToolbarDelegate, NSSe
     // MARK: - NSToolbarDelegate
 
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.sidebarTrackingSeparator, .welcomeNewConnection, .welcomeNewGroup, .welcomeViewOptions, .flexibleSpace, .welcomeSearch]
+        [
+            .sidebarTrackingSeparator, .welcomeProject, .welcomeNewConnection, .welcomeNewGroup, .welcomeViewOptions,
+            .flexibleSpace, .welcomeSearch
+        ]
     }
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -94,6 +111,8 @@ internal final class WelcomeToolbarController: NSObject, NSToolbarDelegate, NSSe
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
+        case .welcomeProject:
+            return makeProjectItem(itemIdentifier)
         case .welcomeNewConnection:
             let item = makeButton(
                 itemIdentifier,
@@ -139,6 +158,27 @@ internal final class WelcomeToolbarController: NSObject, NSToolbarDelegate, NSSe
         item.target = self
         item.action = action
         return item
+    }
+
+    private func makeProjectItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        let label = String(localized: "Project")
+        item.label = label
+        item.paletteLabel = label
+        item.toolTip = String(localized: "Switch Project")
+        let button = ProjectPopUpController.makeButton()
+        item.view = button
+        projectButton = button
+        showProjects(viewModel.projects, activeProjectId: viewModel.activeProjectId)
+        return item
+    }
+
+    private func showProjects(_ projects: [ConnectionProject], activeProjectId: UUID?) {
+        guard let projectButton else { return }
+        projectSwitcher.apply(
+            ProjectMenuModel.entries(projects: projects, activeProjectId: activeProjectId),
+            to: projectButton
+        )
     }
 
     private func makeViewOptionsItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem {

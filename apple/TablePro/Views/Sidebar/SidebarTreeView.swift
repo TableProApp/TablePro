@@ -46,12 +46,13 @@ struct SidebarTreeView: View {
     }
 
     // The outline's own verdict, so the empty state and the rows never disagree.
-    private var visibleSchemas: [String] {
+    private func visibleSchemas(of schemas: [String]) -> [String] {
         guard !searchText.isEmpty else { return schemas }
         // The listing of the database the schemas were read from, which during a switch is the one being left.
         let listingMatches = schemaService.loadedScope(for: connectionId).flatMap {
             viewModel.schemaListingMatches(database: $0.database, searchText: searchText)
         }
+        let database = activeDatabase
         return schemas.filter { schema in
             DatabaseTreeFilter.hierarchicalSchemaSearchVerdict(
                 schema: schema,
@@ -62,7 +63,8 @@ struct SidebarTreeView: View {
                     connectionId: connectionId,
                     schema: schema,
                     searchText: searchText,
-                    database: activeDatabase
+                    database: database,
+                    filter: { viewModel.containerBuckets(database: database ?? "", schema: schema, source: $0) }
                 ),
                 listingMatches: listingMatches,
                 listingCoversSchema: !systemSchemas.contains(schema)
@@ -71,10 +73,11 @@ struct SidebarTreeView: View {
     }
 
     var body: some View {
+        let schemas = self.schemas
         Group {
             if schemas.isEmpty {
                 emptySchemasState
-            } else if !searchText.isEmpty && visibleSchemas.isEmpty {
+            } else if !searchText.isEmpty && visibleSchemas(of: schemas).isEmpty {
                 noMatchState
             } else {
                 VStack(spacing: 0) {

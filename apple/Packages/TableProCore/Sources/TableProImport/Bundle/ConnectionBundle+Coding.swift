@@ -3,7 +3,7 @@ import Foundation
 /// The settings keys and these link keys share one JSON object, so `ExportableConnection` must never declare them.
 extension BundleConnection: Codable {
     private enum LinkKeys: String, CodingKey {
-        case ref, groupRef, tagNames, credentialProfileRef
+        case ref, groupRef, tagNames, credentialProfileRef, projectRef
     }
 
     public init(from decoder: any Decoder) throws {
@@ -13,7 +13,8 @@ extension BundleConnection: Codable {
             settings: try ExportableConnection(from: decoder),
             groupRef: try container.decodeIfPresent(BundleRef.self, forKey: .groupRef),
             tagNames: try container.decodeIfPresent([String].self, forKey: .tagNames) ?? [],
-            credentialProfileRef: try container.decodeIfPresent(BundleRef.self, forKey: .credentialProfileRef)
+            credentialProfileRef: try container.decodeIfPresent(BundleRef.self, forKey: .credentialProfileRef),
+            projectRef: try container.decodeIfPresent(BundleRef.self, forKey: .projectRef)
         )
     }
 
@@ -26,6 +27,7 @@ extension BundleConnection: Codable {
             try container.encode(tagNames, forKey: .tagNames)
         }
         try container.encodeIfPresent(credentialProfileRef, forKey: .credentialProfileRef)
+        try container.encodeIfPresent(projectRef, forKey: .projectRef)
     }
 }
 
@@ -59,7 +61,7 @@ extension BundleCredentialProfile: Codable {
 
 enum ConnectionBundleKey: String, CodingKey {
     case formatVersion, exportedAt, appVersion, connections, groups, tags
-    case credentialProfiles, credentials, queryFolders, savedQueries
+    case credentialProfiles, credentials, queryFolders, savedQueries, projects
 }
 
 /// An older build decodes this with its own v1 types and then reports the version, so the header keys and
@@ -76,6 +78,7 @@ extension ConnectionBundle: Encodable {
         try container.encodeUnlessEmpty(credentialProfiles, forKey: .credentialProfiles)
         try container.encodeUnlessEmpty(queryFolders, forKey: .queryFolders)
         try container.encodeUnlessEmpty(savedQueries, forKey: .savedQueries)
+        try container.encodeUnlessEmpty(projects, forKey: .projects)
         if !credentials.isEmpty {
             let keyed = Dictionary(uniqueKeysWithValues: credentials.map { ($0.key.rawValue, $0.value) })
             try container.encode(keyed, forKey: .credentials)
@@ -93,6 +96,7 @@ struct ConnectionBundlePayload: Decodable {
     let credentials: [BundleRef: ExportableCredentials]
     let queryFolders: [BundleQueryFolder]
     let savedQueries: [BundleSavedQuery]
+    let projects: [BundleProject]
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: ConnectionBundleKey.self)
@@ -104,6 +108,7 @@ struct ConnectionBundlePayload: Decodable {
         credentialProfiles = try container.decodeIfPresent([BundleCredentialProfile].self, forKey: .credentialProfiles) ?? []
         queryFolders = try container.decodeIfPresent([BundleQueryFolder].self, forKey: .queryFolders) ?? []
         savedQueries = try container.decodeIfPresent([BundleSavedQuery].self, forKey: .savedQueries) ?? []
+        projects = try container.decodeIfPresent([BundleProject].self, forKey: .projects) ?? []
         let keyed = try container.decodeIfPresent([String: ExportableCredentials].self, forKey: .credentials) ?? [:]
         credentials = Dictionary(uniqueKeysWithValues: keyed.map { (BundleRef($0.key), $0.value) })
     }
@@ -118,7 +123,8 @@ struct ConnectionBundlePayload: Decodable {
             credentialProfiles: credentialProfiles,
             credentials: credentials,
             queryFolders: queryFolders,
-            savedQueries: savedQueries
+            savedQueries: savedQueries,
+            projects: projects
         )
     }
 }

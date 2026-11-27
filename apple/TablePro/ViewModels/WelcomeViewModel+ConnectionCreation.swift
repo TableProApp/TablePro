@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 import TableProImport
 
 extension WelcomeViewModel {
@@ -12,8 +13,9 @@ extension WelcomeViewModel {
         case .chooseDatabaseType(let payload):
             databaseTypeChooser = payload
         case .exportConnections:
-            guard !connections.isEmpty else { return }
-            exportConnections(connections)
+            let listed = scopedLibrary.connections
+            guard !listed.isEmpty else { return }
+            exportConnections(listed)
         case .importConnections:
             importConnectionsFromFile()
         case .importFromApp:
@@ -26,6 +28,10 @@ extension WelcomeViewModel {
             openProjectFolder()
         case .importHandoff(let handoff):
             handOff(handoff)
+        case .newProject:
+            activeSheet = .newProject
+        case .manageProjects:
+            activeSheet = .manageProjects
         }
     }
 

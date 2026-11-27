@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProImport
 import TableProSyncTransport
 
@@ -55,14 +56,21 @@ internal final class TagStorage {
         guard let image = connectionStorageProvider().library.current() else {
             Self.logger.error("The connection library could not be read; leaving the tags untouched")
             storeIsUnreadable = true
+            preserved = []
             return ConnectionTag.presets
         }
         storeIsUnreadable = false
         return image.tags
     }
 
-    /// A save that failed leaves the store holding the previous set, so a caller that goes on to
-    /// write related state must check the result.
+    // Loads first, so the answer does not depend on whether anything has read the store yet.
+    internal var unreadableTagIds: Set<UUID> {
+        _ = loadTags()
+        return Set(preserved.compactMap(\.id))
+    }
+
+    // False leaves the store holding the previous set. A save carrying the id of a record this build cannot read
+    // is refused. `removingUnreadable` drops such records by id, as a deletion another device made does.
     @discardableResult
     internal func saveTags(_ tags: [ConnectionTag]) -> Bool {
         let previous = loadTags()
@@ -115,6 +123,8 @@ internal final class TagStorage {
         var tags = loadTags()
         guard !storeIsUnreadable else { throw TagStorageError.storeUnreadable }
 
+        // The id of a record this build cannot read is taken, so its preset is not restored over it.
+        let takenIds = unreadableTagIds
         var ids: [String: UUID] = [:]
         var created = false
         for tag in wanted {
@@ -124,7 +134,8 @@ internal final class TagStorage {
                 continue
             }
             let restorablePreset = ConnectionTag.presets.first { preset in
-                Self.matchKey(preset.name) == key && !tags.contains { $0.id == preset.id }
+                Self.matchKey(preset.name) == key && !takenIds.contains(preset.id)
+                    && !tags.contains { $0.id == preset.id }
             }
             let added = restorablePreset ?? ConnectionTag(
                 name: tag.name.trimmingCharacters(in: .whitespacesAndNewlines),

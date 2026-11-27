@@ -23,7 +23,7 @@ pub use ai_error::AiError;
 pub use catalog::{
     Api, Catalog, CatalogError, CatalogModel, ModelCatalog, ProviderCatalog, REFRESH_URL, SCHEMA_VERSION,
 };
-pub use chat_request::{ChatMessage, ChatRequest, Role};
+pub use chat_request::{ChatMessage, ChatRequest, ContentBlock, Role, ToolSpec};
 pub use completion::clean_completion;
 pub use endpoint::Endpoint;
 pub use http_client::AiClient;

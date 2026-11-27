@@ -8,7 +8,10 @@ struct IdentifiableURL: Identifiable {
 }
 
 struct MobileConnectionExportSheet: View {
-    let connections: [DatabaseConnection]
+    // The active project's, read each time: a sync can move one out while the sheet is up.
+    private var connections: [DatabaseConnection] {
+        ConnectionListSelection.exportable(in: appState.scopedConnections)
+    }
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss

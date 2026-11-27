@@ -14,7 +14,7 @@ const TRIGRAM_LENGTH: usize = 3;
 pub struct HistoryQuery {
     terms: Vec<String>,
     pub connection: Option<Uuid>,
-    // Only runs of these connections; an empty list matches none.
+    // Only runs of these connections, a filter's or a project's: `None` is every connection, an empty list none.
     pub connections: Option<Vec<Uuid>>,
     // Only runs these started; an empty list matches none, and a run that names no source matches only None.
     pub sources: Option<Vec<RunSource>>,

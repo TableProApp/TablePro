@@ -50,7 +50,7 @@ struct AdvancedFacetView: View {
             AdvancedQueryTimeoutRow(row: row, store: store, generalSettings: store.services.appSettings.generalSlice)
         case .builtIn(.binaryInlineLimit):
             EditorOptionalNumberRow(
-                String(localized: "Binary Value Limit"),
+                String(localized: "Large Value Limit"),
                 value: store.binding(\.options.binaryInlineLimitKilobytes),
                 defaultValue: UnloadedValuePlan.defaultInlineByteLimit / 1_024,
                 range: DatabaseConnection.binaryInlineLimitKilobytesRange,

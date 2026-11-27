@@ -9,6 +9,44 @@ public sealed class StoreTests : IDisposable
     private string File(string name) => Path.Combine(_directory, name);
 
     [Fact]
+    public void TheActiveProjectIsKeptAndAFileWithoutOneShowsAllConnections()
+    {
+        var path = File("settings.json");
+        Assert.Null(new SettingsStore(path).Load().ActiveProjectId);
+        var project = Guid.NewGuid();
+
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { ActiveProjectId = project });
+
+        Assert.Equal(project, store.Load().ActiveProjectId);
+        Assert.Contains("\"activeProjectId\"", System.IO.File.ReadAllText(path), StringComparison.Ordinal);
+        store.Save(store.Load() with { ActiveProjectId = null });
+        Assert.Null(store.Load().ActiveProjectId);
+    }
+
+    [Fact]
+    public void ShortcutOverridesRoundTripAsAMapAndDropBadEntries()
+    {
+        var path = File("settings.json");
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings
+        {
+            ShortcutOverrides = new ShortcutOverrideMap
+            {
+                ["newTab"] = "ctrl+shift+j",
+                ["refresh"] = string.Empty,
+                ["addRow"] = "ctrl+alt+x",
+            },
+        });
+
+        Assert.Contains("\"shortcutOverrides\"", System.IO.File.ReadAllText(path), StringComparison.Ordinal);
+        var loaded = store.Load().ShortcutOverrides;
+        Assert.Equal("ctrl+shift+j", loaded["newTab"]);
+        Assert.Equal(string.Empty, loaded["refresh"]);
+        Assert.False(loaded.ContainsKey("addRow"));
+    }
+
+    [Fact]
     public void SettingsComeBackAsSaved()
     {
         var store = new SettingsStore(File("settings.json"));

@@ -6,7 +6,7 @@ mod pg_typmod;
 mod table_definition;
 mod type_facts;
 
-pub(crate) use pg_column_row::{COLUMNS_SQL, COLUMNS_SQL_BEFORE_14, PgColumnRow};
+pub(crate) use pg_column_row::{COLUMNS_SQL, PgColumnRow};
 pub(crate) use table_definition::{
     PARENT_HOLDS_CHILD, PRIMARY_KEY_NAME_SQL, compares_alike_sql, inbound_foreign_key, inbound_foreign_keys_sql,
 };

@@ -9,6 +9,8 @@
           <object class="AdwToolbarView">
             <child type="top">
               <object class="AdwHeaderBar" id="header_bar">
+                <!-- The switcher names what the page lists, and with a title beside it the header no longer fits a 360 px window. -->
+                <property name="show-title">false</property>
                 <property name="title-widget">
                   <object class="AdwWindowTitle">
                     <property name="title" translatable="yes">TablePro</property>
@@ -18,6 +20,13 @@
                   <object class="GtkButton" id="new_connection_button">
                     <property name="icon-name">list-add-symbolic</property>
                     <property name="action-name">win.new-connection</property>
+                  </object>
+                </child>
+                <child type="start">
+                  <object class="GtkMenuButton" id="project_button">
+                    <property name="always-show-arrow">true</property>
+                    <property name="can-shrink">true</property>
+                    <property name="tooltip-text" translatable="yes">Switch Project</property>
                   </object>
                 </child>
                 <child type="end">

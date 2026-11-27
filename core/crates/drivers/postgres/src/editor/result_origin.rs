@@ -16,7 +16,7 @@ pub(super) const ROLLBACK_TO_SAVEPOINT: &str =
 
 // The open cursor holds a lock on the relation its statement read, so a relation of the same name
 // created since the DECLARE is not taken for it.
-const ORIGIN_SQL: &str = "\
+pub(crate) const ORIGIN_SQL: &str = "\
 SELECT n.nspname::text, c.relname::text, a.attname::text
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -25,7 +25,7 @@ WHERE c.oid = pg_catalog.to_regclass($1)
   AND c.relkind IN ('r', 'p')
   AND c.relpersistence IN ('p', 'u')
   AND n.nspname <> 'information_schema'
-  AND NOT pg_catalog.starts_with(n.nspname, 'pg_')
+  AND pg_catalog.left(n.nspname::text, 3) <> 'pg_'
   AND EXISTS (
       SELECT 1 FROM pg_catalog.pg_locks l
       WHERE l.locktype = 'relation' AND l.relation = c.oid AND l.pid = pg_catalog.pg_backend_pid()
