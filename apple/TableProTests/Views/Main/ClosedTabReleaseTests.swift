@@ -77,6 +77,9 @@ private final class RowsDriver: PluginDriverStub, @unchecked Sendable {
         self.rowCount = rowCount
     }
 
+    // The run path pins a MySQL tab to its database before it runs, and the PluginKit default refuses the switch.
+    func switchDatabase(to database: String) async throws {}
+
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
         PluginQueryResult(
             columns: ["id", "name"],
