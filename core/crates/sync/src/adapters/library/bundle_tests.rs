@@ -45,7 +45,7 @@ fn full() -> Value {
             "clientKeyPath": "",
         },
         "color": "Blue", "iconName": "server.rack", "safeModeLevel": "alertFull", "aiPolicy": "askEachTime",
-        "connectTimeoutSeconds": 30, "queryTimeoutSeconds": 120, "additionalFields": {"mysqlCharset": "utf8mb4"},
+        "connectTimeoutSeconds": 30, "queryTimeoutSeconds": 120, "additionalFields": {"bqLocation": "EU"},
         "redisDatabase": 3,
     })
 }
@@ -131,6 +131,26 @@ fn a_bundle_reads_as_the_mac_imports_one() {
     assert_eq!(saved.query_timeout_secs, Some(45));
     assert!(saved.details.additional_fields.is_empty());
     assert_eq!(read(&unknown_mode).tls.mode, tablepro_core::TlsMode::Require);
+}
+
+// A driver field this build does not know as one a file may carry neither goes out nor comes in: it may be a secret
+// or a command a newer build added.
+#[test]
+fn a_driver_field_no_file_may_carry_stays_out_both_ways() {
+    let mut bundle = plain();
+    bundle["additionalFields"] = json!({"bqLocation": "EU", "someNewToken": "abc"});
+
+    let saved = read(&bundle);
+    let mut held = saved.clone();
+    held.details
+        .additional_fields
+        .insert("someNewToken".to_owned(), "abc".to_owned());
+
+    assert!(!saved.details.additional_fields.contains_key("someNewToken"));
+    assert_eq!(
+        team_bundle(&held, None, DriverNames::Mac)["additionalFields"],
+        json!({"bqLocation": "EU"})
+    );
 }
 
 // Linux and Windows name the engine by the core's driver id; the bundle always carries the Mac's name.

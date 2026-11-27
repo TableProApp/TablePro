@@ -3,8 +3,14 @@
 // team copy one way. The bundle's values are the CloudKit record's, in the bundle's names, with the defaults left out:
 // no tunnel unless it is on, no TLS while it is off, and no TOTP, remote file or Safe Mode member at its default. A team
 // copy never carries startup commands, a tunnel command or Local only, and reads none: a teammate's copy runs nothing.
+// A driver field goes out and comes in only when this build knows it as one a file may carry
+// (`field_trust::portable_fields`), as the Mac's exporter keeps them: a field a newer build added may be a secret or a
+// command.
 
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
+
+use tablepro_storage::field_trust::portable_fields;
 use tablepro_storage::{DeviceOnly, SavedConnection, SshProfile};
 use uuid::Uuid;
 
@@ -122,22 +128,21 @@ pub fn team_bundle(saved: &SavedConnection, profile: Option<&SshProfile>, names:
     if let Some(level) = wire.get("safe_mode_level").filter(|level| *level != "silent") {
         out.insert("safeModeLevel".to_owned(), level.clone());
     }
-    let mut fields: Map<String, Value> = wire
+    // The connect timeout as the CloudKit record carries it, already checked to be in range.
+    let connect = wire
         .get("additional_fields")
         .and_then(Value::as_array)
-        .map(|entries| {
-            entries
-                .iter()
-                .filter_map(|entry| Some((text(entry, "id")?.to_owned(), entry.get("value")?.clone())))
-                .collect()
-        })
-        .unwrap_or_default();
-    if let Some(seconds) = fields
-        .remove(CONNECT_TIMEOUT)
-        .and_then(|raw| raw.as_str()?.parse::<i64>().ok())
-    {
+        .and_then(|entries| entries.iter().find(|entry| text(entry, "id") == Some(CONNECT_TIMEOUT)))
+        .and_then(|entry| text(entry, "value")?.parse::<i64>().ok());
+    if let Some(seconds) = connect {
         out.insert(CONNECT_TIMEOUT.to_owned(), Value::from(seconds));
     }
+    let mut fields: Map<String, Value> = portable_fields(&saved.details.additional_fields, true)
+        .into_iter()
+        .map(|(key, value)| (key, Value::from(value)))
+        .collect();
+    fields.remove(CONNECT_TIMEOUT);
+    fields.remove(QUERY_TIMEOUT);
     if let Some(seconds) = wire.get("query_timeout_seconds") {
         out.insert(QUERY_TIMEOUT.to_owned(), seconds.clone());
     }
@@ -205,11 +210,25 @@ pub fn team_connection(
         "safe_mode_level".to_owned(),
         bundle.get("safeModeLevel").cloned().unwrap_or(Value::Null),
     );
-    let mut fields: Map<String, Value> = bundle
+    let given: BTreeMap<String, String> = bundle
         .get("additionalFields")
         .and_then(Value::as_object)
-        .cloned()
+        .map(|fields| {
+            fields
+                .iter()
+                .filter_map(|(key, value)| Some((key.clone(), value.as_str()?.to_owned())))
+                .collect()
+        })
         .unwrap_or_default();
+    let timeouts = given
+        .iter()
+        .filter(|(key, _)| *key == CONNECT_TIMEOUT || *key == QUERY_TIMEOUT)
+        .map(|(key, value)| (key.clone(), value.clone()));
+    let mut fields: Map<String, Value> = portable_fields(&given, true)
+        .into_iter()
+        .chain(timeouts)
+        .map(|(key, value)| (key, Value::from(value)))
+        .collect();
     let legacy = |key: &str, fields: &mut Map<String, Value>| {
         fields.remove(key).and_then(|raw| raw.as_str()?.parse::<i64>().ok())
     };
