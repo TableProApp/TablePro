@@ -1111,7 +1111,7 @@ struct SyncProviderCoordinatorStatusTests {
         let categories = SyncProviderCoordinator.categories(settings)
 
         #expect(Set(categories.offKinds) == [
-            "group", "tag", "saved_query", "saved_query_folder", "ssh_profile", "credential_profile",
+            "group", "tag", "connection_project", "saved_query", "saved_query_folder",
         ])
         #expect(categories.passwords)
         #expect(!SyncProviderCoordinator.categories(settings.settingConnections(false)).passwords)
