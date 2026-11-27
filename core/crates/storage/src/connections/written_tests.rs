@@ -66,12 +66,16 @@ fn a_host_write_is_not_reported() {
     let store = reporting(&root);
 
     let written = store
-        .replace_library_blocking::<StorageError>(None, |_| {
-            Ok(LibraryWrite {
-                connections: vec![plain("the host's")],
-                ..LibraryWrite::default()
-            })
-        })
+        .replace_library_blocking::<StorageError>(
+            None,
+            |_| {
+                Ok(LibraryWrite {
+                    connections: vec![plain("the host's")],
+                    ..LibraryWrite::default()
+                })
+            },
+            |_| true,
+        )
         .expect("a host write");
     store
         .rebuild_library_blocking(

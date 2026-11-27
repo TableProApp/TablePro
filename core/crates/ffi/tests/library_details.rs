@@ -1153,7 +1153,7 @@ async fn the_core_s_own_library_writes_are_reported_once_and_the_host_s_are_not(
 
     let vouched = library.replace_library(mac_library(), None).await.unwrap();
     assert!(core.take_library_writes().await.unwrap().is_empty());
-    library.create_group("Core side".to_owned(), None).await.unwrap();
+    library.create_group("Core side".to_owned(), None, None).await.unwrap();
     let on_disk = sha256_hex(&std::fs::read(&file).unwrap());
     drop(library);
     drop(core);

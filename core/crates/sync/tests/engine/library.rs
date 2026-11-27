@@ -11,8 +11,8 @@ use tablepro_records::Kind;
 use tablepro_records::record_id::uuid_id;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTagName, CredentialProfile,
-    DatabaseEnvironment, FavouriteTable, SavedConnection, SavedQueryDatabase, SshProfile, StoragePaths, TableRef,
-    TableScope,
+    DatabaseEnvironment, FavouriteTable, LibraryWrite, SavedConnection, SavedQueryDatabase, SshProfile, StorageError,
+    StoragePaths, TableRef, TableScope,
 };
 use tablepro_sync::adapters::library;
 use tablepro_sync::api::control::SyncControl;
@@ -120,12 +120,29 @@ async fn seed(library: &Library) -> (Uuid, Uuid) {
         "id": Uuid::from_u128(7), "name": "edge", "host": "edge.example.com", "auth": {"kind": "agent"},
     }))
     .unwrap();
-    store.save_ssh_profile_blocking(profile).unwrap();
     let credentials: CredentialProfile = serde_json::from_value(json!({
         "id": Uuid::from_u128(8), "name": "ops", "username": "ops", "password": {"mode": "prompt"},
     }))
     .unwrap();
-    store.save_credential_profile_blocking(credentials).unwrap();
+    let over = store.read_library_blocking().unwrap().digest;
+    store
+        .replace_library_blocking(
+            over.as_deref(),
+            |list| {
+                Ok::<_, StorageError>(LibraryWrite {
+                    connections: list.connections.to_vec(),
+                    groups: list.groups.to_vec(),
+                    tags: list.tags.to_vec(),
+                    favorites: list.favorites.to_vec(),
+                    projects: list.projects.to_vec(),
+                    ssh_profiles: vec![profile],
+                    credential_profiles: vec![credentials],
+                    removing: Vec::new(),
+                })
+            },
+            |_| true,
+        )
+        .unwrap();
     let folders = library.history.table_folders();
     let folder = folders
         .create(
