@@ -123,6 +123,7 @@ struct SyncMoveSheet: View {
 
     private func review(_ plan: MovePlanInfo) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            // swiftlint:disable:next line_length
             Text("This Mac's data goes up to your TablePro account. Passwords, other secrets and query history are end-to-end encrypted; the server can read connections, saved queries and settings.")
                 .fixedSize(horizontal: false, vertical: true)
 
