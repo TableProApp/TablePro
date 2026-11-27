@@ -128,7 +128,7 @@ private struct WelcomeDeletionAlerts: ViewModifier {
                 deletionMessage
             }
             .alert(
-                String(localized: "Exclude from iCloud Sync?"),
+                excludeTitle,
                 isPresented: $vm.showExcludeFromSyncConfirmation
             ) {
                 Button(String(localized: "Exclude"), role: .destructive) {
@@ -138,8 +138,21 @@ private struct WelcomeDeletionAlerts: ViewModifier {
                     vm.connectionsToExcludeFromSync = []
                 }
             } message: {
-                Text("Saved passwords are removed from iCloud Keychain, and your other devices will need them entered again.")
+                Text(excludeMessage)
             }
+    }
+
+    private var excludeTitle: String {
+        vm.excludeFromSyncProvider == .tableproSync
+            ? String(localized: "Exclude from TablePro Sync?")
+            : String(localized: "Exclude from iCloud Sync?")
+    }
+
+    // On TablePro Sync each device keeps its passwords in its own items, so the other devices lose none.
+    private var excludeMessage: String {
+        vm.excludeFromSyncProvider == .tableproSync
+            ? String(localized: "It stays on this Mac and stops syncing to your other devices.")
+            : String(localized: "Saved passwords are removed from iCloud Keychain, and your other devices will need them entered again.")
     }
 
     @ViewBuilder

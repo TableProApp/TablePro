@@ -286,6 +286,7 @@ extension WelcomeViewModel {
     func requestExcludeFromSync(_ ids: [UUID]) {
         let targets = ids.compactMap { connectionsById[$0] }.filter(\.participatesInSync)
         guard !targets.isEmpty else { return }
+        excludeFromSyncProvider = services.appSettings.sync.provider
         connectionsToExcludeFromSync = targets
         showExcludeFromSyncConfirmation = true
     }
@@ -422,7 +423,7 @@ extension WelcomeViewModel {
             linkedFolderConnectionIds: Set(presentableLinkedConnections.map(\.id)),
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
-            isSyncEnabled: services.appSettings.sync.enabled,
+            syncProvider: services.appSettings.sync.provider,
             isCompareSyncEnabled: AppModuleSettings.shared.isEnabled(.compareSync),
             canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
             teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrary.shared.writableTeams : [],

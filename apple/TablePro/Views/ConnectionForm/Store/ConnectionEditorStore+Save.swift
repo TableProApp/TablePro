@@ -210,8 +210,9 @@ extension ConnectionEditorStore {
         return edited
     }
 
+    // Only on iCloud do the other devices read the passwords from iCloud Keychain; on TablePro Sync each keeps its own.
     var removesSyncedSecretsOnSave: Bool {
-        draft.options.localOnly && context.participatesInSync
+        draft.options.localOnly && context.participatesInSync && context.syncProvider == .iCloud
     }
 
     // MARK: - Secret I/O

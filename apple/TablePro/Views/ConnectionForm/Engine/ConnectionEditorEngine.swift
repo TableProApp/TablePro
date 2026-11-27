@@ -14,7 +14,7 @@ struct EditorContext: Equatable, Sendable {
     var originalType: DatabaseType?
     var savedName = ""
     var aiEnabled = false
-    var syncEnabled = false
+    var syncProvider: SyncProviderSetting = .off
     var participatesInSync = false
     var managedSafeModeMinimum: SafeModeLevel?
     var credentialProfiles: [CredentialProfile] = []

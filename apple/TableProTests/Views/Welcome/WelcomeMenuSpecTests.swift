@@ -17,7 +17,7 @@ struct WelcomeMenuSpecTests {
         disconnectable: Set<UUID> = [],
         reconnectable: Set<UUID> = [],
         linkedFolders: Set<UUID> = [],
-        isSyncEnabled: Bool = false,
+        syncProvider: SyncProviderSetting = .off,
         isCompareSyncEnabled: Bool = false,
         teamLibraryTeams: [TeamLibraryTeam] = [],
         hasTeamLibraryConflicts: Bool = false
@@ -48,7 +48,7 @@ struct WelcomeMenuSpecTests {
             linkedFolderConnectionIds: linkedFolders,
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
-            isSyncEnabled: isSyncEnabled,
+            syncProvider: syncProvider,
             isCompareSyncEnabled: isCompareSyncEnabled,
             canPublishToTeamCatalog: false,
             teamLibraryTeams: teamLibraryTeams,
@@ -146,12 +146,31 @@ struct WelcomeMenuSpecTests {
             rows: [.connection(connection.id, section: .connections)],
             connections: [connection],
             disconnectable: [connection.id],
-            isSyncEnabled: true
+            syncProvider: .iCloud
         ))
         let all = titles(sections).flatMap { $0 }
 
         #expect(all.contains("Disconnect"))
         #expect(all.contains("Exclude from iCloud Sync"))
+    }
+
+    @Test("Include and Exclude name the provider that syncs the connections")
+    func syncItemNamesTheProvider() {
+        let synced = DatabaseConnection(name: "Prod", type: .mysql)
+        var local = DatabaseConnection(name: "Scratch", type: .mysql)
+        local.localOnly = true
+        let item = { (connection: DatabaseConnection, provider: SyncProviderSetting) in
+            self.titles(WelcomeMenuSpec.sections(for: self.context(
+                rows: [.connection(connection.id, section: .connections)],
+                connections: [connection],
+                syncProvider: provider
+            ))).flatMap { $0 }.filter { $0.contains("Sync") }
+        }
+
+        #expect(item(synced, .tableproSync) == ["Exclude from TablePro Sync"])
+        #expect(item(local, .tableproSync) == ["Include in TablePro Sync"])
+        #expect(item(local, .iCloud) == ["Include in iCloud Sync"])
+        #expect(item(synced, .off).isEmpty)
     }
 
     @Test("A Favorites row names what Delete removes and offers removing the favorite")
