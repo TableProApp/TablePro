@@ -337,7 +337,12 @@ first row and on the server in milliseconds, all of which sync, and the
 fingerprint the app read its statement's shape as, which never leaves the
 device. Each is `NULL` where the app did not say, as for every older entry.
 `without_fingerprint` lists the entries a pull brought with none, and
-`set_fingerprints` stores the app's reading by rowid.
+`set_fingerprints` stores the app's reading by rowid. `fill_details` gives
+runs a host mirrored before it kept details what it learned since, by record
+id and in one commit: a field the row has none of takes the value given, one
+it has stays, and a run the store does not hold, a deleted one among them,
+gets no row. `entries_by_record_id` reads runs by record id in rowid order,
+leaving out ids the store does not hold.
 
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
@@ -398,7 +403,8 @@ can tell whether a re-pinned entry falls in the pages already read.
 - `clear_all` empties the history, pinned entries included.
 - `delete_records(record_ids)` is the person's own deletion as a host names
   it, and `delete_matching(&HistoryQuery)` deletes everything a filter
-  shows. `remove(record_ids)` is a host's removal of entries its own store
+  shows and returns the record ids that went, in rowid order.
+  `remove(record_ids)` is a host's removal of entries its own store
   let go, and a pull's deletion.
 - `delete_for_connection` removes one connection's entries, pinned ones
   included, for a connection deleted along with its history, then runs
