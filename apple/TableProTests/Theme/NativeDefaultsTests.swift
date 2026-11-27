@@ -211,9 +211,9 @@ struct NativeDefaultsTests {
         let expected: [ThemeSlot: String] = [
             .gridHeaderBackground: "#21222C",
             .gridHeaderText: "#F8F8F2",
-            .gridSelection: "#44475A",
+            .gridSelection: "#554A71",
             .gridSelectionText: "#F8F8F2",
-            .gridInactiveSelection: "#44475A80",
+            .gridInactiveSelection: "#3B3E52",
             .gridFocusBorder: "#BD93F9",
         ]
 

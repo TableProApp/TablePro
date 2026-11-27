@@ -75,17 +75,17 @@ extension TextSelectionManager {
     ///   - context: The context to draw in.
     private func drawSelectedRange(in rect: NSRect, for textSelection: TextSelection, context: CGContext) {
         context.saveGState()
-
-        // `unemphasizedSelectedTextBackgroundColor` is documented for a window that is not key OR a view without
-        // key focus, so both conditions gate the accent colour.
-        let isEmphasized = (textView?.isFirstResponder ?? false) && (textView?.window?.isKeyWindow ?? false)
-        let fillColor = isEmphasized
-        ? selectionBackgroundColor.safeCGColor
-        : NSColor.unemphasizedSelectedTextBackgroundColor.safeCGColor
-
-        context.setFillColor(fillColor)
-
+        context.setFillColor(selectedRangeFillColor.safeCGColor)
         context.fill(getFillRects(in: rect, for: textSelection))
         context.restoreGState()
+    }
+
+    // `unemphasizedSelectedTextBackgroundColor` is documented for a window that is not key OR a view without
+    // key focus, so both conditions gate the accent colour.
+    var selectedRangeFillColor: NSColor {
+        let hasFocus = (textView?.isFirstResponder ?? false) && (textView?.window?.isKeyWindow ?? false)
+        return drawsSelectionEmphasized || hasFocus
+            ? selectionBackgroundColor
+            : NSColor.unemphasizedSelectedTextBackgroundColor
     }
 }

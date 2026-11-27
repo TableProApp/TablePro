@@ -844,9 +844,13 @@ internal final class EditorTabTrackView: NSView {
     override internal var mouseDownCanMoveWindow: Bool { false }
 
     override internal func draw(_ dirtyRect: NSRect) {
-        let radius = bounds.height / 2
         let highContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-        let themed = EditorTabStripPalette.isOverThemedBackdrop(highContrast: highContrast)
+        let themed = EditorTabStripPalette.isOverThemedBackdrop(in: effectiveAppearance, highContrast: highContrast)
+        EditorTabStripPalette.drawing(self) { drawTrack(overThemedBackdrop: themed) }
+    }
+
+    private func drawTrack(overThemedBackdrop themed: Bool) {
+        let radius = bounds.height / 2
         EditorTabStripPalette.trackColor(overThemedBackdrop: themed).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
 

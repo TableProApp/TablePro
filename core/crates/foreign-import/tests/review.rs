@@ -25,8 +25,8 @@ use tablepro_foreign_import::{
 use tablepro_storage::saved_queries::NewSavedQuery;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionProject, ConnectionProjectName,
-    ConnectionStore, SavedConnection, SavedQueryDatabase, SavedSshAuth, SavedSshConfig, SshJumpHost,
-    StorageError, StoragePaths,
+    ConnectionStore, SavedConnection, SavedQueryDatabase, SavedSshAuth, SavedSshConfig, SshJumpHost, StorageError,
+    StoragePaths,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;

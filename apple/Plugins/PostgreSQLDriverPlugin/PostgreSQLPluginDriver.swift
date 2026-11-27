@@ -298,6 +298,15 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
+    func primaryKeyNamesOneRow(table: String, schema: String?) async throws -> Bool {
+        let resolvedSchema = schema ?? core.currentSchema
+        let result = try await catalogRead(
+            PostgreSQLSchemaQueries.inheritanceChildren(schema: resolvedSchema, table: table),
+            namesRelativeTo: resolvedSchema
+        )
+        return result.rows.isEmpty
+    }
+
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PluginPartitionInfo] {
         try await partitionRows(table: table, schema: schema).map { row in
             PluginPartitionInfo(

@@ -746,6 +746,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // Nil where the engine does not check, so its views stay read-only.
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing?
 
+    // False where a read of the table can return two rows with one primary key: a PostgreSQL inheritance parent reads
+    // its children's rows, which its own key does not cover. The default is true.
+    func primaryKeyNamesOneRow(table: String, schema: String?) async throws -> Bool
+
     // Nil where the engine has no sequences, which keeps the sequence commands off the menu.
     func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?
 
@@ -1600,6 +1604,8 @@ public extension PluginDatabaseDriver {
     }
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? { nil }
+
+    func primaryKeyNamesOneRow(table: String, schema: String?) async throws -> Bool { true }
 
     func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? { nil }
 

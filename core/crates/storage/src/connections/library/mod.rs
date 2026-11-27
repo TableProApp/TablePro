@@ -93,7 +93,12 @@ impl ConnectionStore {
             // Nothing written, so the file must still be the one it answers for.
             return Err(StorageError::LibraryChanged.into());
         }
-        self.settle_secrets(&mut state, delete)?;
+        // The write has landed, so a cleanup that cannot be written stays listed for the next write and the host still
+        // gets the landed write's digest. One that fails after its rename leaves bytes the host is not given, so its
+        // next write is refused as a change: bytes read back from the file are never vouched for.
+        if let Err(error) = self.settle_secrets(&mut state, delete) {
+            tracing::warn!(%error, "the secrets a library write took out stay listed for the next write");
+        }
         Ok(digest_of(&state))
     }
 
@@ -171,7 +176,8 @@ impl ConnectionStore {
             .collect();
         *document.secrets_to_delete = left;
         if document != **current {
-            self.commit(state, document)?;
+            // Part of the host's own write, whose digest goes back to it.
+            self.commit_as(state, document, Reported::ToCaller)?;
         }
         Ok(())
     }

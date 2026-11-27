@@ -49,6 +49,7 @@ public enum OracleDictionary {
     public static let allConsColumns = view("ALL_CONS_COLUMNS")
     public static let allIndexes = view("ALL_INDEXES")
     public static let allIndColumns = view("ALL_IND_COLUMNS")
+    public static let allIndExpressions = view("ALL_IND_EXPRESSIONS")
     public static let allUsers = view("ALL_USERS")
     public static let allPartTables = view("ALL_PART_TABLES")
     public static let allTabPartitions = view("ALL_TAB_PARTITIONS")

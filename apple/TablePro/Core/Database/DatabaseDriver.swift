@@ -427,6 +427,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing?
 
+    // Whether this table's key names one row of a read of it, which a page seek past an edge row relies on.
+    func primaryKeyNamesOneRow(inTable table: String, schema: String?) async throws -> Bool
+
     // MARK: - Table Options
 
     /// Nil where the engine has no table options.
@@ -1003,6 +1006,8 @@ extension DatabaseDriver {
     }
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? { nil }
+
+    func primaryKeyNamesOneRow(inTable table: String, schema: String?) async throws -> Bool { primaryKeyNamesOneRow }
 
     func fetchTableOptions(tableName: String, schema: String?) async throws -> TableOptions? { nil }
 

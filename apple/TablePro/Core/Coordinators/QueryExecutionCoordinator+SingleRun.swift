@@ -26,6 +26,8 @@ struct SingleRunRequest {
     var bypassRowLimit = false
     var anchor: StatementAnchor?
     var install: ResultInstall = .newResult
+    // Sent instead of `sql` with the key bound; `sql` is still what the result, history and a re-read keep.
+    var keyedPage: KeyedPageStatement?
 }
 
 extension QueryExecutionCoordinator {
@@ -74,7 +76,6 @@ extension QueryExecutionCoordinator {
         parent.traceExecutionStarted(traceToken, epoch: run.claim.epoch, isAutoLoad: isAutoLoad)
 
         let statement = resolveStatement(sql: sql, tabType: tab.tabType, bypassLimit: request.bypassRowLimit)
-        let rowCap = statement.rowCap
         let (tableName, isEditable) = parent.resolveTableEditability(tab: tab, sql: sql)
 
         let needsDefinition = parent.tabSessionRegistry.needsDefinition(tabId)
@@ -120,6 +121,15 @@ extension QueryExecutionCoordinator {
                 rereadsDefinition: needsDefinition, knownColumns: knownColumns
             )
 
+            let keyedPage = isTableTab
+                ? await parent.confirmedKeyedPage(request.keyedPage, table: tableName, scope: scope)
+                : nil
+            let sent = keyedPage.map { self.resolveStatement(sql: $0.sql, tabType: .table) } ?? statement
+            // The last page has no key, so it goes the way an offset page does.
+            let keyValues = keyedPage.flatMap { $0.keyValues.isEmpty ? nil : $0.keyValues }
+            // A keyed page read backward comes in reverse key order.
+            let reversesRows = keyedPage?.readsBackward == true
+
             let leaseTiming = traceToken == nil ? nil : TableLoadLeaseTiming()
             let fetchBeganAt = ContinuousClock.now
             do {
@@ -130,27 +140,27 @@ extension QueryExecutionCoordinator {
                         lease: run.lease
                     ) { [queryExecutor = parent.queryExecutor, manager = parent.services.databaseManager] driver in
                         leaseTiming?.noteQueryStarted()
-                        var fetched = try await held.running([statement.sql], on: driver) {
+                        var fetched = try await held.running([sent.sql], on: driver) {
                             // Before it runs, so a statement that fails or a connection lost under it is still noted.
-                            if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
+                            if !isAutoLoad { await manager.noteSessionStatements([sent.sql], ranOn: driver, scope: scope) }
                             return try await queryExecutor.executeQuery(
                                 driver: driver,
-                                sql: statement.sql,
-                                parameters: bound?.values,
-                                rowCap: rowCap,
+                                sql: sent.sql,
+                                parameters: bound?.values ?? keyValues?.map { $0 as Any? },
+                                rowCap: sent.rowCap,
                                 safeModeIsReadOnly: safeModeIsReadOnly,
                                 capturingOutputInto: isTableTab ? nil : failureOutput
                             )
                         }
                         let edits = isAutoLoad ? nil : await SucceededStatements.single(
-                            statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
+                            sent.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
                         )
                         fetched.foldUnloadedValues(unloadedLayout)
-                        return (fetched, edits)
+                        return (reversesRows ? fetched.reversingRows() : fetched, edits)
                     }
                 }
                 let fetchEndedAt = ContinuousClock.now
-                if !isAutoLoad { MainContentCoordinator.postStatementRan(statement.sql, on: conn, succeeded: tableEdits) }
+                if !isAutoLoad { MainContentCoordinator.postStatementRan(sent.sql, on: conn, succeeded: tableEdits) }
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
@@ -256,7 +266,7 @@ extension QueryExecutionCoordinator {
                 )
             } catch {
                 schemaTask?.cancel()
-                if !isAutoLoad { MainContentCoordinator.postStatementRan(statement.sql, on: conn) }
+                if !isAutoLoad { MainContentCoordinator.postStatementRan(sent.sql, on: conn) }
                 let judgesFailure = catalogCheck?.awaitsConfirmation == true
                     && !DatabaseCancellationDiagnosis.isCancellation(error) && !Task.isCancelled
                 let confirmedColumns = judgesFailure ? await parent.confirmedColumns(for: catalogCheck, from: confirmation) : nil

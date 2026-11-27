@@ -3,7 +3,7 @@ use std::path::Path;
 use secrecy::SecretString;
 use tempfile::TempDir;
 
-use super::super::store_tests::plain;
+use super::super::store_tests::{plain, ssh_profile};
 use super::*;
 use crate::StoragePaths;
 use crate::connections::{LibraryChange, LibraryWrite};
@@ -59,24 +59,43 @@ fn a_pull_reports_what_it_wrote_once() {
     assert!(store.take_written_blocking().expect("take again").is_empty());
 }
 
-// A host's own write returns its digest to the host, so it is not reported a second time.
+// A host's own write returns its digest to the host, so it is not reported a second time, nor is the write that
+// clears the secrets it took out.
 #[test]
 fn a_host_write_is_not_reported() {
     let root = TempDir::new().expect("tempdir");
     let store = reporting(&root);
+    let profile = ssh_profile();
+    let profile_id = profile.id;
 
-    let written = store
+    let with_profile = store
         .replace_library_blocking::<StorageError>(
             None,
             |_| {
                 Ok(LibraryWrite {
-                    connections: vec![plain("the host's")],
+                    ssh_profiles: vec![profile],
                     ..LibraryWrite::default()
                 })
             },
             |_| true,
         )
         .expect("a host write");
+    let mut deleted = Vec::new();
+    let written = store
+        .replace_library_blocking::<StorageError>(
+            with_profile.as_deref(),
+            |_| {
+                Ok(LibraryWrite {
+                    connections: vec![plain("the host's")],
+                    ..LibraryWrite::default()
+                })
+            },
+            |owner| {
+                deleted.push(owner.id);
+                true
+            },
+        )
+        .expect("a host write that takes the profile out");
     store
         .rebuild_library_blocking(
             LibraryWrite {
@@ -88,6 +107,7 @@ fn a_host_write_is_not_reported() {
         .expect("a rebuild");
 
     assert!(written.is_some());
+    assert_eq!(deleted, [profile_id]);
     assert!(store.take_written_blocking().expect("take").is_empty());
 }
 

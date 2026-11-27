@@ -25,7 +25,7 @@ use super::engines::ServiceEngine;
 use super::key_records::{
     account_arg, draft_arg, ik_arg, key_device_arg, notice_arg, request_arg, reset_arg, team_arg, team_text, typed_arg,
 };
-use super::names::Names;
+use super::names::{DeviceRows, Names};
 use super::service::SyncService;
 use crate::error::CoreError;
 use crate::runtime::on_runtime;
@@ -516,11 +516,17 @@ impl SyncService {
 
     // R' and the devices the rotation can keep.
     pub async fn begin_replace_recovery_key(&self, recovery_key: SecretString) -> Result<RotationDraftInfo, CoreError> {
-        self.on_keys(move |keys| async move {
-            let draft = keys.begin_replace(recovery_key).await?;
+        let account = self.names_account();
+        self.on_engine(move |engine| async move {
+            let draft = engine.keys.begin_replace(recovery_key).await?;
+            let rows = DeviceRows::read(account.as_ref(), engine.binding.as_ref()).await;
             Ok(RotationDraftInfo {
                 recovery: draft.recovery.into(),
-                devices: draft.devices.into_iter().map(ReviewedDeviceInfo::from).collect(),
+                devices: draft
+                    .devices
+                    .into_iter()
+                    .map(|reviewed| ReviewedDeviceInfo::from(rows.name_reviewed(reviewed)))
+                    .collect(),
             })
         })
         .await
@@ -638,9 +644,14 @@ impl SyncService {
     }
 
     pub async fn account_devices(&self) -> Result<Vec<AccountDeviceInfo>, CoreError> {
-        self.on_keys(move |keys| async move {
-            let devices = keys.account_devices().await?;
-            Ok(devices.into_iter().map(AccountDeviceInfo::from).collect())
+        let account = self.names_account();
+        self.on_engine(move |engine| async move {
+            let devices = engine.keys.account_devices().await?;
+            let rows = DeviceRows::read(account.as_ref(), engine.binding.as_ref()).await;
+            Ok(devices
+                .into_iter()
+                .map(|device| AccountDeviceInfo::from(rows.name(device)))
+                .collect())
         })
         .await
     }
@@ -660,9 +671,15 @@ impl SyncService {
         let lost = ids(&lost, key_device_arg)?;
         let account = self.names_account();
         self.on_engine(move |engine| async move {
-            let review = engine.keys.begin_removal(recovery_key, lost).await?;
+            let mut review = engine.keys.begin_removal(recovery_key, lost).await?;
             let teams: Vec<TeamId> = review.members.iter().map(|member| member.team).collect();
             let names = Names::read(account.as_ref(), engine.binding.as_ref(), &teams).await;
+            let rows = DeviceRows::read(account.as_ref(), engine.binding.as_ref()).await;
+            review.devices = review
+                .devices
+                .into_iter()
+                .map(|reviewed| rows.name_reviewed(reviewed))
+                .collect();
             Ok(removal_review_info(review, &names, engine.keys.account()))
         })
         .await

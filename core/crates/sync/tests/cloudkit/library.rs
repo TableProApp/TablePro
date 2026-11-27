@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 use tablepro_records::Kind;
+use tablepro_records::record_id::uuid_id;
 use tablepro_records::record_id::{favourite_database, favourite_table, table_folder_item};
-use tablepro_storage::{ConnectionStore, SavedQueryDatabase, StoragePaths};
+use tablepro_storage::{ConnectionProject, ConnectionProjectName, ConnectionStore, SavedQueryDatabase, StoragePaths};
 use tablepro_sync::adapters::approval::Queue;
 use tablepro_sync::adapters::library;
 use tablepro_sync::api::RecordAdapter;
@@ -281,4 +282,44 @@ async fn a_favourite_the_mac_keeps_under_its_alias_too_meets_both_records_and_it
     assert_eq!(pushed.queued, 0, "{pushed:?}");
     assert_eq!(held, 1);
     assert!(shelf.history.favourites().contents().await.unwrap().tables.is_empty());
+}
+
+// iCloud's Production holds neither the project type nor either member's field yet, so a project and the project a
+// group is filed in stay on the device: nothing goes up for them, and a group the Mac saves again keeps its project.
+#[tokio::test]
+async fn projects_stay_on_the_device_until_icloud_holds_them_and_a_pull_keeps_the_filing() {
+    let shelf = Shelf::new().await;
+    save_mac_library(&shelf.rig);
+    shelf.fetch().await;
+    shelf.take_everything().await;
+    shelf.fetch().await;
+    let project = shelf
+        .store
+        .create_project_blocking(ConnectionProject::new(ConnectionProjectName::new("Acme").unwrap()))
+        .unwrap();
+    let group = shelf.store.list_blocking().unwrap().groups[0].id;
+    shelf
+        .store
+        .move_groups_to_project_blocking(&[group], Some(project.id))
+        .unwrap();
+
+    let pushed = shelf.push().await;
+    shelf.rig.save_elsewhere(
+        Kind::Group,
+        B,
+        &json!({"name": "Work 2", "color": "None", "sort_order": 0, "schema_version": 1}),
+    );
+    shelf.fetch().await;
+    shelf.take_everything().await;
+
+    assert_eq!(pushed.queued, 0, "{pushed:?}");
+    assert!(
+        shelf
+            .rig
+            .zone_fields(Kind::ConnectionProject, &uuid_id(project.id))
+            .is_none()
+    );
+    let list = shelf.store.list_blocking().unwrap();
+    assert_eq!(list.groups[0].name.as_str(), "Work 2");
+    assert_eq!(list.effective_group_project(group), Some(project.id));
 }

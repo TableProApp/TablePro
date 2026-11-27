@@ -1065,6 +1065,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     func executeParameterizedQuery(
         _ query: String,
         parameters: [PluginCellValue],
+        kinds: [PluginColumnKind?]? = nil,
         rowCap: Int? = nil,
         byteLimit: Int? = nil
     ) async throws -> MariaDBPluginQueryResult {
@@ -1073,13 +1074,16 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap, byteLimit: byteLimit)
+            return try executeParameterizedQuerySync(
+                queryToRun, parameters: params, kinds: kinds, rowCap: rowCap, byteLimit: byteLimit
+            )
         }
     }
 
     func executeReadOnly(
         _ query: String,
         parameters: [PluginCellValue]?,
+        kinds: [PluginColumnKind?]? = nil,
         rowCap: Int?,
         byteLimit: Int?,
         scope: MySQLReadOnlyTransaction.Scope
@@ -1099,7 +1103,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         return try executeQuerySync(queryToRun, rowCap: rowCap, byteLimit: byteLimit)
                     }
                     return try executeParameterizedQuerySync(
-                        queryToRun, parameters: params, rowCap: rowCap, byteLimit: byteLimit
+                        queryToRun, parameters: params, kinds: kinds, rowCap: rowCap, byteLimit: byteLimit
                     )
                 }
             )
@@ -1440,6 +1444,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     private func bindParameters(
         _ parameters: [PluginCellValue],
+        kinds: [PluginColumnKind?]?,
         toStatement stmt: UnsafeMutablePointer<MYSQL_STMT>
     ) throws -> ParameterBindings {
         let paramCount = parameters.count
@@ -1447,6 +1452,19 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var buffers: [UnsafeMutableRawPointer?] = []
 
         for (index, param) in parameters.enumerated() {
+            let kind = kinds.flatMap { $0.indices.contains(index) ? $0[index] : nil }
+            if case .text(let text) = param, let integer = MySQLIntegerParameter(text: text, kind: kind) {
+                let buffer = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 8)
+                buffer.storeBytes(of: integer.bits, as: UInt64.self)
+                binds[index].buffer_type = MYSQL_TYPE_LONGLONG
+                binds[index].buffer = buffer
+                binds[index].buffer_length = 8
+                binds[index].is_unsigned = integer.isUnsigned ? 1 : 0
+                binds[index].is_null = UnsafeMutablePointer<my_bool>.allocate(capacity: 1)
+                binds[index].is_null?.pointee = 0
+                buffers.append(buffer)
+                continue
+            }
             switch param {
             case .null:
                 binds[index].buffer_type = MYSQL_TYPE_NULL
@@ -1626,6 +1644,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private func executeParameterizedQuerySync(
         _ query: String,
         parameters: [PluginCellValue],
+        kinds: [PluginColumnKind?]? = nil,
         rowCap: Int? = nil,
         byteLimit: Int? = nil
     ) throws -> MariaDBPluginQueryResult {
@@ -1638,7 +1657,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return try runStatement(query) {
             try self.runCancellableStatement { mysql, generation in
                 try self.runPreparedStatement(
-                    query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit, on: mysql, generation: generation
+                    query, parameters: parameters, kinds: kinds, rowCap: rowCap, byteLimit: byteLimit,
+                    on: mysql, generation: generation
                 )
             }
         }
@@ -1647,6 +1667,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private func runPreparedStatement(
         _ query: String,
         parameters: [PluginCellValue],
+        kinds: [PluginColumnKind?]?,
         rowCap: Int?,
         byteLimit: Int?,
         on mysql: UnsafeMutablePointer<MYSQL>,
@@ -1683,7 +1704,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         if paramCount > 0 {
-            let bindings = try bindParameters(parameters, toStatement: stmt)
+            let bindings = try bindParameters(parameters, kinds: kinds, toStatement: stmt)
             defer { bindings.cleanup() }
 
             if mysql_stmt_execute(stmt) != 0 {
@@ -1983,4 +2004,29 @@ extension MariaDBPluginError: PluginDriverError {
     var pluginErrorMessage: String { message }
     var pluginErrorCode: Int? { Int(code) }
     var pluginSqlState: String? { sqlState }
+}
+
+// A value the host typed as an integer goes as one. Sent as a string, MySQL 5.7 compares it with an integer column inside
+// a row value as a double, where 9007199254740993 and 9007199254740992 are equal.
+nonisolated internal struct MySQLIntegerParameter: Equatable {
+    let bits: UInt64
+    let isUnsigned: Bool
+
+    init(bits: UInt64, isUnsigned: Bool) {
+        self.bits = bits
+        self.isUnsigned = isUnsigned
+    }
+
+    init?(text: String, kind: PluginColumnKind?) {
+        guard kind == .integer else { return nil }
+        if let signed = Int64(text) {
+            self.bits = UInt64(bitPattern: signed)
+            self.isUnsigned = false
+        } else if let unsigned = UInt64(text) {
+            self.bits = unsigned
+            self.isUnsigned = true
+        } else {
+            return nil
+        }
+    }
 }

@@ -757,8 +757,8 @@ fn filter_clauses(query: &HistoryQuery) -> (Vec<String>, Vec<Bind>) {
     (clauses, binds)
 }
 
-// No placeholder for an empty list, which then matches no row. The sources a filter names are far under SQLite's limit
-// on parameters.
+// No placeholder for an empty list, which then matches no row. A list of run sources is far under SQLite's limit on
+// parameters.
 fn one_of(column: &str, count: usize) -> String {
     match count {
         0 => "0".to_owned(),

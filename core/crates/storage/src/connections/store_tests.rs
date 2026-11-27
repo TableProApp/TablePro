@@ -556,7 +556,7 @@ fn journaled(root: &TempDir) -> (ConnectionStore, Arc<Recording>) {
     (store, journal)
 }
 
-fn ssh_profile() -> SshProfile {
+pub(super) fn ssh_profile() -> SshProfile {
     SshProfile {
         id: Uuid::new_v4(),
         name: "p".to_owned(),
@@ -1870,6 +1870,52 @@ fn a_secret_the_host_could_not_delete_is_tried_again_by_the_next_write() {
     })
     .expect("a write that changes nothing else");
     assert_eq!(retried, [left]);
+    assert!(pending(&root).is_empty());
+}
+
+// A file where the folder was makes the cleanup's write fail whoever runs the test, root included.
+#[cfg(unix)]
+#[test]
+fn a_cleanup_that_cannot_be_written_keeps_the_write_s_digest_and_its_deletions() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let profile = ssh_profile();
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![profile.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+    let file = paths(&root).connections_file();
+    let folder = file.parent().expect("the folder").to_path_buf();
+    let aside = folder.with_extension("aside");
+
+    let landed = replace_deleting(&store, LibraryWrite::default(), |_| {
+        std::fs::rename(&folder, &aside).expect("move the folder");
+        std::fs::write(&folder, b"").expect("a file in its place");
+        true
+    })
+    .expect("the write landed");
+    std::fs::remove_file(&folder).expect("the file");
+    std::fs::rename(&aside, &folder).expect("the folder back");
+
+    assert_eq!(landed.as_deref(), Some(sha256_of(&file).as_str()));
+    let owner = SecretOwner::new(SecretOwnerKind::SshProfile, profile.id);
+    assert_eq!(pending(&root), [owner]);
+    let mut retried = Vec::new();
+    store
+        .replace_library_blocking(
+            landed.as_deref(),
+            |_| Ok::<_, StorageError>(LibraryWrite::default()),
+            |owner| {
+                retried.push(owner);
+                true
+            },
+        )
+        .expect("a write over the digest it was given");
+    assert_eq!(retried, [owner]);
     assert!(pending(&root).is_empty());
 }
 

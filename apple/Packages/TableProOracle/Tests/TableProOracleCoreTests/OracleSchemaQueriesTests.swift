@@ -147,7 +147,7 @@ struct OracleSchemaQueriesTests {
         #expect(merged == [OracleTableRow(name: "ORDERS", isView: false, isPartitioned: true, partitionCount: 8)])
     }
 
-    /// `HIGH_VALUE` is a LONG column OracleNIO cannot decode, so it must never be selected.
+    // A partition states its position: `PluginPartitionInfo` has no field for the `HIGH_VALUE` bound.
     @Test func testPartitionQueriesNeverReadHighValue() {
         let partitions = OracleSchemaQueries.partitions(schema: "HR", table: "ORDERS")
         let subpartitions = OracleSchemaQueries.subpartitions(schema: "HR", table: "ORDERS")

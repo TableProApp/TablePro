@@ -764,6 +764,10 @@ internal final class CompareSyncWindowController: NSWindowController,
         window.close()
     }
 
+    internal func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        (window as? ContentWindow)?.fullScreenEntryDidFail()
+    }
+
     internal func windowWillClose(_ notification: Notification) {
         // Stays listed until the run itself ends: a statement already sent can still be writing.
         session.cancelRunningWork()
