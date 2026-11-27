@@ -247,7 +247,14 @@ final class CoreLibraryStore {
         do {
             try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
             let over = fileDigest
-            let written = try Self.blocking { try await library.replaceLibrary(library: write, over: over) }
+            let written: LibraryWritten
+            do {
+                written = try Self.blocking { try await library.replaceLibrary(library: write, over: over) }
+            } catch where over != nil && Self.isChangedSinceRead(error) {
+                // The file this store last wrote can be gone, as after a write that did not land. With no file there,
+                // no other writer's copy is under this write; the core refuses it again when one is.
+                written = try Self.blocking { try await library.replaceLibrary(library: write, over: nil) }
+            }
             fileDigest = written.digest
             let contents = try Self.blocking { try await library.libraryContents() }
             // Another writer's file in between is not this write's to take in; the next write is refused over it.
@@ -394,6 +401,11 @@ final class CoreLibraryStore {
 
     // As Rust's `is_ascii_whitespace`, which the core's reader skips.
     nonisolated private static let asciiWhitespace: Set<UInt8> = [0x09, 0x0A, 0x0C, 0x0D, 0x20]
+
+    nonisolated static func isChangedSinceRead(_ error: any Error) -> Bool {
+        guard case let CoreError.Failed(info) = error else { return false }
+        return info.code == "storage.library_changed"
+    }
 
     nonisolated static func isDamaged(_ error: any Error) -> Bool {
         guard case let CoreError.Failed(info) = error else { return false }
