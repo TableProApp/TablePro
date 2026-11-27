@@ -14,8 +14,8 @@ use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 use super::super::dialog_response::{answer, visible_alert};
 use super::super::test_workspace::{WAIT, Workspace, edited_table, window};
 use super::super::{PendingState, SaveOutcome, SaveRejection, SaveStart};
-use tablepro_core::ddl::PendingStructure;
 use crate::test_support::wait_until;
+use tablepro_core::ddl::PendingStructure;
 
 fn without_n(draft: &mut TableDraft) {
     draft.columns.retain(|column| column.name != "n");

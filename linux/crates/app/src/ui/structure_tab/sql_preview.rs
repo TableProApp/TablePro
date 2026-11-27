@@ -1,7 +1,7 @@
 use super::context::StructureContext;
 use crate::i18n::gettext;
-use tablepro_core::ddl::PendingStructure;
 use crate::ui::error_text::build_error_text;
+use tablepro_core::ddl::PendingStructure;
 
 /// The SQL page's text for `pending`: the statements Save would run,
 /// or a comment that says why there are none.

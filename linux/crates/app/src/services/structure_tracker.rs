@@ -3,8 +3,8 @@
 //! replaces it on every edit; DDL has no per-change undo, only Discard
 //! back to the table as it was read.
 
-use tablepro_core::ddl::PendingStructure;
 use crate::workspace::{PendingState, SaveOutcome, SaveRejection, UnknownCause};
+use tablepro_core::ddl::PendingStructure;
 
 #[derive(Debug, Default)]
 pub struct StructureChangeTracker {
