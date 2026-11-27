@@ -16,6 +16,7 @@ struct ConnectionGroup: Identifiable, Hashable, Codable {
     var iconName: String?
     var parentId: UUID?
     var sortOrder: Int
+    var projectId: UUID?
 
     init(
         id: UUID = UUID(),
@@ -23,7 +24,8 @@ struct ConnectionGroup: Identifiable, Hashable, Codable {
         color: ConnectionColor = .none,
         iconName: String? = nil,
         parentId: UUID? = nil,
-        sortOrder: Int = 0
+        sortOrder: Int = 0,
+        projectId: UUID? = nil
     ) {
         self.id = id
         self.name = name
@@ -31,6 +33,7 @@ struct ConnectionGroup: Identifiable, Hashable, Codable {
         self.iconName = iconName
         self.parentId = parentId
         self.sortOrder = sortOrder
+        self.projectId = projectId
     }
 }
 

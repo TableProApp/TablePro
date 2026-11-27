@@ -33,8 +33,22 @@ internal sealed partial class Workbench
             return;
         }
 
+        TellMcpTheProject();
         ApplyMcpSettings();
         _ = WatchMcpAsync(_mcp);
+    }
+
+    // The server lists and reaches the active project's connections from its next call on.
+    private void TellMcpTheProject()
+    {
+        try
+        {
+            _mcp?.SetActiveProject(ActiveProject);
+        }
+        catch (TableProException exception)
+        {
+            CrashLog.Write(exception);
+        }
     }
 
     // Also starts it again after a failure, as Try again asks.

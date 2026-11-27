@@ -25,14 +25,21 @@ struct UnloadedValueReader {
     // A statement's result is held in memory whole, so a batch of large values stops at this size.
     nonisolated static let maxBytesPerStatement = 32 * 1_024 * 1_024
 
+    // A key one statement returns on two rows names neither: a PostgreSQL parent's key is not unique across its
+    // inheritance children, which the page read too. Such a key is left out, so no row gets another row's value.
     func read(columns: [String], requests: [Request]) async throws -> [[PluginCellValue]: [PluginCellValue]] {
         var values: [[PluginCellValue]: [PluginCellValue]] = [:]
+        var sharedKeys: Set<[PluginCellValue]> = []
         for batch in Self.batches(of: requests) {
             guard let statement = statement(columns: columns, keys: batch.map(\.key)) else { continue }
+            var seen: Set<[PluginCellValue]> = []
             for row in try await run(statement) where row.count >= keyColumns.count {
-                values[Array(row.prefix(keyColumns.count))] = Array(row.dropFirst(keyColumns.count))
+                let key = Array(row.prefix(keyColumns.count))
+                if !seen.insert(key).inserted { sharedKeys.insert(key) }
+                values[key] = Array(row.dropFirst(keyColumns.count))
             }
         }
+        for key in sharedKeys { values[key] = nil }
         return values
     }
 

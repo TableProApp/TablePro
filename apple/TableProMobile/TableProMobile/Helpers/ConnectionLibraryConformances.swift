@@ -8,6 +8,8 @@ nonisolated extension DatabaseConnection: LibraryConnectionRepresentable {
 
 nonisolated extension ConnectionGroup: LibraryGroupRepresentable {}
 
+nonisolated extension ConnectionProject: LibraryProjectRepresentable {}
+
 nonisolated extension ConnectionTag: LibraryTagRepresentable {}
 
 nonisolated extension SavedQuery: SavedQueryRepresentable {}

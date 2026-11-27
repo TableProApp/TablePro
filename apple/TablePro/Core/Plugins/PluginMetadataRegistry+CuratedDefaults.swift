@@ -249,7 +249,7 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH",
+                    largeValueFunctions: .mySQL,
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
@@ -322,7 +322,7 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH",
+                    largeValueFunctions: .mySQL,
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
@@ -403,6 +403,7 @@ extension PluginMetadataRegistry {
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .preferred,
                     verifiesServerWithSystemTrust: true,
+                    largeValueFunctions: .postgreSQL,
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
@@ -689,6 +690,7 @@ extension PluginMetadataRegistry {
                     newDatabaseFileExtensions: Self.sqliteFileExtensions,
                     supportsRemoteDatabaseFile: true,
                     supportsRemoteDatabaseSession: true,
+                    largeValueFunctions: .sqlite,
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .engineEnforced
                 ),

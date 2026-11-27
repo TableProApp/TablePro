@@ -1,6 +1,6 @@
 # 0004: The app shell: one window, a rail of connections, a page per surface
 
-- **Status**: Accepted; packaging amended by [0005](0005-distribution.md), table reads by [0007](0007-browsing-a-connection.md), the execution alias by [0019](0019-mcp-server-and-command-line.md), strings by [0021](0021-localization.md); the first run and Commands and keys superseded by [0025](0025-setup-guide-and-shortcut-presets.md)
+- **Status**: Accepted; packaging amended by [0005](0005-distribution.md), table reads by [0007](0007-browsing-a-connection.md), the execution alias by [0019](0019-mcp-server-and-command-line.md), strings by [0021](0021-localization.md), the Connections page's project switcher by [0027](0027-connection-projects.md); the first run and Commands and keys superseded by [0025](0025-setup-guide-and-shortcut-presets.md)
 - **Date**: 2026-11-02
 
 ## Context

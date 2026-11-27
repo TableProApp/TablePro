@@ -1223,6 +1223,7 @@ mod mcp {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
@@ -1262,6 +1263,27 @@ mod mcp {
     fn opened(test: &TestApp, host: &Arc<mcp_bridge::GtkMcpHost>, saved: &SavedConnection) -> OpenOutcome {
         let (host, saved) = (host.clone(), saved.clone());
         on_runtime(test, async move { host.open(saved).await })
+    }
+
+    #[gtk4::test]
+    fn the_host_reads_the_active_project_for_each_call_from_the_setting() {
+        let test = TestApp::started("McpActiveProject");
+        let services = test.services();
+        let host = test.app.answer_mcp(&services);
+        assert_eq!(host.active_project(), None, "a fresh profile lists a project");
+        let project = Uuid::new_v4();
+
+        services
+            .settings
+            .set_active_project(Some(project))
+            .expect("the setting");
+        wait_until(WAIT, || host.active_project() == Some(project)).expect("the host to follow the switch");
+        // On the runtime, where the server's tools call it.
+        let asked = host.clone();
+        assert_eq!(on_runtime(&test, async move { asked.active_project() }), Some(project));
+
+        services.settings.set_active_project(None).expect("the setting");
+        wait_until(WAIT, || host.active_project().is_none()).expect("the host to follow the switch back");
     }
 
     #[gtk4::test]
@@ -1526,6 +1548,7 @@ mod links {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,

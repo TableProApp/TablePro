@@ -18490,6 +18490,9 @@
     "A larger binary value stays on the server until you open, copy or export it. Applies to tables with a primary key." : {
 
     },
+    "A larger text, JSON or binary value stays on the server until you open, copy or export it. The grid shows the start of a text value. Applies to tables with a primary key." : {
+
+    },
     "A link you chose Always Allow for connects without asking again. Only connections on this Mac can be trusted." : {
       "localizations" : {
         "fr" : {
@@ -19110,6 +19113,15 @@
           }
         }
       }
+    },
+    "A project named “%@” already exists." : {
+
+    },
+    "A project needs a name." : {
+
+    },
+    "A project shows only its own connections in the list, in search and in history." : {
+
     },
     "A publish to the team library is still running. Try again when it finishes." : {
 
@@ -22550,6 +22562,9 @@
           }
         }
       }
+    },
+    "Add a connection, or move one here from All Connections." : {
+
     },
     "Add a filter row below this one" : {
 
@@ -72916,6 +72931,9 @@
         }
       }
     },
+    "Delete Project…" : {
+
+    },
     "DELETE ran. DynamoDB reports whether an item was deleted only with RETURNING ALL OLD *." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -111500,6 +111518,9 @@
     "Its connection is not imported." : {
 
     },
+    "Its connections are kept and move to All Connections." : {
+
+    },
     "Its definition is written in %1$@'s own SQL, which %2$@ does not parse." : {
       "localizations" : {
         "fr" : {
@@ -114692,6 +114713,9 @@
           }
         }
       }
+    },
+    "Large Value Limit" : {
+
     },
     "Larger tables show an estimated count, which avoids a slow COUNT(*)." : {
       "localizations" : {
@@ -122572,6 +122596,9 @@
         }
       }
     },
+    "Manage Projects…" : {
+
+    },
     "Manage Shared Links…" : {
       "localizations" : {
         "fr" : {
@@ -128600,6 +128627,9 @@
         }
       }
     },
+    "Move to Project" : {
+
+    },
     "Move to Trash" : {
       "localizations" : {
         "fr" : {
@@ -131154,6 +131184,15 @@
     "New Profile…" : {
 
     },
+    "New Project" : {
+
+    },
+    "New Project %d" : {
+
+    },
+    "New Project…" : {
+
+    },
     "New Query" : {
       "localizations" : {
         "fr" : {
@@ -133234,6 +133273,9 @@
           }
         }
       }
+    },
+    "No Connections in %@" : {
+
     },
     "No connections match “%@”" : {
       "localizations" : {
@@ -136817,6 +136859,9 @@
           }
         }
       }
+    },
+    "No results in %@" : {
+
     },
     "No Results Yet" : {
       "localizations" : {
@@ -158628,6 +158673,9 @@
         }
       }
     },
+    "Project" : {
+
+    },
     "Project %@ has no Bigtable instance." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -158676,6 +158724,12 @@
           }
         }
       }
+    },
+    "Project name" : {
+
+    },
+    "Projects" : {
+
     },
     "Prompt at Connect" : {
       "extractionState" : "manual",
@@ -182304,6 +182358,9 @@
         }
       }
     },
+    "Search All Connections" : {
+
+    },
     "Search All Rows" : {
       "localizations" : {
         "fr" : {
@@ -202650,6 +202707,9 @@
         }
       }
     },
+    "Switch Project" : {
+
+    },
     "switch schema" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -210777,6 +210837,9 @@
         }
       }
     },
+    "That project no longer exists." : {
+
+    },
     "That result is no longer open. Choose another one." : {
 
     },
@@ -213613,7 +213676,13 @@
         }
       }
     },
+    "The connections and groups of this project could not be saved. Nothing was changed." : {
+
+    },
     "The connections could not be saved." : {
+
+    },
+    "The connections in this group could not be saved. Nothing was changed." : {
 
     },
     "the copy failed its integrity check: %@" : {
@@ -219593,6 +219662,9 @@
         }
       }
     },
+    "The saved projects could not be read. Nothing was changed." : {
+
+    },
     "The saved queries could not be read. Nothing was exported." : {
 
     },
@@ -224862,6 +224934,9 @@
           }
         }
       }
+    },
+    "This connection is in another project. Switch to that project or to All Connections in TablePro to reach it." : {
+
     },
     "This connection is not available." : {
       "localizations" : {

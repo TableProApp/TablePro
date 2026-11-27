@@ -67,9 +67,9 @@ struct ConnectionEditorEngineIssueTests {
         draft.options.binaryInlineLimitKilobytes = 0
         #expect(issues(draft, mysql).contains { $0.row == .builtIn(.binaryInlineLimit) } == mysql.supportsBinaryInlineLimit)
 
-        let postgres = traits(.postgresql)
-        draft.retype(to: postgres, from: mysql)
-        #expect(!issues(draft, postgres).contains { $0.row == .builtIn(.binaryInlineLimit) })
+        let sqlServer = traits(.mssql)
+        draft.retype(to: sqlServer, from: mysql)
+        #expect(!issues(draft, sqlServer).contains { $0.row == .builtIn(.binaryInlineLimit) })
     }
 
     @Test("A client certificate without a key blocks nothing while SSL Mode is Disabled")

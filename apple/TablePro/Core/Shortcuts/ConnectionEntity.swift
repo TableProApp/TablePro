@@ -52,7 +52,8 @@ internal struct ConnectionEntityQuery: EntityQuery {
     }
 
     func suggestedEntities() async throws -> [ConnectionEntity] {
-        await MainActor.run { ExternalConnectionDirectory.listings().map(ConnectionEntity.init(listing:)) }
+        // Only the picker follows the active project. A shortcut that already holds a connection resolves it by id.
+        await MainActor.run { ExternalConnectionDirectory.listingsInActiveProject().map(ConnectionEntity.init(listing:)) }
     }
 
     // A connection blocked after a shortcut picked it still resolves, by name only, so running the shortcut says why

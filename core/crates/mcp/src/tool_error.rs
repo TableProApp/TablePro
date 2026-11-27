@@ -11,6 +11,8 @@ pub enum ToolError {
     InvalidArgument(String),
     NotFound(String),
     NotConnected(String),
+    /// Outside the project the app shows now: a listing scope, not an access control.
+    OutOfScope(String),
     /// The user's settings refuse it; asking again gets the same answer.
     Denied(String),
     /// The user said no in the app.
@@ -27,6 +29,7 @@ impl ToolError {
             Self::InvalidArgument(_) => "invalid_argument",
             Self::NotFound(_) => "not_found",
             Self::NotConnected(_) => "not_connected",
+            Self::OutOfScope(_) => "out_of_scope",
             Self::Denied(_) => "denied",
             Self::UserCancelled(_) => "user_cancelled",
             Self::Timeout(_) => "timeout",
@@ -41,6 +44,7 @@ impl ToolError {
             Self::InvalidArgument(message)
             | Self::NotFound(message)
             | Self::NotConnected(message)
+            | Self::OutOfScope(message)
             | Self::Denied(message)
             | Self::UserCancelled(message)
             | Self::Timeout(message)
@@ -87,6 +91,15 @@ mod tests {
         assert_eq!(result.is_error, Some(true));
         let text = serde_json::to_string(&result.content).expect("JSON");
         assert!(text.contains("denied: read only"), "{text}");
+    }
+
+    #[test]
+    fn out_of_scope_has_a_code_apart_from_not_found_and_denied() {
+        let refused = ToolError::OutOfScope("outside the project".to_owned());
+
+        assert_eq!(refused.code(), "out_of_scope");
+        assert_ne!(refused.code(), ToolError::NotFound(String::new()).code());
+        assert_ne!(refused.code(), ToolError::Denied(String::new()).code());
     }
 
     #[test]

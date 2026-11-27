@@ -58,6 +58,8 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public var sslConfiguration: SSLConfiguration?
 
     public var groupId: UUID?
+    // Counts only while the connection is in no group. A grouped one follows its top-level group.
+    public var projectId: UUID?
     public var tagIds: [UUID]
     public var sortOrder: Int
     public var isFavorite: Bool
@@ -94,7 +96,8 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         tagIds: [UUID] = [],
         sortOrder: Int = 0,
         isFavorite: Bool = false,
-        isSample: Bool = false
+        isSample: Bool = false,
+        projectId: UUID? = nil
     ) {
         self.id = id
         self.name = name
@@ -120,13 +123,14 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.sortOrder = sortOrder
         self.isFavorite = isFavorite
         self.isSample = isSample
+        self.projectId = projectId
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, type, host, port, username, database, color, colorTag, iconName
         case isReadOnly, safeModeLevel, queryTimeoutSeconds, additionalFields
         case sshEnabled, sshConfiguration, sshProfileId, clearsSSHProfileLink, sshRoute, sslEnabled, sslConfiguration
-        case groupId, tagId, tagIds, sortOrder, isFavorite, isSample
+        case groupId, projectId, tagId, tagIds, sortOrder, isFavorite, isSample
     }
 }
 
@@ -165,6 +169,7 @@ extension DatabaseConnection: Codable {
         sslEnabled = try container.decodeIfPresent(Bool.self, forKey: .sslEnabled) ?? false
         sslConfiguration = try container.decodeIfPresent(SSLConfiguration.self, forKey: .sslConfiguration)
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
+        projectId = try container.decodeIfPresent(UUID.self, forKey: .projectId)
         let decodedTagIds = try container.decodeIfPresent([UUID].self, forKey: .tagIds) ?? []
         if decodedTagIds.isEmpty {
             tagIds = try container.decodeIfPresent(UUID.self, forKey: .tagId).map { [$0] } ?? []
@@ -202,6 +207,7 @@ extension DatabaseConnection: Codable {
         try container.encode(sslEnabled, forKey: .sslEnabled)
         try container.encodeIfPresent(sslConfiguration, forKey: .sslConfiguration)
         try container.encodeIfPresent(groupId, forKey: .groupId)
+        try container.encodeIfPresent(projectId, forKey: .projectId)
         if !tagIds.isEmpty {
             try container.encode(tagIds, forKey: .tagIds)
         }

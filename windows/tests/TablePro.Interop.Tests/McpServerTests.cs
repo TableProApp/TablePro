@@ -107,6 +107,18 @@ public sealed class McpServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TheServerTakesTheProjectTheAppShowsWhetherOrNotItRuns()
+    {
+        var project = await _core.Library.CreateProjectAsync("Acme");
+
+        _server.SetActiveProject(project.Id);
+        _server.SetActiveProject(Guid.NewGuid());
+        _server.SetActiveProject(null);
+
+        Assert.Equal(McpServerState.Off, _server.Status.State);
+    }
+
+    [Fact]
     public async Task ATakenPortFailsWithItsCodeAndANewTokenTurnsTheOldAway()
     {
         using var taken = new TcpListener(IPAddress.Loopback, 0);

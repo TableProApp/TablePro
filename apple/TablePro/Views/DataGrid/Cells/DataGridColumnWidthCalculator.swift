@@ -75,8 +75,9 @@ struct DataGridColumnWidthCalculator {
 
         for index in stride(from: 0, to: totalRows, by: step) {
             let rawValue = rows.value(at: index, column: dataIndex)
+            let head = rawValue.isNull ? rows.unloadedHead(rows.rows[index].id, column: dataIndex) : nil
             let formatted = CellDisplayFormatter.format(
-                rawValue,
+                head.map(PluginCellValue.text) ?? rawValue,
                 columnType: input.column.type,
                 displayFormat: input.displayFormat,
                 databaseType: databaseType

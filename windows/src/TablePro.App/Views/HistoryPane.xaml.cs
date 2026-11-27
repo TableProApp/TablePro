@@ -41,7 +41,7 @@ public sealed partial class HistoryPane : UserControl
         // Runs of every connection name the connection each ran on.
         if (list.ConnectionId is null)
         {
-            AutomationProperties.SetName(EntriesList, Strings.Get("HistoryListEvery"));
+            NameList(list);
         }
 
         list.Changed += (_, _) => ShowList();
@@ -59,6 +59,26 @@ public sealed partial class HistoryPane : UserControl
     public bool CanSaveQuery { get; set; }
 
     public Task RefreshAsync() => _list?.RefreshAsync() ?? Task.CompletedTask;
+
+    public bool ListsEveryConnection => _list is { ConnectionId: null };
+
+    // The list of every connection's runs reads again in the scope as it is now, which drops a page of the old one
+    // still on its way; one connection's list is left alone.
+    public Task ShowProjectAsync(Guid? projectId)
+    {
+        if (_list is not { ConnectionId: null } list)
+        {
+            return Task.CompletedTask;
+        }
+
+        var reading = list.RescopeAsync(projectId);
+        NameList(list);
+        return reading;
+    }
+
+    private void NameList(HistoryList list) => AutomationProperties.SetName(
+        EntriesList,
+        Strings.Get(list.ProjectId is null ? "HistoryListEvery" : "HistoryListProject"));
 
     // A pane shown for the first time joins the tree only on the next layout, and an unloaded box takes no focus.
     public void FocusSearch()

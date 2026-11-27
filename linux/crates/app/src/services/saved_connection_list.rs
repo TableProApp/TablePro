@@ -1,8 +1,8 @@
 //! The saved connections every picker shows, as one list model that
-//! follows the connection store.
+//! follows the connection store and the active project.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
@@ -10,7 +10,8 @@ use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use tablepro_core::DriverRegistry;
 use tablepro_storage::{
-    ConnectionGroup, ConnectionList, ConnectionListState, ConnectionStore, ConnectionTag, SavedConnection,
+    ConnectionGroup, ConnectionList, ConnectionListState, ConnectionProject, ConnectionStore, ConnectionTag,
+    SavedConnection,
 };
 use uuid::Uuid;
 
@@ -19,6 +20,7 @@ use super::saved_connection_object::SavedConnectionObject;
 use super::saved_connection_order::{self, GroupLabels};
 
 type StateObserver = Rc<dyn Fn(&ConnectionListState)>;
+type ScopeObserver = Rc<dyn Fn()>;
 
 /// One model for every window. Each store write publishes a new list,
 /// so a save in the connect dialog, a connect's last-opened stamp, a
@@ -34,16 +36,55 @@ pub struct SavedConnectionList {
     tags: RefCell<Arc<[ConnectionTag]>>,
     labels: RefCell<GroupLabels>,
     library: RefCell<Option<ConnectionList>>,
+    // The project the setting names, which the list may no longer hold.
+    active: Cell<Option<Uuid>>,
+    // What the pickers list: the active project's part of the library.
     outline: RefCell<Rc<LibraryOutline>>,
+    listed: RefCell<Arc<[SavedConnection]>>,
+    // The whole library, for lookups by id whatever the project.
+    whole: RefCell<Rc<LibraryOutline>>,
     state: RefCell<ConnectionListState>,
     watch: RefCell<Option<glib::JoinHandle<()>>>,
     observers: RefCell<Vec<(u64, StateObserver)>>,
+    // What the scope observers were last told of.
+    scoped: RefCell<ScopedSet>,
+    scope_observers: RefCell<Vec<(u64, ScopeObserver)>>,
     next_observer: Cell<u64>,
+}
+
+// The project also when the ids match: two empty projects list the same nothing under different names.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ScopedSet {
+    project: Option<(Uuid, String)>,
+    connections: BTreeSet<Uuid>,
+}
+
+// The active project as the lists keyed by connection id read it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectScope {
+    pub name: String,
+    pub connections: Vec<Uuid>,
+}
+
+impl ProjectScope {
+    // The presenting window's own connection is listed whatever its project, as its tab title is.
+    #[must_use]
+    pub fn with(mut self, connection: Option<Uuid>) -> Self {
+        if let Some(id) = connection
+            && !self.connections.contains(&id)
+        {
+            self.connections.push(id);
+        }
+        self
+    }
 }
 
 /// What `connect_state_changed` returns, to disconnect with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StateObserverId(u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScopeObserverId(u64);
 
 impl SavedConnectionList {
     /// Follow `connections` from its list now. The watch runs on the GTK
@@ -59,10 +100,15 @@ impl SavedConnectionList {
             tags: RefCell::new(Arc::from([])),
             labels: RefCell::new(GroupLabels::default()),
             library: RefCell::new(None),
+            active: Cell::new(None),
             outline: RefCell::new(Rc::new(LibraryOutline::new(&ConnectionList::default()))),
+            listed: RefCell::new(Arc::from([])),
+            whole: RefCell::new(Rc::new(LibraryOutline::new(&ConnectionList::default()))),
             state: RefCell::new(ConnectionListState::Loading),
             watch: RefCell::new(None),
             observers: RefCell::new(Vec::new()),
+            scoped: RefCell::new(ScopedSet::default()),
+            scope_observers: RefCell::new(Vec::new()),
             next_observer: Cell::new(0),
         });
         list.apply(current);
@@ -88,14 +134,76 @@ impl SavedConnectionList {
         self.state.borrow().clone()
     }
 
-    /// The saved connection `id` as the list holds it now.
+    // In any project: an open tab, a restored session and a link name a connection by id.
     pub fn get(&self, id: Uuid) -> Option<SavedConnection> {
-        self.connections.borrow().iter().find(|saved| saved.id == id).cloned()
+        self.whole.borrow().connection(id).cloned()
     }
 
-    /// Every saved connection, in display order.
+    // Every saved connection of every project, in display order.
     pub fn connections(&self) -> Arc<[SavedConnection]> {
         self.connections.borrow().clone()
+    }
+
+    // The active project's connections, in display order.
+    pub fn listed(&self) -> Arc<[SavedConnection]> {
+        self.listed.borrow().clone()
+    }
+
+    // `None` is All Connections, also once the project the setting names is deleted.
+    pub fn active_project(&self) -> Option<ConnectionProject> {
+        let library = self.library.borrow();
+        let library = library.as_ref()?;
+        library
+            .resolved_scope(self.active.get())
+            .and_then(|id| library.project(id).cloned())
+    }
+
+    pub fn projects(&self) -> Vec<ConnectionProject> {
+        self.library
+            .borrow()
+            .as_ref()
+            .map(|library| library.projects_in_order().into_iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    // What history and saved queries are narrowed to; `None` in All Connections, which also shows deleted connections' rows.
+    pub fn scope(&self) -> Option<ProjectScope> {
+        let project = self.active_project()?;
+        Some(ProjectScope {
+            name: project.name.as_str().to_owned(),
+            connections: self.listed.borrow().iter().map(|saved| saved.id).collect(),
+        })
+    }
+
+    pub fn project_of(&self, connection: Uuid) -> Option<Uuid> {
+        let library = self.library.borrow();
+        let library = library.as_ref()?;
+        let saved = library.connections.iter().find(|saved| saved.id == connection)?;
+        library.effective_project(saved)
+    }
+
+    pub fn project_of_group(&self, group: Uuid) -> Option<Uuid> {
+        self.library
+            .borrow()
+            .as_ref()
+            .and_then(|library| library.effective_group_project(group))
+    }
+
+    pub fn group_label(&self, saved: &SavedConnection) -> Option<String> {
+        self.labels.borrow().of(saved).map(str::to_owned)
+    }
+
+    // Follows the setting; a project the list does not hold yet applies once it does.
+    pub fn set_active_project(&self, project: Option<Uuid>) {
+        if self.active.replace(project) == project {
+            return;
+        }
+        let library = self.library.borrow().clone();
+        if let Some(library) = library {
+            let ordered = self.connections.borrow().clone();
+            self.rescope(&library, &ordered);
+        }
+        self.notify_scope();
     }
 
     /// Every tag, by name.
@@ -107,16 +215,22 @@ impl SavedConnectionList {
         self.library.borrow().clone()
     }
 
+    // The active project's part of the library; a write still names its items by id in the whole one.
     pub(crate) fn outline(&self) -> Rc<LibraryOutline> {
         self.outline.borrow().clone()
     }
 
+    #[cfg(test)]
+    pub(crate) fn whole(&self) -> Rc<LibraryOutline> {
+        self.whole.borrow().clone()
+    }
+
     pub fn group(&self, id: Uuid) -> Option<ConnectionGroup> {
-        self.outline.borrow().group(id).cloned()
+        self.whole.borrow().group(id).cloned()
     }
 
     pub fn is_favourite(&self, id: Uuid) -> bool {
-        self.outline.borrow().favourites().contains(&id)
+        self.whole.borrow().favourites().contains(&id)
     }
 
     /// Run `observer` on every state the store publishes, as the banner
@@ -130,6 +244,20 @@ impl SavedConnectionList {
 
     pub fn disconnect_state_changed(&self, id: StateObserverId) {
         self.observers.borrow_mut().retain(|(observer, _)| *observer != id.0);
+    }
+
+    // The one signal for scope: a switch, a move, a delete or an import that changes what is listed.
+    pub fn connect_scope_changed(&self, observer: impl Fn() + 'static) -> ScopeObserverId {
+        let id = self.next_observer.get();
+        self.next_observer.set(id + 1);
+        self.scope_observers.borrow_mut().push((id, Rc::new(observer)));
+        ScopeObserverId(id)
+    }
+
+    pub fn disconnect_scope_changed(&self, id: ScopeObserverId) {
+        self.scope_observers
+            .borrow_mut()
+            .retain(|(observer, _)| *observer != id.0);
     }
 
     // Keeps the objects of unchanged connections, so a write from another window leaves a row's menu and focus alone.
@@ -149,7 +277,8 @@ impl SavedConnectionList {
             self.tags.replace(Arc::from(tags));
             self.labels.replace(labels);
             self.library.replace(Some(list.clone()));
-            self.outline.replace(outline);
+            self.whole.replace(outline);
+            self.rescope(list, &ordered);
             if regrouped || retagged || self.store.n_items() == 0 {
                 let objects: Vec<SavedConnectionObject> = ordered.iter().map(|saved| self.object(saved)).collect();
                 self.store.splice(0, self.store.n_items(), &objects);
@@ -158,6 +287,25 @@ impl SavedConnectionList {
                 patch(&self.store, &ordered, &labels, |saved| self.object(saved));
             }
         }
+        self.notify();
+        self.notify_scope();
+    }
+}
+
+impl SavedConnectionList {
+    fn rescope(&self, list: &ConnectionList, ordered: &Arc<[SavedConnection]>) {
+        let Some(project) = list.resolved_scope(self.active.get()) else {
+            self.outline.replace(self.whole.borrow().clone());
+            self.listed.replace(ordered.clone());
+            return;
+        };
+        let outline = Rc::new(LibraryOutline::of_project(list, project));
+        self.listed.replace(Arc::from(in_tree_order(outline.list(), &outline)));
+        self.outline.replace(outline);
+    }
+
+    fn notify(&self) {
+        let state = self.state.borrow().clone();
         let observers: Vec<StateObserver> = self
             .observers
             .borrow()
@@ -168,9 +316,30 @@ impl SavedConnectionList {
             observer(&state);
         }
     }
-}
 
-impl SavedConnectionList {
+    // An edit that leaves the listed ids alone tells no one, so an open dialog keeps its place.
+    fn notify_scope(&self) {
+        let scoped = ScopedSet {
+            project: self
+                .active_project()
+                .map(|project| (project.id, project.name.as_str().to_owned())),
+            connections: self.listed.borrow().iter().map(|saved| saved.id).collect(),
+        };
+        if *self.scoped.borrow() == scoped {
+            return;
+        }
+        self.scoped.replace(scoped);
+        let observers: Vec<ScopeObserver> = self
+            .scope_observers
+            .borrow()
+            .iter()
+            .map(|(_, observer)| observer.clone())
+            .collect();
+        for observer in observers {
+            observer();
+        }
+    }
+
     fn object(&self, saved: &SavedConnection) -> SavedConnectionObject {
         let file_based = self
             .drivers
@@ -288,6 +457,7 @@ mod tests {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
@@ -591,6 +761,266 @@ mod tests {
         };
         list.apply(tagged(vec![recoloured, acme]));
         assert_ne!(objects(&list)[0], before[0], "a recoloured tag left a row as it was");
+    }
+
+    fn project(name: &str, order: u32) -> ConnectionProject {
+        ConnectionProject {
+            order,
+            ..ConnectionProject::new(tablepro_storage::ConnectionProjectName::new(name).expect("a project name"))
+        }
+    }
+
+    // Acme holds the group Work with W1 and the loose A1; Side holds S1; N1 is in no project.
+    fn projects() -> (
+        ConnectionList,
+        ConnectionProject,
+        ConnectionProject,
+        [SavedConnection; 4],
+    ) {
+        let (acme, side) = (project("Acme", 1), project("Side", 0));
+        let work = ConnectionGroup {
+            project_id: Some(acme.id),
+            ..ConnectionGroup::new(
+                tablepro_storage::ConnectionGroupName::new("Work").expect("a group name"),
+                None,
+            )
+        };
+        let w1 = SavedConnection {
+            group_id: Some(work.id),
+            ..connection("W1")
+        };
+        let a1 = SavedConnection {
+            project_id: Some(acme.id),
+            ..connection("A1")
+        };
+        let s1 = SavedConnection {
+            project_id: Some(side.id),
+            order: 1,
+            ..connection("S1")
+        };
+        let n1 = SavedConnection {
+            order: 2,
+            ..connection("N1")
+        };
+        let list = ConnectionList::new(vec![w1.clone(), a1.clone(), s1.clone(), n1.clone()], Vec::new())
+            .with_groups(vec![work])
+            .with_favorites(vec![s1.id, a1.id])
+            .with_projects(vec![acme.clone(), side.clone()]);
+        (list, acme, side, [w1, a1, s1, n1])
+    }
+
+    fn listed(list: &SavedConnectionList) -> Vec<String> {
+        list.listed().iter().map(|saved| saved.name.clone()).collect()
+    }
+
+    #[gtk4::test]
+    fn the_outline_is_the_active_projects_and_the_lookup_by_id_is_every_projects() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
+        let (library, acme, side, [w1, a1, s1, n1]) = projects();
+        list.apply(ConnectionListState::Ready(library));
+        assert_eq!(listed(&list), ["W1", "A1", "S1", "N1"]);
+        assert_eq!(list.active_project(), None);
+        assert_eq!(list.scope(), None);
+        assert_eq!(
+            list.projects()
+                .iter()
+                .map(|project| project.name.as_str().to_owned())
+                .collect::<Vec<_>>(),
+            ["Side", "Acme"],
+            "the projects are not in their order"
+        );
+        let before = objects(&list);
+
+        list.set_active_project(Some(acme.id));
+
+        assert_eq!(list.active_project(), Some(acme.clone()));
+        assert_eq!(listed(&list), ["W1", "A1"]);
+        assert_eq!(group_labels(&list), ["Work"]);
+        assert_eq!(list.outline().favourites(), [a1.id]);
+        assert_eq!(list.outline().landing(), Some(acme.id));
+        assert!(
+            list.outline().connection(s1.id).is_none(),
+            "the outline lists another project"
+        );
+        assert_eq!(
+            list.scope(),
+            Some(ProjectScope {
+                name: "Acme".to_owned(),
+                connections: vec![w1.id, a1.id],
+            })
+        );
+        // By id, whatever the project: a tab title, a restored session, a link and the dedupe of an import.
+        for saved in [&w1, &a1, &s1, &n1] {
+            assert_eq!(list.get(saved.id).map(|held| held.id), Some(saved.id), "{}", saved.name);
+        }
+        assert_eq!(list.connections().len(), 4);
+        assert_eq!(
+            names(&list),
+            ["W1", "A1", "S1", "N1"],
+            "the model the sessions watch lost rows"
+        );
+        assert_eq!(objects(&list), before, "a switch rebuilt the rows");
+        assert!(list.is_favourite(s1.id), "a favourite of another project reads as none");
+        assert_eq!(list.whole().children(None).len(), 4);
+        assert_eq!(
+            list.project_of(w1.id),
+            Some(acme.id),
+            "a grouped connection has its group's project"
+        );
+        assert_eq!(list.project_of(s1.id), Some(side.id));
+        assert_eq!(list.project_of(n1.id), None);
+        assert_eq!(list.group_label(&w1).as_deref(), Some("Work"));
+
+        list.set_active_project(Some(side.id));
+        assert_eq!(listed(&list), ["S1"]);
+        assert!(group_labels(&list).is_empty(), "another project's group is listed");
+        list.set_active_project(None);
+        assert_eq!(listed(&list), ["W1", "A1", "S1", "N1"]);
+        assert_eq!(group_labels(&list), ["Work"]);
+    }
+
+    #[gtk4::test]
+    fn a_switch_and_a_change_of_the_projects_reach_the_observers() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
+        let (library, acme, side, _) = projects();
+        let seen = Rc::new(Cell::new(0));
+        let counted = seen.clone();
+        list.connect_scope_changed(move || counted.set(counted.get() + 1));
+
+        // Before the list is read, as at launch: the setting is applied once the project shows up.
+        list.set_active_project(Some(acme.id));
+        assert_eq!(list.active_project(), None);
+        list.apply(ConnectionListState::Ready(library.clone()));
+        assert_eq!(list.active_project().map(|project| project.id), Some(acme.id));
+        let after_load = seen.get();
+
+        list.set_active_project(Some(acme.id));
+        assert_eq!(
+            seen.get(),
+            after_load,
+            "a switch to the active project told the observers"
+        );
+        list.set_active_project(Some(side.id));
+        assert_eq!(seen.get(), after_load + 1);
+
+        // Deleted here or by another window: the setting still names it, and the list falls back.
+        list.apply(ConnectionListState::Ready(library.clone().with_projects(vec![acme])));
+        assert_eq!(list.active_project(), None);
+        assert_eq!(listed(&list).len(), 4);
+        assert_eq!(seen.get(), after_load + 2, "the fallback told no one");
+        list.apply(ConnectionListState::Ready(library));
+        assert_eq!(seen.get(), after_load + 3);
+        assert_eq!(
+            list.active_project().map(|project| project.id),
+            Some(side.id),
+            "a project that came back is not active again"
+        );
+    }
+
+    #[gtk4::test]
+    fn the_scope_signal_fires_when_the_listed_ids_change_and_only_then() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
+        let (library, acme, side, [w1, a1, s1, n1]) = projects();
+        list.apply(ConnectionListState::Ready(library.clone()));
+        list.set_active_project(Some(acme.id));
+        let seen = Rc::new(Cell::new(0));
+        let counted = seen.clone();
+        let observer = list.connect_scope_changed(move || counted.set(counted.get() + 1));
+        let with = |connections: Vec<SavedConnection>| {
+            ConnectionListState::Ready(
+                ConnectionList::new(connections, Vec::new())
+                    .with_groups(library.groups.to_vec())
+                    .with_projects(vec![acme.clone(), side.clone()]),
+            )
+        };
+
+        // An edit inside the project and one outside it: the listed ids stand.
+        let renamed = SavedConnection {
+            name: "A1 renamed".to_owned(),
+            ..a1.clone()
+        };
+        list.apply(with(vec![w1.clone(), renamed.clone(), s1.clone(), n1.clone()]));
+        list.apply(with(vec![w1.clone(), renamed.clone(), s1.clone()]));
+        assert_eq!(seen.get(), 0, "an edit that left the scope alone fired the signal");
+
+        let moved = SavedConnection {
+            project_id: Some(acme.id),
+            ..s1.clone()
+        };
+        list.apply(with(vec![w1.clone(), renamed.clone(), moved.clone()]));
+        assert_eq!(seen.get(), 1, "a move into the project");
+        list.apply(with(vec![w1.clone(), moved.clone()]));
+        assert_eq!(seen.get(), 2, "a delete inside the project");
+        let ungrouped = SavedConnection {
+            group_id: None,
+            ..w1.clone()
+        };
+        list.apply(with(vec![ungrouped, moved.clone()]));
+        assert_eq!(seen.get(), 3, "a connection that left the project's group");
+        list.apply(with(vec![moved.clone()]));
+        assert_eq!(seen.get(), 3, "a delete outside the project fired the signal");
+
+        list.disconnect_scope_changed(observer);
+        list.set_active_project(None);
+        assert_eq!(seen.get(), 3, "a disconnected observer still ran");
+    }
+
+    #[gtk4::test]
+    fn a_switch_between_two_empty_projects_fires_the_scope_signal() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
+        let (one, two) = (project("One", 0), project("Two", 1));
+        list.apply(ConnectionListState::Ready(
+            ConnectionList::new(Vec::new(), Vec::new()).with_projects(vec![one.clone(), two.clone()]),
+        ));
+        list.set_active_project(Some(one.id));
+        let seen = Rc::new(Cell::new(0));
+        let counted = seen.clone();
+        list.connect_scope_changed(move || counted.set(counted.get() + 1));
+
+        list.set_active_project(Some(two.id));
+
+        assert_eq!(seen.get(), 1);
+    }
+
+    #[gtk4::test]
+    fn the_list_follows_the_store_inside_a_project() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
+        let acme = store.create_project_blocking(project("Acme", 0)).expect("the project");
+        list.set_active_project(Some(acme.id));
+        let (inside, outside) = (
+            SavedConnection {
+                project_id: Some(acme.id),
+                ..connection("Inside")
+            },
+            connection("Outside"),
+        );
+
+        store.upsert_blocking(inside.clone()).expect("the write");
+        store.upsert_blocking(outside.clone()).expect("the write");
+
+        wait_until(WAIT, || list.get(outside.id).is_some()).expect("both connections");
+        assert_eq!(listed(&list), ["Inside"]);
+        store
+            .move_connections_to_project_blocking(&[outside.id], Some(acme.id))
+            .expect("the move");
+        wait_until(WAIT, || listed(&list) == ["Inside", "Outside"]).expect("the moved connection");
+        store.delete_project_blocking(acme.id).expect("the delete");
+        wait_until(WAIT, || list.active_project().is_none()).expect("the fallback");
+        assert_eq!(
+            listed(&list),
+            ["Inside", "Outside"],
+            "a deleted project took its connections"
+        );
     }
 
     #[gtk4::test]

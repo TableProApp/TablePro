@@ -96,20 +96,39 @@ extension SyncCoordinator {
                 Self.valueColorsContentKind,
                 ConnectionSyncField.sshRouteContentKind,
             ])
+            .union(SyncSchemaGate.membershipContentKinds(readsProjects: SyncSchemaGate.isProjectSyncWritable))
     }
 
-    // Only what this Mac applies: a pull skips a category that is off and still moves the token past it.
-    static func readableContent(for settings: SyncSettings) -> Set<String> {
+    // Only what this Mac applies: a pull skips a category that is off, and a record's project while project sync
+    // is off, and still moves the token past both.
+    static func readableContent(
+        for settings: SyncSettings,
+        readsProjects: Bool = SyncSchemaGate.isProjectSyncWritable
+    ) -> Set<String> {
         var content = Set(SyncRecordType.verifiedInProduction.filter { settings.syncs($0) }.map(\.rawValue))
         if settings.syncs(.connection) {
             content.insert(ConnectionSyncField.sshRouteContentKind)
         }
+        content.formUnion(SyncSchemaGate.membershipContentKinds(
+            readsProjects: readsProjects,
+            connections: settings.syncs(.connection),
+            groups: settings.syncs(.group)
+        ))
         if settings.syncs(.settings) {
             content.insert(Self.themeContentKind)
             content.insert(Self.formatterContentKind)
             content.insert(Self.valueColorsContentKind)
         }
         return content
+    }
+
+    // A delta never resends a record the token passed, and neither a category toggle nor project sync turning
+    // on starts a run, so every pull checks.
+    func adoptReadableContent(for settings: SyncSettings) {
+        let readable = Self.readableContent(for: settings, readsProjects: isProjectSyncWritable())
+        guard metadataStorage.adoptReadableRecordTypes(readable) else { return }
+        metadataStorage.saveToken(nil)
+        Self.logger.info("Reading record types the last pull skipped: cleared sync token for full fetch")
     }
 
     func applyRemoteThemeDeletions(_ settingsRecordNames: Set<String>) -> Bool {

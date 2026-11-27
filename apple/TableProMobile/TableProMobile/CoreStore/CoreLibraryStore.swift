@@ -5,14 +5,16 @@ import TableProFFI
 import TableProLogRedaction
 import TableProModels
 
-// The connection library in the core's store (core ADRs 0010 and 0054): connections, groups, tags and favourites in one
-// file, read whole and written whole, with the previous stable's files kept in step after each write.
+// The connection library in the core's store (core ADRs 0010 and 0054): connections, groups, tags, favourites and projects
+// in one file, read whole and written whole, with the previous stable's files kept in step after each write.
 @MainActor
 final class CoreLibraryStore {
+    // Every write names the whole project list: one it leaves out is deleted.
     struct Library: Equatable {
         var connections: [DatabaseConnection]
         var groups: [ConnectionGroup]
         var tags: [ConnectionTag]
+        var projects: [ConnectionProject]
     }
 
     enum Failure: Error, Equatable {
@@ -46,6 +48,7 @@ final class CoreLibraryStore {
     private var stored: [UUID: LibraryConnectionRecord] = [:]
     private var storedGroups: [UUID: GroupRecord] = [:]
     private var storedTags: [UUID: TagRecord] = [:]
+    private var storedProjects: [UUID: ProjectRecord] = [:]
     private var storedFavorites: [UUID] = []
     private var heldByCore: Set<UUID> = []
     // The digest of the core's file as this store last read or wrote it; a write over another file is refused.
@@ -147,7 +150,8 @@ final class CoreLibraryStore {
         let readable = legacy.connections.filter { !heldByCore.contains($0.id) }
         // Connection-string secrets an older Mac synced move to the Keychain before the core's file first holds them.
         let cleaned = readable.map { MongoURISecretMigration.keepingSecretsInKeychain($0, in: secureStore) }
-        let imported = Library(connections: cleaned, groups: legacy.groups, tags: legacy.tags)
+        // The previous stable has no projects, so an import starts with none.
+        let imported = Library(connections: cleaned, groups: legacy.groups, tags: legacy.tags, projects: [])
         if cleaned != readable {
             try removeSecretCopies()
         }
@@ -180,7 +184,8 @@ final class CoreLibraryStore {
         guard loaded, let library else { throw Failure.notLoaded }
         guard Set(next.connections.map(\.id)).count == next.connections.count,
               Set(next.groups.map(\.id)).count == next.groups.count,
-              Set(next.tags.map(\.id)).count == next.tags.count else {
+              Set(next.tags.map(\.id)).count == next.tags.count,
+              Set(next.projects.map(\.id)).count == next.projects.count else {
             Self.logger.error("Refused a library write that names one id twice")
             throw Failure.repeatedId
         }
@@ -242,6 +247,7 @@ final class CoreLibraryStore {
             groups: next.groups.map { LibraryRecordMapping.record($0, keeping: storedGroups[$0.id]) },
             tags: next.tags.map { LibraryRecordMapping.record($0, keeping: storedTags[$0.id]) },
             favorites: favorites(of: next.connections, order: favoritesOrder, held: held ?? heldByCore).map(\.uuidString),
+            projects: next.projects.map { LibraryRecordMapping.record($0, keeping: storedProjects[$0.id]) },
             removing: unread.map(\.uuidString)
         )
         do {
@@ -331,7 +337,8 @@ final class CoreLibraryStore {
                 )
             },
             groups: contents.groups.map(LibraryRecordMapping.group),
-            tags: contents.tags.map(LibraryRecordMapping.tag)
+            tags: contents.tags.map(LibraryRecordMapping.tag),
+            projects: contents.projects.map(LibraryRecordMapping.project)
         )
     }
 
@@ -346,6 +353,10 @@ final class CoreLibraryStore {
         )
         storedTags = Dictionary(
             contents.tags.compactMap { record in UUID(uuidString: record.id).map { ($0, record) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        storedProjects = Dictionary(
+            contents.projects.compactMap { record in UUID(uuidString: record.id).map { ($0, record) } },
             uniquingKeysWith: { first, _ in first }
         )
         storedFavorites = contents.favorites.compactMap(UUID.init(uuidString:))
@@ -366,6 +377,7 @@ final class CoreLibraryStore {
         stored = [:]
         storedGroups = [:]
         storedTags = [:]
+        storedProjects = [:]
         storedFavorites = []
         heldByCore = []
         legacyCopiesOfHeld = []

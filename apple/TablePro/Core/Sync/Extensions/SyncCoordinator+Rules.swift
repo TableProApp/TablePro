@@ -37,7 +37,8 @@ extension SyncCoordinator {
     // Groups and tags write only their own store, and the rest are collected and applied after the loop.
     static func leavesConnectionLibraryAlone(_ type: SyncRecordType) -> Bool {
         switch type {
-        case .connection, .group, .tag, .tableFavorite, .tableFolder, .tableFolderItem, .favorite, .favoriteFolder:
+        case .connection, .group, .tag, .tableFavorite, .tableFolder, .tableFolderItem, .favorite, .favoriteFolder,
+             .project:
             return true
         case .settings, .sshProfile, .credentialProfile, .favoriteDatabase:
             return false

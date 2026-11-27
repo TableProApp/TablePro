@@ -32,6 +32,21 @@ pub fn saved_connection_error_message(error: &SavedConnectionError) -> String {
         SavedConnectionError::Storage(StorageError::GroupExists { .. }) => {
             crate::i18n::gettext("That group already exists.")
         }
+        SavedConnectionError::Storage(StorageError::ProjectNotFound { .. }) => {
+            crate::i18n::gettext("The project was deleted.")
+        }
+        SavedConnectionError::Storage(StorageError::ProjectNameTaken { name }) => {
+            crate::i18n::gettext_f("A project named “{name}” already exists.", &[("name", name.as_str())])
+        }
+        SavedConnectionError::Storage(StorageError::ProjectExists { .. }) => {
+            crate::i18n::gettext("That project already exists.")
+        }
+        SavedConnectionError::Storage(StorageError::ConnectionGrouped { .. }) => {
+            crate::i18n::gettext("A connection in a group follows its group’s project. Move the group instead.")
+        }
+        SavedConnectionError::Storage(StorageError::GroupNotTopLevel { .. }) => {
+            crate::i18n::gettext("A subgroup follows the project of the group it is in.")
+        }
         SavedConnectionError::Storage(StorageError::ConnectionNotFound { .. }) => {
             crate::i18n::gettext("The connection was deleted.")
         }
@@ -120,6 +135,34 @@ mod tests {
         assert_eq!(
             storage(StorageError::ConnectionNotFound { id: Uuid::nil() }),
             "The connection was deleted."
+        );
+    }
+
+    #[test]
+    fn each_project_failure_says_what_happened() {
+        let storage = |error: StorageError| saved_connection_error_message(&SavedConnectionError::Storage(error));
+
+        assert_eq!(
+            storage(StorageError::ProjectNotFound { id: Uuid::nil() }),
+            "The project was deleted."
+        );
+        assert_eq!(
+            storage(StorageError::ProjectNameTaken {
+                name: "Acme".to_owned()
+            }),
+            "A project named “Acme” already exists."
+        );
+        assert_eq!(
+            storage(StorageError::ProjectExists { id: Uuid::nil() }),
+            "That project already exists."
+        );
+        assert_eq!(
+            storage(StorageError::ConnectionGrouped { id: Uuid::nil() }),
+            "A connection in a group follows its group’s project. Move the group instead."
+        );
+        assert_eq!(
+            storage(StorageError::GroupNotTopLevel { id: Uuid::nil() }),
+            "A subgroup follows the project of the group it is in."
         );
     }
 }

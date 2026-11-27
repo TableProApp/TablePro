@@ -93,7 +93,7 @@ extension QueryExecutionCoordinator {
         }
         let isTableTab = tab.tabType == .table
         let readsView = tab.tableContext.knowsView(named: tableName)
-        let (grammar, lengthColumns) = (parent.lexicalGrammar, parent.unloadedValueLengthColumns(for: tab, sql: sql))
+        let (grammar, unloadedLayout) = (parent.lexicalGrammar, parent.unloadedValueLayout(for: tab, sql: sql))
         let safeModeIsReadOnly = parent.runsAtReadOnly
         let held = parent.manualCommitRun(skipped: isTableTab || isAutoLoad)
         let bound = request.bound
@@ -130,7 +130,7 @@ extension QueryExecutionCoordinator {
                         lease: run.lease
                     ) { [queryExecutor = parent.queryExecutor, manager = parent.services.databaseManager] driver in
                         leaseTiming?.noteQueryStarted()
-                        let fetched = try await held.running([statement.sql], on: driver) {
+                        var fetched = try await held.running([statement.sql], on: driver) {
                             // Before it runs, so a statement that fails or a connection lost under it is still noted.
                             if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
                             return try await queryExecutor.executeQuery(
@@ -145,7 +145,8 @@ extension QueryExecutionCoordinator {
                         let edits = isAutoLoad ? nil : await SucceededStatements.single(
                             statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
                         )
-                        return (fetched.foldingUnloadedValues(lengthColumns: lengthColumns), edits)
+                        fetched.foldUnloadedValues(unloadedLayout)
+                        return (fetched, edits)
                     }
                 }
                 let fetchEndedAt = ContinuousClock.now
