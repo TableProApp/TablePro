@@ -537,63 +537,7 @@ actor QueryHistoryStorage {
     // MARK: - Writes
 
     func record(_ entry: QueryHistoryEntry) -> Bool {
-        guard let db else { return false }
-
-        let sql = """
-            INSERT INTO history (
-                id, query, connection_id, database_name, database_type, schema_name,
-                source, statement_type, executed_at, execution_time, row_count,
-                was_successful, error_message, shape_hash, first_row_time, server_time, fingerprint_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            logSqliteError(context: "prepare insert")
-            return false
-        }
-        defer { sqlite3_finalize(statement) }
-
-        let transient = QueryHistorySqlBinding.transient
-        sqlite3_bind_text(statement, 1, entry.id.uuidString, -1, transient)
-        sqlite3_bind_text(statement, 2, entry.query, -1, transient)
-        sqlite3_bind_text(statement, 3, entry.connectionId.uuidString, -1, transient)
-        sqlite3_bind_text(statement, 4, entry.databaseName, -1, transient)
-        sqlite3_bind_text(statement, 5, entry.databaseType.rawValue, -1, transient)
-        if let schemaName = entry.schemaName {
-            sqlite3_bind_text(statement, 6, schemaName, -1, transient)
-        } else {
-            sqlite3_bind_null(statement, 6)
-        }
-        sqlite3_bind_text(statement, 7, entry.source.rawValue, -1, transient)
-        sqlite3_bind_text(statement, 8, entry.statementType.rawValue, -1, transient)
-        sqlite3_bind_double(statement, 9, entry.executedAt.timeIntervalSince1970)
-        sqlite3_bind_double(statement, 10, entry.executionTime)
-        sqlite3_bind_int(statement, 11, Int32(clamping: entry.rowCount))
-        sqlite3_bind_int(statement, 12, entry.wasSuccessful ? 1 : 0)
-        if let errorMessage = entry.errorMessage {
-            sqlite3_bind_text(statement, 13, errorMessage, -1, transient)
-        } else {
-            sqlite3_bind_null(statement, 13)
-        }
-        sqlite3_bind_int64(statement, 14, SQLQueryFingerprint.hash(entry.query, databaseType: entry.databaseType))
-        if let firstRowTime = entry.firstRowTime {
-            sqlite3_bind_double(statement, 15, firstRowTime)
-        } else {
-            sqlite3_bind_null(statement, 15)
-        }
-        if let serverTime = entry.serverTime {
-            sqlite3_bind_double(statement, 16, serverTime)
-        } else {
-            sqlite3_bind_null(statement, 16)
-        }
-        sqlite3_bind_int64(statement, 17, SQLLegacyFingerprint.hash(entry.query, databaseType: entry.databaseType))
-
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            logSqliteError(context: "insert")
-            return false
-        }
-
+        guard insertRow(entry, ignoringExisting: false) else { return false }
         insertsSinceCleanup += 1
         if cachedAutoCleanup, insertsSinceCleanup >= Self.cleanupInsertInterval {
             insertsSinceCleanup = 0
@@ -715,14 +659,20 @@ actor QueryHistoryStorage {
         to clause: inout QueryHistorySqlClause,
         columnPrefix prefix: String
     ) {
-        guard let cursor else { return }
-        let executedAt = cursor.executedAt.timeIntervalSince1970
-        clause.append(
-            " AND (\(prefix)executed_at < ? OR (\(prefix)executed_at = ? AND \(prefix)id < ?))",
-            .double(executedAt),
-            .double(executedAt),
-            .text(cursor.id.uuidString)
-        )
+        switch cursor {
+        case nil:
+            return
+        case .local(let executedAt, let id)?:
+            clause.append(
+                " AND (\(prefix)executed_at < ? OR (\(prefix)executed_at = ? AND \(prefix)id < ?))",
+                .double(executedAt.timeIntervalSince1970),
+                .double(executedAt.timeIntervalSince1970),
+                .text(id.uuidString)
+            )
+        // The core's page names its own rows, which this store does not hold, so nothing follows it here.
+        case .core?:
+            clause.append(" AND 0")
+        }
     }
 
     /// FTS5 matches whole tokens, so an unadorned term never matches the word being typed, and a
@@ -1318,5 +1268,115 @@ actor QueryHistoryStorage {
     private func optionalDouble(_ statement: OpaquePointer?, _ index: Int32) -> TimeInterval? {
         guard let statement, sqlite3_column_type(statement, index) != SQLITE_NULL else { return nil }
         return sqlite3_column_double(statement, index)
+    }
+}
+
+// Reads and writes the core's history needs, beside the store's own.
+extension QueryHistoryStorage {
+    // The runs `clear(matching:)` would delete, read first so their deletion can sync. Nil when the store is closed.
+    func ids(matching filter: QueryHistoryFilter) -> Set<UUID>? {
+        guard let db else { return nil }
+        guard !filter.matchesNothing else { return [] }
+        var clause = QueryHistorySqlClause()
+        if let searchText = filter.searchText, !searchText.isEmpty {
+            clause.append(
+                """
+                SELECT h.id FROM history h
+                INNER JOIN history_fts ON h.rowid = history_fts.rowid
+                WHERE history_fts MATCH ?
+                """,
+                .text(Self.ftsQuery(for: searchText))
+            )
+            appendFilters(filter, to: &clause, columnPrefix: "h.")
+        } else {
+            clause.append("SELECT id FROM history WHERE 1 = 1")
+            appendFilters(filter, to: &clause, columnPrefix: "")
+        }
+        clause.append(";")
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, clause.sql, -1, &statement, nil) == SQLITE_OK else {
+            logSqliteError(context: "prepare matching ids")
+            return nil
+        }
+        for (offset, binding) in clause.bindings.enumerated() {
+            binding.bind(to: statement, at: Int32(offset + 1))
+        }
+        var ids: Set<UUID> = []
+        while true {
+            switch sqlite3_step(statement) {
+            case SQLITE_ROW:
+                if let text = sqlite3_column_text(statement, 0), let id = UUID(uuidString: String(cString: text)) {
+                    ids.insert(id)
+                }
+            case SQLITE_DONE:
+                return ids
+            default:
+                logSqliteError(context: "matching ids")
+                return nil
+            }
+        }
+    }
+
+    // One row, with no retention pass: a run another device recorded comes in through it too. False for an id the
+    // store already holds when `ignoringExisting`, as for any failure otherwise.
+    func insertRow(_ entry: QueryHistoryEntry, ignoringExisting: Bool) -> Bool {
+        guard let db else { return false }
+
+        let sql = """
+            INSERT \(ignoringExisting ? "OR IGNORE " : "")INTO history (
+                id, query, connection_id, database_name, database_type, schema_name,
+                source, statement_type, executed_at, execution_time, row_count,
+                was_successful, error_message, shape_hash, first_row_time, server_time, fingerprint_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            logSqliteError(context: "prepare insert")
+            return false
+        }
+        defer { sqlite3_finalize(statement) }
+
+        let transient = QueryHistorySqlBinding.transient
+        sqlite3_bind_text(statement, 1, entry.id.uuidString, -1, transient)
+        sqlite3_bind_text(statement, 2, entry.query, -1, transient)
+        sqlite3_bind_text(statement, 3, entry.connectionId.uuidString, -1, transient)
+        sqlite3_bind_text(statement, 4, entry.databaseName, -1, transient)
+        sqlite3_bind_text(statement, 5, entry.databaseType.rawValue, -1, transient)
+        if let schemaName = entry.schemaName {
+            sqlite3_bind_text(statement, 6, schemaName, -1, transient)
+        } else {
+            sqlite3_bind_null(statement, 6)
+        }
+        sqlite3_bind_text(statement, 7, entry.source.rawValue, -1, transient)
+        sqlite3_bind_text(statement, 8, entry.statementType.rawValue, -1, transient)
+        sqlite3_bind_double(statement, 9, entry.executedAt.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 10, entry.executionTime)
+        sqlite3_bind_int(statement, 11, Int32(clamping: entry.rowCount))
+        sqlite3_bind_int(statement, 12, entry.wasSuccessful ? 1 : 0)
+        if let errorMessage = entry.errorMessage {
+            sqlite3_bind_text(statement, 13, errorMessage, -1, transient)
+        } else {
+            sqlite3_bind_null(statement, 13)
+        }
+        sqlite3_bind_int64(statement, 14, SQLQueryFingerprint.hash(entry.query, databaseType: entry.databaseType))
+        if let firstRowTime = entry.firstRowTime {
+            sqlite3_bind_double(statement, 15, firstRowTime)
+        } else {
+            sqlite3_bind_null(statement, 15)
+        }
+        if let serverTime = entry.serverTime {
+            sqlite3_bind_double(statement, 16, serverTime)
+        } else {
+            sqlite3_bind_null(statement, 16)
+        }
+        sqlite3_bind_int64(statement, 17, SQLLegacyFingerprint.hash(entry.query, databaseType: entry.databaseType))
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            logSqliteError(context: "insert")
+            return false
+        }
+        return sqlite3_changes(db) > 0
     }
 }
