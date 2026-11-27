@@ -15568,6 +15568,10 @@
         }
       }
     },
+    "no answer within %lld seconds" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "No columns found in the file." : {
 
     },
@@ -26036,6 +26040,10 @@
         }
       }
     },
+    "the host name could not be resolved" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The IAM Identity Center sign-in on this device has expired." : {
 
     },
@@ -26477,6 +26485,30 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The Oracle listener redirected the connection to %@, which could not be reached." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %@, which expects TLS. Set an SSL mode for this connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %@, which the tunnel does not forward. Enter that host and port as this connection's host and port so the tunnel reaches them." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %1$@, and the listener there refused it. %2$@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %1$@, which could not be reached (%2$@)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to an address TablePro could not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The Oracle listener refused the connection (ORA-%ld)." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -26536,6 +26568,14 @@
           }
         }
       }
+    },
+    "The Oracle listeners redirected the connection too many times." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listeners redirected the connection too many times. The last address was %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The Oracle server accepted the connection but stopped answering during the login." : {
       "extractionState" : "manual",
@@ -27204,6 +27244,10 @@
       "generatesSymbol" : false
     },
     "The server offers only MAC algorithms TablePro no longer supports: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server refused the connection. Check the host and port, and that the Oracle listener is running." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
