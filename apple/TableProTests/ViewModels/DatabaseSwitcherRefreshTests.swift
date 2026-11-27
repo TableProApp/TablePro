@@ -150,6 +150,21 @@ struct DatabaseSwitcherRefreshTests {
         #expect(viewModel.databases.map(\.name) == ["analytics", "testdb"])
     }
 
+    // The sidebar read the list on connect, and the switcher read it again on open (#4542).
+    @Test("Opening the switcher after the sidebar listed the databases reads nothing")
+    func switcherTakesTheTreesList() async {
+        let (connection, driver) = connect(databaseNames: ["testdb", "analytics"])
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        await DatabaseTreeMetadataService.shared.loadDatabases(connectionId: connection.id, databaseType: .pglite)
+        driver.forgetReads()
+        let viewModel = makeConnectedViewModel(connection)
+
+        await viewModel.fetchDatabases()
+
+        #expect(driver.reads.isEmpty)
+        #expect(viewModel.databases.map(\.name) == ["analytics", "testdb"])
+    }
+
     @Test("A Teradata system database spelled in another case still lists under System")
     func namesOnlyListClassifiesLikeTheEngine() async {
         let (connection, _) = connect(databaseNames: ["dbc", "Sales"])

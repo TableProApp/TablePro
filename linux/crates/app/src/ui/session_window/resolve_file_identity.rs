@@ -45,7 +45,7 @@ pub(crate) fn file_request(
         driver,
         target: RequestTarget::File(endpoint),
         workspace_settings: WorkspaceSettings::workspace(false),
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
     };
     if read_only {
         request.open_read_only();

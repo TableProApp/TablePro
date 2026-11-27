@@ -71,14 +71,21 @@ public final class SSHSessionPump: @unchecked Sendable {
         }
     }
 
+    // Names one relay to `endRelay`.
+    public struct RelayID: Hashable, Sendable {
+        fileprivate let value = UUID()
+    }
+
     // Takes ownership of `localFD`: the pump closes it once the relay ends, then calls `onEnd` once, off the queue.
+    @discardableResult
     public func relay(
         localFD: Int32,
         channel: any SSHChannelIO,
         bufferSize: Int,
         byteCounter: (any RelayByteObserver)? = nil,
         onEnd: @escaping @Sendable (RelayTermination) -> Void
-    ) {
+    ) -> RelayID {
+        let id = RelayID()
         queue.async { [self] in
             guard !isStopped else {
                 Darwin.close(localFD)
@@ -92,6 +99,7 @@ public final class SSHSessionPump: @unchecked Sendable {
             startTransportSources()
 
             let relay = PumpedChannel(
+                id: id,
                 localFD: localFD,
                 io: channel,
                 bufferSize: bufferSize,
@@ -116,6 +124,20 @@ public final class SSHSessionPump: @unchecked Sendable {
             }
             relays.append(relay)
             serve()
+        }
+        return id
+    }
+
+    // Ends one relay as `.cancelled` while the others go on, as when one of the tunnels sharing a session closes.
+    // A local socket's end of stream cannot do it: a relay waiting for the channel's send window never reads it.
+    // A packet the relay has half sent goes out first, as only its own call can finish it.
+    public func endRelay(_ id: RelayID) {
+        queue.async { [self] in
+            guard !isStopped, let relay = relays.first(where: { $0.id == id }), !relay.isFinished else { return }
+            if let termination = end(relay, .cancelled) {
+                remove(relay, termination)
+            }
+            rearmTransport()
         }
     }
 
@@ -549,6 +571,7 @@ public final class SSHSessionPump: @unchecked Sendable {
 
 // One relayed channel, touched only on the pump's queue.
 private final class PumpedChannel: @unchecked Sendable {
+    let id: SSHSessionPump.RelayID
     let localFD: Int32
     let io: any SSHChannelIO
     let byteCounter: (any RelayByteObserver)?
@@ -581,12 +604,14 @@ private final class PumpedChannel: @unchecked Sendable {
     var ignoresQueuedHint = false
 
     init(
+        id: SSHSessionPump.RelayID,
         localFD: Int32,
         io: any SSHChannelIO,
         bufferSize: Int,
         byteCounter: (any RelayByteObserver)?,
         onEnd: @escaping @Sendable (RelayTermination) -> Void
     ) {
+        self.id = id
         self.localFD = localFD
         self.io = io
         self.byteCounter = byteCounter

@@ -12,6 +12,7 @@ private final class FixedViewportDelegate: TextSelectionManagerDelegate {
     private(set) var setNeedsDisplayCount = 0
 
     func setNeedsDisplay() { setNeedsDisplayCount += 1 }
+    func setNeedsDisplay(_ invalidRect: NSRect) { setNeedsDisplayCount += 1 }
     func estimatedLineHeight() -> CGFloat { 14.0 }
 }
 

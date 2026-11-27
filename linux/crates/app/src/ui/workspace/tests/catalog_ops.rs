@@ -145,7 +145,7 @@ fn confirm_writes(test: &TestWindow) {
         .with_model(|model| model.context.active.get())
         .flatten()
         .expect("the session");
-    assert!(session.set_safe_mode(SafeModeLevel::ConfirmWrites));
+    assert!(session.set_safe_mode(SafeModeLevel::Alert));
 }
 
 fn alert_titled(test: &TestWindow, heading: &str) -> adw::AlertDialog {

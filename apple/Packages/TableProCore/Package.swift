@@ -273,7 +273,7 @@ let package = Package(
         // Reads a .sql file for both apps' imports, so never TableProPluginKit.
         .target(
             name: "TableProSQLFile",
-            dependencies: ["TableProSQLGrammar", "TableProTabularIO"],
+            dependencies: ["TableProSQLGrammar", "TableProTabularIO", "TableProGzip"],
             path: "Sources/TableProSQLFile",
             swiftSettings: pluginCoreSettings
         ),
@@ -546,7 +546,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProSQLFileTests",
-            dependencies: ["TableProSQLFile", "TableProSQLGrammar", "TableProTabularIO"],
+            dependencies: ["TableProSQLFile", "TableProSQLGrammar", "TableProTabularIO", "TableProGzip"],
             path: "Tests/TableProSQLFileTests",
             swiftSettings: pluginCoreSettings
         ),

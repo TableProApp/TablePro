@@ -11,8 +11,8 @@ use crate::runtime::on_runtime;
 // history's database. A table sits in at most one folder.
 #[derive(uniffi::Object)]
 pub struct TableFolderStore {
-    folders: TableFolders,
-    tasks: Tasks,
+    pub(crate) folders: TableFolders,
+    pub(crate) tasks: Tasks,
 }
 
 // An empty database or schema for an engine that has none.

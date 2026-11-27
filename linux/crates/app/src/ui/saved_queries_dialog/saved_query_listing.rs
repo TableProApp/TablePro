@@ -5,7 +5,7 @@ use tablepro_storage::saved_queries::SavedQuery;
 use uuid::Uuid;
 
 // One lowercase entry per field, so a search never matches across two fields.
-pub(super) type SearchSnapshot = Arc<[(i64, String)]>;
+pub(super) type SearchSnapshot = Arc<[(Uuid, String)]>;
 
 pub(super) struct Listing {
     pub(super) queries: Vec<(u32, SavedQuery)>,
@@ -23,9 +23,10 @@ impl Listing {
 }
 
 // Each query with its group's rank. A group is a connection id, so two
-// connections sharing a name stay apart; the active one comes first.
+// connections sharing a name stay apart; the active one comes first. The
+// queries with no connection are a group of their own.
 fn grouped(queries: Vec<SavedQuery>, active: Option<Uuid>) -> Vec<(u32, SavedQuery)> {
-    let mut groups: Vec<(Uuid, Vec<SavedQuery>)> = Vec::new();
+    let mut groups: Vec<(Option<Uuid>, Vec<SavedQuery>)> = Vec::new();
     for saved in queries {
         match groups
             .iter_mut()
@@ -37,7 +38,7 @@ fn grouped(queries: Vec<SavedQuery>, active: Option<Uuid>) -> Vec<(u32, SavedQue
     }
     if let Some(active) = active {
         // A stable sort, so the other groups keep the store's order.
-        groups.sort_by_key(|(connection, _)| *connection != active);
+        groups.sort_by_key(|(connection, _)| *connection != Some(active));
     }
     groups
         .into_iter()
@@ -57,7 +58,7 @@ fn snapshot(queries: &[SavedQuery]) -> SearchSnapshot {
 
 // The connection's name counts, so typing it narrows the list to that
 // connection without a filter control.
-pub(super) fn matches(snapshot: &[(i64, String)], needle: &str) -> HashSet<i64> {
+pub(super) fn matches(snapshot: &[(Uuid, String)], needle: &str) -> HashSet<Uuid> {
     let needle = needle.trim().to_lowercase();
     snapshot
         .iter()
@@ -78,10 +79,10 @@ mod tests {
 
     fn on_connection(name: &str, query: &str, connection: &str, connection_id: Uuid) -> SavedQuery {
         SavedQuery {
-            id: 1,
+            id: Uuid::from_u128(1),
             name: name.to_owned(),
             query: query.to_owned(),
-            connection_id,
+            connection_id: Some(connection_id),
             connection_name: connection.to_owned(),
             keyword: None,
             folder_id: None,

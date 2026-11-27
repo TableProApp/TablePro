@@ -12,8 +12,11 @@ private final class CatalogSource: PluginExportDataSource, @unchecked Sendable {
     var failingGroupReads: PluginExportBulkReads = []
     var cancelsGroupReads = false
     var failingIndexTables: Set<String> = []
+    // The tables the group's table DDL read renders; the rest are read alone.
+    var bulkDDLTables: Set<String> = ["customers", "orders"]
     private let lock = NSLock()
     private var recorded: [String] = []
+    private var ddlRecorded: [String] = []
 
     private let indexDDL = [
         "orders": ["CREATE INDEX orders_open ON shop.orders USING btree (customer_id) WHERE (status <> 'shipped')"],
@@ -43,6 +46,10 @@ private final class CatalogSource: PluginExportDataSource, @unchecked Sendable {
         lock.withLock { recorded }
     }
 
+    var ddlCalls: [String] {
+        lock.withLock { ddlRecorded }
+    }
+
     private func record(_ call: String) {
         lock.withLock { recorded.append(call) }
     }
@@ -64,7 +71,18 @@ private final class CatalogSource: PluginExportDataSource, @unchecked Sendable {
     }
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {
+        lock.withLock { ddlRecorded.append(table) }
+        return Self.tableDDL(table, in: databaseName)
+    }
+
+    private static func tableDDL(_ table: String, in databaseName: String) -> String {
         "CREATE TABLE \"\(databaseName)\".\"\(table)\" (id integer)"
+    }
+
+    func fetchAllTableDDL(databaseName: String) async throws -> [String: String] {
+        lock.withLock { ddlRecorded.append("all") }
+        if failingGroupReads.contains(.tableDDL) { throw Denied() }
+        return Dictionary(uniqueKeysWithValues: bulkDDLTables.map { ($0, Self.tableDDL($0, in: databaseName)) })
     }
 
     func fetchObjectDDL(_ object: PluginExportTable) async throws -> String {
@@ -219,6 +237,31 @@ struct SQLExportGroupReadTests {
         #expect(groupedDump.text.contains("CREATE TYPE \"order_status\" AS ENUM ('new', 'it''s done');"))
         #expect(groupedDump.text.contains("CREATE UNIQUE INDEX totals_customer"))
         #expect(groupedDump.text.contains(#"COMMENT ON VIEW "shop"."recent" IS 'Recent';"#))
+    }
+
+    @Test("The schema's table DDL is read once, and a table it leaves out is read alone")
+    func tableDDLGroupReadFallsBackForMissingTables() async throws {
+        let grouped = CatalogSource(bulkReads: Self.everyRead.union(.tableDDL))
+        let alone = CatalogSource(bulkReads: [])
+
+        let groupedDump = try await dump(Self.objects, from: grouped)
+        let aloneDump = try await dump(Self.objects, from: alone)
+
+        #expect(grouped.ddlCalls == ["all", "plain"])
+        #expect(alone.ddlCalls.sorted() == ["customers", "orders", "plain"])
+        #expect(groupedDump.text == aloneDump.text)
+        #expect(groupedDump.warnings == aloneDump.warnings)
+    }
+
+    @Test("A failed table DDL group read leaves every table to its own read")
+    func failedTableDDLGroupReadReadsEachTable() async throws {
+        let grouped = CatalogSource(bulkReads: Self.everyRead.union(.tableDDL))
+        grouped.failingGroupReads = [.tableDDL]
+
+        _ = try await dump(Self.objects, from: grouped)
+
+        #expect(grouped.ddlCalls.first == "all")
+        #expect(grouped.ddlCalls.dropFirst().sorted() == ["customers", "orders", "plain"])
     }
 
     @Test("A group read that fails leaves each object to its own read, which still names the table it failed on")

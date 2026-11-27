@@ -24,6 +24,7 @@ pub fn history_entry(query: String, metadata: &ConnectionMetadata, executed_at: 
         .ok()
         .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok());
     NewEntry {
+        record_id: uuid::Uuid::new_v4(),
         query,
         driver_id: metadata.driver_id.clone(),
         connection_id: metadata.id,

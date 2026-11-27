@@ -172,15 +172,19 @@ fn collect(value: &JsonValue, entries: &mut HashMap<String, Sealed>) {
                     .find(|(member, _)| member == name)
                     .map(|(_, value)| value)
             };
-            if let (Some(JsonValue::String(kind)), Some(JsonValue::String(id)), Some(fields @ JsonValue::Object(_))) =
+            // Read from the members, not through the parser, which refuses a record past 1 MiB.
+            if let (Some(JsonValue::String(kind)), Some(JsonValue::String(id)), Some(JsonValue::Object(fields))) =
                 (get("kind"), get("id"), get("fields"))
                 && kind == "key.wrap"
-                && let Ok(object) = crate::body::KeyObject::parse(kind, id, fields.to_json().as_bytes())
-                && let Some(wrap) = object.wrap()
+                && let (Some((_, JsonValue::String(enc))), Some((_, JsonValue::String(ct)))) = (
+                    fields.iter().find(|(member, _)| member == "enc"),
+                    fields.iter().find(|(member, _)| member == "ct"),
+                )
+                && let (Ok(enc), Ok(ct)) = (crate::b64::decode_exact::<32>(enc), crate::b64::decode(ct))
             {
                 let found = entries.entry(id.clone()).or_default();
-                if !found.iter().any(|(enc, _)| *enc == wrap.enc) {
-                    found.push((wrap.enc, wrap.ct));
+                if !found.iter().any(|(held, _)| *held == enc) {
+                    found.push((enc, ct));
                 }
             }
             for (_, member) in members {

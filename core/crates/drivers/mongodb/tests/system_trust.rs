@@ -111,6 +111,7 @@ fn verified_without_ca_file(fixture: &MongoFixture, transport: Arc<dyn Transport
                 ca_file: None,
                 client_identity: None,
                 server_name: None,
+                unknown: Default::default(),
             },
             options: NetworkOptions::default(),
         }),

@@ -283,6 +283,24 @@ final class SSHProfileStorage {
         }
     }
 
+    // A connect's read: built here, run off the main actor, since SecItemCopyMatching blocks its thread.
+    func secretRead(_ secret: SSHSecret, for profileId: UUID) -> DeferredSecretRead {
+        let keychain = keychain
+        let key = Self.key(secret, profileId)
+        let label = "\(Self.label(secret)) (profileId=\(profileId.uuidString))"
+        return DeferredSecretRead(key: key, label: label, logger: Self.logger) {
+            keychain.readStringResult(forKey: key)
+        }
+    }
+
+    private static func label(_ secret: SSHSecret) -> String {
+        switch secret {
+        case .password: "SSH profile password"
+        case .keyPassphrase: "SSH profile key passphrase"
+        case .totpSecret: "SSH profile TOTP secret"
+        }
+    }
+
     private func resolveString(label: String, profileId: UUID, secret: SSHSecret) -> String? {
         keychain.readStringResult(forKey: Self.key(secret, profileId))
             .value(label: "\(label) (profileId=\(profileId.uuidString))", logger: Self.logger)

@@ -1987,7 +1987,7 @@ fn connect_saved(
             .get(&saved.driver_id)
             .as_deref()
             .map(DatabaseDriver::capabilities),
-        route(saved.ssh.is_some()),
+        route(saved.ssh.as_ref().is_some_and(|ssh| ssh.enabled)),
     );
     async move {
         let connected = connect_flow::connect_saved(
@@ -2160,7 +2160,7 @@ fn attempt_error(error: &ConnectError, server_name_shown: bool) -> AttemptError 
 /// connect: the connection, or the file.
 fn source_name(source: &ConnectSource) -> String {
     match source {
-        ConnectSource::Saved(saved) => saved.name.clone(),
+        ConnectSource::Saved(saved) => tablepro_storage::shown_name(&saved.name),
         ConnectSource::Intent(intent) => intent.request.metadata.name.clone(),
         ConnectSource::File(identity) => file_display_name(&identity.uri),
     }

@@ -441,6 +441,7 @@ fn history_entry(
         Err(error) => (None, Outcome::Error(error.message().to_owned())),
     };
     NewEntry {
+        record_id: uuid::Uuid::new_v4(),
         query: text.to_owned(),
         driver_id: connection.driver_id.clone(),
         connection_id: connection.id,
