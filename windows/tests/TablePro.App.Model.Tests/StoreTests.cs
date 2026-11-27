@@ -25,6 +25,28 @@ public sealed class StoreTests : IDisposable
     }
 
     [Fact]
+    public void ShortcutOverridesRoundTripAsAMapAndDropBadEntries()
+    {
+        var path = File("settings.json");
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings
+        {
+            ShortcutOverrides = new ShortcutOverrideMap
+            {
+                ["newTab"] = "ctrl+shift+j",
+                ["refresh"] = string.Empty,
+                ["addRow"] = "ctrl+alt+x",
+            },
+        });
+
+        Assert.Contains("\"shortcutOverrides\"", System.IO.File.ReadAllText(path), StringComparison.Ordinal);
+        var loaded = store.Load().ShortcutOverrides;
+        Assert.Equal("ctrl+shift+j", loaded["newTab"]);
+        Assert.Equal(string.Empty, loaded["refresh"]);
+        Assert.False(loaded.ContainsKey("addRow"));
+    }
+
+    [Fact]
     public void SettingsComeBackAsSaved()
     {
         var store = new SettingsStore(File("settings.json"));
