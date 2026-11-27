@@ -801,6 +801,11 @@ final class AppState {
         SyncCategories(defaults: defaults)
     }
 
+    // An iCloud pass finished here at least once, so TablePro's data may still be in iCloud after this device left it.
+    var hasICloudSyncData: Bool {
+        defaults.string(forKey: IOSSyncEngineHost.icloudAccountKey) != nil
+    }
+
     // The service open now hears the change; one opened later reads them at its open.
     func setSyncCategories(_ categories: SyncCategories) {
         categories.store(in: defaults)

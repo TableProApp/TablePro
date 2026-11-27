@@ -1,6 +1,6 @@
 import SwiftUI
+import TableProFFI
 import TableProModels
-import TableProSyncTransport
 
 struct SettingsView: View {
     private static let privacyPolicyURL = URL(string: "https://tablepro.app/privacy")
@@ -9,7 +9,6 @@ struct SettingsView: View {
 
     @AppStorage(AppLockState.lockEnabledKey) private var lockEnabled = false
     @AppStorage(AppLockState.lockTimeoutKey) private var lockTimeoutSeconds = AppLockState.AutoLockTimeout.fiveMinutes.rawValue
-    @AppStorage(AppPreferences.syncPasswordsKey) private var syncPasswords = false
     @AppStorage(AppPreferences.defaultPageSizeKey) private var defaultPageSize = 100
     @AppStorage(AppPreferences.defaultSafeModeKey) private var defaultSafeModeRaw = SafeModeLevel.off.rawValue
     @AppStorage(AppPreferences.hideQueryPreviewInActivityKey) private var hideQueryPreviewInActivity = false
@@ -20,7 +19,7 @@ struct SettingsView: View {
         Form {
             AccountSection(account: appState.account, managed: appState.onboarding.managed)
             biometricSection
-            iCloudSection
+            syncSection
             defaultsSection
             usageDataSection
             liveActivitySection
@@ -53,78 +52,18 @@ struct SettingsView: View {
         }
     }
 
-    private var iCloudSection: some View {
+    // The provider and its state on one row; the page behind it holds the picker, the moves and what syncs.
+    private var syncSection: some View {
         Section {
-            Toggle(String(localized: "iCloud Sync"), isOn: cloudSyncBinding)
-                .disabled(appState.onboarding.managed.locksICloudSync)
-            if appState.onboarding.isCloudSyncEnabled {
-                LabeledContent(String(localized: "Last Sync")) {
-                    lastSyncLabel
-                }
-                if let problem = appState.syncCoordinator.status.error {
-                    syncProblemRows(SyncStatusPresentation(problem))
-                }
-                Toggle(String(localized: "Sync Passwords"), isOn: $syncPasswords)
+            NavigationLink {
+                SyncSettingsPage()
+            } label: {
+                LabeledContent(String(localized: "Sync"), value: appState.onboarding.syncProvider.title)
             }
-        } header: {
-            Text("iCloud")
+            .accessibilityIdentifier("settings-sync-row")
         } footer: {
-            if !appState.onboarding.managed.allowsICloudSync {
-                Text("Your organization turned off iCloud sync for TablePro.")
-            } else if appState.onboarding.managed.locksICloudSync {
-                Text("Your organization manages iCloud sync for TablePro.")
-            } else if appState.onboarding.isCloudSyncEnabled {
-                Text("Passwords sync through iCloud Keychain, which is end-to-end encrypted. Turning it on affects new saves only, so re-save a password to sync it.")
-            } else {
-                Text("When off, nothing is sent to iCloud and nothing already there is deleted. Changes you make meanwhile sync once you turn it back on.")
-            }
-        }
-    }
-
-    /// Last Sync keeps the last run that finished, even while a problem stands below it: the date
-    /// is how long this device has gone without syncing.
-    @ViewBuilder
-    private var lastSyncLabel: some View {
-        switch appState.syncCoordinator.status {
-        case .syncing:
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.mini)
-                Text(String(localized: "Syncing\u{2026}"))
-                    .foregroundStyle(.secondary)
-            }
-        case .idle, .error, .disabled:
-            if let date = appState.syncCoordinator.lastSyncDate {
-                Text(date, style: .relative)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(String(localized: "Never"))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func syncProblemRows(_ presentation: SyncStatusPresentation) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(presentation.title)
-                Text(presentation.message)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if let guidance = presentation.guidance {
-                    Text(guidance)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        } icon: {
-            Image(systemName: presentation.symbolName)
-                .foregroundStyle(.orange)
-        }
-        // The iCloud Sync toggle above is already the way to turn sync off.
-        ForEach(presentation.mobileActions.filter { $0 != .turnOffSync }) { action in
-            Button(action.title) {
-                appState.performSyncAction(action)
+            if appState.onboarding.managed.locksSyncProvider {
+                Text("Your organization manages how TablePro syncs on this device.")
             }
         }
     }
@@ -218,13 +157,6 @@ struct SettingsView: View {
         let reason = String(localized: "Authenticate to stop locking TablePro.")
         guard await auth.authenticate(reason: reason) else { return }
         lockEnabled = false
-    }
-
-    private var cloudSyncBinding: Binding<Bool> {
-        Binding(
-            get: { appState.onboarding.isCloudSyncEnabled },
-            set: { appState.setCloudSyncEnabled($0) }
-        )
     }
 
     private var usageDataBinding: Binding<Bool> {
