@@ -30,6 +30,7 @@ pub mod dump;
 pub mod edit;
 mod editor_session;
 mod editor_session_status;
+pub mod edits;
 mod engine_category;
 mod engine_stop;
 mod error;

@@ -7743,6 +7743,7 @@ dependencies = [
  "futures",
  "getrandom 0.3.4",
  "hmac 0.13.0",
+ "indexmap 2.14.2",
  "num-bigint 0.4.8",
  "percent-encoding",
  "proptest",
