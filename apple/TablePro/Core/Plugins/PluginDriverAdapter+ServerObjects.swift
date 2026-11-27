@@ -14,6 +14,7 @@ extension PluginDriverAdapter {
 
     // A container kind is stamped with the schema it was read from, as routines are; a database kind
     // names no schema and reads with none.
+    @concurrent
     func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo] {
         let isDatabaseScoped = pluginDriver.serverObjectKinds.first { $0.id == kindId }?.scope == .database
         let resolvedSchema = isDatabaseScoped ? nil : readSchema(schema)
@@ -30,6 +31,7 @@ extension PluginDriverAdapter {
         }
     }
 
+    @concurrent
     func fetchServerObject(_ object: ServerObjectInfo) async throws -> ServerObjectInfo {
         ServerObjectInfo(try await pluginDriver.fetchServerObject(object.pluginObject))
     }

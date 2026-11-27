@@ -356,6 +356,21 @@ struct CoreLibraryStoreTests {
         #expect(try String(contentsOf: coreFile, encoding: .utf8) == swapped)
     }
 
+    @Test("A write after the core's file went missing writes it again, since no other writer's copy is under it")
+    func writeAfterTheCoreFileWentMissingLands() throws {
+        let store = makeStore()
+        var library = try store.load()
+        library.connections = [DatabaseConnection(name: "Orders", type: .postgresql)]
+        try store.write(library, keepingPastedSSHKeys: [:])
+        try FileManager.default.removeItem(at: coreFile)
+
+        library.connections[0].name = "Renamed"
+        try store.write(library, keepingPastedSSHKeys: [:])
+
+        #expect(try String(contentsOf: coreFile, encoding: .utf8).contains("Renamed"))
+        #expect(try makeStore().load().connections.map(\.name) == ["Renamed"])
+    }
+
     @Test("A write that names one id twice, or a record this build cannot read, is refused")
     func refusedWrites() throws {
         let store = makeStore()
