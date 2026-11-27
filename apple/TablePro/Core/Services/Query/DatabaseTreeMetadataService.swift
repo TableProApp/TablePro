@@ -201,6 +201,28 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         databaseList[connectionId]?.value ?? []
     }
 
+    /// The connection's database list, read once and shared: the tree, the database switcher and the quick
+    /// switcher show this one list rather than each reading their own. A list already loaded is answered
+    /// without a read, and one being read is joined.
+    func databaseNames(connectionId: UUID, databaseType: DatabaseType) async throws -> [String] {
+        switch databaseListState(for: connectionId) {
+        case .loaded(let list):
+            return list.map(\.name)
+        case .loading:
+            return try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType).map(\.name)
+        case .idle, .failed:
+            await loadDatabases(connectionId: connectionId, databaseType: databaseType)
+            switch databaseListState(for: connectionId) {
+            case .loaded(let list):
+                return list.map(\.name)
+            case .failed(let message):
+                throw DatabaseError.queryFailed(message)
+            case .idle, .loading:
+                return try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType).map(\.name)
+            }
+        }
+    }
+
     func schemaListState(connectionId: UUID, database: String) -> MetadataLoadState<[String]> {
         schemaList[DatabaseKey(connectionId: connectionId, database: database)] ?? .idle
     }
@@ -1087,7 +1109,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             .connection.type.supportsUserDefinedTypeBrowse ?? false
     }
 
-    /// Always a scoped driver, through `withMetadataDriver`, which alone knows which engines cannot
+    /// Always a scoped driver, through `withMetadataRead`, which alone knows which engines cannot
     /// answer on a second connection. The scope names the database only: a scope per schema took a
     /// pooled connection per expanded schema node.
     private func withDriver<T: Sendable>(
@@ -1101,7 +1123,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         ) else {
             throw DatabaseError.notConnected
         }
-        return try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: workload, body)
+        return try await DatabaseManager.shared.withMetadataRead(scope: scope, workload: workload, body)
     }
 
     private static func objectsKey(connectionId: UUID, database: String, schema: String?) -> ObjectsKey {

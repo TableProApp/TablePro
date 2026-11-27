@@ -28,6 +28,39 @@ struct SSHSessionPumpTests {
         #expect(readsEndOfFile(local.b))
     }
 
+    @Test("Ending one relay cancels it and closes its socket while the others go on")
+    func endRelayEndsOnlyThatRelay() async throws {
+        let fixture = PumpFixture()
+        let first = SocketPair()
+        let second = SocketPair()
+        defer { first.close(); second.close(); fixture.close() }
+
+        let (firstId, firstEnded) = fixture.relayWithId(first, io: FakeChannelIO(fallback: .wouldBlock))
+        let secondEnded = fixture.relay(second, io: FakeChannelIO(fallback: .wouldBlock))
+        fixture.pump.endRelay(firstId)
+
+        try await waitUntil { firstEnded.value != nil }
+        #expect(firstEnded.value == .cancelled)
+        #expect(readsEndOfFile(first.b))
+        #expect(secondEnded.value == nil)
+    }
+
+    @Test("Ending a relay that waits for the channel's send window still ends it")
+    func endRelayEndsWindowBlockedRelay() async throws {
+        let fixture = PumpFixture()
+        let local = SocketPair()
+        defer { local.close(); fixture.close() }
+
+        let io = FakeChannelIO(fallback: .wouldBlock, sendWindow: false)
+        let (id, ended) = fixture.relayWithId(local, io: io)
+        _ = Data(repeating: 7, count: 4_096).withUnsafeBytes { send(local.b, $0.baseAddress, $0.count, 0) }
+        try await waitUntil { io.writeCount > 0 }
+        fixture.pump.endRelay(id)
+
+        try await waitUntil { ended.value != nil }
+        #expect(ended.value == .cancelled)
+    }
+
     @Test("A relay added after stop ends as cancelled and its socket is closed")
     func relayAfterStopCancels() async throws {
         let fixture = PumpFixture()
@@ -564,6 +597,14 @@ internal final class PumpFixture: @unchecked Sendable {
             ended.record(termination)
         }
         return ended
+    }
+
+    func relayWithId(_ local: SocketPair, io: any SSHChannelIO) -> (SSHSessionPump.RelayID, EndRecorder) {
+        let ended = EndRecorder()
+        let id = pump.relay(localFD: local.takeA(), channel: io, bufferSize: 32_768) { termination in
+            ended.record(termination)
+        }
+        return (id, ended)
     }
 
     // The transport closes only after no source of the pump can fire on it, without holding a test thread.

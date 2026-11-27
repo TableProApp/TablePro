@@ -2,22 +2,23 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-// FolderId is null at the top level; Order is dense from 0 within the folder.
+// FolderId is null at the top level, and a folder the list does not hold reads as the top level too (core ADR 0052).
 public sealed record SavedQuery(
-    long Id,
+    Guid Id,
     string Name,
     string Sql,
     string? Keyword,
-    long? FolderId,
+    Guid? FolderId,
     long Order,
     DateTimeOffset UpdatedAt);
 
-public sealed record SavedQueryFolder(long Id, string Name, long? ParentId, long Order);
+public sealed record SavedQueryFolder(Guid Id, string Name, Guid? ParentId, long Order);
 
 // Read in one transaction, each list in its place's order.
 public sealed record SavedQueryList(IReadOnlyList<SavedQuery> Queries, IReadOnlyList<SavedQueryFolder> Folders);
 
-// A connection's saved queries and their folders, kept in the query history's database (core ADR 0017).
+// A connection's saved queries and their folders, kept in the query history's database (core ADRs 0017 and 0052). The list
+// holds those with no connection too, which show in every connection.
 public sealed class SavedQueries : IDisposable
 {
     private readonly Native.SavedQueryStore _store;
@@ -36,64 +37,69 @@ public sealed class SavedQueries : IDisposable
             .ConfigureAwait(false);
         return new SavedQueryList(
             [.. list.Queries.Select(query => new SavedQuery(
-                query.Id,
+                Guid.Parse(query.Id),
                 query.Name,
                 query.Sql,
                 query.Keyword,
-                query.FolderId,
+                Id(query.FolderId),
                 query.Order,
                 DateTimeOffset.FromUnixTimeMilliseconds(query.UpdatedAtMs)))],
-            [.. list.Folders.Select(folder => new SavedQueryFolder(folder.Id, folder.Name, folder.ParentId, folder.Order))]);
+            [.. list.Folders.Select(folder =>
+                new SavedQueryFolder(Guid.Parse(folder.Id), folder.Name, Id(folder.ParentId), folder.Order))]);
     }
 
     // Null when the connection has a query of that name and replace is false; nothing is written then.
-    public Task<long?> SaveAsync(Guid connectionId, string connectionName, string name, string sql, bool replace)
+    public async Task<Guid?> SaveAsync(Guid connectionId, string connectionName, string name, string sql, bool replace)
     {
         ArgumentNullException.ThrowIfNull(connectionName);
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(sql);
         var draft = new Native.SavedQueryDraft(connectionId.ToString(), connectionName, name, sql);
-        return CoreCall.RunAsync(() => _store.Save(draft, replace));
+        return Id(await CoreCall.RunAsync(() => _store.Save(draft, replace)).ConfigureAwait(false));
     }
 
-    public Task RenameAsync(long id, string name)
+    public Task RenameAsync(Guid id, string name)
     {
         ArgumentNullException.ThrowIfNull(name);
-        return CoreCall.RunAsync(() => _store.Rename(id, name));
+        return CoreCall.RunAsync(() => _store.Rename(id.ToString(), name));
     }
 
     // By id, so an edit from a list read before a rename elsewhere still changes the query it showed.
-    public Task SetSqlAsync(long id, string sql)
+    public Task SetSqlAsync(Guid id, string sql)
     {
         ArgumentNullException.ThrowIfNull(sql);
-        return CoreCall.RunAsync(() => _store.SetSql(id, sql));
+        return CoreCall.RunAsync(() => _store.SetSql(id.ToString(), sql));
     }
 
     // Null or blank clears it.
-    public Task SetKeywordAsync(long id, string? keyword) => CoreCall.RunAsync(() => _store.SetKeyword(id, keyword));
+    public Task SetKeywordAsync(Guid id, string? keyword) =>
+        CoreCall.RunAsync(() => _store.SetKeyword(id.ToString(), keyword));
 
     // Into the folder, null for the top level, before the query named there or at the end.
-    public Task MoveAsync(long id, long? folderId, long? before = null) =>
-        CoreCall.RunAsync(() => _store.MoveQuery(id, folderId, before));
+    public Task MoveAsync(Guid id, Guid? folderId, Guid? before = null) =>
+        CoreCall.RunAsync(() => _store.MoveQuery(id.ToString(), folderId?.ToString(), before?.ToString()));
 
-    public Task DeleteAsync(long id) => CoreCall.RunAsync(() => _store.Delete(id));
+    public Task DeleteAsync(Guid id) => CoreCall.RunAsync(() => _store.Delete(id.ToString()));
 
-    public Task<long> CreateFolderAsync(Guid connectionId, string name, long? parentId)
+    public async Task<Guid> CreateFolderAsync(Guid connectionId, string name, Guid? parentId)
     {
         ArgumentNullException.ThrowIfNull(name);
-        return CoreCall.RunAsync(() => _store.CreateFolder(connectionId.ToString(), name, parentId));
+        var id = await CoreCall.RunAsync(() => _store.CreateFolder(connectionId.ToString(), name, parentId?.ToString()))
+            .ConfigureAwait(false);
+        return Guid.Parse(id);
     }
 
-    public Task RenameFolderAsync(long id, string name)
+    public Task RenameFolderAsync(Guid id, string name)
     {
         ArgumentNullException.ThrowIfNull(name);
-        return CoreCall.RunAsync(() => _store.RenameFolder(id, name));
+        return CoreCall.RunAsync(() => _store.RenameFolder(id.ToString(), name));
     }
 
-    public Task MoveFolderAsync(long id, long? parentId) => CoreCall.RunAsync(() => _store.MoveFolder(id, parentId));
+    public Task MoveFolderAsync(Guid id, Guid? parentId) =>
+        CoreCall.RunAsync(() => _store.MoveFolder(id.ToString(), parentId?.ToString()));
 
     // The folders inside go too, and every query they held moves to the top level.
-    public Task DeleteFolderAsync(long id) => CoreCall.RunAsync(() => _store.DeleteFolder(id));
+    public Task DeleteFolderAsync(Guid id) => CoreCall.RunAsync(() => _store.DeleteFolder(id.ToString()));
 
     // Its queries, folders and favourite tables and databases, for a connection the user deleted.
     public async Task<long> DeleteForConnectionAsync(Guid connectionId)
@@ -103,4 +109,6 @@ public sealed class SavedQueries : IDisposable
     }
 
     public void Dispose() => _store.Dispose();
+
+    private static Guid? Id(string? id) => id is null ? null : Guid.Parse(id);
 }

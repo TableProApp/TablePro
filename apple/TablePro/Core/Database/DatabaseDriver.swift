@@ -337,6 +337,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch the source of one trigger.
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
 
+    /// Mirrors `PluginDatabaseDriver.fetchCatalogSideObjects(_:)`: the side kinds of a catalog load in as few round
+    /// trips as the engine allows.
+    func fetchCatalogSideObjects(_ request: CatalogSideRequest) async -> CatalogSideObjects
+
     // Mirrors `PluginDatabaseDriver.serverObjectKinds`: asked of the live driver, never of the type.
     var serverObjectKinds: [PluginServerObjectKind] { get }
     func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo]
@@ -1020,6 +1024,10 @@ extension DatabaseDriver {
         nil
     }
 
+    func fetchCatalogSideObjects(_ request: CatalogSideRequest) async -> CatalogSideObjects {
+        await fetchCatalogSideObjectsSideBySide(request)
+    }
+
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }
 
@@ -1162,7 +1170,8 @@ enum DatabaseDriverFactory {
         deadline: ConnectionDeadline? = nil,
         timeoutEndpoint: ConnectionTimeoutEndpoint? = nil,
         effectiveQueryTimeoutSeconds: Int? = nil,
-        preparedConfiguration: PreparedDriverConfiguration? = nil
+        preparedConfiguration: PreparedDriverConfiguration? = nil,
+        initialSchema: String? = nil
     ) async throws -> DatabaseDriver {
         let prepared: PreparedDriverConfiguration
         if let preparedConfiguration {
@@ -1192,7 +1201,8 @@ enum DatabaseDriverFactory {
             deadline: connectionDeadline,
             timeoutEndpoint: endpoint,
             effectiveQueryTimeoutSeconds: effectiveQueryTimeoutSeconds,
-            requiresHostDeadline: requiresHostDeadline
+            requiresHostDeadline: requiresHostDeadline,
+            initialSchema: initialSchema
         )
     }
 
@@ -1203,7 +1213,8 @@ enum DatabaseDriverFactory {
         deadline: ConnectionDeadline,
         timeoutEndpoint: ConnectionTimeoutEndpoint,
         effectiveQueryTimeoutSeconds providedQueryTimeoutSeconds: Int?,
-        requiresHostDeadline: Bool
+        requiresHostDeadline: Bool,
+        initialSchema: String?
     ) async throws -> DatabaseDriver {
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             throw PluginManager.shared.driverUnavailableError(for: connection.type)
@@ -1252,6 +1263,10 @@ enum DatabaseDriverFactory {
             at: configurationSample
         ) {
             additionalFields[key] = value
+        }
+        // A driver that can land on a schema while it signs in reads this, so the move costs no round trip of its own.
+        if let initialSchema, !initialSchema.isEmpty {
+            additionalFields["initialSchema"] = initialSchema
         }
         let config = DriverConnectionConfig(
             host: connection.host,

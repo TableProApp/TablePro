@@ -27,7 +27,8 @@ use tablepro_session::{
 };
 use tablepro_ssh::{SshAuth, SshConfig, SshDestination, SshRuntimeCell, SshServices};
 use tablepro_test_fixtures::{
-    FixtureCredentials, HbaMode, OpenSshFixture, PostgresFixture, SshAuthVariant, SshKeyPair, TestNetwork,
+    FixtureCredentials, HbaMode, OpenSshFixture, PostgresFixture, PostgresVersion, SshAuthVariant, SshKeyPair,
+    TestNetwork,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -127,7 +128,7 @@ fn request(target: RequestTarget) -> ConnectRequest {
         driver: Arc::new(PgDriver),
         target,
         workspace_settings: WorkspaceSettings::workspace(false),
-        safe_mode: tablepro_core::SafeModeLevel::Off,
+        safe_mode: tablepro_core::SafeModeLevel::Silent,
     }
 }
 
@@ -205,6 +206,28 @@ async fn admin(fixture: &PostgresFixture) -> Arc<dyn Connection> {
 
 fn within(limit: Duration) -> CallOptions {
     CallOptions::new(Some(tokio::time::Instant::now() + limit), CancellationToken::new())
+}
+
+// Connecting reads the schemas and the default schema's objects before
+// the session is handed over, so a catalog column the release lacks
+// failed the whole connect (#4609).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_release_before_13_connects() {
+    let fixture = PostgresFixture::start_version(PostgresVersion::V12, HbaMode::Password)
+        .await
+        .expect("PostgreSQL 12");
+    let connector = connector(isolated_ssh().services);
+    let session = start(
+        connector.clone(),
+        establish(&connector, request(direct_target(&fixture))).await,
+    );
+    assert_eq!(
+        scalar(&session, OperationKind::Metadata, "SELECT 1").await,
+        Ok(Value::Int(1))
+    );
+    let report = session.begin_shutdown().await.expect("the close task");
+    assert_eq!(report, tablepro_session::CloseReport::Closed);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

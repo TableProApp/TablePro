@@ -1,4 +1,5 @@
-// The codes are ADR 0056's Errors table; a server's codes are 0051's and never appear here.
+// The codes are ADR 0056's Errors table as 0059 and 0064 amend it; a server's codes are 0051's and
+// never appear here.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum KeysError {
     #[error("suite {found:?} is not tp1")]
@@ -43,6 +44,8 @@ pub enum KeysError {
     Destination,
     #[error("the system random source failed")]
     Random,
+    #[error("a team restart waits until the person compares the restarting owner's words")]
+    RestartHeld,
 }
 
 impl KeysError {
@@ -69,6 +72,7 @@ impl KeysError {
             Self::Conflict => "keys.conflict",
             Self::Destination => "keys.destination",
             Self::Random => "keys.random",
+            Self::RestartHeld => "keys.restart_held",
         }
     }
 
@@ -105,6 +109,7 @@ mod tests {
             KeysError::Conflict,
             KeysError::Destination,
             KeysError::Random,
+            KeysError::RestartHeld,
         ];
         let mut codes: Vec<_> = all.iter().map(KeysError::code).collect();
         assert!(codes.iter().all(|code| code.starts_with("keys.")));

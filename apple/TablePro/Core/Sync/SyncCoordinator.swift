@@ -42,8 +42,12 @@ final class SyncCoordinator: ObservableObject {
     private var policyCancellable: AnyCancellable?
     // Counts the organization's stops, so a run that began before one keeps nothing after it, even once iCloud is
     // allowed again.
-    private var policyStops = 0
+    private var policyStops = 0 {
+        didSet { policyStopCount.value = policyStops }
+    }
     private var runPolicyStops = 0
+    // The same count for a store's actor, which asks it right before each write a pull makes.
+    private let policyStopCount = PolicyStopCount()
     // Cancelled by a stop, so the transport sends no further batch or retry of it.
     private var pushInFlight: Task<PushOutcome, any Error>?
     private var debounceTask: Task<Void, Never>?
@@ -826,7 +830,8 @@ final class SyncCoordinator: ObservableObject {
         guard !isStoppedByPolicy else { return false }
         let favoritesOutcome = await services.sqlFavoriteManager.applyRemote(
             remoteSQLFavoriteBatch(from: admitted, deletedRecordIDs: deletedRecordIDs, settings: settings),
-            echoGuard: echoGuard
+            echoGuard: echoGuard,
+            isStopped: { [policyStopCount, runPolicyStops] in policyStopCount.value != runPolicyStops }
         )
 
         /// The token and the cache are the record of what this device holds, so neither is
@@ -1367,5 +1372,14 @@ private final class SyncTriggers {
 
     deinit {
         NotificationCenter.default.removeObserver(accountObserver)
+    }
+}
+
+private final class PolicyStopCount: Sendable {
+    private let count = OSAllocatedUnfairLock(initialState: 0)
+
+    var value: Int {
+        get { count.withLock { $0 } }
+        set { count.withLock { $0 = newValue } }
     }
 }

@@ -54,41 +54,49 @@ final class TreeSitterClientTests: XCTestCase {
         return false
     }
 
+    // A parse that commits before the next keystroke rightly succeeds, so on a slow main thread a burst arrives one
+    // parse at a time. Holding the executor queues the whole burst before any of it can parse.
+    @MainActor
+    func holdingParses(of client: TreeSitterClient, during burst: () -> Void) {
+        guard case .success = client.executor.execSync(burst) else {
+            return XCTFail("The executor was already busy, so the burst could not be held.")
+        }
+    }
+
     @MainActor
     func test_editsDuringSetup() {
         let client = Mock.treeSitterClient()
         let textView = Mock.textView()
-
-        client.setUp(textView: textView, codeLanguage: .sql)
-
-        // Perform a highlight query
         let cancelledQuery = XCTestExpectation(description: "Highlight query should be cancelled by edits.")
-        client.queryHighlightsFor(textView: textView, range: NSRange(location: 0, length: 10)) { result in
-            if self.resultIsCancel(result) {
-                cancelledQuery.fulfill()
-            } else {
-                XCTFail("Highlight query was not cancelled.")
-            }
-        }
-
-        // Perform an edit
         let cancelledEdit = XCTestExpectation(description: "First edit should be cancelled by second one.")
-        performEdit(textView: textView, client: client, string: "func ", range: .zero) { result in
-            if self.resultIsCancel(result) {
-                cancelledEdit.fulfill()
-            } else {
-                XCTFail("Edit was not cancelled.")
-            }
-        }
-
-        // Perform a second edit
         let successEdit = XCTestExpectation(description: "Second edit should succeed.")
-        performEdit(textView: textView, client: client, string: "", range: NSRange(location: 0, length: 5)) { result in
-            if case let .success(ranges) = result {
-                XCTAssertEqual(ranges.count, 0, "Edits, when combined, should produce the original syntax tree.")
-                successEdit.fulfill()
-            } else {
-                XCTFail("Second edit was not successful.")
+
+        holdingParses(of: client) {
+            client.setUp(textView: textView, codeLanguage: .sql)
+
+            client.queryHighlightsFor(textView: textView, range: NSRange(location: 0, length: 10)) { result in
+                if self.resultIsCancel(result) {
+                    cancelledQuery.fulfill()
+                } else {
+                    XCTFail("Highlight query was not cancelled.")
+                }
+            }
+
+            performEdit(textView: textView, client: client, string: "func ", range: .zero) { result in
+                if self.resultIsCancel(result) {
+                    cancelledEdit.fulfill()
+                } else {
+                    XCTFail("Edit was not cancelled.")
+                }
+            }
+
+            performEdit(textView: textView, client: client, string: "", range: NSRange(location: 0, length: 5)) { result in
+                if case let .success(ranges) = result {
+                    XCTAssertEqual(ranges.count, 0, "Edits, when combined, should produce the original syntax tree.")
+                    successEdit.fulfill()
+                } else {
+                    XCTFail("Second edit was not successful.")
+                }
             }
         }
 
@@ -141,37 +149,38 @@ final class TreeSitterClientTests: XCTestCase {
         let client = Mock.treeSitterClient()
         let textView = Mock.textView()
         textView.setText("asadajkfijio;amfjamc;aoijaoajkvarpfjo;sdjlkj")
-
-        client.setUp(textView: textView, codeLanguage: .sql)
-
-        // Set up random edits
-        let editExpectations = (0..<10).map { index -> XCTestExpectation in
-            let expectation = XCTestExpectation(description: "Edit \(index) should be cancelled.")
-            let isDeletion = Int.random(in: 0..<10) < 4
-            let editText = isDeletion ? "" : "\(index)"
-            let editLocation = Int.random(in: 0..<textView.string.count)
-            let editRange = if isDeletion {
-                NSRange(location: editLocation, length: 1)
-            } else {
-                NSRange(location: editLocation, length: 0)
-            }
-            performEdit(textView: textView, client: client, string: editText, range: editRange) { result in
-                if self.resultIsCancel(result) {
-                    expectation.fulfill()
-                } else {
-                    XCTFail("Edit \(index) was not cancelled.")
-                }
-            }
-            return expectation
-        }
-
-        // Final edit that should succeed
+        var editExpectations: [XCTestExpectation] = []
         let finalEditExpectation = XCTestExpectation(description: "Final edit should succeed.")
-        performEdit(textView: textView, client: client, string: "", range: textView.documentRange) { result in
-            if case .success(_) = result {
-                finalEditExpectation.fulfill()
-            } else {
-                XCTFail("Final edit did not succeed.")
+
+        holdingParses(of: client) {
+            client.setUp(textView: textView, codeLanguage: .sql)
+
+            editExpectations = (0..<10).map { index -> XCTestExpectation in
+                let expectation = XCTestExpectation(description: "Edit \(index) should be cancelled.")
+                let isDeletion = Int.random(in: 0..<10) < 4
+                let editText = isDeletion ? "" : "\(index)"
+                let editLocation = Int.random(in: 0..<textView.string.count)
+                let editRange = if isDeletion {
+                    NSRange(location: editLocation, length: 1)
+                } else {
+                    NSRange(location: editLocation, length: 0)
+                }
+                performEdit(textView: textView, client: client, string: editText, range: editRange) { result in
+                    if self.resultIsCancel(result) {
+                        expectation.fulfill()
+                    } else {
+                        XCTFail("Edit \(index) was not cancelled.")
+                    }
+                }
+                return expectation
+            }
+
+            performEdit(textView: textView, client: client, string: "", range: textView.documentRange) { result in
+                if case .success(_) = result {
+                    finalEditExpectation.fulfill()
+                } else {
+                    XCTFail("Final edit did not succeed.")
+                }
             }
         }
 

@@ -160,6 +160,37 @@ struct PostgreSQLConnectRoundTripTests {
         #expect(alone.count == 1)
     }
 
+    // The saved schema was a `SET search_path` of its own after the batch, one round trip on every connect (#4544).
+    @Test("A connect asked to land on a schema sets it in the batch, before any read pins the path, and sends no SET of its own")
+    func initialSchemaRidesTheBatch() async throws {
+        let server = try LibPQScriptedServer()
+        defer { server.close() }
+        server.start()
+        let driver = try await Self.connectedDriver(to: server, additionalFields: ["initialSchema": "sales"])
+        defer { driver.disconnect() }
+
+        let batch = try #require(server.queries.first { Self.probeCount(in: $0) > 0 })
+        let schemaRead = try #require(batch.range(of: PostgreSQLSchemaQueries.currentSchema))
+        let setting = try #require(batch.range(of: PostgreSQLSchemaQueries.setSearchPathUnlessCurrent(toSchema: "sales")))
+        let pin = try #require(batch.range(of: "SET LOCAL search_path = pg_catalog, pg_temp"))
+        #expect(schemaRead.lowerBound < setting.lowerBound)
+        #expect(setting.lowerBound < pin.lowerBound)
+        #expect(!server.queries.contains(PostgreSQLSchemaQueries.setSearchPath(toSchema: "sales")))
+        #expect(driver.currentSchema == "sales")
+    }
+
+    @Test("A batch that failed before the schema sends it alone")
+    func initialSchemaGoesAloneAfterAFailedBatch() async throws {
+        let server = try LibPQScriptedServer(failingStatement: PostGISTypes.probeQuery)
+        defer { server.close() }
+        server.start()
+        let driver = try await Self.connectedDriver(to: server, additionalFields: ["initialSchema": "sales"])
+        defer { driver.disconnect() }
+
+        #expect(server.queries.contains(PostgreSQLSchemaQueries.setSearchPath(toSchema: "sales")))
+        #expect(driver.currentSchema == "sales")
+    }
+
     @Test("PGlite never gets the scan setting")
     func pgliteStaysUntouched() async throws {
         let server = try LibPQScriptedServer()

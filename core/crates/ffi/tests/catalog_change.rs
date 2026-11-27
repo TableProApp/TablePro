@@ -245,7 +245,7 @@ async fn a_level_saved_after_the_plan_refuses_it_before_anything_is_sent() {
             owner: None,
         })
         .unwrap();
-    assert!(session.set_safe_mode(SafeModeTag::ConfirmWrites));
+    assert!(session.set_safe_mode(SafeModeTag::Alert));
     let refused = create.run(false, None).await.unwrap_err();
     let asked = session
         .plan_catalog_change(CatalogOperation::CreateSchema {

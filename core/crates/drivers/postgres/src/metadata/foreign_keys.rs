@@ -4,6 +4,7 @@ use tokio_postgres::{Client, Row};
 
 use super::{decode_error, text_rows};
 use crate::catalog::{PARENT_HOLDS_CHILD, compares_alike_sql};
+use crate::catalog_release::CatalogRelease;
 use crate::codec::TextArray;
 
 /// A key to a partitioned table has a clone on the same table for each
@@ -29,15 +30,19 @@ JOIN pg_catalog.pg_class t ON t.oid = c.confrelid
 JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
 WHERE c.conrelid = $1::text::oid AND c.contype = 'f'
   AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint p
-                   WHERE p.oid = c.conparentid AND p.conrelid = c.conrelid)
+                   WHERE p.oid = {c.conparentid} AND p.conrelid = c.conrelid)
 ORDER BY c.conname";
 
-pub(super) fn foreign_keys_sql() -> String {
-    FOREIGN_KEYS_SQL.replace("{parent_compares_alike}", &compares_alike_sql(PARENT_HOLDS_CHILD))
+pub(super) fn foreign_keys_sql(release: CatalogRelease) -> String {
+    release.render(&FOREIGN_KEYS_SQL.replace("{parent_compares_alike}", &compares_alike_sql(PARENT_HOLDS_CHILD)))
 }
 
-pub(crate) async fn fetch_foreign_keys(client: &Client, relation: &str) -> Result<Vec<ForeignKeyInfo>, DriverError> {
-    Ok(fetch_outbound_foreign_keys(client, relation)
+pub(crate) async fn fetch_foreign_keys(
+    client: &Client,
+    release: CatalogRelease,
+    relation: &str,
+) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+    Ok(fetch_outbound_foreign_keys(client, release, relation)
         .await?
         .into_iter()
         .map(|outbound| outbound.key)
@@ -46,9 +51,10 @@ pub(crate) async fn fetch_foreign_keys(client: &Client, relation: &str) -> Resul
 
 pub(crate) async fn fetch_outbound_foreign_keys(
     client: &Client,
+    release: CatalogRelease,
     relation: &str,
 ) -> Result<Vec<OutboundForeignKey>, DriverError> {
-    text_rows(client, &foreign_keys_sql(), &[relation])
+    text_rows(client, &foreign_keys_sql(release), &[relation])
         .await?
         .iter()
         .map(outbound_foreign_key)

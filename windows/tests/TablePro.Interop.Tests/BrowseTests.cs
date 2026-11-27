@@ -242,7 +242,8 @@ public sealed class BrowseTests
         Assert.Contains("people_noted", source.Sql, StringComparison.Ordinal);
         Assert.True(source.OpensInEditor);
         Assert.Null(source.Database);
-        Assert.Equal("driver.unsupported", function.Code);
+        Assert.Equal("unsupported.object_definitions", function.Code);
+        Assert.Contains("driver.unsupported", function.Error.Codes);
     }
 
     private static TableFilter Rules(params FilterRule[] rules) => new(FilterCombinator.And, rules, null);

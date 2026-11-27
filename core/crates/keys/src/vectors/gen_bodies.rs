@@ -253,6 +253,64 @@ pub(super) fn bodies() -> JsonValue {
         ),
     ]);
 
+    // A blob cut short, which the server refuses too (row 439), and a replace with no endorsement at
+    // all, which 0051's body rule refuses before any signature is read (row 442).
+    let blob =
+        a.r.seal_blob_with_nonce(&origin(), a.id, v(1), a.at(1), draw("bodies/blob nonce"))
+            .unwrap();
+    let blob_text = body_json(&KeyBody::Recovery(blob.clone()));
+    let recovery_id = KeyRecordId::Recovery {
+        account: a.id,
+        av: v(1),
+    }
+    .to_wire();
+    cases.push(bad(
+        "a recovery blob ct cut by a byte",
+        "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes",
+        "key.recovery",
+        &recovery_id,
+        blob_text.replacen(&crate::b64::encode(&blob.ct), &crate::b64::encode(&blob.ct[..79]), 1),
+        "keys.encoding",
+    ));
+    cases.push(bad(
+        "a recovery blob nonce cut by a byte",
+        "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes",
+        "key.recovery",
+        &recovery_id,
+        blob_text.replacen(
+            &crate::b64::encode(&blob.nonce),
+            &crate::b64::encode(&blob.nonce[..11]),
+            1,
+        ),
+        "keys.encoding",
+    ));
+    let new_ik = crate::keys::Ed25519Seed::from_bytes(draw("bodies/replacing IK"));
+    let replace = AccountCertificate::sign(
+        &origin(),
+        a.id,
+        v(2),
+        CertKind::Replace,
+        &new_ik,
+        a.at(2).public().unwrap(),
+        Some(&a.ik),
+    )
+    .unwrap();
+    let replace_text = body_json(&KeyBody::Account(AccountBody::of(&replace)));
+    let replace_sig = crate::b64::encode(&replace.replace_sig.unwrap().0);
+    // 0051's body rule refuses a kind 1 body without `replace_sig` before any IK is compared.
+    cases.push(bad(
+        "a replace with no replace_sig",
+        ROW_ENCODING,
+        "key.account",
+        &KeyRecordId::Account {
+            account: a.id,
+            av: v(2),
+        }
+        .to_wire(),
+        replace_text.replacen(&format!(",\"replace_sig\":\"{replace_sig}\""), "", 1),
+        "keys.encoding",
+    ));
+
     let reset_certificate = AccountCertificate::sign(
         &origin(),
         a.id,
