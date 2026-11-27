@@ -7,6 +7,8 @@ import SwiftUI
 
 struct ConnectionGroupPicker: View {
     @Binding var selectedGroupId: UUID?
+    // The connection the form edits, nil for a new one.
+    var connectionId: UUID?
     @State private var allGroups: [ConnectionGroup] = []
     @State private var showingCreateSheet = false
 
@@ -37,20 +39,48 @@ struct ConnectionGroupPicker: View {
             .help(Text("Create New Group…"))
             .accessibilityLabel(Text("Create New Group…"))
         }
-        .task { allGroups = groupStorage.loadGroups() }
+        .task { reload() }
+        .onReceive(ConnectionScope.shared.scopedSetChanged) { _ in reload() }
         .sheet(isPresented: $showingCreateSheet) {
             GroupEditorSheet(mode: .create(parentId: nil), groups: allGroups) { draft in
-                let group = ConnectionGroup(
-                    name: draft.name,
-                    color: draft.color,
-                    iconName: draft.iconName,
-                    parentId: draft.parentId
+                let group = ConnectionScope.shared.placing(
+                    ConnectionGroup(
+                        name: draft.name,
+                        color: draft.color,
+                        iconName: draft.iconName,
+                        parentId: draft.parentId
+                    ),
+                    forConnection: connectionId
                 )
                 try groupStorage.addGroup(group)
                 selectedGroupId = group.id
-                allGroups = groupStorage.loadGroups()
+                reload()
             }
         }
+    }
+
+    private func reload() {
+        allGroups = Self.choices(
+            forConnection: connectionId,
+            selected: selectedGroupId,
+            scope: .shared,
+            groupStorage: groupStorage
+        )
+    }
+
+    // A group chosen before the scope changed stays on show, or the pop-up would read None over it.
+    @MainActor
+    internal static func choices(
+        forConnection connectionId: UUID?,
+        selected selectedGroupId: UUID?,
+        scope: ConnectionScope,
+        groupStorage: GroupStorage
+    ) -> [ConnectionGroup] {
+        let choices = scope.groupChoices(forConnection: connectionId)
+        if let selectedGroupId, !choices.contains(where: { $0.id == selectedGroupId }) {
+            return groupStorage.loadGroups()
+        }
+        return choices
     }
 }
 

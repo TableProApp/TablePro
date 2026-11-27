@@ -6,7 +6,16 @@ struct MoveToGroupSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
-    let connectionIds: [UUID]
+    // As chosen when the sheet opened. A sync can take some out of the active project while it is up.
+    let requestedConnectionIds: [UUID]
+
+    init(connectionIds: [UUID]) {
+        requestedConnectionIds = connectionIds
+    }
+
+    private var connectionIds: [UUID] {
+        ConnectionListSelection.connectionIds(requestedConnectionIds, scopedTo: appState.scopedConnectionIds)
+    }
 
     private var currentGroupIds: Set<UUID?> {
         let validGroupIds = Set(appState.groups.map(\.id))
@@ -17,8 +26,10 @@ struct MoveToGroupSheet: View {
     }
 
     var body: some View {
-        let graph = LibraryGroupGraph(groups: appState.groups)
-        let groupsById = Dictionary(appState.groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // Only the active project's groups: a group of another project would take the connection out of the list.
+        let groups = appState.scopedGroups
+        let graph = LibraryGroupGraph(groups: groups)
+        let groupsById = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         NavigationStack {
             List {
                 Section {
@@ -30,7 +41,7 @@ struct MoveToGroupSheet: View {
                         groupId: nil
                     )
                 }
-                if !appState.groups.isEmpty {
+                if !groups.isEmpty {
                     Section("Groups") {
                         ForEach(graph.flattened(), id: \.id) { entry in
                             if let group = groupsById[entry.id] {
@@ -54,6 +65,10 @@ struct MoveToGroupSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     CancelButton { dismiss() }
                 }
+            }
+            .onChange(of: connectionIds.isEmpty) { _, isEmpty in
+                guard isEmpty else { return }
+                dismiss()
             }
         }
     }

@@ -17,9 +17,9 @@ extension PluginMetadataRegistry {
     /// KingbaseES runs PostgreSQL's catalogs and wire protocol, so its entry is PostgreSQL's with its own identity
     /// and without the cloud and Kerberos sign-in fields, which its servers do not offer.
     static func kingbaseESDefaults(postgreSQL: PluginMetadataSnapshot) -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
+        // Its Oracle mode has not been run against the head and size reads or the keyed page seek.
         var capabilities = postgreSQL.capabilities
-        // A keyed page seeks only on an engine whose key ordering has been checked against its offset pages, and an
-        // Oracle-mode cluster has not been.
+        capabilities.largeValueFunctions = nil
         capabilities.seeksKeyedPages = false
         return [("KingbaseES", PluginMetadataSnapshot(
             displayName: "KingbaseES", iconName: "cylinder", defaultPort: 54_321,

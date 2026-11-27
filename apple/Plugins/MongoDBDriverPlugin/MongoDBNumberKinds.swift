@@ -20,7 +20,7 @@ nonisolated struct MongoDBNumberKinds: Sendable {
     static func recording(_ read: MongoReadDocuments, representation: MongoDBUuidRepresentation) -> MongoDBNumberKinds {
         var recorded = MongoDBNumberKinds()
         var shapes: Set<[String: BsonValueKind]> = []
-        let locators = read.locators ?? read.texts.map(MongoDocumentIdentity.locator(inDocument:))
+        let locators = read.locators ?? read.identifiers
         for (document, locator) in zip(read.dictionaries, locators) {
             guard let locator else { continue }
             var kinds: [String: BsonValueKind] = [:]

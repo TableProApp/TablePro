@@ -13,14 +13,38 @@ struct WelcomeListStateTests {
         hasAnyConnection: Bool = true,
         hasVisibleContent: Bool = false,
         searchText: String = "",
-        isTagFiltered: Bool = false
+        isTagFiltered: Bool = false,
+        activeProjectName: String? = nil
     ) -> WelcomeListState.Input {
         WelcomeListState.Input(
             hasAnyConnection: hasAnyConnection,
             hasVisibleContent: hasVisibleContent,
             searchText: searchText,
-            isTagFiltered: isTagFiltered
+            isTagFiltered: isTagFiltered,
+            activeProjectName: activeProjectName
         )
+    }
+
+    @Test("A project with nothing in it has its own empty state, never the first run")
+    func emptyProject() {
+        #expect(WelcomeListState.resolve(input(activeProjectName: "Acme")) == .emptyProject("Acme"))
+        #expect(
+            WelcomeListState.resolve(input(hasAnyConnection: false, activeProjectName: "Acme")) == .emptyProject("Acme")
+        )
+    }
+
+    @Test("A search miss inside a project names the project, ahead of a filter miss")
+    func projectSearchMiss() {
+        #expect(
+            WelcomeListState.resolve(input(searchText: "prod", isTagFiltered: true, activeProjectName: "Acme"))
+                == .noProjectSearchMatch("prod", project: "Acme")
+        )
+        #expect(WelcomeListState.resolve(input(isTagFiltered: true, activeProjectName: "Acme")) == .noFilterMatch)
+    }
+
+    @Test("A project with something to show is the list")
+    func projectContent() {
+        #expect(WelcomeListState.resolve(input(hasVisibleContent: true, activeProjectName: "Acme")) == .content)
     }
 
     @Test("Anything visible is the list, whatever narrows it")

@@ -67,6 +67,7 @@ crates/app/src/runtime/resume_detector.rs
 crates/app/src/runtime/stamped.rs
 crates/app/src/runtime/system_clocks.rs
 crates/app/src/services/account_service.rs
+crates/app/src/services/active_project.rs
 crates/app/src/services/active_session.rs
 crates/app/src/services/ai_service.rs
 crates/app/src/services/cell_overlay.rs
@@ -529,6 +530,10 @@ crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mcp_page.rs
 crates/app/src/ui/preferences_dialog/mod.rs
+crates/app/src/ui/projects/manage_projects_dialog.rs
+crates/app/src/ui/projects/mod.rs
+crates/app/src/ui/projects/project_menu.rs
+crates/app/src/ui/projects/project_name_dialog.rs
 crates/app/src/ui/quick_open/matching.rs
 crates/app/src/ui/quick_open/mod.rs
 crates/app/src/ui/quick_open/past_source.rs

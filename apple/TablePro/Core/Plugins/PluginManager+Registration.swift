@@ -660,8 +660,8 @@ extension PluginManager {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchTextTypePrefixes ?? []
     }
 
-    func binaryLengthFunction(for databaseType: DatabaseType) -> String? {
-        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.binaryLengthFunction
+    func largeValueFunctions(for databaseType: DatabaseType) -> LargeValueFunctions? {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.largeValueFunctions
     }
 
     func readsCheckListsFromDDL(for databaseType: DatabaseType) -> Bool {

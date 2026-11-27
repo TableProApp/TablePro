@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use uuid::Uuid;
 
-use super::{ConnectionList, ConnectionStore};
+use super::{ConnectionList, ConnectionStore, Writer};
 use crate::error::StorageError;
 
 impl ConnectionStore {
@@ -13,7 +13,7 @@ impl ConnectionStore {
         deleted: &[Uuid],
         lay_out: impl FnOnce(&ConnectionList) -> ConnectionList,
     ) -> Result<(), StorageError> {
-        self.edit(|document| {
+        self.change(Writer::Pull, |document| {
             let deleted: HashSet<Uuid> = deleted.iter().copied().collect();
             document.connections.retain(|saved| !deleted.contains(&saved.id));
             // The host deletes a pulled deletion's secrets, so an entry this build cannot read goes too.

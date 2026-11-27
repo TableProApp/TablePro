@@ -64,7 +64,8 @@ enum ImportFixtures {
         credentialProfiles: [BundleCredentialProfile] = [],
         credentials: [BundleRef: ExportableCredentials] = [:],
         queryFolders: [BundleQueryFolder] = [],
-        savedQueries: [BundleSavedQuery] = []
+        savedQueries: [BundleSavedQuery] = [],
+        projects: [BundleProject] = []
     ) throws -> ConnectionBundle {
         try ConnectionBundle(
             appVersion: "Tests",
@@ -74,7 +75,8 @@ enum ImportFixtures {
             credentialProfiles: credentialProfiles,
             credentials: credentials,
             queryFolders: queryFolders,
-            savedQueries: savedQueries
+            savedQueries: savedQueries,
+            projects: projects
         )
     }
 

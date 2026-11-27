@@ -4,10 +4,11 @@ use crate::exit::Exit;
 use crate::host::{HostError, Places};
 
 // core/crates/mcp/src/tool_error.rs: a failed tool answers "<code>: <message>".
-const TOOL_CODES: [&str; 9] = [
+const TOOL_CODES: [&str; 10] = [
     "invalid_argument",
     "not_found",
     "not_connected",
+    "out_of_scope",
     "denied",
     "user_cancelled",
     "timeout",

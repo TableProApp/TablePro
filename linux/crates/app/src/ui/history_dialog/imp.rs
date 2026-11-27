@@ -12,6 +12,7 @@ use tablepro_storage::query_history::HistoryQuery;
 
 use super::DialogParts;
 use super::history_paging::HistoryPaging;
+use crate::services::saved_connection_list::ScopeObserverId;
 
 #[derive(Default, gtk::CompositeTemplate, glib::Properties)]
 #[template(resource = "/app/tablepro/TablePro/ui/history-dialog.ui")]
@@ -47,9 +48,18 @@ pub struct HistoryDialog {
     /// The search the rows on screen answer.
     pub(super) query: RefCell<HistoryQuery>,
     pub(super) paging: RefCell<HistoryPaging>,
+    pub(super) connections_generation: Cell<u64>,
+    pub(super) filters_connected: Cell<bool>,
+    pub(super) scope_observer: Cell<Option<ScopeObserverId>>,
 }
 
 impl HistoryDialog {
+    pub(super) fn unfollow_scope(&self) {
+        if let (Some(parts), Some(observer)) = (self.parts.get(), self.scope_observer.take()) {
+            parts.saved.disconnect_scope_changed(observer);
+        }
+    }
+
     fn set_selecting(&self, selecting: bool) {
         if self.selecting.replace(selecting) != selecting {
             self.obj().selection_mode_changed();
@@ -92,6 +102,7 @@ impl ObjectImpl for HistoryDialog {
     /// The row menu is parented to the list view, which would otherwise
     /// be finalized with a child it does not know about.
     fn dispose(&self) {
+        self.unfollow_scope();
         if let Some(parts) = self.parts.get() {
             parts.menu.unparent();
         }

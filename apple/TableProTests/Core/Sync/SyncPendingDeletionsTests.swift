@@ -168,7 +168,7 @@ struct SyncPendingDeletionsTests {
     func eachSwitchWithholdsItsOwnRecordTypes() {
         let switches: [(WritableKeyPath<SyncSettings, Bool>, Set<SyncRecordType>)] = [
             (\.syncConnections, [.connection]),
-            (\.syncGroupsAndTags, [.group, .tag]),
+            (\.syncGroupsAndTags, [.group, .tag, .project]),
             (\.syncSettings, [.settings]),
             (\.syncPasswords, []),
             (\.syncSSHProfiles, [.sshProfile]),

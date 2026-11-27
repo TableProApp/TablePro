@@ -24,12 +24,13 @@ struct MobileConnectionImportSheet: View {
         case failed(String)
     }
 
-    private struct Review {
+    struct Review {
         let preview: ImportPreview
         var selection: ImportSelection
-
-        var plan: ImportPlan {
-            ImportPlanner.plan(preview, selection: selection)
+        // `targetProjectId` is where a connection lands when the file names no project for it. It is asked
+        // for on every plan, since a sync can delete the active project under the open sheet.
+        func plan(targetProjectId: UUID?) -> ImportPlan {
+            ImportPlanner.plan(preview, selection: selection, targetProjectId: targetProjectId)
         }
     }
 
@@ -54,7 +55,7 @@ struct MobileConnectionImportSheet: View {
                                 ProgressView()
                             } else {
                                 Button(String(localized: "Import")) { isImporting = true }
-                                    .disabled(review.plan.isEmpty)
+                                    .disabled(review.plan(targetProjectId: appState.activeProjectId).isEmpty)
                             }
                         }
                     }
@@ -138,7 +139,7 @@ struct MobileConnectionImportSheet: View {
     @ViewBuilder
     private func savedQueriesSection(_ review: Review) -> some View {
         if !review.preview.queries.isEmpty {
-            let statuses = review.plan.queryStatuses
+            let statuses = review.plan(targetProjectId: appState.activeProjectId).queryStatuses
             Section("Saved Queries") {
                 ForEach(review.preview.queries) { row in
                     MobileImportQueryRow(row: row, status: statuses[row.ref]) { included in
@@ -297,7 +298,7 @@ struct MobileConnectionImportSheet: View {
     private func performImport() async {
         guard let review else { return }
         let outcome = await IOSConnectionImportService.apply(
-            review.plan,
+            review.plan(targetProjectId: appState.activeProjectId),
             appState: appState,
             secureStore: appState.secureStore
         )

@@ -70,6 +70,8 @@ pub struct ConnectDialogInit {
     pub interaction: CredentialInteraction,
     pub tasks: Tasks,
     pub saved_connections: Arc<[SavedConnection]>,
+    // The active project, which a new connection lands in; an edit keeps its own.
+    pub new_project: Option<Uuid>,
     /// The tags the Appearance group offers.
     pub tags: Arc<[ConnectionTag]>,
     pub remembered_driver: String,
@@ -101,6 +103,7 @@ pub(crate) struct DialogServices {
     interaction: CredentialInteraction,
     tasks: Tasks,
     saved_connections: Arc<[SavedConnection]>,
+    new_project: Option<Uuid>,
     editor: SavedConnectionEditor,
     credentials: Rc<dyn CredentialSourceFactory>,
     hold: Rc<dyn ProcessHold>,
@@ -171,6 +174,7 @@ impl ConnectDialog {
             interaction: init.interaction,
             tasks: init.tasks,
             saved_connections: init.saved_connections,
+            new_project: init.new_project,
             editor: init.editor,
             credentials: init.credentials,
             hold: init.hold,
@@ -1101,7 +1105,10 @@ impl ConnectDialog {
             .iter()
             .find(|saved| Some(saved.id) == reopened && saved.driver_id == entry.id);
         let id = existing.map_or_else(Uuid::new_v4, |saved| saved.id);
-        let connection = form.submitted_connection(caps, &valid, id, existing);
+        let mut connection = form.submitted_connection(caps, &valid, id, existing);
+        if existing.is_none() {
+            connection.project_id = self.services().and_then(|services| services.new_project);
+        }
         let request = connect_request(&entry, &form, &valid, &connection);
         let pending_save = PendingSave {
             secrets: form.secrets_to_store(&valid, &connection),
