@@ -415,7 +415,14 @@ impl SyncService {
             Ok(control) => control.status().into(),
             Err(error) => SyncStatusInfo {
                 provider: Some(self.config.provider),
-                phase: SyncPhaseTag::Unavailable,
+                // A start waiting for the state file the closing service still holds is a wait, not an outage.
+                phase: if self.config.provider == SyncProviderTag::TableproSync && self.service.waits_for_file() {
+                    SyncPhaseTag::Waiting {
+                        retry_in_ms: u64::try_from(super::engines::FILE_POLL.as_millis()).unwrap_or(u64::MAX),
+                    }
+                } else {
+                    SyncPhaseTag::Unavailable
+                },
                 last_pass_ms: None,
                 problem: Some(error.code().to_owned()),
                 waiting_approvals: 0,

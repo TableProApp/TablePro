@@ -1345,6 +1345,7 @@ mod tests {
             last_seen_at: Utc::now() - TimeDelta::hours(5),
             licensed_at: Some(Utc::now()),
             offline_until: None,
+            key_device: None,
         }
     }
 

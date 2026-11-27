@@ -757,6 +757,9 @@ impl ServiceSync {
         let journal_only = named.is_some();
         let outcome = self.run(session, named, arrival).await;
         self.after_team_pass(session, &outcome).await;
+        if let Ok(keys) = self.keys.key_state().await {
+            self.hooks.read_keys(keys);
+        }
         if outcome.is_err() {
             self.journal.give_back(taken);
         }

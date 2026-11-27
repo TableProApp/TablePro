@@ -699,6 +699,7 @@ mod tests {
             last_seen_at: seen,
             licensed_at: Some(seen),
             offline_until: None,
+            key_device: None,
         }
     }
 

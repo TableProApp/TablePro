@@ -301,6 +301,7 @@ mod tests {
             last_seen_at: Utc::now(),
             licensed_at: Some(Utc::now()),
             offline_until: None,
+            key_device: None,
         };
         let limited = account_error_message(&AccountError::DeviceLimitReached {
             devices: vec![device.clone(), device],
