@@ -51,7 +51,7 @@ final class CredentialProfileStorage {
 
     // TableProMobile sweeps `com.TablePro.password.` items whose UUID is not a connection, so profile secrets must not share that prefix.
     nonisolated static let secretKeyPrefix = "com.TablePro.credprofile."
-    private static let secretPrefix = secretKeyPrefix
+    nonisolated private static let secretPrefix = secretKeyPrefix
 
     private let keychain: any KeychainStoring
     private let syncJournal: SyncHostJournal
