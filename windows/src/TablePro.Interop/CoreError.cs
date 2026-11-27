@@ -14,6 +14,9 @@ public sealed record CoreError(
 
     // What an ai.* error is about: its host, status and provider.
     public AiFailure? Ai { get; init; }
+
+    // What a refused sync.* call carries beyond its code.
+    public SyncFailure? Sync { get; init; }
 }
 
 public sealed record HostKeyFailure(

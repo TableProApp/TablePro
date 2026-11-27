@@ -167,6 +167,9 @@ public sealed record AppSettings
 
     public LicenseAskAnswer? LicenseAskAnswer { get; set; }
 
+    // Off until the person uploads this PC's data to TablePro Sync.
+    public SyncSettings Sync { get; set; } = new();
+
     // What the chosen provider's requests take, or null while the assistant is off.
     [JsonIgnore]
     public AiSettings? Assistant => AiProvider is { } provider ? AssistantFor(provider) : null;
@@ -237,6 +240,7 @@ public sealed record AppSettings
         LastLaunchedVersion = ReleaseVersions.TryParse(LastLaunchedVersion, out var launched) ? launched.ToString() : null,
         UsageDays = Math.Max(0, UsageDays),
         LicenseAskAnswer = LicenseAskAnswer is { } answer && Enum.IsDefined(answer) ? answer : null,
+        Sync = (Sync ?? new SyncSettings()).Normalized(),
     };
 }
 

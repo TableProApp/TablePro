@@ -43,7 +43,10 @@ public sealed partial class SettingsView : UserControl
             _workbench.McpChanged += OnMcpChanged;
             _workbench.Updates.Changed -= OnUpdatesChanged;
             _workbench.Updates.Changed += OnUpdatesChanged;
+            _workbench.SyncChanged -= OnSyncChanged;
+            _workbench.SyncChanged += OnSyncChanged;
             ShowAccount();
+            ShowSync();
             ShowMcp();
             ShowUpdateState();
             ShowGuideChoices();
@@ -53,6 +56,7 @@ public sealed partial class SettingsView : UserControl
             _workbench.AccountChanged -= OnAccountChanged;
             _workbench.McpChanged -= OnMcpChanged;
             _workbench.Updates.Changed -= OnUpdatesChanged;
+            _workbench.SyncChanged -= OnSyncChanged;
         };
     }
 
@@ -125,6 +129,7 @@ public sealed partial class SettingsView : UserControl
         LoadAssistant();
         LoadMcp();
         LoadUpdates();
+        LoadSync();
         _loading = false;
     }
 
@@ -490,7 +495,12 @@ public sealed partial class SettingsView : UserControl
         }
     }
 
-    private void OnAccountChanged(object? sender, EventArgs e) => ShowAccount();
+    // The plan's answer for TablePro Sync follows the account.
+    private void OnAccountChanged(object? sender, EventArgs e)
+    {
+        ShowAccount();
+        ShowSync();
+    }
 
     // One card names the account and holds its one action; the notice above it says what needs doing.
     private void ShowAccount()

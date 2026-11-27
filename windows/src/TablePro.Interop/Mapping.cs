@@ -26,6 +26,7 @@ internal static partial class Mapping
     {
         TlsFailure = info.TlsFailure is { } failure ? TlsFailureKind(failure) : null,
         Ai = info.Ai is { } ai ? Failure(ai) : null,
+        Sync = Failure(info.Sync),
     };
 
     private static TlsFailure TlsFailureKind(Native.TlsFailureTag failure) => failure switch

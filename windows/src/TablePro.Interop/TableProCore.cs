@@ -136,6 +136,19 @@ public sealed class TableProCore : IDisposable
         return new TableProAccount(service, wake);
     }
 
+    // On a core with a storage directory, whose stores it syncs; with no account TablePro Sync is unavailable. The core
+    // keeps the device's keys in Credential Manager itself (core ADR 0054, Integrity and freshness).
+    public async Task<TableProSync> OpenSyncAsync(SyncConfiguration configuration, TableProAccount? account)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var native = Mapping.Sync(configuration);
+        var signIn = account?.Handle;
+        var wake = new SyncWake();
+        var service = await CoreCall.RunAsync(() => _core.OpenSync(native, signIn, null, null, null, null, wake))
+            .ConfigureAwait(false);
+        return new TableProSync(service, wake);
+    }
+
     // One per app: its tools reach the saved connections connected through this core, and the app through host.
     public McpServer OpenMcpServer(IMcpAppHost host)
     {

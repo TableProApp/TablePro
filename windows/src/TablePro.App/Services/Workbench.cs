@@ -166,6 +166,7 @@ internal sealed partial class Workbench : IDisposable
             || next.HistoryMaxEntries != Settings.HistoryMaxEntries;
         var serverMoved = next.McpServerEnabled != Settings.McpServerEnabled
             || next.McpServerPort != Settings.McpServerPort;
+        var before = Settings;
         Settings = next;
         SaveSettings();
         DisplaySettings.Update(next);
@@ -179,6 +180,8 @@ internal sealed partial class Workbench : IDisposable
         {
             _ = PruneHistoryAsync(history);
         }
+
+        ApplySyncSettings(before, next);
     }
 
     public void SaveUnsavedSettings()
@@ -348,6 +351,8 @@ internal sealed partial class Workbench : IDisposable
         {
             AccountFailure = exception.Error;
             AccountChanged?.Invoke(this, EventArgs.Empty);
+            // TablePro Sync then says why it cannot run.
+            FollowSignIn(AccountStatus.SignedOut);
             return null;
         }
 
@@ -365,6 +370,7 @@ internal sealed partial class Workbench : IDisposable
             {
                 _readAccount = account;
                 ShowAccount(status);
+                FollowSignIn(status);
             }
         }
         catch (OperationCanceledException)
@@ -497,6 +503,8 @@ internal sealed partial class Workbench : IDisposable
             history.Dispose();
         }
 
+        // Before the account, whose sign-in the service holds.
+        CloseSync();
         if (_account is { IsCompletedSuccessfully: true, Result: { } account })
         {
             account.Dispose();

@@ -28,4 +28,7 @@ internal interface IShell
 
     // Asks what a close asks, then has Windows install the update the check found and restart the app.
     Task InstallUpdateAsync();
+
+    // The paid-feature gate's dialog: false once it showed what the feature needs (docs/decisions/0023).
+    Task<bool> RequirePlanAsync(string feature);
 }

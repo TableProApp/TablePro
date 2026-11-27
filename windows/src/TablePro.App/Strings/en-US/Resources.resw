@@ -6712,4 +6712,514 @@ New fingerprint: {2}</value>
   <data name="PaletteSection_Command" xml:space="preserve">
     <value>Commands</value>
   </data>
+  <data name="SyncHeader.Text" xml:space="preserve">
+    <value>Sync</value>
+  </data>
+  <data name="SyncProviderCard.Header" xml:space="preserve">
+    <value>Sync this PC with</value>
+  </data>
+  <data name="SyncProviderBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync this PC with</value>
+  </data>
+  <data name="SyncProviderOff.Content" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="SyncProviderTableProSync.Content" xml:space="preserve">
+    <value>TablePro Sync</value>
+  </data>
+  <data name="SyncNowButton.Content" xml:space="preserve">
+    <value>Sync now</value>
+  </data>
+  <data name="SyncCategoriesExpander.Header" xml:space="preserve">
+    <value>What syncs</value>
+  </data>
+  <data name="SyncCategoriesExpander.Description" xml:space="preserve">
+    <value>What this PC sends to TablePro Sync and takes from it</value>
+  </data>
+  <data name="SyncConnectionsCard.Header" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="SyncConnectionsCard.Description" xml:space="preserve">
+    <value>Connections set to Local only are left out.</value>
+  </data>
+  <data name="SyncConnectionsSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync connections</value>
+  </data>
+  <data name="SyncPasswordsCard.Header" xml:space="preserve">
+    <value>Passwords</value>
+  </data>
+  <data name="SyncPasswordsSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync passwords</value>
+  </data>
+  <data name="SyncGroupsCard.Header" xml:space="preserve">
+    <value>Groups and tags</value>
+  </data>
+  <data name="SyncGroupsSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync groups and tags</value>
+  </data>
+  <data name="SyncSavedQueriesCard.Header" xml:space="preserve">
+    <value>Saved queries</value>
+  </data>
+  <data name="SyncSavedQueriesSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync saved queries</value>
+  </data>
+  <data name="SyncTableFavoritesCard.Header" xml:space="preserve">
+    <value>Table favorites</value>
+  </data>
+  <data name="SyncTableFavoritesSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync table favorites</value>
+  </data>
+  <data name="SyncDatabaseFavoritesCard.Header" xml:space="preserve">
+    <value>Database favorites</value>
+  </data>
+  <data name="SyncDatabaseFavoritesSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync database favorites</value>
+  </data>
+  <data name="SyncProviderOffSummary" xml:space="preserve">
+    <value>Your connections and saved queries stay on this PC.</value>
+  </data>
+  <data name="SyncProviderTableProSyncSummary" xml:space="preserve">
+    <value>Sync through your TablePro account with every device signed in to it. Passwords, other secrets and query history are end-to-end encrypted.</value>
+  </data>
+  <data name="SyncPasswordsEncrypted" xml:space="preserve">
+    <value>End-to-end encrypted with your account's keys. This PC also keeps its own copy of each password.</value>
+  </data>
+  <data name="SyncPasswordsOffOnServer" xml:space="preserve">
+    <value>Your server does not sync passwords. Each one stays on this PC.</value>
+  </data>
+  <data name="SyncStatusStarting" xml:space="preserve">
+    <value>Starting...</value>
+  </data>
+  <data name="SyncStatusUpToDate" xml:space="preserve">
+    <value>Up to date</value>
+  </data>
+  <data name="SyncStatusSyncing" xml:space="preserve">
+    <value>Syncing...</value>
+  </data>
+  <data name="SyncStatusWaiting" xml:space="preserve">
+    <value>Waiting to retry</value>
+  </data>
+  <data name="SyncStatusDownloadingOnly" xml:space="preserve">
+    <value>Downloading only</value>
+  </data>
+  <data name="SyncStatusNeedsApproval" xml:space="preserve">
+    <value>Waiting for approval</value>
+  </data>
+  <data name="SyncStatusNeedsRecoveryKey" xml:space="preserve">
+    <value>Recovery key needed</value>
+  </data>
+  <data name="SyncStatusLocked" xml:space="preserve">
+    <value>Locked</value>
+  </data>
+  <data name="SyncStatusOff" xml:space="preserve">
+    <value>Sync off</value>
+  </data>
+  <data name="SyncStatusUnavailable" xml:space="preserve">
+    <value>Sync is unavailable</value>
+  </data>
+  <data name="SyncNeedsApprovalDetail" xml:space="preserve">
+    <value>Approve this PC from another device signed in to your account, or use your recovery key.</value>
+  </data>
+  <data name="SyncNeedsRecoveryKeyDetail" xml:space="preserve">
+    <value>Set up a recovery key for your account before this PC syncs.</value>
+  </data>
+  <data name="SyncNeverSynced" xml:space="preserve">
+    <value>Not synced yet</value>
+  </data>
+  <data name="SyncLastSynced" xml:space="preserve">
+    <value>Last synced {0}</value>
+  </data>
+  <data name="SyncLockTitle_DeviceRemoved" xml:space="preserve">
+    <value>This PC was removed from your account</value>
+  </data>
+  <data name="SyncLockMessage_DeviceRemoved" xml:space="preserve">
+    <value>It keeps its keys, but nothing personal syncs here. Sign out, then sign in again and approve this PC from another device.</value>
+  </data>
+  <data name="SyncLockTitle_LeftOutOfRotation" xml:space="preserve">
+    <value>Your keys changed without this PC</value>
+  </data>
+  <data name="SyncLockMessage_LeftOutOfRotation" xml:space="preserve">
+    <value>Another device changed your keys and didn't keep this PC. Approve it again from a device that was kept, or use your recovery key.</value>
+  </data>
+  <data name="SyncLockTitle_OwnAccountReset" xml:space="preserve">
+    <value>Your account was reset on another device</value>
+  </data>
+  <data name="SyncLockMessage_OwnAccountReset" xml:space="preserve">
+    <value>Nothing personal syncs here until the device that reset your account approves this PC.</value>
+  </data>
+  <data name="SyncLockTitle_AccountEnded" xml:space="preserve">
+    <value>Your keys could not be restored</value>
+  </data>
+  <data name="SyncLockMessage_AccountEnded" xml:space="preserve">
+    <value>The server lost your keys after a restore. Sign out, then use your recovery key or reset your account.</value>
+  </data>
+  <data name="SyncLockTitle_Unanchored" xml:space="preserve">
+    <value>This PC's keys can't be checked</value>
+  </data>
+  <data name="SyncLockMessage_Unanchored" xml:space="preserve">
+    <value>Nothing personal syncs here until another device approves this PC or you use your recovery key.</value>
+  </data>
+  <data name="SyncLockTitle_PersonalStopped" xml:space="preserve">
+    <value>Your personal keys can't be checked</value>
+  </data>
+  <data name="SyncLockMessage_PersonalStopped" xml:space="preserve">
+    <value>The server showed keys this PC couldn't verify, so nothing personal syncs here. Approve it again or use your recovery key.</value>
+  </data>
+  <data name="SyncPolicy_PersonalSyncOff" xml:space="preserve">
+    <value>Your server does not keep personal data, so this PC keeps its own. Your account's keys go on syncing.</value>
+  </data>
+  <data name="SyncPolicy_PasswordsOff" xml:space="preserve">
+    <value>Your server does not sync passwords. Each one stays on this PC.</value>
+  </data>
+  <data name="SyncPolicy_HistoryOff" xml:space="preserve">
+    <value>Your server does not sync query history. It stays on this PC.</value>
+  </data>
+  <data name="SyncRefusal_Busy" xml:space="preserve">
+    <value>Another change to how this PC syncs is still running.</value>
+  </data>
+  <data name="SyncRefusal_SignInChanged" xml:space="preserve">
+    <value>Your TablePro account changed, so nothing was uploaded. Start again to see what this account gets.</value>
+  </data>
+  <data name="SyncRefusal_ServerRefusesPersonalSync" xml:space="preserve">
+    <value>Your server does not keep personal data, so this PC cannot sync it there.</value>
+  </data>
+  <data name="SyncUploadKeys_SetUpRecoveryKey" xml:space="preserve">
+    <value>Set up a recovery key for your account before this PC uploads, then check again.</value>
+  </data>
+  <data name="SyncUploadKeys_ApproveThisPc" xml:space="preserve">
+    <value>Approve this PC from another device signed in to your account, or use your recovery key, then check again.</value>
+  </data>
+  <data name="SyncUploadKeys_Locked" xml:space="preserve">
+    <value>This PC can no longer read your account's keys. Approve it again from another device, then check again.</value>
+  </data>
+  <data name="SyncUploadKeys_NoDeviceStore" xml:space="preserve">
+    <value>This PC has no place to keep its device keys, so it cannot use TablePro Sync.</value>
+  </data>
+  <data name="SyncUploadsPausedTitle" xml:space="preserve">
+    <value>Uploads paused</value>
+  </data>
+  <data name="SyncUploadsPausedMessage" xml:space="preserve">
+    <value>Your plan no longer includes TablePro Sync. This PC still downloads changes and keeps its own until you renew.</value>
+  </data>
+  <data name="SyncNewIdentityTitle" xml:space="preserve">
+    <value>Signed in to another account</value>
+  </data>
+  <data name="SyncNewIdentityMessage" xml:space="preserve">
+    <value>Move this PC's data into the account it now syncs with, or start empty with what that account already holds.</value>
+  </data>
+  <data name="SyncNewIdentityUnsent_one" xml:space="preserve">
+    <value>{0:N0} change here was never uploaded to the earlier account.</value>
+  </data>
+  <data name="SyncNewIdentityUnsent_other" xml:space="preserve">
+    <value>{0:N0} changes here were never uploaded to the earlier account.</value>
+  </data>
+  <data name="SyncStartEmpty" xml:space="preserve">
+    <value>Start empty</value>
+  </data>
+  <data name="SyncMoveMyData" xml:space="preserve">
+    <value>Move my data</value>
+  </data>
+  <data name="SyncUploadTitle" xml:space="preserve">
+    <value>Upload to TablePro Sync</value>
+  </data>
+  <data name="SyncUploadExplained" xml:space="preserve">
+    <value>This PC's data goes up to your TablePro account. Passwords, other secrets and query history are end-to-end encrypted; the server can read connections and saved queries.</value>
+  </data>
+  <data name="SyncUploadChecking" xml:space="preserve">
+    <value>Checking what this PC uploads...</value>
+  </data>
+  <data name="SyncUploadUploading" xml:space="preserve">
+    <value>Uploading to TablePro Sync...</value>
+  </data>
+  <data name="SyncUploadButton" xml:space="preserve">
+    <value>Upload</value>
+  </data>
+  <data name="SyncUploadCheckAgain" xml:space="preserve">
+    <value>Check again</value>
+  </data>
+  <data name="SyncUploadRecords_one" xml:space="preserve">
+    <value>{0:N0} item goes up.</value>
+  </data>
+  <data name="SyncUploadRecords_other" xml:space="preserve">
+    <value>{0:N0} items go up.</value>
+  </data>
+  <data name="SyncUploadSecrets_one" xml:space="preserve">
+    <value>{0:N0} password is encrypted for TablePro Sync, and this PC keeps its own copy.</value>
+  </data>
+  <data name="SyncUploadSecrets_other" xml:space="preserve">
+    <value>{0:N0} passwords are encrypted for TablePro Sync, and this PC keeps its own copy of each.</value>
+  </data>
+  <data name="SyncUploadStaying_one" xml:space="preserve">
+    <value>{0:N0} item stays on this PC: a Local only or sample connection, or a category you turned off.</value>
+  </data>
+  <data name="SyncUploadStaying_other" xml:space="preserve">
+    <value>{0:N0} items stay on this PC: Local only and sample connections, and categories you turned off.</value>
+  </data>
+  <data name="PlanFeature_service_sync" xml:space="preserve">
+    <value>TablePro Sync</value>
+  </data>
+  <data name="PlanFeatureDescription_service_sync" xml:space="preserve">
+    <value>Sync your connections, saved queries and favorites through your TablePro account. Passwords and other secrets are end-to-end encrypted.</value>
+  </data>
+  <data name="Error_sync_unimplemented" xml:space="preserve">
+    <value>This version of TablePro can't do this yet.</value>
+  </data>
+  <data name="Error_sync_malformed" xml:space="preserve">
+    <value>TablePro Sync could not read what it was given. Update TablePro, then try again.</value>
+  </data>
+  <data name="Error_sync_rejected" xml:space="preserve">
+    <value>The server refused the change. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_locked" xml:space="preserve">
+    <value>This PC can no longer read your account's keys. Approve it again from another device, or use your recovery key.</value>
+  </data>
+  <data name="Error_sync_typed_back_wrong" xml:space="preserve">
+    <value>Those groups don't match your recovery key. Check them and try again.</value>
+  </data>
+  <data name="Error_sync_unknown" xml:space="preserve">
+    <value>This step has ended. Start again.</value>
+  </data>
+  <data name="Error_sync_not_allowed" xml:space="preserve">
+    <value>This PC can't do this now. It may need approval from another device first.</value>
+  </data>
+  <data name="Error_sync_changed" xml:space="preserve">
+    <value>This changed while you were deciding. Look again, then choose.</value>
+  </data>
+  <data name="Error_sync_cancelled" xml:space="preserve">
+    <value>Cancelled.</value>
+  </data>
+  <data name="Error_sync_move_incomplete" xml:space="preserve">
+    <value>The upload stopped before everything went up. Try again to finish it.</value>
+  </data>
+  <data name="Error_sync_use_dpop_nonce" xml:space="preserve">
+    <value>TablePro Sync needs another try. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_feature_required" xml:space="preserve">
+    <value>Your plan doesn't include TablePro Sync. Your data stays on this PC.</value>
+  </data>
+  <data name="Error_sync_seat_required" xml:space="preserve">
+    <value>You have no seat on this team's plan. Ask an owner or admin for one.</value>
+  </data>
+  <data name="Error_sync_license_expired" xml:space="preserve">
+    <value>Your plan no longer includes TablePro Sync uploads. Your data stays on this PC.</value>
+  </data>
+  <data name="Error_sync_device_removed" xml:space="preserve">
+    <value>This PC was removed from your account. Sign out, then sign in again.</value>
+  </data>
+  <data name="Error_sync_step_up_required" xml:space="preserve">
+    <value>Confirm it's you, then try again.</value>
+  </data>
+  <data name="Error_sync_device_not_approved" xml:space="preserve">
+    <value>This PC isn't approved for your keys yet. Approve it from another device, or use your recovery key.</value>
+  </data>
+  <data name="Error_sync_interactive_sign_in_required" xml:space="preserve">
+    <value>Sign in to TablePro again, then try again.</value>
+  </data>
+  <data name="Error_sync_not_found" xml:space="preserve">
+    <value>TablePro Sync could not find this. Another device may have removed it.</value>
+  </data>
+  <data name="Error_sync_idempotency_in_progress" xml:space="preserve">
+    <value>The same change is still being sent. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_validation_failed" xml:space="preserve">
+    <value>The server refused this change as it stands.</value>
+  </data>
+  <data name="Error_sync_cursor_expired" xml:space="preserve">
+    <value>TablePro Sync has to read everything again, which it does on its next try.</value>
+  </data>
+  <data name="Error_sync_epoch_changed" xml:space="preserve">
+    <value>The server's sync data was reset, so this PC reads it again.</value>
+  </data>
+  <data name="Error_sync_idempotency_mismatch" xml:space="preserve">
+    <value>Another change was sent under the same request. Try again.</value>
+  </data>
+  <data name="Error_sync_rate_limited" xml:space="preserve">
+    <value>The server is busy. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_restore_check_unavailable" xml:space="preserve">
+    <value>The server is busy checking its data. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_server_too_old" xml:space="preserve">
+    <value>Your server is too old for TablePro Sync. Ask your administrator to update it.</value>
+  </data>
+  <data name="Error_sync_signed_out" xml:space="preserve">
+    <value>Sign in to your TablePro account, then try again.</value>
+  </data>
+  <data name="Error_sync_network" xml:space="preserve">
+    <value>TablePro Sync can't be reached. Your data stays on this PC, and it tries again once you're online.</value>
+  </data>
+  <data name="Error_sync_server" xml:space="preserve">
+    <value>The server could not finish. Try again later.</value>
+  </data>
+  <data name="Error_sync_device_store_unavailable" xml:space="preserve">
+    <value>Credential Manager could not be reached, so this PC can't keep its device keys.</value>
+  </data>
+  <data name="Error_sync_device_store_locked" xml:space="preserve">
+    <value>Credential Manager is locked. TablePro Sync tries again once it opens.</value>
+  </data>
+  <data name="Error_sync_device_store_failed" xml:space="preserve">
+    <value>Credential Manager could not keep this PC's keys. Try again.</value>
+  </data>
+  <data name="Error_sync_state_wrong_identity" xml:space="preserve">
+    <value>This PC's sync file belongs to another account, so TablePro Sync starts a new one.</value>
+  </data>
+  <data name="Error_sync_state_integrity" xml:space="preserve">
+    <value>This PC's sync file did not pass its check, so TablePro Sync reads everything again.</value>
+  </data>
+  <data name="Error_sync_state_anchor_unsettled" xml:space="preserve">
+    <value>TablePro Sync could not settle this PC's keys. Try again.</value>
+  </data>
+  <data name="Error_sync_state_busy" xml:space="preserve">
+    <value>Another TablePro window is syncing with this data folder. This one waits for it.</value>
+  </data>
+  <data name="Error_sync_state_io" xml:space="preserve">
+    <value>TablePro Sync could not write its file on this PC. Check that the disk has room, then try again.</value>
+  </data>
+  <data name="Error_sync_adapter_store" xml:space="preserve">
+    <value>TablePro Sync could not read or write this PC's data. Try again.</value>
+  </data>
+  <data name="Error_sync_adapter_unreadable" xml:space="preserve">
+    <value>This version can't read an item another device synced. It stays as it is until you update TablePro.</value>
+  </data>
+  <data name="Error_sync_adapter_host" xml:space="preserve">
+    <value>TablePro Sync could not apply a setting. Try again.</value>
+  </data>
+  <data name="Error_sync_team_library_signed_in_changed" xml:space="preserve">
+    <value>Your TablePro account changed. Open Team Library again.</value>
+  </data>
+  <data name="Error_sync_team_library_unknown_team" xml:space="preserve">
+    <value>This team is not on your account.</value>
+  </data>
+  <data name="Error_sync_team_library_not_writable" xml:space="preserve">
+    <value>You can't change this team's library.</value>
+  </data>
+  <data name="Error_sync_team_library_not_pulled" xml:space="preserve">
+    <value>Team Library has not loaded yet. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_team_library_pull_only" xml:space="preserve">
+    <value>Your team's plan no longer allows changes. Team Library still downloads.</value>
+  </data>
+  <data name="Error_sync_team_library_malformed" xml:space="preserve">
+    <value>Team Library holds an item this version can't read.</value>
+  </data>
+  <data name="Error_sync_team_library_delete_pending" xml:space="preserve">
+    <value>Team Library is still removing its data. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_team_library_delete_failed" xml:space="preserve">
+    <value>Team Library's data could not be removed. Try again.</value>
+  </data>
+  <data name="Error_sync_team_library_id_case_collision" xml:space="preserve">
+    <value>Two Team Library items have names that differ only in case. Rename one on another device.</value>
+  </data>
+  <data name="Error_keys_suite" xml:space="preserve">
+    <value>Your keys use a format this version can't read. Update TablePro.</value>
+  </data>
+  <data name="Error_keys_encoding" xml:space="preserve">
+    <value>Your keys could not be read. Try again.</value>
+  </data>
+  <data name="Error_keys_recovery_key" xml:space="preserve">
+    <value>That isn't your recovery key. Check each group and try again.</value>
+  </data>
+  <data name="Error_keys_signature" xml:space="preserve">
+    <value>A key did not verify, so it was refused.</value>
+  </data>
+  <data name="Error_keys_public_key" xml:space="preserve">
+    <value>A key was refused because it isn't valid.</value>
+  </data>
+  <data name="Error_keys_open" xml:space="preserve">
+    <value>Your keys could not be opened here. Approve this PC again, or use your recovery key.</value>
+  </data>
+  <data name="Error_keys_mismatch" xml:space="preserve">
+    <value>Your keys don't match what the server holds. Try again.</value>
+  </data>
+  <data name="Error_keys_kid" xml:space="preserve">
+    <value>A key doesn't match its version, so it was refused.</value>
+  </data>
+  <data name="Error_keys_ring" xml:space="preserve">
+    <value>Your account's older keys don't chain together, so they were refused.</value>
+  </data>
+  <data name="Error_keys_stale" xml:space="preserve">
+    <value>Your keys changed on another device. Try again in a moment.</value>
+  </data>
+  <data name="Error_keys_step" xml:space="preserve">
+    <value>Your keys changed on another device. Try again in a moment.</value>
+  </data>
+  <data name="Error_keys_retired_ik" xml:space="preserve">
+    <value>A device offered keys that were replaced, so they were refused.</value>
+  </data>
+  <data name="Error_keys_unendorsed" xml:space="preserve">
+    <value>Your account did not confirm a change to a device's keys, so it was refused.</value>
+  </data>
+  <data name="Error_keys_not_holder" xml:space="preserve">
+    <value>A device that doesn't hold your keys signed this, so it was refused.</value>
+  </data>
+  <data name="Error_keys_not_compared" xml:space="preserve">
+    <value>These keys were signed by a device you did not compare words with.</value>
+  </data>
+  <data name="Error_keys_commitment" xml:space="preserve">
+    <value>The approval did not match what the other device sent. Start again.</value>
+  </data>
+  <data name="Error_keys_sas_mismatch" xml:space="preserve">
+    <value>The words differ, so the approval stopped. Start again.</value>
+  </data>
+  <data name="Error_keys_session" xml:space="preserve">
+    <value>This approval has ended. Start again.</value>
+  </data>
+  <data name="Error_keys_conflict" xml:space="preserve">
+    <value>Another device changed your keys at the same time. Try again.</value>
+  </data>
+  <data name="Error_keys_destination" xml:space="preserve">
+    <value>These keys were sealed for somewhere else, so they were refused.</value>
+  </data>
+  <data name="Error_keys_random" xml:space="preserve">
+    <value>Windows could not give a secure random number. Try again.</value>
+  </data>
+  <data name="Error_keys_restart_held" xml:space="preserve">
+    <value>A team's keys restarted. Compare the owner's words before it goes on.</value>
+  </data>
+  <data name="Error_account_step_up_required" xml:space="preserve">
+    <value>Confirm it's you in the browser, then try again.</value>
+  </data>
+  <data name="Error_account_step_up_other_account" xml:space="preserve">
+    <value>You confirmed with another account. Confirm with the account signed in here.</value>
+  </data>
+  <data name="Error_account_server_invalid" xml:space="preserve">
+    <value>That isn't a valid server address.</value>
+  </data>
+  <data name="Error_account_server_insecure" xml:space="preserve">
+    <value>The server address must start with https.</value>
+  </data>
+  <data name="Error_account_server_not_tablepro" xml:space="preserve">
+    <value>That server isn't a TablePro server.</value>
+  </data>
+  <data name="Error_account_server_mismatch" xml:space="preserve">
+    <value>The server answered for another address.</value>
+  </data>
+  <data name="Error_account_server_managed" xml:space="preserve">
+    <value>Your organization manages which server TablePro signs in to.</value>
+  </data>
+  <data name="Error_account_server_unsupported" xml:space="preserve">
+    <value>Your company server doesn't support this.</value>
+  </data>
+  <data name="Error_account_license_not_installed" xml:space="preserve">
+    <value>Your server has no license installed. Ask your administrator.</value>
+  </data>
+  <data name="Error_account_license_other_server" xml:space="preserve">
+    <value>Your server's license is for another server.</value>
+  </data>
+  <data name="Error_account_license_not_yet_valid" xml:space="preserve">
+    <value>Your server's license isn't valid yet.</value>
+  </data>
+  <data name="Error_account_license_untrusted" xml:space="preserve">
+    <value>Your server's license wasn't issued by TablePro.</value>
+  </data>
+  <data name="Error_account_license_invalid" xml:space="preserve">
+    <value>Your server's license could not be read.</value>
+  </data>
+  <data name="Error_account_offline_file_unreadable" xml:space="preserve">
+    <value>The offline license file could not be read.</value>
+  </data>
+  <data name="Error_account_offline_file_too_large" xml:space="preserve">
+    <value>The offline license file is too large.</value>
+  </data>
 </root>

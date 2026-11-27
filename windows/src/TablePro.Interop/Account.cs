@@ -133,6 +133,9 @@ public sealed class TableProAccount : IDisposable
     // A snapshot; cheap enough to read on the UI thread.
     public AccountStatus Status => Mapping.Status(_service.Status());
 
+    // Sync opens over the sign-in this holds.
+    internal Native.AccountService Handle => _service;
+
     // From the entitlement's feature codes only: the app knows no plan or tier.
     public FeatureAccess Access(string feature)
     {
