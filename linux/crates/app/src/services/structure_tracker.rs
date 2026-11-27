@@ -3,7 +3,7 @@
 //! replaces it on every edit; DDL has no per-change undo, only Discard
 //! back to the table as it was read.
 
-use super::pending_structure::PendingStructure;
+use tablepro_core::ddl::PendingStructure;
 use crate::workspace::{PendingState, SaveOutcome, SaveRejection, UnknownCause};
 
 #[derive(Debug, Default)]
@@ -90,7 +90,7 @@ mod tests {
     use tablepro_core::meta::TableRef;
 
     use super::*;
-    use crate::services::pending_structure::SaveBlocker;
+    use tablepro_core::ddl::SaveBlocker;
 
     fn new_table(columns: usize) -> PendingStructure {
         let mut draft = TableDraft::new(TableRef::unqualified("t"));

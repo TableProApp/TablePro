@@ -1,6 +1,6 @@
 use super::context::StructureContext;
 use crate::i18n::gettext;
-use crate::services::pending_structure::PendingStructure;
+use tablepro_core::ddl::PendingStructure;
 use crate::ui::error_text::build_error_text;
 
 /// The SQL page's text for `pending`: the statements Save would run,

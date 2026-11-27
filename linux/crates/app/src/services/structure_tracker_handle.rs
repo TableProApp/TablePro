@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::pending_structure::PendingStructure;
+use tablepro_core::ddl::PendingStructure;
 use super::structure_tracker::StructureChangeTracker;
 use crate::workspace::{PendingState, SaveOutcome, SaveRejection};
 

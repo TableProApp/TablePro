@@ -20,7 +20,7 @@ use super::{
 use crate::services::active_session::ActiveSession;
 use crate::services::change_tracker::RowKey;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
-use crate::services::pending_structure::PendingStructure;
+use tablepro_core::ddl::PendingStructure;
 use crate::services::save_batch::SaveTarget;
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;

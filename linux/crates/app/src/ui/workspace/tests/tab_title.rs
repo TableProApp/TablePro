@@ -15,7 +15,7 @@ use super::super::tab_spec::TabSpec;
 use super::super::{Workspace, WorkspaceInput, WorkspaceTab};
 use super::{open_editor, shell_of, two_sessions};
 use crate::runtime::DeliverInput;
-use crate::services::pending_structure::PendingStructure;
+use tablepro_core::ddl::PendingStructure;
 use crate::test_support::{drain_main_context, finish_on_main, wait_until};
 use crate::ui::SessionWindowInput;
 use crate::ui::editor::SqlEditor;
