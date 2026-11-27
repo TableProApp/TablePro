@@ -31,11 +31,22 @@ extension SyncProviderCoordinator {
         }
     }
 
-    // The kinds this Mac's switches leave out, and whether passwords ride along.
+    // The kinds this Mac's switches leave out, and whether passwords ride along. A connection project groups connections,
+    // so it goes with them. The password switch holds on either provider: `syncsPasswords` also asks for iCloud on, which
+    // TablePro Sync turns off, and envelopes would then never sync.
     nonisolated static func categories(_ settings: SyncSettings) -> SyncCategoriesArg {
-        SyncCategoriesArg(
-            offKinds: SyncRecordType.allCases.filter { !settings.syncs($0) }.map(\.coreKind),
-            passwords: settings.syncsPasswords
-        )
+        var off = SyncRecordType.allCases
+            .filter { !settings.syncs($0) || keptInSwift.contains($0) }
+            .map(\.coreKind)
+        if !settings.syncConnections {
+            off.append(connectionProjectKind)
+        }
+        return SyncCategoriesArg(offKinds: off, passwords: settings.syncConnections && settings.syncPasswords)
     }
+
+    nonisolated static let connectionProjectKind = "connection_project"
+
+    // Kinds whose Mac store is still Swift's, so the core's store holds none of them: an adapter over it would read every
+    // record as deleted. An off kind rests and pushes nothing. Each goes once M2 moves its store into the core.
+    nonisolated static let keptInSwift: Set<SyncRecordType> = [.sshProfile, .credentialProfile]
 }

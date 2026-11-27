@@ -169,7 +169,21 @@ final class SyncEngineHost {
         }
     }
 
-    // No settings host yet. The account is optional, since iCloud needs none (core ADR 0054, Providers).
+    // The categories through the coordinator's one rule, so an open and a later change tell the engine the same.
+    nonisolated static func openConfig(
+        provider: SyncProviderTag,
+        settings: SyncSettings,
+        icloudAccount: String?
+    ) -> SyncConfig {
+        SyncConfig(
+            platform: .macos,
+            provider: provider,
+            categories: SyncProviderCoordinator.categories(settings),
+            icloudAccount: icloudAccount
+        )
+    }
+
+    // The account is optional, since iCloud needs none (core ADR 0054, Providers).
     private static func live() -> SyncEngineHost {
         let transport = CloudKitCoreTransport()
         let mirror = LegacySyncMetadataMirror(
@@ -177,6 +191,7 @@ final class SyncEngineHost {
             recordCache: SyncProviderCoordinator.makeRecordCache()
         )
         let defaults = AppStorageEnvironment.shared.defaults
+        let settingsHost = HostSettingsBridge.live()
         let deviceStore = KeychainDeviceStore(
             items: AppStorageEnvironment.shared.deviceItems,
             accessGroup: KeychainHelper.resolveAccessGroup()
@@ -192,15 +207,14 @@ final class SyncEngineHost {
                 let settings = AppSettingsStorage.shared.loadSync()
                 let account = await AccountServices.shared.syncAccount?.accountService()
                 return try await CoreStoreHost.shared.core().openSync(
-                    config: SyncConfig(
-                        platform: .macos,
+                    config: openConfig(
                         provider: provider,
-                        categories: SyncProviderCoordinator.categories(settings),
+                        settings: settings,
                         icloudAccount: defaults.string(forKey: icloudAccountKey)
                     ),
                     account: account,
                     cloudkit: transport,
-                    settings: nil,
+                    settings: settingsHost,
                     deviceStore: deviceStore,
                     legacyMirror: mirror,
                     listener: listener

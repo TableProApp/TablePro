@@ -780,14 +780,19 @@ struct SyncProviderCoordinatorTests {
         fixture.settings.syncTableFavorites = false
         fixture.coordinator.start()
         await fixture.coordinator.passesFinished()
-        #expect(fixture.engine.read { $0.categories } == [SyncCategoriesArg(offKinds: ["favourite_table"], passwords: false)])
+        #expect(fixture.engine.read { $0.categories } == [
+            SyncCategoriesArg(offKinds: ["favourite_table", "ssh_profile", "credential_profile"], passwords: false)
+        ])
 
         fixture.settings.syncTableFavorites = true
         fixture.coordinator.categoriesChanged()
         try await waitUntil { fixture.engine.read { $0.categories.count } == 2 }
         await fixture.coordinator.passesFinished()
 
-        #expect(fixture.engine.read { $0.categories }.last == SyncCategoriesArg(offKinds: [], passwords: false))
+        #expect(fixture.engine.read { $0.categories }.last == SyncCategoriesArg(
+            offKinds: ["ssh_profile", "credential_profile"],
+            passwords: false
+        ))
         #expect(fixture.passes.last == .person)
     }
 
@@ -1051,7 +1056,9 @@ struct SyncProviderCoordinatorStatusTests {
 
         let categories = SyncProviderCoordinator.categories(settings)
 
-        #expect(Set(categories.offKinds) == ["group", "tag", "saved_query", "saved_query_folder"])
+        #expect(Set(categories.offKinds) == [
+            "group", "tag", "saved_query", "saved_query_folder", "ssh_profile", "credential_profile",
+        ])
         #expect(categories.passwords)
         #expect(!SyncProviderCoordinator.categories(settings.settingConnections(false)).passwords)
         #expect(SyncProviderCoordinator.categories(settings.settingConnections(false)).offKinds.contains("connection"))
