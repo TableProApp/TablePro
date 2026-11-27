@@ -358,6 +358,13 @@ internal final class ResetProposalModel: ObservableObject {
             self.draft = nil
             phase = .done
         } catch {
+            // The sheet closed while the proposal went up, so nothing sends this draft again.
+            if isClosed {
+                self.draft = nil
+                self.typed = ["", ""]
+                await discard(draft)
+                return
+            }
             failure = TeamKeysFailureText.message(error)
             phase = .typeBack
         }

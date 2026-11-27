@@ -265,6 +265,31 @@ struct ResetKeysModelTests {
         #expect(service.calls.last == .discard(draft: "draft-1"))
     }
 
+    @Test("A proposal that fails after its sheet closed discards the draft and the recovery key it holds")
+    func failedProposalAfterCloseDiscards() async {
+        let stepUpOpen = AsyncGate()
+        stepUps.gate = stepUpOpen
+        service.update {
+            $0.failures["finishResetProposal"] = [Self.stepUpRequired, F.failure("sync.reset_held")]
+        }
+        let proposal = proposal(.startEmpty)
+        await proposal.begin()
+        proposal.continueToTypeBack()
+        proposal.typed = ["89AB", "MNPQ"]
+
+        let submitting = Task { await proposal.submit() }
+        try? await waitUntil { stepUps.challenges.count == 1 }
+        await proposal.close()
+        let discardsWhileUp = service.calls.filter { if case .discard = $0 { true } else { false } }
+        await stepUpOpen.open()
+        await submitting.value
+
+        #expect(discardsWhileUp.isEmpty)
+        #expect(service.calls.last == .discard(draft: "draft-1"))
+        #expect(proposal.draft == nil)
+        #expect(proposal.typed == ["", ""])
+    }
+
     @Test("Closing the passkey page leaves the proposal on its step with no error")
     func closedStepUpShowsNothing() async {
         service.update { $0.failures["finishResetProposal"] = [Self.stepUpRequired] }
