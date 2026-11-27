@@ -19,6 +19,9 @@ pub struct ConnectionGroup {
     pub color: Option<ConnectionColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<LibraryIcon>,
+    /// Only a top-level group's counts; its subtree and their connections follow it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
@@ -33,6 +36,8 @@ struct StoredGroup {
     color: Option<ConnectionColor>,
     #[serde(default)]
     icon: Option<LibraryIcon>,
+    #[serde(default)]
+    project_id: Option<Uuid>,
 }
 
 impl From<StoredGroup> for ConnectionGroup {
@@ -44,6 +49,7 @@ impl From<StoredGroup> for ConnectionGroup {
             order: stored.order,
             color: stored.color,
             icon: stored.icon,
+            project_id: stored.project_id,
         }
     }
 }
@@ -60,6 +66,7 @@ impl ConnectionGroup {
             order: 0,
             color: None,
             icon: None,
+            project_id: None,
         }
     }
 }

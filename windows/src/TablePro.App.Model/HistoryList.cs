@@ -8,6 +8,7 @@ public interface IHistoryStore
     Task<HistoryPage> SearchAsync(
         string text,
         Guid? connectionId,
+        Guid? projectId,
         HistoryCursor? after,
         int limit,
         CancellationToken cancellationToken);
@@ -24,10 +25,11 @@ public sealed class CoreHistoryStore(QueryHistory history) : IHistoryStore
     public Task<HistoryPage> SearchAsync(
         string text,
         Guid? connectionId,
+        Guid? projectId,
         HistoryCursor? after,
         int limit,
         CancellationToken cancellationToken) =>
-        history.SearchAsync(text, connectionId, after, limit, cancellationToken);
+        history.SearchAsync(text, connectionId, projectId, after, limit, cancellationToken);
 
     public Task DeleteAsync(IReadOnlyList<long> ids, CancellationToken cancellationToken) =>
         history.DeleteAsync(ids, cancellationToken);
@@ -51,8 +53,9 @@ public sealed class HistoryList
     // A newer search or a clear moves it on, and a page read for an older one is dropped.
     private int _generation;
 
-    public HistoryList(IHistoryStore store, Guid? connectionId, int pageSize = 100)
+    public HistoryList(IHistoryStore store, Guid? connectionId, int pageSize = 100, Guid? projectId = null)
     {
+        ProjectId = projectId;
         ArgumentNullException.ThrowIfNull(store);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize);
         _store = store;
@@ -62,6 +65,16 @@ public sealed class HistoryList
 
     // Null: every connection's runs.
     public Guid? ConnectionId => _connectionId;
+
+    // Narrows the every-connection list to one project's connections; null is all of them.
+    public Guid? ProjectId { get; private set; }
+
+    // The same text read again after the scope changed: another project, or the same one holding other connections.
+    public Task RescopeAsync(Guid? projectId)
+    {
+        ProjectId = projectId;
+        return ReadAsync(after: null);
+    }
 
     public event EventHandler? Changed;
 
@@ -160,7 +173,7 @@ public sealed class HistoryList
         CoreError? failure = null;
         try
         {
-            page = await _store.SearchAsync(text, _connectionId, after, _pageSize, CancellationToken.None)
+            page = await _store.SearchAsync(text, _connectionId, ProjectId, after, _pageSize, CancellationToken.None)
                 .ConfigureAwait(true);
         }
         catch (TableProException exception)

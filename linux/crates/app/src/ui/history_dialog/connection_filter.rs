@@ -32,6 +32,17 @@ impl ConnectionFilterModel {
         &self.labels
     }
 
+    // The first choice stands for every connection listed: the library's, or one project's.
+    pub(crate) fn set_all_label(&self, project: Option<&str>) {
+        let label = match project {
+            Some(project) => crate::i18n::gettext_f("All in {project}", &[("project", project)]),
+            None => gettext("All Connections"),
+        };
+        if self.labels.string(0).is_none_or(|shown| shown != label.as_str()) {
+            self.labels.splice(0, 1, &[label.as_str()]);
+        }
+    }
+
     pub(crate) fn fill(&self, connections: &[HistoryConnection], saved: &[SavedConnection]) {
         let mut listed: Vec<(String, Uuid)> = connections
             .iter()
@@ -101,6 +112,7 @@ mod tests {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,

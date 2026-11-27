@@ -14,6 +14,8 @@ const TRIGRAM_LENGTH: usize = 3;
 pub struct HistoryQuery {
     terms: Vec<String>,
     pub connection: Option<Uuid>,
+    // A project's connections: `None` is every connection, an empty list none.
+    pub connections: Option<Vec<Uuid>>,
     pub status: StatusFilter,
     pub executed_after: Option<SystemTime>,
 }

@@ -9,15 +9,17 @@ struct UnreadableCopies: Equatable {
     var connections: Set<UUID> = []
     var groups: Set<UUID> = []
     var tags: Set<UUID> = []
+    var projects: Set<UUID> = []
 
     var isEmpty: Bool {
-        connections.isEmpty && groups.isEmpty && tags.isEmpty
+        connections.isEmpty && groups.isEmpty && tags.isEmpty && projects.isEmpty
     }
 
-    init(connections: Set<UUID> = [], groups: Set<UUID> = [], tags: Set<UUID> = []) {
+    init(connections: Set<UUID> = [], groups: Set<UUID> = [], tags: Set<UUID> = [], projects: Set<UUID> = []) {
         self.connections = connections
         self.groups = groups
         self.tags = tags
+        self.projects = projects
     }
 
     init(recordNames: Set<String>) {
@@ -27,6 +29,7 @@ struct UnreadableCopies: Equatable {
             case .connection: connections.insert(id)
             case .group: groups.insert(id)
             case .tag: tags.insert(id)
+            case .project: projects.insert(id)
             default: continue
             }
         }
@@ -36,12 +39,13 @@ struct UnreadableCopies: Equatable {
         Set(connections.map { SyncRecordType.connection.recordName(for: $0.uuidString) })
             .union(groups.map { SyncRecordType.group.recordName(for: $0.uuidString) })
             .union(tags.map { SyncRecordType.tag.recordName(for: $0.uuidString) })
+            .union(projects.map { SyncRecordType.project.recordName(for: $0.uuidString) })
     }
 }
 
 // A record this device stores but cannot read is never re-encoded by it, which would drop what this build cannot read.
 // A pulled change to it is held and a build that reads the copy fetches that record by id; a deletion applies by id when
-// the record syncs (groups and tags always do), and waits for a build that reads the copy when nothing says.
+// the record syncs (groups, tags and projects always do), and waits for a build that reads the copy when nothing says.
 extension IOSSyncCoordinator {
     private static var unreadableCopiesLogger: Logger {
         Logger(subsystem: "com.TablePro", category: "IOSSyncUnreadableCopies")
@@ -65,7 +69,8 @@ extension IOSSyncCoordinator {
             connections: Set(state.connections.filter(\.participatesInSync).map(\.id))
                 .union(unreadable.connections.filter { metadata.standing(ofConnection: $0) != .keptOff }),
             groups: Set(state.groups.map(\.id)).union(unreadable.groups),
-            tags: Set(state.tags.map(\.id)).union(unreadable.tags)
+            tags: Set(state.tags.map(\.id)).union(unreadable.tags),
+            projects: Set((getProjects?() ?? []).map(\.id)).union(unreadable.projects)
         )
         let readable = metadata.readableHeldChanges(syncing: syncing.recordNames, unreadable: unreadable.recordNames)
         let pulledNames = Set(pulled.changedRecords.map(\.recordID.recordName))
@@ -107,12 +112,14 @@ extension IOSSyncCoordinator {
         let changed = UnreadableCopies(
             connections: Set(kept.changedConnections.map(\.id)).intersection(unreadable.connections),
             groups: Set(kept.changedGroups.map(\.id)).intersection(unreadable.groups),
-            tags: Set(kept.changedTags.map(\.id)).intersection(unreadable.tags)
+            tags: Set(kept.changedTags.map(\.id)).intersection(unreadable.tags),
+            projects: Set(kept.changedProjects.map(\.id)).intersection(unreadable.projects)
         )
         if !changed.isEmpty {
             kept.changedConnections.removeAll { changed.connections.contains($0.id) }
             kept.changedGroups.removeAll { changed.groups.contains($0.id) }
             kept.changedTags.removeAll { changed.tags.contains($0.id) }
+            kept.changedProjects.removeAll { changed.projects.contains($0.id) }
             // A copy kept off iCloud never takes a remote change, read or not.
             var held = changed
             held.connections = held.connections.filter { metadata.standing(ofConnection: $0) != .keptOff }
@@ -122,7 +129,8 @@ extension IOSSyncCoordinator {
         let listed = UnreadableCopies(
             connections: unreadable.connections.filter { live.contains(SyncRecordType.connection.recordName(for: $0.uuidString)) },
             groups: unreadable.groups.filter { live.contains(SyncRecordType.group.recordName(for: $0.uuidString)) },
-            tags: unreadable.tags.filter { live.contains(SyncRecordType.tag.recordName(for: $0.uuidString)) }
+            tags: unreadable.tags.filter { live.contains(SyncRecordType.tag.recordName(for: $0.uuidString)) },
+            projects: unreadable.projects.filter { live.contains(SyncRecordType.project.recordName(for: $0.uuidString)) }
         )
 
         let deleted = UnreadableCopies(
@@ -130,7 +138,8 @@ extension IOSSyncCoordinator {
                 byDeletionOf: kept.deletedConnectionIDs.intersection(unreadable.connections)
             ),
             groups: kept.deletedGroupIDs.intersection(unreadable.groups),
-            tags: kept.deletedTagIDs.intersection(unreadable.tags)
+            tags: kept.deletedTagIDs.intersection(unreadable.tags),
+            projects: kept.deletedProjectIDs.intersection(unreadable.projects)
         )
         if !deleted.isEmpty || !listed.isEmpty {
             onUnreadableCopiesSettled?(deleted, listed)

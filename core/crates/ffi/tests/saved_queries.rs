@@ -368,9 +368,9 @@ async fn a_pinned_run_comes_first_and_an_export_writes_the_runs_asked_for() {
         .unwrap();
 
     history.set_pinned(old, true).await.unwrap();
-    let pinned = history.search(String::new(), None, None, 50).await.unwrap();
+    let pinned = history.search(String::new(), None, None, None, 50).await.unwrap();
     history.set_pinned(old, false).await.unwrap();
-    let unpinned = history.search(String::new(), None, None, 50).await.unwrap();
+    let unpinned = history.search(String::new(), None, None, None, 50).await.unwrap();
     let sql_file = dir.path().join("history.sql");
     let csv_file = dir.path().join("history.csv");
     history

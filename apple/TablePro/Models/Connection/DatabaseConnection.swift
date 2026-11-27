@@ -176,6 +176,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var iconName: String?
     var tagIds: [UUID]
     var groupId: UUID?
+    var projectId: UUID?
     var sshProfileId: UUID?
     var sshTunnelMode: SSHTunnelMode
     var credentialMode: CredentialMode = .inline
@@ -402,6 +403,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         iconName: String? = nil,
         tagIds: [UUID] = [],
         groupId: UUID? = nil,
+        projectId: UUID? = nil,
         sshProfileId: UUID? = nil,
         sshTunnelMode: SSHTunnelMode = .disabled,
         credentialMode: CredentialMode = .inline,
@@ -444,6 +446,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.iconName = iconName
         self.tagIds = tagIds
         self.groupId = groupId
+        self.projectId = projectId
         self.sshProfileId = sshProfileId
         self.credentialMode = credentialMode
         self.preferredSafeModeLevel = safeModeLevel
@@ -545,7 +548,7 @@ internal extension DatabaseConnection {
 extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
-        case sshConfig, sslConfig, color, iconName, tagId, tagIds, groupId, sshProfileId
+        case sshConfig, sslConfig, color, iconName, tagId, tagIds, groupId, projectId, sshProfileId
         case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, socksProxyMode, tunnelCommandMode
         case credentialMode
         case safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
@@ -575,6 +578,7 @@ extension DatabaseConnection: Codable {
             tagIds = decodedTagIds
         }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
+        projectId = try container.decodeIfPresent(UUID.self, forKey: .projectId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
         sshRoute = try container.decodeIfPresent(PublishedSSHRoute.self, forKey: .sshRoute)
         credentialMode = try container.decodeIfPresent(CredentialMode.self, forKey: .credentialMode) ?? .inline
@@ -631,6 +635,7 @@ extension DatabaseConnection: Codable {
             try container.encode(tagIds[0], forKey: .tagId)
         }
         try container.encodeIfPresent(groupId, forKey: .groupId)
+        try container.encodeIfPresent(projectId, forKey: .projectId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
         try container.encodeIfPresent(sshRoute, forKey: .sshRoute)
         try container.encode(credentialMode, forKey: .credentialMode)

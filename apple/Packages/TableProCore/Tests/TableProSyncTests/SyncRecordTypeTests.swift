@@ -27,6 +27,18 @@ struct SyncRecordTypeTests {
         #expect(SyncRecordType.parse(recordName: "TableFolderItem_abc")?.id == "abc")
     }
 
+    @Test("A project record parses to its own type and no other prefix starts it")
+    func projectPrefixStandsAlone() {
+        #expect(SyncRecordType.project.rawValue == "ConnectionProject")
+        #expect(SyncRecordType.project.recordNamePrefix == "Project_")
+        #expect(SyncRecordType.parse(recordName: "Project_abc")?.type == .project)
+        #expect(SyncRecordType.parse(recordName: "Project_abc")?.id == "abc")
+        for type in SyncRecordType.allCases where type != .project {
+            #expect(!type.recordNamePrefix.hasPrefix("Project_"))
+            #expect(!"Project_".hasPrefix(type.recordNamePrefix))
+        }
+    }
+
     @Test("An ambiguous prefix keeps the whole identifier")
     func ambiguousPrefixesKeepTheIdentifier() {
         #expect(SyncRecordType.parse(recordName: "FavoriteFolder_abc")?.id == "abc")

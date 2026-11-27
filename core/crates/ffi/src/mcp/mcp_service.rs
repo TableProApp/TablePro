@@ -10,6 +10,8 @@ use tokio::sync::watch;
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::error::{BoxedErrorInfo, CoreError};
+use crate::library::optional_id;
+use crate::mcp::app_bridge::ActiveProject;
 use crate::runtime::on_runtime;
 
 // Called on a runtime thread; it only schedules a read of `status` and `seen_clients` on the app's own thread.
@@ -48,6 +50,7 @@ struct Inner {
     context: ToolContext,
     version: String,
     listener: Arc<dyn McpListener>,
+    project: ActiveProject,
     shown: Mutex<Shown>,
     // Taken by every start, stop and token change in turn, so a stop frees the port before the next start binds it.
     live: Arc<tokio::sync::Mutex<Option<McpServer>>>,
@@ -68,6 +71,7 @@ impl McpService {
         context: ToolContext,
         version: String,
         listener: Arc<dyn McpListener>,
+        project: ActiveProject,
     ) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -76,6 +80,7 @@ impl McpService {
                 context,
                 version,
                 listener,
+                project,
                 shown: Mutex::new(Shown {
                     generation: 0,
                     status: McpStatusTag::Off,
@@ -102,6 +107,13 @@ impl McpService {
             let started = inner.restart(generation, enabled.then_some(port)).await;
             inner.settle(generation, port, started);
         }));
+    }
+
+    // The project the app shows, which list_connections and every call by id follow from the next call on. None,
+    // and an id no project holds, are all connections. A listing scope the user switches, not an access control.
+    pub fn set_active_project(&self, project_id: Option<String>) -> Result<(), CoreError> {
+        self.inner.project.set(optional_id(project_id.as_deref())?);
+        Ok(())
     }
 
     pub fn status(&self) -> McpStatusTag {

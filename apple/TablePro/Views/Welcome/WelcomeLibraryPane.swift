@@ -33,8 +33,24 @@ internal struct WelcomeLibraryPane: View {
                 secondaryActionTitle: viewModel.hasImportableApp ? String(localized: "Import from Other App…") : nil,
                 secondaryAction: viewModel.hasImportableApp ? { viewModel.importConnectionsFromApp() } : nil
             )
+        case .emptyProject(let project):
+            EmptyStateView(
+                icon: "cylinder.split.1x2",
+                title: String(format: String(localized: "No Connections in %@"), project),
+                description: String(localized: "Add a connection, or move one here from All Connections."),
+                actionTitle: String(localized: "New Connection"),
+                action: { WindowOpener.shared.openConnectionForm() }
+            )
         case .noSearchMatch(let term):
             UnavailableStateView.search(text: term)
+        case .noProjectSearchMatch(let term, let project):
+            EmptyStateView(
+                icon: "magnifyingglass",
+                title: String(format: String(localized: "No results in %@"), project),
+                description: String(format: String(localized: "No results for \"%@\"."), term),
+                actionTitle: String(localized: "Search All Connections"),
+                action: { viewModel.searchAllConnections() }
+            )
         case .noFilterMatch:
             EmptyStateView(
                 icon: "tag",

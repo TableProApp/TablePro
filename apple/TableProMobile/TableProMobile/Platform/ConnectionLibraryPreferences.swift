@@ -10,6 +10,8 @@ final class ConnectionLibraryPreferences {
     static let favoritesOrderKey = "com.TablePro.connectionList.favoritesOrder"
     static let recentConnectionsKey = "com.TablePro.connectionList.recentConnections"
     static let collapsedGroupsKey = "com.TablePro.connectionList.collapsedGroups"
+    // Read by the Shortcuts entity query too, which runs in the app's process without an AppState.
+    nonisolated static let activeProjectKey = "com.TablePro.connectionList.activeProject"
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionLibraryPreferences")
 
@@ -19,6 +21,8 @@ final class ConnectionLibraryPreferences {
     private(set) var favoritesOrder: [UUID]
     private(set) var recents: RecentConnectionsLedger
     private(set) var collapsedGroupIds: Set<UUID>
+    // Kept as stored even when no project holds it: the scope reads an unknown id as All Connections.
+    private(set) var activeProjectId: UUID?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -26,6 +30,21 @@ final class ConnectionLibraryPreferences {
         favoritesOrder = Self.uuids(defaults.stringArray(forKey: Self.favoritesOrderKey))
         recents = Self.loadRecents(from: defaults)
         collapsedGroupIds = Set(Self.uuids(defaults.stringArray(forKey: Self.collapsedGroupsKey)))
+        activeProjectId = Self.activeProjectId(in: defaults)
+    }
+
+    nonisolated static func activeProjectId(in defaults: UserDefaults) -> UUID? {
+        defaults.string(forKey: activeProjectKey).flatMap(UUID.init(uuidString:))
+    }
+
+    func setActiveProject(_ projectId: UUID?) {
+        guard projectId != activeProjectId else { return }
+        activeProjectId = projectId
+        if let projectId {
+            defaults.set(projectId.uuidString, forKey: Self.activeProjectKey)
+        } else {
+            defaults.removeObject(forKey: Self.activeProjectKey)
+        }
     }
 
     var lastConnected: [UUID: Date] {

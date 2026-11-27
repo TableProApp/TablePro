@@ -93,6 +93,30 @@ struct CoreLibraryStoreTests {
         #expect(try makeStore().load() == library)
     }
 
+    @Test("Projects and the project each top-level group and loose connection names live in the core's store")
+    func projectsLiveInTheCoreStore() async throws {
+        let store = makeStore()
+        var library = try store.load()
+        let acme = ConnectionProject(name: "Acme", color: .blue)
+        let team = ConnectionGroup(name: "Team", projectId: acme.id)
+        var loose = DatabaseConnection(name: "Loose", type: .mysql)
+        loose.projectId = acme.id
+        library.projects = [acme]
+        library.groups = [team]
+        library.connections = [loose]
+
+        try store.write(library, keepingPastedSSHKeys: [:])
+
+        let contents = try await coreContents()
+        #expect(contents.projects.map(\.name) == ["Acme"])
+        #expect(contents.groups.first?.projectId.flatMap(UUID.init(uuidString:)) == acme.id)
+        #expect(contents.connections.first?.connection.projectId.flatMap(UUID.init(uuidString:)) == acme.id)
+        let reloaded = try makeStore().load()
+        #expect(reloaded.projects.map(\.id) == [acme.id])
+        #expect(reloaded.groups.first?.projectId == acme.id)
+        #expect(reloaded.connections.first?.projectId == acme.id)
+    }
+
     @Test("An edit the previous stable made after a downgrade is taken in at the next launch")
     func previousStableEditIsTakenIn() throws {
         let store = makeStore()
@@ -263,7 +287,7 @@ struct CoreLibraryStoreTests {
 
         #expect(throws: (any Error).self) { try store.load() }
         #expect(throws: CoreLibraryStore.Failure.notLoaded) {
-            try store.write(CoreLibraryStore.Library(connections: [], groups: [], tags: []), keepingPastedSSHKeys: [:])
+            try store.write(CoreLibraryStore.Library(connections: [], groups: [], tags: [], projects: []), keepingPastedSSHKeys: [:])
         }
         #expect(try Data(contentsOf: coreFile) == newer)
     }
@@ -302,6 +326,7 @@ struct CoreLibraryStoreTests {
                 groups: contents.groups,
                 tags: contents.tags,
                 favorites: contents.favorites,
+                projects: contents.projects,
                 removing: []
             ),
             over: contents.digest

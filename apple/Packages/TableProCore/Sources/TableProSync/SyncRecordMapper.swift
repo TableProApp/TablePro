@@ -52,10 +52,14 @@ public enum SyncRecordMapper {
     // MARK: - Connection -> CKRecord
 
     // Only a named key reaches the server, so every field `updateRecord` would clear is named here too.
-    public static func toRecord(_ connection: DatabaseConnection, zoneID: CKRecordZone.ID) -> CKRecord {
+    public static func toRecord(
+        _ connection: DatabaseConnection,
+        zoneID: CKRecordZone.ID,
+        schema: SyncWritableSchema = .production
+    ) -> CKRecord {
         let id = recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: id)
-        let fields = record.fields(ConnectionSyncField.self, absentValues: .clear)
+        let fields = record.fields(ConnectionSyncField.self, absentValues: .clear, schema: schema)
 
         fields[.connectionId] = connection.id.uuidString as CKRecordValue
         fields[.name] = connection.name as CKRecordValue
@@ -74,6 +78,7 @@ public enum SyncRecordMapper {
         fields[.color] = connection.color.rawValue as CKRecordValue
         fields[.iconName] = LibrarySymbolCatalog.normalizedName(connection.iconName) as CKRecordValue?
         fields[.groupId] = connection.groupId?.uuidString as CKRecordValue?
+        fields[.projectId] = connection.projectId?.uuidString as CKRecordValue?
         let tagIdStrings = connection.tagIds.map(\.uuidString)
         fields[.tagIds] = tagIdStrings.isEmpty ? nil : tagIdStrings as CKRecordValue
         fields[.tagId] = tagIdStrings.first as CKRecordValue?
@@ -128,6 +133,24 @@ public enum SyncRecordMapper {
     // MARK: - CKRecord -> Connection
 
     public static func toConnection(_ record: CKRecord) -> DatabaseConnection? {
+        connection(from: record, readsProject: SyncSchemaGate.isProjectSyncWritable)
+    }
+
+    // For applying a pull over this device's copy. While project sync is off no record carries a
+    // project, so the copy keeps its own.
+    public static func pulledConnection(
+        _ record: CKRecord,
+        over local: DatabaseConnection?,
+        projectSyncWritable: Bool = SyncSchemaGate.isProjectSyncWritable
+    ) -> DatabaseConnection? {
+        guard var connection = connection(from: record, readsProject: projectSyncWritable) else { return nil }
+        if !projectSyncWritable {
+            connection.projectId = local?.projectId
+        }
+        return connection
+    }
+
+    private static func connection(from record: CKRecord, readsProject: Bool) -> DatabaseConnection? {
         let fields = record.fields(ConnectionSyncField.self)
         guard let idString = fields[.connectionId] as? String,
               let id = UUID(uuidString: idString),
@@ -222,6 +245,9 @@ public enum SyncRecordMapper {
         connection.sshProfileId = (fields[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
         // Only the Mac writes the route, from its ~/.ssh/config.
         connection.sshRoute = (fields[.sshRouteJson] as? Data).flatMap(PublishedSSHRoute.decoded(from:))
+        if readsProject {
+            connection.projectId = (fields[.projectId] as? String).flatMap { UUID(uuidString: $0) }
+        }
         return connection
     }
 
@@ -246,8 +272,12 @@ public enum SyncRecordMapper {
 
     // MARK: - Update Existing CKRecord (preserves macOS-only fields)
 
-    public static func updateRecord(_ record: CKRecord, with connection: DatabaseConnection) {
-        let fields = record.fields(ConnectionSyncField.self)
+    public static func updateRecord(
+        _ record: CKRecord,
+        with connection: DatabaseConnection,
+        schema: SyncWritableSchema = .production
+    ) {
+        let fields = record.fields(ConnectionSyncField.self, schema: schema)
         let serverSafeModeLevel = storedSafeModeLevel(in: fields)
         fields[.connectionId] = connection.id.uuidString as CKRecordValue
         fields[.name] = connection.name as CKRecordValue
@@ -267,6 +297,7 @@ public enum SyncRecordMapper {
         fields[.color] = connection.color.rawValue as CKRecordValue
         fields[.iconName] = LibrarySymbolCatalog.normalizedName(connection.iconName) as CKRecordValue?
         fields[.groupId] = connection.groupId?.uuidString as CKRecordValue?
+        fields[.projectId] = connection.projectId?.uuidString as CKRecordValue?
 
         if !connection.tagIds.isEmpty {
             let tagIdStrings = connection.tagIds.map { $0.uuidString }
@@ -351,18 +382,23 @@ public enum SyncRecordMapper {
 
     // MARK: - Group -> CKRecord
 
-    public static func toRecord(_ group: ConnectionGroup, zoneID: CKRecordZone.ID) -> CKRecord {
+    public static func toRecord(
+        _ group: ConnectionGroup,
+        zoneID: CKRecordZone.ID,
+        schema: SyncWritableSchema = .production
+    ) -> CKRecord {
         let id = recordID(type: .group, id: group.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.group.rawValue, recordID: id)
 
         // Built whole from the local group, so an empty parent or icon is the user's choice and has
         // to reach the server, which keeps any key a push leaves unnamed.
-        let fields = record.fields(ConnectionGroupSyncField.self, absentValues: .clear)
+        let fields = record.fields(ConnectionGroupSyncField.self, absentValues: .clear, schema: schema)
         fields[.groupId] = group.id.uuidString
         fields[.name] = group.name
         fields[.color] = group.color.rawValue
         fields[.iconName] = LibrarySymbolCatalog.normalizedName(group.iconName)
         fields[.parentId] = group.parentId?.uuidString
+        fields[.projectId] = group.projectId?.uuidString
         fields[.sortOrder] = Int64(group.sortOrder)
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
@@ -373,6 +409,22 @@ public enum SyncRecordMapper {
     // MARK: - CKRecord -> Group
 
     public static func toGroup(_ record: CKRecord) -> ConnectionGroup? {
+        group(from: record, readsProject: SyncSchemaGate.isProjectSyncWritable)
+    }
+
+    public static func pulledGroup(
+        _ record: CKRecord,
+        over local: ConnectionGroup?,
+        projectSyncWritable: Bool = SyncSchemaGate.isProjectSyncWritable
+    ) -> ConnectionGroup? {
+        guard var group = group(from: record, readsProject: projectSyncWritable) else { return nil }
+        if !projectSyncWritable {
+            group.projectId = local?.projectId
+        }
+        return group
+    }
+
+    private static func group(from record: CKRecord, readsProject: Bool) -> ConnectionGroup? {
         let fields = record.fields(ConnectionGroupSyncField.self)
         guard let idStr = fields[.groupId] as? String,
               let id = UUID(uuidString: idStr),
@@ -386,6 +438,7 @@ public enum SyncRecordMapper {
         let color = (fields[.color] as? String).flatMap { ConnectionColor(rawValue: $0) } ?? .none
         let iconName = LibrarySymbolCatalog.normalizedName(fields[.iconName] as? String)
         let parentId = (fields[.parentId] as? String).flatMap { UUID(uuidString: $0) }
+        let projectId = readsProject ? (fields[.projectId] as? String).flatMap { UUID(uuidString: $0) } : nil
 
         return ConnectionGroup(
             id: id,
@@ -393,20 +446,83 @@ public enum SyncRecordMapper {
             sortOrder: sortOrder,
             color: color,
             iconName: iconName,
-            parentId: parentId
+            parentId: parentId,
+            projectId: projectId
         )
     }
 
     // MARK: - Update Existing CKRecord with Group
 
-    public static func updateRecord(_ record: CKRecord, with group: ConnectionGroup) {
-        let fields = record.fields(ConnectionGroupSyncField.self)
+    public static func updateRecord(
+        _ record: CKRecord,
+        with group: ConnectionGroup,
+        schema: SyncWritableSchema = .production
+    ) {
+        let fields = record.fields(ConnectionGroupSyncField.self, schema: schema)
         fields[.groupId] = group.id.uuidString
         fields[.name] = group.name
         fields[.color] = group.color.rawValue
         fields[.iconName] = LibrarySymbolCatalog.normalizedName(group.iconName)
         fields[.parentId] = group.parentId?.uuidString
+        fields[.projectId] = group.projectId?.uuidString
         fields[.sortOrder] = Int64(group.sortOrder)
+        fields[.modifiedAtLocal] = Date()
+    }
+
+    // MARK: - Project -> CKRecord
+
+    public static func toRecord(
+        _ project: ConnectionProject,
+        zoneID: CKRecordZone.ID,
+        schema: SyncWritableSchema = .production
+    ) -> CKRecord {
+        let id = recordID(type: .project, id: project.id.uuidString, in: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.project.rawValue, recordID: id)
+
+        let fields = record.fields(ConnectionProjectSyncField.self, absentValues: .clear, schema: schema)
+        fields[.projectId] = project.id.uuidString
+        fields[.name] = project.name
+        fields[.color] = project.color.rawValue
+        fields[.iconName] = LibrarySymbolCatalog.normalizedName(project.iconName)
+        fields[.sortOrder] = Int64(project.sortOrder)
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    // MARK: - CKRecord -> Project
+
+    public static func toProject(_ record: CKRecord) -> ConnectionProject? {
+        let fields = record.fields(ConnectionProjectSyncField.self)
+        guard let idString = fields[.projectId] as? String,
+              let id = UUID(uuidString: idString),
+              let name = fields[.name] as? String
+        else {
+            logger.warning("Failed to decode project from CKRecord: missing required fields")
+            return nil
+        }
+
+        let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
+        let color = (fields[.color] as? String).flatMap { ConnectionColor(rawValue: $0) } ?? .none
+        let iconName = LibrarySymbolCatalog.normalizedName(fields[.iconName] as? String)
+
+        return ConnectionProject(id: id, name: name, sortOrder: sortOrder, color: color, iconName: iconName)
+    }
+
+    // MARK: - Update Existing CKRecord with Project
+
+    public static func updateRecord(
+        _ record: CKRecord,
+        with project: ConnectionProject,
+        schema: SyncWritableSchema = .production
+    ) {
+        let fields = record.fields(ConnectionProjectSyncField.self, schema: schema)
+        fields[.projectId] = project.id.uuidString
+        fields[.name] = project.name
+        fields[.color] = project.color.rawValue
+        fields[.iconName] = LibrarySymbolCatalog.normalizedName(project.iconName)
+        fields[.sortOrder] = Int64(project.sortOrder)
         fields[.modifiedAtLocal] = Date()
     }
 
@@ -550,23 +666,50 @@ public enum SyncRecordMapper {
 
     // What a push of each local copy changes on the cached server record. The base is read and written
     // again here, so a value only the Mac spells differently is not part of the edit.
-    public static func edit(_ connection: DatabaseConnection, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
-        edit(ConnectionSyncField.self, base: base) {
-            updateRecord($0, with: connection)
+    public static func edit(
+        _ connection: DatabaseConnection,
+        base: CKRecord?,
+        zoneID: CKRecordZone.ID,
+        schema: SyncWritableSchema = .production
+    ) -> SyncRecordEdit {
+        edit(ConnectionSyncField.self, base: base, schema: schema) {
+            updateRecord($0, with: connection, schema: schema)
         } build: {
-            toRecord(connection, zoneID: zoneID)
+            toRecord(connection, zoneID: zoneID, schema: schema)
         } reread: {
-            toConnection($0).map { toRecord($0, zoneID: zoneID) }
+            Self.connection(from: $0, readsProject: schema.writesProjects)
+                .map { toRecord($0, zoneID: zoneID, schema: schema) }
         }
     }
 
-    public static func edit(_ group: ConnectionGroup, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
-        edit(ConnectionGroupSyncField.self, base: base) {
-            updateRecord($0, with: group)
+    public static func edit(
+        _ group: ConnectionGroup,
+        base: CKRecord?,
+        zoneID: CKRecordZone.ID,
+        schema: SyncWritableSchema = .production
+    ) -> SyncRecordEdit {
+        edit(ConnectionGroupSyncField.self, base: base, schema: schema) {
+            updateRecord($0, with: group, schema: schema)
         } build: {
-            toRecord(group, zoneID: zoneID)
+            toRecord(group, zoneID: zoneID, schema: schema)
         } reread: {
-            toGroup($0).map { toRecord($0, zoneID: zoneID) }
+            Self.group(from: $0, readsProject: schema.writesProjects)
+                .map { toRecord($0, zoneID: zoneID, schema: schema) }
+        }
+    }
+
+    public static func edit(
+        _ project: ConnectionProject,
+        base: CKRecord?,
+        zoneID: CKRecordZone.ID,
+        schema: SyncWritableSchema = .production
+    ) -> SyncRecordEdit {
+        edit(ConnectionProjectSyncField.self, base: base, schema: schema) {
+            updateRecord($0, with: project, schema: schema)
+        } build: {
+            toRecord(project, zoneID: zoneID, schema: schema)
+        } reread: {
+            toProject($0).map { toRecord($0, zoneID: zoneID, schema: schema) }
         }
     }
 
@@ -604,6 +747,7 @@ public enum SyncRecordMapper {
     private static func edit<Field: SyncSchemaField>(
         _ field: Field.Type,
         base: CKRecord?,
+        schema: SyncWritableSchema = .production,
         update: (CKRecord) -> Void,
         build: () -> CKRecord,
         reread: (CKRecord) -> CKRecord?
@@ -615,6 +759,6 @@ public enum SyncRecordMapper {
         } else {
             record = build()
         }
-        return SyncRecordEdit(field, record: record, base: base, baseAsWritten: base.flatMap(reread))
+        return SyncRecordEdit(field, record: record, base: base, baseAsWritten: base.flatMap(reread), schema: schema)
     }
 }

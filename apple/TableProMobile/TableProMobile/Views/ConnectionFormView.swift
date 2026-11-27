@@ -304,7 +304,7 @@ struct ConnectionFormView: View {
     @ViewBuilder
     private func organizationSection(viewModel: ConnectionFormViewModel) -> some View {
         @Bindable var viewModel = viewModel
-        let graph = LibraryGroupGraph(groups: appState.groups)
+        let graph = LibraryGroupGraph(groups: appState.groupChoices(including: viewModel.groupId))
         Section("Organization") {
             SymbolPickerRow(selection: $viewModel.iconName, subject: .connection(viewModel.type))
 

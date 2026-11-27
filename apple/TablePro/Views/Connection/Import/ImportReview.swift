@@ -16,12 +16,19 @@ internal final class ImportReview: ObservableObject {
     private let sqlByRef: [BundleRef: String]
     private let library: any ImportLibraryStore
     private let savedQueryStore: (any SavedQueryImportStore)?
+    // The file's own project wins. A connection it puts in none lands here. Read when a plan is made,
+    // since the active project can change under an open sheet.
+    private let targetProjectId: @MainActor () -> UUID?
+    private var scopeSubscription: AnyCancellable?
 
     init(
         preview: ImportPreview,
         library: any ImportLibraryStore = MacImportLibraryStore(),
-        savedQueries: (any SavedQueryImportStore)? = SQLFavoriteManager.shared
+        savedQueries: (any SavedQueryImportStore)? = SQLFavoriteManager.shared,
+        targetProjectId: @escaping @MainActor () -> UUID? = { ConnectionScope.shared.activeProjectId },
+        scopeChanged: AnyPublisher<Void, Never> = ConnectionScope.shared.scopedSetChanged
     ) {
+        self.targetProjectId = targetProjectId
         self.preview = preview
         self.sqlByRef = Dictionary(
             preview.collected.bundle.savedQueries.map { ($0.ref, $0.sql) },
@@ -30,12 +37,18 @@ internal final class ImportReview: ObservableObject {
         self.library = library
         self.savedQueryStore = savedQueries
         self.selection = ImportSelection.defaults(for: preview)
+        scopeSubscription = scopeChanged
+            .sink { [weak self] _ in
+                guard let self else { return }
+                objectWillChange.send()
+                cachedPlan = nil
+            }
     }
 
     /// Planned on first read after a change, so a header toggle that flips every row plans once.
     var plan: ImportPlan {
         if let cachedPlan { return cachedPlan }
-        let planned = ImportPlanner.plan(preview, selection: selection)
+        let planned = ImportPlanner.plan(preview, selection: selection, targetProjectId: targetProjectId())
         cachedPlan = planned
         return planned
     }

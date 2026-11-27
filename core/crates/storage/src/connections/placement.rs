@@ -7,6 +7,21 @@ use super::{ConnectionsDocument, SavedConnection};
 impl ConnectionsDocument {
     // Places stay as stored, so siblings may share a number or skip one; a list reads them by number, then as filed.
     pub(super) fn tidy_library(&mut self) {
+        let mut projects = HashSet::with_capacity(self.projects.len());
+        self.projects.retain(|project| projects.insert(project.id));
+        // Projects alone are numbered from 0 on every write, ties in file order (core ADR 0067).
+        let mut ranked: Vec<(u32, usize)> = self
+            .projects
+            .iter()
+            .enumerate()
+            .map(|(index, project)| (project.order, index))
+            .collect();
+        ranked.sort_unstable();
+        for (rank, (_, index)) in ranked.into_iter().enumerate() {
+            self.projects[index].order = u32::try_from(rank).unwrap_or(u32::MAX);
+        }
+        // A project id no project holds stays as stored and reads as no project: a pull can bring a member before its
+        // project.
         let mut seen = HashSet::with_capacity(self.groups.len());
         self.groups.retain(|group| seen.insert(group.id));
         let saved = self.connection_ids();
