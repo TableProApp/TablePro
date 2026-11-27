@@ -44,6 +44,8 @@ internal final class AccountKeysModel: ObservableObject {
     @Published var actionFailure: AccountActionFailure?
 
     let environment: AccountKeysEnvironment
+    // The reset rows, over the same service and step-up, kept with the page so a return to it shows what it read.
+    private(set) lazy var resets = ResetKeysModel(environment: environment)
     private var changes: Set<AnyCancellable> = []
     private var reloading: Task<Void, Never>?
     private var reloadsAgain = false

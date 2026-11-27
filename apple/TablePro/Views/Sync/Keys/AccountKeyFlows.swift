@@ -73,19 +73,15 @@ internal struct AccountKeysEnvironment {
     // A sign-in or a sign-out: what was read belongs to the account before it.
     var accountChanges: AnyPublisher<Void, Never>
     var stepUp: StepUpRetry
+    var resets: any ResetKeysService
     var portal: @MainActor () -> AccountPortal
     var openURL: @MainActor (URL) -> Void
     var copySecret: @MainActor (String) -> Void
     var clock: any Clock<Duration>
     var now: @MainActor () -> Date
 
-    // The app's one sync service, whichever provider it was opened for: the key flows answer on TablePro Sync's, and
-    // the others say why they cannot.
     static func liveFlows() async throws -> any AccountKeyFlows {
-        guard let flows = try await SyncEngineHost.shared.engine(for: .off) as? any AccountKeyFlows else {
-            throw AccountError.invalidResponse
-        }
-        return flows
+        try await SyncEngineHost.shared.keyService()
     }
 
     static var live: AccountKeysEnvironment {
@@ -94,6 +90,7 @@ internal struct AccountKeysEnvironment {
             keyChanges: SyncEngineHost.shared.keyChanges.eraseToAnyPublisher(),
             accountChanges: AccountServices.shared.events.map { _ in () }.eraseToAnyPublisher(),
             stepUp: .live,
+            resets: ResetKeysLiveService.shared,
             portal: { AccountServices.shared.portal },
             openURL: { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },
             copySecret: { ClipboardService.shared.writeSecretText($0) },

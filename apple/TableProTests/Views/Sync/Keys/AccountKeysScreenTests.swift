@@ -18,6 +18,7 @@ struct AccountKeysScreenTests {
         case pageNeedsApproval = "page-needs-approval"
         case pageApproved = "page-approved"
         case pageLocked = "page-locked"
+        case pageResetPending = "page-reset-pending"
         case setUpKey = "setup-key"
         case setUpCheck = "setup-check"
         case setUpDone = "setup-done"
@@ -51,12 +52,10 @@ struct AccountKeysScreenTests {
         let model = fixture.model()
         switch screen {
         case .pageNoKeys:
-            await model.reload()
-            return AnyView(AccountKeysPage(model: model))
+            return await page(model, fixture)
         case .pageNeedsApproval:
             flows.state = .needsApproval(request: nil)
-            await model.reload()
-            return AnyView(AccountKeysPage(model: model))
+            return await page(model, fixture)
         case .pageApproved:
             flows.state = .approved(av: 3, keyDevice: "key-this")
             flows.devices = [
@@ -65,12 +64,14 @@ struct AccountKeysScreenTests {
                 FakeAccountKeyFlows.device("key-old", name: "Old MacBook Pro"),
             ]
             flows.requests = [FakeAccountKeyFlows.request("request-1", name: "Studio")]
-            await model.reload()
-            return AnyView(AccountKeysPage(model: model))
+            return await page(model, fixture)
         case .pageLocked:
             flows.state = .locked(cause: .leftOutOfRotation)
-            await model.reload()
-            return AnyView(AccountKeysPage(model: model))
+            return await page(model, fixture)
+        case .pageResetPending:
+            flows.state = .locked(cause: .leftOutOfRotation)
+            fixture.resets.update { $0.pending = ResetKeysFixtures.pending(kind: .startEmpty, mine: false, proposedBy: "Old MacBook Pro") }
+            return await page(model, fixture)
         case .setUpKey, .setUpCheck, .setUpDone:
             let flow = AccountRecoveryKeyFlow(purpose: .setUp) { flows }
             await flow.start()
@@ -140,6 +141,15 @@ struct AccountKeysScreenTests {
         case .recover:
             return sheet(.recover(AccountRecoverFlow { flows }), model)
         }
+    }
+
+    // The reset rows read the same key state the page does.
+    private static func page(_ model: AccountKeysModel, _ fixture: AccountKeysFixture) async -> AnyView {
+        let state = fixture.flows.state
+        fixture.resets.update { $0.keyState = state }
+        await model.reload()
+        await model.resets.load()
+        return AnyView(AccountKeysPage(model: model))
     }
 
     private static func sheet(_ sheet: AccountKeysModel.Sheet, _ model: AccountKeysModel) -> AnyView {

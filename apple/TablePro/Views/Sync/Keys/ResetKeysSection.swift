@@ -9,15 +9,7 @@ import TableProFFI
 // The reset rows of the account's keys page: a pending reset with its wait and its Cancel or Finish, the resets that
 // ended, and the way to start one. Every device shows a pending reset (core ADR 0056, Reset, Proposal).
 internal struct ResetKeysSection: View {
-    @StateObject private var model: ResetKeysModel
-
-    init() {
-        self.init(model: ResetKeysModel())
-    }
-
-    init(model: @autoclosure @escaping () -> ResetKeysModel) {
-        _model = StateObject(wrappedValue: model())
-    }
+    let model: ResetKeysModel
 
     var body: some View {
         Section {

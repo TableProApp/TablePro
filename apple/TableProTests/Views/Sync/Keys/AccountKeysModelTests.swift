@@ -85,6 +85,24 @@ struct AccountKeysModelTests {
         #expect(fixture.flows.calls(named: "keyState").count == 2)
     }
 
+    @Test("The reset rows read the page's service, and again when the keys or the account change")
+    func resetRowsFollowThePage() async throws {
+        let fixture = AccountKeysFixture()
+        let model = fixture.model()
+        fixture.resets.update { $0.pending = ResetKeysFixtures.pending(mine: false) }
+
+        await model.resets.load()
+        #expect(model.resets.pending?.reset == "reset-1")
+
+        fixture.resets.update { $0.pending = nil }
+        fixture.keyChanges.send()
+        try await waitUntil { model.resets.pending == nil }
+
+        fixture.resets.update { $0.keyState = .locked(cause: .leftOutOfRotation) }
+        fixture.accountChanges.send()
+        try await waitUntil { model.resets.offeredKind == .startEmpty }
+    }
+
     @Test("A sign-in or sign-out forgets the account's keys, devices and requests and closes its sheet")
     func accountChangeForgetsState() async throws {
         let fixture = AccountKeysFixture()

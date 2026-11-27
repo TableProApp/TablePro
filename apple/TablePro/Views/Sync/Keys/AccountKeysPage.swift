@@ -14,6 +14,9 @@ internal struct AccountKeysPage: View {
     var body: some View {
         Form {
             content
+            if Self.showsResets(model.state.value) {
+                ResetKeysSection(model: model.resets)
+            }
         }
         .formStyle(.grouped)
         .accessibilityElement(children: .contain)
@@ -64,6 +67,15 @@ internal struct AccountKeysPage: View {
                 }
             }
         )
+    }
+
+    // A reset needs keys on the account: kind 2 from an approved Mac, kind 3 from one waiting for approval or locked,
+    // and every device shows a pending one (core ADR 0056, Reset).
+    private static func showsResets(_ state: KeyStateInfo?) -> Bool {
+        switch state {
+        case .approved?, .needsApproval?, .locked?: true
+        case .noKeys?, .noDeviceStore?, .unknown?, nil: false
+        }
     }
 
     @ViewBuilder

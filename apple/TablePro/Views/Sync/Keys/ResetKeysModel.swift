@@ -81,7 +81,7 @@ internal final class ResetKeysModel: ObservableObject {
 
     let service: any ResetKeysService
     let stepUp: StepUpRetry
-    private let now: () -> Date
+    private let now: @MainActor () -> Date
     private var changeObserver: AnyCancellable?
     private var generation = 0
 
@@ -89,7 +89,7 @@ internal final class ResetKeysModel: ObservableObject {
         service: any ResetKeysService,
         stepUp: StepUpRetry,
         changes: AnyPublisher<Void, Never>,
-        now: @escaping () -> Date = { Date() }
+        now: @escaping @MainActor () -> Date = { Date() }
     ) {
         self.service = service
         self.stepUp = stepUp
@@ -100,11 +100,17 @@ internal final class ResetKeysModel: ObservableObject {
         }
     }
 
-    convenience init() {
+    // Over the keys page's service and step-up. A sign-in or sign-out reads again, so another account's reset never
+    // stays on screen.
+    convenience init(environment: AccountKeysEnvironment) {
         self.init(
-            service: ResetKeysLiveService.shared,
-            stepUp: .live,
-            changes: SyncEngineHost.shared.keyChanges.eraseToAnyPublisher()
+            service: environment.resets,
+            stepUp: environment.stepUp,
+            changes: environment.keyChanges
+                .merge(with: environment.accountChanges)
+                .receive(on: DispatchQueue.main)
+                .eraseToAnyPublisher(),
+            now: environment.now
         )
     }
 

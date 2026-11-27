@@ -251,6 +251,7 @@ final class AccountKeysFixture {
     var stepUpFailure: (any Error)?
     var opened: [URL] = []
     var copied: [String] = []
+    let resets = FakeResetKeysService()
 
     lazy var environment = AccountKeysEnvironment(
         flows: { [flows] in flows },
@@ -261,6 +262,7 @@ final class AccountKeysFixture {
             stepUps.append(challenge)
             if let stepUpFailure { throw stepUpFailure }
         },
+        resets: resets,
         portal: { AccountPortal(server: .production) },
         openURL: { [weak self] in self?.opened.append($0) },
         copySecret: { [weak self] in self?.copied.append($0) },
