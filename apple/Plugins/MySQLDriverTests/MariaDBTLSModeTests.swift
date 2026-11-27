@@ -223,12 +223,13 @@ struct MariaDBTLSModeTests {
 }
 
 // One session: a handshake without CLIENT_SSL, then a switch to mysql_clear_password (or to caching_sha2_password and
-// its full authentication), then OK.
+// its full authentication), then OK, and OK to every command after it.
 final class PlaintextMySQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
     struct Session: Sendable {
         var received: [UInt8] = []
+        var queries: [String] = []
         var sawLogin = false
         var loggedIn = false
 
@@ -251,10 +252,20 @@ final class PlaintextMySQLServer: @unchecked Sendable {
     private let listener: Int32
     private let asksForCleartext: Bool
     private let asksForFullSHA2Auth: Bool
+    private let connectionId: UInt8
+    private let onQuery: @Sendable (String) -> Void
 
-    init(asksForCleartext: Bool = true, asksForFullSHA2Auth: Bool = false) throws {
+    // `onQuery` runs before the statement is answered, while the client waits on it.
+    init(
+        asksForCleartext: Bool = true,
+        asksForFullSHA2Auth: Bool = false,
+        connectionId: UInt8 = 1,
+        onQuery: @escaping @Sendable (String) -> Void = { _ in }
+    ) throws {
         self.asksForCleartext = asksForCleartext
         self.asksForFullSHA2Auth = asksForFullSHA2Auth
+        self.connectionId = connectionId
+        self.onQuery = onQuery
         let socketFD = socket(AF_INET, SOCK_STREAM, 0)
         guard socketFD >= 0 else { throw SetupFailure() }
         var option: Int32 = 1
@@ -330,6 +341,11 @@ final class PlaintextMySQLServer: @unchecked Sendable {
         }
         session.loggedIn = true
         while let command = readPacket(client, into: &session), command.payload.first != 0x01 {
+            if command.payload.first == 0x03 {
+                let query = String(decoding: command.payload.dropFirst(), as: UTF8.self)
+                session.queries.append(query)
+                onQuery(query)
+            }
             guard send(Self.okPacket, sequence: command.sequence &+ 1, to: client) else { break }
         }
         return session
@@ -338,7 +354,7 @@ final class PlaintextMySQLServer: @unchecked Sendable {
     private var handshake: [UInt8] {
         // protocol 4.1, secure connection, plugin auth; no CLIENT_SSL
         let capabilities: UInt32 = 0x1 | 0x8 | 0x200 | 0x2000 | 0x8000 | 0x2_0000 | 0x8_0000
-        var payload: [UInt8] = [10] + Array("8.0.36".utf8) + [0] + [1, 0, 0, 0] + Array("abcdefgh".utf8) + [0]
+        var payload: [UInt8] = [10] + Array("8.0.36".utf8) + [0] + [connectionId, 0, 0, 0] + Array("abcdefgh".utf8) + [0]
         payload += [UInt8(capabilities & 0xFF), UInt8((capabilities >> 8) & 0xFF), 45, 0x02, 0x00]
         payload += [UInt8((capabilities >> 16) & 0xFF), UInt8((capabilities >> 24) & 0xFF), 21]
         payload += [UInt8](repeating: 0, count: 10) + Array("ijklmnopqrst".utf8) + [0]

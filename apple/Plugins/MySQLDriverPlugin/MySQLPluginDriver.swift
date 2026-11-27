@@ -13,6 +13,9 @@ import TableProPluginKit
 final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var mariadbConnection: MariaDBPluginConnection?
+    // Outlives each server connection, so a Stop pressed while a released one is taken back still holds back the
+    // statement waiting for it.
+    private let statementTickets = MySQLStatementTickets()
     private var _serverVersion: String?
     private var _activeDatabase: String
 
@@ -273,7 +276,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             connectionEncoding: MySQLConnectionEncoding(additionalFields: config.additionalFields),
             connectTimeoutMilliseconds: connectTimeout.milliseconds,
             refreshPassword: config.refreshPassword,
-            kerberos: kerberos
+            kerberos: kerberos,
+            statementTickets: statementTickets
         )
 
         try await conn.connect(deadline: connectDeadline)
@@ -426,16 +430,21 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         rowCap: Int?,
         parameters: [PluginCellValue]?,
-        byteLimit: Int?
+        byteLimit: Int?,
+        ticket: MySQLStatementTickets.Ticket? = nil
     ) async throws -> PluginQueryResult {
         let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
         guard let parameters else {
             return try await retryingAfterStop {
-                try await self.executeWithReconnect(query: query, isRetry: false, rowCap: cap, byteLimit: byteLimit)
+                try await self.executeWithReconnect(
+                    query: query, isRetry: false, rowCap: cap, byteLimit: byteLimit, ticket: ticket
+                )
             }
         }
         return try await retryingAfterStop {
-            try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: cap, byteLimit: byteLimit)
+            try await self.executeParameterizedOnce(
+                query: query, parameters: parameters, rowCap: cap, byteLimit: byteLimit, ticket: ticket
+            )
         }
     }
 
@@ -466,7 +475,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         parameters: [PluginCellValue],
         rowCap: Int?,
-        byteLimit: Int?
+        byteLimit: Int?,
+        ticket: MySQLStatementTickets.Ticket? = nil
     ) async throws -> PluginQueryResult {
         let conn = try await requireConnection()
         defer { endOperation(on: conn) }
@@ -475,7 +485,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result: MariaDBPluginQueryResult
         do {
             result = try await conn.executeParameterizedQuery(
-                query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit
+                query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit, ticket: ticket
             )
         } catch {
             noteFailure(query)
@@ -503,7 +513,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func cancelQuery() throws {
-        guard let conn = sessionLock.withLock({ mariadbConnection }) else { return }
+        guard let conn = sessionLock.withLock({ mariadbConnection }) else {
+            statementTickets.stop(cancellingRunning: {})
+            return
+        }
         if conn.killTarget.endsSession {
             noteSessionMayEnd(on: ObjectIdentifier(conn))
         }
@@ -532,7 +545,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         isRetry: Bool,
         rowCap: Int? = nil,
         byteLimit: Int? = nil,
-        countsAsActivity: Bool = true
+        countsAsActivity: Bool = true,
+        ticket: MySQLStatementTickets.Ticket? = nil
     ) async throws -> PluginQueryResult {
         let startTime = Date()
 
@@ -543,7 +557,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         do {
-            let result = try await conn.executeQuery(query, rowCap: rowCap, byteLimit: byteLimit)
+            let result = try await conn.executeQuery(query, rowCap: rowCap, byteLimit: byteLimit, ticket: ticket)
             return Self.pluginResult(result, startedAt: startTime)
         } catch let error as MariaDBPluginError where !isRetry
             && mysqlConnectionLossMayReplay(code: error.code, outlastedSocketTimeout: error.outlastedSocketTimeout)
@@ -554,7 +568,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 isRetry: true,
                 rowCap: rowCap,
                 byteLimit: byteLimit,
-                countsAsActivity: countsAsActivity
+                countsAsActivity: countsAsActivity,
+                ticket: ticket
             )
         } catch {
             if countsAsActivity {
@@ -1474,13 +1489,19 @@ extension MySQLPluginDriver {
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
+        let ticket = statementTickets.issue()
         guard let scope = readOnlyScope(context) else {
             return try await runUserQuery(
-                query: query, rowCap: rowCap, parameters: parameters, byteLimit: context.resultByteLimit
+                query: query, rowCap: rowCap, parameters: parameters, byteLimit: context.resultByteLimit, ticket: ticket
             )
         }
         return try await readOnlyRead(
-            query: query, parameters: parameters, rowCap: rowCap, byteLimit: context.resultByteLimit, scope: scope
+            query: query,
+            parameters: parameters,
+            rowCap: rowCap,
+            byteLimit: context.resultByteLimit,
+            scope: scope,
+            ticket: ticket
         )
     }
 
@@ -1498,13 +1519,19 @@ extension MySQLPluginDriver {
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
+        let ticket = statementTickets.issue()
         guard let scope = readOnlyScope(context) else {
             return try await runUserQuery(
-                query: query, rowCap: nil, parameters: parameters, byteLimit: context.resultByteLimit
+                query: query, rowCap: nil, parameters: parameters, byteLimit: context.resultByteLimit, ticket: ticket
             )
         }
         return try await readOnlyRead(
-            query: query, parameters: parameters, rowCap: nil, byteLimit: context.resultByteLimit, scope: scope
+            query: query,
+            parameters: parameters,
+            rowCap: nil,
+            byteLimit: context.resultByteLimit,
+            scope: scope,
+            ticket: ticket
         )
     }
 
@@ -1547,12 +1574,19 @@ extension MySQLPluginDriver {
         parameters: [PluginCellValue]?,
         rowCap: Int?,
         byteLimit: Int?,
-        scope: MySQLReadOnlyTransaction.Scope
+        scope: MySQLReadOnlyTransaction.Scope,
+        ticket: MySQLStatementTickets.Ticket? = nil
     ) async throws -> PluginQueryResult {
         let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
         return try await retryingAfterStop {
             try await self.executeReadOnly(
-                query: query, parameters: parameters, rowCap: cap, byteLimit: byteLimit, scope: scope, isRetry: false
+                query: query,
+                parameters: parameters,
+                rowCap: cap,
+                byteLimit: byteLimit,
+                scope: scope,
+                isRetry: false,
+                ticket: ticket
             )
         }
     }
@@ -1564,7 +1598,8 @@ extension MySQLPluginDriver {
         rowCap: Int?,
         byteLimit: Int?,
         scope: MySQLReadOnlyTransaction.Scope,
-        isRetry: Bool
+        isRetry: Bool,
+        ticket: MySQLStatementTickets.Ticket?
     ) async throws -> PluginQueryResult {
         let startTime = Date()
 
@@ -1574,7 +1609,7 @@ extension MySQLPluginDriver {
 
         do {
             let result = try await conn.executeReadOnly(
-                query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit, scope: scope
+                query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit, scope: scope, ticket: ticket
             )
             return Self.pluginResult(result, startedAt: startTime)
         } catch let error as MariaDBPluginError where !isRetry
@@ -1583,7 +1618,7 @@ extension MySQLPluginDriver {
             && mayReplay(query) {
             try await reconnect()
             return try await executeReadOnly(
-                query: query, parameters: nil, rowCap: rowCap, byteLimit: byteLimit, scope: scope, isRetry: true
+                query: query, parameters: nil, rowCap: rowCap, byteLimit: byteLimit, scope: scope, isRetry: true, ticket: ticket
             )
         } catch {
             noteFailure(query)

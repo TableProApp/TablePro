@@ -133,6 +133,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     private let stateLock = NSLock()
     private let cancellationGate = PluginQueryCancellationGate()
+    private let statementTickets: MySQLStatementTickets
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
@@ -362,7 +363,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         connectionEncoding: MySQLConnectionEncoding = .utf8,
         connectTimeoutMilliseconds: Int = MySQLConnectTimeout.defaultMilliseconds,
         refreshPassword: (@Sendable () async throws -> String)? = nil,
-        kerberos: MariaDBKerberosSignIn? = nil
+        kerberos: MariaDBKerberosSignIn? = nil,
+        statementTickets: MySQLStatementTickets = MySQLStatementTickets()
     ) {
         self.transport = transport
         self.user = user
@@ -377,6 +379,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.connectTimeoutMilliseconds = MySQLConnectTimeout(milliseconds: connectTimeoutMilliseconds).milliseconds
         self.refreshPassword = refreshPassword
         self.kerberos = kerberos
+        self.statementTickets = statementTickets
         self.socketTimeoutSeconds = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
     }
 
@@ -679,7 +682,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     /// A kill that ends the session goes out only when the caller says nothing in it would be lost;
     /// otherwise only the gate is set, and the server runs the statement to its end.
     func cancelCurrentQuery(mayEndSession: Bool) {
-        guard let generation = cancellationGate.cancel() else { return }
+        guard let generation = statementTickets.stop(cancellingRunning: { cancellationGate.cancel() }) else { return }
 
         let target = killTarget
         guard mayEndSession || !target.endsSession else { return }
@@ -1019,12 +1022,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func executeQuery(_ query: String, rowCap: Int? = nil, byteLimit: Int? = nil) async throws -> MariaDBPluginQueryResult {
+    func executeQuery(
+        _ query: String,
+        rowCap: Int? = nil,
+        byteLimit: Int? = nil,
+        ticket: MySQLStatementTickets.Ticket? = nil
+    ) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeQuerySync(queryToRun, rowCap: rowCap, byteLimit: byteLimit)
+            return try executeQuerySync(queryToRun, rowCap: rowCap, byteLimit: byteLimit, ticket: ticket)
         }
     }
 
@@ -1066,14 +1074,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         _ query: String,
         parameters: [PluginCellValue],
         rowCap: Int? = nil,
-        byteLimit: Int? = nil
+        byteLimit: Int? = nil,
+        ticket: MySQLStatementTickets.Ticket? = nil
     ) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap, byteLimit: byteLimit)
+            return try executeParameterizedQuerySync(
+                queryToRun, parameters: params, rowCap: rowCap, byteLimit: byteLimit, ticket: ticket
+            )
         }
     }
 
@@ -1082,7 +1093,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         parameters: [PluginCellValue]?,
         rowCap: Int?,
         byteLimit: Int?,
-        scope: MySQLReadOnlyTransaction.Scope
+        scope: MySQLReadOnlyTransaction.Scope,
+        ticket: MySQLStatementTickets.Ticket? = nil
     ) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
@@ -1093,13 +1105,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 state: scope.sessionState(isInTransaction),
                 reason: scope.reason,
                 runsInOpenTransaction: scope.runsInOpenTransaction,
-                send: { _ = try executeQuerySync($0) },
+                // The ROLLBACK closes what the begin opened, so no Stop holds it back.
+                send: { _ = try executeQuerySync($0, ticket: $0 == MySQLReadOnlyTransaction.end ? nil : ticket) },
                 statement: {
                     guard let params else {
-                        return try executeQuerySync(queryToRun, rowCap: rowCap, byteLimit: byteLimit)
+                        return try executeQuerySync(queryToRun, rowCap: rowCap, byteLimit: byteLimit, ticket: ticket)
                     }
                     return try executeParameterizedQuerySync(
-                        queryToRun, parameters: params, rowCap: rowCap, byteLimit: byteLimit
+                        queryToRun, parameters: params, rowCap: rowCap, byteLimit: byteLimit, ticket: ticket
                     )
                 }
             )
@@ -1109,10 +1122,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private func executeQuerySync(
         _ query: String,
         rowCap: Int? = nil,
-        byteLimit: Int? = nil
+        byteLimit: Int? = nil,
+        ticket: MySQLStatementTickets.Ticket? = nil
     ) throws -> MariaDBPluginQueryResult {
         try runStatement(query) {
-            try self.runCancellableStatement { mysql, generation in
+            try self.runCancellableStatement(admitting: ticket) { mysql, generation in
                 try self.runTextStatement(query, rowCap: rowCap, byteLimit: byteLimit, on: mysql, generation: generation)
             }
         }
@@ -1124,6 +1138,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     /// `1053`, `2013` or not at all (measured on 4.1.22). Once Stop has cancelled it, any failure is
     /// the stop, and as a cancellation it is never replayed on a new session.
     private func runCancellableStatement<T>(
+        admitting ticket: MySQLStatementTickets.Ticket? = nil,
         _ body: (UnsafeMutablePointer<MYSQL>, Int) throws -> T
     ) throws -> T {
         guard !isShuttingDown, let mysql = self.mysql else {
@@ -1131,7 +1146,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
         defer { recordTransactionState(on: mysql) }
 
-        let generation = cancellationGate.beginQuery()
+        let generation = try statementTickets.admit(ticket, registering: { cancellationGate.beginQuery() })
         defer { cancellationGate.endQuery(generation) }
 
         do {
@@ -1627,16 +1642,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         _ query: String,
         parameters: [PluginCellValue],
         rowCap: Int? = nil,
-        byteLimit: Int? = nil
+        byteLimit: Int? = nil,
+        ticket: MySQLStatementTickets.Ticket? = nil
     ) throws -> MariaDBPluginQueryResult {
         guard flavor.preparesOnServer else {
             let inlined = flavor.isDatabend
                 ? try DatabendLiteral.inline(query, parameters: parameters, serverVersion: serverVersion())
                 : try StarRocksLiteral.inline(query, parameters: parameters)
-            return try executeQuerySync(inlined, rowCap: rowCap, byteLimit: byteLimit)
+            return try executeQuerySync(inlined, rowCap: rowCap, byteLimit: byteLimit, ticket: ticket)
         }
         return try runStatement(query) {
-            try self.runCancellableStatement { mysql, generation in
+            try self.runCancellableStatement(admitting: ticket) { mysql, generation in
                 try self.runPreparedStatement(
                     query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit, on: mysql, generation: generation
                 )
