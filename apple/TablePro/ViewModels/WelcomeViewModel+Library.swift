@@ -209,7 +209,7 @@ extension WelcomeViewModel {
         let targets = ids.filter { connectionsById[$0] != nil }
         guard !targets.isEmpty else { return }
         let displayed = LibraryOutlineBuilder.favoriteIds(outlineRequest(query: LibraryQuery()))
-        guard storage.mutateConnections(ids: Set(targets), { $0.isFavorite = isFavorite }) else {
+        guard storage.mutateConnections(ids: Set(targets), byUser: false, { $0.isFavorite = isFavorite }) else {
             reportLibraryWriteFailure()
             return
         }
@@ -286,6 +286,7 @@ extension WelcomeViewModel {
     func requestExcludeFromSync(_ ids: [UUID]) {
         let targets = ids.compactMap { connectionsById[$0] }.filter(\.participatesInSync)
         guard !targets.isEmpty else { return }
+        excludeFromSyncProvider = services.appSettings.sync.provider
         connectionsToExcludeFromSync = targets
         showExcludeFromSyncConfirmation = true
     }
@@ -422,11 +423,11 @@ extension WelcomeViewModel {
             linkedFolderConnectionIds: Set(presentableLinkedConnections.map(\.id)),
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
-            isSyncEnabled: services.appSettings.sync.enabled,
+            syncProvider: services.appSettings.sync.provider,
             isCompareSyncEnabled: AppModuleSettings.shared.isEnabled(.compareSync),
             canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
-            teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrarySync.shared.writableTeams : [],
-            hasTeamLibraryConflicts: !TeamLibrarySync.shared.conflicts.isEmpty
+            teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrary.shared.writableTeams : [],
+            hasTeamLibraryConflicts: !TeamLibrary.shared.conflicts.conflicts.isEmpty
         )
     }
 

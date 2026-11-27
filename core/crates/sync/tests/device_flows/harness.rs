@@ -34,10 +34,12 @@ use zeroize::Zeroizing;
 pub const ORIGIN: &str = "https://sync.example.com";
 
 // A state file whose next commit, or one a few commits on, can be made to fail, as a crash between two writes would
-// leave it. The count is how many commits land first; below zero none fails.
+// leave it. The count is how many commits land first; below zero none fails. Its next transaction can also give way
+// once to the other calls in flight, as a slow disk lets them run.
 pub struct Flaky {
     inner: Arc<dyn StateStore>,
     fail_commit: Arc<AtomicI64>,
+    yield_begin: Arc<AtomicBool>,
 }
 
 #[async_trait]
@@ -51,10 +53,17 @@ impl StateStore for Flaky {
     }
 
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError> {
+        if self.yield_begin.swap(false, Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
         Ok(Box::new(FlakyTxn {
             inner: self.inner.begin().await?,
             fail_commit: Arc::clone(&self.fail_commit),
         }))
+    }
+
+    async fn purge(&self) -> Result<(), StateError> {
+        self.inner.purge().await
     }
 }
 
@@ -161,6 +170,10 @@ impl HostDeviceStore for Store {
             pause.go.notified().await;
         }
         self.inner.delete(item).await
+    }
+
+    fn present(&self) -> bool {
+        self.inner.present()
     }
 }
 
@@ -325,6 +338,7 @@ pub struct Device {
     pub account: AccountId,
     files: Arc<MemoryStateFiles>,
     fail_commit: Arc<AtomicI64>,
+    yield_begin: Arc<AtomicBool>,
     skew: Arc<ServerClock>,
 }
 
@@ -382,9 +396,11 @@ impl Device {
         };
         files.set_opened(identity.clone(), opened);
         let fail_commit = Arc::new(AtomicI64::new(-1));
+        let yield_begin = Arc::new(AtomicBool::new(false));
         let state: Arc<dyn StateStore> = Arc::new(Flaky {
             inner: files.open(identity).await.unwrap(),
             fail_commit: Arc::clone(&fail_commit),
+            yield_begin: Arc::clone(&yield_begin),
         });
         let hooks = Arc::new(RecordingHooks::default());
         let service = KeyService::new(KeyServiceParts {
@@ -408,6 +424,7 @@ impl Device {
             account,
             files,
             fail_commit,
+            yield_begin,
             skew: clock,
         }
     }
@@ -425,6 +442,12 @@ impl Device {
             opened,
         )
         .await
+    }
+
+    // The next transaction gives way once before it starts, so a call running beside it queues behind the lock the
+    // first one holds and the two take turns from there.
+    pub fn yield_next_begin(&self) {
+        self.yield_begin.store(true, Ordering::SeqCst);
     }
 
     pub fn fail_next_commit(&self) {

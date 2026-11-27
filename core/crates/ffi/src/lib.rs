@@ -43,6 +43,7 @@ mod run;
 mod runtime;
 mod safe_mode_gate;
 mod saved_queries;
+mod saved_query_database;
 mod session;
 mod statement_at;
 mod structure;
@@ -98,15 +99,16 @@ pub use foreign_import::{
     TlsFileReasonTag,
 };
 pub use history::{
-    HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryOutcomeTag, HistoryPageInfo, HistoryRun,
-    QueryHistoryStore,
+    HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryFilterArg, HistoryFingerprintArg,
+    HistoryOutcomeTag, HistoryPageInfo, HistoryRun, HistoryRunDetails, HistorySourceTag, HistoryStatusTag,
+    QueryHistoryStore, StatementTypeTag,
 };
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
 pub use host_stores::{
     FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,
-    FavouriteStoreContents, FavouriteTableRecord, HistoryEntryRecord, SavedQueryFolderRecord, SavedQueryRecord,
-    SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome, TableFolderRecordWrite,
-    TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
+    FavouriteStoreContents, FavouriteTableRecord, HistoryDetailsRecord, HistoryEntryRecord, HistoryIdentityInfo,
+    SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome,
+    TableFolderRecordWrite, TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
 };
 pub use import::{
     CsvDelimiterTag, CsvImport, CsvImportCheck, CsvImportOutcome, CsvPreview, CsvReadOptions, CsvRowFault,
@@ -146,6 +148,7 @@ pub use row_edits::{
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
 pub use saved_queries::{SavedQueriesInfo, SavedQueryDraft, SavedQueryFolderInfo, SavedQueryInfo, SavedQueryStore};
+pub use saved_query_database::{SavedQueryDatabaseStore, StoreFilesInfo};
 pub use session::{
     ColumnSort, DatabaseLayoutTag, DatabaseSession, FailureCauseTag, PageResume, RowEstimate, SessionHealthTag,
     TableInfoRecord, TablePageRead,
@@ -159,12 +162,17 @@ pub use sync::{
     HeldReasonTag, HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings, KeyChangeInfo,
     KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg, LegacyRecordArg,
     LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo,
-    MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, PassReasonTag, PendingApprovalInfo, PendingResetInfo,
-    RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo,
-    RotationDraftInfo, ScopeStatusInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag, SettingsCategoryArg,
-    SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener,
-    SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo,
-    TeamRoleTag, device_item_class,
+    MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo,
+    PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo,
+    ReviewedMemberInfo, RotationDraftInfo, ScopeStatusInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag,
+    SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, SyncCategoriesArg, SyncConfig,
+    SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo,
+    TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
+};
+pub use sync::{
+    TeamConnectionArg, TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo,
+    TeamLibraryItemRef, TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg,
+    TeamScopeStatusInfo, UnsentTeamEditInfo, UnsentTeamEditTag,
 };
 pub use syntax::SqlGrammarTag;
 pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};

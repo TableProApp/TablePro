@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import os
 import TableProFFI
 import TableProSyncTransport
 
@@ -17,10 +18,14 @@ nonisolated protocol SyncEngine: AnyObject, Sendable {
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws
     func uploadAgain() async throws
     func icloudAccount() -> String?
+    func serviceAccount() -> String?
     func flushLegacyMarks() async throws
 }
 
 extension SyncService: SyncEngine {}
+
+// The open service is not the core's, so no key flow runs on it.
+struct KeyServiceUnavailable: Error {}
 
 // The app's one core sync service (core ADR 0054), opened on first use on the core that holds the stores, with the
 // CloudKit transport and the Swift engine's metadata. Its listener only signals, and the signal reaches the main actor.
@@ -30,15 +35,27 @@ final class SyncEngineHost {
     // The iCloud account whose state file the engine used last, handed back at the next open so a switch made while the
     // app was closed removes that account's file. Its own key: `lastAccountId` is the downgrade mirror's.
     nonisolated static let icloudAccountKey = "com.TablePro.sync.engineICloudAccount"
+    // The TablePro Sync sign-in whose state file the engine used last, handed back at the next open so another account
+    // or server waits for the person's choice instead of taking this one's state.
+    nonisolated static let serviceAccountKey = "com.TablePro.sync.engineServiceAccount"
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SyncEngineHost")
 
     let transport: CloudKitCoreTransport
     let statusChanges = PassthroughSubject<Void, Never>()
     let keyChanges = PassthroughSubject<Void, Never>()
+    // A sign-in change opened the service again, which takes no choice the old one was told.
+    let reopened = PassthroughSubject<Void, Never>()
     private let open: @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
     private let keepICloudAccount: @MainActor (String?) -> Void
-    private typealias Opening = (provider: SyncProviderTag, task: Task<any SyncEngine, any Error>)
+    private let keepServiceAccount: @MainActor (String?) -> Void
+    private typealias Opening = (provider: SyncProviderTag, signIn: Int, task: Task<any SyncEngine, any Error>)
     private var opening: Opening?
     private var opened: (provider: SyncProviderTag, engine: any SyncEngine)?
+    // Each sign-in, sign-out or switch, so an open that began under the one before is never kept.
+    private var signIn = 0
+    private var signInObserver: AnyCancellable?
+    // Each closed service's flush of the marks it still held, which a quit waits for.
+    private var retiring: [UUID: Task<Void, Never>] = [:]
 
     func openedEngine(for provider: SyncProviderTag) -> (any SyncEngine)? {
         guard let opened, Self.serves(opened.provider, provider) else { return nil }
@@ -48,11 +65,57 @@ final class SyncEngineHost {
     init(
         transport: CloudKitCoreTransport,
         keepICloudAccount: @escaping @MainActor (String?) -> Void = { _ in },
+        keepServiceAccount: @escaping @MainActor (String?) -> Void = { _ in },
+        signInChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher(),
         open: @escaping @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
     ) {
         self.transport = transport
         self.keepICloudAccount = keepICloudAccount
+        self.keepServiceAccount = keepServiceAccount
         self.open = open
+        signInObserver = signInChanges.sink { [weak self] in self?.signInChanged() }
+    }
+
+    // TablePro Sync and the key flows stay bound to the sign-in the service opened with, and refuse once it ends, so
+    // the service closes and opens again for the same provider: one opened for iCloud keeps the downgrade mirror's
+    // writer, Off included. The old one goes once its calls in flight and its flush end; the iCloud engine of the new
+    // one waits for its state file meanwhile.
+    private func signInChanged() {
+        signIn += 1
+        guard let provider = opened?.provider ?? opening?.provider else { return }
+        if let old = opened?.engine {
+            retire(old)
+        }
+        opened = nil
+        Task { [weak self] in
+            guard (try? await self?.engine(for: provider)) != nil else { return }
+            self?.reopened.send()
+        }
+    }
+
+    // Once the quit is decided: a service opened now would hold writes no flush waits for.
+    func stopReopening() {
+        signInObserver = nil
+    }
+
+    // The previous stable's marks for every write the closed services were told, one closed meanwhile included.
+    func flushRetired() async {
+        while let entry = retiring.first {
+            await entry.value.value
+            retiring[entry.key] = nil
+        }
+    }
+
+    private func retire(_ engine: any SyncEngine) {
+        let id = UUID()
+        retiring[id] = Task { [weak self] in
+            do {
+                try await engine.flushLegacyMarks()
+            } catch {
+                Self.logger.error("A closed service's marks did not flush: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            }
+            self?.retiring[id] = nil
+        }
     }
 
     func rememberICloudAccount() {
@@ -73,29 +136,49 @@ final class SyncEngineHost {
             if opening?.task == current.task {
                 opening = nil
             }
-            if case .failure(let error) = result, Self.serves(current.provider, provider) {
+            if case .failure(let error) = result, current.signIn == signIn, Self.serves(current.provider, provider) {
                 throw error
             }
         }
     }
 
+    // The service for what lives on TablePro Sync whatever the personal provider is: the account's keys and its team
+    // scopes (core ADR 0054, Providers, and 0056, What the server stores). The open service serves them whichever
+    // provider it was opened for; with none open, one opens Off.
+    func accountScopesEngine() async throws -> any SyncEngine {
+        try await engine(for: .off)
+    }
+
+    // The service the key engine runs on.
+    func keyService() async throws -> SyncService {
+        guard let service = try await accountScopesEngine() as? SyncService else { throw KeyServiceUnavailable() }
+        return service
+    }
+
     // The service opened for this provider, or for any with nil, once an open of one in flight ends. It never opens one.
     func existingEngine(for provider: SyncProviderTag?) async -> (any SyncEngine)? {
-        if let opening, provider == nil || opening.provider == provider {
+        while let opening, provider == nil || opening.provider == provider {
             _ = await opening.task.result
+            if self.opening?.task == opening.task {
+                self.opening = nil
+            }
         }
         guard let opened, provider == nil || opened.provider == provider else { return nil }
         return opened.engine
     }
 
     private func startOpening(_ provider: SyncProviderTag) -> Opening {
+        let started = signIn
         let task = Task { [weak self, open, listener = SyncEngineListener(host: self)] in
             let engine = try await open(provider, listener)
-            self?.opened = (provider, engine)
+            if let self, signIn == started {
+                opened = (provider, engine)
+                keepServiceAccount(engine.serviceAccount())
+            }
             return engine
         }
-        opening = (provider, task)
-        return (provider, task)
+        opening = (provider, started, task)
+        return (provider, started, task)
     }
 
     private static func serves(_ opened: SyncProviderTag, _ wanted: SyncProviderTag) -> Bool {
@@ -106,20 +189,46 @@ final class SyncEngineHost {
         if keys {
             keyChanges.send()
         } else {
+            // The sign-in the state file follows changes once the person chooses for another account.
+            if let opened {
+                keepServiceAccount(opened.engine.serviceAccount())
+            }
             statusChanges.send()
         }
     }
 
-    // No settings host yet. The account is optional, since iCloud needs none (core ADR 0054, Providers).
+    // The categories through the coordinator's one rule, so an open and a later change tell the engine the same.
+    nonisolated static func openConfig(
+        provider: SyncProviderTag,
+        settings: SyncSettings,
+        icloudAccount: String?,
+        serviceAccount: String? = nil,
+        routePublisher: UUID? = nil
+    ) -> SyncConfig {
+        SyncConfig(
+            platform: .macos,
+            provider: provider,
+            categories: SyncProviderCoordinator.categories(settings),
+            icloudAccount: icloudAccount,
+            serviceAccount: serviceAccount,
+            routePublisher: routePublisher?.uuidString
+        )
+    }
+
+    // The account is optional, since iCloud needs none (core ADR 0054, Providers).
     private static func live() -> SyncEngineHost {
-        let transport = CloudKitCoreTransport()
+        let environment = AppStorageEnvironment.shared
+        let transport = environment.deviceProfile == nil
+            ? CloudKitCoreTransport()
+            : CloudKitCoreTransport(database: SignedOutCloudKitDatabase())
         let mirror = LegacySyncMetadataMirror(
             metadata: .appDefault,
             recordCache: SyncProviderCoordinator.makeRecordCache()
         )
-        let defaults = AppStorageEnvironment.shared.defaults
+        let defaults = environment.defaults
+        let settingsHost = HostSettingsBridge.live()
         let deviceStore = KeychainDeviceStore(
-            items: AppStorageEnvironment.shared.deviceItems,
+            items: environment.deviceItems,
             accessGroup: KeychainHelper.resolveAccessGroup()
         )
         return SyncEngineHost(
@@ -128,19 +237,25 @@ final class SyncEngineHost {
                 guard defaults.string(forKey: icloudAccountKey) != account else { return }
                 defaults.set(account, forKey: icloudAccountKey)
             },
+            keepServiceAccount: { account in
+                guard defaults.string(forKey: serviceAccountKey) != account else { return }
+                defaults.set(account, forKey: serviceAccountKey)
+            },
+            signInChanges: AccountServices.shared.events.map { _ in }.eraseToAnyPublisher(),
             open: { provider, listener in
                 let settings = AppSettingsStorage.shared.loadSync()
                 let account = await AccountServices.shared.syncAccount?.accountService()
                 return try await CoreStoreHost.shared.core().openSync(
-                    config: SyncConfig(
-                        platform: .macos,
+                    config: openConfig(
                         provider: provider,
-                        categories: SyncProviderCoordinator.categories(settings),
-                        icloudAccount: defaults.string(forKey: icloudAccountKey)
+                        settings: settings,
+                        icloudAccount: defaults.string(forKey: icloudAccountKey),
+                        serviceAccount: defaults.string(forKey: serviceAccountKey),
+                        routePublisher: ConnectionStorage.shared.sshRoutePublisherId
                     ),
                     account: account,
                     cloudkit: transport,
-                    settings: nil,
+                    settings: settingsHost,
                     deviceStore: deviceStore,
                     legacyMirror: mirror,
                     listener: listener

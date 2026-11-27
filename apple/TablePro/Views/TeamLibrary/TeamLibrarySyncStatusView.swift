@@ -8,15 +8,16 @@ import SwiftUI
 // The trailing part of a "Team Library" header: a spinner while it syncs, a warning when the last sync failed, the
 // edits not uploaded yet, and a button that opens the conflicts a publish left.
 internal struct TeamLibrarySyncStatusView: View {
-    @ObservedObject var sync: TeamLibrarySync
+    @ObservedObject var library: TeamLibrary
+    @ObservedObject var conflicts: TeamLibraryConflictsModel
     let resolveConflicts: () -> Void
 
     var body: some View {
         TeamLibrarySyncStatusContent(
-            status: sync.status,
-            conflictCount: sync.conflicts.count,
+            status: library.status,
+            conflictCount: conflicts.conflicts.count,
             resolveConflicts: resolveConflicts,
-            notUploadedCount: sync.notUploadedCount
+            notUploadedCount: library.notUploadedCount
         )
     }
 }
@@ -48,7 +49,7 @@ internal struct TeamLibrarySyncStatusContent: View {
                 Label(TeamLibrarySyncDescription.notUploaded(notUploadedCount), systemImage: "icloud.slash")
                     .labelStyle(.titleAndIcon)
                     .foregroundStyle(.secondary)
-                    .help(String(localized: "Uploaded when the team library answers. Signing out or quitting asks first, since they are not kept on this Mac."))
+                    .help(String(localized: "Kept on this Mac and uploaded when the team library takes them. Signing out asks first."))
                     .accessibilityIdentifier("team-library-not-uploaded")
             }
             if conflictCount > 0 {
@@ -84,7 +85,7 @@ internal enum TeamLibrarySyncDescription {
         switch failure {
         case .offline, .rateLimited, .server:
             return String(format: String(localized: "%@ TablePro tries again shortly."), TeamLibraryPublishing.failureText(failure))
-        case .signedOut, .unreadable, .writeForbidden, .licenseExpired, .cursorRefused, .refused:
+        case .signedOut, .unreadable, .writeForbidden, .licenseExpired, .refused, .deletePending, .unavailable:
             return TeamLibraryPublishing.failureText(failure)
         }
     }
@@ -110,7 +111,7 @@ internal struct TeamLibraryHeader: View {
     let title: String
     let font: Font
     let resolveConflicts: () -> Void
-    @ObservedObject private var sync = TeamLibrarySync.shared
+    @ObservedObject private var library = TeamLibrary.shared
 
     init(title: String, font: Font, resolveConflicts: @escaping () -> Void) {
         self.title = title
@@ -125,9 +126,9 @@ internal struct TeamLibraryHeader: View {
                 .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 4)
-            TeamLibrarySyncStatusView(sync: sync, resolveConflicts: resolveConflicts)
+            TeamLibrarySyncStatusView(library: library, conflicts: library.conflicts, resolveConflicts: resolveConflicts)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .help(TeamLibrarySyncDescription.help(for: sync.status) ?? "")
+        .help(TeamLibrarySyncDescription.help(for: library.status) ?? "")
     }
 }

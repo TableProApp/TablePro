@@ -37,7 +37,7 @@ struct ConnectionEditorStoreSecretStateTests {
         connection: DatabaseConnection
     ) -> ConnectionEditorStore {
         let storage = ConnectionStorage(
-            fileURL: fixture.directory.appendingPathComponent("scripted-connections.json"),
+            fileURL: fixture.directory.appendingPathComponent("scripted", isDirectory: true).appendingPathComponent("connections.json"),
             userDefaults: fixture.suite.defaults,
             keychain: ScriptedKeychain(result)
         )

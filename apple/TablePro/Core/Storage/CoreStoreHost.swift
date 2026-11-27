@@ -8,7 +8,7 @@ import os
 import TableProFFI
 
 // The one core over `TablePro/Core` in Application Support. Every store the Mac keeps in the core and the sync engine
-// open on it, so no two runtimes ever hold the same files: the library's `connections.json`, `history.db` and the sync
+// open on it, so no two runtimes ever hold the same files: the library's `connections.json`, the query stores and the sync
 // state files under its state folder (core ADR 0054, The state file; 0060). Opened on first use; a failed open is tried
 // again by the next caller. The account's core keeps no files and stays apart.
 nonisolated final class CoreStoreHost: @unchecked Sendable {
@@ -16,7 +16,14 @@ nonisolated final class CoreStoreHost: @unchecked Sendable {
 
     static let shared = CoreStoreHost(
         folder: AppStorageEnvironment.shared.supportDirectory.appendingPathComponent("Core", isDirectory: true),
-        makeSecrets: { KeychainHostSecrets(keychain: AccountKeychain(keychain: AppStorageEnvironment.shared.deviceOnlyKeychain)) }
+        makeSecrets: {
+            CoreStoreSecrets(
+                items: KeychainHostSecrets(keychain: AccountKeychain(keychain: AppStorageEnvironment.shared.deviceOnlyKeychain)),
+                connections: ConnectionKeychainSecrets(keychain: AppStorageEnvironment.shared.keychain) { id in
+                    LocalOnlyConnections.shared.isLocalOnly(id)
+                }
+            )
+        }
     )
 
     let folder: URL
@@ -38,7 +45,7 @@ nonisolated final class CoreStoreHost: @unchecked Sendable {
         try opened.withLock { opened in
             if let opened { return opened }
             do {
-                // Private, since history.db holds the SQL a person ran.
+                // Private, since the query stores hold the SQL a person ran.
                 try FileManager.default.createDirectory(
                     at: folder,
                     withIntermediateDirectories: true,

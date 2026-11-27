@@ -9,7 +9,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_storage::query_history::{NewEntry, Outcome};
-use tablepro_storage::{ConnectionStore, QueryHistory, SavedConnection, StoragePaths};
+use tablepro_storage::{ConnectionStore, QueryHistory, SavedConnection, SavedQueryDatabase, StoragePaths};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -27,6 +27,7 @@ pub(super) struct Harness {
     pub runtime: AppRuntime,
     pub service: HistoryService,
     pub store: QueryHistory,
+    pub saved: SavedQueryDatabase,
     pub connections: ConnectionStore,
     pub revealer: Rc<RecordingRevealer>,
     pub window: adw::Window,
@@ -52,6 +53,7 @@ impl Harness {
         let availability = service.availability();
         wait_until(WAIT, || availability.borrow().is_ready()).expect("the history to open");
         let store = service.store().expect("the history");
+        let saved = service.saved().expect("the saved queries");
         let window = adw::Window::new();
         window.set_default_size(640, 640);
         window.present();
@@ -59,6 +61,7 @@ impl Harness {
             runtime,
             service,
             store,
+            saved,
             connections,
             revealer: Rc::new(revealer),
             window,
@@ -82,6 +85,7 @@ impl Harness {
                 executed_at: SystemTime::now(),
                 duration_ms: Some(1),
                 rows_affected: Some(1),
+                details: Default::default(),
                 outcome: Outcome::Success,
             }),
         )
@@ -624,6 +628,7 @@ fn every_row_menu_item_has_an_access_key_of_its_own() {
             cancelled: false,
             pinned,
             error: None,
+            details: Default::default(),
         })
     };
 
@@ -764,7 +769,7 @@ fn clear_all_says_saved_queries_are_kept_and_keeps_them() {
 
     let harness = Harness::new();
     harness.record("SELECT 1");
-    let saved = harness.store.saved_queries();
+    let saved = harness.saved.saved_queries();
     block_on(
         &harness.runtime,
         saved.save(NewSavedQuery {

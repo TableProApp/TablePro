@@ -149,6 +149,11 @@ struct KeychainDeviceStoreTests {
         #expect(try store().load(item: root) == Data([2]))
     }
 
+    @Test("The Keychain is always there, so the core never opens a state file without an anchor here")
+    func alwaysPresent() {
+        #expect(store().present())
+    }
+
     @Test("What is stored reads back and is replaced in place, a missing item reads as nil, and deleting one not there succeeds")
     func storeLoadDelete() throws {
         let store = store()

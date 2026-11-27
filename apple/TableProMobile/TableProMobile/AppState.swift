@@ -427,7 +427,7 @@ final class AppState {
         )
         do {
             try library.write(image, keepingPastedSSHKeys: heldKeys, removingUnreadable: removed)
-        } catch CoreLibraryStore.Failure.changedSinceRead {
+        } catch where CoreLibraryStore.isChangedSinceRead(error) {
             guard writeOverPull(image, keepingPastedSSHKeys: heldKeys, removingUnreadable: removed, part: part) else {
                 return false
             }

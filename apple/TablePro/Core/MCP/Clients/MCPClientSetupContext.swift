@@ -22,11 +22,11 @@ struct MCPClientSetupContext: Sendable {
         self.isExecutable = isExecutable
     }
 
-    // A sandboxed run reads and writes client settings in a home inside the sandbox, never the real one.
+    // A sandboxed run or a device profile reads and writes client settings in a home of its own, never the real one.
     static func live(storage: AppStorageEnvironment = .shared, bundle: Bundle = .main) -> MCPClientSetupContext {
         let processEnvironment = ProcessInfo.processInfo.environment
         let bridgePath = bundle.bundleURL.appendingPathComponent("Contents/MacOS/tablepro-mcp").path
-        guard storage.isIsolated else {
+        guard !storage.isProductionStore else {
             return MCPClientSetupContext(
                 home: NSHomeDirectory(),
                 environment: processEnvironment,

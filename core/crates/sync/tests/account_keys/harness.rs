@@ -602,6 +602,10 @@ impl HostDeviceStore for CutOff {
         }
         self.store.delete(item).await
     }
+
+    fn present(&self) -> bool {
+        self.store.present()
+    }
 }
 
 pub fn stored_certificate(
@@ -649,6 +653,10 @@ impl HostDeviceStore for Watched {
         self.reach()?;
         *self.deletes.lock().unwrap() += 1;
         self.store.delete(item).await
+    }
+
+    fn present(&self) -> bool {
+        self.store.present()
     }
 }
 

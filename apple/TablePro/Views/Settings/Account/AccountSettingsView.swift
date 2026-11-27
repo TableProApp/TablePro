@@ -35,6 +35,13 @@ internal struct AccountSettingsView: View {
                     )
                 }
 
+                if content.showsEncryption {
+                    SettingsDrillRow(
+                        route: SettingsRoute.page(.accountEncryption),
+                        title: SettingsPage.accountEncryption.title
+                    )
+                }
+
                 if content.sellsPlans {
                     SettingsDrillRow(route: SettingsRoute.page(.accountOffline), title: SettingsPage.accountOffline.title)
                 }
@@ -592,11 +599,10 @@ private struct AccountTeamRow: View {
         return String(format: String(localized: "%@ · %@"), role, seat)
     }
 
+    // The team's keys page holds Manage on the Web too, so the row opens it.
     var body: some View {
-        SettingsRecordRow(title: team.name, subtitle: subtitle) {
-            Button(String(localized: "Manage…")) { model.openPortal(team.manage) }
-                .fixedSize()
-                .accessibilityLabel(Text(String(format: String(localized: "Manage %@"), team.name)))
+        NavigationLink(value: SettingsRoute.team(id: team.id, name: team.name)) {
+            SettingsRecordRow(title: team.name, subtitle: subtitle)
         }
         .modifier(AccountRowMenu(title: String(localized: "Manage…")) {
             model.openPortal(team.manage)

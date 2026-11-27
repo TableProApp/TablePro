@@ -40,11 +40,12 @@ internal enum SplitViewAutosaveName {
         }
     }
 
-    /// Nil in the unit test host and the storage sandbox, because AppKit files the record in the real standard domain.
+    /// Nil in the unit test host, the storage sandbox and a device profile, because AppKit files the record in the real
+    /// standard domain.
     @MainActor
     internal static func current(_ name: String) -> String? {
         let environment = AppStorageEnvironment.shared
-        return autosaveName(name, isUnitTestHost: environment.isUnitTestHost, isIsolated: environment.isIsolated)
+        return autosaveName(name, isUnitTestHost: environment.isUnitTestHost, isIsolated: !environment.isProductionStore)
     }
 
     internal static func autosaveName(_ name: String, isUnitTestHost: Bool, isIsolated: Bool) -> String? {

@@ -43,6 +43,9 @@ final class SyncProviderCoordinator: ObservableObject {
     private let metadata: SyncMetadataStorage
     private let activationClock: any Clock<Duration>
     private let notificationCenter: NotificationCenter
+    private let readCoreWrites: @MainActor () -> Void
+    // The engine's last finished pass this coordinator saw, so the stores it may have written are read once after each.
+    private var passSeen: Int64?
 
     private var hasStarted = false
     private var observers: Set<AnyCancellable> = []
@@ -80,7 +83,8 @@ final class SyncProviderCoordinator: ObservableObject {
         metadata: SyncMetadataStorage = .appDefault,
         pushRegistrar: SyncPushRegistrar = .live,
         activationClock: any Clock<Duration> = ContinuousClock(),
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        readCoreWrites: @escaping @MainActor () -> Void = { ConnectionStorage.shared.readCoreWrites() }
     ) {
         makeHost = host
         self.loadSettings = loadSettings
@@ -95,6 +99,7 @@ final class SyncProviderCoordinator: ObservableObject {
         self.metadata = metadata
         self.activationClock = activationClock
         self.notificationCenter = notificationCenter
+        self.readCoreWrites = readCoreWrites
         pushChannel = SyncPushChannel(registrar: pushRegistrar, metadata: metadata)
         lastSyncDate = metadata.lastSyncDate
     }
@@ -107,6 +112,9 @@ final class SyncProviderCoordinator: ObservableObject {
         hasStarted = true
         host.statusChanges
             .sink { [weak self] in self?.refreshStatus() }
+            .store(in: &observers)
+        host.reopened
+            .sink { [weak self] in self?.serviceReopened() }
             .store(in: &observers)
         journal.listen { [weak self] change in self?.journalRecorded(change) }
             .store(in: &observers)
@@ -336,8 +344,9 @@ final class SyncProviderCoordinator: ObservableObject {
         let changes = undelivered.takeAll()
         guard !changes.isEmpty else { return }
         var delivered = 0
+        let engine: any SyncEngine
         do {
-            let engine = try await host.engine(for: syncStatus.isEnabled ? .icloud : .off)
+            engine = try await host.engine(for: syncStatus.isEnabled ? .icloud : .off)
             for change in changes {
                 try await engine.recordHostChanges(kind: change.kind, written: change.written, deleted: change.deleted)
                 delivered += 1
@@ -345,6 +354,14 @@ final class SyncProviderCoordinator: ObservableObject {
         } catch {
             undelivered.putBack(Array(changes[delivered...]))
             Self.logger.error("The engine did not take a host change: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            return
+        }
+        // A sign-in change closed it meanwhile, after its own flush may have begun.
+        guard host.openedEngine(for: .off) !== engine else { return }
+        do {
+            try await engine.flushLegacyMarks()
+        } catch {
+            Self.logger.error("A closed service's marks did not flush: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -371,10 +388,12 @@ final class SyncProviderCoordinator: ObservableObject {
     }
 
     private func flushLegacyMarks() async {
+        host.stopReopening()
         if !undelivered.isEmpty {
             deliverJournal()
         }
         await journalDelivery?.value
+        await host.flushRetired()
         // Whichever service is open, since the one that writes the mirror can be any.
         guard let engine = await host.existingEngine(for: nil) else { return }
         do {
@@ -398,6 +417,10 @@ final class SyncProviderCoordinator: ObservableObject {
         let info = engine.status()
         syncStatus = SyncEngineRules.status(info)
         lastSyncDate = info.lastPassMs.map { Date(timeIntervalSince1970: Double($0) / 1_000) } ?? metadata.lastSyncDate
+        if info.lastPassMs != passSeen {
+            passSeen = info.lastPassMs
+            readCoreWrites()
+        }
     }
 
     private func startActivationCooldown() {
@@ -448,6 +471,18 @@ final class SyncProviderCoordinator: ObservableObject {
         }
         arm()
         refreshStatus()
+    }
+
+    // A service opened after a sign-in change is told the provider again, in turn with every other choice.
+    private func serviceReopened() {
+        let provider: SyncProviderTag = syncStatus.isEnabled ? .icloud : .off
+        let started = generation
+        let choice = choose(provider) { [weak self] in self?.generation == started }
+        Task {
+            if case .failure(let error) = await choice.value {
+                Self.logger.error("The reopened engine did not take the provider: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            }
+        }
     }
 
     // What is in flight stops, and nothing more reaches CloudKit until iCloud runs again (P1-I3 under a profile).

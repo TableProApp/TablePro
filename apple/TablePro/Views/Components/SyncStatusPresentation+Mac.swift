@@ -58,6 +58,8 @@ private extension SyncStatusPresentation {
             return String(localized: "Cannot reach iCloud. Changes sync when this Mac is back online.")
         case .busy:
             return String(localized: "iCloud asked TablePro to wait. It tries again on its own shortly.")
+        case .waitingForKeychain:
+            return String(localized: "Sync waits for this Mac's keychain. It starts again on its own once the keychain answers.")
         case .recordsRejected(let count):
             // Two keys rather than inflection markup, which reads verbatim when a catalog lacks it.
             let template = count == 1

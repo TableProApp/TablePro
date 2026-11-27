@@ -48,7 +48,7 @@ struct AccountCoreSetupTests {
         #expect(unmanaged.policy == ManagedPolicySnapshot())
     }
 
-    @Test("Only a Debug build names a development stack, and only when both of its addresses are set")
+    @Test("Only a Debug build names a development stack; half a stack names no server and keeps only its license keys")
     func developmentStackIsDebugOnly() {
         let debug = AccountCoreSetup.make(
             supportDirectory: Self.support, machineID: "mid", policy: ManagedPolicySnapshot(),
@@ -74,7 +74,14 @@ struct AccountCoreSetupTests {
             supportDirectory: Self.support, machineID: "mid", policy: ManagedPolicySnapshot(),
             environment: half, isDebugBuild: true
         )
-        #expect(partial.developmentStack == nil)
+        #expect(partial.developmentStack == .init(accountURL: nil, apiURL: nil, entitlementKeys: [], licenseKeys: ["license-one"]))
+
+        half["TABLEPRO_LICENSE_KEYS"] = nil
+        let none = AccountCoreSetup.make(
+            supportDirectory: Self.support, machineID: "mid", policy: ManagedPolicySnapshot(),
+            environment: half, isDebugBuild: true
+        )
+        #expect(none.developmentStack == nil)
     }
 }
 
@@ -113,6 +120,24 @@ struct AccountCoreSetupConfigTests {
 
         #expect(config.accountUrl == "http://account.localhost:5284")
         #expect(config.apiUrl == "http://api.localhost:5284/v2")
+    }
+
+    // The core then resolves the server from the person's choice and the policy, and checks its license with these.
+    @Test("License keys alone reach the core with no server, so a company server's license check runs against them")
+    func licenseKeysAloneReachTheCore() {
+        let setup = AccountCoreSetup.make(
+            supportDirectory: URL(fileURLWithPath: "/tmp", isDirectory: true), machineID: "mid",
+            policy: ManagedPolicySnapshot(),
+            environment: ["TABLEPRO_LICENSE_KEYS": "license-one", "TABLEPRO_ENTITLEMENT_KEYS": "key-one"],
+            isDebugBuild: true
+        )
+        let machine = MachineDescription(machineID: "mid", name: "Mac", appVersion: "0.90.0", osVersion: "26.1")
+
+        let config = setup.accountConfig(machine: machine)
+
+        #expect(config.accountUrl == nil && config.apiUrl == nil)
+        #expect(config.licenseKeys == ["license-one"])
+        #expect(config.entitlementKeys.isEmpty)
     }
 }
 

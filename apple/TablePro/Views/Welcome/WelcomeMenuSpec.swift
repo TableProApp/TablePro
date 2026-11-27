@@ -68,7 +68,8 @@ internal struct WelcomeMenuContext {
     internal let linkedFolderConnectionIds: Set<UUID>
     internal let disconnectableConnectionIds: Set<UUID>
     internal let reconnectableConnectionIds: Set<UUID>
-    internal let isSyncEnabled: Bool
+    // Off hides Include and Exclude: a connection's Local only state only matters to a provider that syncs it.
+    internal let syncProvider: SyncProviderSetting
     internal let isCompareSyncEnabled: Bool
     internal let canPublishToTeamCatalog: Bool
     internal let teamLibraryTeams: [TeamLibraryTeam]
@@ -180,8 +181,8 @@ internal enum WelcomeMenuSpec {
         if currentGroupId != nil {
             organize.append(.command(Titles.removeFromGroup, .moveToGroup([id], nil)))
         }
-        if context.isSyncEnabled {
-            organize.append(syncItem([id], allLocalOnly: connection.localOnly))
+        if let item = syncItem([id], allLocalOnly: connection.localOnly, provider: context.syncProvider) {
+            organize.append(item)
         }
 
         let deleteTitle = section == .connections ? Titles.delete(count: 1) : Titles.deleteConnection
@@ -209,8 +210,8 @@ internal enum WelcomeMenuSpec {
         if connections.contains(where: { validGroupId(of: $0, groups: context.groups) != nil }) {
             organize.append(.command(Titles.removeFromGroup, .moveToGroup(ids, nil)))
         }
-        if context.isSyncEnabled {
-            organize.append(syncItem(ids, allLocalOnly: connections.allSatisfy(\.localOnly)))
+        if let item = syncItem(ids, allLocalOnly: connections.allSatisfy(\.localOnly), provider: context.syncProvider) {
+            organize.append(item)
         }
 
         return [
@@ -282,11 +283,9 @@ internal enum WelcomeMenuSpec {
         ])
     }
 
-    private static func syncItem(_ ids: [UUID], allLocalOnly: Bool) -> WelcomeMenuItem {
-        .command(
-            allLocalOnly ? Titles.includeInSync : Titles.excludeFromSync,
-            .setIncludedInSync(ids, allLocalOnly)
-        )
+    private static func syncItem(_ ids: [UUID], allLocalOnly: Bool, provider: SyncProviderSetting) -> WelcomeMenuItem? {
+        guard let title = allLocalOnly ? Titles.includeInSync(provider) : Titles.excludeFromSync(provider) else { return nil }
+        return .command(title, .setIncludedInSync(ids, allLocalOnly))
     }
 
     // MARK: - Groups
@@ -399,8 +398,21 @@ internal extension WelcomeMenuSpec {
         static var copyTableProLink: String { String(localized: "Copy TablePro Link") }
         static var moveToGroup: String { String(localized: "Move to Group") }
         static var removeFromGroup: String { String(localized: "Remove from Group") }
-        static var includeInSync: String { String(localized: "Include in iCloud Sync") }
-        static var excludeFromSync: String { String(localized: "Exclude from iCloud Sync") }
+        static func includeInSync(_ provider: SyncProviderSetting) -> String? {
+            switch provider {
+            case .off: nil
+            case .iCloud: String(localized: "Include in iCloud Sync")
+            case .tableproSync: String(localized: "Include in TablePro Sync")
+            }
+        }
+
+        static func excludeFromSync(_ provider: SyncProviderSetting) -> String? {
+            switch provider {
+            case .off: nil
+            case .iCloud: String(localized: "Exclude from iCloud Sync")
+            case .tableproSync: String(localized: "Exclude from TablePro Sync")
+            }
+        }
         static var deleteConnection: String { String(localized: "Delete Connection…") }
         static var showInFinder: String { String(localized: "Show in Finder") }
         static var newSubgroup: String { String(localized: "New Subgroup…") }

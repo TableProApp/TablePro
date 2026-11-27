@@ -385,9 +385,9 @@ struct AccountServicesTests {
         try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
         try await fixture.signIn()
 
-        _ = try await fixture.services.api.getMe()
+        _ = try await fixture.services.api.getShareLimits()
 
-        let request = try #require(await fixture.server.requests(to: "/me").last)
+        let request = try #require(await fixture.server.requests(to: "/share-limits").last)
         #expect(request.baseURL == URL(string: "https://tablepro.example.com/v2"))
         let token = try #require(request.authorization?.replacingOccurrences(of: "Bearer ", with: ""))
         #expect(Self.claims(of: token)["sub"] as? String == "acct_test")
@@ -399,9 +399,9 @@ struct AccountServicesTests {
         try await fixture.signIn()
         await fixture.server.set { $0.unauthorizedOnce = true }
 
-        _ = try await fixture.services.api.getMe()
+        _ = try await fixture.services.api.getShareLimits()
 
-        let calls = await fixture.server.requests(to: "/me")
+        let calls = await fixture.server.requests(to: "/share-limits")
         #expect(calls.count == 2)
         let refused = try #require(calls.first?.authorization?.replacingOccurrences(of: "Bearer ", with: ""))
         #expect(fixture.backend.tokensRejected == [refused])
@@ -418,10 +418,10 @@ struct AccountServicesTests {
         }
 
         await #expect(throws: (any Error).self) {
-            _ = try await fixture.services.api.getMe()
+            _ = try await fixture.services.api.getShareLimits()
         }
 
-        let calls = await fixture.server.requests(to: "/me")
+        let calls = await fixture.server.requests(to: "/share-limits")
         #expect(calls.count == 1)
         #expect(calls.first?.baseURL == AccountServer.production.apiBaseURL)
     }
@@ -474,7 +474,7 @@ struct AccountServicesTests {
         let fixture = try AccountFixture()
 
         await #expect(throws: (any Error).self) {
-            _ = try await fixture.services.api.getMe()
+            _ = try await fixture.services.api.getShareLimits()
         }
         #expect(await fixture.server.requests.isEmpty)
     }

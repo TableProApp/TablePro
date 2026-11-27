@@ -9,39 +9,42 @@ import TableProFFI
 import TableProSyncTransport
 
 // Which providers a configuration profile leaves this Mac, by the core's rule (core ADR 0055, PersonalSyncProvider).
-// Until TablePro Sync ships the Mac offers Off and iCloud, and the iCloud switch is its picker.
 @MainActor
 internal final class SyncProviderPolicy {
     static let shared = SyncProviderPolicy()
 
-    nonisolated static let offered: [SyncProviderTag] = [.off, .icloud]
+    nonisolated static let offered: [SyncProviderTag] = [.off, .icloud, .tableproSync]
 
     private var subscription: AnyCancellable?
 
-    // Keeps the switch on the provider the values leave this Mac, now and whenever the values or the switch change,
-    // so a settings import or a reset cannot turn on a provider the profile left out. The write waits a turn, since
-    // the setting is published before it is stored.
+    // Keeps the provider on one the values leave this Mac, now and whenever the values or the provider change, so a
+    // settings import or a reset cannot choose a provider the profile left out. The write waits a turn, since the
+    // setting is published before it is stored.
     func start(center: ManagedPolicyCenter = .shared, settings: AppSettingsManager = .shared) {
         guard subscription == nil else { return }
         subscription = center.$snapshot
-            .combineLatest(settings.syncSlice.publisher.map(\.enabled).removeDuplicates())
+            .combineLatest(settings.syncSlice.publisher.map(\.provider).removeDuplicates())
             .receive(on: DispatchQueue.main)
             .sink { [weak settings] snapshot, _ in
                 guard let settings else { return }
-                let enabled = Self.settledEnabled(settings.sync.enabled, under: snapshot)
-                guard enabled != settings.sync.enabled else { return }
-                settings.sync.enabled = enabled
+                let provider = Self.settledProvider(settings.sync.provider, under: snapshot)
+                guard provider != settings.sync.provider else { return }
+                settings.sync.provider = provider
             }
     }
 
     struct ICloudStanding: Equatable, Sendable {
         let isAllowed: Bool
-        // One choice or none: the switch is the organization's.
+        // One choice or none: the provider is the organization's.
         let isLocked: Bool
     }
 
+    nonisolated static func choices(_ snapshot: ManagedPolicySnapshot) -> PersonalSyncChoices {
+        personalSyncChoices(policy: snapshot.coreArgument, offered: offered)
+    }
+
     nonisolated static func iCloud(_ snapshot: ManagedPolicySnapshot) -> ICloudStanding {
-        let choices = personalSyncChoices(policy: snapshot.coreArgument, offered: offered)
+        let choices = choices(snapshot)
         return ICloudStanding(isAllowed: choices.providers.contains(.icloud), isLocked: choices.locked)
     }
 
@@ -49,15 +52,49 @@ internal final class SyncProviderPolicy {
         iCloud(snapshot).isAllowed ? nil : .managedPolicy
     }
 
-    // A forced iCloud turns the switch on as the person would, and iCloud taken away turns it off; with a choice left,
-    // the person's switch stands. A server's answer never moves it: no server takes this Mac's personal data yet.
-    nonisolated static func settledEnabled(_ enabled: Bool, under snapshot: ManagedPolicySnapshot) -> Bool {
-        settledSyncProvider(
+    // The provider the profile leaves this Mac on. A forced iCloud is taken as the person would pick it, and one taken
+    // away goes off. A move waits for the person: a forced TablePro Sync leaves a Mac that is not on it off until the
+    // move or first upload they confirm has run, and a forced iCloud leaves a Mac on TablePro Sync where it is until
+    // they confirm the move back and what it deletes on iCloud (core ADRs 0054 and 0055). Whether a server takes this
+    // Mac's data never changes what is stored: a server's answer moves no provider (core ADR 0051, Policies).
+    nonisolated static func settledProvider(
+        _ provider: SyncProviderSetting,
+        under snapshot: ManagedPolicySnapshot
+    ) -> SyncProviderSetting {
+        let settled = SyncProviderSetting(settledSyncProvider(
             policy: snapshot.coreArgument,
             offered: offered,
-            current: enabled ? .icloud : .off,
-            tableproSyncAvailable: false
-        ) == .icloud
+            current: SyncProviderTag(provider),
+            tableproSyncAvailable: true
+        ))
+        switch (provider, settled) {
+        case (.tableproSync, .iCloud):
+            return .tableproSync
+        case (.off, .tableproSync), (.iCloud, .tableproSync):
+            return .off
+        default:
+            return settled
+        }
+    }
+}
+
+extension SyncProviderTag {
+    init(_ setting: SyncProviderSetting) {
+        switch setting {
+        case .off: self = .off
+        case .iCloud: self = .icloud
+        case .tableproSync: self = .tableproSync
+        }
+    }
+}
+
+extension SyncProviderSetting {
+    init(_ tag: SyncProviderTag) {
+        switch tag {
+        case .off: self = .off
+        case .icloud: self = .iCloud
+        case .tableproSync: self = .tableproSync
+        }
     }
 }
 

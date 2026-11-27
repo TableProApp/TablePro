@@ -771,7 +771,7 @@ struct MCPTokenKeychainStore: MCPTokenCredentialStoring {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPTokenKeychainStore")
 
     private static var isolatedStore: (any KeychainStoring)? {
-        AppStorageEnvironment.shared.isIsolated ? AppStorageEnvironment.shared.keychain : nil
+        AppStorageEnvironment.shared.isProductionStore ? nil : AppStorageEnvironment.shared.keychain
     }
 
     func read() -> MCPTokenBlob {

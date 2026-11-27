@@ -28,7 +28,7 @@ internal final class MCPServerStore: ObservableObject {
     ) {
         self.defaults = defaults
         let environment = AppStorageEnvironment.shared
-        self.keychain = keychain ?? (environment.isIsolated ? environment.keychain : MCPServerTokenKeychain())
+        self.keychain = keychain ?? (environment.isProductionStore ? MCPServerTokenKeychain() : environment.keychain)
         servers = defaults.read(Self.serversKey).value ?? []
     }
 

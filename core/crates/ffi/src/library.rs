@@ -1245,7 +1245,7 @@ pub(crate) fn stored_ssh(
             .iter()
             .map(|hop| {
                 Ok(SshJumpHost {
-                    id: optional_id(hop.id.as_deref())?,
+                    id: hop.id.as_deref().map(parse_id).transpose()?,
                     ..jump_host(hop)
                 })
             })

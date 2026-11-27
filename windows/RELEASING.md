@@ -64,6 +64,19 @@ The maintainer does these once, in this order: a tag runs the workflow file at t
    - For a release, opens the winget-pkgs pull request with wingetcreate, which a reviewer approves.
 4. **Afterwards**: check that `https://updates.tablepro.app/windows/TablePro.appinstaller` (or `TablePro-Beta.appinstaller`) names the new version, and watch the winget-pkgs pull request. Its bots validate and install the package, and a label such as `Needs-Author-Feedback` waits for an answer.
 
+## Notes
+
+- A user-visible change adds one towncrier fragment, `windows/changelog.d/<PR>.<type>.md` (`.claude/rules/changelog.md`). Only a `chore(release)` pull request edits `windows/CHANGELOG.md`; CI's Lint job refuses any other.
+- The release pull request assembles the fragments into a `CHANGELOG.md` section and curates them, as the macOS app does (`apple/RELEASING.md`, Notes). From a venv built on `scripts/release/requirements.txt`:
+
+  ```bash
+  towncrier build --dir windows --version X.Y.Z
+  ```
+
+  `[CRITICAL]` on the version heading marks a security or data-loss release, never a beta; later stables carry it forward.
+- A beta gets no `CHANGELOG.md` section: its notes are a towncrier draft of the fragments at the tag (`towncrier build --draft --dir windows --version X.Y.Z-beta.N`).
+- The GitHub release body the workflow writes is a fixed install line, not the changelog.
+
 ## When a run fails
 
 - Nothing reaches users before the GitHub release job. Tags never move: a code fix lands on `main` and ships as the next number.

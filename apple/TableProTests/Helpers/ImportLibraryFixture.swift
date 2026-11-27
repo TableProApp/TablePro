@@ -72,12 +72,11 @@ final class ImportLibraryFixture {
         )
         connections = connectionStorage
         groups = GroupStorage(
-            userDefaults: defaults,
             syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             appEvents: events
         )
-        tags = TagStorage(userDefaults: defaults, syncJournal: tracker.journal, appEvents: events)
+        tags = TagStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage, appEvents: events)
         profiles = CredentialProfileStorage(
             fileURL: profilesURL,
             keychain: keychain,

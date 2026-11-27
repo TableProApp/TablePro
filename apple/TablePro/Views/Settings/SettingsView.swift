@@ -18,7 +18,7 @@ enum SettingsPane: String, CaseIterable, Sendable {
         case .ai: String(localized: "AI")
         case .mcp: "MCP"
         case .plugins: String(localized: "Extensions")
-        case .sync: String(localized: "iCloud Sync")
+        case .sync: String(localized: "Sync")
         case .account: String(localized: "Account")
         }
     }
@@ -37,7 +37,7 @@ enum SettingsPane: String, CaseIterable, Sendable {
         case .ai: "sparkles"
         case .mcp: "point.3.connected.trianglepath.dotted"
         case .plugins: "puzzlepiece.extension"
-        case .sync: "icloud"
+        case .sync: "arrow.triangle.2.circlepath"
         case .account: "person.crop.circle"
         }
     }

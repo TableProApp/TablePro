@@ -65,6 +65,13 @@ pub struct DeviceOnly {
     pub socks_proxy: Option<SocksProxy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tunnel_command: Option<TunnelCommand>,
+    /// Required here may stand for the Mac's Preferred, as an iOS build before the Mac's mode names wrote both, until
+    /// a pull shows which the record holds.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tls_mode_unsettled: bool,
+    /// This device removed the SSH profile link, and no pull has shown the record without it yet.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ssh_profile_unlinked: bool,
 }
 
 impl DeviceOnly {

@@ -59,6 +59,16 @@ final class CustomSlashCommandStorage: ObservableObject {
         return kept
     }
 
+    // What sync reads: nil for a list never saved, which holds no choice, and an empty one once saved, which does. A list
+    // that no longer decodes throws, so it never reads as every command removed.
+    func syncedCommands() throws -> [CustomSlashCommand]? {
+        switch defaults.read(Self.defaultsKey) {
+        case .missing: return nil
+        case .value(let commands): return commands
+        case .unreadable(let error): throw error
+        }
+    }
+
     func isDuplicate(_ name: String, excluding id: UUID? = nil) -> Bool {
         commands.contains { existing in
             if let id, existing.id == id { return false }

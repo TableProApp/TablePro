@@ -260,6 +260,50 @@ async fn a_refused_change_stays_on_the_device_and_is_not_sent_again() {
 }
 
 #[tokio::test]
+async fn a_refused_change_is_not_sent_again_after_a_restart_until_it_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let server = FakeServer::new();
+    let envelopes = MemoryAdapter::new(Kind::SecretEnvelope, "secrets", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .state(open_on_disk(dir.path(), "dev_mac", &device_store).await)
+        .adapter(ScopeName::Personal, Arc::clone(&envelopes))
+        .build()
+        .await;
+    mac.sync().await;
+    // No personal key version is on the server yet, so an envelope under one is `key_version_unknown`.
+    let envelope = format!("connection/{}/password", id(1));
+    envelopes.put(&envelope, json!({"suite": "tp1", "kv": 1, "nonce": "n", "ct": "c"}));
+    let refused = mac.sync().await;
+    let seed = Arc::clone(&mac.seed);
+    drop(mac);
+
+    let restarted = DeviceBuilder::new(&server, "dev_mac")
+        .state(open_on_disk(dir.path(), "dev_mac", &device_store).await)
+        .adapter(ScopeName::Personal, Arc::clone(&envelopes))
+        .seed(Arc::clone(&seed))
+        .build()
+        .await;
+    let held = restarted.sync.held_records().await.unwrap();
+    let again = restarted.sync().await;
+    let sent_again = restarted.wire.pushed().len();
+    envelopes.put(&envelope, json!({"suite": "tp1", "kv": 1, "nonce": "m", "ct": "d"}));
+    let changed = restarted.sync().await;
+
+    assert_eq!(refused.refused.len(), 1);
+    assert_eq!(
+        held.iter().map(|record| &record.reason).collect::<Vec<_>>(),
+        [&HeldRecordReason::Refused {
+            code: "key_version_unknown".to_owned()
+        }]
+    );
+    assert_eq!(sent_again, 0, "the same change is not sent again");
+    assert!(again.refused.is_empty());
+    assert_eq!(restarted.wire.pushed().len(), 1, "a change that differs goes up");
+    assert_eq!(changed.refused.len(), 1);
+}
+
+#[tokio::test]
 async fn a_local_only_connection_never_leaves_the_device() {
     let server = FakeServer::new();
     let mac = Device::new(&server, "dev_mac").await;
@@ -333,12 +377,68 @@ async fn past_grace_the_pass_only_pulls() {
     assert_eq!(stored(&server, &id(1)), None);
 }
 
+// A store edited between passes has its row moved on by the next pass, though that pass writes nothing to it, so a
+// later rollback to before the edit still shows as one.
+// A refused record its store cannot read for a while keeps its refusal: nothing different was seen of it, so once it
+// reads again the same change is not sent again (Codex security round 1).
+#[tokio::test]
+async fn a_refused_record_its_store_cannot_read_for_a_while_is_not_sent_again() {
+    let server = FakeServer::new();
+    let envelopes = MemoryAdapter::new(Kind::SecretEnvelope, "secrets", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&envelopes))
+        .build()
+        .await;
+    mac.sync().await;
+    let envelope = format!("connection/{}/password", id(1));
+    envelopes.put(&envelope, json!({"suite": "tp1", "kv": 1, "nonce": "n", "ct": "c"}));
+    mac.sync().await;
+    let refused_once = mac.wire.pushed().len();
+
+    envelopes.hide(&envelope);
+    mac.sync().await;
+    envelopes.show(&envelope);
+    mac.sync().await;
+
+    assert_eq!(refused_once, 1);
+    assert_eq!(mac.wire.pushed().len(), 1, "the same change is not sent again");
+    assert_eq!(mac.rows(RowRange::Table(Table::Refused)).await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_pass_keeps_the_sequence_a_store_moved_on_to_without_it() {
+    let server = FakeServer::new();
+    let file = StoreFile::new();
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(
+            MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file)),
+            Arc::clone(&file),
+        )
+        .build()
+        .await;
+    mini.sync().await;
+    mini.connections.put(&id(1), connection("Edited"));
+    let edited = file.stamp();
+
+    mini.sync().await;
+
+    assert_eq!(
+        mini.row(RowKey::Store("connections".to_owned())).await,
+        Some(Row::Store(tablepro_sync::api::state::StoreRow {
+            store: "connections".to_owned(),
+            generation: edited.generation,
+            sequence: edited.sequence,
+        }))
+    );
+}
+
 #[tokio::test]
 async fn a_restored_store_refills_every_kind_it_holds() {
     let server = FakeServer::new();
     let history = StoreFile::new();
-    let queries = |file: &Arc<StoreFile>| MemoryAdapter::new(Kind::SavedQuery, "history.db", Arc::clone(file));
-    let folders = |file: &Arc<StoreFile>| MemoryAdapter::new(Kind::SavedQueryFolder, "history.db", Arc::clone(file));
+    let queries = |file: &Arc<StoreFile>| MemoryAdapter::new(Kind::SavedQuery, "saved_queries.db", Arc::clone(file));
+    let folders =
+        |file: &Arc<StoreFile>| MemoryAdapter::new(Kind::SavedQueryFolder, "saved_queries.db", Arc::clone(file));
     let mac_file = StoreFile::new();
     let (mac_queries, mac_folders) = (queries(&mac_file), folders(&mac_file));
     let mac = DeviceBuilder::new(&server, "dev_mac")

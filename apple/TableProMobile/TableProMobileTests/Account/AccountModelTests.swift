@@ -51,6 +51,8 @@ private final class ScriptedAccountBackend: AccountBackend, @unchecked Sendable 
         if let failure { throw failure }
     }
 
+    func stepUp(acrValues: [String], maxAgeSecs: UInt64?, using authenticator: any WebAuthenticating) async throws(AccountError) {}
+
     func signOut() async throws(AccountError) {
         state.withLock { $0.snapshot = AccountSnapshot() }
     }

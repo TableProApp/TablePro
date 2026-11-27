@@ -496,6 +496,79 @@ internal extension ThemeCatalog {
         }
     }
 
+    // Every user theme as sync reads it. A file that no longer loads may hold a theme that syncs, so it fails the read
+    // instead of reading as a theme removed on every Mac; Settings lists it, to fix or move to the Trash. One a newer
+    // build wrote goes as its bytes, by its id. A built-in id or a second copy of an id hides no theme.
+    func syncPayloads() throws -> [String: Data] {
+        // A listing that failed when the catalog loaded left it empty; a theme on disk it does not know reloads it, and
+        // one still unknown after that fails the read.
+        if try !unknownThemeFiles().isEmpty {
+            reloadSynchronously()
+            guard try unknownThemeFiles().isEmpty else { throw ThemeSyncReadError.unreadable }
+        }
+        var payloads: [String: Data] = [:]
+        for category in syncCategories {
+            guard let payload = syncPayload(forCategory: category) else { throw ThemeSyncReadError.unencodable }
+            payloads[category] = payload
+        }
+        for record in rejected {
+            if let (id, data) = try Self.newerTheme(at: URL(fileURLWithPath: record.path)), userFiles[id] == nil {
+                payloads[Self.syncCategory(for: id)] = data
+            }
+        }
+        return payloads
+    }
+
+    // A deletion another device made: the theme the catalog lists, and a file a newer build wrote that sync reports by
+    // the same id, so the deleted theme is not read back on the next pass.
+    func removePulled(id: String) throws {
+        guard removeWithoutSync(ids: [id]) else { throw ThemeSyncReadError.unremovable }
+        var trashed = false
+        for record in rejected {
+            let url = URL(fileURLWithPath: record.path)
+            guard let newer = try Self.newerTheme(at: url), newer.id == id else { continue }
+            _ = try fileTrash.moveToTrash(url)
+            trashed = true
+        }
+        if trashed {
+            reloadSynchronously()
+        }
+    }
+
+    private func unknownThemeFiles() throws -> [URL] {
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(at: userDirectory, includingPropertiesForKeys: nil)
+        } catch CocoaError.fileReadNoSuchFile {
+            return []
+        }
+        let known = Set(userFiles.values.map(\.url.path)).union(rejected.map(\.path))
+        return files.filter { $0.pathExtension.lowercased() == "json" && !known.contains($0.path) }
+    }
+
+    // Nil for a file that loads, which only the catalog refused, or one gone since.
+    nonisolated private static func newerTheme(at url: URL) throws -> (id: String, data: Data)? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch CocoaError.fileReadNoSuchFile {
+            return nil
+        }
+        do {
+            _ = try ThemeFileFormat.decode(data, text: .repaired)
+            return nil
+        } catch ThemeLoadError.schemaTooNew {
+            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let id = root["id"] as? String,
+                  ThemeIdentifier.isValid(id),
+                  !id.hasPrefix(ThemeDefinition.builtInPrefix)
+            else { throw ThemeSyncReadError.unreadable }
+            return (id, data)
+        } catch {
+            throw ThemeSyncReadError.unreadable
+        }
+    }
+
     // A synced theme is untrusted input from another device, so it is validated before anything
     // touches disk. A record that fails validation is skipped, since the same bytes would fail
     // again; only a disk failure is `.failed`, so the pull is not acknowledged and replays.
@@ -631,6 +704,12 @@ internal extension ThemeCatalog {
         guard theme.id == id else { throw ThemeSyncRejection.mismatchedIdentifier }
         return theme
     }
+}
+
+internal enum ThemeSyncReadError: Error {
+    case unreadable
+    case unencodable
+    case unremovable
 }
 
 private enum ThemeSyncRejection: Error {

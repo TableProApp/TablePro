@@ -192,6 +192,50 @@ async fn words_that_differ_end_the_session_with_a_mismatch_on_both_sides() {
     );
 }
 
+// The server purges a request whose words the approver compared and serves the same request again: the session stays
+// ended, and the approver never compares it a second time.
+#[tokio::test]
+async fn a_compared_request_the_server_purges_and_serves_again_never_reopens() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    a.service.words_differ(request).await.unwrap();
+    let id = KeyRecordId::Request { request }.to_wire();
+    let served = stored(&server, account, "key.request", &id).unwrap();
+
+    a.service
+        .apply_session_objects(arrival(vec![crate::harness::tombstone_of("key.request", &id)]))
+        .await
+        .unwrap();
+    a.service
+        .apply_session_objects(arrival(vec![pulled(&served)]))
+        .await
+        .unwrap();
+
+    let listed = a.service.approval_requests().await.unwrap();
+    assert!(listed.iter().all(|listed| listed.request != request));
+    assert_eq!(
+        a.service.choose_request(request).await.unwrap_err().code(),
+        "keys.session"
+    );
+    assert_eq!(
+        a.service.approval_session(request).await.unwrap().phase,
+        SessionPhase::Cancelled {
+            reason: SessionEnd::Mismatch
+        }
+    );
+}
+
 #[tokio::test]
 async fn words_differ_before_any_words_is_keys_session() {
     let server = FakeServer::new();

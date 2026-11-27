@@ -163,6 +163,82 @@ impl AccountService {
     }
 }
 
+// An account no host backs, holding `values`, for the tests of what follows its policy.
+#[cfg(test)]
+impl AccountService {
+    pub(crate) fn holding(
+        values: super::managed_policy::ManagedPolicyValues,
+        tasks: Tasks,
+        dir: &std::path::Path,
+    ) -> Arc<Self> {
+        struct NoVault;
+
+        #[async_trait::async_trait]
+        impl tablepro_account::RefreshTokenVault for NoVault {
+            async fn load_refresh_token(
+                &self,
+            ) -> Result<Option<SecretString>, tablepro_core::credentials::SecretError> {
+                Ok(None)
+            }
+
+            async fn store_refresh_token(
+                &self,
+                _: &SecretString,
+            ) -> Result<(), tablepro_core::credentials::SecretError> {
+                Ok(())
+            }
+
+            async fn delete_refresh_token(&self) -> Result<(), tablepro_core::credentials::SecretError> {
+                Ok(())
+            }
+        }
+
+        struct NoBrowser;
+
+        #[async_trait::async_trait]
+        impl tablepro_account::BrowserLauncher for NoBrowser {
+            async fn open(&self, _: &tablepro_account::Url) -> Result<(), String> {
+                Ok(())
+            }
+        }
+
+        let config = AccountConfig {
+            account_url: None,
+            api_url: None,
+            entitlement_keys: Vec::new(),
+            device_name: "Lab".to_owned(),
+            app_version: "1.0.0".to_owned(),
+            os_version: "Windows 11".to_owned(),
+            account_file: dir.join("account.json").display().to_string(),
+            callback_finished: String::new(),
+            callback_unknown: String::new(),
+            machine_guid: Some("d3b07384-d113-4ec6-a2f1-6a3f0c2e9b7a".to_owned()),
+            client: AppClientTag::Windows,
+            machine_id: None,
+            policy: ManagedPolicyArg::Read { values: values.clone() },
+            legacy_entitlement_file: None,
+            license_keys: Vec::new(),
+        };
+        let account = Account::open(
+            settings(config, true).expect("test settings"),
+            AccountHosts {
+                vaults: Arc::new(tablepro_account::SingleVault(Arc::new(NoVault))),
+                browser: Arc::new(NoBrowser),
+                web_authenticator: None,
+            },
+            watch::Sender::new(AccountStatus::SignedOut),
+        )
+        .expect("an account");
+        account.apply_policy(ManagedPolicyArg::Read { values }.into());
+        struct Quiet;
+        impl AccountListener for Quiet {
+            fn status_changed(&self) {}
+            fn signed_out(&self, _: SignOutCauseTag) {}
+        }
+        Arc::new(Self::start(account, Arc::new(Quiet), tasks, ModelCatalog::bundled()))
+    }
+}
+
 #[uniffi::export]
 impl AccountService {
     pub fn status(&self) -> AccountStatusInfo {

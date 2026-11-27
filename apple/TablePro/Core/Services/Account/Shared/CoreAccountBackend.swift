@@ -114,6 +114,14 @@ nonisolated internal final class CoreAccountBackend: AccountBackend, SyncAccount
         try await Self.signingIn(service, .signIn) { try await service.signIn(cancel: nil) }
     }
 
+    func stepUp(acrValues: [String], maxAgeSecs: UInt64?, using authenticator: any WebAuthenticating) async throws(AccountError) {
+        let service = try await awaitService()
+        self.authenticator.use(authenticator)
+        defer { self.authenticator.use(nil) }
+        let challenge = StepUpChallengeInfo(acrValues: acrValues, maxAgeSecs: maxAgeSecs)
+        try await Self.call(.other) { try await service.stepUp(challenge: challenge, cancel: nil) }
+    }
+
     func signOut() async throws(AccountError) {
         let service = try await awaitService()
         try await Self.call(.other) { try await service.signOut() }

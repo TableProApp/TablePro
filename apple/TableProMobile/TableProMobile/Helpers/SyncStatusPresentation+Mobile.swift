@@ -36,6 +36,8 @@ nonisolated extension SyncStatusPresentation {
             return String(localized: "Cannot reach iCloud. Changes sync when this device is back online.")
         case .busy:
             return String(localized: "iCloud asked TablePro to wait. It tries again on its own shortly.")
+        case .waitingForKeychain:
+            return String(localized: "Sync waits until you unlock this device. It starts again on its own.")
         case .recordsRejected(let count):
             guard count != 1 else {
                 return String(localized: "1 change could not be uploaded to iCloud. It stays on this device and goes again on the next sync.")

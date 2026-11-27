@@ -114,6 +114,15 @@ public sealed class TableProCore : IDisposable
         return new QueryHistory(store);
     }
 
+    // The saved queries, their folders and the favourites, a store apart from the history. Opened once per core and
+    // shared, and throws as OpenHistoryAsync does.
+    public async Task<SavedQueryDatabase> OpenSavedQueryDatabaseAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var store = await CoreCall.RunAsync(() => _core.SavedQueryDatabase()).ConfigureAwait(false);
+        return new SavedQueryDatabase(store);
+    }
+
     // Keeps the entitlement fresh until disposed; account.no_machine_id or ffi.account_config when it cannot start.
     public async Task<TableProAccount> OpenAccountAsync(AccountConfiguration configuration, IAccountBrowser browser)
     {

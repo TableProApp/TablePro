@@ -31,10 +31,12 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         // As the core's service opened Off answers every provider call.
         var refusesProviderCalls = false
         var icloudAccount: String?
+        var serviceAccount: String?
         var uploadsAgain = 0
         // How many host changes the engine held at each flush.
         var flushes: [Int] = []
         var flush: (@Sendable () async -> Void)?
+        var recording: (@Sendable () async -> Void)?
         var pass: (@Sendable (PassReasonTag) async -> Void)?
     }
 
@@ -85,6 +87,7 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
     }
 
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws {
+        await read { $0.recording }?()
         let refused = state.withLockUnchecked { state in
             state.hostChangeAttempts += 1
             guard !state.refuseHostChanges else { return true }
@@ -102,6 +105,10 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
 
     func icloudAccount() -> String? {
         read { $0.icloudAccount }
+    }
+
+    func serviceAccount() -> String? {
+        read { $0.serviceAccount }
     }
 
     func flushLegacyMarks() async throws {
@@ -127,12 +134,17 @@ private final class Fixture {
     private(set) var openAttempts: [SyncProviderTag] = []
     private(set) var opened: [SyncProviderTag] = []
     var offEngine: FakeSyncEngine?
+    // The engine iCloud's opens after the first give, when one is set.
+    var reopened: FakeSyncEngine?
+    let signInChanges = PassthroughSubject<Void, Never>()
     var enabled = true
     var settings = SyncSettings.default
     var keptAccounts: [String?] = []
+    var keptServiceAccounts: [String?] = []
     var policy: DisableReason?
     var opens = true
     var listener: (any SyncListener)?
+    private(set) var coreWriteReads = 0
     private let suite: EphemeralDefaults
     let metadata: SyncMetadataStorage
     private(set) var coordinator: SyncProviderCoordinator!
@@ -144,6 +156,8 @@ private final class Fixture {
         let host = SyncEngineHost(
             transport: transport,
             keepICloudAccount: { [unowned self] in keptAccounts.append($0) },
+            keepServiceAccount: { [unowned self] in keptServiceAccounts.append($0) },
+            signInChanges: signInChanges.eraseToAnyPublisher(),
             open: { [unowned self] provider, listener in
                 openAttempts.append(provider)
                 await opening?.wait()
@@ -152,6 +166,9 @@ private final class Fixture {
                 self.listener = listener
                 if provider == .off, let offEngine {
                     return offEngine
+                }
+                if provider == .icloud, opened.filter({ $0 == .icloud }).count > 1, let reopened {
+                    return reopened
                 }
                 return engine
             }
@@ -172,7 +189,8 @@ private final class Fixture {
             metadata: metadata,
             pushRegistrar: .inert,
             activationClock: clock,
-            notificationCenter: notifications
+            notificationCenter: notifications,
+            readCoreWrites: { [unowned self] in coreWriteReads += 1 }
         )
     }
 
@@ -460,6 +478,82 @@ struct SyncProviderCoordinatorTests {
         #expect(off.read { $0.flushes } == [1])
     }
 
+    @Test("After iCloud stopped, a sign-in change opens iCloud's service again, which keeps the mirror, and tells it Off")
+    func reopenIsToldTheOffChoice() async throws {
+        let fixture = try Fixture()
+        let replacement = FakeSyncEngine()
+        fixture.reopened = replacement
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        fixture.enabled = false
+        fixture.coordinator.disableSync()
+        try await waitUntil { fixture.providers.last == .off }
+
+        fixture.signInChanges.send()
+
+        try await waitUntil { replacement.read { $0.providers } == [.off] }
+        #expect(fixture.opened == [.icloud, .icloud])
+        #expect(fixture.transport.isClosed)
+    }
+
+    @Test("While iCloud runs, a sign-in change opens its service again and tells it iCloud")
+    func reopenIsToldICloud() async throws {
+        let fixture = try Fixture()
+        let replacement = FakeSyncEngine()
+        fixture.reopened = replacement
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.signInChanges.send()
+
+        try await waitUntil { replacement.read { $0.providers } == [.icloud] }
+        #expect(fixture.opened == [.icloud, .icloud])
+    }
+
+    @Test("A quit waits for the marks of a service a sign-in change closed")
+    func quitWaitsForAClosedServicesFlush() async throws {
+        let fixture = try Fixture()
+        let gate = AsyncGate()
+        let closed = fixture.engine
+        closed.update { $0.flush = { await gate.wait() } }
+        fixture.reopened = FakeSyncEngine()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.signInChanges.send()
+        await gate.arrived(1)
+        let quitting = Task { await fixture.coordinator.flushBeforeQuit() }
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+        fixture.clock.advance(by: SyncProviderCoordinator.quitFlushLimit)
+        await quitting.value
+
+        #expect(fixture.opened == [.icloud, .icloud])
+        #expect(fixture.reopened?.read { $0.flushes }.isEmpty == true)
+        await gate.open()
+        try await waitUntil { fixture.reopened?.read { $0.flushes } == [0] }
+    }
+
+    @Test("A write told to a service a sign-in change closed meanwhile flushes that service itself")
+    func deliveryToAClosedServiceFlushesIt() async throws {
+        let fixture = try Fixture()
+        let gate = AsyncGate()
+        let closed = fixture.engine
+        let replacement = FakeSyncEngine()
+        fixture.reopened = replacement
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        closed.update { $0.recording = { await gate.wait() } }
+
+        fixture.journal.recorded(.connection, deleted: ["A"])
+        await gate.arrived(1)
+        fixture.signInChanges.send()
+        try await waitUntil { fixture.opened == [.icloud, .icloud] }
+        await gate.open()
+
+        try await waitUntil { closed.read { $0.flushes } == [0, 1] }
+        #expect(replacement.read { $0.hostChanges }.isEmpty)
+    }
+
     @Test("A flush that does not answer holds the quit only for the limit")
     func quitFlushIsBounded() async throws {
         let fixture = try Fixture()
@@ -587,6 +681,30 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.coordinator.lastSyncDate == Date(timeIntervalSince1970: 1_764_000_000))
     }
 
+    @Test("Each pass the engine finished has the stores it may have written read again, once")
+    func aFinishedPassReadsTheCoresWrites() async throws {
+        let fixture = try Fixture()
+        let engine = fixture.engine
+        engine.update { state in
+            state.pass = { _ in engine.update { $0.info.lastPassMs = 1_764_000_000_000 } }
+        }
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        #expect(fixture.coreWriteReads == 1)
+
+        engine.update { $0.info.problem = "sync.icloud.quota_exceeded" }
+        try #require(fixture.listener).statusChanged()
+        try await waitUntil { fixture.coordinator.syncStatus == .error(.blocked(.storageFull)) }
+        #expect(fixture.coreWriteReads == 1)
+
+        engine.update { state in
+            state.info.problem = nil
+            state.info.lastPassMs = 1_764_000_060_000
+        }
+        try #require(fixture.listener).statusChanged()
+        try await waitUntil { fixture.coreWriteReads == 2 }
+    }
+
     @Test("An iCloud account change cancels the call in flight, then asks for a pass")
     func accountChange() async throws {
         let fixture = try Fixture()
@@ -669,14 +787,19 @@ struct SyncProviderCoordinatorTests {
         fixture.settings.syncTableFavorites = false
         fixture.coordinator.start()
         await fixture.coordinator.passesFinished()
-        #expect(fixture.engine.read { $0.categories } == [SyncCategoriesArg(offKinds: ["favourite_table"], passwords: false)])
+        #expect(fixture.engine.read { $0.categories } == [
+            SyncCategoriesArg(offKinds: ["favourite_table", "ssh_profile", "credential_profile"], passwords: false)
+        ])
 
         fixture.settings.syncTableFavorites = true
         fixture.coordinator.categoriesChanged()
         try await waitUntil { fixture.engine.read { $0.categories.count } == 2 }
         await fixture.coordinator.passesFinished()
 
-        #expect(fixture.engine.read { $0.categories }.last == SyncCategoriesArg(offKinds: [], passwords: false))
+        #expect(fixture.engine.read { $0.categories }.last == SyncCategoriesArg(
+            offKinds: ["ssh_profile", "credential_profile"],
+            passwords: false
+        ))
         #expect(fixture.passes.last == .person)
     }
 
@@ -689,6 +812,36 @@ struct SyncProviderCoordinatorTests {
         await fixture.coordinator.passesFinished()
 
         #expect(fixture.keptAccounts.last == "_alice")
+    }
+
+    @Test("The TablePro Sync sign-in the engine follows is kept when it opens and after each status change")
+    func theEnginesServiceAccountIsKept() async throws {
+        let fixture = try Fixture()
+        fixture.engine.update { $0.serviceAccount = "https://api.tablepro.app acct_a" }
+
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        #expect(fixture.keptServiceAccounts.last == "https://api.tablepro.app acct_a")
+
+        fixture.engine.update { $0.serviceAccount = "https://api.tablepro.app acct_b" }
+        fixture.listener?.statusChanged()
+        try await waitUntil { fixture.keptServiceAccounts.last == "https://api.tablepro.app acct_b" }
+    }
+
+    @Test("The open hands the core the sign-in it kept and this Mac's route publisher")
+    func openConfigCarriesTheKeptAccounts() {
+        let publisher = UUID()
+        let config = SyncEngineHost.openConfig(
+            provider: .tableproSync,
+            settings: .default,
+            icloudAccount: "_alice",
+            serviceAccount: "https://api.tablepro.app acct_a",
+            routePublisher: publisher
+        )
+
+        #expect(config.icloudAccount == "_alice")
+        #expect(config.serviceAccount == "https://api.tablepro.app acct_a")
+        #expect(config.routePublisher == publisher.uuidString)
     }
 
     @Test("A pass whose categories the engine refused sends nothing, so a category turned off never goes up")
@@ -767,6 +920,90 @@ struct SyncEngineHostTests {
         #expect(try await host.engine(for: .off) === service)
     }
 
+    // A new engine for each open, so a test can tell the service before a sign-in change from the one after.
+    private static func reopeningHost(
+        signInChanges: PassthroughSubject<Void, Never>,
+        opening: AsyncGate? = nil,
+        opened: OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>
+    ) -> SyncEngineHost {
+        SyncEngineHost(
+            transport: CloudKitCoreTransport(database: FakeCloudKitDatabase()),
+            signInChanges: signInChanges.eraseToAnyPublisher(),
+            open: { provider, _ in
+                let engine = FakeSyncEngine()
+                let count = opened.withLock { opens in
+                    opens.append((provider, engine))
+                    return opens.count
+                }
+                if count == 1 {
+                    await opening?.wait()
+                }
+                return engine
+            }
+        )
+    }
+
+    @Test("A sign-in change closes the open service and opens one for the same provider")
+    func signInChangeReopens() async throws {
+        let changes = PassthroughSubject<Void, Never>()
+        let opened = OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>(initialState: [])
+        let host = Self.reopeningHost(signInChanges: changes, opened: opened)
+        let first = try await host.engine(for: .icloud)
+
+        changes.send()
+        try await waitUntil { opened.withLock { $0.count } == 2 }
+        let second = try await host.engine(for: .icloud)
+
+        #expect(second !== first)
+        #expect(second === opened.withLock { $0[1].1 })
+        #expect(opened.withLock { $0.map { $0.0 } } == [.icloud, .icloud])
+        #expect(host.openedEngine(for: .icloud) === second)
+    }
+
+    @Test("An open in flight when the sign-in changes is never kept, and its callers get the one opened after")
+    func openDuringASignInChangeIsDropped() async throws {
+        let changes = PassthroughSubject<Void, Never>()
+        let gate = AsyncGate()
+        let opened = OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>(initialState: [])
+        let host = Self.reopeningHost(signInChanges: changes, opening: gate, opened: opened)
+        let asked = Task { try await host.engine(for: .off) }
+        await gate.arrived(1)
+
+        changes.send()
+        await gate.open()
+        let engine = try await asked.value
+
+        #expect(opened.withLock { $0.map { $0.0 } } == [.off, .off])
+        #expect(engine === opened.withLock { $0[1].1 })
+        #expect(host.openedEngine(for: .off) === engine)
+    }
+
+    @Test("Once the quit stops reopening, a sign-in change closes nothing and opens nothing")
+    func noReopenOnceQuitting() async throws {
+        let changes = PassthroughSubject<Void, Never>()
+        let opened = OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>(initialState: [])
+        let host = Self.reopeningHost(signInChanges: changes, opened: opened)
+        let first = try await host.engine(for: .icloud)
+
+        host.stopReopening()
+        changes.send()
+
+        #expect(host.openedEngine(for: .icloud) === first)
+        #expect(opened.withLock { $0.count } == 1)
+    }
+
+    @Test("With no service open, a sign-in change opens none")
+    func signInChangeWithNothingOpen() async throws {
+        let changes = PassthroughSubject<Void, Never>()
+        let opened = OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>(initialState: [])
+        let host = Self.reopeningHost(signInChanges: changes, opened: opened)
+
+        changes.send()
+        #expect(await host.existingEngine(for: nil) == nil)
+
+        #expect(opened.withLock { $0.isEmpty })
+    }
+
     @Test("Asking for iCloud's service waits for its open in flight and never opens one itself")
     func existingWaitsAndNeverOpens() async throws {
         let opened = OSAllocatedUnfairLock<[SyncProviderTag]>(initialState: [])
@@ -824,6 +1061,8 @@ struct SyncProviderCoordinatorStatusTests {
             "sync.icloud.quota_exceeded": .blocked(.storageFull),
             "sync.icloud.network": .offline,
             "sync.icloud.throttled": .busy,
+            "sync.state.anchor_unsettled": .waitingForKeychain,
+            "sync.device_store.locked": .waitingForKeychain,
             "sync.adapter.store": .pullNotSaved,
             "sync.unimplemented": .blocked(.unavailable),
             "sync.icloud.account_changed": nil,
@@ -856,7 +1095,9 @@ struct SyncProviderCoordinatorStatusTests {
 
         let categories = SyncProviderCoordinator.categories(settings)
 
-        #expect(Set(categories.offKinds) == ["group", "tag", "saved_query", "saved_query_folder"])
+        #expect(Set(categories.offKinds) == [
+            "group", "tag", "saved_query", "saved_query_folder", "ssh_profile", "credential_profile",
+        ])
         #expect(categories.passwords)
         #expect(!SyncProviderCoordinator.categories(settings.settingConnections(false)).passwords)
         #expect(SyncProviderCoordinator.categories(settings.settingConnections(false)).offKinds.contains("connection"))

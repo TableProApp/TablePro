@@ -10,7 +10,8 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 | The account's device ID and last entitlement, or an imported offline file | JSON file | `tablepro-account` ([core ADR 0016](../../core/docs/decisions/0016-tablepro-accounts.md), [ADR 0038](decisions/0038-account-page-and-license-ask.md)) |
 | The usage data's anonymous ID and what it sent once | JSON file | `Telemetry` in the app crate ([ADR 0039](decisions/0039-usage-data.md)) |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
-| Query history, saved queries with their folders and keywords, favourite tables and databases, and table folders | SQLite, one database ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `QueryHistory`, `SavedQueries`, `SavedQueryFolders`, `Favourites`, `TableFolders` |
+| Query history | SQLite, `history/history.db` | `QueryHistory` |
+| Saved queries with their folders and keywords, favourite tables and databases, and table folders | SQLite, `saved_queries.db` ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `SavedQueryDatabase`: `SavedQueries`, `SavedQueryFolders`, `Favourites`, `TableFolders` |
 | Team Library items, one file per server and account | JSON file | `TeamLibraryStore` |
 | Editor tab text | one file per tab | `DraftStore` |
 | Open tabs, open sessions, column layouts, filters, highlight rules | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
@@ -48,12 +49,13 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 - An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A copy is saved with `insert_after_blocking`, right after its original, as on macOS. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again. Edits and copies run one at a time, so two windows editing one connection never leave the host of one with the password of the other.
 
 - An entry of `connections`, `groups`, `tags`, `ssh_profiles` or `credential_profiles` that this build cannot read, such as one with a value a newer build wrote or without a field that has no default, is held: it is left out of the list, written back as it was after the entries the list holds, and replaced by a readable entry with its id. The rest of the file stays usable. `ConnectionList::unreadable` names the held connections. A connection also keeps the keys it does not know (`SavedConnection::unknown`) and writes them back.
-- Beyond the form's fields, a connection carries `details` (`ConnectionDetails`: `startup_sql`, `ai_rules`, `ai_allowed_tools`, `ssh_profile_id`, `ssh_route`, `credential_profile_id`, `credential_reference`, `redis_database` and the plugin's `additional_fields`) and `device` (`DeviceOnly`: `local_only`, `is_sample`, `origin`, the `password_source` file or command, and the Cloudflare, Cloud SQL proxy, SOCKS and tunnel command settings). Both sit flat in the entry. `field_trust` classes each additional field as the macOS app's `ConnectionFieldTrust` does, and `apple/scripts/ci/check-connection-field-trust.py` fails when the two tables differ.
+- Beyond the form's fields, a connection carries `details` (`ConnectionDetails`: `startup_sql`, `ai_rules`, `ai_allowed_tools`, `ssh_profile_id`, `ssh_route`, `credential_profile_id`, `credential_reference`, `redis_database` and the plugin's `additional_fields`) and `device` (`DeviceOnly`: `local_only`, `is_sample`, `origin`, the `password_source` file or command, the Cloudflare, Cloud SQL proxy, SOCKS and tunnel command settings, and the two marks sync keeps on a copy an earlier iOS build wrote, `tls_mode_unsettled` and `ssh_profile_unlinked`). Both sit flat in the entry. `field_trust` classes each additional field as the macOS app's `ConnectionFieldTrust` does, and `apple/scripts/ci/check-connection-field-trust.py` fails when the two tables differ.
 - An export carries the connections as `SavedConnection::portable` gives them: no `device`, no unknown key, no detail that runs, sends or signs in on the reader's device, and only portable additional fields. An import takes the same from the file and keeps an updated entry's own. Neither carries the profiles.
 - `ssh_profiles` holds `SshProfile`s (a name and an SSH setting) and `credential_profiles` holds `CredentialProfile`s (a name, a user, where the password comes from, the secure plugin fields and an order). `save_*_profile_blocking` adds one or replaces the one with its id; deleting one leaves the connections that name it naming it.
 - `store` is the file's `StoreIdentity` ([Store identity and the change journal](#store-identity-and-the-change-journal)).
-- `replace_library_blocking(LibraryWrite { connections, groups, tags, favorites })` writes the whole library in one commit, for another app's store moving into the core: every id and value as given, nothing trimmed, checked, cleaned or placed, a repeated id refused with `RepeatedId`. A connection this build cannot read stays unless the write names its id. The profiles are left as they are. It returns the SHA-256, in hex, of the bytes the file holds after it, and `read_library_blocking` returns the list with the SHA-256 of the bytes it was decoded from, so a host can tag exactly those bytes (`None` while there is no file).
-- `rebuild_library_blocking` writes the same way for a file its host cannot vouch for: the file then holds only what the write names, with no entry this build cannot read and no profile, and a new `StoreIdentity` generation, as a restore starts.
+- `replace_library_blocking(over, build)` writes the whole library (`LibraryWrite { connections, groups, tags, favorites }`) in one commit, for another app's store moving into the core: every id and value as given, nothing trimmed, checked, cleaned or placed. `over` is the SHA-256 of the file the host last checked (`None`: no file); a file that changed since is refused with `LibraryChanged`, and `build` makes the write from that same file under the same lock. What the store would otherwise drop is refused: a repeated id, favourite or tag on a connection with `RepeatedId`, a favourite of no connection the file keeps with `ConnectionNotFound`. A connection this build cannot read stays unless the write names its id. The profiles are left as they are. It returns the SHA-256, in hex, of the bytes the file holds after it, and `read_library_blocking` returns the list with the SHA-256 of the bytes it was decoded from, so a host can tag exactly the bytes a write leaves and check a read's against its tag (`None` while there is no file). A read vouches for nothing.
+- `apply_synced_blocking(settle)` writes what a sync pull settled, every kind of the file in one commit ([core ADR 0054](../../core/docs/decisions/0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md), Adapters). `settle` gets the list as it is under the write lock and returns `LibraryChange`s: each record put by its id with its values as given, a place or link to a record not there yet included, or removed by its id, a held entry too. A connection the list holds keeps its `device` and `last_opened_at`, except the two marks sync settles (`tls_mode_unsettled`, `ssh_profile_unlinked`), and its favourite mark follows the change. `synced_library_blocking` reads the list with the ids of each profile kind this build cannot read.
+- `rebuild_library_blocking` writes the same way for a file its host cannot vouch for: the file then holds only what the write names, with no entry this build cannot read and no profile, and a new `StoreIdentity` generation, as a restore starts. A file this build cannot read is moved aside first (`Rebuilt.set_aside`), and the journal is told the write against nothing, so no id from the replaced file goes out as a deletion.
 
 ### SSH settings
 
@@ -143,13 +145,13 @@ delete ends, as it does for every other write to the connection list.
 Each store carries a `StoreIdentity`, a `generation` and a `sequence` ([core ADR 0054](../../core/docs/decisions/0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md), The engine), which sync keeps beside its bases:
 
 - `connections.json` and a Team Library file keep it as `store`. A file without one, as an older build writes it, gets a new generation at its next write.
-- `history.db` keeps it in the one row of `store_identity`, made when the database opens. A trigger on each table that syncs (`history`, `saved_queries`, `saved_query_folders`, `favourite_tables`, `favourite_databases`, `table_folders`, `table_folder_items`) raises the sequence on every insert, update and delete, whichever process makes it. Trimming an upgrade copy puts its sequence back.
+- `history.db` and `saved_queries.db` each keep it in the one row of their own `store_identity`, made when the database opens, so each is a store of its own (core ADR 0060 as amended). A trigger on each table that syncs raises that database's sequence on every insert, update and delete, whichever process makes it: `history` in `history.db`; `saved_queries`, `saved_query_folders`, `favourite_tables`, `favourite_databases`, `table_folders` and `table_folder_items` in `saved_queries.db`. Trimming an upgrade copy puts its sequence back.
 - Every write keeps the generation and raises the sequence. `StoreIdentity::compared_with` tells sync whether the store continues, is another generation (restored, replaced or copied in) or went back (an older copy). Both of the last two put its kinds into refill. A host that restores a store from a backup of its own calls `start_new_generation`; Reset of an unreadable connection list starts one with the next write.
-- Each store's write path tells a `ChangeJournal`, once per commit, after the write and outside every lock the store holds, a `JournalEntry` for each kind the commit changed with the records it wrote and the records it deleted ([core ADR 0060](../../core/docs/decisions/0060-the-change-journal-names-the-records-each-write-changed-and-a-store-is-one-file.md)). A `RecordRef` names a record as its store does: a UUID (a saved query, folder or history entry by its `record_id`), a Team Library item by its team and client id, the table a favourite or a table folder item names, or a favourite database. A favourite's place change writes its connection. `set_journal` on `ConnectionStore`, `QueryHistory` (for every handle it gives out) and `TeamLibraryStore` sets it. A write that changes nothing tells nothing.
+- Each store's write path tells a `ChangeJournal`, once per commit, after the write and outside every lock the store holds, a `JournalEntry` for each kind the commit changed with the records it wrote and the records it deleted ([core ADR 0060](../../core/docs/decisions/0060-the-change-journal-names-the-records-each-write-changed-and-a-store-is-one-file.md)). A `RecordRef` names a record as its store does: a UUID (a saved query, folder or history entry by its `record_id`), a Team Library item by its team and client id, the table a favourite or a table folder item names, or a favourite database. A favourite's place change writes its connection. `set_journal` on `ConnectionStore`, `QueryHistory`, `SavedQueryDatabase` (for every handle it gives out) and `TeamLibraryStore` sets it. A write that changes nothing tells nothing.
 
 ## Table folders
 
-`QueryHistory::table_folders` gives the folders a person files a connection's tables in, per database and schema (`table_folders`), and the table each file names (`table_folder_items`, one folder per table). Ids are UUIDs, times whole milliseconds. No foreign key joins them: an item whose folder is missing reads as unfiled. `put` keeps a folder's own id and times, deleting a folder takes its items with it, and `SavedQueries::delete_for_connection` takes a deleted connection's folders and items with its saved queries and favourites.
+`SavedQueryDatabase::table_folders` gives the folders a person files a connection's tables in, per database and schema (`table_folders`), and the table each file names (`table_folder_items`, one folder per table). Ids are UUIDs, times whole milliseconds. No foreign key joins them: an item whose folder is missing reads as unfiled. `put` keeps a folder's own id and times, deleting a folder takes its items with it, and `SavedQueries::delete_for_connection` takes a deleted connection's folders and items with its saved queries and favourites.
 
 ## Team Library
 
@@ -169,7 +171,9 @@ nothing reaches outside it.
 | `column_layouts_file()` | `$XDG_CONFIG_HOME/<dir>/column_layouts.json`: each table's column layout (order, hidden columns, widths the user set) |
 | `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json`, version 2: each table's filter, and the schemas each connection's sidebar lists, per database. Version 1 had no sidebar filters |
 | `highlight_rules_file()` | `$XDG_CONFIG_HOME/<dir>/highlight_rules.json`: ordered rules for each table |
-| `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
+| `history_folder()` | `$XDG_STATE_HOME/<dir>/history`: the query history with its WAL, its shared memory file and its upgrade copies, and nothing else |
+| `history_database()` | `$XDG_STATE_HOME/<dir>/history/history.db`: the query history |
+| `saved_query_database()` | `$XDG_STATE_HOME/<dir>/saved_queries.db`: saved queries, their folders, favourites and table folders |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order of their first recorded session and keys in the order each window adopted them |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
 | `snippets_dir()` | `$XDG_DATA_HOME/<dir>/snippets`: the user's SQL editor snippets, made when Preferences opens it ([README](../README.md#snippets)) |
@@ -212,15 +216,18 @@ These calls block on `fsync`, so async callers run them through
 
 ## Query history schema
 
-`QueryHistory` is the query history and, in the same database, the saved
-queries (`QueryHistory::saved_queries`). It opens `history.db` with one
-pooled connection in WAL mode, with sqlx's statement logging off, since
-query text is the user's own SQL. It links the system SQLite: the trigram
+`QueryHistory` is the query history in `history.db`, and `SavedQueryDatabase`
+the saved queries, their folders, favourites and table folders in
+`saved_queries.db`. Each opens its file with one pooled connection in WAL
+mode, with sqlx's statement logging off, since query text is the user's own
+SQL. It links the system SQLite: the trigram
 tokenizer needs 3.34 or later, and `trigram_index_available_on_system_sqlite`
 fails against an older one.
 
-`core/crates/storage/migrations/` holds the schema as sqlx migrations, embedded
-at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
+`core/crates/storage/migrations/` holds the history's schema as sqlx migrations,
+embedded at compile time with `sqlx::migrate!` and run by `QueryHistory::open`;
+`core/crates/storage/saved_query_migrations/` holds the saved queries' schema,
+run by `SavedQueryDatabase::open`.
 `20260914000000_create_history.sql` creates the `history` table with
 `query_folded`, the trigram index `history_search` over it,
 `history_page_idx` on `(pinned DESC, executed_at DESC, id DESC)` for
@@ -258,15 +265,95 @@ the id it syncs under ([core ADR 0052](../../core/docs/decisions/0052-synced-rec
   the top, and a folder 64 levels deep or more goes to the top too. Each such
   change is an edit of this device's own.
 
+`20261128000000_saved_queries_moved_out.sql` drops the saved queries, their
+folders, favourites and table folders from `history.db`, which from then on
+holds the history alone, so an iOS app can keep it under a stronger
+protection class than the store sync reads in the background (core ADR 0060
+as amended). The rows move first, once and without loss, whichever of
+`QueryHistory::open` and `SavedQueryDatabase::open` runs first:
+
+- Under `history.db`'s write lock, they are copied with their ids, rowids
+  and AUTOINCREMENT counters into `.saved_queries.db.partial`, which is
+  synced. The drop then commits in the same lock, and only after that is the
+  build renamed to `saved_queries.db`, so the store never exists half made.
+- The drop's transaction also makes the table `compaction_owed`. Every open
+  of `history.db`, whichever store opens it, runs `VACUUM` and a truncating
+  WAL checkpoint while that table is there, and drops it only once both
+  finish, so the saved queries' text leaves the file and its WAL. A crash, a
+  failed `VACUUM` or a reader that blocks the checkpoint leaves it for a
+  later open and does not fail this one.
+- A build left by a crash before the drop is removed and made again from
+  `history.db`. One left after the drop is renamed into place by the next
+  open of either store.
+- The copy kept before the move ([Copies before a format upgrade](#copies-before-a-format-upgrade))
+  holds both stores' tables, the way back for an older release.
+- A `saved_queries.db` already there while `history.db` still holds the rows
+  is what putting back an older `history.db` leaves. That restores the
+  history alone: `saved_queries.db` stays as it is, and the copy kept before
+  the drop holds the saved tables of the file put back.
+- `SavedQueryDatabase::open` reads `history.db` only while it has no file of
+  its own or a build waits beside it. `saved_queries.db` starts its own
+  generation, and the history's identity does not move.
+- In the same move `history.db` leaves `$XDG_STATE_HOME/<dir>/` for
+  `history/`, so a platform that protects files by folder covers every file
+  made beside it. Before either store opens it there, the old file is opened
+  with exclusive locking and a truncating rollback journal. Setting that
+  journal needs the only connection to the file and folds its WAL in, and
+  the connection keeps the lock until the move is done, so no other process
+  reads or writes the file meanwhile. Under exclusive locking a deleting
+  journal would keep the pages it saved until the connection closes; a
+  truncating one is emptied at every commit. Under that lock:
+  1. A copy at `history/.history.db.partial` left by an earlier attempt is
+     removed, and `VACUUM INTO` copies the file there again, synced.
+  2. One transaction drops every table it holds, with `secure_delete` on,
+     makes `compaction_owed`, and adds a migration row whose version no
+     build has (`i64::MAX`). An older release reads that row as a file a
+     newer release wrote and refuses to open it.
+  3. Its upgrade copies move into the folder, each with its journals and the
+     journals first, and the copy is renamed to `history/history.db`.
+- Once the lock is let go, and on every later open, the old file is
+  compacted while it owes it, and a rollback journal beside it is removed
+  under its write lock once it is marked. Neither holds back the open, and
+  neither touches a file an older release made there, which carries no
+  mark.
+- A crash before the mark leaves the old file whole, and the next open
+  removes the copy and makes it again. One after it leaves the synced copy,
+  which the next open renames. Another process holding the old file fails
+  the open and moves nothing, the copies included, so an older release's
+  cleanup still finds them. Once the folder holds the history, a file an
+  older release makes where it used to be is left alone. The core makes the
+  folder only when it is missing.
+- One gap is left. A crash between the copy and the mark, followed by a
+  return to an older release before this one opens again, leaves
+  `history/.history.db.partial` with the history's text in it. The older
+  release does not know the file, and the next open of this release removes
+  it under the lock. It cannot be removed sooner: without the lock, a copy
+  there may be another process's move in progress.
+
+`20261128000001_run_details.sql` adds what the app knew of a run beyond its
+outcome (`RunDetails`): its database and schema, what started it
+(`RunSource`, the wire's `source`), its `StatementType`, the time to its
+first row and on the server in milliseconds, all of which sync, and the
+fingerprint the app read its statement's shape as, which never leaves the
+device. Each is `NULL` where the app did not say, as for every older entry.
+`without_fingerprint` lists the entries a pull brought with none, and
+`set_fingerprints` stores the app's reading by rowid. `fill_details` gives
+runs a host mirrored before it kept details what it learned since, by record
+id and in one commit: a field the row has none of takes the value given, one
+it has stays, and a run the store does not hold, a deleted one among them,
+gets no row. `entries_by_record_id` reads runs by record id in rowid order,
+leaving out ids the store does not hold.
+
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
 which makes sqlx refuse every database that already applied it.
 
 A database carrying a migration this build does not have is refused with
-`StorageError::HistoryNewerThanApp` and nothing is written, so a build never
-changes a schema newer than its own. A database at the same schema is read
-and written by any build. Any other migration failure is
-`StorageError::HistoryMigration`.
+`StorageError::HistoryNewerThanApp`, or `SavedQueriesNewerThanApp` for
+`saved_queries.db`, and nothing is written, so a build never changes a schema
+newer than its own. A database at the same schema is read and written by any
+build. Any other migration failure is `StorageError::HistoryMigration` or
+`SavedQueriesMigration`.
 
 Before a migration runs on a database that already has some, `open` keeps a
 copy of it ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
@@ -291,9 +378,11 @@ an FTS5 trigram index over that column, answers a term of three
 characters or more as a quoted phrase, so quotes and FTS5 operators stay
 literal; a shorter term goes through `instr`.
 
-`HistoryQuery` also narrows by connection, by `StatusFilter` and by a
-start time. A cancelled run is stored with `success = 0`, so Failed leaves
-it out explicitly.
+`HistoryQuery` also narrows by connection or a list of connections, by a
+list of `RunSource`s, by `StatusFilter` and by a start and an end time, both
+inclusive, as the macOS History pane does. An empty list matches nothing, and
+a run that names no source matches only no source filter. A cancelled run is
+stored with `success = 0`, so Failed leaves it out explicitly.
 
 A page is read by keyset on `(pinned, executed_at, id)`, newest first
 with pinned entries ahead, never by offset. The request's limit is clamped
@@ -312,17 +401,26 @@ can tell whether a re-pinned entry falls in the pages already read.
   were and folded again; the insert trigger indexes them. The history
   dialog deletes at once and offers Undo in a toast, which is this pair.
 - `clear_all` empties the history, pinned entries included.
+- `delete_records(record_ids)` is the person's own deletion as a host names
+  it, and `delete_matching(&HistoryQuery)` deletes everything a filter
+  shows and returns the record ids that went, in rowid order.
+  `remove(record_ids)` is a host's removal of entries its own store
+  let go, and a pull's deletion.
 - `delete_for_connection` removes one connection's entries, pinned ones
   included, for a connection deleted along with its history, then runs
   `optimize` as a prune does.
-- A deletion the user asks for (`delete_returning`, `clear_all`,
-  `delete_for_connection` and the saved queries' `delete` and
-  `delete_for_connection`) reaches each copy an upgrade kept before the
-  database, so a copy that fails leaves the database as it was and an Undo
-  never loses its entries. `prune` trims the copies after its own deletes.
-  Either way `trim_upgrade_copies` also makes each copy hold no history entry
-  or saved query the database no longer has. It
-  attaches the database and deletes the rest in one transaction with
+- Every deletion but `remove` and a prune leaves a tombstone for each entry
+  until sync has pushed it ([core ADR 0054](../../core/docs/decisions/0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md), Dirty state is a diff).
+- A deletion the user asks for (`delete_returning`, `delete_records`,
+  `delete_matching`, `clear_all`, `delete_for_connection` and the saved
+  queries' `delete` and `delete_for_connection`) reaches each copy an upgrade
+  kept before the database, so a copy that fails leaves the database as it was
+  and an Undo never loses its entries. `prune` trims the copies after its own
+  deletes. Either way `trim_history_copies` and `trim_saved_copies` also make
+  each copy hold no history entry or saved query its live database no longer
+  has. Each side trims its own tables, in the copies of `history.db` from
+  before the move as well as in its own file's. It
+  attaches the databases and deletes the rest in one transaction with
   `secure_delete` on, optimizing the copy's full-text indexes, so the words
   leave its blocks and freed pages together. A copy that cannot be trimmed,
   being damaged, is deleted, and so is what a crash left of one: an unfinished
@@ -333,7 +431,7 @@ can tell whether a re-pinned entry falls in the pages already read.
 ### Following the saved queries
 
 The Favorites sidebar and Saved Queries dialog follow the shared revision
-feed from one `QueryHistory` ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)).
+feed from one `SavedQueryDatabase` ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)).
 A write from any window, an import or a deleted connection refreshes every list.
 The sidebar reads queries and folders as one snapshot. Each list rejects replies
 from an older read. Selection and folder expansion stay with their record IDs
@@ -359,7 +457,8 @@ dialect's `history_recording` decides, reading the SQL with the editor's own
 script lexer:
 
 - A statement that can carry a credential withholds the whole entry. Each
-  engine lists its own in a `CredentialRules`: logins, roles, keys and links
+  engine lists its own in a `CredentialRules`, all of them in the core's
+  `sql_syntax/engine_credentials.rs`: logins, roles, keys and links
   to other servers (`CREATE USER`, `CHANGE MASTER`), statements that do so
   only with a given word (`GRANT ... IDENTIFIED`), and functions or engines
   that take a password (`dblink`, `OPENROWSET`, `s3`). A routine body is

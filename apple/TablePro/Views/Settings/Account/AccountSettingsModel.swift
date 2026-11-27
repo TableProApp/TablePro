@@ -16,22 +16,40 @@ internal struct AccountActionFailure: Equatable, Identifiable {
 }
 
 internal struct AccountSignOutConfirmation: Equatable {
-    // The Team Library edits and conflicts not uploaded yet, taken with sync stopped.
-    let teamChanges: [String]
+    // The Team Library edits the team has not taken yet, read just before the question; nil when they could not be
+    // read, so the question still offers Upload.
+    let teamChanges: [String]?
     var uploadFailure: TeamLibraryFailure?
     let removesOfflineFile: Bool
+    // Sign Out erases this Mac's end-to-end keys, so it needs approval again after the next sign-in.
+    var erasesKeys = false
+
+    var asksAboutTeamChanges: Bool {
+        teamChanges.map { !$0.isEmpty } ?? true
+    }
 
     var discardsSomething: Bool {
-        !teamChanges.isEmpty || removesOfflineFile
+        asksAboutTeamChanges || removesOfflineFile || erasesKeys
     }
 
     var message: String {
         var sentences = [String(localized: "Paid features stop on this Mac until you sign in again.")]
-        if !teamChanges.isEmpty {
+        if let teamChanges, !teamChanges.isEmpty {
             sentences.append(TeamLibraryUnsentChanges.message(teamChanges, failure: uploadFailure))
+        } else if teamChanges == nil {
+            if let uploadFailure {
+                sentences.append(String(
+                    format: String(localized: "The upload did not finish. %@"),
+                    TeamLibraryPublishing.failureText(uploadFailure)
+                ))
+            }
+            sentences.append(String(localized: "TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are."))
         }
         if removesOfflineFile {
             sentences.append(String(localized: "The imported offline file is removed."))
+        }
+        if erasesKeys {
+            sentences.append(String(localized: "This Mac's encryption keys are erased, so after you sign in again another device or your recovery key approves it."))
         }
         return sentences.joined(separator: " ")
     }
@@ -78,7 +96,8 @@ internal final class AccountSettingsModel: ObservableObject {
     private let loader: Loader
     private let now: () -> Date
     private let openURL: @MainActor (URL) -> Void
-    private let teamLibrary: @MainActor () -> TeamLibrarySync
+    private let teamLibrary: @MainActor () -> TeamLibrary
+    private let keys: AccountKeysSignOut
     private let askSignOut: @MainActor (AccountSignOutConfirmation) async -> AccountSignOutAnswer
     private let closeSignOutQuestion: @MainActor () -> Void
     private var asksSignOut = false
@@ -94,7 +113,8 @@ internal final class AccountSettingsModel: ObservableObject {
         loader: Loader? = nil,
         now: @escaping () -> Date = { Date() },
         openURL: @escaping @MainActor (URL) -> Void = { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },
-        teamLibrary: @escaping @MainActor () -> TeamLibrarySync = { .shared },
+        teamLibrary: @escaping @MainActor () -> TeamLibrary = { .shared },
+        keys: AccountKeysSignOut = .live,
         askSignOut: @escaping @MainActor (AccountSignOutConfirmation) async -> AccountSignOutAnswer = AccountSignOutPrompt.ask,
         closeSignOutQuestion: @escaping @MainActor () -> Void = AccountSignOutPrompt.close
     ) {
@@ -103,6 +123,7 @@ internal final class AccountSettingsModel: ObservableObject {
         self.now = now
         self.openURL = openURL
         self.teamLibrary = teamLibrary
+        self.keys = keys
         self.askSignOut = askSignOut
         self.closeSignOutQuestion = closeSignOutQuestion
         stateObserver = services.access.$state
@@ -230,40 +251,60 @@ internal final class AccountSettingsModel: ObservableObject {
         presentDeviceLimitIfReached()
     }
 
-    // The whole of Sign Out. It holds Team Library from the question to its end, and every way out releases the hold:
-    // Cancel, a sign-out, and a sign-out that happened another way. What an upload leaves is asked about again.
+    // The whole of Sign Out. What an upload leaves is asked about again; signed out another way meanwhile, the flow
+    // ends and the data stays with its owner. Once signed out, the account's Team Library data is deleted, verified.
     func signOut() async {
         guard activity == nil else { return }
         activity = .signingOut
         defer { activity = nil }
         let teamLibrary = teamLibrary()
-        let hold = await teamLibrary.hold()
-        defer { hold.release() }
+        // Everything below is this sign-in's: another one that began meanwhile is never signed out or deleted.
+        let session = services.access.state.sessionID
+        let isCurrent: @MainActor () -> Bool = { [services] in
+            services.isSignedIn && services.access.state.sessionID == session
+        }
+        var changes = await teamLibrary.unsentChanges()
         var failure: TeamLibraryFailure?
-        while services.isSignedIn {
+        let erasesKeys = await keys.holdsKeys()
+        while isCurrent() {
             asksSignOut = true
             let answer = await askSignOut(AccountSignOutConfirmation(
-                teamChanges: teamLibrary.unsentChanges,
+                teamChanges: changes,
                 uploadFailure: failure,
-                removesOfflineFile: services.access.state.entitlement?.isOffline == true
+                removesOfflineFile: services.access.state.entitlement?.isOffline == true,
+                erasesKeys: erasesKeys
             ))
             asksSignOut = false
-            guard services.isSignedIn else { return }
+            guard isCurrent() else { return }
             switch answer {
             case .cancel:
                 return
             case .discard:
-                teamLibrary.discardHeld()
-                await services.signOut()
+                await finishSignOut(teamLibrary, session: session, isCurrent: isCurrent)
                 return
             case .upload:
-                failure = await teamLibrary.pushHeld().failure
-                if teamLibrary.unsentChanges.isEmpty, services.isSignedIn {
-                    await services.signOut()
+                (changes, failure) = await teamLibrary.upload()
+                if changes?.isEmpty == true, isCurrent() {
+                    await finishSignOut(teamLibrary, session: session, isCurrent: isCurrent)
                     return
                 }
             }
         }
+    }
+
+    private func finishSignOut(
+        _ teamLibrary: TeamLibrary,
+        session: String?,
+        isCurrent: @escaping @MainActor () -> Bool
+    ) async {
+        // The key device is revoked while the sign-in it proves itself with still works (core ADR 0051, Sign Out).
+        guard await keys.signOut(isCurrent) else { return }
+        let deleted = await teamLibrary.signOut(session: session) { [services] in await services.signOut() }
+        guard deleted == false else { return }
+        actionFailure = AccountActionFailure(
+            title: String(localized: "Team Library data is still on this Mac"),
+            message: String(localized: "TablePro couldn't delete the Team Library data of the account you signed out of. Team Library stays off until it can.")
+        )
     }
 
     func checkNow() async {

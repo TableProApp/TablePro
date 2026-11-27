@@ -1,10 +1,10 @@
 use super::*;
+use crate::SavedQueryDatabase;
 use crate::paths::StoragePaths;
-use crate::query_history::QueryHistory;
 
-async fn history(root: &tempfile::TempDir) -> QueryHistory {
+async fn history(root: &tempfile::TempDir) -> SavedQueryDatabase {
     let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
-    QueryHistory::open(&paths).await.expect("open history")
+    SavedQueryDatabase::open(&paths).await.expect("open history")
 }
 
 fn places(folders: &[SavedQueryFolder], parent: Option<Uuid>) -> Vec<(Uuid, i64)> {

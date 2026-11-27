@@ -85,7 +85,7 @@ impl KeyService {
                         })?;
                         return Err(KeysError::Conflict.into());
                     }
-                    self.hold_object(txn, ScopeName::Personal, &object, true).await?;
+                    self.hold_served(txn, ScopeName::Personal, &object, pulled).await?;
                     record.sent = true;
                     record.taken_at_us = taken_at_us;
                     record.held_until_us = record.held_until_us.max(held_until_us);
@@ -96,7 +96,7 @@ impl KeyService {
                     .held_object(txn, ScopeName::Personal, KeyKind::Reset, &object.id.to_wire())
                     .await?
                     .is_none();
-                self.hold_object(txn, ScopeName::Personal, &object, true).await?;
+                self.hold_served(txn, ScopeName::Personal, &object, pulled).await?;
                 self.served_resets().insert(
                     reset,
                     PendingReset {
@@ -115,7 +115,7 @@ impl KeyService {
                 Ok(None)
             }
             KeyBody::Cancel { .. } => {
-                self.hold_object(txn, ScopeName::Personal, &object, true).await?;
+                self.hold_served(txn, ScopeName::Personal, &object, pulled).await?;
                 if let Some(mut record) = self.reset_record(txn, reset).await? {
                     self.end_reset(txn, &mut record, ResetState::Cancelled).await?;
                     self.put_reset(txn, &record).await?;

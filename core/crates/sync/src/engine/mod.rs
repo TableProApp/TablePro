@@ -14,10 +14,14 @@ use std::sync::Arc;
 
 pub use backoff::{Backoff, retry_after_ms, retryable};
 pub use batch::{change_bytes, split};
-pub use diff::{Diffed, Pending, PendingOp, diff};
+pub(crate) use diff::owner;
+pub use diff::{
+    Diffed, KeptOff, Pending, PendingOp, diff, forget_kept_off, hold_kept_off, hold_left_behind, kept_off_connections,
+    left_behind_digest,
+};
 pub use hooks::{EngineEvents, EngineHooks};
 pub use scheduler::{Journal, JournalEntry, JournalIds, JournalObserver, Pass, SchedulerHandle, Wake, spawn};
-pub use settle::{Judgement, Settled, base_of, key_base, mode, settle};
+pub use settle::{Judgement, Settled, base_of, key_base, mode, settle, settle_moved};
 pub use stop::{Fence, StopSignal};
 
 use crate::api::adapter::RecordAdapter;

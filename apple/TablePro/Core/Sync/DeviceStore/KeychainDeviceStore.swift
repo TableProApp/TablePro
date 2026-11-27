@@ -96,6 +96,12 @@ nonisolated final class KeychainDeviceStore: HostDeviceStore, @unchecked Sendabl
         guard status == errSecSuccess || status == errSecItemNotFound else { throw Self.error(status) }
     }
 
+    // An Apple device always has the Keychain. One that cannot answer now, locked or missing the entitlement, says so
+    // per item, so the core waits for it instead of opening a state file with no anchor.
+    func present() -> Bool {
+        true
+    }
+
     private func accessibility(of item: DeviceItemTag) -> CFString {
         switch deviceItemClass(item: item) {
         case .keys:

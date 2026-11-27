@@ -627,11 +627,21 @@ extension ConnectionEditorEngine {
                 rows: [.builtIn(.identifierCase)]
             ))
         }
-        if context.syncEnabled {
+        switch context.syncProvider {
+        case .off:
+            break
+        case .iCloud:
             sections.append(SectionLayout(
                 id: "sync",
                 title: String(localized: "iCloud Sync"),
                 footer: String(localized: "This connection won't sync to other devices via iCloud."),
+                rows: [.builtIn(.localOnly)]
+            ))
+        case .tableproSync:
+            sections.append(SectionLayout(
+                id: "sync",
+                title: "TablePro Sync",
+                footer: String(localized: "This connection won't sync to other devices via TablePro Sync."),
                 rows: [.builtIn(.localOnly)]
             ))
         }

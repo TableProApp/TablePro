@@ -98,7 +98,7 @@ extension ConnectionEditorStore {
         context.savedName = self.context.savedName
         context.participatesInSync = self.context.participatesInSync
         context.aiEnabled = services.appSettings.ai.enabled
-        context.syncEnabled = services.appSettings.sync.enabled
+        context.syncProvider = services.appSettings.sync.provider
         context.managedSafeModeMinimum = ManagedPolicyResolver.minimumSafeModeLevel(policy: managedPolicy)
         let credentialStorage = services.credentialProfileStorage
         context.credentialProfiles = credentialStorage.loadProfiles()
@@ -157,13 +157,13 @@ extension ConnectionEditorStore {
             }
             .store(in: &cancellables)
         services.appSettings.aiSlice.publisher.map(\.enabled).removeDuplicates()
-            .combineLatest(services.appSettings.syncSlice.publisher.map(\.enabled).removeDuplicates())
+            .combineLatest(services.appSettings.syncSlice.publisher.map(\.provider).removeDuplicates())
             .dropFirst()
-            .sink { [weak self] aiEnabled, syncEnabled in
+            .sink { [weak self] aiEnabled, syncProvider in
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.context.aiEnabled = aiEnabled
-                    self.context.syncEnabled = syncEnabled
+                    self.context.syncProvider = syncProvider
                     self.refreshDerivedState()
                 }
             }

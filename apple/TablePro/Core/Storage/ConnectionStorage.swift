@@ -26,23 +26,25 @@ final class ConnectionStorage {
     private let syncJournal: SyncHostJournal
     private let appSettingsProvider: () -> AppSettingsStorage
 
-    private var cachedConnections: [DatabaseConnection]?
+    // The library's revision this store last recorded standing for.
+    private var revisionSeen = -1
 
     private(set) var lastLoadFailed = false
-    private(set) var fileReadCount = 0
-    private(set) var fileWriteCount = 0
+    var fileReadCount: Int { library.readCount }
+    var fileWriteCount: Int { library.writeCount }
 
-    // False once something else edited the file, so a connection's password source does not run.
-    var storeIsTrusted: Bool { file.isTrusted }
+    // False once something else edited the store, so a connection's password source does not run.
+    var storeIsTrusted: Bool { library.isTrusted }
 
     // Records this build cannot read; what belongs to them is kept. Loads first, as `isLibraryUnreadable` does.
     var unreadableConnectionIds: Set<UUID> {
         _ = loadConnections()
-        return file.unreadableIds
+        return library.unreadableIds
     }
 
-    private let file: IntegrityStampedFileStore<StoredConnection>
-    private var fileURL: URL { file.fileURL }
+    // The groups, tags and favourites share it, since the core writes the library in one commit.
+    let library: CoreLibraryStore
+    private var fileURL: URL { library.mirror.file.fileURL }
 
     private let keychain: any KeychainStoring
 
@@ -57,11 +59,10 @@ final class ConnectionStorage {
         appEvents: @escaping @autoclosure () -> AppEvents = .shared,
         integrity: ConnectionStoreIntegrity = .shared
     ) {
-        self.file = IntegrityStampedFileStore(
-            fileURL: fileURL,
-            label: "connections.json",
-            logger: Self.logger,
-            userSaveEstablishesTrust: true,
+        self.library = CoreLibraryStore(
+            legacyFileURL: fileURL,
+            defaults: userDefaults,
+            keychain: keychain,
             integrity: integrity
         )
         self.defaults = userDefaults
@@ -96,23 +97,17 @@ final class ConnectionStorage {
     // MARK: - Connection CRUD
 
     func loadConnections() -> [DatabaseConnection] {
-        if let cached = cachedConnections { return cached }
-
-        fileReadCount += 1
-        guard let storedConnections = file.load() else {
+        guard let image = library.current() else {
             lastLoadFailed = true
             return []
         }
         lastLoadFailed = false
+        guard library.revision != revisionSeen else { return image.connections }
+        revisionSeen = library.revision
 
-        let connections = storedConnections.map { stored in
-            stored.toConnection()
-        }
+        let connections = image.connections
         let migrated = Self.numberingUnrankedGroups(connections)
-        if migrated != connections, storeIsTrusted {
-            persist(migrated)
-        }
-        cachedConnections = migrated
+        guard migrated != connections, storeIsTrusted, persist(migrated, byUser: false) else { return connections }
         return migrated
     }
 
@@ -155,21 +150,25 @@ final class ConnectionStorage {
         removingSecrets: Bool = false,
         removingUnreadable removedIds: Set<UUID> = []
     ) -> Bool {
-        guard file.save(
-            connections.map { StoredConnection(from: $0) },
+        guard var image = library.current() else { return false }
+        image.connections = connections
+        return library.commit(
+            image,
             byUser: byUser,
             removingSecrets: removingSecrets,
             removingUnreadable: removedIds
-        ) else {
-            return false
-        }
-        fileWriteCount += 1
-        cachedConnections = nil
-        return true
+        )
     }
 
+    // Reads the stores again, so a change another build made to them since is taken in.
     func invalidateCache() {
-        cachedConnections = nil
+        library.invalidate()
+    }
+
+    // After a sync pass, what the core's engine wrote into the library.
+    func readCoreWrites() {
+        guard library.readCoreWrites() else { return }
+        appEventsProvider().connectionUpdated.send(nil)
     }
 
     @discardableResult
@@ -229,7 +228,7 @@ final class ConnectionStorage {
         }
 
         // A record this build cannot read keeps its id, so the import leaves it alone.
-        var knownIds = Set(connections.map(\.id)).union(file.unreadableIds)
+        var knownIds = Set(connections.map(\.id)).union(library.unreadableIds)
         var added: [DatabaseConnection] = []
         for incoming in adding {
             guard knownIds.insert(incoming.id).inserted else { continue }
@@ -255,11 +254,12 @@ final class ConnectionStorage {
         return ConnectionImportWrite(added: added.map(\.id), replaced: replaced.map(\.id))
     }
 
-    func updateConnection(_ connection: DatabaseConnection, password: String? = nil) {
+    // `byUser` false for a write the app makes itself, which never vouches for the store.
+    func updateConnection(_ connection: DatabaseConnection, password: String? = nil, byUser: Bool = true) {
         var connections = loadConnections()
         if let index = connections.firstIndex(where: { $0.id == connection.id }) {
             connections[index] = connection
-            guard saveConnections(connections) else {
+            guard saveConnections(connections, byUser: byUser) else {
                 Self.logger.error("Aborted updateConnection: persistence failed for \(connection.id, privacy: .public)")
                 return
             }
@@ -641,6 +641,11 @@ final class ConnectionStorage {
         return resolveString(.init(label: "SSH password", connectionId: connectionId), forKey: key)
     }
 
+    func sshPasswordRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "SSH password", connectionId: connectionId), forKey: key)
+    }
+
     func deleteSSHPassword(for connectionId: UUID) {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
         deleteSecret(forKey: key, connectionId: connectionId)
@@ -657,6 +662,11 @@ final class ConnectionStorage {
     func loadKeyPassphrase(for connectionId: UUID) -> String? {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
         return resolveString(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
+    }
+
+    func keyPassphraseRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func deleteKeyPassphrase(for connectionId: UUID) {
@@ -727,6 +737,11 @@ final class ConnectionStorage {
     func loadTOTPSecret(for connectionId: UUID) -> String? {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
         return resolveString(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
+    }
+
+    func totpSecretRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
     }
 
     func deleteTOTPSecret(for connectionId: UUID) {

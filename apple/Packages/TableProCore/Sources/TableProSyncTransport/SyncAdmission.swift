@@ -51,7 +51,7 @@ public enum SyncAdmission: Equatable, Sendable {
         switch error {
         case nil, .offline, .recordsRejected, .pullNotSaved, .unexpected:
             return .full
-        case .busy:
+        case .busy, .waitingForKeychain:
             if trigger == .userRequest || trigger == .accountChange { return .full }
             return isDue ? .full : .none
         case .blocked(let blocker):

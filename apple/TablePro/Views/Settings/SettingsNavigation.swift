@@ -333,7 +333,9 @@ extension SettingsPane {
             ] + AppModule.allCases.map(\.title)
         case .sync:
             [
-                String(localized: "Sync this Mac with iCloud"),
+                String(localized: "Sync this Mac with"),
+                "TablePro Sync",
+                String(localized: "Delete iCloud Data…"),
                 String(localized: "Last synced"),
                 String(localized: "Sync Now"),
                 String(localized: "What Syncs"),
@@ -417,7 +419,8 @@ extension SettingsPane {
         case .sync:
             [
                 "icloud", "apple account", "keychain", "password", "connections", "saved queries", "favorites", "folders",
-                "credential", "device", "last synced", "sync now", "cloudkit",
+                "credential", "device", "last synced", "sync now", "cloudkit", "tablepro sync", "provider", "move",
+                "end-to-end",
             ]
         case .account:
             [
@@ -465,6 +468,8 @@ extension SettingsPage {
         case .mcpApprovals: []
         case .mcpTokens: [String(localized: "Generate Token")]
         case .accountFeatures, .accountDevices, .accountTeams, .accountOffline: []
+        case .accountEncryption:
+            [String(localized: "Recovery key"), String(localized: "Replace…"), String(localized: "Devices With Your Keys")]
         }
     }
 
@@ -485,6 +490,7 @@ extension SettingsPage {
         case .accountFeatures: ["pro features", "plan features"]
         case .accountDevices: ["device", "this mac", "machine", "activation"]
         case .accountTeams: ["team", "organization", "members"]
+        case .accountEncryption: ["e2e", "encryption", "recovery key", "approve device", "keys", "sign out"]
         case .accountOffline: ["license key", "offline", "machine id", "activation file"]
         }
     }

@@ -25,7 +25,8 @@ struct CatalogEditSchemaFilterAdoptionTests {
         let connectionStorage = ConnectionStorage(
             fileURL: FileManager.default.temporaryDirectory
                 .appendingPathComponent("tablepro-tests")
-                .appendingPathComponent("catalog-edit-schema-filter-\(unique).json"),
+                .appendingPathComponent("catalog-edit-schema-filter-\(unique)", isDirectory: true)
+                .appendingPathComponent("connections.json"),
             userDefaults: defaults,
             syncJournal: tracker.journal,
             keychain: InMemoryKeychain()

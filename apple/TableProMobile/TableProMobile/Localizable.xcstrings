@@ -23720,6 +23720,9 @@
         }
       }
     },
+    "Sync waits until you unlock this device. It starts again on its own." : {
+
+    },
     "Sync with iCloud" : {
       "localizations" : {
         "ko" : {

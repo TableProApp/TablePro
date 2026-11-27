@@ -1,42 +1,47 @@
 // The TablePro Sync pass (0051, Protocol; Restore; 0054, The engine): the scopes body, then each scope's pull, the key
 // objects a new epoch needs pushed back, the flows to resume, each scope's push with its outbox, and the stop reports.
 
+mod identity;
 mod keys;
 mod pull;
 mod push;
 mod refill;
 mod scopes;
+mod team_library;
 
+pub use identity::unsent_changes;
 use push::AfterPush;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_keys::encoding::KeyPurpose;
+use tablepro_records::Kind;
 
 use crate::adapters::approval::Queue;
 use crate::adapters::categories::DeviceCategories;
 use crate::adapters::conflict::Conflicts;
 use crate::api::adapter::StoreStamp;
 use crate::api::control::{
-    ConflictChoice, HeldRecord, HeldRecordReason, PassReason, PendingApproval, SyncCategories, SyncControl, SyncPhase,
-    SyncStatus, TeamConflict,
+    ConflictChoice, HeldRecord, HeldRecordReason, MovePlan, NewIdentityChoice, NewIdentityPlan, PassReason,
+    PendingApproval, SyncCategories, SyncControl, SyncPhase, SyncStatus, TeamConflict,
 };
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    ApprovalDecision, KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow,
-    Table,
+    ApprovalDecision, KeyVersionState, MovePhase, MoveRow, Provider, Row, RowKey, RowRange, Standing, StateIdentity,
+    StateStore, StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
 };
 use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{
     Adapters, Clock, EngineEvents, EngineHooks, Fence, Journal, JournalEntry, JournalIds, Pass, StopSignal,
 };
+use crate::moves::{Arrival, MoveFence};
 
 // What the service carries for this device (0054, Providers). Team scopes always use it, and so do the key objects in
 // the personal scope, since team secrets need the account keys; personal data only while it is the personal provider.
@@ -63,6 +68,10 @@ pub struct ServiceParts {
     pub categories: SyncCategories,
     // Known before the first pass, so no pass of a device on iCloud or Off ever carries personal data.
     pub mode: ServiceMode,
+    // This account follows another account or server on this device: the changes the last one's file held unsent,
+    // which the opener counts with `unsent_changes`. Nothing personal goes up until the person chooses (0054,
+    // Another account or server).
+    pub follows: Option<u64>,
 }
 
 pub struct ServiceSync {
@@ -84,6 +93,12 @@ pub struct ServiceSync {
     mode: Mutex<ServiceMode>,
     // What the last full pass found to send, per scope, so the count shown leaves out the scopes that rest.
     queued: Mutex<HashMap<ScopeName, usize>>,
+    // The managed values forbid personal data on TablePro Sync for this engine's life.
+    policy_forbids: std::sync::atomic::AtomicBool,
+    // A restored or replaced file's move row was dropped, so the rows this engine writes since are its own.
+    stale_move_dropped: std::sync::atomic::AtomicBool,
+    // The person chose for the account this engine follows another one with.
+    chosen: std::sync::atomic::AtomicBool,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -92,14 +107,14 @@ pub struct ServiceSync {
     history_window: Mutex<Option<u32>>,
     // The scopes as the last body served them, which the app reads while a pass holds the session.
     scopes_seen: Mutex<Vec<ScopeInfo>>,
+    follows: Option<u64>,
+    team_library: team_library::TeamLibrarySlot,
 }
 
 #[derive(Debug, Default)]
 struct Session {
     etag: Option<String>,
     body: Option<ScopesBody>,
-    // Changes the server refused, by what they would send, so a pass does not send them again until they change.
-    refused: HashMap<RecordKey, ([u8; 32], String)>,
     stale_handled: bool,
     // What each scope's waiting envelopes were last judged against in a snapshot.
     waited: HashMap<ScopeName, keys::KeyMark>,
@@ -112,24 +127,34 @@ pub struct PassReport {
     pub pushed: usize,
     pub conflicts: usize,
     pub refused: Vec<(RecordKey, String)>,
+    // The scopes this pass reached, as the device's keys and lock let it.
+    pub reached: Vec<ScopeName>,
+    // Pulled records the store refused to keep, held by id.
+    pub store_refused: Vec<RecordKey>,
     pub skipped: Vec<(ScopeName, &'static str)>,
     pub pull_only: bool,
     pub queued: usize,
     pub queued_in: HashMap<ScopeName, usize>,
+    // What held the push of the own scopes back.
+    pub push_wait: Option<crate::api::state::PushWait>,
 }
 
-// One store as the pass found it: its identity at the start, and whether its kinds refill.
+// One store as the pass found it: its identity at the start, and the kinds that still owe a refill.
 #[derive(Debug, Clone)]
 struct StoreSeen {
     start: StoreStamp,
     stored: Option<StoreStamp>,
-    refill: bool,
+    owed: BTreeSet<Kind>,
+    // This pass found the store restored, replaced or new and marked its kinds.
+    marked: bool,
     scopes: HashSet<ScopeName>,
 }
 
 struct PassCtx {
     body: ScopesBody,
     mode: ServiceMode,
+    // Personal data arriving this pass, and by which rule its snapshot meets the device's records.
+    arrival: Option<Arc<Arrival>>,
     // The device held a key when the pass began, which decides the scopes it reaches; each call reads the key itself.
     keyed: bool,
     stores: HashMap<String, StoreSeen>,
@@ -156,8 +181,12 @@ struct PassCtx {
 }
 
 impl PassCtx {
-    fn refills(&self, store: &str) -> bool {
-        self.stores.get(store).is_some_and(|seen| seen.refill)
+    fn owes(&self, store: &str, kind: Kind) -> bool {
+        self.stores.get(store).is_some_and(|seen| seen.owed.contains(&kind))
+    }
+
+    fn marked(&self, store: &str) -> bool {
+        self.stores.get(store).is_some_and(|seen| seen.marked)
     }
 
     // What a scope takes and sends this pass: in teams-only mode the personal scope keeps to its key objects.
@@ -191,6 +220,44 @@ pub(crate) async fn begin(state: &Arc<dyn StateStore>) -> Result<Box<dyn StateTx
     state.begin().await.map_err(SyncError::from)
 }
 
+// The stores whose records another store held before: the saved queries, their folders and favourites split out of
+// the history's file (K4h).
+const SPLIT_FROM: [(&str, &str); 1] = [(
+    crate::adapters::saved_queries::SAVED_QUERY_STORE,
+    crate::adapters::history::HISTORY_STORE,
+)];
+
+// A store this file never saw, split out of one the file did see: its kinds keep their bases and merge as before, so
+// an edit made offline before the split still goes up, and a refill the old store's name still owed moves with it
+// (K4h; Codex review round 2). A file that never saw the old store either, as a new or stale one, refills as usual.
+async fn carried_over(
+    txn: &mut dyn StateTxn,
+    store: &str,
+    kind: Kind,
+    known: &HashSet<String>,
+) -> Result<bool, SyncError> {
+    let Some((_, old)) = SPLIT_FROM.iter().find(|(new, _)| *new == store) else {
+        return Ok(false);
+    };
+    if !known.contains(*old) {
+        return Ok(false);
+    }
+    let name = KindName::of(kind);
+    if txn
+        .get(&RowKey::StoresKind((*old).to_owned(), name.clone()))
+        .await?
+        .is_some()
+    {
+        txn.delete(&RowKey::StoresKind((*old).to_owned(), name.clone())).await?;
+        txn.put(Row::StoresKind(StoresKindRow {
+            store: store.to_owned(),
+            kind: name,
+        }))
+        .await?;
+    }
+    Ok(true)
+}
+
 impl ServiceSync {
     pub fn new(parts: ServiceParts) -> Self {
         Self {
@@ -207,6 +274,9 @@ impl ServiceSync {
             events: parts.events,
             mode: Mutex::new(parts.mode),
             queued: Mutex::default(),
+            policy_forbids: std::sync::atomic::AtomicBool::new(false),
+            stale_move_dropped: std::sync::atomic::AtomicBool::new(false),
+            chosen: std::sync::atomic::AtomicBool::new(false),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),
@@ -221,6 +291,8 @@ impl ServiceSync {
             categories: Mutex::new(DeviceCategories::from(&parts.categories)),
             history_window: Mutex::new(None),
             scopes_seen: Mutex::new(Vec::new()),
+            follows: parts.follows,
+            team_library: team_library::TeamLibrarySlot::default(),
         }
     }
 
@@ -257,6 +329,11 @@ impl ServiceSync {
         *self.history_window.lock().unwrap_or_else(PoisonError::into_inner) = entries;
     }
 
+    // The sign-in this engine's state file belongs to.
+    pub fn identity(&self) -> &StateIdentity {
+        self.state.identity()
+    }
+
     pub fn mode(&self) -> ServiceMode {
         *self.mode.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -264,6 +341,11 @@ impl ServiceSync {
     // Between passes: a move between providers, or the person turning personal sync on or off. Turning it on reads the
     // personal scope again on the next pass, since its kinds were off meanwhile.
     pub async fn set_mode(&self, mode: ServiceMode) {
+        let mode = if self.policy_rests() {
+            ServiceMode::TeamsOnly
+        } else {
+            mode
+        };
         let leaving = mode == ServiceMode::TeamsOnly;
         if leaving {
             self.leaving.fetch_add(1, Ordering::SeqCst);
@@ -290,10 +372,20 @@ impl ServiceSync {
 
     fn check_stop(&self) -> Result<(), SyncError> {
         self.stop.check()?;
-        if self.switching() {
+        if self.switching() || (self.policy_rests() && self.mode() == ServiceMode::Personal) {
             return Err(SyncError::Cancelled);
         }
         Ok(())
+    }
+
+    // The managed values forbid personal data on TablePro Sync (0055): it rests for this engine's life, and no move
+    // or mode change brings it back, so a move in flight when they changed commits nothing more.
+    pub fn forbid_personal(&self) {
+        self.policy_forbids.store(true, Ordering::SeqCst);
+    }
+
+    fn policy_rests(&self) -> bool {
+        self.policy_forbids.load(Ordering::SeqCst)
     }
 
     fn switching(&self) -> bool {
@@ -379,12 +471,292 @@ impl ServiceSync {
 
     pub async fn run_pass(&self, why: PassReason) -> Result<PassReport, SyncError> {
         let mut session = self.session.lock().await;
+        self.pass_locked(&mut session, why, None).await
+    }
+
+    // Personal data arrives from another provider or from none (0054, Moving between providers): what the service file
+    // kept of the personal scope while it rested is let go, its pull starts from a snapshot that meets the device's
+    // records by `arrival`'s rule, and personal sync is on from then. One that fails leaves personal data resting. The
+    // `moves` row holds the arrival open from the commit that lets go until the commit that ends it, so a move called
+    // again after it stopped short, in this process or after a restart, goes on from the bases its first try committed
+    // and a record merged then never meets the marker again.
+    pub(crate) async fn run_arrival(&self, arrival: Arrival, fence: &MoveFence<'_>) -> Result<PassReport, SyncError> {
+        let mut session = self.session.lock().await;
+        self.check_stop()?;
+        if self.policy_rests() {
+            return Err(SyncError::NotAllowed {
+                what: "personal data on TablePro Sync while the managed policy forbids it",
+            });
+        }
+        let from = arrival.from();
+        let open = matches!(
+            self.move_row().await?,
+            Some(MoveRow {
+                target: Provider::Service,
+                phase: MovePhase::Open,
+                ..
+            })
+        );
+        // A move back that went through rests personal data here; a new arrival starts over from it.
+        if !open {
+            self.let_go_of_personal(matches!(arrival, Arrival::FirstUpload), from, fence)
+                .await?;
+        }
+        let before = std::mem::replace(
+            &mut *self.mode.lock().unwrap_or_else(PoisonError::into_inner),
+            ServiceMode::Personal,
+        );
+        let outcome = match self
+            .pass_locked(&mut session, PassReason::Person, Some(Arc::new(arrival)))
+            .await
+        {
+            Ok(report) => self.arrived(report, fence).await,
+            Err(error) => Err(error),
+        };
+        if outcome.is_err() {
+            *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = before;
+            self.refresh_counts().await;
+        }
+        outcome
+    }
+
+    // The personal scope was pulled to the end and nothing personal is left to send, so no record goes up later without
+    // the rules of the move. The row then says done until the app keeps TablePro Sync as its provider, so a move that
+    // went through while the app was not watching still tells it.
+    async fn arrived(&self, report: PassReport, fence: &MoveFence<'_>) -> Result<PassReport, SyncError> {
+        let personal = ScopeName::Personal;
+        let reached = report.reached.contains(&personal)
+            && !report.pull_only
+            && !report.skipped.iter().any(|(scope, _)| *scope == personal)
+            && self.scope_row(personal).await?.is_some_and(|row| row.caught_up);
+        if !reached || self.unsent(personal).await? != 0 {
+            return Err(SyncError::MoveIncomplete);
+        }
+        let from = self.move_row().await?.and_then(|row| row.from);
+        let mut txn = begin(&self.state).await?;
+        txn.put(Row::Move(MoveRow {
+            from,
+            target: Provider::Service,
+            phase: MovePhase::Done,
+        }))
+        .await?;
+        let _held = fence.hold().await?;
+        self.check_stop()?;
+        txn.commit().await?;
+        Ok(report)
+    }
+
+    // The app keeps the move's target as its provider: the row has told it and goes.
+    pub async fn clear_done_move(&self) -> Result<(), SyncError> {
+        if self.move_row().await?.is_some_and(|row| row.phase == MovePhase::Done) {
+            let mut txn = begin(&self.state).await?;
+            txn.delete(&RowKey::Move).await?;
+            txn.commit().await?;
+        }
+        Ok(())
+    }
+
+    // The move this file holds open or done, if any. A file restored or replaced under the device holds none it can
+    // act on: an old row is no consent to move again, and the refill drops it.
+    pub async fn move_row(&self) -> Result<Option<MoveRow>, SyncError> {
+        if self.state.opened().sync_tables == crate::api::state::SyncTrust::Refill
+            && !self.stale_move_dropped.swap(true, Ordering::SeqCst)
+        {
+            let mut txn = begin(&self.state).await?;
+            txn.delete(&RowKey::Move).await?;
+            txn.commit().await?;
+        }
+        Ok(match begin(&self.state).await?.get(&RowKey::Move).await? {
+            Some(Row::Move(row)) => Some(row),
+            _ => None,
+        })
+    }
+
+    // A move back to iCloud starts: until it ends, personal data rests here as on iCloud, after a restart too.
+    pub(crate) async fn leave_for_icloud(&self, fence: &MoveFence<'_>) -> Result<(), SyncError> {
+        let mut txn = begin(&self.state).await?;
+        txn.put(Row::Move(MoveRow {
+            from: Some(Provider::Service),
+            target: Provider::ICloud,
+            phase: MovePhase::Open,
+        }))
+        .await?;
+        let _held = fence.hold().await?;
+        self.check_stop()?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    // The move back went through: iCloud holds the personal data, which stays resting here; the row says done until the
+    // app keeps iCloud as its provider.
+    pub(crate) async fn left_for_icloud(&self, fence: &MoveFence<'_>) -> Result<(), SyncError> {
+        self.set_mode(ServiceMode::TeamsOnly).await;
+        let mut txn = begin(&self.state).await?;
+        txn.put(Row::Move(MoveRow {
+            from: Some(Provider::Service),
+            target: Provider::ICloud,
+            phase: MovePhase::Done,
+        }))
+        .await?;
+        let _held = fence.hold().await?;
+        self.check_stop()?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    // Personal records the person deleted on the service that this device no longer holds: what a move back to iCloud
+    // may delete there. A `policy` tombstone is not one (0051, Tombstones).
+    pub(crate) async fn deleted_by_the_person(&self) -> Result<Vec<RecordKey>, SyncError> {
+        let scope = ScopeName::Personal;
+        let rows = begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Bases, scope))
+            .await?;
+        let held = self.personal_ids().await?;
+        let mut deleted = Vec::new();
+        for row in rows {
+            let Row::Base(base) = row else { continue };
+            let Some(kind) = base.key.kind.known() else { continue };
+            if base.deleted != Some(crate::api::transport::DeletedReason::User) || kind.is_key() {
+                continue;
+            }
+            if !held.get(&kind).is_some_and(|ids| ids.contains(&base.key.record_id)) {
+                deleted.push(base.key);
+            }
+        }
+        Ok(deleted)
+    }
+
+    // The ids each personal store holds, readable or not.
+    pub(crate) async fn personal_ids(&self) -> Result<HashMap<Kind, HashSet<String>>, SyncError> {
+        let scope = ScopeName::Personal;
+        let mut held: HashMap<Kind, HashSet<String>> = HashMap::new();
+        for adapter in self.adapters.in_scope(scope) {
+            let local = adapter.records(scope).await?;
+            let ids = local
+                .records
+                .into_iter()
+                .map(|record| record.record_id)
+                .chain(local.unreadable);
+            held.entry(adapter.kind()).or_default().extend(ids);
+        }
+        Ok(held)
+    }
+
+    // What a move of personal data here takes and what stays on the device (0054, Moving between providers).
+    pub(crate) async fn personal_plan(&self) -> Result<MovePlan, SyncError> {
+        let categories = self.categories();
+        let mut plan = MovePlan {
+            records: 0,
+            staying_behind: 0,
+            secrets_to_seal: 0,
+        };
+        for adapter in self.adapters.in_scope(ScopeName::Personal) {
+            let kind = adapter.kind();
+            for record in adapter.records(ScopeName::Personal).await?.records {
+                let goes = record.standing == Standing::Syncs && categories.syncs(kind);
+                match (goes, kind) {
+                    (true, Kind::SecretEnvelope) => plan.secrets_to_seal += 1,
+                    (true, _) => plan.records += 1,
+                    (false, _) => plan.staying_behind += 1,
+                }
+            }
+        }
+        Ok(plan)
+    }
+
+    // Every personal row but the key objects': bases, held records, refill copies, waiting values and the batch in
+    // flight, so nothing an earlier spell on TablePro Sync agreed stands in for the copy the arrival meets. A first
+    // upload refills, in the same commit, each kind that lives in the personal scope alone (0066, Per-kind refills),
+    // so the marks outlive a restart and a kind a team scope shares, as the envelopes, takes no refill there.
+    async fn let_go_of_personal(
+        &self,
+        refills: bool,
+        from: Option<Provider>,
+        fence: &MoveFence<'_>,
+    ) -> Result<(), SyncError> {
+        let scope = ScopeName::Personal;
+        let mut txn = begin(&self.state).await?;
+        txn.put(Row::Move(MoveRow {
+            from,
+            target: Provider::Service,
+            phase: MovePhase::Open,
+        }))
+        .await?;
+        if refills {
+            for adapter in self.adapters.in_scope(scope) {
+                let kind = adapter.kind();
+                if kind.is_key() || kind.scopes() != [tablepro_records::Scope::Personal] {
+                    continue;
+                }
+                txn.put(Row::StoresKind(StoresKindRow {
+                    store: adapter.store().to_owned(),
+                    kind: KindName::of(kind),
+                }))
+                .await?;
+            }
+        }
+        for table in [
+            Table::Bases,
+            Table::Held,
+            Table::Deferred,
+            Table::Approvals,
+            Table::Conflicts,
+        ] {
+            for row in txn.scan(&RowRange::Scope(table, scope)).await? {
+                let key = match &row {
+                    Row::Base(row) => &row.key,
+                    Row::Held(row) => &row.key,
+                    Row::Deferred(row) => &row.key,
+                    Row::Approval(row) => &row.key,
+                    Row::Conflict(row) => &row.key,
+                    _ => continue,
+                };
+                if !key.kind.is_key() {
+                    txn.delete(&row.key()).await?;
+                }
+            }
+        }
+        txn.delete(&RowKey::Outbox(scope)).await?;
+        if let Some(Row::Scope(mut row)) = txn.get(&RowKey::Scope(scope)).await? {
+            row.cursor = None;
+            row.read_kinds.clear();
+            txn.put(Row::Scope(row)).await?;
+        }
+        let _held = fence.hold().await?;
+        self.check_stop()?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    async fn pass_locked(
+        &self,
+        session: &mut Session,
+        why: PassReason,
+        arrival: Option<Arc<Arrival>>,
+    ) -> Result<PassReport, SyncError> {
         tracing::debug!(?why, "sync pass");
+        // A move back to iCloud, open or done, keeps personal data resting here until the person moves it again, and so
+        // does a managed policy that forbids it.
+        if self.policy_rests() {
+            *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = ServiceMode::TeamsOnly;
+        }
+        if matches!(
+            self.move_row().await,
+            Ok(Some(MoveRow {
+                target: Provider::ICloud,
+                ..
+            }))
+        ) {
+            *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = ServiceMode::TeamsOnly;
+        }
         self.set_phase(SyncPhase::Syncing);
+        self.before_team_pass().await;
         let taken = self.journal.take();
         let named = (why == PassReason::Journal).then(|| taken.clone());
         let journal_only = named.is_some();
-        let outcome = self.run(&mut session, named).await;
+        let outcome = self.run(session, named, arrival).await;
+        self.after_team_pass(session, &outcome).await;
         if outcome.is_err() {
             self.journal.give_back(taken);
         }
@@ -395,9 +767,16 @@ impl ServiceSync {
         outcome
     }
 
-    async fn run(&self, session: &mut Session, named: Option<JournalIds>) -> Result<PassReport, SyncError> {
+    async fn run(
+        &self,
+        session: &mut Session,
+        named: Option<JournalIds>,
+        arrival: Option<Arc<Arrival>>,
+    ) -> Result<PassReport, SyncError> {
         self.check_stop()?;
         self.refill_stale_file(session).await?;
+        self.count_recovery_wait().await?;
+        self.owe_account_choice().await?;
         self.queue().finish_decided().await?;
         let body = self.poll_scopes(session).await?;
         let keyed = self.keys.dpop_key().await?.is_some();
@@ -408,6 +787,7 @@ impl ServiceSync {
         let mut ctx = PassCtx {
             body,
             mode: self.mode(),
+            arrival,
             keyed,
             stores: HashMap::new(),
             snapshots_done: HashSet::new(),
@@ -427,6 +807,7 @@ impl ServiceSync {
         self.read_stores(&mut ctx, &scopes).await?;
         // Each scope as the newest scopes body says, which a re-read after an expired cursor may have replaced.
         let names: Vec<ScopeName> = scopes.iter().map(|info| info.scope).collect();
+        ctx.report.reached.clone_from(&names);
         for scope in &names {
             if let Some(info) = ctx.body.scopes.iter().find(|info| info.scope == *scope).cloned() {
                 self.pull_or_skip(&mut ctx, session, &info).await?;
@@ -509,7 +890,7 @@ impl ServiceSync {
         }
         let mut info = info.clone();
         for _ in 0..ROUNDS {
-            let after = match self.push_scope(ctx, session, &info).await {
+            let after = match self.push_scope(ctx, &info).await {
                 Err(error) => match scope_refusal(&error) {
                     Some(code) => {
                         ctx.report.skipped.push((info.scope, code));
@@ -544,7 +925,7 @@ impl ServiceSync {
             .scopes
             .iter()
             .filter(|info| match info.scope {
-                ScopeName::Team(_) => true,
+                ScopeName::Team(_) => !self.team_library_off(),
                 ScopeName::Personal => ctx.keyed && !locked,
                 ScopeName::History => {
                     ctx.mode == ServiceMode::Personal && ctx.keyed && !locked && info.approved == Some(true)
@@ -554,9 +935,31 @@ impl ServiceSync {
             .collect()
     }
 
-    // Each store's identity against what the state saw (0054, Store identity; 0060). One the state never saw, as on
-    // the first pass or after a stale file, refills too.
+    // Each store's identity against what the state saw (0054, Store identity; 0060). A new generation or a lower
+    // sequence, or a store the state never saw, as on the first pass or after a stale file, owes each of its kinds a
+    // refill in `stores_kinds`, in the commit that moves its row (0066, Per-kind refills). A kind takes it once its
+    // category is on, so a pass cut short, or a kind that is off, refills later.
     async fn read_stores(&self, ctx: &mut PassCtx, scopes: &[ScopeInfo]) -> Result<(), SyncError> {
+        // The stores the file held rows of as this pass began, before it writes any.
+        let known: HashSet<String> = begin(&self.state)
+            .await?
+            .scan(&RowRange::Table(Table::Stores))
+            .await?
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Store(row) => Some(row.store),
+                _ => None,
+            })
+            .collect();
+        let mut kinds: HashMap<String, BTreeSet<Kind>> = HashMap::new();
+        for info in scopes {
+            for adapter in self.adapters.in_scope(info.scope) {
+                kinds
+                    .entry(adapter.store().to_owned())
+                    .or_default()
+                    .insert(adapter.kind());
+            }
+        }
         for info in scopes {
             for adapter in self.adapters.in_scope(info.scope) {
                 let store = adapter.store().to_owned();
@@ -565,27 +968,52 @@ impl ServiceSync {
                     continue;
                 }
                 let start = adapter.identity().await?;
-                let stored = match begin(&self.state).await?.get(&RowKey::Store(store.clone())).await? {
+                let mut txn = begin(&self.state).await?;
+                let stored = match txn.get(&RowKey::Store(store.clone())).await? {
                     Some(Row::Store(row)) => Some(StoreStamp {
                         generation: row.generation,
                         sequence: row.sequence,
                     }),
                     _ => None,
                 };
-                let refill = stored.is_none_or(|stored| start.needs_refill(stored));
-                // Kept as a missing row until the refill is done, so a pass cut short refills again and the writes
-                // of a half-done refill never read as the store going on.
-                if refill && stored.is_some() {
-                    self.check_stop()?;
-                    let mut txn = begin(&self.state).await?;
-                    txn.delete(&RowKey::Store(store.clone())).await?;
+                let marked = stored.is_none_or(|stored| start.needs_refill(stored));
+                if marked {
+                    for kind in kinds.get(&store).into_iter().flatten() {
+                        if stored.is_none() && carried_over(txn.as_mut(), &store, *kind, &known).await? {
+                            continue;
+                        }
+                        txn.put(Row::StoresKind(StoresKindRow {
+                            store: store.clone(),
+                            kind: KindName::of(*kind),
+                        }))
+                        .await?;
+                    }
+                    txn.put(Row::Store(StoreRow {
+                        store: store.clone(),
+                        generation: start.generation,
+                        sequence: start.sequence,
+                    }))
+                    .await?;
                     self.check_stop()?;
                     txn.commit().await?;
+                    txn = begin(&self.state).await?;
                 }
+                let owed = txn
+                    .scan(&RowRange::Table(Table::StoresKinds))
+                    .await?
+                    .into_iter()
+                    .filter_map(|row| match row {
+                        Row::StoresKind(row) if row.store == store => row.kind.known(),
+                        _ => None,
+                    })
+                    .collect();
+                drop(txn);
+                // The row this pass wrote, or the one the state held, so a store that moved on since gets its row.
                 let seen = StoreSeen {
                     start,
-                    stored: stored.filter(|_| !refill),
-                    refill,
+                    stored: if marked { Some(start) } else { stored },
+                    owed,
+                    marked,
                     scopes: HashSet::from([info.scope]),
                 };
                 ctx.stores.insert(store, seen);
@@ -594,13 +1022,10 @@ impl ServiceSync {
         Ok(())
     }
 
-    // A store that went on has its newer sequence kept. A refilling store's row goes in with its last snapshot.
+    // A store that went on has its newer sequence kept; the kinds it still owes a refill keep their marks.
     async fn write_stores(&self, ctx: &PassCtx) -> Result<(), SyncError> {
         let mut rows = Vec::new();
         for (store, seen) in &ctx.stores {
-            if seen.refill {
-                continue;
-            }
             if let Some(row) = self.store_row(store, seen).await? {
                 rows.push(row);
             }
@@ -639,37 +1064,66 @@ impl ServiceSync {
         }))
     }
 
-    // The refilling stores whose every scope has its snapshot once `scope`'s is done, which settle in that commit;
-    // `except` waits.
-    async fn settled_stores(
+    // The refills `scope`'s snapshot ends: each owed kind whose category is on and whose every scope has its snapshot
+    // once `scope`'s is done, of a store not replaced during the pass, clears its mark in that commit. `except` waits,
+    // and a kind that is off keeps its mark until it is on (0066, Per-kind refills).
+    async fn settled_refills(
         &self,
         ctx: &mut PassCtx,
         scope: ScopeName,
         except: Option<&str>,
-    ) -> Result<Vec<Row>, SyncError> {
-        let mut rows = Vec::new();
+    ) -> Result<Vec<RowKey>, SyncError> {
         let done = |held: &ScopeName| *held == scope || ctx.snapshots_done.contains(held);
-        let settling: Vec<String> = ctx
-            .stores
-            .iter()
-            .filter(|(store, _)| except != Some(store.as_str()))
-            .filter(|(_, seen)| seen.refill && seen.scopes.contains(&scope) && seen.scopes.iter().all(done))
-            .map(|(store, _)| store.clone())
-            .collect();
-        for store in settling {
-            let Some(seen) = ctx.stores.get_mut(&store) else {
-                continue;
-            };
-            if let Some(Row::Store(row)) = self.store_row(&store, seen).await? {
-                seen.refill = false;
-                seen.stored = Some(StoreStamp {
-                    generation: row.generation,
-                    sequence: row.sequence,
-                });
-                rows.push(Row::Store(row));
+        let mut settling: Vec<(String, Kind)> = Vec::new();
+        for (store, seen) in ctx.stores.iter().filter(|(store, _)| except != Some(store.as_str())) {
+            for kind in seen.owed.iter().filter(|kind| ctx.categories.syncs(**kind)) {
+                // A scope this mode does not carry the kind in, as the personal scope of a teams-only pass, meets it
+                // again when it arrives, so only the scopes that carry it take the refill.
+                let scopes: Vec<ScopeName> = seen
+                    .scopes
+                    .iter()
+                    .copied()
+                    .filter(|held| ctx.categories_in(*held).syncs(*kind))
+                    .filter(|held| {
+                        self.adapters
+                            .in_scope(*held)
+                            .iter()
+                            .any(|adapter| adapter.store() == store && adapter.kind() == *kind)
+                    })
+                    .collect();
+                if scopes.contains(&scope) && scopes.iter().all(done) {
+                    settling.push((store.clone(), *kind));
+                }
             }
         }
-        Ok(rows)
+        let mut cleared = Vec::new();
+        for (store, kind) in settling {
+            let Some(seen) = ctx.stores.get(&store) else {
+                continue;
+            };
+            if !self.went_on(&store, seen).await? {
+                continue;
+            }
+            if let Some(seen) = ctx.stores.get_mut(&store) {
+                seen.owed.remove(&kind);
+            }
+            cleared.push(RowKey::StoresKind(store, KindName::of(kind)));
+        }
+        Ok(cleared)
+    }
+
+    // The store kept its generation and moved only forward since the pass began.
+    async fn went_on(&self, store: &str, seen: &StoreSeen) -> Result<bool, SyncError> {
+        let adapter = seen
+            .scopes
+            .iter()
+            .flat_map(|scope| self.adapters.in_scope(*scope))
+            .find(|adapter| adapter.store() == store);
+        let Some(adapter) = adapter else {
+            return Ok(false);
+        };
+        let now = adapter.identity().await?;
+        Ok(now.generation == seen.start.generation && now.sequence >= seen.start.sequence)
     }
 
     // A restored, replaced or uncertain state file trusts none of its sync tables: every store refills, so the pull
@@ -684,6 +1138,7 @@ impl ServiceSync {
             for row in txn.scan(&RowRange::Table(Table::Stores)).await? {
                 txn.delete(&row.key()).await?;
             }
+            txn.delete(&RowKey::Move).await?;
             self.check_stop()?;
             txn.commit().await?;
         }
@@ -705,11 +1160,14 @@ impl ServiceSync {
         status.last_pass_ms = Some(self.clock.now_ms());
         match outcome {
             Ok(report) => {
-                status.problem = None;
+                // A record the store refused is held, never dropped silently: the pass that held it says so.
+                status.problem = (!report.store_refused.is_empty()).then_some(crate::api::error::UNREADABLE);
                 if !journal_only {
                     status.queued_changes = queued;
                 }
-                status.phase = if report.pull_only {
+                status.phase = if report.push_wait.is_some() {
+                    SyncPhase::NewIdentity
+                } else if report.pull_only {
                     SyncPhase::PullOnly
                 } else {
                     SyncPhase::Idle
@@ -837,6 +1295,15 @@ impl SyncControl for ServiceSync {
         Ok(waiting)
     }
 
+    async fn plan_new_identity(&self) -> Result<NewIdentityPlan, SyncError> {
+        let _session = self.session.lock().await;
+        self.plan_choice().await
+    }
+
+    async fn choose_for_new_identity(&self, choice: NewIdentityChoice, account: String) -> Result<(), SyncError> {
+        self.answer_choice(choice, &account).await
+    }
+
     async fn decide_approval(
         &self,
         key: RecordKey,
@@ -871,7 +1338,23 @@ impl SyncControl for ServiceSync {
                 what: "decide on personal data while TablePro Sync is not the personal provider",
             });
         }
-        self.conflict_table().resolve(&key, seen, keep).await?;
+        let mine = self.team_conflict_side(&key).await?;
+        if let (Some(_), ConflictChoice::KeepMine) = (&mine, keep) {
+            let _read = self.team_keep_mine().await?;
+            let fence = team_library::TeamCommitFence(self);
+            Conflicts {
+                state: &self.state,
+                adapters: self.decided_adapters(),
+                fence: &fence,
+            }
+            .resolve(&key, seen, keep)
+            .await?;
+        } else {
+            self.conflict_table().resolve(&key, seen, keep).await?;
+        }
+        if let Some(mine) = mine {
+            self.team_resolved(&key, keep, mine).await?;
+        }
         drop(session);
         self.refresh_counts().await;
         self.decided(&key);
@@ -900,12 +1383,18 @@ impl SyncControl for ServiceSync {
                 _ => None,
             })
             .collect();
-        drop(txn);
-        let session = self.session.lock().await;
-        held.extend(session.refused.iter().map(|(key, (_, code))| HeldRecord {
-            key: key.clone(),
-            reason: HeldRecordReason::Refused { code: code.clone() },
-        }));
+        held.extend(
+            txn.scan(&RowRange::Table(Table::Refused))
+                .await?
+                .into_iter()
+                .filter_map(|row| match row {
+                    Row::Refused(row) => Some(HeldRecord {
+                        key: row.key,
+                        reason: HeldRecordReason::Refused { code: row.code },
+                    }),
+                    _ => None,
+                }),
+        );
         held.retain(|record| self.shows(&record.key));
         Ok(held)
     }

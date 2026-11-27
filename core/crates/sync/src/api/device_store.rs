@@ -16,6 +16,13 @@ pub trait HostDeviceStore: Send + Sync {
 
     // Deleting an item that is not there succeeds.
     async fn delete(&self, item: DeviceItem) -> Result<(), DeviceStoreError>;
+
+    // Whether this host keeps a device store at all. One that does but answers `Locked` or `Unavailable` is away for
+    // now, and no new state file is made until it answers; one that declares none, as a Linux session without Secret
+    // Service, has nothing to wait for (orchestrator ruling on 0054).
+    fn present(&self) -> bool {
+        true
+    }
 }
 
 // One item. The value's format is the flow's that writes it; the store keeps bytes.
