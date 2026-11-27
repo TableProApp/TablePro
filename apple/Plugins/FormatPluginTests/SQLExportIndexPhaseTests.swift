@@ -38,6 +38,17 @@ struct SQLExportIndexPhaseTests {
             "CREATE TABLE \(table) (id INTEGER)"
         }
 
+        func fetchObjectDDL(_ object: PluginExportTable) async throws -> String {
+            switch object.kind {
+            case .routine:
+                return "CREATE FUNCTION \(object.name)(v integer) RETURNS integer AS $$ SELECT v $$ LANGUAGE sql IMMUTABLE"
+            case .trigger:
+                return "CREATE TRIGGER \(object.name) BEFORE INSERT ON orders FOR EACH ROW EXECUTE FUNCTION norm()"
+            default:
+                return try await fetchTableDDL(table: object.name, databaseName: object.databaseName)
+            }
+        }
+
         func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] {
             if failingTables.contains(table) {
                 throw StubError.unreadable
@@ -73,6 +84,12 @@ struct SQLExportIndexPhaseTests {
             name: name, databaseName: "", tableType: "table", optionValues: optionValues, schema: nil)
     }
 
+    private func object(_ name: String, kind: PluginExportObjectKind) -> PluginExportTable {
+        PluginExportTable(
+            name: name, databaseName: "", tableType: kind.rawValue, optionValues: [true, true, true], schema: nil,
+            kind: kind)
+    }
+
     private func runExport(
         tables: [PluginExportTable],
         dataSource: StubExportDataSource
@@ -105,6 +122,19 @@ struct SQLExportIndexPhaseTests {
         let (dump, _) = try await runExport(tables: [table("orders")], dataSource: source)
 
         #expect(try offset(of: "INSERT INTO", in: dump) < offset(of: "CREATE INDEX", in: dump))
+    }
+
+    @Test("An index sits between the routines it can call and the triggers that could fire on it")
+    func indexesFollowTheRoutinesAndPrecedeTheTriggers() async throws {
+        let source = StubExportDataSource(
+            indexDDL: ["orders": ["CREATE INDEX idx_orders_norm ON orders (norm(id))"]])
+        let (dump, _) = try await runExport(
+            tables: [table("orders"), object("norm", kind: .routine), object("audit_ddl", kind: .trigger)],
+            dataSource: source)
+
+        let index = try offset(of: "CREATE INDEX idx_orders_norm", in: dump)
+        #expect(try offset(of: "CREATE FUNCTION norm", in: dump) < index)
+        #expect(try index < offset(of: "CREATE TRIGGER audit_ddl", in: dump))
     }
 
     @Test("Index statements are written after every table is created")

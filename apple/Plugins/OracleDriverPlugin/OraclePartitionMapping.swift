@@ -20,8 +20,8 @@ nonisolated internal struct OracleCatalogPartition: Equatable {
     }
 }
 
-// A partition is a segment of one table, with no schema or name to open, drop or rename. It carries its position, not
-// its bound: `HIGH_VALUE` is a LONG, which OracleNIO cannot decode.
+// A partition is a segment of one table, with no schema or name to open, drop or rename. It carries its position:
+// `PluginPartitionInfo` has no field for a bound.
 nonisolated internal enum OraclePartitionMapping {
     internal static func partitions(from catalog: [OracleCatalogPartition]) -> [PluginPartitionInfo] {
         catalog.flatMap { partition -> [PluginPartitionInfo] in

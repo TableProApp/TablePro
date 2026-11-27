@@ -126,7 +126,7 @@ nonisolated struct OracleExportCatalog: Sendable {
         }
         let columns = try await fetchColumns(table: table, schema: schema)
         let constraints = try await run(
-            OracleSchemaQueries.tableConstraints(schema: owner, table: table, release: release)
+            OracleSchemaQueries.tableConstraints(schema: owner, table: table)
         )
         return try OracleTableDDL.createTable(
             qualifiedTable: Self.qualified(owner, table),
@@ -136,28 +136,20 @@ nonisolated struct OracleExportCatalog: Sendable {
         )
     }
 
-    // ALL_VIEWS.TEXT is a LONG, which crashes OracleNIO, and DBMS_METADATA.GET_DDL on the wrong object type raises
-    // ORA-31603, which breaks its connection state machine. TEXT_VC is a VARCHAR2(4000).
+    // DBMS_METADATA.GET_DDL on the wrong object type raises ORA-31603, which breaks the connection's state machine.
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let owner = effectiveSchema(schema)
         let rows = try await cells(OracleSchemaQueries.viewDefinition(schema: owner, view: view))
         return try await viewStatement(from: rows, schema: owner, view: view)
     }
 
-    // TEXT_VC is the view's SELECT alone; written bare, a restore ran the query and created no view.
+    // TEXT is the view's SELECT alone; written bare, a restore ran the query and created no view.
     private func viewStatement(from rows: [[PluginCellValue]], schema: String, view: String) async throws -> String {
         guard let row = rows.first, let body = row.first?.asText,
               !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw OracleStatementError(
                 message: String(format: String(localized: "Oracle returned no definition for view '%@'."), view)
             )
-        }
-        guard !OracleSchemaQueries.isViewTextTruncated(
-            storedLength: row[safe: 1]?.asText, returnedLength: row[safe: 2]?.asText
-        ) else {
-            throw OracleStatementError(message: String(
-                localized: "Oracle returns only the first 4000 bytes of this view's definition, so the full text cannot be read."
-            ))
         }
         return OracleTableDDL.createView(
             qualifiedView: Self.qualified(schema, view),
@@ -176,7 +168,7 @@ nonisolated struct OracleExportCatalog: Sendable {
             table: table,
             quote: OracleObjectQueries.quoteIdentifier)
         let constraints = try await run(
-            OracleSchemaQueries.tableConstraints(schema: owner, table: table, release: release)
+            OracleSchemaQueries.tableConstraints(schema: owner, table: table)
         )
         return indexes + (try OracleTableDDL.afterRowsStatements(
             qualifiedTable: Self.qualified(owner, table),

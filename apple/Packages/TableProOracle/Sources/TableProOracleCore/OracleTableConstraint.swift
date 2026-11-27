@@ -33,8 +33,6 @@ public struct OracleTableConstraint: Sendable, Equatable {
     public let columns: [String]
     // Nil for a key.
     public var condition: String?
-    // `SEARCH_CONDITION_VC` is a VARCHAR2(4000) that cuts a longer condition, so one of 4,000 bytes may be cut short.
-    public let conditionMayBeCut: Bool
     public let isDeferrable: Bool
     public let isInitiallyDeferred: Bool
     public let isEnabled: Bool
@@ -48,7 +46,6 @@ public struct OracleTableConstraint: Sendable, Equatable {
         kind: Kind,
         columns: [String],
         condition: String? = nil,
-        conditionMayBeCut: Bool = false,
         isDeferrable: Bool = false,
         isInitiallyDeferred: Bool = false,
         isEnabled: Bool = true,
@@ -59,7 +56,6 @@ public struct OracleTableConstraint: Sendable, Equatable {
         self.kind = kind
         self.columns = columns
         self.condition = condition
-        self.conditionMayBeCut = conditionMayBeCut
         self.isDeferrable = isDeferrable
         self.isInitiallyDeferred = isInitiallyDeferred
         self.isEnabled = isEnabled
@@ -129,30 +125,25 @@ public struct OracleTableConstraint: Sendable, Equatable {
     }
 }
 
-extension OracleSchemaQueries {
-    // One row per constraint column. Before 12.1 a check's text is only in a LONG oracle-nio cannot decode, so only
-    // the keys are read there.
-    public static func tableConstraints(schema: String, table: String, release: OracleServerRelease) -> String {
-        let readsChecks = release.hasSearchConditionText
-        let condition = readsChecks ? "c.SEARCH_CONDITION_VC" : "NULL"
-        let conditionBytes = readsChecks ? "LENGTHB(c.SEARCH_CONDITION_VC)" : "NULL"
-        let types = readsChecks ? "'P', 'U', 'C'" : "'P', 'U'"
-        return """
-            SELECT c.CONSTRAINT_NAME, c.CONSTRAINT_TYPE, c.DEFERRABLE, c.DEFERRED, c.STATUS, c.GENERATED,
-                   \(condition) AS SEARCH_CONDITION_VC, \(conditionBytes) AS CONDITION_BYTES, cc.COLUMN_NAME,
-                   c.VALIDATED
-            FROM \(OracleDictionary.allConstraints) c
-            LEFT JOIN \(OracleDictionary.allConsColumns) cc ON cc.OWNER = c.OWNER
-                AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME
-            WHERE c.OWNER = '\(escapeLiteral(schema))'
-              AND c.TABLE_NAME = '\(escapeLiteral(table))'
-              AND c.CONSTRAINT_TYPE IN (\(types))
-            ORDER BY c.CONSTRAINT_NAME, cc.POSITION, cc.COLUMN_NAME
-            """
+public extension OracleSchemaQueries {
+    // One row per constraint column. The LONG `SEARCH_CONDITION` holds a check's whole text on every release:
+    // `SEARCH_CONDITION_VC` came with 12.1 and stops at 4,000 bytes.
+    static func tableConstraints(schema: String, table: String) -> String {
+        """
+        SELECT c.CONSTRAINT_NAME, c.CONSTRAINT_TYPE, c.DEFERRABLE, c.DEFERRED, c.STATUS, c.GENERATED,
+               c.SEARCH_CONDITION, cc.COLUMN_NAME, c.VALIDATED
+        FROM \(OracleDictionary.allConstraints) c
+        LEFT JOIN \(OracleDictionary.allConsColumns) cc ON cc.OWNER = c.OWNER
+            AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME
+        WHERE c.OWNER = '\(escapeLiteral(schema))'
+          AND c.TABLE_NAME = '\(escapeLiteral(table))'
+          AND c.CONSTRAINT_TYPE IN ('P', 'U', 'C')
+        ORDER BY c.CONSTRAINT_NAME, cc.POSITION, cc.COLUMN_NAME
+        """
     }
 
     // Keys first, then checks, each by name, so a dump reads the same every time.
-    public static func parseTableConstraints(_ rows: [[OracleRawCell]]) -> [OracleTableConstraint] {
+    static func parseTableConstraints(_ rows: [[OracleRawCell]]) -> [OracleTableConstraint] {
         var order: [String] = []
         var firstRows: [String: (row: [OracleRawCell], kind: OracleTableConstraint.Kind)] = [:]
         var columns: [String: [String]] = [:]
@@ -163,7 +154,7 @@ extension OracleSchemaQueries {
                 order.append(name)
                 firstRows[name] = (row, kind)
             }
-            if let column = row[safe: 8]?.stringValue {
+            if let column = row[safe: 7]?.stringValue {
                 columns[name, default: []].append(column)
             }
         }
@@ -171,22 +162,18 @@ extension OracleSchemaQueries {
             guard let entry = firstRows[name] else { return nil }
             let row = entry.row
             let kind = entry.kind
-            let conditionBytes = row[safe: 7]?.stringValue.flatMap(OracleSchemaQueries.integer)
             return OracleTableConstraint(
                 name: name,
                 kind: kind,
                 columns: columns[name] ?? [],
                 condition: kind == .check ? row[safe: 6]?.stringValue : nil,
-                conditionMayBeCut: kind == .check && (conditionBytes ?? 0) >= maxSearchConditionBytes,
                 isDeferrable: row[safe: 2]?.stringValue == "DEFERRABLE",
                 isInitiallyDeferred: row[safe: 3]?.stringValue == "DEFERRED",
                 isEnabled: row[safe: 4]?.stringValue != "DISABLED",
-                isValidated: row[safe: 9]?.stringValue != "NOT VALIDATED",
+                isValidated: row[safe: 8]?.stringValue != "NOT VALIDATED",
                 hasGeneratedName: row[safe: 5]?.stringValue == "GENERATED NAME"
             )
         }
         return constraints.sorted { ($0.kind.rank, $0.name) < ($1.kind.rank, $1.name) }
     }
-
-    static let maxSearchConditionBytes = 4_000
 }
