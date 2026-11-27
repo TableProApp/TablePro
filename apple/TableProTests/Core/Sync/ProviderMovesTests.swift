@@ -123,8 +123,13 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
         }
     }
 
-    func chooseForNewIdentity(choice: NewIdentityChoiceTag) async throws {
-        log.append("\(name) chooseForNewIdentity \(choice)")
+    func planNewIdentity() async throws -> NewIdentityPlanInfo {
+        log.append("\(name) planNewIdentity")
+        return NewIdentityPlanInfo(unsent: 2, account: "acct-new")
+    }
+
+    func chooseForNewIdentity(choice: NewIdentityChoiceTag, account: String) async throws {
+        log.append("\(name) chooseForNewIdentity \(choice) \(account)")
     }
 
     func deleteIcloudZone() async throws {
@@ -549,9 +554,13 @@ struct ProviderMovesTests {
         for (provider, name) in [(SyncProviderSetting.iCloud, "icloud"), (.tableproSync, "tablepro-sync")] {
             let fixture = Fixture(provider: provider)
 
-            try await fixture.moves.chooseForNewIdentity(.startEmpty)
+            let plan = try await fixture.moves.planNewIdentity()
+            try await fixture.moves.chooseForNewIdentity(.startEmpty, for: plan)
 
-            #expect(fixture.log.all == ["\(name) chooseForNewIdentity startEmpty", "\(name) syncNow"])
+            #expect(plan.unsent == 2)
+            #expect(fixture.log.all == [
+                "\(name) planNewIdentity", "\(name) chooseForNewIdentity startEmpty acct-new", "\(name) syncNow",
+            ])
         }
     }
 
@@ -689,7 +698,8 @@ private final class CoordinatedEngine: SyncEngine, SyncMoveEngine, @unchecked Se
     func moveToService() async throws { record("move to service") }
     func planMoveToIcloud() async throws -> MoveBackPlanInfo { MoveBackPlanInfo(icloudDeletions: 0) }
     func moveToIcloud(confirmedDeletions: UInt64) async throws { record("move to iCloud") }
-    func chooseForNewIdentity(choice: NewIdentityChoiceTag) async throws {}
+    func planNewIdentity() async throws -> NewIdentityPlanInfo { NewIdentityPlanInfo(unsent: 0, account: "") }
+    func chooseForNewIdentity(choice: NewIdentityChoiceTag, account: String) async throws {}
     func deleteIcloudZone() async throws {}
 }
 

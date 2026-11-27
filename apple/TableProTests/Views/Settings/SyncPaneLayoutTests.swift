@@ -197,6 +197,15 @@ struct SyncPaneLayoutTests {
         #expect(failed.serviceStatus == .unavailable)
     }
 
+    @Test("The prompt for another account says how many changes here were never uploaded")
+    func newIdentityMessageCountsUnsent() {
+        let plain = SyncNewIdentityNotice.message(nil)
+        #expect(SyncNewIdentityNotice.message(NewIdentityPlanInfo(unsent: 0, account: "acct")) == plain)
+        let counted = SyncNewIdentityNotice.message(NewIdentityPlanInfo(unsent: 3, account: "acct"))
+        #expect(counted.hasPrefix(plain))
+        #expect(counted.contains("3"))
+    }
+
     @Test("An iCloud account switch asks Move my data or Start empty in place of the status")
     func iCloudNewIdentity() {
         let layout = Self.layout(provider: .iCloud, status: .error(.unexpected), engine: Self.engine(.icloud, .newIdentity))

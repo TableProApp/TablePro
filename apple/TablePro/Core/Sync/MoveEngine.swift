@@ -19,7 +19,8 @@ nonisolated protocol SyncMoveEngine: AnyObject, Sendable {
     func moveToService() async throws
     func planMoveToIcloud() async throws -> MoveBackPlanInfo
     func moveToIcloud(confirmedDeletions: UInt64) async throws
-    func chooseForNewIdentity(choice: NewIdentityChoiceTag) async throws
+    func planNewIdentity() async throws -> NewIdentityPlanInfo
+    func chooseForNewIdentity(choice: NewIdentityChoiceTag, account: String) async throws
     func deleteIcloudZone() async throws
 }
 

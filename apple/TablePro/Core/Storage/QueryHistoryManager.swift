@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import TableProFFI
 import TableProPluginKit
 
 final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, QueryPlanSnapshotReading, Sendable {

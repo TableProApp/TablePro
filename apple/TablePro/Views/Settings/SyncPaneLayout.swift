@@ -180,7 +180,7 @@ struct SyncPaneLayout: Equatable {
         if let problem, SyncEngineRules.error(forProblem: problem) == .waitingForKeychain {
             return .waiting
         }
-        switch phase {
+        return switch phase {
         case .idle: .upToDate
         case .syncing: .syncing
         case .waiting: .waiting

@@ -12215,6 +12215,9 @@
     "%lld changes could not be uploaded to iCloud. They stay on this Mac and go again on the next sync. Everything else is up to date." : {
 
     },
+    "%lld changes here were never uploaded to the earlier account." : {
+
+    },
     "%lld connection" : {
       "localizations" : {
         "fr" : {
@@ -15377,6 +15380,9 @@
           }
         }
       }
+    },
+    "1 change here was never uploaded to the earlier account." : {
+
     },
     "1 character" : {
 
@@ -204257,6 +204263,9 @@
     "Sync through your TablePro account with every device signed in to it, end-to-end encrypted." : {
 
     },
+    "Sync waits for this Mac's keychain. It starts again on its own once the keychain answers." : {
+
+    },
     "Sync your connections, settings, and query history through your TablePro account, end-to-end encrypted." : {
 
     },
@@ -225327,6 +225336,9 @@
           }
         }
       }
+    },
+    "This changed while you were deciding. Look again, then choose." : {
+
     },
     "This check constraint needs a name." : {
 

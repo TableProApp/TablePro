@@ -109,6 +109,8 @@ struct SyncNewIdentityNotice: View {
 
     @State private var isChoosing = false
     @State private var problem: String?
+    // The prompt's account, which the answer names back; nothing is offered before it is read.
+    @State private var plan: NewIdentityPlanInfo?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncNewIdentityNotice")
 
@@ -116,34 +118,57 @@ struct SyncNewIdentityNotice: View {
         SyncNoticeRow(
             symbolName: "person.crop.circle.badge.questionmark",
             title: String(localized: "Signed In to Another Account"),
-            message: problem ?? String(
-                localized: "Move this Mac's data into the account it now syncs with, or start empty with what that account already holds."
-            )
+            message: problem ?? Self.message(plan)
         ) {
             Button(String(localized: "Start Empty")) {
                 choose(.startEmpty)
             }
-            .disabled(isChoosing)
+            .disabled(isChoosing || plan == nil)
             .accessibilityIdentifier("settings-sync-start-empty")
 
             Button(String(localized: "Move My Data")) {
                 choose(.moveMyData)
             }
-            .disabled(isChoosing)
+            .disabled(isChoosing || plan == nil)
             .accessibilityIdentifier("settings-sync-move-my-data")
+        }
+        .task { await readPlan() }
+    }
+
+    static func message(_ plan: NewIdentityPlanInfo?) -> String {
+        let choice = String(
+            localized: "Move this Mac's data into the account it now syncs with, or start empty with what that account already holds."
+        )
+        guard let unsent = plan?.unsent, unsent > 0 else { return choice }
+        let held = unsent == 1
+            ? String(localized: "1 change here was never uploaded to the earlier account.")
+            : String(format: String(localized: "%lld changes here were never uploaded to the earlier account."), Int64(clamping: unsent))
+        return choice + " " + held
+    }
+
+    private func readPlan() async {
+        do {
+            plan = try await moves.planNewIdentity()
+        } catch {
+            Self.logger.error("The plan for the new account did not read: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            problem = ProviderMoves.message(for: error)
         }
     }
 
     private func choose(_ choice: NewIdentityChoiceTag) {
+        guard let plan else { return }
         isChoosing = true
         problem = nil
         Task {
             defer { isChoosing = false }
             do {
-                try await moves.chooseForNewIdentity(choice)
+                try await moves.chooseForNewIdentity(choice, for: plan)
             } catch {
                 Self.logger.error("The choice for the new account failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
                 problem = ProviderMoves.message(for: error)
+                // An answer for an account that changed meanwhile asks again with the new one.
+                self.plan = nil
+                await readPlan()
             }
         }
     }

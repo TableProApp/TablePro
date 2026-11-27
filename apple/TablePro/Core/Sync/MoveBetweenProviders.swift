@@ -269,9 +269,15 @@ internal final class ProviderMoves: ObservableObject {
 
     // MARK: - Another account or server
 
-    func chooseForNewIdentity(_ choice: NewIdentityChoiceTag) async throws {
+    // What the prompt for another account shows, and the account its answer names back.
+    func planNewIdentity() async throws -> NewIdentityPlanInfo {
+        try await host.engine(current).planNewIdentity()
+    }
+
+    // The answer names the prompt's account, so one given for an account signed out meanwhile is refused.
+    func chooseForNewIdentity(_ choice: NewIdentityChoiceTag, for plan: NewIdentityPlanInfo) async throws {
         let engine = try await host.engine(current)
-        try await engine.chooseForNewIdentity(choice: choice)
+        try await engine.chooseForNewIdentity(choice: choice, account: plan.account)
         engineChanged()
         try await engine.syncNow(why: .person)
     }
@@ -427,6 +433,8 @@ extension ProviderMoves {
             return String(localized: "Your account no longer includes TablePro Sync uploads. Your data stays on this Mac.")
         case "sync.signed_out", "sync.interactive_sign_in_required":
             return String(localized: "Sign in to your TablePro account again, then try again.")
+        case "sync.changed":
+            return String(localized: "This changed while you were deciding. Look again, then choose.")
         default:
             return String(localized: "TablePro Sync could not finish. Your data stays on this Mac; try again later.")
         }
