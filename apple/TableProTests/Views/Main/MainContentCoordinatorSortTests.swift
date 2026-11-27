@@ -670,7 +670,7 @@ struct MainContentCoordinatorSortTests {
     }
 
     // The driver answers every SELECT with ids 2 then 1, the order a page read backward arrives in.
-    @Test("A table page read backward is flipped into key order, and only the statement built that way", arguments: [
+    @Test("A keyed page read backward is flipped into key order, and only a statement built that way", arguments: [
         true, false
     ])
     func backwardPageIsFlipped(readsBackward: Bool) async throws {
@@ -689,24 +689,31 @@ struct MainContentCoordinatorSortTests {
         defer {
             coordinator.cancelAllQueryTasks()
             coordinator.teardown()
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
             DatabaseManager.shared.removeSession(for: connection.id)
         }
-        let backward = "SELECT * FROM `audit` WHERE `id` < 3 ORDER BY `id` DESC LIMIT 2 OFFSET 0"
-        var tab = QueryTab(title: "audit", query: backward, tabType: .table, tableName: "audit")
-        tab.pagination.keyedPage = KeyedPageRead(query: backward, readsBackward: readsBackward)
-        tab.pagination.seek = .before(["3"])
+        let pageQuery = "SELECT * FROM `audit` ORDER BY `id` ASC LIMIT 2 OFFSET 2"
+        let keyed = "SELECT * FROM `audit` WHERE `id` < ? ORDER BY `id` DESC LIMIT 2 OFFSET 0"
+        let tab = QueryTab(title: "audit", query: pageQuery, tabType: .table, tableName: "audit")
         tabManager.tabs.append(tab)
         tabManager.selectedTabId = tab.id
+        let scope = try #require(coordinator.scope(for: tab))
+        MetadataConnectionPool.shared.injectEntry(driver, scope: scope)
 
-        coordinator.runQuery(onTab: tab.id, viewport: .firstRow)
+        coordinator.executeQueryInternal(
+            pageQuery, onTab: tab.id, isAutoLoad: true,
+            keyedPage: KeyedPageStatement(sql: keyed, keyValues: ["3"], readsBackward: readsBackward)
+        )
         try await waitUntil {
             coordinator.tabSessionRegistry.tableRows(for: tab.id).rows.count == 2
                 && !coordinator.tabExecution.isExecuting(tab.id)
         }
 
         let ids = coordinator.tabSessionRegistry.tableRows(for: tab.id).rows.map { $0[0].asText }
-        #expect(driver.sentSQL.contains(backward))
+        #expect(driver.sent.contains(SentStatement(sql: keyed, parameters: ["3"])))
         #expect(ids == (readsBackward ? ["1", "2"] : ["2", "1"]))
+        // The result keeps the page's own statement, so a re-read reads it at its offset.
+        #expect(tabManager.tabs.first?.display.activeResultSet?.baseQuery == pageQuery)
     }
 
     @Test("Table tab keeps the rows-per-page LIMIT through ascending, descending, and cleared sort")

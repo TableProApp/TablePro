@@ -282,11 +282,8 @@ struct PaginationState: Equatable {
     var currentPage: Int = 1
     var currentOffset: Int = 0
     // How the next read finds a keyed page, set by the move that reached it and spent by that read; nil reads at
-    // `currentOffset`.
+    // `currentOffset`. Held in memory only: a saved tab keeps the page number.
     var seek: PageSeek?
-    // The statement built with a seek, so its rows are flipped back when it read backward, and a second run of it
-    // reads at the offset instead.
-    var keyedPage: KeyedPageRead?
     // Raised where rows are discarded; not derived from TabExecutionRegistry, whose claim lands a main-actor turn later.
     var isLoading: Bool = false
     var isApproximateRowCount: Bool = false
@@ -475,11 +472,6 @@ struct PaginationState: Equatable {
         currentOffset = newOffset
         currentPage = (currentOffset / pageSize) + 1
     }
-}
-
-struct KeyedPageRead: Equatable {
-    let query: String
-    let readsBackward: Bool
 }
 
 // Where a keyed page starts: past the last row of the page before, before the first row of the page after, or at

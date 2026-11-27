@@ -114,8 +114,10 @@ struct TableQueryBuilder {
 
     /// A page found past the edge row of the page beside it, where the order is the table's unique key: the
     /// server reads only the rows it returns, so page 5,000 costs what page 1 does. A backward read runs the order
-    /// in reverse and the caller flips the rows. Nil where a plugin writes its own pages, a filter cannot be
-    /// written, or a key value has no exact literal; those pages read at their offset.
+    /// in reverse and the caller flips the rows. The key goes to the driver as bound values, never into the text:
+    /// the page can run on another pooled connection, which may read a quote or backslash another way. Nil where a
+    /// plugin writes its own pages, a filter cannot be written, or a key value has no exact form; those pages read
+    /// at their offset.
     func buildKeysetPageQuery(
         tableName: String,
         schemaName: String? = nil,
@@ -128,21 +130,20 @@ struct TableQueryBuilder {
         unloadedValues: UnloadedValuePlan? = nil,
         limit: Int,
         seek: TableKeysetSeek
-    ) -> String? {
+    ) -> KeyedPageStatement? {
         guard let dialect, pagination.allowsSeeking, !seek.columns.isEmpty,
               seek.columns.count == seek.columnTypes.count,
-              sortState.columns.compactMap(\.columnName) == seek.columns,
+              Self.spellsTheSame(sortState.columns.compactMap(\.columnName), seek.columns),
               sortState.columns.allSatisfy({ $0.direction == seek.direction }) else { return nil }
         let enabled = filters.filter(\.isEnabled)
-        guard !pluginWritesPage(
+        // A raw condition is the user's own SQL, where a `?` or `$1` would take the key's place.
+        guard !enabled.contains(where: \.isRawSQL), !pluginWritesPage(
             tableName: tableName, schemaName: schemaName, filters: enabled, logicMode: logicMode,
             sortState: sortState, columns: columns, columnTypes: columnTypes, selectColumns: selectColumns, limit: limit
         ) else { return nil }
 
         var conditions: [String] = []
         if !enabled.isEmpty {
-            guard !enabled.contains(where: { FilterSQLGenerator.refusesRawCondition($0, databaseType: databaseType) })
-            else { return nil }
             let filterGen = FilterSQLGenerator(
                 dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
                 stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType,
@@ -153,9 +154,14 @@ struct TableQueryBuilder {
                 conditions.append("(\(whereClause.dropFirst("WHERE ".count)))")
             }
         }
+        var keyValues: [String] = []
         if let key = seek.key {
-            guard let condition = seekCondition(seek, key: key) else { return nil }
-            conditions.append(condition)
+            guard key.count == seek.columns.count else { return nil }
+            for (value, type) in zip(key, seek.columnTypes) {
+                guard let bound = Self.keyValue(value, type: type) else { return nil }
+                keyValues.append(bound)
+            }
+            conditions.append(seekCondition(seek))
         }
 
         let projection = selectClause(selectColumns, unloadedValues: unloadedValues)
@@ -171,61 +177,67 @@ struct TableQueryBuilder {
         }
         guard let orderBy = buildOrderByClause(sortState: order, columns: columns) else { return nil }
         query += " \(orderBy) \(buildPaginationClause(limit: limit, offset: 0))"
-        return query
+        return KeyedPageStatement(sql: query, keyValues: keyValues, readsBackward: seek.readsBackward)
+    }
+
+    // Swift's `==` joins NFC and NFD spellings of a name, which PostgreSQL and SQLite keep as two columns.
+    static func spellsTheSame(_ lhs: [String], _ rhs: [String]) -> Bool {
+        lhs.count == rhs.count && zip(lhs, rhs).allSatisfy { $0.unicodeScalars.elementsEqual($1.unicodeScalars) }
     }
 
     // A row value compares column by column, so one comparison seeks a composite key in its own index order.
-    private func seekCondition(_ seek: TableKeysetSeek, key: [PluginCellValue]) -> String? {
-        guard key.count == seek.columns.count else { return nil }
-        var literals: [String] = []
-        for (value, type) in zip(key, seek.columnTypes) {
-            guard let literal = keyLiteral(value, type: type) else { return nil }
-            literals.append(literal)
-        }
+    private func seekCondition(_ seek: TableKeysetSeek) -> String {
         let forward = (seek.direction == .ascending) != seek.readsBackward
         let comparison = forward ? ">" : "<"
         let quoted = seek.columns.map { quote($0) }
-        guard quoted.count > 1 else { return "\(quoted[0]) \(comparison) \(literals[0])" }
-        return "(\(quoted.joined(separator: ", "))) \(comparison) (\(literals.joined(separator: ", ")))"
+        let markers = seek.columns.indices.map { placeholder(at: $0) }
+        guard quoted.count > 1 else { return "\(quoted[0]) \(comparison) \(markers[0])" }
+        return "(\(quoted.joined(separator: ", "))) \(comparison) (\(markers.joined(separator: ", ")))"
+    }
+
+    // The key's markers are the statement's only ones, so they number from 1.
+    private func placeholder(at index: Int) -> String {
+        let style = PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle ?? .questionMark
+        switch style {
+        case .questionMark: return "?"
+        case .dollar: return "$\(index + 1)"
+        }
     }
 
     // Only a value that round-trips exactly and compares in the order the page sorts by: a float printed as text can
     // land beside the row it came from, a number compared as text orders 10 before 9, and MySQL sorts an ENUM by its
     // position but compares it with a string by its text.
-    private func keyLiteral(_ value: PluginCellValue, type: ColumnType?) -> String? {
+    static func keyValue(_ value: PluginCellValue, type: ColumnType?) -> String? {
         guard case .text(let text) = value, let type else { return nil }
         switch type {
         case .integer:
             return RowValueCopyFormatter.isIntegerLiteral(text) ? text : nil
+        // A SQLite NUMERIC column keeps a REAL near a whole number, which an older SQLite prints as `1.0`; past that
+        // edge `> 1.0` reads the row again. Digits alone are an INTEGER there, and exact as MySQL's double too.
         case .decimal(let rawType):
             let raw = rawType?.uppercased() ?? ""
             guard !["FLOAT", "REAL", "DOUBLE"].contains(where: raw.contains) else { return nil }
-            return Self.isWholeNumber(text) ? text : nil
+            return isWholeNumber(text) ? text : nil
         // A SQLite column declared with no type, or ANY in a STRICT table, keeps an integer as an integer, which sorts
         // below every string.
         case .text(let rawType) where (rawType ?? "").isEmpty || rawType?.uppercased() == "ANY":
             return nil
-        // A SQLite column of a date or other non-text type keeps a number-like value as a double, printed rounded.
-        // Standard escaping drops a NUL, and SQLite keeps one in text, so that literal would name another key.
+        // A SQLite column of a date or other non-text type keeps a number-like value as a number, a REAL printed
+        // rounded. Standard escaping drops a NUL and SQLite keeps one in text, so that key is refused as before.
         case .text, .date, .datetime:
-            guard Double(text) == nil || Self.isWholeNumber(text), !text.unicodeScalars.contains("\0") else { return nil }
-            let body = SQLQuoting.stringLiteralBody(text, escapes: stringEscapes)
-            return "\(SQLStringLiteralPrefix.forDatabaseType(databaseType))'\(body)'"
+            guard Double(text) == nil || isWholeNumber(text), !text.unicodeScalars.contains("\0") else { return nil }
+            return text
         // A MySQL TIMESTAMP prints in the session's zone, where the hour a clock turns back reads twice.
         case .timestamp, .boolean, .blob, .json, .enumType, .set, .spatial, .vector, .array:
             return nil
         }
     }
 
-    // A SQLite NUMERIC column stores a fraction as a double and prints it to 15 digits, so only a whole number of at
-    // most 15 digits is sure to be the value stored. `3.00` from an exact DECIMAL is whole too.
+    // Digits alone, at most 15 of them: SQLite stores those as an INTEGER, and a double holds them exactly.
     private static func isWholeNumber(_ text: String) -> Bool {
         let scalars = Array(text.unicodeScalars)
-        let unsigned = scalars.first == "-" ? scalars.dropFirst() : scalars[...]
-        let parts = unsigned.split(separator: ".", omittingEmptySubsequences: false)
-        guard parts.count <= 2, let digits = parts.first, (1...15).contains(digits.count),
-              digits.allSatisfy({ ("0"..."9").contains($0) }) else { return false }
-        return parts.count == 1 || (!parts[1].isEmpty && parts[1].allSatisfy { $0 == "0" })
+        let digits = scalars.first == "-" ? scalars.dropFirst() : scalars[...]
+        return (1...15).contains(digits.count) && digits.allSatisfy { ("0"..."9").contains($0) }
     }
 
     // What `buildBaseQuery` and `buildFilteredQuery` would hand the plugin, asked the same way.
@@ -486,6 +498,13 @@ struct TableQueryBuilder {
         guard !parts.isEmpty else { return nil }
         return "ORDER BY " + parts.joined(separator: ", ")
     }
+}
+
+/// The statement one page move sends, with the edge row's key as its bound values. Nothing keeps it past that run.
+struct KeyedPageStatement: Equatable, Sendable {
+    let sql: String
+    let keyValues: [String]
+    let readsBackward: Bool
 }
 
 /// The table's unique key in its page order, and the edge row a keyed page is read past.

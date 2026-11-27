@@ -335,6 +335,8 @@ final class MainContentCoordinator: ObservableObject {
     internal var phase2Works: [UUID: [Phase2Work]] = [:]
     internal var firstLoadColumnReads: [UUID: FirstLoadColumnRead] = [:]
     internal var catalogPageReloads: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
+    // What each table's driver said about its key naming one row, so a keyed page asks once per table and window.
+    internal var keyNamesOneRowByTable: [KeyedPageTable: Bool] = [:]
 
     // Not on `QueryTab`: that is the persisted shape, and staying out of its `Equatable` keeps a push from re-publishing tabs.
     internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
@@ -1104,7 +1106,8 @@ final class MainContentCoordinator: ObservableObject {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
         TableLoadTracer.shared.stage(.executeRequested, tabId: tabId)
 
-        let sql = pageStatement(forTab: tabId) ?? tab.content.query
+        let keyedPage = keyedPageStatement(forTab: tabId)
+        let sql = tab.content.query
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             traceNavigationAbandoned(tabId: tabId, outcome: .emptyQuery)
             return nil
@@ -1115,7 +1118,10 @@ final class MainContentCoordinator: ObservableObject {
             && tab.execution.lastExecutedAt == nil
         let gatesRawFilter = rawFilterNeedsReadOnlyGate(Self.browseFilters(tab.filterState))
         guard asksBeforeFirstLoad || gatesRawFilter else {
-            executeQueryInternal(sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource)
+            executeQueryInternal(
+                sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource,
+                keyedPage: keyedPage
+            )
             return nil
         }
         guard !isShowingSafeModePrompt else {
@@ -1156,7 +1162,8 @@ final class MainContentCoordinator: ObservableObject {
             switch decision {
             case .authorized:
                 executeQueryInternal(
-                    sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource
+                    sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource,
+                    keyedPage: keyedPage
                 )
             case .denied(let reason, _):
                 traceNavigationAbandoned(tabId: tabId, outcome: .safeModeDenied)
@@ -1173,7 +1180,8 @@ final class MainContentCoordinator: ObservableObject {
         bypassRowLimit: Bool = false,
         anchor: StatementAnchor? = nil,
         viewport: GridReloadIntent = .firstRow,
-        source: ResultSourceChange = .newSource
+        source: ResultSourceChange = .newSource,
+        keyedPage: KeyedPageStatement? = nil
     ) {
         queryExecutionCoordinator.startSingleRun(
             SingleRunRequest(
@@ -1182,7 +1190,8 @@ final class MainContentCoordinator: ObservableObject {
                 trigger: trigger,
                 bypassRowLimit: bypassRowLimit,
                 anchor: anchor,
-                install: ResultInstall(viewport: viewport, source: source)
+                install: ResultInstall(viewport: viewport, source: source),
+                keyedPage: keyedPage
             ),
             onTab: tabId
         )

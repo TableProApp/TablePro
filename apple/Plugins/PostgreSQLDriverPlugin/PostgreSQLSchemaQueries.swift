@@ -94,6 +94,21 @@ nonisolated enum PostgreSQLSchemaQueries {
         """
     }
 
+    /// A row when a SELECT of the table also reads inheritance children. A partitioned table is left out: its key
+    /// holds every partition key column, so it stays unique across the partitions.
+    static func inheritanceChildren(schema: String, table: String) -> String {
+        """
+        SELECT 1
+        FROM pg_catalog.pg_inherits i
+        JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+        JOIN pg_catalog.pg_namespace pn ON pn.oid = parent.relnamespace
+        WHERE pn.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+          AND parent.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
+          AND parent.relkind <> 'p'
+        LIMIT 1
+        """
+    }
+
     /// `reltuples` is -1 from PostgreSQL 14 until the first VACUUM or ANALYZE, which is no estimate at all.
     static func rowEstimate(reltuples: String?) -> Int64? {
         guard let reltuples, let estimate = Int64(reltuples), estimate >= 0 else { return nil }

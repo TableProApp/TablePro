@@ -12,6 +12,12 @@ enum PageMove {
     case last
 }
 
+// A table a keyed page reads, as the answer about its key is kept.
+struct KeyedPageTable: Hashable {
+    let scope: DatabaseScope
+    let table: String
+}
+
 extension MainContentCoordinator {
     /// The table's primary key when the page order is that key and nothing else, in one direction. The app's
     /// default sort is such an order. A seek resumes from a row only in an order no two rows share, which holds only
@@ -22,7 +28,8 @@ extension MainContentCoordinator {
               supportsColumnSort, queryBuilder.writesSQL, !keys.isEmpty,
               !tab.tableContext.knowsView(named: tab.tableContext.tableName),
               filterCoordinator.activeBrowseSearch(for: tab.filterState) == nil,
-              tab.sortState.columns.compactMap(\.columnName) == keys,
+              TableQueryBuilder.spellsTheSame(tab.sortState.columns.compactMap(\.columnName), keys),
+              Self.namesKeepTheirSpelling(tabSessionRegistry.tableRows(for: tab.id).columns + keys),
               let direction = tab.sortState.columns.first?.direction,
               tab.sortState.columns.allSatisfy({ $0.direction == direction }) else { return nil }
         return (keys, direction)
@@ -47,9 +54,10 @@ extension MainContentCoordinator {
 
     /// The seek a page's statement is built with, the key's types taken from the columns that statement reads.
     func keysetSeek(for tab: QueryTab, columns: [String], columnTypes: [ColumnType]) -> TableKeysetSeek? {
-        guard let seek = tab.pagination.seek, let order = keysetOrder(for: tab) else { return nil }
+        guard let seek = tab.pagination.seek, let order = keysetOrder(for: tab),
+              Self.namesKeepTheirSpelling(columns) else { return nil }
         let types = order.columns.map { name -> ColumnType? in
-            guard let index = columns.firstIndex(of: name), index < columnTypes.count else { return nil }
+            guard let index = Self.index(of: name, in: columns), index < columnTypes.count else { return nil }
             return columnTypes[index]
         }
         return TableKeysetSeek(
@@ -58,18 +66,31 @@ extension MainContentCoordinator {
         )
     }
 
-    /// The statement a table tab's read sends. A seek reads its page once, for the move that reached it. Any later
-    /// read of that page, after a save, a refresh, a tick of auto-refresh or a return to a stale tab, reads it where
-    /// its number puts it: kept on its edge row, a page read backward drifts from page 1, which always reads from the
-    /// start, and a row deleted on it pulls in one that page 2 shows too.
-    func pageStatement(forTab tabId: UUID) -> String? {
-        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }), tab.tabType == .table else { return nil }
-        if tab.pagination.seek != nil {
-            tabManager.mutate(tabId: tabId) { $0.pagination.seek = nil }
-        } else if tab.pagination.keyedPage?.query == tab.content.query {
-            filterCoordinator.rebuildTableQuery(forTab: tabId)
+    /// The statement a pending seek reads the tab's page with, spent here so the page is read by key once, for the
+    /// move that reached it. Any later read of that page, after a save, a refresh, a tick of auto-refresh or a return
+    /// to a stale tab, reads `content.query` at its offset: kept on its edge row, a page read backward drifts from
+    /// page 1, which always reads from the start, and a row deleted on it pulls in one that page 2 shows too.
+    func keyedPageStatement(forTab tabId: UUID) -> KeyedPageStatement? {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }), tab.tabType == .table,
+              tab.pagination.seek != nil else { return nil }
+        let statement = filterCoordinator.keyedPageStatement(for: tab)
+        tabManager.mutate(tabId: tabId) { $0.pagination.seek = nil }
+        return statement
+    }
+
+    /// The keyed statement when the table's key names one row of what it reads, else nil for the page's offset read.
+    /// The driver is asked once per table, and a failed ask is asked again on the next move.
+    func confirmedKeyedPage(_ statement: KeyedPageStatement?, table: String?, scope: DatabaseScope) async
+        -> KeyedPageStatement? {
+        guard let statement, let table else { return nil }
+        let identity = KeyedPageTable(scope: scope, table: table)
+        if let known = keyNamesOneRowByTable[identity] { return known ? statement : nil }
+        let answer = try? await services.databaseManager.withMetadataDriver(scope: scope) { driver in
+            try await driver.primaryKeyNamesOneRow(inTable: table, schema: scope.schema)
         }
-        return tabManager.tabs.first(where: { $0.id == tabId })?.content.query
+        guard let answer else { return nil }
+        keyNamesOneRowByTable[identity] = answer
+        return answer ? statement : nil
     }
 
     // A seek past an edge compares the key, which passes over every NULL one: SQLite takes NULL in a primary key that
@@ -79,10 +100,24 @@ extension MainContentCoordinator {
         keys.allSatisfy { rows.columnNullable[$0] == false }
     }
 
+    // Two names Swift calls equal but spelled with other scalars, NFC and NFD, are two columns to the engine.
+    static func namesKeepTheirSpelling(_ names: [String]) -> Bool {
+        var seen: [String: String] = [:]
+        for name in names {
+            if let other = seen[name], !other.unicodeScalars.elementsEqual(name.unicodeScalars) { return false }
+            seen[name] = name
+        }
+        return true
+    }
+
+    private static func index(of name: String, in columns: [String]) -> Int? {
+        columns.firstIndex { $0.unicodeScalars.elementsEqual(name.unicodeScalars) }
+    }
+
     // A row added in the grid has no place on the server yet, and a key with a NULL part orders nowhere.
     private func pageEdgeKey(of tab: QueryTab, last: Bool) -> [PluginCellValue]? {
         let rows = tabSessionRegistry.tableRows(for: tab.id)
-        let indices = tab.tableContext.primaryKeyColumns.compactMap { rows.columns.firstIndex(of: $0) }
+        let indices = tab.tableContext.primaryKeyColumns.compactMap { Self.index(of: $0, in: rows.columns) }
         // A masked cell holds the mask's text, not the key.
         guard indices.count == tab.tableContext.primaryKeyColumns.count,
               !indices.contains(where: rows.masks.isMasked) else { return nil }
