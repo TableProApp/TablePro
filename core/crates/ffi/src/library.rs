@@ -14,15 +14,14 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionList, ConnectionProject,
     ConnectionProjectName, ConnectionStore, ConnectionTag, ConnectionTagName, LibraryIcon, ProjectMembership,
-    RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig, SecretOwner, SecretOwnerKind, SshJumpAuth,
-    SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm, SshTotpMode, StorageError, SymbolName, english_secret_label,
-    shown_name,
+    RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig, SecretOwner, SshJumpAuth, SshJumpHost,
+    SshRemoteFile, SshTotp, SshTotpAlgorithm, SshTotpMode, StorageError, SymbolName, english_secret_label, shown_name,
 };
 use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::export::write_whole_file;
-use crate::host::{ProfileKindTag, ProfileSecrets, SecretDeletionTag};
+use crate::host::{SecretDeleter, SecretDeletionTag};
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -459,7 +458,7 @@ pub(crate) async fn keep_proved_secrets(
 pub struct ConnectionLibrary {
     store: ConnectionStore,
     secrets: Arc<dyn SecretVault>,
-    profile_secrets: Arc<dyn ProfileSecrets>,
+    deleter: Arc<dyn SecretDeleter>,
     tasks: Tasks,
     writes: LibraryWrites,
 }
@@ -468,14 +467,14 @@ impl ConnectionLibrary {
     pub(crate) fn new(
         store: ConnectionStore,
         secrets: Arc<dyn SecretVault>,
-        profile_secrets: Arc<dyn ProfileSecrets>,
+        deleter: Arc<dyn SecretDeleter>,
         tasks: Tasks,
         writes: LibraryWrites,
     ) -> Self {
         Self {
             store,
             secrets,
-            profile_secrets,
+            deleter,
             tasks,
             writes,
         }
@@ -496,31 +495,15 @@ impl ConnectionLibrary {
         .await
     }
 
-    // Called by a library write while it holds the store's lock, on the blocking thread the write runs on, so it waits
-    // for the host here; the host's delete must not call the library back.
+    // A library write calls it while it holds the store's lock, on the blocking thread the write runs on.
     pub(crate) fn secret_deleter(&self) -> impl FnMut(SecretOwner) -> bool + Send + 'static {
-        let (vault, profiles) = (self.secrets.clone(), self.profile_secrets.clone());
-        let handle = self.tasks.handle().clone();
-        move |owner| {
-            let answered = handle.block_on(async {
-                match owner.kind {
-                    SecretOwnerKind::Connection => vault
-                        .delete_connection(owner.id)
-                        .await
-                        .map(|()| SecretDeletionTag::Deleted),
-                    SecretOwnerKind::SshProfile => profiles.delete_profile(owner.id, ProfileKindTag::Ssh).await,
-                    SecretOwnerKind::CredentialProfile => {
-                        profiles.delete_profile(owner.id, ProfileKindTag::Credential).await
-                    }
-                }
-            });
-            match answered {
-                // Secrets another app keeps are that app's to delete, so the list lets them go too.
-                Ok(SecretDeletionTag::Deleted | SecretDeletionTag::NotOwned) => true,
-                Err(error) => {
-                    tracing::warn!(%error, kind = ?owner.kind, "kept a removed record's secrets for the next library write");
-                    false
-                }
+        let deleter = self.deleter.clone();
+        move |owner| match deleter.delete_secrets(owner) {
+            // Secrets another app keeps are that app's to delete, so the list lets them go too.
+            Ok(SecretDeletionTag::Deleted | SecretDeletionTag::NotOwned) => true,
+            Err(error) => {
+                tracing::warn!(%error, kind = ?owner.kind, "kept a removed record's secrets for the next library write");
+                false
             }
         }
     }

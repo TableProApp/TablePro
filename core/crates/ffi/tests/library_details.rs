@@ -707,6 +707,39 @@ async fn a_library_write_keeps_a_profile_this_build_cannot_read_and_lists_its_id
     assert!(file.contains("hardware_key"));
 }
 
+// A profile of each kind with values no form would write, as a Mac's library holds them.
+fn mac_ssh_profile() -> SshProfileRecord {
+    SshProfileRecord {
+        id: "2b7e4f1a-9c3d-4e5f-8a6b-1c2d3e4f5a6b".to_owned(),
+        name: " jump\t(EU) ".to_owned(),
+        ssh: SshSettings {
+            host: " jump.internal ".to_owned(),
+            port: Some(2222),
+            username: None,
+            jump_hosts: Vec::new(),
+            auth: SshAuthTag::KeyboardInteractive,
+            enabled: Some(false),
+            options: Some(ssh_options()),
+        },
+    }
+}
+
+fn mac_credential_profile() -> CredentialProfileRecord {
+    CredentialProfileRecord {
+        id: "5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9".to_owned(),
+        name: " ".to_owned(),
+        username: String::new(),
+        password: CredentialPasswordRecord::Local {
+            source: LocalPasswordSourceRecord::Command {
+                shell: "op read op://db/password".to_owned(),
+                reuse_seconds: Some(60),
+            },
+        },
+        secure_field_ids: Vec::new(),
+        order: 9,
+    }
+}
+
 fn mac_library() -> LibraryWriteRecord {
     let group = "E6C12C96-3CBD-4A0E-9F41-E36B47F35D84".to_lowercase();
     let tag = "00000000-0000-0000-0000-000000000003".to_owned();
@@ -782,32 +815,8 @@ fn mac_library() -> LibraryWriteRecord {
         }],
         favorites: vec!["6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44".to_owned()],
         projects: Vec::new(),
-        ssh_profiles: vec![SshProfileRecord {
-            id: "2b7e4f1a-9c3d-4e5f-8a6b-1c2d3e4f5a6b".to_owned(),
-            name: " jump\t(EU) ".to_owned(),
-            ssh: SshSettings {
-                host: " jump.internal ".to_owned(),
-                port: Some(2222),
-                username: None,
-                jump_hosts: Vec::new(),
-                auth: SshAuthTag::KeyboardInteractive,
-                enabled: Some(false),
-                options: Some(ssh_options()),
-            },
-        }],
-        credential_profiles: vec![CredentialProfileRecord {
-            id: "5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9".to_owned(),
-            name: " ".to_owned(),
-            username: String::new(),
-            password: CredentialPasswordRecord::Local {
-                source: LocalPasswordSourceRecord::Command {
-                    shell: "op read op://db/password".to_owned(),
-                    reuse_seconds: Some(60),
-                },
-            },
-            secure_field_ids: Vec::new(),
-            order: 9,
-        }],
+        ssh_profiles: vec![mac_ssh_profile()],
+        credential_profiles: vec![mac_credential_profile()],
         removing: Vec::new(),
     }
 }

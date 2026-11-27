@@ -1580,8 +1580,8 @@ fn a_library_write_keeps_each_profile_as_given_and_names_the_ones_it_wrote_and_d
     )
     .expect("write");
     let reread = ConnectionStore::new(&paths(&root)).list_blocking().expect("the list");
-    assert_eq!(reread.ssh_profiles.to_vec(), [ssh.clone()]);
-    assert_eq!(reread.credential_profiles.to_vec(), [credential.clone()]);
+    assert_eq!(reread.ssh_profiles.as_ref(), std::slice::from_ref(&ssh));
+    assert_eq!(reread.credential_profiles.as_ref(), std::slice::from_ref(&credential));
     let renamed = SshProfile {
         name: "Edge".to_owned(),
         ..ssh.clone()

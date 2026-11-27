@@ -7,7 +7,7 @@ use tablepro_account::RefreshTokenVault;
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::english_item_label;
+use tablepro_storage::{SecretOwner, SecretOwnerKind, english_item_label};
 use uuid::Uuid;
 use windows_sys::Win32::Foundation::{ERROR_NOT_FOUND, GetLastError};
 use windows_sys::Win32::Security::Credentials::{
@@ -16,7 +16,7 @@ use windows_sys::Win32::Security::Credentials::{
 };
 
 use crate::credential_parts::{self, Layout, PartStore, Stored};
-use crate::host::{ProfileKindTag, ProfileSecrets, SecretDeletionTag};
+use crate::host::{ProfileKindTag, SecretDeleter, SecretDeletionTag};
 
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -377,15 +377,16 @@ impl SecretVault for CredentialManager {
     }
 }
 
-#[async_trait]
-impl ProfileSecrets for CredentialManager {
-    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<SecretDeletionTag, SecretError> {
-        let targets: Vec<String> = SecretKind::ALL
-            .iter()
-            .map(|secret| self.profile_target(id, kind, *secret))
-            .collect();
-        self.blocking(move || targets.iter().try_for_each(|target| delete(target)))
-            .await?;
+impl SecretDeleter for CredentialManager {
+    fn delete_secrets(&self, owner: SecretOwner) -> Result<SecretDeletionTag, SecretError> {
+        let target = |secret: &SecretKind| match owner.kind {
+            SecretOwnerKind::Connection => self.connection_target(owner.id, *secret),
+            SecretOwnerKind::SshProfile => self.profile_target(owner.id, ProfileKindTag::Ssh, *secret),
+            SecretOwnerKind::CredentialProfile => self.profile_target(owner.id, ProfileKindTag::Credential, *secret),
+        };
+        let targets: Vec<String> = SecretKind::ALL.iter().map(target).collect();
+        let _held = STORE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        targets.iter().try_for_each(|target| delete(target))?;
         Ok(SecretDeletionTag::Deleted)
     }
 }
@@ -526,7 +527,9 @@ mod tests {
             .await
             .unwrap();
 
-        manager.delete_profile(id, ProfileKindTag::Ssh).await.unwrap();
+        manager
+            .delete_secrets(SecretOwner::new(SecretOwnerKind::SshProfile, id))
+            .unwrap();
 
         let profile = manager.blocking(move || read(&target)).await.unwrap();
         let connection = manager.load(id, SecretKind::SshPassword).await.unwrap();
