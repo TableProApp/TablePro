@@ -61,6 +61,10 @@ internal final class WorkspaceRailTableView: NSTableView {
         super.keyDown(with: event)
     }
 
+    override internal func accessibilityPerformShowMenu() -> Bool {
+        showContextMenuForSelectedRow() || super.accessibilityPerformShowMenu()
+    }
+
     override internal func otherMouseUp(with event: NSEvent) {
         guard event.isMiddleButton else {
             super.otherMouseUp(with: event)

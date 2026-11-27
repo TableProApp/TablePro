@@ -280,6 +280,26 @@ final class DataGridTableView: NSTableView {
         return controller?.accessibilitySelectedCells() ?? super.accessibilitySelectedCells()
     }
 
+    // The active cell stands where a list's last selected row does when its menu opens without a pointer, so the
+    // menu acts on the selection around it.
+    var contextMenuAnchor: (row: Int, column: Int)? {
+        guard paneKind == .main, let controller, let active = controller.model.selection.activeCell,
+              (0..<numberOfRows).contains(active.row),
+              let column = controller.main.tableIndex(forDisplayPosition: active.displayColumn, columns: controller.model.columns)
+        else { return nil }
+        return (active.row, column)
+    }
+
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard contextMenuAnchor != nil else { return super.accessibilityPerformShowMenu() }
+        scheduleContextMenu { table in
+            guard let grid = table as? DataGridTableView, let anchor = grid.contextMenuAnchor else { return nil }
+            grid.controller?.revealActiveCell()
+            return anchor
+        }
+        return true
+    }
+
     // A point inside a row but outside every column resolves to the row, not the table, so the row stays reachable there.
     override func accessibilityHitTest(_ point: NSPoint) -> Any? {
         DataGridAccessibility.markActive()
@@ -290,6 +310,15 @@ final class DataGridTableView: NSTableView {
             return super.accessibilityHitTest(point)
         }
         return rowView.accessibilityHitTest(point) ?? rowView
+    }
+}
+
+// The keyboard's menu key opens over this rect. AppKit's own is the last selected row, whose middle can sit in any column.
+extension DataGridTableView: NSViewContentSelectionInfo {
+    @available(macOS 15.0, *)
+    var selectionAnchorRect: NSRect {
+        guard let anchor = contextMenuAnchor else { return .null }
+        return frameOfCell(atColumn: anchor.column, row: anchor.row)
     }
 }
 

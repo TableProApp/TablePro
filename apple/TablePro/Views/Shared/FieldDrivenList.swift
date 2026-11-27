@@ -274,6 +274,8 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             (sender.representedObject as? MenuAction)?.perform()
         }
 
+        internal var offersMenus: Bool { owner.menuItems != nil }
+
         /// Auto-enabling asks the target whether it responds to the item's selector, which it
         /// always does, so a descriptor's own `isEnabled` would be overwritten on display.
         internal func menu(forRow row: Int) -> NSMenu? {
@@ -392,10 +394,8 @@ internal final class FieldDrivenRowView: NSTableRowView {
     }
 }
 
-/// A chooser is a presentation of a search field's selection, so it never takes focus away from
-/// that field. A browser is read by arrowing through it, so it has to take focus like any other
-/// list. `acceptsFocus` is the difference, and it stays off unless a caller asks for it.
-internal final class FieldDrivenTableView: NSTableView {
+// A chooser leaves focus in its search field; a browser takes it, to be arrowed through.
+internal final class FieldDrivenTableView: NSTableView, RowMenuBuildingTableView {
     internal var acceptsFocus = false
     internal var onActivate: (() -> Void)?
     internal var onDelete: (() -> Void)?
@@ -423,11 +423,22 @@ internal final class FieldDrivenTableView: NSTableView {
         onCopy?()
     }
 
-    /// The menu is resolved before the selection moves, because `selectRowIndexes` does not consult
-    /// `tableView(_:shouldSelectRow:)`: a right-click on a section header would otherwise select a
-    /// row that carries no item, which reads back as an empty selection. Resolving first also keeps
-    /// a right-click that produces no menu from moving the selection behind it. The targets a menu
-    /// is built for are unaffected, since a click outside the selection always acts on its own row.
+    internal var buildsRowMenus: Bool {
+        (delegate as? any FieldDrivenMenuProviding)?.offersMenus ?? false
+    }
+
+    override internal func accessibilityPerformShowMenu() -> Bool {
+        showContextMenuForSelectedRow() || super.accessibilityPerformShowMenu()
+    }
+
+    // With no `menu` AppKit offers no Show Menu, and a list without menu items has none to show.
+    override internal func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        guard selector == #selector(accessibilityPerformShowMenu) else { return super.isAccessibilitySelectorAllowed(selector) }
+        return buildsRowMenus
+    }
+
+    // Built before the selection moves: `selectRowIndexes` skips `shouldSelectRow`, so a header row would be selected,
+    // and a right-click that opens no menu would still move the selection.
     override internal func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
@@ -442,6 +453,7 @@ internal final class FieldDrivenTableView: NSTableView {
 }
 
 internal protocol FieldDrivenMenuProviding: AnyObject {
+    @MainActor var offersMenus: Bool { get }
     @MainActor func menu(forRow row: Int) -> NSMenu?
 }
 
@@ -479,6 +491,10 @@ internal final class FieldDrivenCellView<Row: View>: NSTableCellView {
             view.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
         hosting = view
+    }
+
+    override internal func accessibilityPerformShowMenu() -> Bool {
+        showEnclosingRowContextMenu() || super.accessibilityPerformShowMenu()
     }
 }
 
