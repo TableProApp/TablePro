@@ -13,7 +13,8 @@ private final class RecordingDeviceKeychain: DeviceKeychainItems, @unchecked Sen
     }
 
     func add(_ attributes: [String: Any]) -> OSStatus {
-        record(attributes)
+        _ = record(attributes)
+        return errSecSuccess
     }
 
     func update(_ query: [String: Any], attributes: [String: Any]) -> OSStatus {
