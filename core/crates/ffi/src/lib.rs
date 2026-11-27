@@ -35,6 +35,7 @@ mod library_contents;
 mod library_details;
 mod masking;
 mod mcp;
+mod plan;
 mod prompter;
 mod references;
 mod results;

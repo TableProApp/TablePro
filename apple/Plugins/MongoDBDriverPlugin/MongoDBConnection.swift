@@ -992,12 +992,8 @@ nonisolated extension MongoDBConnection {
 #if canImport(CLibMongoc)
 nonisolated extension MongoDBConnection {
     func bsonToDict(_ bson: OpaquePointer?) -> [String: Any] {
-        guard let bson = bson, let jsonStr = bsonToJson(bson),
-              let data = jsonStr.data(using: .utf8),
-              let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return [:]
-        }
-        return Self.unwrapExtendedJson(dict) as? [String: Any] ?? dict
+        guard let bson else { return [:] }
+        return MongoBsonDocumentReader(buildsCanonical: false).read(bson)?.dictionary ?? [:]
     }
 
     func bsonToJson(_ bson: OpaquePointer?) -> String? {

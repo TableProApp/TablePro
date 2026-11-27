@@ -49,6 +49,18 @@ public sealed partial class WorkspaceView
         }
     }
 
+    // Explain plan reads the engine's EXPLAIN variants and a statement, not the assistant, so it has no AI gate.
+    public bool CanExplainPlan => ActiveTab is QueryTabView query && query.ExplainVariants().Count > 0;
+
+    // Query > Explain plan: the engine's first EXPLAIN variant on the statement at the caret of the tab in front.
+    public void ExplainPlan()
+    {
+        if (ActiveTab is QueryTabView query && query.ExplainVariants() is [var first, ..])
+        {
+            query.ExplainPlan(first);
+        }
+    }
+
     // The connection's policy or the assistant's settings changed: the pane and every tab's Fix read them again.
     public void AssistantChanged()
     {

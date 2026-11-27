@@ -5228,6 +5228,54 @@ New fingerprint: {2}</value>
   <data name="JsonCopyFailed" xml:space="preserve">
     <value>The JSON could not be put on the clipboard.</value>
   </data>
+  <data name="ExplainPlanCommand" xml:space="preserve">
+    <value>Explain plan</value>
+  </data>
+  <data name="StatusExplaining" xml:space="preserve">
+    <value>Reading the query plan…</value>
+  </data>
+  <data name="PlanReady" xml:space="preserve">
+    <value>Query plan</value>
+  </data>
+  <data name="PlanRawOnly" xml:space="preserve">
+    <value>Query plan: the output has no tree to show</value>
+  </data>
+  <data name="PlanModes" xml:space="preserve">
+    <value>Tree or raw</value>
+  </data>
+  <data name="PlanTreeMode" xml:space="preserve">
+    <value>Tree</value>
+  </data>
+  <data name="PlanRawMode" xml:space="preserve">
+    <value>Raw</value>
+  </data>
+  <data name="PlanTreeName" xml:space="preserve">
+    <value>Plan tree</value>
+  </data>
+  <data name="PlanRawName" xml:space="preserve">
+    <value>Plan as text</value>
+  </data>
+  <data name="PlanMetricName" xml:space="preserve">
+    <value>Bar metric</value>
+  </data>
+  <data name="PlanMetricCost" xml:space="preserve">
+    <value>Cost</value>
+  </data>
+  <data name="PlanMetricRows" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="PlanPlanningTime" xml:space="preserve">
+    <value>Planning: {0:0.###} ms</value>
+    <comment>{0} is the planning time in milliseconds.</comment>
+  </data>
+  <data name="PlanExecutionTime" xml:space="preserve">
+    <value>Execution: {0:0.###} ms</value>
+    <comment>{0} is the execution time in milliseconds.</comment>
+  </data>
+  <data name="PlanDetailSchema" xml:space="preserve">
+    <value>Schema: {0}</value>
+    <comment>{0} is the node's schema name.</comment>
+  </data>
   <data name="AiHeader.Text" xml:space="preserve">
     <value>AI assistant</value>
   </data>
@@ -5555,6 +5603,12 @@ New fingerprint: {2}</value>
   </data>
   <data name="MenuAiOptimize.AccessKey" xml:space="preserve">
     <value>O</value>
+  </data>
+  <data name="MenuExplainPlan.Text" xml:space="preserve">
+    <value>Explain Plan</value>
+  </data>
+  <data name="MenuExplainPlan.AccessKey" xml:space="preserve">
+    <value>P</value>
   </data>
   <data name="McpHeader.Text" xml:space="preserve">
     <value>MCP server</value>
@@ -6187,6 +6241,190 @@ New fingerprint: {2}</value>
     <value>TablePro</value>
     <comment>The choice that keeps TablePro's own keys.</comment>
   </data>
+  <data name="KeyboardShortcutsTitle.Text" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="ShortcutPresetCard.Header" xml:space="preserve">
+    <value>Preset</value>
+  </data>
+  <data name="ShortcutPresetCard.Description" xml:space="preserve">
+    <value>Start from the keys of the app you're used to. Your changes below stay on top.</value>
+  </data>
+  <data name="ShortcutPresetBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Shortcut preset</value>
+  </data>
+  <data name="ShortcutRestoreButton.Content" xml:space="preserve">
+    <value>Restore defaults</value>
+  </data>
+  <data name="ShortcutNone" xml:space="preserve">
+    <value>None</value>
+    <comment>Shown on a command that has no shortcut.</comment>
+  </data>
+  <data name="ShortcutTypeHint" xml:space="preserve">
+    <value>Type shortcut</value>
+    <comment>Shown on the recorder while it waits for keys.</comment>
+  </data>
+  <data name="ShortcutRecorderHelp" xml:space="preserve">
+    <value>Press to record a shortcut. Delete removes it, Esc cancels.</value>
+  </data>
+  <data name="ShortcutRecording" xml:space="preserve">
+    <value>Recording</value>
+    <comment>Read out by Narrator while the recorder is armed.</comment>
+  </data>
+  <data name="ShortcutRecorderName" xml:space="preserve">
+    <value>Shortcut for {0}</value>
+    <comment>Narrator name of a recorder. {0} is the command.</comment>
+  </data>
+  <data name="ShortcutResetName" xml:space="preserve">
+    <value>Reset {0} to default</value>
+    <comment>Narrator name of a command's reset button. {0} is the command.</comment>
+  </data>
+  <data name="ShortcutResetTip" xml:space="preserve">
+    <value>Reset to default</value>
+  </data>
+  <data name="ShortcutRefusal_NeedsModifier" xml:space="preserve">
+    <value>Add Ctrl, or use a function key.</value>
+  </data>
+  <data name="ShortcutRefusal_UnavailableKey" xml:space="preserve">
+    <value>This key can't be a menu shortcut.</value>
+  </data>
+  <data name="ShortcutRefusal_Reserved" xml:space="preserve">
+    <value>{0} is used by Windows or the editor.</value>
+    <comment>{0} is the shortcut the user pressed.</comment>
+  </data>
+  <data name="ShortcutReassignTitle" xml:space="preserve">
+    <value>Reassign {0}?</value>
+    <comment>{0} is the shortcut being moved.</comment>
+  </data>
+  <data name="ShortcutReassignUsedBy_one" xml:space="preserve">
+    <value>It is used by {0}, which will have no shortcut.</value>
+    <comment>{0} is the command losing the shortcut.</comment>
+  </data>
+  <data name="ShortcutReassignUsedBy_other" xml:space="preserve">
+    <value>It is used by {0}. They will have no shortcut.</value>
+    <comment>{0} is a list of commands losing the shortcut.</comment>
+  </data>
+  <data name="ShortcutReassign" xml:space="preserve">
+    <value>Reassign</value>
+  </data>
+  <data name="ShortcutRestoreTitle" xml:space="preserve">
+    <value>Restore default shortcuts?</value>
+  </data>
+  <data name="ShortcutRestoreMessage" xml:space="preserve">
+    <value>Every shortcut you changed goes back to the preset.</value>
+  </data>
+  <data name="ShortcutRestoreConfirm" xml:space="preserve">
+    <value>Restore defaults</value>
+  </data>
+  <data name="ShortcutSummaryNone" xml:space="preserve">
+    <value>No custom shortcuts</value>
+  </data>
+  <data name="ShortcutSummaryCustom_one" xml:space="preserve">
+    <value>{0:N0} custom shortcut</value>
+  </data>
+  <data name="ShortcutSummaryCustom_other" xml:space="preserve">
+    <value>{0:N0} custom shortcuts</value>
+  </data>
+  <data name="ShortcutSummaryPreset" xml:space="preserve">
+    <value>{0} preset</value>
+    <comment>{0} is the chosen preset's name.</comment>
+  </data>
+  <data name="ShortcutGroup_Global" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="ShortcutGroup_Workspace" xml:space="preserve">
+    <value>Tabs and navigation</value>
+  </data>
+  <data name="ShortcutGroup_QueryTab" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="ShortcutGroup_TableTab" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="ShortcutGroup_Editor" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="ShortcutGroup_Grid" xml:space="preserve">
+    <value>Data grid</value>
+  </data>
+  <data name="ShortcutName_newConnection" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="ShortcutName_openFile" xml:space="preserve">
+    <value>Open file</value>
+  </data>
+  <data name="ShortcutName_newTab" xml:space="preserve">
+    <value>New query tab</value>
+  </data>
+  <data name="ShortcutName_closeTab" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="ShortcutName_reopenClosedTab" xml:space="preserve">
+    <value>Reopen closed tab</value>
+  </data>
+  <data name="ShortcutName_saveChanges" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="ShortcutName_saveAs" xml:space="preserve">
+    <value>Save as</value>
+  </data>
+  <data name="ShortcutName_discardChanges" xml:space="preserve">
+    <value>Discard changes</value>
+  </data>
+  <data name="ShortcutName_exportResults" xml:space="preserve">
+    <value>Export results</value>
+  </data>
+  <data name="ShortcutName_showSettings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="ShortcutName_addRow" xml:space="preserve">
+    <value>Add row</value>
+  </data>
+  <data name="ShortcutName_duplicateRow" xml:space="preserve">
+    <value>Duplicate row</value>
+  </data>
+  <data name="ShortcutName_previewSQL" xml:space="preserve">
+    <value>Preview SQL</value>
+  </data>
+  <data name="ShortcutName_manageConnections" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="ShortcutName_toggleTableBrowser" xml:space="preserve">
+    <value>Object tree</value>
+  </data>
+  <data name="ShortcutName_focusSidebarSearch" xml:space="preserve">
+    <value>Filter objects</value>
+  </data>
+  <data name="ShortcutName_toggleHistory" xml:space="preserve">
+    <value>Show query history</value>
+  </data>
+  <data name="ShortcutName_refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ShortcutName_openDatabase" xml:space="preserve">
+    <value>Switch database</value>
+  </data>
+  <data name="ShortcutName_executeAllStatements" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="ShortcutName_executeQuery" xml:space="preserve">
+    <value>Run statement at cursor</value>
+  </data>
+  <data name="ShortcutName_cancelQuery" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="ShortcutName_toggleFilters" xml:space="preserve">
+    <value>Filter rows</value>
+  </data>
+  <data name="ShortcutName_find" xml:space="preserve">
+    <value>Find</value>
+  </data>
+  <data name="ShortcutName_findAndReplace" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="ShortcutName_formatQuery" xml:space="preserve">
+    <value>Format query</value>
+  </data>
   <data name="SetupSourcesName" xml:space="preserve">
     <value>Apps to import from</value>
   </data>
@@ -6389,5 +6627,89 @@ New fingerprint: {2}</value>
   </data>
   <data name="Error_project_name_control_character" xml:space="preserve">
     <value>The name has a character that can't be shown.</value>
+  </data>
+  <data name="MenuCommandPalette.Text" xml:space="preserve">
+    <value>Command palette</value>
+  </data>
+  <data name="PaletteSearch.PlaceholderText" xml:space="preserve">
+    <value>Search tables, connections and commands</value>
+  </data>
+  <data name="PaletteResultsName" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="PaletteScopeAll.Text" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="PaletteScopeTables.Text" xml:space="preserve">
+    <value>Tables</value>
+  </data>
+  <data name="PaletteScopeDatabases.Text" xml:space="preserve">
+    <value>Databases</value>
+  </data>
+  <data name="PaletteScopeQueries.Text" xml:space="preserve">
+    <value>Queries</value>
+  </data>
+  <data name="PaletteScopeConnections.Text" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="PaletteScopeCommands.Text" xml:space="preserve">
+    <value>Commands</value>
+  </data>
+  <data name="PaletteHintOpen.Text" xml:space="preserve">
+    <value>Enter Open</value>
+  </data>
+  <data name="PaletteHintNewTab.Text" xml:space="preserve">
+    <value>Ctrl+Enter New tab</value>
+  </data>
+  <data name="PaletteHintScope.Text" xml:space="preserve">
+    <value>Ctrl+1-6 Scope</value>
+  </data>
+  <data name="PaletteHintClose.Text" xml:space="preserve">
+    <value>Esc Close</value>
+  </data>
+  <data name="PaletteRecent" xml:space="preserve">
+    <value>Recent</value>
+  </data>
+  <data name="PaletteNoResults" xml:space="preserve">
+    <value>No results for "{0}"</value>
+  </data>
+  <data name="PaletteSection_Table" xml:space="preserve">
+    <value>Tables</value>
+  </data>
+  <data name="PaletteSection_View" xml:space="preserve">
+    <value>Views</value>
+  </data>
+  <data name="PaletteSection_SystemTable" xml:space="preserve">
+    <value>System tables</value>
+  </data>
+  <data name="PaletteSection_Database" xml:space="preserve">
+    <value>Databases</value>
+  </data>
+  <data name="PaletteSection_Schema" xml:space="preserve">
+    <value>Schemas</value>
+  </data>
+  <data name="PaletteSection_Procedure" xml:space="preserve">
+    <value>Procedures</value>
+  </data>
+  <data name="PaletteSection_Function" xml:space="preserve">
+    <value>Functions</value>
+  </data>
+  <data name="PaletteSection_Trigger" xml:space="preserve">
+    <value>Triggers</value>
+  </data>
+  <data name="PaletteSection_Type" xml:space="preserve">
+    <value>Types</value>
+  </data>
+  <data name="PaletteSection_SavedQuery" xml:space="preserve">
+    <value>Saved queries</value>
+  </data>
+  <data name="PaletteSection_History" xml:space="preserve">
+    <value>Recent queries</value>
+  </data>
+  <data name="PaletteSection_Connection" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="PaletteSection_Command" xml:space="preserve">
+    <value>Commands</value>
   </data>
 </root>

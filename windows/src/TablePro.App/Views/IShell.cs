@@ -24,6 +24,8 @@ internal interface IShell
 
     void ShowSettings();
 
+    void ShowKeyboardShortcuts();
+
     // Asks what a close asks, then has Windows install the update the check found and restart the app.
     Task InstallUpdateAsync();
 }

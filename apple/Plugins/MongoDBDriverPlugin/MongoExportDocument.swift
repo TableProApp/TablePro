@@ -2,13 +2,13 @@ import Foundation
 import TableProPluginKit
 
 nonisolated enum MongoExportDocument {
+    /// The document's stored size comes with it, from the length prefix its BSON opens with.
     static func read(
-        canonicalJSON: String,
+        canonical document: MongoDocumentText,
         dictionary: [String: Any],
         representation: MongoDBUuidRepresentation,
-        bsonSizeUpperBound: Int? = nil
+        bsonSizeUpperBound size: Int?
     ) throws -> PluginExportDocument {
-        let document = try MongoDocumentText(parsing: canonicalJSON)
         let fields = try document.members.map { member in
             guard let value = dictionary[member.key] else {
                 throw PluginExportError.exportFailed(String(localized: "A document field could not be read", bundle: .main))
@@ -25,20 +25,28 @@ nonisolated enum MongoExportDocument {
                 typeName: BsonDocumentFlattener.typeName(for: kind, representation: representation), cellValue: cell
             )
         }
-        #if canImport(CLibMongoc)
-        let size = bsonSizeUpperBound ?? MongoLibbsonCodec().bsonSize(of: canonicalJSON)
-        #else
-        let size = bsonSizeUpperBound
-        #endif
         return PluginExportDocument(fields: fields, bsonSizeUpperBound: size)
     }
 
-    static func read(_ documents: MongoReadDocuments, representation: MongoDBUuidRepresentation) throws -> [PluginExportDocument] {
-        guard documents.texts.count == documents.dictionaries.count else {
+    static func read(_ document: MongoReadDocument, representation: MongoDBUuidRepresentation) throws -> PluginExportDocument {
+        guard let canonical = document.canonical else {
             throw PluginExportError.exportFailed(String(localized: "The result has no stored documents", bundle: .main))
         }
-        return try zip(documents.texts, documents.dictionaries).map {
-            try read(canonicalJSON: $0, dictionary: $1, representation: representation)
+        return try read(
+            canonical: canonical, dictionary: document.dictionary,
+            representation: representation, bsonSizeUpperBound: document.bsonSize
+        )
+    }
+
+    static func read(_ documents: MongoReadDocuments, representation: MongoDBUuidRepresentation) throws -> [PluginExportDocument] {
+        try documents.dictionaries.indices.map { index in
+            guard let canonical = documents.canonical[index] else {
+                throw PluginExportError.exportFailed(String(localized: "The result has no stored documents", bundle: .main))
+            }
+            return try read(
+                canonical: canonical, dictionary: documents.dictionaries[index],
+                representation: representation, bsonSizeUpperBound: documents.bsonSizes[index]
+            )
         }
     }
 

@@ -583,6 +583,8 @@ impl AssistantPane {
             };
             match event {
                 ReplyEvent::Text(part) => painter.push(&part),
+                // The agent loop that runs a tool call is a later phase; chat offers none.
+                ReplyEvent::ToolCall { .. } => {}
                 ReplyEvent::Finished(end) => {
                     painter.paint();
                     return self.finished(&row, generation, painter.text, &end);
@@ -606,7 +608,7 @@ impl AssistantPane {
         }
         clear(&row.footer);
         let note = match end.stop {
-            StopReason::Complete => None,
+            StopReason::Complete | StopReason::ToolUse => None,
             StopReason::LengthLimit => Some(crate::i18n::gettext("The reply reached its length limit.")),
             StopReason::Refused => Some(crate::i18n::gettext("The model declined to answer.")),
         };

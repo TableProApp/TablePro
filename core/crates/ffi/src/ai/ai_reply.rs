@@ -37,12 +37,15 @@ impl From<ReplyEnd> for AiReplyEvent {
     }
 }
 
-impl From<ReplyEvent> for AiReplyEvent {
-    fn from(event: ReplyEvent) -> Self {
+impl AiReplyEvent {
+    // Phase 1a has no agent loop here, so a tool call maps to nothing and
+    // text chat, which offers no tools, never produces one.
+    pub(crate) fn from_reply(event: ReplyEvent) -> Option<Self> {
         match event {
-            ReplyEvent::Text(part) => Self::Text { part },
-            ReplyEvent::Finished(end) => end.into(),
-            ReplyEvent::Failed(error) => Self::failed(error.into()),
+            ReplyEvent::Text(part) => Some(Self::Text { part }),
+            ReplyEvent::Finished(end) => Some(end.into()),
+            ReplyEvent::Failed(error) => Some(Self::failed(error.into())),
+            ReplyEvent::ToolCall { .. } => None,
         }
     }
 }

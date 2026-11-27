@@ -101,9 +101,8 @@
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
                 <ToggleSwitch x:Name="VimSwitch" x:Uid="VimSwitch" AutomationProperties.AutomationId="VimSwitch" Toggled="OnVimToggled" />
             </toolkit:SettingsCard>
-            <toolkit:SettingsCard x:Uid="ShortcutsCard" x:Name="ShortcutsCard">
+            <toolkit:SettingsCard x:Uid="ShortcutsCard" x:Name="ShortcutsCard" AutomationProperties.AutomationId="ShortcutsCard" IsClickEnabled="True" Click="OnShortcutsCard">
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
-                <ComboBox x:Name="ShortcutsBox" x:Uid="ShortcutsBox" AutomationProperties.AutomationId="ShortcutsBox" MinWidth="200" SelectionChanged="OnShortcutsChanged" />
             </toolkit:SettingsCard>
             <toolkit:SettingsCard x:Uid="LightSchemeCard" x:Name="LightSchemeCard">
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE706;" /></toolkit:SettingsCard.HeaderIcon>

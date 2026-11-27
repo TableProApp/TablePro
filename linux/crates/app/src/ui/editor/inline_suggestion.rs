@@ -357,6 +357,7 @@ async fn suggest(access: &AssistantAccess, before: &str, after: &str) -> Option<
         system: tablepro_ai::completion_system_prompt(&context),
         messages: vec![ChatMessage::user(tablepro_ai::completion_message(before, after))],
         max_tokens: ChatRequest::SUGGESTION_MAX_TOKENS,
+        tools: Vec::new(),
     };
     if access.ai().prepare().await.is_err() {
         return None;

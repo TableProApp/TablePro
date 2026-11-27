@@ -33,8 +33,11 @@ public sealed class KeymapTests
                 ["duplicateRow"] = "ctrl+d",
                 ["showSettings"] = "ctrl+,",
                 ["cancelQuery"] = "ctrl+.",
+                // Ctrl+P takes the palette here, as on macOS Cmd+P, so sidebar search keeps no key.
+                ["quickSwitcher"] = "ctrl+p",
+                ["focusSidebarSearch"] = "",
             },
-            []
+            ["focusSidebarSearch"]
         },
         {
             "dbeaver",
@@ -60,8 +63,11 @@ public sealed class KeymapTests
                 ["duplicateRow"] = "ctrl+d",
                 ["findAndReplace"] = "ctrl+r",
                 ["cancelQuery"] = "ctrl+f2",
+                // Its Ctrl+N opens the palette, so New Connection keeps no key.
+                ["quickSwitcher"] = "ctrl+n",
+                ["newConnection"] = "",
             },
-            []
+            ["newConnection"]
         },
         {
             "beekeeperstudio",
@@ -70,8 +76,11 @@ public sealed class KeymapTests
                 ["addRow"] = "ctrl+n",
                 ["duplicateRow"] = "ctrl+d",
                 ["newConnection"] = string.Empty,
+                // Ctrl+N (addRow) displaces New Connection; Ctrl+P (palette) displaces sidebar search.
+                ["quickSwitcher"] = "ctrl+p",
+                ["focusSidebarSearch"] = string.Empty,
             },
-            ["newConnection"]
+            ["newConnection", "focusSidebarSearch"]
         },
         {
             "navicat",
@@ -99,8 +108,11 @@ public sealed class KeymapTests
                 ["findAndReplace"] = "ctrl+r",
                 ["showSettings"] = "ctrl+,",
                 ["newConnection"] = string.Empty,
+                // Ctrl+N (addRow) displaces New Connection; Ctrl+P (palette) displaces sidebar search.
+                ["quickSwitcher"] = "ctrl+p",
+                ["focusSidebarSearch"] = string.Empty,
             },
-            ["newConnection"]
+            ["newConnection", "focusSidebarSearch"]
         },
     };
 
@@ -206,7 +218,6 @@ public sealed class KeymapTests
     [Theory]
     [InlineData("showNextTab", "ctrl+pagedown")]
     [InlineData("delete", "ctrl+delete")]
-    [InlineData("quickSwitcher", "ctrl+p")]
     [InlineData("explainQuery", "ctrl+shift+e")]
     public void ARowForAFixedCommandOrOneWindowsLacksMovesNothing(string action, string chord)
     {
@@ -215,6 +226,12 @@ public sealed class KeymapTests
         Assert.Equal(Movable(EffectiveKeymap.TablePro), Movable(keymap));
         Assert.Equal("ctrl+p", Keys(keymap, "focusSidebarSearch"));
         Assert.Equal("ctrl+shift+e", Keys(keymap, "exportResults"));
+    }
+
+    [Fact]
+    public void TheCommandPaletteStartsOnCtrlShiftO()
+    {
+        Assert.Equal("ctrl+shift+o", Keys(EffectiveKeymap.TablePro, "quickSwitcher"));
     }
 
     [Fact]
@@ -278,6 +295,117 @@ public sealed class KeymapTests
             Assert.Equal(text.Contains("shift", StringComparison.Ordinal), chord!.Shift);
             Assert.True(chord.Control);
         }
+    }
+
+    [Fact]
+    public void AnOverrideWinsOverTheDefaultAndThePreset()
+    {
+        var overrides = ShortcutOverrides.None.Assigning("newTab", KeyChord.Parse("ctrl+shift+j"));
+
+        Assert.Equal("ctrl+shift+j", Keys(Keymap.Resolve(null, overrides), "newTab"));
+        var preset = TableProCore.KeymapPreset("tableplus", KeymapPlatform.Windows);
+        Assert.Equal("ctrl+shift+j", Keys(Keymap.Resolve(preset, overrides), "newTab"));
+    }
+
+    [Fact]
+    public void AnOverrideDisplacesAConflictingCommandAPressCanReach()
+    {
+        var overrides = ShortcutOverrides.None.Assigning("duplicateRow", KeyChord.Parse("ctrl+shift+n"));
+        var keymap = Keymap.Resolve(null, overrides);
+
+        Assert.Equal("ctrl+shift+n", Keys(keymap, "duplicateRow"));
+        Assert.Equal(string.Empty, Keys(keymap, "addRow"));
+        Assert.Equal(["addRow"], keymap.Displaced);
+    }
+
+    [Fact]
+    public void TheClearedSentinelRemovesAKeyWithoutCountingAsDisplaced()
+    {
+        var keymap = Keymap.Resolve(null, ShortcutOverrides.None.Clearing("refresh"));
+
+        Assert.Equal(string.Empty, Keys(keymap, "refresh"));
+        Assert.Empty(keymap.Displaced);
+    }
+
+    [Theory]
+    [InlineData("newTab", "ctrl+alt+t")]
+    [InlineData("find", "ctrl+[")]
+    [InlineData("newTab", "ctrl+z")]
+    public void AnOverrideTheGatesRejectLeavesTheKeyAsItWas(string action, string chord)
+    {
+        var before = Keys(EffectiveKeymap.TablePro, action);
+        var overrides = ShortcutOverrides.None.Assigning(action, KeyChord.Parse(chord));
+
+        Assert.Equal(before, Keys(Keymap.Resolve(null, overrides), action));
+    }
+
+    [Fact]
+    public void ClassifyCapturesAFreeChord()
+    {
+        var decision = Keymap.Classify("newTab", KeyChord.Parse("ctrl+shift+j"), EffectiveKeymap.TablePro);
+
+        Assert.Equal(ShortcutCapture.Capture, decision.Kind);
+        Assert.Empty(decision.Holders);
+    }
+
+    [Fact]
+    public void ClassifyAsksBeforeTakingAChordAnotherCommandHolds()
+    {
+        var decision = Keymap.Classify("duplicateRow", KeyChord.Parse("ctrl+shift+n"), EffectiveKeymap.TablePro);
+
+        Assert.Equal(ShortcutCapture.Reassign, decision.Kind);
+        Assert.Equal(["addRow"], decision.Holders);
+    }
+
+    [Theory]
+    [InlineData("newTab", "ctrl+alt+t", ShortcutRefusal.NeedsModifier)]
+    [InlineData("newTab", "q", ShortcutRefusal.NeedsModifier)]
+    [InlineData("newTab", "ctrl+`", ShortcutRefusal.UnavailableKey)]
+    [InlineData("newTab", "ctrl+z", ShortcutRefusal.Reserved)]
+    public void ClassifyRefusesAChordTheGatesReject(string action, string chord, ShortcutRefusal reason)
+    {
+        var decision = Keymap.Classify(action, KeyChord.Parse(chord), EffectiveKeymap.TablePro);
+
+        Assert.Equal(ShortcutCapture.Refuse, decision.Kind);
+        Assert.Equal(reason, decision.Reason);
+    }
+
+    [Fact]
+    public void ReassigningClearsTheOtherHolderAndBindsTheAction()
+    {
+        var overrides = ShortcutOverrides.None.Assigning("addRow", KeyChord.Parse("ctrl+shift+j"));
+        var reassigned = overrides.Reassigning("duplicateRow", KeyChord.Parse("ctrl+shift+j"), ["addRow"]);
+        var keymap = Keymap.Resolve(null, reassigned);
+
+        Assert.Equal("ctrl+shift+j", Keys(keymap, "duplicateRow"));
+        Assert.Equal(string.Empty, Keys(keymap, "addRow"));
+    }
+
+    [Fact]
+    public void NormalizeDropsUnknownAndRejectedOverridesAndKeepsTheClearedSentinel()
+    {
+        var settings = new AppSettings
+        {
+            ShortcutOverrides = new ShortcutOverrideMap
+            {
+                ["newTab"] = "ctrl+shift+j",
+                ["refresh"] = string.Empty,
+                ["noSuchCommand"] = "ctrl+j",
+                ["addRow"] = "ctrl+alt+x",
+                ["find"] = "ctrl+[",
+            },
+        }.Normalized();
+
+        Assert.Equal(2, settings.ShortcutOverrides.Count);
+        Assert.Equal("ctrl+shift+j", settings.ShortcutOverrides["newTab"]);
+        Assert.Equal(string.Empty, settings.ShortcutOverrides["refresh"]);
+    }
+
+    [Fact]
+    public void TheOverridesMapKeepsSettingsValueEquality()
+    {
+        Assert.Equal(new AppSettings(), new AppSettings());
+        Assert.Equal(new AppSettings().Normalized(), new AppSettings());
     }
 
     private static string Word(string id) => English[id];

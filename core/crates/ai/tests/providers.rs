@@ -207,6 +207,7 @@ fn request() -> ChatRequest {
         system: "You help with SQL.".to_owned(),
         messages: vec![ChatMessage::user("Count the rows")],
         max_tokens: ChatRequest::CHAT_MAX_TOKENS,
+        tools: Vec::new(),
     }
 }
 

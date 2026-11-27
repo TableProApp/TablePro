@@ -27,6 +27,9 @@ public sealed partial class QueryTabView
     private static readonly AiAction[] EditorActions = [AiAction.Review, AiAction.Explain, AiAction.Optimize];
 
     private readonly QueryTab _model;
+    private readonly SessionShare<DatabaseSession> _share;
+    private readonly IReadOnlyList<ExplainVariant> _explainVariants;
+    private CancellationTokenSource? _explainCancel;
     private EditTarget _target;
 
     // What the results pane last said, which the status shows again once a save of the rows ends.
@@ -53,7 +56,9 @@ public sealed partial class QueryTabView
         string? customTitle = null,
         bool? wrapText = null)
     {
+        _share = share;
         var engineId = share.Session.EngineId;
+        _explainVariants = QueryPlans.VariantsFor(engineId);
         var restoring = filePath is not null && onDisk is null;
         InitializeComponent();
         DisplaySettings.FollowKeys(this, ShowKeys);
@@ -278,6 +283,69 @@ public sealed partial class QueryTabView
         }
     }
 
+    // The engine's EXPLAIN options, empty where it has none. Explain plan needs only these and a statement, not the
+    // AI gate.
+    internal IReadOnlyList<ExplainVariant> ExplainVariants() => _explainVariants;
+
+    // Run the variant on the statement at the caret, on a connection of its own, and show the plan in the results.
+    internal async void ExplainPlan(ExplainVariant variant)
+    {
+        ArgumentNullException.ThrowIfNull(variant);
+        if (_closed || AssistantStatement() is not { } statement)
+        {
+            return;
+        }
+
+        _explainCancel?.Cancel();
+        _explainCancel?.Dispose();
+        var cancel = new CancellationTokenSource();
+        _explainCancel = cancel;
+        try
+        {
+            StatusText.Text = Strings.Get("StatusExplaining");
+            await using var editor = await _share.Session.OpenEditorAsync(_model.Database, cancel.Token)
+                .ConfigureAwait(true);
+            var outcome = await QueryPlans.ExplainAsync(editor, variant, statement, cancellationToken: cancel.Token)
+                .ConfigureAwait(true);
+            if (cancel.IsCancellationRequested || _closed)
+            {
+                return;
+            }
+
+            switch (outcome)
+            {
+                case ExplainOutcome.Parsed parsed:
+                    Results.ShowPlan(parsed.Plan, parsed.Plan.RawText);
+                    break;
+                case ExplainOutcome.RawText raw:
+                    Results.ShowPlan(null, raw.Text);
+                    break;
+                case ExplainOutcome.Failed failed:
+                    Results.ShowError(failed.Error);
+                    break;
+                case ExplainOutcome.TimedOut:
+                    Results.ShowError(Strings.Get("StatusTimedOut"));
+                    break;
+                default:
+                    break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+            // The tab closed while the plan ran, so its session is gone.
+        }
+        catch (TableProException exception)
+        {
+            if (!_closed)
+            {
+                Results.ShowError(exception.Error);
+            }
+        }
+    }
+
     // After a run, and after the assistant's settings or the connection's policy changed.
     internal void OfferFix() =>
         Results.OfferFix(_model.LastFailure is { } failure && AssistantReady()
@@ -397,6 +465,9 @@ public sealed partial class QueryTabView
     void IQueryTabView.CloseEditor()
     {
         _closed = true;
+        _explainCancel?.Cancel();
+        _explainCancel?.Dispose();
+        _explainCancel = null;
         SqlText.Dispose();
     }
 
@@ -976,6 +1047,19 @@ public sealed partial class QueryTabView
             var item = new MenuFlyoutItem { Text = AssistantText.Action(action), IsEnabled = ready };
             item.Click += (_, _) => AskAssistant(action);
             items.Add(item);
+        }
+
+        if (_explainVariants.Count > 0)
+        {
+            var plan = new MenuFlyoutSubItem { Text = Strings.Get("ExplainPlanCommand") };
+            foreach (var variant in _explainVariants)
+            {
+                var item = new MenuFlyoutItem { Text = variant.Label };
+                item.Click += (_, _) => ExplainPlan(variant);
+                plan.Items.Add(item);
+            }
+
+            items.Add(plan);
         }
     }
 

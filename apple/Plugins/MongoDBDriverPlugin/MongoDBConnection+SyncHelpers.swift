@@ -397,12 +397,13 @@ nonisolated extension MongoDBConnection {
         var results: [[String: Any]] = []
         var docPtr: OpaquePointer?
         var truncated = false
+        let reader = MongoBsonDocumentReader(buildsCanonical: false)
 
         while mongoc_cursor_next(cursor, &docPtr) {
             try checkCancelled()
 
             if let doc = docPtr {
-                results.append(bsonToDict(doc))
+                results.append(reader.read(doc)?.dictionary ?? [:])
             }
 
             if results.count >= PluginRowLimits.emergencyMax {
@@ -428,12 +429,12 @@ nonisolated extension MongoDBConnection {
         var batch = MongoStreamBatch()
         do {
             var docPtr: OpaquePointer?
-            var sample: [[String: Any]] = []
-            var sampleTexts: [String] = []
+            var sample: [MongoReadDocument] = []
             var projection: MongoStreamProjection?
             var emitted = 0
             var unannounced = Set<String>()
             var reachedLimit = false
+            let reader = MongoBsonDocumentReader()
             while !reachedLimit, mongoc_cursor_next(cursor, &docPtr) {
                 if delivery.state.isCancelled { throw CancellationError() }
                 try checkCancelled()
@@ -441,34 +442,25 @@ nonisolated extension MongoDBConnection {
                 // The whole cursor is read in one block on the queue, so what a document leaves autoreleased goes here,
                 // not when the read ends.
                 try autoreleasepool {
-                    let text = try canonicalText(of: doc)
-                    guard let raw = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
-                          let dict = Self.unwrapExtendedJson(raw) as? [String: Any] else {
+                    guard let read = reader.read(doc) else {
                         throw PluginExportError.exportFailed(String(localized: "A document could not be read", bundle: .main))
                     }
+                    let dict = read.dictionary
                     if projection == nil, sample.count >= MongoStreamProjection.sampleSize {
-                        projection = try openStream(
-                            sample: sample, texts: sampleTexts, census: try census(), delivery: delivery
-                        )
+                        projection = try openStream(sample: sample, census: try census(), delivery: delivery)
                         emitted += sample.count
                         sample = []
-                        sampleTexts = []
                     }
                     guard let projection else {
-                        sample.append(dict)
-                        sampleTexts.append(text)
+                        sample.append(read)
                         return
                     }
-                    let size = MongoLibbsonCodec.size(of: doc)
-                    let document = try MongoExportDocument.read(
-                        canonicalJSON: text, dictionary: dict, representation: uuidRepresentation,
-                        bsonSizeUpperBound: size
-                    )
+                    let document = try MongoExportDocument.read(read, representation: uuidRepresentation)
                     let row = BsonDocumentFlattener.flatten(
                         documents: [dict], columns: projection.columns, kinds: projection.kinds,
-                        representation: uuidRepresentation, storedTexts: [text]
+                        representation: uuidRepresentation, stored: [read.canonical]
                     )[0]
-                    batch.add(row, document: document, size: size)
+                    batch.add(row, document: document, size: read.bsonSize ?? 0)
                     if batch.isFull {
                         try delivery.send(batch.take())
                     }
@@ -487,7 +479,7 @@ nonisolated extension MongoDBConnection {
             var error = bson_error_t()
             if mongoc_cursor_error(cursor, &error) { throw makeError(error) }
             if projection == nil {
-                _ = try openStream(sample: sample, texts: sampleTexts, census: nil, delivery: delivery)
+                _ = try openStream(sample: sample, census: nil, delivery: delivery)
             }
             delivery.finish()
         } catch {
@@ -529,15 +521,13 @@ nonisolated extension MongoDBConnection {
     }
 
     private func openStream(
-        sample: [[String: Any]],
-        texts: [String],
+        sample read: [MongoReadDocument],
         census: MongoFieldCensus?,
         delivery: MongoStreamDelivery
     ) throws -> MongoStreamProjection {
+        let sample = read.map(\.dictionary)
         let projection = MongoStreamProjection(sample: sample, census: census, representation: uuidRepresentation)
-        let documents = try MongoExportDocument.read(
-            MongoReadDocuments(dictionaries: sample, texts: texts), representation: uuidRepresentation
-        )
+        let documents = try read.map { try MongoExportDocument.read($0, representation: uuidRepresentation) }
         var header = projection.header
         // iterateCursorStreaming stops there, so a stream that reaches it was cut.
         header.rowLimit = PluginRowLimits.emergencyMax
@@ -545,7 +535,7 @@ nonisolated extension MongoDBConnection {
         if !sample.isEmpty {
             let rows = BsonDocumentFlattener.flatten(
                 documents: sample, columns: projection.columns, kinds: projection.kinds,
-                representation: uuidRepresentation, storedTexts: texts
+                representation: uuidRepresentation, stored: read.map(\.canonical)
             )
             try delivery.send(.rows(rows, documents: documents))
         }

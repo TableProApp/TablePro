@@ -95,7 +95,7 @@ struct LibPQPipelineTests {
         _ = try await connection.executeQuery("ROLLBACK")
     }
 
-    @Test("Rows a statement returns are counted one at a time, and a failure after some of them fails it")
+    @Test("Rows a statement returns are counted a chunk at a time, and a failure after some of them fails it")
     func rowsAreCountedAndDropped() async throws {
         let read = "SELECT * FROM events"
         let broken = "SELECT * FROM broken"
