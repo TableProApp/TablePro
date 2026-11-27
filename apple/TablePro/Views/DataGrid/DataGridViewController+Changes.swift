@@ -50,6 +50,7 @@ extension DataGridViewController {
         reconcileColumns(widening: changed)
         applyRowNumberWidth()
         syncSortIndicators()
+        gridFocusDidChange()
         redrawVisibleRows()
         updateFittingHeight()
         syncWrapGeometry()

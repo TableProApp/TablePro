@@ -50,7 +50,8 @@ paths:
 
 ## Theme editor
 
-- The preview is a real `SourceEditor` and `DataGridView` on `ThemeScope.fixed(_:)`. It never takes focus: its editor and grid answer Undo with their own histories.
+- The preview is a real `SourceEditor` and `DataGridView` on `ThemeScope.fixed(_:)`. It never takes focus: its editor and grid answer Undo with their own histories. It still draws the focused selection (`drawsSelectionEmphasized`, `DataGridConfiguration.drawsFocused`), so the selection slots show in it; the grid's inactive selection shows only in a window.
+- **Every bundled theme's selections clear the floors in `ThemeContrastTests`**: CIEDE2000 15 from each surface they fill (7 for the grid's inactive one), and every color drawn on them keeps half its contrast (a third for whitespace marks). The SQL editor keeps syntax colors on its selection, so a brighter fill costs keywords and comments their contrast.
 - **Set the window's delegate before its content.** A window whose undo manager was read with no delegate keeps its own and never asks `windowWillReturnUndoManager(_:)`.
 
 ## Sync

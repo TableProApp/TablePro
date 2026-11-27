@@ -176,4 +176,119 @@ struct ThemeContrastTests {
         theme.overrides[.gridNumber] = nil
         #expect(ThemeContrastNote.lowest(for: .values, in: theme) == nil)
     }
+
+    // MARK: - Selection
+
+    // macOS's selections stand 18.1 (light) and 27.4 (dark) from the text background, its unfocused light one 7.4 (#4468).
+    private static let selectionDifference = 15.0
+    private static let inactiveSelectionDifference = 7.0
+
+    // A fill past half of what a color stands above 1:1 buries comments, NULL and row numbers drawn on it. Whitespace marks
+    // sit at 1.2 to 2.4:1 by design and only need to stay visible.
+    private static let contrastKeptOnSelection = 0.5
+    private static let invisiblesContrastKeptOnSelection = 1.0 / 3.0
+
+    private static func contrastKept(by color: ThemeColor, on fill: ThemeColor, over background: ThemeColor) -> Double {
+        let onBackground = color.composited(over: background).contrastRatio(with: background)
+        guard onBackground > 1 else { return 1 }
+        return (color.composited(over: fill).contrastRatio(with: fill) - 1) / (onBackground - 1)
+    }
+
+    private struct SelectionSurfaces {
+        let editorBackground: ThemeColor
+        let editorSelection: ThemeColor
+        let rows: [ThemeColor]
+        let selectedRows: [ThemeColor]
+        let inactiveRows: [ThemeColor]
+
+        init(_ theme: ThemeDefinition) throws {
+            func color(_ slot: ThemeSlot) throws -> ThemeColor {
+                try #require(theme.overrides[slot], "\(theme.id) sets no \(slot.rawValue)")
+            }
+            editorBackground = try color(.editorBackground)
+            editorSelection = try color(.editorSelection).composited(over: editorBackground)
+            let background = try color(.gridBackground)
+            rows = [background, try color(.gridAlternateRow).composited(over: background)]
+            let selection = try color(.gridSelection)
+            let inactive = try color(.gridInactiveSelection)
+            selectedRows = rows.map { selection.composited(over: $0) }
+            inactiveRows = rows.map { inactive.composited(over: $0) }
+        }
+    }
+
+    @Test("Every bundled selection stands apart from the background and the striped row it fills")
+    func bundledSelectionsStandApart() throws {
+        for theme in try Self.bundledThemes() {
+            let surfaces = try SelectionSurfaces(theme)
+            let editor = surfaces.editorSelection.perceptualDifference(from: surfaces.editorBackground)
+            #expect(editor >= Self.selectionDifference, "\(theme.id) editor.selection: \(editor)")
+
+            for (row, selected) in zip(surfaces.rows, surfaces.selectedRows) {
+                let difference = selected.perceptualDifference(from: row)
+                #expect(difference >= Self.selectionDifference, "\(theme.id) dataGrid.selection on \(row.hex): \(difference)")
+            }
+        }
+    }
+
+    @Test("Every bundled inactive grid selection stays visible on both rows and fainter than the focused one")
+    func bundledInactiveSelectionsStayBelowFocused() throws {
+        for theme in try Self.bundledThemes() {
+            let surfaces = try SelectionSurfaces(theme)
+            for index in surfaces.rows.indices {
+                let row = surfaces.rows[index]
+                let inactive = surfaces.inactiveRows[index].perceptualDifference(from: row)
+                let focused = surfaces.selectedRows[index].perceptualDifference(from: row)
+                #expect(inactive >= Self.inactiveSelectionDifference, "\(theme.id) on \(row.hex): \(inactive)")
+                #expect(inactive < focused, "\(theme.id) on \(row.hex): inactive \(inactive), focused \(focused)")
+            }
+        }
+    }
+
+    // The SQL editor and an unfocused row keep each color on the selection; a focused row draws all of it in selectionText.
+    @Test("Every color drawn on a bundled selection stays readable")
+    func bundledSelectedColorsStayReadable() throws {
+        for theme in try Self.bundledThemes() {
+            let surfaces = try SelectionSurfaces(theme)
+            let editorColors = ([.editorText] + ThemeSlotSection.syntax.slots).compactMap { theme.overrides[$0] }
+            let gridColors = ([.gridText, .gridNullValue, .gridRowNumber] + ThemeSlotSection.values.slots)
+                .compactMap { theme.overrides[$0] }
+            let selectionText = try #require(theme.overrides[.gridSelectionText], "\(theme.id)")
+            #expect(editorColors.count >= 6 && gridColors.count >= 12, "\(theme.id)")
+
+            for color in editorColors {
+                let kept = Self.contrastKept(by: color, on: surfaces.editorSelection, over: surfaces.editorBackground)
+                #expect(kept >= Self.contrastKeptOnSelection, "\(theme.id) \(color.hex) on editor.selection: \(kept)")
+            }
+            let invisibles = try #require(theme.overrides[.editorInvisibles], "\(theme.id)")
+            let invisiblesKept = Self.contrastKept(by: invisibles, on: surfaces.editorSelection, over: surfaces.editorBackground)
+            #expect(invisiblesKept >= Self.invisiblesContrastKeptOnSelection, "\(theme.id) editor.invisibles: \(invisiblesKept)")
+            for (row, inactive) in zip(surfaces.rows, surfaces.inactiveRows) {
+                for color in gridColors {
+                    let kept = Self.contrastKept(by: color, on: inactive, over: row)
+                    #expect(kept >= Self.contrastKeptOnSelection, "\(theme.id) \(color.hex) on \(inactive.hex): \(kept)")
+                }
+            }
+            for selected in surfaces.selectedRows {
+                let ratio = selectionText.contrastRatio(with: selected)
+                #expect(ratio >= ThemeContrastNote.minimumRatio, "\(theme.id) selectionText on \(selected.hex): \(ratio)")
+            }
+        }
+    }
+
+    @Test(
+        "The perceptual difference matches the CIEDE2000 reference pairs",
+        arguments: [
+            (CIELab(lightness: 50, aStar: 2.6772, bStar: -79.7751), CIELab(lightness: 50, aStar: 0, bStar: -82.7485), 2.0425),
+            (CIELab(lightness: 50, aStar: 0, bStar: 0), CIELab(lightness: 50, aStar: -1, bStar: 2), 2.3669),
+            (CIELab(lightness: 50, aStar: 2.49, bStar: -0.001), CIELab(lightness: 50, aStar: -2.49, bStar: 0.0009), 7.1792),
+            (CIELab(lightness: 50, aStar: 2.5, bStar: 0), CIELab(lightness: 73, aStar: 25, bStar: -18), 27.1492),
+            (CIELab(lightness: 50, aStar: 2.5, bStar: 0), CIELab(lightness: 56, aStar: -27, bStar: -3), 31.9030),
+            (CIELab(lightness: 60.2574, aStar: -34.0099, bStar: 36.2677), CIELab(lightness: 60.4626, aStar: -34.1751, bStar: 39.4387), 1.2644),
+            (CIELab(lightness: 2.0776, aStar: 0.0795, bStar: -1.1350), CIELab(lightness: 0.9033, aStar: -0.0636, bStar: -0.5514), 0.9082),
+        ]
+    )
+    func perceptualDifferenceMatchesReference(first: CIELab, second: CIELab, expected: Double) {
+        #expect(abs(first.difference(from: second) - expected) < 0.0001)
+        #expect(abs(second.difference(from: first) - expected) < 0.0001)
+    }
 }
