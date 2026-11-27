@@ -73,7 +73,7 @@ struct TeamUnsentEditsView: View {
                         .accessibilityElement(children: .combine)
                     }
                     Button(String(localized: "Discard This Team's Edits…"), role: .destructive) {
-                        pendingDiscard = TeamUnsentDiscard(team: group.team, name: teamName(group.team))
+                        pendingDiscard = TeamUnsentDiscard(team: group.team, name: teamName(group.team), session: library.shownSessionID)
                     }
                 } header: {
                     Text(verbatim: teamName(group.team))
@@ -96,7 +96,7 @@ struct TeamUnsentEditsView: View {
             }
             ToolbarItem(placement: .bottomBar) {
                 Button(String(localized: "Discard All…"), role: .destructive) {
-                    pendingDiscard = TeamUnsentDiscard(team: nil, name: nil)
+                    pendingDiscard = TeamUnsentDiscard(team: nil, name: nil, session: library.shownSessionID)
                 }
                 .disabled(library.unsent.isEmpty)
             }
@@ -140,7 +140,7 @@ struct TeamUnsentEditsView: View {
 
     private func discard(_ discard: TeamUnsentDiscard) async {
         do throws(TeamLibraryProblem) {
-            try await library.discardUnsent(team: discard.team)
+            try await library.discardUnsent(team: discard.team, under: discard.session)
         } catch {
             failure = TeamActionFailure(title: String(localized: "Couldn't Discard the Edits"), message: error.message)
         }
@@ -157,6 +157,8 @@ private struct TeamUnsentGroup: Identifiable {
 private struct TeamUnsentDiscard: Identifiable {
     let team: String?
     let name: String?
+    // The sign-in the list showed when the person picked it.
+    let session: String?
 
     var id: String { team ?? "" }
 

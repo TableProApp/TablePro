@@ -241,8 +241,17 @@ final class TeamLibraryModel {
 
     // MARK: - Unsent edits
 
-    // None discards every team's, refused and waiting edits included.
-    func discardUnsent(team: String?) async throws(TeamLibraryProblem) {
+    // The sign-in shown now, which an action the person picks carries until they confirm it.
+    var shownSessionID: String? {
+        follow()
+        return shownSession
+    }
+
+    // None discards every team's, refused and waiting edits included. `session` is the sign-in the list was shown
+    // under: another account's edits are never discarded for it.
+    func discardUnsent(team: String?, under session: String?) async throws(TeamLibraryProblem) {
+        follow()
+        guard let session, session == shownSession else { throw .signedOut }
         do {
             try await source.engine().discardTeamEdits(teamId: team)
         } catch {
@@ -343,11 +352,15 @@ final class TeamLibraryModel {
 
     // A team connection is copied into this device's library under an id derived from the team item, so adding it
     // again finds the copy already there. Nil when the library refused the copy.
+    // Nil also when the sign-in the item was shown under has ended: nothing of it is copied after.
     func addToMyConnections(
         _ item: TeamLibraryConnectionItem,
         of team: TeamLibraryTeam,
+        shownUnder session: String?,
         in appState: AppState
     ) -> UUID? {
+        follow()
+        guard let session, session == shownSession else { return nil }
         let id = TeamLibraryID.copy(team: team.id, item: item.id)
         if appState.connections.contains(where: { $0.id == id }) {
             return id

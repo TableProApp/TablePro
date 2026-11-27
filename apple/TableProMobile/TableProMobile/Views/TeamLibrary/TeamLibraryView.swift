@@ -12,7 +12,7 @@ struct TeamLibraryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showsConflicts = false
     @State private var pendingRemoval: TeamLibraryRemoval?
-    @State private var pendingQueryPublish: TeamLibraryTeam?
+    @State private var pendingQueryPublish: TeamLibraryQueryPublish?
     @State private var publishOutcome: TeamLibraryPublishOutcome?
     @State private var actionFailure: TeamActionFailure?
     @State private var chosenConnection: TeamLibraryConnectionChoice?
@@ -47,6 +47,12 @@ struct TeamLibraryView: View {
                 }
         }
         .task { await library.refresh() }
+        // What was picked belongs to the sign-in it showed under.
+        .onChange(of: appState.account.snapshot.sessionID) {
+            chosenConnection = nil
+            pendingRemoval = nil
+            pendingQueryPublish = nil
+        }
         .sheet(isPresented: $showsConflicts) {
             TeamConflictSheet(model: library.conflicts)
         }
@@ -67,14 +73,14 @@ struct TeamLibraryView: View {
             isPresented: Binding(get: { pendingQueryPublish != nil }, set: { if !$0 { pendingQueryPublish = nil } }),
             titleVisibility: .visible,
             presenting: pendingQueryPublish
-        ) { team in
+        ) { pending in
             Button(String(localized: "Publish")) {
-                Task { await publishSavedQueries(to: team) }
+                Task { await publishSavedQueries(pending) }
             }
-        } message: { team in
+        } message: { pending in
             Text(String(
                 format: String(localized: "Every saved query and folder on this device goes to %@. Ones you published before and deleted here are removed from the team."),
-                team.name
+                pending.team.name
             ))
         }
         .confirmationDialog(
@@ -87,7 +93,12 @@ struct TeamLibraryView: View {
                 .disabled(!appState.isLibraryWritable)
             if choice.team.canWrite {
                 Button(String(localized: "Remove from Team"), role: .destructive) {
-                    pendingRemoval = TeamLibraryRemoval(team: choice.team, ref: choice.item.ref, name: choice.item.settings.name)
+                    pendingRemoval = TeamLibraryRemoval(
+                        team: choice.team,
+                        ref: choice.item.ref,
+                        name: choice.item.settings.name,
+                        destination: choice.destination
+                    )
                 }
             }
         } message: { _ in
@@ -207,7 +218,7 @@ struct TeamLibraryView: View {
             }
             ForEach(team.connections) { item in
                 Button {
-                    chosenConnection = TeamLibraryConnectionChoice(team: team, item: item)
+                    chosenConnection = TeamLibraryConnectionChoice(team: team, item: item, destination: library.destination(team.id))
                 } label: {
                     TeamLibraryConnectionRow(item: item)
                 }
@@ -215,7 +226,12 @@ struct TeamLibraryView: View {
                 .swipeActions(edge: .trailing) {
                     if team.canWrite {
                         Button(String(localized: "Remove"), role: .destructive) {
-                            pendingRemoval = TeamLibraryRemoval(team: team, ref: item.ref, name: item.settings.name)
+                            pendingRemoval = TeamLibraryRemoval(
+                                team: team,
+                                ref: item.ref,
+                                name: item.settings.name,
+                                destination: library.destination(team.id)
+                            )
                         }
                     }
                 }
@@ -227,14 +243,19 @@ struct TeamLibraryView: View {
                 .swipeActions(edge: .trailing) {
                     if team.canWrite {
                         Button(String(localized: "Remove"), role: .destructive) {
-                            pendingRemoval = TeamLibraryRemoval(team: team, ref: query.ref, name: query.name)
+                            pendingRemoval = TeamLibraryRemoval(
+                                team: team,
+                                ref: query.ref,
+                                name: query.name,
+                                destination: library.destination(team.id)
+                            )
                         }
                     }
                 }
             }
             if team.canWrite {
                 Button {
-                    pendingQueryPublish = team
+                    pendingQueryPublish = TeamLibraryQueryPublish(team: team, destination: library.destination(team.id))
                 } label: {
                     Label(String(localized: "Publish Saved Queries…"), systemImage: "square.and.arrow.up")
                 }
@@ -257,7 +278,13 @@ struct TeamLibraryView: View {
     // MARK: - Actions
 
     private func addToMyConnections(_ choice: TeamLibraryConnectionChoice) {
-        guard let id = library.addToMyConnections(choice.item, of: choice.team, in: appState) else {
+        guard library.shownSessionID == choice.destination.sessionID else { return }
+        guard let id = library.addToMyConnections(
+            choice.item,
+            of: choice.team,
+            shownUnder: choice.destination.sessionID,
+            in: appState
+        ) else {
             actionFailure = TeamActionFailure(
                 title: String(localized: "Couldn't Add the Connection"),
                 message: String(localized: "Your connections couldn't be saved. Try again.")
@@ -268,11 +295,12 @@ struct TeamLibraryView: View {
         open(id)
     }
 
+    // The destination is the one taken when the person picked the item, so a confirmation that outlived its sign-in
+    // is refused.
     private func remove(_ removal: TeamLibraryRemoval) async {
-        let destination = library.destination(removal.team.id)
         do throws(TeamLibraryProblem) {
             publishOutcome = TeamLibraryPublishOutcome(
-                try await library.remove([removal.ref], from: destination),
+                try await library.remove([removal.ref], from: removal.destination),
                 action: .remove
             )
         } catch {
@@ -280,11 +308,10 @@ struct TeamLibraryView: View {
         }
     }
 
-    private func publishSavedQueries(to team: TeamLibraryTeam) async {
-        let destination = library.destination(team.id)
+    private func publishSavedQueries(_ pending: TeamLibraryQueryPublish) async {
         do throws(TeamLibraryProblem) {
             publishOutcome = TeamLibraryPublishOutcome(
-                try await library.publishSavedQueries(appState.savedQueries.contents, to: destination),
+                try await library.publishSavedQueries(appState.savedQueries.contents, to: pending.destination),
                 action: .publish
             )
         } catch {
@@ -302,6 +329,7 @@ enum TeamLibraryDestinationPage: Hashable {
 private struct TeamLibraryConnectionChoice: Identifiable {
     let team: TeamLibraryTeam
     let item: TeamLibraryConnectionItem
+    let destination: TeamLibraryDestination
 
     var id: String { team.id + "\n" + item.id }
 }
@@ -310,6 +338,7 @@ private struct TeamLibraryRemoval: Identifiable {
     let team: TeamLibraryTeam
     let ref: TeamLibraryItemRef
     let name: String
+    let destination: TeamLibraryDestination
 
     var id: String { team.id + "\n" + ref.id }
 
@@ -415,4 +444,11 @@ enum TeamLibraryChangeText {
             return nil
         }
     }
+}
+
+private struct TeamLibraryQueryPublish: Identifiable {
+    let team: TeamLibraryTeam
+    let destination: TeamLibraryDestination
+
+    var id: String { team.id }
 }

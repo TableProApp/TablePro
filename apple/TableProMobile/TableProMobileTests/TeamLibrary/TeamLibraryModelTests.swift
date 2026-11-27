@@ -169,10 +169,22 @@ struct TeamLibraryModelTests {
         }
         await fixture.library.refresh()
 
-        try await fixture.library.discardUnsent(team: "team_a")
+        try await fixture.library.discardUnsent(team: "team_a", under: "session_a")
 
         #expect(fixture.engine.read { $0.discarded } == ["team_a"])
         #expect(fixture.library.unsent.map(\.teamId) == ["team_b"])
+    }
+
+    @Test("A discard picked under one sign-in never discards another account's edits")
+    func discardOfAnEndedSignInIsRefused() async {
+        let fixture = Fixture()
+        await fixture.library.refresh()
+        fixture.session = "session_b"
+
+        await #expect(throws: TeamLibraryProblem.signedOut) {
+            try await fixture.library.discardUnsent(team: nil, under: "session_a")
+        }
+        #expect(fixture.engine.read { $0.discarded }.isEmpty)
     }
 
     @Test("A sign-in by another owner deletes what the last one left and names its unsent edits")
