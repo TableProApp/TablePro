@@ -854,6 +854,40 @@ async fn a_pulled_project_with_a_blank_name_is_refused_as_unreadable() {
     assert!(store.list_blocking().unwrap().projects.is_empty());
 }
 
+// A batch the store refuses goes again one change at a time, and each of those still refuses to write over a record
+// changed since the read the pull merged against, by an edit made between the batch and the retry too.
+#[tokio::test]
+async fn the_retries_after_a_refused_batch_still_refuse_a_record_changed_since_the_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let projects = adapter(&store, Kind::ConnectionProject);
+    let acme = store
+        .create_project_blocking(ConnectionProject::new(ConnectionProjectName::new("Acme").unwrap()))
+        .unwrap();
+    projects.records(ScopeName::Personal).await.unwrap();
+    let pulled = LocalChange::Put {
+        record_id: tablepro_records::record_id::uuid_id(acme.id),
+        fields: json!({"name": "Acme Pulled", "color": "None", "sort_order": 0}),
+    };
+    let blank = LocalChange::Put {
+        record_id: PROJECT.to_owned(),
+        fields: json!({"name": " ", "color": "None", "sort_order": 1}),
+    };
+
+    let batch = projects.apply(ScopeName::Personal, vec![pulled.clone(), blank]).await;
+    store
+        .rename_project_blocking(acme.id, ConnectionProjectName::new("Acme Corp").unwrap())
+        .unwrap();
+    let retried = projects.apply(ScopeName::Personal, vec![pulled]).await;
+
+    assert!(matches!(batch, Err(AdapterError::Unreadable { .. })), "{batch:?}");
+    assert!(matches!(retried, Err(AdapterError::Store { .. })), "{retried:?}");
+    assert_eq!(
+        store.list_blocking().unwrap().project(acme.id).unwrap().name.as_str(),
+        "Acme Corp"
+    );
+}
+
 // Projects pulled one page at a time keep the orders the records carry, so a later page never lands out of place and
 // nothing goes back up as an edit.
 #[tokio::test]

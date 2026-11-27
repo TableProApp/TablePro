@@ -89,6 +89,9 @@ pub struct LibraryAdapter {
     // This device's id as the host keeps it, which names the routes it publishes.
     publisher: Option<Uuid>,
     seen: Mutex<Option<HashMap<String, Seen>>>,
+    // Set by a batch the store refused, which the engine then applies one change at a time: each of those checks
+    // against the same read, until the next read.
+    retrying: Mutex<bool>,
 }
 
 impl LibraryAdapter {
@@ -109,6 +112,7 @@ impl LibraryAdapter {
                     projects,
                     publisher,
                     seen: Mutex::new(None),
+                    retrying: Mutex::new(false),
                 }) as Arc<dyn RecordAdapter>
             })
             .collect()
@@ -503,6 +507,7 @@ impl RecordAdapter for LibraryAdapter {
             &library.unreadable_credential_profiles,
         );
         *lock(&self.seen) = Some(seen(&records));
+        *lock(&self.retrying) = false;
         Ok(records)
     }
 
@@ -510,10 +515,15 @@ impl RecordAdapter for LibraryAdapter {
         if scope != ScopeName::Personal || changes.is_empty() {
             return self.identity().await;
         }
-        let expected = lock(&self.seen).take();
+        let retrying = *lock(&self.retrying);
+        let expected = if retrying {
+            lock(&self.seen).clone()
+        } else {
+            lock(&self.seen).take()
+        };
         let (store, kind, names, projects, publisher) =
             (self.store.clone(), self.kind, self.names, self.projects, self.publisher);
-        let (written, changed, refused) = blocking(move || {
+        let (written, changed, refused, expected) = blocking(move || {
             let (mut changed, mut refused) = (false, false);
             let written = store.apply_synced_blocking(|list| {
                 if let Some(expected) = &expected {
@@ -529,14 +539,18 @@ impl RecordAdapter for LibraryAdapter {
                     Vec::new()
                 })
             });
-            (written, changed, refused)
+            (written, changed, refused, expected)
         })
         .await?;
         let identity = written.map_err(store_error)?;
         if changed {
+            *lock(&self.seen) = None;
+            *lock(&self.retrying) = false;
             return Err(stale(STORE));
         }
         if refused {
+            *lock(&self.seen) = expected;
+            *lock(&self.retrying) = true;
             return Err(AdapterError::Unreadable {
                 detail: format!("a {} the store cannot hold", kind.as_str()),
             });
