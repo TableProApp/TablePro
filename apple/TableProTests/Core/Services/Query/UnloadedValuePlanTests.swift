@@ -239,8 +239,10 @@ struct UnloadedValuePlanTests {
     @Test("An engine whose keys are never NULL cuts on size alone")
     func enforcedKeysNeedNoGuard() throws {
         let types: [String: ColumnType] = ["id": .integer(rawType: "integer"), "body": .text(rawType: "text")]
-        #expect(try #require(Self.plan(columns: ["id", "body"], types: types, functions: .postgreSQL)).nullableKeys.isEmpty)
-        #expect(try #require(Self.plan(columns: ["id", "body"], types: types, functions: .mySQL)).nullableKeys.isEmpty)
+        for functions in [LargeValueFunctions.postgreSQL, .mySQL] {
+            let plan = try #require(Self.plan(columns: ["id", "body"], types: types, functions: functions, limit: 1_024))
+            #expect(plan.nullableKeys.isEmpty)
+        }
     }
 
     @Test("A placeholder in a quoted name is not filled in")
