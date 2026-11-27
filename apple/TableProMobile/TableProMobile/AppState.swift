@@ -72,6 +72,8 @@ final class AppState {
     private let sampleInstaller: SampleDatabaseInstaller
     private let libraryPublisher: ConnectionLibraryPublisher
     private let defaults: UserDefaults
+    // Nil under an injected store, which has no iCloud Keychain items to copy.
+    private let keychainFollower: KeychainProviderFollower?
     private let library: CoreLibraryStore
 
     init(
@@ -118,6 +120,9 @@ final class AppState {
         let driverFactory: any DriverFactory = injectedDriverFactory
             ?? IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles, secureStore: secureStore)
         self.secureStore = secureStore
+        keychainFollower = (secureStore as? KeychainSecureStore).map { keychain in
+            KeychainProviderFollower(addCopies: { keychain.addDeviceOnlyCopies() })
+        }
         let sshProvider = IOSSSHProvider(secureStore: secureStore, container: localDatabaseFiles.container)
         self.sshProvider = sshProvider
         let connectionManager = ConnectionManager(
@@ -183,6 +188,7 @@ final class AppState {
         }
         syncCoordinator.start()
         providerMoves.start()
+        keychainFollower?.start(host: syncCoordinator.host)
     }
 
     private static func liveSyncCoordinator(core: MobileCoreHost, account: AccountModel) -> IOSSyncCoordinator {

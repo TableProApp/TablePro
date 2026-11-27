@@ -7,9 +7,13 @@ import Testing
 struct KeychainSecureStoreTests {
     private let items = InMemoryKeychainItems()
     private let account = ConnectionSecretKind.password.account(for: UUID())
+    // Its own suite, so the provider these cases read is the password switch's, whatever the host's defaults hold.
+    private let provider = DefaultsKeychainProviderRecord(
+        defaults: UserDefaults(suiteName: "com.TablePro.tests.KeychainProvider.\(UUID().uuidString)") ?? .standard
+    )
 
     private func secureStore(syncsPasswords: Bool) -> KeychainSecureStore {
-        KeychainSecureStore(syncsPasswords: { syncsPasswords }, items: items)
+        KeychainSecureStore(syncsPasswords: { syncsPasswords }, provider: provider, items: items)
     }
 
     @Test("Saving with Sync Passwords off keeps the synced copy another device reads")

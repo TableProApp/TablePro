@@ -64,7 +64,10 @@ nonisolated final class KeychainSecureStore: SecureStore {
     private static let serviceName = "com.TablePro"
     private let accessGroup: String?
     private let syncsPasswords: @Sendable () -> Bool
+    private let provider: any KeychainProviderRecord
     private let items: any KeychainItemStore
+    // A removal and a copy of the same item never interleave, so a copy cannot bring back what was just removed.
+    private let copyLock = NSLock()
 
     private static let cachedAccessGroup = OSAllocatedUnfairLock<String?>(initialState: nil)
 
@@ -88,11 +91,23 @@ nonisolated final class KeychainSecureStore: SecureStore {
 
     init(
         syncsPasswords: @escaping @Sendable () -> Bool = { AppPreferences.syncsPasswords },
+        provider: any KeychainProviderRecord = DefaultsKeychainProviderRecord(),
         items: any KeychainItemStore = SystemKeychainItemStore()
     ) {
         self.accessGroup = Self.resolveAccessGroup()
         self.syncsPasswords = syncsPasswords
+        self.provider = provider
         self.items = items
+    }
+
+    // Nil while the password switch decides.
+    private var tableProSync: KeychainProviderState? {
+        let state = provider.state
+        return state.onTableProSync ? state : nil
+    }
+
+    private var syncsHere: Bool {
+        tableProSync == nil && syncsPasswords()
     }
 
     private func applyingAccessGroup(_ query: [String: Any]) -> [String: Any] {
@@ -119,8 +134,11 @@ nonisolated final class KeychainSecureStore: SecureStore {
     // Synchronizable is part of an item's identity, and deleting a synced item deletes it on every device.
     func store(_ value: String, forKey key: String) throws {
         guard let data = value.data(using: .utf8) else { return }
+        try copyLock.withLock { try storeUnlocked(data, forKey: key) }
+    }
 
-        let synchronizable = Self.synchronizes(key, syncsPasswords: syncsPasswords())
+    private func storeUnlocked(_ data: Data, forKey key: String) throws {
+        let synchronizable = Self.synchronizes(key, syncsPasswords: syncsHere)
         let accessible = Self.accessibility(forSync: synchronizable)
         let target = itemQuery(forKey: key, synchronizable: synchronizable)
 
@@ -138,6 +156,9 @@ nonisolated final class KeychainSecureStore: SecureStore {
             throw KeychainError.storeFailed(status)
         }
 
+        if tableProSync != nil {
+            provider.noteSavedHere(key)
+        }
         guard synchronizable else { return }
         let stale = items.delete(itemQuery(forKey: key, synchronizable: false))
         if stale != errSecSuccess, stale != errSecItemNotFound {
@@ -146,10 +167,15 @@ nonisolated final class KeychainSecureStore: SecureStore {
     }
 
     // With sync on, a newer device-only copy is a save made while sync was off; with sync off, this device's copy wins.
+    // On TablePro Sync a secret removed here stays removed: once every iCloud item has a copy here no read falls back
+    // to one, and before that only to one not removed here.
     func retrieve(forKey key: String) throws -> String? {
-        let preferred = Self.synchronizes(key, syncsPasswords: syncsPasswords())
+        let preferred = Self.synchronizes(key, syncsPasswords: syncsHere)
         var found = items.copyItem(itemQuery(forKey: key, synchronizable: preferred))
         if found.status == errSecItemNotFound {
+            if let state = tableProSync, state.deviceCopiesAdded || provider.isRemovedHere(key) {
+                return nil
+            }
             found = items.copyItem(itemQuery(forKey: key, synchronizable: !preferred))
         } else if found.status == errSecSuccess, preferred {
             let other = items.copyItem(itemQuery(forKey: key, synchronizable: !preferred))
@@ -171,12 +197,63 @@ nonisolated final class KeychainSecureStore: SecureStore {
         return candidateDate > currentDate
     }
 
+    // On TablePro Sync only this device's own item goes: the iCloud one belongs to the devices still on iCloud.
     func delete(forKey key: String) throws {
-        var query = baseQuery(forKey: key)
-        query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-        let status = items.delete(query)
-        if status != errSecSuccess && status != errSecItemNotFound {
-            throw KeychainError.deleteFailed(status)
+        try copyLock.withLock {
+            var query = baseQuery(forKey: key)
+            if let state = tableProSync {
+                // Noted first: a stop between the two then leaves this device's item and a note a save clears, never
+                // a removed item whose iCloud copy reads back.
+                if !state.deviceCopiesAdded {
+                    provider.noteRemovedHere(key)
+                }
+                query[kSecAttrSynchronizable as String] = false
+            } else {
+                query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+            }
+            let status = items.delete(query)
+            if status != errSecSuccess && status != errSecItemNotFound {
+                throw KeychainError.deleteFailed(status)
+            }
+        }
+    }
+
+    // On TablePro Sync each iCloud Keychain item gets a copy of this device's own, so a later read never needs the
+    // iCloud one. False when one could not be read or written yet, such as before the first unlock.
+    func addDeviceOnlyCopies() -> Bool {
+        var query = baseQuery(forKey: "")
+        query.removeValue(forKey: kSecAttrAccount as String)
+        query[kSecAttrSynchronizable as String] = true
+        var complete = true
+        for key in Set(items.accounts(query)).sorted() where !addDeviceOnlyCopy(forKey: key) {
+            complete = false
+        }
+        return complete
+    }
+
+    // Off TablePro Sync again, a copy still under way stops: the password switch decides from then on.
+    private func addDeviceOnlyCopy(forKey key: String) -> Bool {
+        copyLock.withLock {
+            if tableProSync == nil || provider.isRemovedHere(key) {
+                return true
+            }
+            let own = items.copyItem(itemQuery(forKey: key, synchronizable: false))
+            guard own.status == errSecItemNotFound else {
+                return own.status == errSecSuccess
+            }
+            let synced = items.copyItem(itemQuery(forKey: key, synchronizable: true))
+            guard synced.status == errSecSuccess, let data = synced.data else {
+                return synced.status == errSecItemNotFound
+            }
+            var attributes = itemQuery(forKey: key, synchronizable: false)
+            attributes[kSecValueData as String] = data
+            attributes[kSecAttrAccessible as String] = Self.accessibility(forSync: false)
+            let status = items.add(attributes)
+            guard status == errSecSuccess || status == errSecDuplicateItem else {
+                Self.logger.error("Copying the iCloud Keychain item '\(key, privacy: .public)' to this device failed: \(status)")
+                return false
+            }
+            return true
         }
     }
 
