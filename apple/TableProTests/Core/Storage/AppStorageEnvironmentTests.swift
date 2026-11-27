@@ -41,6 +41,45 @@ struct AppStorageEnvironmentTests {
         #expect(AppStorageEnvironment.shared.isUnitTestHost)
     }
 
+    @Test("A Debug build takes a device profile, and a Release build ignores the variable")
+    func deviceProfileIsDebugOnly() {
+        let profile = [AppStorageEnvironment.deviceProfileVariable: "device-a"]
+        #expect(AppStorageEnvironment.decision(for: profile, isDebugBuild: true) == .deviceProfile(name: "device-a"))
+        #expect(AppStorageEnvironment.decision(for: profile, isDebugBuild: false) == .production)
+        #expect(
+            AppStorageEnvironment.decision(for: [AppStorageEnvironment.deviceProfileVariable: "  "], isDebugBuild: true)
+                == .production
+        )
+    }
+
+    @Test("A sandbox and a UI test without one win over a device profile")
+    func sandboxWinsOverADeviceProfile() {
+        let profile = AppStorageEnvironment.deviceProfileVariable
+        #expect(
+            AppStorageEnvironment.decision(for: [sandbox: "/tmp/x", profile: "device-a"], isDebugBuild: true)
+                == .isolated(path: "/tmp/x")
+        )
+        #expect(AppStorageEnvironment.decision(for: [uiTesting: "1", profile: "device-a"], isDebugBuild: true) == .refuseToLaunch)
+    }
+
+    @Test("A profile name that cannot name a folder, suite and service refuses to launch", arguments: [
+        "../real",
+        "device a",
+        "device/a",
+        "device.a",
+        String(repeating: "a", count: 33)
+    ])
+    func refusesAnUnusableProfileName(_ name: String) {
+        let environment = [AppStorageEnvironment.deviceProfileVariable: name]
+        #expect(AppStorageEnvironment.decision(for: environment, isDebugBuild: true) == .refuseProfile)
+    }
+
+    @Test("Only the real store touches what lives outside the app's own folder and suite")
+    func sandboxIsNotTheProductionStore() {
+        #expect(!AppStorageEnvironment.shared.isProductionStore)
+        #expect(AppStorageEnvironment.deviceProfileSuiteName("device-a") == "com.TablePro.profile.device-a")
+    }
+
     @Test("Whitespace around the path is not a path")
     func trimsThePath() {
         #expect(AppStorageEnvironment.decision(for: [sandbox: "  /tmp/y  "]) == .isolated(path: "/tmp/y"))
