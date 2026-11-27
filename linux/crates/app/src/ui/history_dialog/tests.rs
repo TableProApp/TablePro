@@ -33,7 +33,7 @@ pub(super) struct Harness {
     pub runtime: AppRuntime,
     pub service: HistoryService,
     pub store: QueryHistory,
-    pub saved: SavedQueryDatabase,
+    pub saved_queries: SavedQueryDatabase,
     pub connections: ConnectionStore,
     pub revealer: Rc<RecordingRevealer>,
     pub window: adw::Window,
@@ -61,7 +61,7 @@ impl Harness {
         let availability = service.availability();
         wait_until(WAIT, || availability.borrow().is_ready()).expect("the history to open");
         let store = service.store().expect("the history");
-        let saved = service.saved().expect("the saved queries");
+        let saved_queries = service.saved().expect("the saved queries");
         let window = adw::Window::new();
         window.set_default_size(640, 640);
         window.present();
@@ -69,7 +69,7 @@ impl Harness {
             runtime,
             service,
             store,
-            saved,
+            saved_queries,
             connections,
             revealer: Rc::new(revealer),
             window,
@@ -780,7 +780,7 @@ fn clear_all_says_saved_queries_are_kept_and_keeps_them() {
 
     let harness = Harness::new();
     harness.record("SELECT 1");
-    let saved = harness.saved.saved_queries();
+    let saved = harness.saved_queries.saved_queries();
     block_on(
         &harness.runtime,
         saved.save(NewSavedQuery {
