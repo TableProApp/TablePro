@@ -29,6 +29,9 @@ internal interface IShell
     // Settings > Sync > End-to-end encryption, which leads back to Settings.
     void ShowAccountKeys();
 
+    // Settings > Sync > Team keys, which leads back to Settings.
+    void ShowTeamKeys();
+
     // Asks what a close asks, then has Windows install the update the check found and restart the app.
     Task InstallUpdateAsync();
 

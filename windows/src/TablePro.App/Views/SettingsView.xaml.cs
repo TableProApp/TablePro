@@ -45,6 +45,8 @@ public sealed partial class SettingsView : UserControl
             _workbench.Updates.Changed += OnUpdatesChanged;
             _workbench.SyncChanged -= OnSyncChanged;
             _workbench.SyncChanged += OnSyncChanged;
+            _workbench.TeamLibraryChanged -= OnSyncChanged;
+            _workbench.TeamLibraryChanged += OnSyncChanged;
             ShowAccount();
             ShowSync();
             ShowMcp();
@@ -57,6 +59,7 @@ public sealed partial class SettingsView : UserControl
             _workbench.McpChanged -= OnMcpChanged;
             _workbench.Updates.Changed -= OnUpdatesChanged;
             _workbench.SyncChanged -= OnSyncChanged;
+            _workbench.TeamLibraryChanged -= OnSyncChanged;
         };
     }
 
@@ -625,8 +628,9 @@ public sealed partial class SettingsView : UserControl
         }
     }
 
-    // This computer's keys are erased before the sign-in is revoked; when they could not be, the person decides
-    // (core ADR 0056, Sign Out).
+    // Team Library edits not uploaded are settled first, then this computer's keys are erased before the sign-in is
+    // revoked; when they could not be, the person decides (core ADR 0056, Sign Out). The account's Team Library data
+    // goes once it signed out, through the service of the sign-in that ended.
     private async Task SignOutAsync()
     {
         if (_accountBusy)
@@ -637,30 +641,51 @@ public sealed partial class SettingsView : UserControl
         var session = _workbench.SignInSession;
         _accountBusy = true;
         ShowAccount();
-        bool erased;
+        SyncLease? lease = null;
         try
         {
-            erased = await KeysSignOut.RunAsync(
-                _workbench.Sync.GetKeyFlowsAsync,
-                () => _workbench.SignInSession == session,
-                reason =>
+            bool erased;
+            try
+            {
+                lease = await _workbench.Sync.LeaseAsync();
+                if (lease is not null && !await TeamSignOut.SettleUnsentAsync(
+                        lease.Team,
+                        (names, failure) => TeamDialogs.SignOutUnsentAsync(this, names, failure)))
                 {
-                    CrashLog.Note("keys sign out", reason.Code);
-                    return KeyDialogs.SignOutFailedAsync(this, reason);
-                });
+                    return;
+                }
+
+                erased = _workbench.SignInSession == session && await KeysSignOut.RunAsync(
+                    _workbench.Sync.GetKeyFlowsAsync,
+                    () => _workbench.SignInSession == session,
+                    reason =>
+                    {
+                        CrashLog.Note("keys sign out", reason.Code);
+                        return KeyDialogs.SignOutFailedAsync(this, reason);
+                    });
+            }
+            finally
+            {
+                _accountBusy = false;
+            }
+
+            // Another sign-in meanwhile was not the one asked to end, and its keys were not erased.
+            if (!erased || _workbench.SignInSession != session)
+            {
+                return;
+            }
+
+            await RunAccountAsync(account => account.SignOutAsync());
+            if (lease is not null && _workbench.SignInSession != session
+                && await TeamSignOut.DeleteDataAsync(lease.Team) is { } failure)
+            {
+                CrashLog.Note("team library delete", failure.Code);
+                _accountError ??= failure;
+            }
         }
         finally
         {
-            _accountBusy = false;
-        }
-
-        // Another sign-in meanwhile was not the one asked to end, and its keys were not erased.
-        if (erased && _workbench.SignInSession == session)
-        {
-            await RunAccountAsync(account => account.SignOutAsync());
-        }
-        else
-        {
+            lease?.Dispose();
             ShowAccount();
         }
     }

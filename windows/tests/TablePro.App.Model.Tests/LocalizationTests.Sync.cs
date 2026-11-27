@@ -43,6 +43,21 @@ public sealed partial class LocalizationTests
     }
 
     [Fact]
+    public void EveryTeamStateTheTeamViewsShowHasItsWords()
+    {
+        var names = Enum.GetValues<TeamKeyStatus>().Select(status => "TeamKeyStatus_" + status)
+            .Concat(Enum.GetValues<MemberKeyStatus>().Select(status => "TeamMemberStatus_" + status))
+            .Concat(Enum.GetValues<TeamRole>().Select(role => "TeamRole_" + role))
+            .Concat(Enum.GetValues<TeamKeyNoticeKind>().Select(kind => "TeamNotice_" + kind))
+            .Concat(Enum.GetValues<TeamConflictCase>().SelectMany(conflict =>
+                new[] { "TeamConflictTitle_" + conflict, "TeamConflictMessage_" + conflict }))
+            .Concat(["name", "query", "keyword", "folder_client_id", "parent_client_id", "connection_client_id", "sort_order"]
+                .Select(field => "TeamField_" + field));
+
+        Assert.Empty(names.Where(name => !s_strings.Value.ContainsKey(name)));
+    }
+
+    [Fact]
     public void EveryCodeTheCoresSyncKeysAndAccountReturnIsWorded()
     {
         var crates = Path.Combine(Sources, "..", "..", "core", "crates");

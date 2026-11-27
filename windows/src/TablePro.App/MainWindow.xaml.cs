@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private SettingsView? _settings;
     private KeyboardShortcutsView? _keyboard;
     private AccountKeysView? _keys;
+    private TeamKeysView? _teamKeys;
     private OpenConnection? _front;
 
     // The connection whose cue the title bar shows, painted again when the theme changes.
@@ -694,6 +695,21 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         Show(page);
     }
 
+    // A sub-page of Settings, as the end-to-end encryption page is.
+    public void ShowTeamKeys()
+    {
+        if (!IsPrimary)
+        {
+            _primary.Activate();
+            _primary.ShowTeamKeys();
+            return;
+        }
+
+        var page = _teamKeys ??= new TeamKeysView(_workbench);
+        page.Refresh();
+        Show(page);
+    }
+
     WindowId IWorkspaceHost.TearOutWindow(OpenConnection connection) => _primary.SpareFor(connection);
 
     void IWorkspaceHost.TearOut(TabViewItem tab, WindowId window) => _primary.Receive(tab, window);
@@ -1144,6 +1160,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             ? setup.CanGoBack
             : ReferenceEquals(page, _keyboard)
                 || ReferenceEquals(page, _keys)
+                || ReferenceEquals(page, _teamKeys)
                 || (!Rail.IsPaneVisible && ReferenceEquals(page, _settings));
         UpdateCommands();
     }
@@ -1505,7 +1522,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        if (Rail.Content is KeyboardShortcutsView or AccountKeysView)
+        if (Rail.Content is KeyboardShortcutsView or AccountKeysView or TeamKeysView)
         {
             Show(Settings());
             return;

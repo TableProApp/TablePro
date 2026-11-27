@@ -10,6 +10,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <CommandBar
@@ -109,5 +110,43 @@
             TextAlignment="Center"
             TextWrapping="Wrap"
             Visibility="Collapsed" />
+
+        <!-- Team Library: the teams' queries, read only here, and the publish of this computer's saved queries. -->
+        <Border
+            x:Name="TeamSection"
+            Grid.Row="3"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,1,0,0"
+            Visibility="Collapsed">
+            <StackPanel Padding="0,4,0,8" Spacing="4">
+                <Grid Margin="12,0,4,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Uid="TeamLibraryHeader"
+                        VerticalAlignment="Center"
+                        AutomationProperties.HeadingLevel="Level2"
+                        Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <Button
+                        x:Name="PublishButton"
+                        x:Uid="TeamPublishToTeamButton"
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="TeamPublishToTeamButton"
+                        Click="OnPublishToTeam" />
+                </Grid>
+                <InfoBar
+                    x:Name="TeamBar"
+                    Margin="8,0"
+                    AutomationProperties.AutomationId="TeamLibraryBar"
+                    IsClosable="False"
+                    IsOpen="False"
+                    Visibility="Collapsed" />
+                <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="TeamsHost" AutomationProperties.AutomationId="TeamLibraryTeams" Spacing="4" />
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

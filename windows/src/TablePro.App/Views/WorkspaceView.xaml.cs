@@ -772,7 +772,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 return;
             }
 
-            pane = new SavedQueriesPane(store, connectionId, () => _connection.Name);
+            pane = new SavedQueriesPane(store, connectionId, () => _connection.Name, _workbench);
             pane.InsertRequested += (_, sql) => InsertQuery(sql);
             pane.OpenRequested += (_, sql) => NewQueryTab(sql);
             pane.CloseRequested += (_, _) =>

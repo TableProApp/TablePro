@@ -649,7 +649,7 @@ internal static class KeyDialogs
 
     // A flow's calls go to the sign-in its dialog opened under: once another holds the account they refuse, and the
     // dialog closes, so nothing of the earlier account shows or reaches the next one.
-    private sealed class SessionGuard : IDisposable
+    internal sealed class SessionGuard : IDisposable
     {
         private readonly Workbench _workbench;
         private readonly ContentDialog _dialog;
@@ -667,6 +667,10 @@ internal static class KeyDialogs
             ? _workbench.Sync.GetKeyFlowsAsync()
             : Task.FromException<IKeyFlows>(new TableProException(KeyErrors.Changed));
 
+        public Task<ITeamCalls> TeamAsync() => _workbench.SignInSession == _session
+            ? _workbench.Sync.GetTeamCallsAsync()
+            : Task.FromException<ITeamCalls>(new TableProException(KeyErrors.Changed));
+
         public void Dispose() => _workbench.AccountChanged -= OnAccountChanged;
 
         private void OnAccountChanged(object? sender, EventArgs e)
@@ -678,7 +682,7 @@ internal static class KeyDialogs
         }
     }
 
-    private static ContentDialog Dialog(FrameworkElement owner, string automationId)
+    internal static ContentDialog Dialog(FrameworkElement owner, string automationId)
     {
         var dialog = new ContentDialog
         {
@@ -689,14 +693,14 @@ internal static class KeyDialogs
         return dialog;
     }
 
-    private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
+    internal static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
 
-    private static TextBlock Heading(string text) =>
+    internal static TextBlock Heading(string text) =>
         new() { Text = text, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] };
 
     private static Style Caption() => (Style)Application.Current.Resources["CaptionTextBlockStyle"];
 
-    private static StackPanel Working(string text)
+    internal static StackPanel Working(string text)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         row.Children.Add(new ProgressRing { Width = 16, Height = 16, IsActive = true });
@@ -711,7 +715,7 @@ internal static class KeyDialogs
         return button;
     }
 
-    private static void AddFailure(StackPanel body, CoreError? failure, string? after = null)
+    internal static void AddFailure(StackPanel body, CoreError? failure, string? after = null)
     {
         if (failure is null)
         {
@@ -840,7 +844,7 @@ internal static class KeyDialogs
         return row;
     }
 
-    private static Border Words(IReadOnlyList<string> words)
+    internal static Border Words(IReadOnlyList<string> words)
     {
         var text = new TextBlock
         {
