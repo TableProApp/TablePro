@@ -128,8 +128,7 @@ nonisolated final class MongoBsonDocumentReader {
         var members: [MongoDocumentText.Member] = []
         var isComplete = true
         while bson_iter_next(iterator) {
-            guard let keyPointer = bson_iter_key(iterator) else { return nil }
-            let key = String(cString: keyPointer)
+            guard let key = Self.key(iterator) else { return nil }
             guard let value = readValue(iterator, depth: depth, state: &state) else { return nil }
             if buildsCanonical {
                 // A strict read refuses a repeated name, so the document then has no canonical tree, as before. Names
@@ -252,6 +251,14 @@ nonisolated final class MongoBsonDocumentReader {
 
     private func wrapped(_ key: String, _ value: MongoDocumentText.Value) -> MongoDocumentText.Value {
         .object([MongoDocumentText.Member(key: key, value: value)])
+    }
+
+    // libbson's iterator leaves a name's encoding unchecked, and a repaired name could spell another document's `_id`.
+    private static func key(_ iterator: OpaquePointer) -> String? {
+        guard let pointer = bson_iter_key(iterator) else { return nil }
+        let bytes = UnsafeRawBufferPointer(start: pointer, count: strlen(pointer)).bindMemory(to: UInt8.self)
+        let text = String(decoding: bytes, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
+        return text.utf8.elementsEqual(bytes) ? text : nil
     }
 
     // Invalid UTF-8 has no Extended JSON, which libbson answers by refusing the whole document.

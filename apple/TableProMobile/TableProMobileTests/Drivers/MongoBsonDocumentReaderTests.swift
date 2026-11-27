@@ -106,6 +106,18 @@ struct MongoBsonDocumentReaderTests {
         #expect(read.dictionary["_id"] != nil)
     }
 
+    // `{_id: {<name>: Int32(1)}}` written by hand, since no JSON spells a name that is not UTF-8.
+    private static func idDocument(named name: UInt8) -> Data {
+        Data([22, 0, 0, 0, 0x03, 0x5F, 0x69, 0x64, 0x00, 12, 0, 0, 0, 0x10, name, 0x00, 1, 0, 0, 0, 0x00, 0x00])
+    }
+
+    @Test("A field name that is not UTF-8 refuses the document, so a repaired name never becomes a locator")
+    func invalidNameRefusesTheDocument() throws {
+        let valid = try #require(MongoBsonDocumentReader().read(Self.idDocument(named: UInt8(ascii: "a"))))
+        #expect(valid.identifier == #"{"a":{"$numberInt":"1"}}"#)
+        #expect(MongoBsonDocumentReader().read(Self.idDocument(named: 0xFF)) == nil)
+    }
+
     @Test("Two spellings of one character are two field names, as BSON compares names by their bytes")
     func namesCompareAsBytes() throws {
         let bson = try Self.bson(#"{"_id":{"$numberInt":"1"},"nested":{"é":"precomposed","é":"combining"}}"#)
