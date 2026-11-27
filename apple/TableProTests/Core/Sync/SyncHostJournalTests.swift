@@ -67,7 +67,8 @@ struct SyncHostJournalTests {
             .sshProfile: "ssh_profile",
             .credentialProfile: "credential_profile",
             .tableFolder: "table_folder",
-            .tableFolderItem: "table_folder_item"
+            .tableFolderItem: "table_folder_item",
+            .project: "connection_project"
         ])
     }
 

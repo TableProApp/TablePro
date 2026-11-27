@@ -525,6 +525,8 @@ struct WelcomeViewModelProjectTests {
         viewModel.saveFavoritesOrder([a2.id, a1.id], replacing: displayed)
         #expect(preferences.favoritesOrder == [b1.id, a2.id, b2.id, a1.id])
 
+        // A favourite leaves the one list the core keeps when it stops being one, as the Welcome window's toggle does.
+        #expect(fixture.connections.mutateConnections(ids: [a1.id], byUser: false) { $0.isFavorite = false })
         viewModel.saveFavoritesOrder([a2.id], replacing: [a2.id, a1.id])
         #expect(preferences.favoritesOrder == [b1.id, a2.id, b2.id])
 

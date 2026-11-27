@@ -31,7 +31,7 @@ nonisolated struct LegacySyncMetadataWriter: @unchecked Sendable {
         }
         let dirty = Self.idsByType(written.dirty)
         let tombstones = Self.tombstonesByType(written.tombstones)
-        for type in SyncRecordType.allCases {
+        for type in SyncRecordType.previousStableTypes {
             metadata.replaceTombstones(Self.merged(metadata.tombstones(for: type), tombstones[type] ?? []), for: type)
             metadata.replaceDirtyIds(metadata.dirtyIds(for: type).union(dirty[type] ?? []), for: type)
         }
@@ -50,7 +50,7 @@ nonisolated struct LegacySyncMetadataWriter: @unchecked Sendable {
         guard recordCache.replaceAll(with: written.cache.compactMap(Self.cachedRecord)) else {
             throw HostSecretError.Failed(detail: "the sync record cache could not be written whole")
         }
-        for type in SyncRecordType.allCases {
+        for type in SyncRecordType.previousStableTypes {
             metadata.replaceTombstones(tombstones[type] ?? [], for: type)
             metadata.replaceDirtyIds(Set(dirty[type] ?? []), for: type)
         }
@@ -77,7 +77,7 @@ nonisolated struct LegacySyncMetadataWriter: @unchecked Sendable {
             throw HostSecretError.Failed(detail: "the last iCloud account's record cache could not be removed")
         }
         metadata.saveToken(nil)
-        for type in SyncRecordType.allCases {
+        for type in SyncRecordType.previousStableTypes {
             metadata.clearTombstones(type: type)
         }
         metadata.deferredDeletions = []
@@ -106,7 +106,7 @@ nonisolated struct LegacySyncMetadataWriter: @unchecked Sendable {
     private static func idsByType(_ records: [LegacyRecordArg]) -> [SyncRecordType: [String]] {
         var ids: [SyncRecordType: [String]] = [:]
         for record in records {
-            guard let type = SyncRecordType(rawValue: record.recordType) else { continue }
+            guard let type = SyncRecordType(previousStable: record.recordType) else { continue }
             ids[type, default: []].append(record.id)
         }
         return ids
@@ -121,7 +121,7 @@ nonisolated struct LegacySyncMetadataWriter: @unchecked Sendable {
     private static func tombstonesByType(_ tombstones: [LegacyTombstoneArg]) -> [SyncRecordType: [Tombstone]] {
         var byType: [SyncRecordType: [String: Tombstone]] = [:]
         for tombstone in tombstones {
-            guard let type = SyncRecordType(rawValue: tombstone.record.recordType) else { continue }
+            guard let type = SyncRecordType(previousStable: tombstone.record.recordType) else { continue }
             byType[type, default: [:]][tombstone.record.id] = Tombstone(
                 id: tombstone.record.id,
                 deletedAt: Date(timeIntervalSince1970: Double(tombstone.deletedAtMs) / 1_000),

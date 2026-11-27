@@ -19,7 +19,7 @@ nonisolated struct LegacySyncMetadataReader: @unchecked Sendable {
     func read() -> LegacyMetadataArg {
         var dirty: [LegacyRecordArg] = []
         var tombstones: [LegacyTombstoneArg] = []
-        for type in SyncRecordType.allCases {
+        for type in SyncRecordType.previousStableTypes {
             dirty += metadata.dirtyIds(for: type).sorted().map { LegacyRecordArg(recordType: type.rawValue, id: $0) }
             tombstones += metadata.tombstones(for: type).map { tombstone in
                 LegacyTombstoneArg(
