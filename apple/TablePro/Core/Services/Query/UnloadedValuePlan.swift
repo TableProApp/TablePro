@@ -24,6 +24,9 @@ struct LargeValueFunctions: Equatable, Sendable {
     // True where a primary key column can hold NULL. A value is read back by its key, so a row with a NULL key
     // keeps its values in the page.
     var keysCanBeNull = false
+    // True where a key keeps the type it was stored with unless its column gives it one. Without that, 1 and '1' are
+    // two keys that both read back as "1", so only a table whose keys read back exactly defers its values.
+    var keysNeedExactAffinity = false
 
     static let mySQL = LargeValueFunctions(
         binaryLength: "OCTET_LENGTH({})", textLength: "OCTET_LENGTH({})", textHead: "LEFT({}, {count})",
@@ -39,7 +42,7 @@ struct LargeValueFunctions: Equatable, Sendable {
     // takes NULL.
     static let sqlite = LargeValueFunctions(
         binaryLength: "length(CAST({} AS BLOB))", textLength: "length(CAST({} AS BLOB))", textHead: "substr({}, 1, {count})",
-        enforcesDeclaredLength: false, keysCanBeNull: true
+        enforcesDeclaredLength: false, keysCanBeNull: true, keysNeedExactAffinity: true
     )
 
     // The column goes in last, so text a quoted name holds is never read as a placeholder.
@@ -73,6 +76,9 @@ struct UnloadedValuePlan: Equatable, Sendable {
     static let defaultInlineByteLimit = 65_536
     // A grid line shows far fewer, and at four bytes a character the head stays near a kilobyte.
     static let headCharacterCount = 256
+    // Each deferred column adds its size and head to the page. PostgreSQL refuses a result past 1,664 columns and
+    // SQLite past 2,000, so a wide table reads the rest of its columns whole.
+    static let maxResultColumns = 1_600
     static let lengthAliasPrefix = "__tablepro_byte_length_"
     static let headAliasPrefix = "__tablepro_head_"
 
@@ -87,11 +93,14 @@ struct UnloadedValuePlan: Equatable, Sendable {
         inlineByteLimit: Int
     ) -> UnloadedValuePlan? {
         guard let functions, !primaryKeys.isEmpty, primaryKeys.allSatisfy(selectedColumns.contains) else { return nil }
+        if functions.keysNeedExactAffinity,
+           !primaryKeys.allSatisfy({ readsBackExactly(columnTypes[$0]?.rawType) }) { return nil }
         let limit = max(0, inlineByteLimit)
         let kept = Set(primaryKeys).union(sortColumns).union(valueFilteredColumns)
         var deferred: [String] = []
         var kinds: [String: Kind] = [:]
         var types: [String: ColumnType] = [:]
+        var resultColumns = selectedColumns.count
         for name in selectedColumns where !kept.contains(name) && kinds[name] == nil {
             guard let type = columnTypes[name],
                   let kind = kind(
@@ -99,6 +108,9 @@ struct UnloadedValuePlan: Equatable, Sendable {
                       trustsDeclaredLength: functions.enforcesDeclaredLength, boundedTypeBytes: functions.boundedTypeBytes
                   )
             else { continue }
+            let added = kind.readsHead ? 2 : 1
+            guard resultColumns + added <= maxResultColumns else { break }
+            resultColumns += added
             deferred.append(name)
             kinds[name] = kind
             types[name] = type
@@ -182,6 +194,13 @@ struct UnloadedValuePlan: Equatable, Sendable {
             guard let kind = kinds[name] else { return nil }
             return UnloadedValueLayout.Deferred(position: index, type: columnTypes[name], readsHead: kind.readsHead)
         })
+    }
+
+    // SQLite's affinity rules: a type naming INT gives integers, one naming CHAR, CLOB or TEXT gives text. Any other
+    // keeps a value's own type or stores a REAL, whose text can round.
+    private static func readsBackExactly(_ rawType: String?) -> Bool {
+        let name = (rawType ?? "").uppercased()
+        return ["INT", "CHAR", "CLOB", "TEXT"].contains { name.contains($0) }
     }
 
     private static let characterTypeNames: Set<String> = [

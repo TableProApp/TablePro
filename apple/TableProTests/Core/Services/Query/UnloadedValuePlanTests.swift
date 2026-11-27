@@ -207,6 +207,35 @@ struct UnloadedValuePlanTests {
         ))
     }
 
+    @Test("A SQLite key whose column gives it no exact type keeps every value in the page", arguments: [
+        "BLOB", "", "NUMERIC", "REAL", "DECIMAL(10,2)"
+    ])
+    func sqliteLooseKeyNoPlan(keyType: String) {
+        let types: [String: ColumnType] = ["id": .blob(rawType: keyType), "body": .text(rawType: "TEXT")]
+        #expect(Self.plan(columns: ["id", "body"], types: types, functions: .sqlite, limit: 1_024) == nil)
+        #expect(Self.plan(columns: ["id", "body"], types: types, functions: .postgreSQL, limit: 1_024) != nil)
+    }
+
+    @Test("A SQLite key typed INTEGER, BIGINT, TEXT or VARCHAR defers the table's large values", arguments: [
+        "INTEGER", "BIGINT", "TEXT", "VARCHAR(36)"
+    ])
+    func sqliteExactKeyDefers(keyType: String) {
+        let types: [String: ColumnType] = ["id": .text(rawType: keyType), "body": .text(rawType: "TEXT")]
+        #expect(Self.plan(columns: ["id", "body"], types: types, functions: .sqlite, limit: 1_024) != nil)
+    }
+
+    @Test("A page stops deferring before its size and head columns pass the engines' column limit")
+    func wideTableStaysUnderTheColumnLimit() throws {
+        let names = (0..<700).map { "c\($0)" }
+        var types: [String: ColumnType] = ["id": .integer(rawType: "INTEGER")]
+        for name in names { types[name] = .text(rawType: "TEXT") }
+        let selected = ["id"] + names
+        let plan = try #require(Self.plan(columns: selected, types: types, functions: .postgreSQL))
+        let trailing = plan.layout(for: selected).trailingColumns.count
+        #expect(selected.count + trailing <= UnloadedValuePlan.maxResultColumns)
+        #expect(plan.columns == Array(names.prefix(449)))
+    }
+
     @Test("An engine whose keys are never NULL cuts on size alone")
     func enforcedKeysNeedNoGuard() throws {
         let types: [String: ColumnType] = ["id": .integer(rawType: "integer"), "body": .text(rawType: "text")]
