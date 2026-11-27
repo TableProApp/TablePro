@@ -167,8 +167,40 @@ final class ConnectionStorage {
 
     // After a sync pass, what the core's engine wrote into the library.
     func readCoreWrites() {
+        let before = library.current()
         guard library.readCoreWrites() else { return }
+        if let before, let after = library.current() {
+            handOverPulledProfileDeletions(before: before, after: after)
+        }
         appEventsProvider().connectionUpdated.send(nil)
+    }
+
+    // A profile another device deleted hands its settings and secrets to the connections here still using it, as that
+    // device did for its own: a Local only connection gets no update from it, and a password that does not sync stays
+    // behind. The pull removed the record and left the profile's Keychain items for this.
+    private func handOverPulledProfileDeletions(before: LibraryImage, after: LibraryImage) {
+        let held = library.unreadableProfileIds
+        let sshKept = Set(after.sshProfiles.map(\.id)).union(held)
+        let credentialsKept = Set(after.credentialProfiles.map(\.id)).union(held)
+        let goneSSH = before.sshProfiles.filter { !sshKept.contains($0.id) }
+        let goneCredentials = before.credentialProfiles.filter { !credentialsKept.contains($0.id) }
+        guard !goneSSH.isEmpty || !goneCredentials.isEmpty else { return }
+        let sshProfiles = SSHProfileStorage(keychain: keychain, syncJournal: syncJournal, connectionStorage: self)
+        for profile in goneSSH {
+            guard sshProfiles.unlinkConnections(fromProfile: profile, byUser: false) else {
+                Self.logger.error("Kept SSH profile \(profile.id.uuidString, privacy: .public)'s secrets: its connections could not take them")
+                continue
+            }
+            sshProfiles.deleteSecrets(for: profile.id)
+        }
+        let credentialProfiles = CredentialProfileStorage(keychain: keychain, syncJournal: syncJournal, connectionStorage: self)
+        for profile in goneCredentials {
+            guard credentialProfiles.unlinkConnections(from: profile, byUser: false) else {
+                Self.logger.error("Kept credential profile \(profile.id.uuidString, privacy: .public)'s secrets: its connections could not take them")
+                continue
+            }
+            credentialProfiles.deleteSecrets(for: profile)
+        }
     }
 
     @discardableResult

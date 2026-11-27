@@ -214,11 +214,20 @@ nonisolated enum LibraryRecordMapping {
     static func record(_ project: ConnectionProject, keeping stored: ProjectRecord?) -> ProjectRecord {
         ProjectRecord(
             id: project.id.uuidString,
-            name: project.name,
+            name: projectName(project.name),
             order: UInt32(clamping: project.sortOrder),
             color: colorId(project.color, keeping: stored?.color),
             icon: icon(project.iconName)
         )
+    }
+
+    // The core refuses a control character in a project name, which the Mac let a person type, so one goes as a space;
+    // a name of nothing else goes escaped, as the core keeps a group's.
+    static func projectName(_ name: String) -> String {
+        let scalars = name.unicodeScalars.map { $0.properties.generalCategory == .control ? " " : $0 }
+        let spaced = String(String.UnicodeScalarView(scalars))
+        guard spaced.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return spaced }
+        return name.unicodeScalars.map { $0.escaped(asASCII: true) }.joined()
     }
 
     // MARK: - Profiles

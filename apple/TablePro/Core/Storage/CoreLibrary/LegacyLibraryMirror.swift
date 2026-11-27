@@ -152,16 +152,52 @@ final class LegacyLibraryMirror {
             return false
         }
         do {
-            defaults.set(try encoder.encode(contents.groups), forKey: Self.groupsKey)
-            defaults.set(try encoder.encode(contents.tags), forKey: Self.tagsKey)
-            defaults.set(try encoder.encode(contents.projects), forKey: Self.projectsKey)
-            defaults.set(try encoder.encode(contents.sshProfiles), forKey: Self.sshProfilesKey)
+            let groups = try keepingUnread(contents.groups, ids: contents.groups.map(\.id), in: Self.groupsKey, removedIds)
+            let tags = try keepingUnread(contents.tags, ids: contents.tags.map(\.id), in: Self.tagsKey, removedIds)
+            let projects = try keepingUnread(
+                contents.projects, ids: contents.projects.map(\.id), in: Self.projectsKey, removedIds
+            )
+            let sshProfiles = try keepingUnread(
+                contents.sshProfiles, ids: contents.sshProfiles.map(\.id), in: Self.sshProfilesKey, removedIds
+            )
+            defaults.set(groups, forKey: Self.groupsKey)
+            defaults.set(tags, forKey: Self.tagsKey)
+            defaults.set(projects, forKey: Self.projectsKey)
+            defaults.set(sshProfiles, forKey: Self.sshProfilesKey)
         } catch {
             Self.logger.error("Could not encode the groups or tags: \(error.publicLogShape, privacy: .public)")
             return false
         }
         defaults.set(contents.favoritesOrder.map(\.uuidString), forKey: PreferenceKeys.connectionListFavoritesOrder.name)
         return true
+    }
+
+    // An entry the key holds that this build cannot decode stays as it was written, so the build that wrote it still
+    // finds it; one the write names by id, or takes out as a deletion, goes.
+    private func keepingUnread<Element: Codable>(
+        _ list: [Element],
+        ids: [UUID],
+        in key: String,
+        _ removedIds: Set<UUID>
+    ) throws -> Data {
+        let data = try encoder.encode(list)
+        guard let old = defaults.data(forKey: key),
+              let entries = (try? JSONSerialization.jsonObject(with: old)) as? [Any] else { return data }
+        let gone = Set((ids + removedIds).map { $0.uuidString.lowercased() })
+        let unread = entries.compactMap { entry -> Data? in
+            guard let raw = try? JSONSerialization.data(withJSONObject: entry, options: .fragmentsAllowed),
+                  (try? decoder.decode(Element.self, from: raw)) == nil else { return nil }
+            let id = ((entry as? [String: Any])?["id"] as? String)?.lowercased()
+            return id.map { gone.contains($0) } == true ? nil : raw
+        }
+        guard !unread.isEmpty else { return data }
+        var kept = Data(data.dropLast())
+        for raw in unread {
+            if kept.count > 1 { kept.append(UInt8(ascii: ",")) }
+            kept.append(raw)
+        }
+        kept.append(UInt8(ascii: "]"))
+        return kept
     }
 
     // Of the stores as they are now. A store that is absent reads differently from an empty one.

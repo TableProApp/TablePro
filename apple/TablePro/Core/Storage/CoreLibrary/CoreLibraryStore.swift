@@ -35,6 +35,8 @@ final class CoreLibraryStore {
     private var heldByCore: Set<UUID> = []
     // The previous stable's copies of connections the core holds unread, kept in its file as they are.
     private var legacyHeld: [DatabaseConnection] = []
+    private var legacyHeldSSHProfiles: [SSHProfile] = []
+    private var legacyHeldCredentialProfiles: [CredentialProfile] = []
     // The digest of the file as this store last read or wrote it; the core refuses a write over any other.
     private var seenDigest: String?
     // False while no integrity key can be had: a store rebuilt then could not be tagged either.
@@ -127,23 +129,31 @@ final class CoreLibraryStore {
             Self.logger.error("The core could not read the library after a sync pass: \(LogRedaction.publicDescription(of: error), privacy: .public)")
             return false
         }
-        let vouched = digestsTheCoreVouchesFor()
         guard let digest = contents.digest, digest != seenDigest else { return false }
         readCount += 1
-        let before = image?.connections ?? []
+        let before = image
         let loaded: LibraryImage
-        if vouched.contains(digest) {
+        if digestsTheCoreVouchesFor().contains(digest) {
+            // Tagged before anything else: the core forgets a report once it handed it over.
+            let stamped = integrity.stamp(Self.tag(forDigest: digest), fileURL: coreFileURL)
             let profilesWere = profilesTrusted
-            loaded = adopt(contents, verdict: .trusted)
-            settleTag(digest, stamping: true)
-            profilesTrusted = profilesWere
+            loaded = adopt(contents, verdict: stamped ? .trusted : .unavailable)
+            profilesTrusted = profilesWere && stamped
             settleProfilesSeal(loaded.credentialProfiles)
         } else {
             loaded = adopt(contents, verdict: integrityKeyAnswered ? .modified : .unavailable)
         }
         // One a pull made unreadable here keeps the copy the previous stable last had.
         let keptIds = Set(legacyHeld.map(\.id))
-        legacyHeld += before.filter { heldByCore.contains($0.id) && !keptIds.contains($0.id) }
+        legacyHeld += (before?.connections ?? []).filter { heldByCore.contains($0.id) && !keptIds.contains($0.id) }
+        let keptSSH = Set(legacyHeldSSHProfiles.map(\.id))
+        legacyHeldSSHProfiles += (before?.sshProfiles ?? []).filter {
+            heldProfiles.contains($0.id) && !keptSSH.contains($0.id)
+        }
+        let keptCredentials = Set(legacyHeldCredentialProfiles.map(\.id))
+        legacyHeldCredentialProfiles += (before?.credentialProfiles ?? []).filter {
+            heldProfiles.contains($0.id) && !keptCredentials.contains($0.id)
+        }
         mirrorWrite(loaded, coreDigest: digest, byUser: false, removingSecrets: false, removingUnreadable: [])
         return true
     }
@@ -325,8 +335,10 @@ final class CoreLibraryStore {
             return importLegacy(legacy, digest: legacyDigest, into: library, over: .noFile)
         }
         var verdict = integrity.verify(Self.tag(forDigest: coreDigest), fileURL: coreFileURL)
-        // The core's own writes since this store last tagged the file, a pull's before a quit among them.
-        if verdict != .trusted, digestsTheCoreVouchesFor().contains(coreDigest),
+        // The core's own writes since this store last tagged the file, a pull's before a quit among them. Taken on every
+        // launch, so a report never outlives the file it vouched for.
+        let vouched = digestsTheCoreVouchesFor()
+        if verdict != .trusted, vouched.contains(coreDigest),
            integrity.stamp(Self.tag(forDigest: coreDigest), fileURL: coreFileURL) {
             verdict = .trusted
         }
@@ -357,6 +369,7 @@ final class CoreLibraryStore {
         }
         var loaded = adopt(contents, verdict: verdict)
         legacyHeld = legacy?.connections.filter { heldByCore.contains($0.id) } ?? []
+        keepLegacyCopiesOfHeldProfiles(from: legacy)
         if let legacy {
             loaded.favoritesOrder = keepingUnreadFavorites(of: loaded.favoritesOrder, from: legacy.favoritesOrder)
             image = loaded
@@ -451,6 +464,7 @@ final class CoreLibraryStore {
         seenDigest = written.digest
         rememberWritten(write)
         legacyHeld = legacy.connections.filter { heldByCore.contains($0.id) }
+        keepLegacyCopiesOfHeldProfiles(from: legacy)
         // A file changed outside TablePro hands its verdict on; a missing tag must then read as modified, never adopted.
         settleTag(written.digest, stamping: mirror.isTrusted)
         settleProfilesSeal(imported.credentialProfiles)
@@ -504,6 +518,12 @@ final class CoreLibraryStore {
             previous = id
         }
         return merged
+    }
+
+    // The previous stable's copies of profiles the core holds unread, kept in its stores as they are.
+    private func keepLegacyCopiesOfHeldProfiles(from legacy: LegacyLibraryMirror.Contents?) {
+        legacyHeldSSHProfiles = legacy?.sshProfiles.filter { heldProfiles.contains($0.id) } ?? []
+        legacyHeldCredentialProfiles = legacy?.credentialProfiles.filter { heldProfiles.contains($0.id) } ?? []
     }
 
     // Before this build the profiles lived only in the previous stable's stores, so a core file an earlier build wrote
@@ -814,8 +834,9 @@ final class CoreLibraryStore {
             tags: image.tags,
             favoritesOrder: image.favoritesOrder,
             projects: image.projects,
-            sshProfiles: image.sshProfiles,
+            sshProfiles: image.sshProfiles + legacyHeldSSHProfiles.filter { heldProfiles.contains($0.id) },
             credentialProfiles: image.credentialProfiles
+                + legacyHeldCredentialProfiles.filter { heldProfiles.contains($0.id) }
         )
         // Recorded first, so a launch after a crash here knows these stores are behind the core's.
         mirror.record = mirrorRecord(legacy: mirror.digest(), core: coreDigest, legacyBehind: true)

@@ -143,6 +143,8 @@ struct LibraryRecordMappingTests {
                 tags: contents.tags,
                 favorites: contents.favorites,
                 projects: contents.projects,
+                sshProfiles: contents.sshProfiles,
+                credentialProfiles: contents.credentialProfiles,
                 removing: []
             ),
             over: contents.digest
@@ -204,6 +206,13 @@ struct ConnectionKeychainSecretsTests {
         }
         #expect(keychain.readString(forKey: CredentialProfileStorage.passwordKey(reader.id)) == nil)
         #expect(keychain.readString(forKey: CredentialProfileStorage.fieldKey("token", reader.id)) == nil)
+    }
+
+    @Test("A project name goes to the core with no control character in it")
+    func projectNamesLoseControlCharacters() {
+        #expect(LibraryRecordMapping.projectName("Acme") == "Acme")
+        #expect(LibraryRecordMapping.projectName("Acme\tWest") == "Acme West")
+        #expect(LibraryRecordMapping.projectName("\u{01}") == "\\u{1}")
     }
 
     @Test("Profiles round trip through the core's records")

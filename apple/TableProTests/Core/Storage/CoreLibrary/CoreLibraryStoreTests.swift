@@ -541,6 +541,49 @@ struct CoreLibraryStoreTests {
         )
     }
 
+    @Test("A credential profile another device deleted hands its credentials to a Local only connection here")
+    func aPulledProfileDeletionHandsOverItsCredentials() async throws {
+        let storage = fixture.launch()
+        let profiles = fixture.credentialProfiles(storage)
+        let reader = CredentialProfile(name: "Reader", username: "app_reader", passwordMode: .stored)
+        #expect(profiles.addProfile(reader))
+        #expect(profiles.savePassword("hunter2", for: reader.id))
+        var linked = connection("linked")
+        linked.localOnly = true
+        linked.credentialMode = .profile(id: reader.id)
+        linked.username = reader.username
+        #expect(storage.addConnection(linked))
+
+        try await writeAsTheCore { $0.credentialProfiles = [] }
+        storage.readCoreWrites()
+
+        let handedOver = try #require(storage.loadConnection(id: linked.id))
+        #expect(handedOver.credentialMode == .inline)
+        #expect(handedOver.username == "app_reader")
+        #expect(storage.loadPassword(for: linked.id) == "hunter2")
+        #expect(profiles.loadPassword(for: reader.id) == nil)
+    }
+
+    @Test("A profile a pull made unreadable here keeps the previous stable's copy")
+    func aProfileHeldUnreadKeepsItsLegacyCopy() async throws {
+        let storage = fixture.launch()
+        let bastion = SSHProfile(name: "Bastion", host: "bastion.example.com", port: 22, username: "deploy")
+        #expect(fixture.sshProfiles(storage).addProfile(bastion))
+
+        let data = try Data(contentsOf: fixture.coreURL)
+        var document = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var held = try #require((document["ssh_profiles"] as? [[String: Any]])?.first)
+        held["auth"] = ["kind": "a_method_from_a_newer_build"]
+        document["ssh_profiles"] = [held]
+        try JSONSerialization.data(withJSONObject: document).write(to: fixture.coreURL, options: .atomic)
+        storage.readCoreWrites()
+        #expect(storage.library.unreadableProfileIds == [bastion.id])
+        try fixture.groups(storage).addGroup(ConnectionGroup(name: "Later"))
+
+        let stored = try #require(fixture.defaults.data(forKey: "com.TablePro.sshProfiles"))
+        #expect(try JSONDecoder().decode([SSHProfile].self, from: stored) == [bastion])
+    }
+
     @Test("A write the core reports as its own, made over the file this Mac tagged, is tagged in turn")
     func aReportedCoreWriteIsTagged() async throws {
         let storage = fixture.launch()
@@ -628,6 +671,39 @@ struct CoreLibraryStoreTests {
         #expect(storage.loadConnection(id: member.id)?.projectId == acme.id)
         #expect(fixture.groups(storage).group(for: group.id)?.projectId == acme.id)
         #expect(try fixture.launchFromCoreOnly().loadConnection(id: member.id)?.projectId == acme.id)
+    }
+
+    @Test("A project the previous formats hold that this build cannot read stays in them as it was")
+    func anUnreadProjectStaysInThePreviousFormats() throws {
+        let acme = ConnectionProject(name: "Acme", sortOrder: 0)
+        let unread = UUID()
+        try fixture.writeAsPreviousStable(connections: [connection("member")], groups: [])
+        var entries = try #require(
+            try JSONSerialization.jsonObject(with: JSONEncoder().encode([acme])) as? [Any]
+        )
+        entries.append(["id": unread.uuidString, "name": 7])
+        fixture.defaults.set(try JSONSerialization.data(withJSONObject: entries), forKey: "com.TablePro.projects")
+
+        let storage = fixture.launch()
+        try fixture.projects(storage).createProject(name: "Globex")
+
+        let stored = try #require(fixture.defaults.data(forKey: "com.TablePro.projects"))
+        let ids = try #require(try JSONSerialization.jsonObject(with: stored) as? [[String: Any]]).compactMap { $0["id"] as? String }
+        #expect(ids.contains(unread.uuidString))
+        #expect(ids.contains(acme.id.uuidString))
+        #expect(ids.count == 3)
+    }
+
+    @Test("A project name with a tab, which the Mac let a person type, moves in with a space")
+    func aProjectNameWithATabMovesIn() throws {
+        let tabbed = ConnectionProject(name: "Acme\tWest", sortOrder: 0)
+        try fixture.writeAsPreviousStable(connections: [connection("member")], groups: [])
+        fixture.defaults.set(try JSONEncoder().encode([tabbed]), forKey: "com.TablePro.projects")
+
+        let storage = fixture.launch()
+
+        #expect(storage.loadConnections().map(\.name) == ["member"])
+        #expect(try fixture.launchFromCoreOnly().library.current()?.projects.map(\.name) == ["Acme West"])
     }
 
     // MARK: - Profiles
