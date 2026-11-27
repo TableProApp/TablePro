@@ -1,6 +1,6 @@
 # 0019: A table tab's row edits cross the FFI as typed text, and the core plans and runs the save
 
-- **Status**: Accepted; query results amended by 0033; the tracker, undo and PK identity move to the core per 0068 (Proposed), which supersedes this ADR on where they live once it lands
+- **Status**: Superseded by [0068](0068-the-pending-edit-tracker-and-undo-move-to-the-core.md) on where the tracker, undo and PK identity live; the save planning and Safe Mode gate it set stay in force and now run from the core tracker. Query results were amended by 0033.
 - **Date**: 2026-11-11
 
 ## Context
