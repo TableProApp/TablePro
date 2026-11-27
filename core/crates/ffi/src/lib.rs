@@ -33,6 +33,7 @@ mod keymap;
 mod library;
 mod library_contents;
 mod library_details;
+mod library_writes;
 mod masking;
 mod mcp;
 mod plan;
@@ -110,9 +111,9 @@ pub use host::{
 };
 pub use host_stores::{
     FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,
-    FavouriteStoreContents, FavouriteTableRecord, HistoryEntryRecord, SavedQueryFolderRecord, SavedQueryRecord,
-    SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome, TableFolderRecordWrite,
-    TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
+    FavouriteStoreContents, FavouriteTableRecord, HistoryDetailsRecord, HistoryEntryRecord, HistoryIdentityInfo,
+    SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome,
+    TableFolderRecordWrite, TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
 };
 pub use import::{
     CsvDelimiterTag, CsvImport, CsvImportCheck, CsvImportOutcome, CsvPreview, CsvReadOptions, CsvRowFault,
@@ -135,6 +136,7 @@ pub use library_details::{
     LocalPasswordSourceRecord, SocksProxyRecord, SshProfileRecord, SshRouteHopRecord, SshRouteRecord,
     SshRouteTargetRecord, TunnelCommandMethodTag, TunnelCommandRecord, VaultAuthRecord,
 };
+pub use library_writes::LibraryWriteReport;
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,
     ShareColumnMasking, ShareRefusal, ShareSummary,

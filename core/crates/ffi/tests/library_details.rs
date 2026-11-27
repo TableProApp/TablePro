@@ -1139,3 +1139,33 @@ async fn a_form_that_sends_a_tunnel_turns_one_switched_off_back_on() {
         Some((Some(false), "bastion".to_owned()))
     );
 }
+
+// The core's own write to the library is reported once to a host that tags the file; the host's own write returns
+// its digest instead, and a core opened later on the same folder reads what an earlier one recorded.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_core_s_own_library_writes_are_reported_once_and_the_host_s_are_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let key = || SecretString::from("the mac's key".to_owned());
+    let core = started(dir.path());
+    core.report_library_writes(key()).unwrap();
+    let library = core.library().unwrap();
+    let file = dir.path().join("connections.json");
+
+    let vouched = library.replace_library(mac_library(), None).await.unwrap();
+    assert!(core.take_library_writes().await.unwrap().is_empty());
+    library.create_group("Core side".to_owned(), None).await.unwrap();
+    let on_disk = sha256_hex(&std::fs::read(&file).unwrap());
+    drop(library);
+    drop(core);
+
+    let core = started(dir.path());
+    assert!(core.take_library_writes().await.unwrap().is_empty());
+    core.report_library_writes(key()).unwrap();
+    let taken = core.take_library_writes().await.unwrap();
+
+    assert_eq!(taken.len(), 1);
+    assert_eq!(taken[0].digest, on_disk);
+    assert_eq!(taken[0].over, vouched.digest);
+    assert!(taken[0].at_ms > 0);
+    assert!(core.take_library_writes().await.unwrap().is_empty());
+}

@@ -382,9 +382,9 @@ impl QueryHistory {
         Ok(deleted.len() as u64)
     }
 
-    // The person's deletion of every entry `query` matches, as the History pane clears what it shows. Returns how
-    // many went.
-    pub async fn delete_matching(&self, query: &HistoryQuery) -> Result<u64, StorageError> {
+    // The person's deletion of every entry `query` matches, as the History pane clears what it shows. Returns the record
+    // ids that went, in rowid order, so a host can drop the same runs from a store of its own.
+    pub async fn delete_matching(&self, query: &HistoryQuery) -> Result<Vec<Uuid>, StorageError> {
         let (clauses, binds) = filter_clauses(query);
         let mut sql = "SELECT h.id FROM history h".to_owned();
         if !clauses.is_empty() {
@@ -407,8 +407,9 @@ impl QueryHistory {
                 .await?;
         }
         transaction.commit().await?;
-        self.history_changed([], deleted.iter().map(|entry| entry.record_id));
-        Ok(deleted.len() as u64)
+        let gone: Vec<Uuid> = deleted.iter().map(|entry| entry.record_id).collect();
+        self.history_changed([], gone.iter().copied());
+        Ok(gone)
     }
 
     // Under the write lock the caller holds until it commits: from the copies first, then a tombstone for each, then

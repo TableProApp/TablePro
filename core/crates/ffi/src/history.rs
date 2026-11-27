@@ -241,8 +241,9 @@ impl QueryHistoryStore {
         .await
     }
 
-    // The person's deletion of everything `filter` matches, as the pane clears what it shows. Returns how many went.
-    pub async fn delete_matching(&self, filter: HistoryFilterArg) -> Result<u64, CoreError> {
+    // The person's deletion of everything `filter` matches, as the pane clears what it shows. Returns the record ids
+    // that went, in rowid order, so the app can drop the same runs from its own store.
+    pub async fn delete_matching(&self, filter: HistoryFilterArg) -> Result<Vec<String>, CoreError> {
         let project = optional_id(filter.project_id.as_deref())?;
         let mut query = HistoryQuery::try_from(filter)?;
         let history = self.history.clone();
@@ -250,7 +251,12 @@ impl QueryHistoryStore {
         let tasks = self.tasks.clone();
         on_runtime(&self.tasks, async move {
             narrow_to_project(&mut query, project, connections, &tasks).await?;
-            Ok(history.delete_matching(&query).await?)
+            Ok(history
+                .delete_matching(&query)
+                .await?
+                .iter()
+                .map(ToString::to_string)
+                .collect())
         })
         .await
     }

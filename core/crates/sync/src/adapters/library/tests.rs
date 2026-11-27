@@ -616,3 +616,35 @@ async fn a_pulled_credential_profile_of_a_name_this_device_holds_settles_the_nam
     assert_eq!(name(high).as_deref(), Some("Ops (3)"));
     assert_eq!(name(other).as_deref(), Some("ops (2)"));
 }
+
+// A pull's write to the library is reported once to a host that tags the file, with the digest of what it wrote.
+#[tokio::test]
+async fn a_pull_s_write_is_reported_once_to_a_host_that_tags_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    store.report_writes(secrecy::SecretString::from("the mac's key".to_owned()));
+    let connections = adapter(&store, Kind::Connection);
+
+    connections
+        .apply(
+            ScopeName::Personal,
+            vec![LocalChange::Put {
+                record_id: CONNECTION.to_owned(),
+                fields: mac_connection(),
+            }],
+        )
+        .await
+        .unwrap();
+
+    let taken = store.take_written_blocking().unwrap();
+    let bytes = std::fs::read(store.path()).unwrap();
+    let on_disk = {
+        use sha2::Digest;
+        hex::encode(sha2::Sha256::digest(&bytes))
+    };
+    assert_eq!(
+        taken.iter().map(|write| write.digest.as_str()).collect::<Vec<_>>(),
+        [on_disk.as_str()]
+    );
+    assert!(store.take_written_blocking().unwrap().is_empty());
+}

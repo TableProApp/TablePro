@@ -9,10 +9,11 @@ use std::sync::Arc;
 use secrecy::SecretString;
 use tablepro_ffi::{
     Core, DatabaseEnvironmentTag, FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteRecordWrite,
-    FavouriteTableRecord, HistoryEntryRecord, HistoryFilterArg, HistoryFingerprintArg, HistoryOutcomeTag,
-    HistoryRunDetails, HistorySourceTag, HistoryStatusTag, HostConfig, HostSecretError, HostSecrets, ProfileKindTag,
-    SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SecretDeletionTag, SecretItemTag, SecretKindTag,
-    StatementTypeTag, TableFolderRecord, TableFolderRecordWrite, TableKeyRecord, TablePlacementRecord, TableRefRecord,
+    FavouriteTableRecord, HistoryDetailsRecord, HistoryEntryRecord, HistoryFilterArg, HistoryFingerprintArg,
+    HistoryIdentityInfo, HistoryOutcomeTag, HistoryRunDetails, HistorySourceTag, HistoryStatusTag, HostConfig,
+    HostSecretError, HostSecrets, ProfileKindTag, SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite,
+    SecretDeletionTag, SecretItemTag, SecretKindTag, StatementTypeTag, TableFolderRecord, TableFolderRecordWrite,
+    TableKeyRecord, TablePlacementRecord, TableRefRecord,
 };
 
 struct NoSecrets;
@@ -376,8 +377,105 @@ async fn the_history_pane_reads_and_clears_by_its_filters_and_every_detail_comes
         .unwrap();
     assert_eq!(first.details, editor.details);
 
-    assert_eq!(history.delete_matching(browsing).await.unwrap(), 1);
+    let gone = history.delete_matching(browsing).await.unwrap();
+    assert_eq!(gone.iter().map(|id| id.to_uppercase()).collect::<Vec<_>>(), [QUERY]);
     assert_eq!(history.search(everything(), None, 50).await.unwrap().entries.len(), 1);
+}
+
+const LATER: &str = "5E6F7A8B-9C0D-4E1F-8A2B-3C4D5E6F7A8B";
+
+// Runs a host mirrored before it kept details get them by record id, and only where they had none: a source filled
+// in brings the run under the pane's source filter. A deleted run is not brought back.
+#[tokio::test]
+async fn details_fill_in_on_runs_mirrored_without_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = started(dir.path()).history().await.unwrap();
+    let mut bare = moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor);
+    bare.details = HistoryRunDetails::default();
+    let kept = moved_in(QUERY, 1_700_000_060_000, HistorySourceTag::TableBrowse);
+    let mut deleted = moved_in(LATER, 1_700_000_120_000, HistorySourceTag::Editor);
+    deleted.details = HistoryRunDetails::default();
+    history.put_entries(vec![bare, kept.clone(), deleted]).await.unwrap();
+    history.delete_entries(vec![LATER.to_owned()]).await.unwrap();
+    let editor_runs = HistoryFilterArg {
+        sources: Some(vec![HistorySourceTag::Editor]),
+        ..everything()
+    };
+    assert!(
+        history
+            .search(editor_runs.clone(), None, 50)
+            .await
+            .unwrap()
+            .entries
+            .is_empty()
+    );
+    let learned = HistoryRunDetails {
+        database: Some("shop".to_owned()),
+        schema: Some("public".to_owned()),
+        source: Some(HistorySourceTag::Editor),
+        statement_type: Some(StatementTypeTag::Select),
+        first_row_ms: Some(3),
+        server_ms: Some(2),
+        fingerprint: Some(7),
+    };
+
+    let changed = history
+        .fill_details(
+            [RUN, QUERY, LATER]
+                .iter()
+                .map(|id| HistoryDetailsRecord {
+                    record_id: (*id).to_owned(),
+                    details: learned.clone(),
+                })
+                .collect(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(changed, 2);
+    let found = history.search(editor_runs, None, 50).await.unwrap().entries;
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].record_id.to_uppercase(), RUN);
+    assert_eq!(found[0].details, learned);
+    let read = history.entries(vec![QUERY.to_owned()]).await.unwrap();
+    assert_eq!(
+        read[0].details,
+        HistoryRunDetails {
+            schema: Some("public".to_owned()),
+            fingerprint: Some(7),
+            ..kept.details
+        }
+    );
+    assert_eq!(history.record_ids().await.unwrap().len(), 2);
+}
+
+// Runs by record id: ids the store does not hold, a deleted one among them, are left out.
+#[tokio::test]
+async fn runs_read_by_record_id_leave_out_what_the_store_does_not_hold() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = started(dir.path()).history().await.unwrap();
+    history
+        .put_entries(vec![
+            moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor),
+            moved_in(QUERY, 1_700_000_060_000, HistorySourceTag::Editor),
+        ])
+        .await
+        .unwrap();
+    history.delete_entries(vec![QUERY.to_owned()]).await.unwrap();
+
+    let read = history
+        .entries(vec![QUERY.to_owned(), RUN.to_owned(), LATER.to_owned()])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        read.iter()
+            .map(|entry| entry.record_id.to_uppercase())
+            .collect::<Vec<_>>(),
+        [RUN]
+    );
+    assert_eq!(read[0].sql, "SELECT 1");
+    assert!(history.entries(vec!["not an id".to_owned()]).await.is_err());
 }
 
 #[tokio::test]
@@ -495,4 +593,78 @@ async fn store_files_make_nothing_and_the_history_keeps_to_a_folder_made_first()
         Path::new(&files.history_folder).join("marker").is_file(),
         "the core made the folder again"
     );
+}
+
+async fn identity_of(dir: &Path) -> HistoryIdentityInfo {
+    started(dir).history().await.unwrap().identity().await.unwrap()
+}
+
+// The history's files as they stand under another storage folder, as a backup or another device's copy brings them
+// back. Nothing writes meanwhile, so the database and its WAL agree.
+fn copied(from: &Arc<Core>, to: &Path) {
+    let database = std::path::PathBuf::from(from.store_files().unwrap().history_database);
+    let target = std::path::PathBuf::from(started(to).store_files().unwrap().history_database);
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    for suffix in ["", "-wal"] {
+        let source = format!("{}{suffix}", database.display());
+        if Path::new(&source).exists() {
+            std::fs::copy(&source, format!("{}{suffix}", target.display())).unwrap();
+        }
+    }
+}
+
+// The Mac keeps the history's identity with what it agreed with the core: the same file keeps its generation across
+// opens, and each write raises the sequence.
+#[tokio::test]
+async fn the_history_s_identity_holds_across_opens_and_rises_with_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = identity_of(dir.path()).await;
+
+    assert_eq!(identity_of(dir.path()).await, first);
+    let history = started(dir.path()).history().await.unwrap();
+    history
+        .put_entries(vec![moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor)])
+        .await
+        .unwrap();
+    let written = history.identity().await.unwrap();
+
+    assert_eq!(written.generation, first.generation);
+    assert!(written.sequence > first.sequence, "{written:?} after {first:?}");
+    assert!(uuid::Uuid::parse_str(&written.generation).is_ok());
+}
+
+// Another file in the history's place reads as another generation, and an older copy of the same file as a lower
+// sequence: either way the runs it lacks are not deletions.
+#[tokio::test]
+async fn a_replaced_history_reads_as_another_generation_and_a_rolled_back_one_as_a_lower_sequence() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let history = core.history().await.unwrap();
+    history
+        .put_entries(vec![moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor)])
+        .await
+        .unwrap();
+    let kept = history.identity().await.unwrap();
+    let rolled_back_dir = tempfile::tempdir().unwrap();
+    copied(&core, rolled_back_dir.path());
+    history
+        .put_entries(vec![moved_in(QUERY, 1_700_000_060_000, HistorySourceTag::Editor)])
+        .await
+        .unwrap();
+    let later = history.identity().await.unwrap();
+
+    let rolled_back = identity_of(rolled_back_dir.path()).await;
+    assert_eq!(rolled_back.generation, later.generation);
+    assert_eq!(rolled_back.sequence, kept.sequence);
+    assert!(rolled_back.sequence < later.sequence);
+
+    let elsewhere = tempfile::tempdir().unwrap();
+    let other_core = started(elsewhere.path());
+    let theirs = other_core.history().await.unwrap().identity().await.unwrap();
+    let replaced_dir = tempfile::tempdir().unwrap();
+    copied(&other_core, replaced_dir.path());
+
+    let replaced = identity_of(replaced_dir.path()).await;
+    assert_eq!(replaced, theirs);
+    assert_ne!(replaced.generation, later.generation);
 }

@@ -2,7 +2,7 @@
 // the Mac and iOS apps, each record under its own id (core ADR 0010, slices 3 and 9). A write names the digest it was
 // based on where it replaces a whole store, so a change the app never read is refused rather than lost.
 
-use tablepro_storage::query_history::{NewEntry, Outcome};
+use tablepro_storage::query_history::{NewEntry, Outcome, RunDetails};
 use tablepro_storage::saved_queries::SavedQuery;
 use tablepro_storage::{
     DatabaseEnvironment, FavouriteDatabase, FavouriteDigests, FavouriteTable, FavouriteWrite, SavedQueryFolder,
@@ -11,11 +11,12 @@ use tablepro_storage::{
 
 use crate::error::CoreError;
 use crate::favourites::{DatabaseEnvironmentTag, FavouriteStore};
-use crate::history::{HistoryOutcomeTag, HistoryRunDetails, QueryHistoryStore, from_millis, millis};
+use crate::history::{HistoryEntryInfo, HistoryOutcomeTag, HistoryRunDetails, QueryHistoryStore, from_millis, millis};
 use crate::library::{parse_id, parse_ids};
 use crate::runtime::on_runtime;
 use crate::saved_queries::SavedQueryStore;
 use crate::table_folders::{TableFolderRecord, TableFolderStore, TableRefRecord};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SavedQueryRecord {
@@ -153,6 +154,22 @@ pub struct HistoryEntryRecord {
     pub duration_ms: Option<i64>,
     pub rows_affected: Option<i64>,
     pub outcome: HistoryOutcomeTag,
+    pub details: HistoryRunDetails,
+}
+
+// Which copy of `history.db` the store is, and how far its writes have gone (core ADR 0054, The engine). Another
+// generation than the one the app kept, or a lower sequence, means the file was replaced or rolled back, so the runs it
+// lacks are not deletions.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HistoryIdentityInfo {
+    pub generation: String,
+    pub sequence: u64,
+}
+
+// Details the app learned for a run it already mirrored, under the run's record id.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HistoryDetailsRecord {
+    pub record_id: String,
     pub details: HistoryRunDetails,
 }
 
@@ -350,6 +367,45 @@ impl QueryHistoryStore {
         let entries: Vec<NewEntry> = entries.into_iter().map(NewEntry::try_from).collect::<Result<_, _>>()?;
         let history = self.history.clone();
         on_runtime(&self.tasks, async move { Ok(history.put(&entries).await?) }).await
+    }
+
+    // In one commit, for runs mirrored before the app kept details: each field a run has none of takes the value given,
+    // and none it has changes. A run the store does not hold, a deleted one among them, is passed over. Returns how
+    // many runs changed.
+    pub async fn fill_details(&self, entries: Vec<HistoryDetailsRecord>) -> Result<u64, CoreError> {
+        let details: Vec<(Uuid, RunDetails)> = entries
+            .into_iter()
+            .map(|entry| Ok((parse_id(&entry.record_id)?, entry.details.into())))
+            .collect::<Result<_, CoreError>>()?;
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move { Ok(history.fill_details(&details).await?) }).await
+    }
+
+    // Runs by record id, oldest row first. An id the store does not hold, a deleted one among them, is left out.
+    pub async fn entries(&self, record_ids: Vec<String>) -> Result<Vec<HistoryEntryInfo>, CoreError> {
+        let ids = parse_ids(&record_ids)?;
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move {
+            Ok(history
+                .entries_by_record_id(&ids)
+                .await?
+                .into_iter()
+                .map(HistoryEntryInfo::from)
+                .collect())
+        })
+        .await
+    }
+
+    pub async fn identity(&self) -> Result<HistoryIdentityInfo, CoreError> {
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move {
+            let identity = history.identity().await?;
+            Ok(HistoryIdentityInfo {
+                generation: identity.generation.to_string(),
+                sequence: identity.sequence,
+            })
+        })
+        .await
     }
 
     // Every entry's record id, oldest row first.
