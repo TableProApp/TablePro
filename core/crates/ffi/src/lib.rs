@@ -66,9 +66,9 @@ pub use account::{
     settled_sync_provider, share_token_from_link,
 };
 pub use ai::{
-    AiActionTag, AiAssistant, AiChatArg, AiConversationArg, AiConversationStart, AiFailureInfo, AiMessageArg,
-    AiModelInfo, AiProviderInfo, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener, AiRoleTag, AiSettingsArg,
-    AiStopTag, ai_action_message, ai_address_is_valid, ai_host_of, ai_providers,
+    AiActionTag, AiApprover, AiAssistant, AiChatArg, AiConversationArg, AiConversationStart, AiFailureInfo,
+    AiMessageArg, AiModelInfo, AiProviderInfo, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener, AiRoleTag,
+    AiSettingsArg, AiStopTag, AiWriteRequest, ai_action_message, ai_address_is_valid, ai_host_of, ai_providers,
 };
 pub use app_link::{AppLinkInfo, parse_app_link};
 pub use cancel_token::CancelToken;
