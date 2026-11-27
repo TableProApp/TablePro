@@ -5,9 +5,13 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 use super::placement::{placed, unique};
-use super::{ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome, SavedConnection, StoreState};
+use super::write_guard::WriteGuard;
+use super::{
+    ConnectionList, ConnectionStore, ConnectionsDocument, CredentialProfile, RemoveOutcome, SavedConnection,
+    SecretOwner, SecretOwnerKind, SshProfile, StoreState,
+};
 use crate::error::StorageError;
-use crate::lenient::Lenient;
+use crate::lenient::{Identified, Lenient};
 use crate::store_identity::StoreIdentity;
 use crate::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionProject, ConnectionTag, GroupTree, LibraryIcon,
@@ -20,7 +24,10 @@ pub struct LibraryWrite {
     pub tags: Vec<ConnectionTag>,
     pub favorites: Vec<Uuid>,
     pub projects: Vec<ConnectionProject>,
-    // Entries this build cannot read that the write takes out, as a deletion another device made, under the same check.
+    pub ssh_profiles: Vec<SshProfile>,
+    pub credential_profiles: Vec<CredentialProfile>,
+    // Connections and profiles this build cannot read that the write takes out, as a deletion another device made,
+    // under the same check.
     pub removing: Vec<Uuid>,
 }
 
@@ -70,59 +77,23 @@ impl ConnectionStore {
     }
 
     // Refused unless the file is still the one `over` names (None: no file), so nothing unchecked goes on; `build` reads it.
+    // The secrets of what the write takes out go after it lands (`settle_secrets`), with the file's earlier ones.
     pub fn replace_library_blocking<E: From<StorageError>>(
         &self,
         over: Option<&str>,
         build: impl FnOnce(&ConnectionList) -> Result<LibraryWrite, E>,
+        delete: impl FnMut(SecretOwner) -> bool,
     ) -> Result<Option<String>, E> {
         let mut state = self.lock_to_write();
-        let before = match self.ensure_current(&mut state) {
-            Ok(before) => before,
-            // A file swapped for one that does not read is a change too, and says so first.
-            Err(StorageError::DocumentUnavailable(_)) if bytes_digest(&state).as_deref() != over => {
-                return Err(StorageError::LibraryChanged.into());
-            }
-            Err(error) => return Err(error.into()),
-        };
-        if digest_of(&state).as_deref() != over {
-            return Err(StorageError::LibraryChanged.into());
-        }
-        let write = build(&before.list())?;
-        let named: HashSet<Uuid> = write.connections.iter().map(|connection| connection.id).collect();
-        let held: HashSet<Uuid> = before
-            .connections
-            .held_ids()
-            .into_iter()
-            .filter(|id| !named.contains(id) && !write.removing.contains(id))
-            .collect();
-        write.refuse_what_it_would_lose(&held)?;
-        let LibraryWrite {
-            connections,
-            groups,
-            tags,
-            favorites,
-            projects,
-            removing,
-        } = write;
-        let mut document = before.clone();
-        for id in removing {
-            document.connections.remove_id(id);
-        }
-        for connection in &connections {
-            document.connections.release(connection.id);
-        }
-        *document.connections = connections;
-        document.groups = groups;
-        document.tags = tags;
-        document.favorites = favorites;
-        document.projects = projects;
-        document.tidy();
+        let before = self.vouched(&mut state, over)?;
+        let document = before.written(build(&before.list())?)?;
         if document != before {
             self.commit(&mut state, document)?;
         } else if self.digest_on_disk()?.as_deref() != over {
             // Nothing written, so the file must still be the one it answers for.
             return Err(StorageError::LibraryChanged.into());
         }
+        self.settle_secrets(&mut state, delete)?;
         Ok(digest_of(&state))
     }
 
@@ -136,6 +107,8 @@ impl ConnectionStore {
             tags,
             favorites,
             projects,
+            ssh_profiles,
+            credential_profiles,
             removing: _,
         } = write;
         let mut state = self.lock_to_write();
@@ -149,20 +122,74 @@ impl ConnectionStore {
         };
         // Told against nothing, so no id from the file it replaces is journaled as a deletion to send.
         *state = StoreState::Unloaded;
+        // The pending deletions go with the file: its ids are not vouched for, so the secrets they name stay.
         let document = ConnectionsDocument {
             connections: Lenient::from(connections),
             groups,
             tags,
             favorites,
             projects,
+            ssh_profiles: Lenient::from(ssh_profiles),
+            credential_profiles: Lenient::from(credential_profiles),
+            secrets_to_delete: Lenient::default(),
             store: Some(StoreIdentity::fresh()),
-            ..ConnectionsDocument::default()
         };
         self.commit(&mut state, document)?;
         Ok(Rebuilt {
             digest: digest_of(&state),
             set_aside,
         })
+    }
+
+    // Runs under the write lock the commit took, so no writer can bring an owner back between the check and the delete.
+    // An owner whose id the file holds again keeps its secrets; one `delete` could not clear stays for the next write.
+    fn settle_secrets(
+        &self,
+        state: &mut WriteGuard<'_>,
+        mut delete: impl FnMut(SecretOwner) -> bool,
+    ) -> Result<(), StorageError> {
+        // Without the lock file another process could bring an owner back mid-way, so the list waits for a write with it.
+        if !state.holds_file_lock() {
+            return Ok(());
+        }
+        let StoreState::Ready(current, _) = &**state else {
+            return Ok(());
+        };
+        if current.secrets_to_delete.is_empty() {
+            return Ok(());
+        }
+        let mut document = (**current).clone();
+        let held = [
+            ids_of(&document.connections),
+            ids_of(&document.ssh_profiles),
+            ids_of(&document.credential_profiles),
+        ];
+        let pending = std::mem::take(&mut *document.secrets_to_delete);
+        let left: Vec<SecretOwner> = pending
+            .into_iter()
+            .filter(|owner| !held[owner.kind.index()].contains(&owner.id) && !delete(*owner))
+            .collect();
+        *document.secrets_to_delete = left;
+        if document != **current {
+            self.commit(state, document)?;
+        }
+        Ok(())
+    }
+
+    // The file as the store holds it, refused unless it is still the one `over` names.
+    fn vouched(&self, state: &mut WriteGuard<'_>, over: Option<&str>) -> Result<ConnectionsDocument, StorageError> {
+        let before = match self.ensure_current(state) {
+            Ok(before) => before,
+            // A file swapped for one that does not read is a change too, and says so first.
+            Err(StorageError::DocumentUnavailable(_)) if bytes_digest(state).as_deref() != over => {
+                return Err(StorageError::LibraryChanged);
+            }
+            Err(error) => return Err(error),
+        };
+        if digest_of(state).as_deref() != over {
+            return Err(StorageError::LibraryChanged);
+        }
+        Ok(before)
     }
 
     pub fn create_group_blocking(&self, group: ConnectionGroup) -> Result<ConnectionGroup, StorageError> {
@@ -466,6 +493,99 @@ impl ConnectionsDocument {
             }
         }
     }
+
+    // Values as given; an entry this build cannot read stays unless the write names or removes it.
+    fn written(&self, write: LibraryWrite) -> Result<Self, StorageError> {
+        let named: HashSet<Uuid> = write.connections.iter().map(|connection| connection.id).collect();
+        let held: HashSet<Uuid> = self
+            .connections
+            .held_ids()
+            .into_iter()
+            .filter(|id| !named.contains(id) && !write.removing.contains(id))
+            .collect();
+        write.refuse_what_it_would_lose(&held)?;
+        // An id the file holds as two kinds is a crafted collision, and a removal cannot say which one it means.
+        let kinds = [
+            ids_of(&self.connections),
+            ids_of(&self.ssh_profiles),
+            ids_of(&self.credential_profiles),
+        ];
+        if let Some(&id) = write
+            .removing
+            .iter()
+            .find(|id| kinds.iter().filter(|held| held.contains(id)).count() > 1)
+        {
+            return Err(StorageError::RepeatedId { id });
+        }
+        let LibraryWrite {
+            connections,
+            groups,
+            tags,
+            favorites,
+            projects,
+            ssh_profiles,
+            credential_profiles,
+            removing,
+        } = write;
+        let mut document = self.clone();
+        for id in &removing {
+            document.connections.remove_id(*id);
+            document.ssh_profiles.remove_id(*id);
+            document.credential_profiles.remove_id(*id);
+        }
+        replace_entries(&mut document.connections, connections);
+        replace_entries(&mut document.ssh_profiles, ssh_profiles);
+        replace_entries(&mut document.credential_profiles, credential_profiles);
+        document.groups = groups;
+        document.tags = tags;
+        document.favorites = favorites;
+        document.projects = projects;
+        document.tidy();
+        // A connection counts only when `removing` names it: the host keeps the secrets of the readable ones it leaves out.
+        let leaving = gone(&self.connections, &document.connections)
+            .into_iter()
+            .filter(|id| removing.contains(id))
+            .map(|id| SecretOwner::new(SecretOwnerKind::Connection, id))
+            .chain(
+                gone(&self.ssh_profiles, &document.ssh_profiles)
+                    .into_iter()
+                    .map(|id| SecretOwner::new(SecretOwnerKind::SshProfile, id)),
+            )
+            .chain(
+                gone(&self.credential_profiles, &document.credential_profiles)
+                    .into_iter()
+                    .map(|id| SecretOwner::new(SecretOwnerKind::CredentialProfile, id)),
+            );
+        for owner in leaving {
+            if !document.secrets_to_delete.contains(&owner) {
+                document.secrets_to_delete.push(owner);
+            }
+        }
+        Ok(document)
+    }
+}
+
+// A held entry the write names gives way to the one it brings.
+fn replace_entries<T: Identified>(list: &mut Lenient<T>, entries: Vec<T>) {
+    for entry in &entries {
+        list.release(entry.id());
+    }
+    **list = entries;
+}
+
+fn ids_of<T: Identified>(list: &Lenient<T>) -> HashSet<Uuid> {
+    list.iter().map(Identified::id).chain(list.held_ids()).collect()
+}
+
+// Ids `before` holds, read or held, that `after` no longer does, in the order `before` lists them.
+fn gone<T: Identified>(before: &Lenient<T>, after: &Lenient<T>) -> Vec<Uuid> {
+    let kept = ids_of(after);
+    before
+        .iter()
+        .map(Identified::id)
+        .chain(before.held_ids())
+        .filter(|id| !kept.contains(id))
+        .collect()
 }
 
 impl LibraryWrite {
@@ -476,14 +596,23 @@ impl LibraryWrite {
             .or_else(|| first_repeat(self.tags.iter().map(|tag| tag.id)))
             .or_else(|| first_repeat(self.projects.iter().map(|project| project.id)))
             .or_else(|| first_repeat(self.favorites.iter().copied()))
+            .or_else(|| first_repeat(self.ssh_profiles.iter().map(|profile| profile.id)))
+            .or_else(|| first_repeat(self.credential_profiles.iter().map(|profile| profile.id)))
             .or_else(|| {
                 self.connections
                     .iter()
                     .find_map(|connection| first_repeat(connection.tags.iter().copied()))
             });
         let saved: HashSet<Uuid> = self.connections.iter().map(|connection| connection.id).collect();
-        // A connection the write both keeps and takes out is named twice.
-        let kept_and_removed = self.removing.iter().copied().find(|id| saved.contains(id));
+        let kept: HashSet<Uuid> = self
+            .ssh_profiles
+            .iter()
+            .map(|profile| profile.id)
+            .chain(self.credential_profiles.iter().map(|profile| profile.id))
+            .chain(saved.iter().copied())
+            .collect();
+        // An entry the write both keeps and takes out is named twice.
+        let kept_and_removed = self.removing.iter().copied().find(|id| kept.contains(id));
         if let Some(id) = repeated.or(kept_and_removed) {
             return Err(StorageError::RepeatedId { id });
         }

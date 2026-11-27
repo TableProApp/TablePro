@@ -68,6 +68,10 @@ nonisolated internal final class KeychainHostSecrets: HostSecrets, @unchecked Se
         throw Self.notHere
     }
 
+    func deleteProfile(profileId: String, kind: ProfileKindTag) throws -> SecretDeletionTag {
+        throw Self.notHere
+    }
+
     private static let notHere = HostSecretError.Unavailable(detail: "the app keeps this secret in Swift")
 
     // Nil is tablepro.app's item.

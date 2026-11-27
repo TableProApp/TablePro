@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
     CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords, ConnectionLibrary,
-    ConnectionRecord, ConnectionSecrets, Core, HostConfig, HostSecretError, HostSecrets, SafeModeTag, SecretItemTag,
-    SecretKindTag, TlsModeTag, TlsSettings,
+    ConnectionRecord, ConnectionSecrets, Core, HostConfig, HostSecretError, HostSecrets, ProfileKindTag, SafeModeTag,
+    SecretDeletionTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings,
 };
 use tempfile::TempDir;
 
@@ -47,6 +47,10 @@ impl HostSecrets for MemorySecrets {
     fn delete_connection(&self, connection_id: String) -> Result<(), HostSecretError> {
         self.0.lock().unwrap().retain(|(id, _), _| *id != connection_id);
         Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
