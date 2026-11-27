@@ -60,7 +60,7 @@ case "$SUITE" in
         # The package's TableProPluginKit target is a symlink, so git reports its changes here.
         PATTERNS=('apple/TableProMobile/' 'apple/Libs/' 'apple/Plugins/TableProPluginKit/'
             'apple/scripts/(generate-project|download-libs|create-openssl-dylibs)\.sh$' 'apple/scripts/lib/'
-            'apple/scripts/ci/summarize-xcresult\.sh$' 'apple/scripts/localization\.py$'
+            'apple/scripts/ci/(summarize-xcresult\.sh|boot-ios-simulator\.py)$' 'apple/scripts/localization\.py$'
             'scripts/ci/detect-changed-paths\.sh$'
             '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/(ci|ios-tests)\.yml$'
             # The TableProCore package tests read the function names and the script corpus the Linux app shares.
