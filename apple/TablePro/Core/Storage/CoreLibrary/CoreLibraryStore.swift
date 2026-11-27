@@ -19,6 +19,7 @@ final class CoreLibraryStore {
 
     private let host: CoreStoreHost
     private let localOnly: LocalOnlyConnections
+    private let profileSecrets: ProfileKeychainSecrets
     private let integrity: ConnectionStoreIntegrity
 
     private var library: ConnectionLibrary?
@@ -28,6 +29,9 @@ final class CoreLibraryStore {
     private var storedGroups: [UUID: GroupRecord] = [:]
     private var storedTags: [UUID: TagRecord] = [:]
     private var storedProjects: [UUID: ProjectRecord] = [:]
+    private var storedSSHProfiles: [UUID: SshProfileRecord] = [:]
+    // Profiles the core holds that this build cannot read; a write that names one is refused.
+    private var heldProfiles: Set<UUID> = []
     private var heldByCore: Set<UUID> = []
     // The previous stable's copies of connections the core holds unread, kept in its file as they are.
     private var legacyHeld: [DatabaseConnection] = []
@@ -39,6 +43,9 @@ final class CoreLibraryStore {
     private(set) var lastLoadFailed = false
     // False until a load answers, so nothing reads "trusted" for a store nobody verified.
     private(set) var isTrusted = false
+    // The credential profiles have a seal of their own, as credentialProfiles.json had its own tag: a profile can name a
+    // command, and no save but one over profiles TablePro wrote keeps them vouched for, a person's connection save included.
+    private(set) var profilesTrusted = false
     private(set) var readCount = 0
     private(set) var writeCount = 0
     // Moves on every read and write, so a store derived from the library knows when to look again.
@@ -54,33 +61,46 @@ final class CoreLibraryStore {
         coreFileURL = folder.appendingPathComponent("connections.json")
         mirror = LegacyLibraryMirror(fileURL: legacyFileURL, defaults: defaults, integrity: integrity, logger: Self.logger)
         self.integrity = integrity
-        let opened = Self.coreHost(over: folder, keychain: keychain)
+        let opened = Self.coreHost(over: folder, keychain: keychain, integrity: integrity)
         host = opened.host
         localOnly = opened.localOnly
+        profileSecrets = opened.profileSecrets
     }
 
     // The app's library opens on the core every store over `TablePro/Core` shares, so no second runtime holds its files;
     // a library anywhere else gets a core of its own.
     private static func coreHost(
         over folder: URL,
-        keychain: any KeychainStoring
-    ) -> (host: CoreStoreHost, localOnly: LocalOnlyConnections) {
+        keychain: any KeychainStoring,
+        integrity: ConnectionStoreIntegrity
+    ) -> (host: CoreStoreHost, localOnly: LocalOnlyConnections, profileSecrets: ProfileKeychainSecrets) {
         if folder.standardizedFileURL == CoreStoreHost.shared.folder.standardizedFileURL {
-            return (.shared, .shared)
+            return (.shared, .shared, .shared)
         }
         let localOnly = LocalOnlyConnections()
-        let host = CoreStoreHost(folder: folder) {
-            CoreStoreSecrets(
-                items: nil,
-                connections: ConnectionKeychainSecrets(keychain: keychain) { id in localOnly.isLocalOnly(id) }
-            )
-        }
-        return (host, localOnly)
+        let profileSecrets = ProfileKeychainSecrets(keychain: keychain)
+        let host = CoreStoreHost(
+            folder: folder,
+            makeSecrets: {
+                CoreStoreSecrets(
+                    items: nil,
+                    connections: ConnectionKeychainSecrets(keychain: keychain) { id in localOnly.isLocalOnly(id) },
+                    profiles: profileSecrets
+                )
+            },
+            reportKey: { integrity.libraryReportKey() }
+        )
+        return (host, localOnly, profileSecrets)
     }
 
     // Records this build cannot read, in the core's store or in connections.json; what belongs to them is kept.
     var unreadableIds: Set<UUID> {
         heldByCore.union(mirror.unreadableIds)
+    }
+
+    // Profiles this build cannot read, in the core's store or in credentialProfiles.json; their ids stay taken.
+    var unreadableProfileIds: Set<UUID> {
+        heldProfiles.union(mirror.unreadableProfileIds)
     }
 
     // Nil when the library could not be read; nothing is written over it then.
@@ -94,9 +114,9 @@ final class CoreLibraryStore {
         lastLoadFailed = false
     }
 
-    // The core's engine writes the library itself and tells this store nothing, so after its pass the file is read again
-    // when its digest moved. Nothing yet tells the engine's writes from one made outside TablePro, so what is read is
-    // never tagged: it stays untrusted until a person's connection save rebuilds it.
+    // The core's engine writes the library itself, so after its pass the file is read again when its digest moved. It
+    // is tagged when the core reports that write as its own, made over a file this store vouched for; any other change
+    // leaves it untrusted until a person's connection save rebuilds it.
     @discardableResult
     func readCoreWrites() -> Bool {
         guard image != nil, !lastLoadFailed, let library else { return false }
@@ -107,10 +127,20 @@ final class CoreLibraryStore {
             Self.logger.error("The core could not read the library after a sync pass: \(LogRedaction.publicDescription(of: error), privacy: .public)")
             return false
         }
+        let vouched = digestsTheCoreVouchesFor()
         guard let digest = contents.digest, digest != seenDigest else { return false }
         readCount += 1
         let before = image?.connections ?? []
-        let loaded = adopt(contents, verdict: integrityKeyAnswered ? .modified : .unavailable)
+        let loaded: LibraryImage
+        if vouched.contains(digest) {
+            let profilesWere = profilesTrusted
+            loaded = adopt(contents, verdict: .trusted)
+            settleTag(digest, stamping: true)
+            profilesTrusted = profilesWere
+            settleProfilesSeal(loaded.credentialProfiles)
+        } else {
+            loaded = adopt(contents, verdict: integrityKeyAnswered ? .modified : .unavailable)
+        }
         // One a pull made unreadable here keeps the copy the previous stable last had.
         let keptIds = Set(legacyHeld.map(\.id))
         legacyHeld += before.filter { heldByCore.contains($0.id) && !keptIds.contains($0.id) }
@@ -141,6 +171,11 @@ final class CoreLibraryStore {
         let held = unreadableIds.subtracting(removedIds)
         if let taken = next.connections.first(where: { held.contains($0.id) }) {
             Self.logger.error("Refused a write over a connection this build cannot read: \(taken.id, privacy: .public)")
+            return false
+        }
+        let profileIds = next.sshProfiles.map(\.id) + next.credentialProfiles.map(\.id)
+        if let taken = profileIds.first(where: { unreadableProfileIds.subtracting(removedIds).contains($0) }) {
+            Self.logger.error("Refused a write over a profile this build cannot read: \(taken, privacy: .public)")
             return false
         }
         let change = Change(byUser: byUser, removingSecrets: removingSecrets, removedIds: removedIds)
@@ -251,6 +286,7 @@ final class CoreLibraryStore {
         // Tagged before the record names the new file, so a stop between the two leaves a trusted file the record calls
         // newer than the mirror, which the next launch writes again.
         settleTag(written.digest, stamping: stamping)
+        settleProfilesSeal(next.credentialProfiles)
         mirror.record = mirrorRecord(legacy: mirror.digest(), core: written.digest, legacyBehind: true)
         // The core keeps a copy of a file it upgrades as it writes, which still holds what this write moved out.
         if change.removingSecrets {
@@ -288,7 +324,12 @@ final class CoreLibraryStore {
             }
             return importLegacy(legacy, digest: legacyDigest, into: library, over: .noFile)
         }
-        let verdict = integrity.verify(Self.tag(forDigest: coreDigest), fileURL: coreFileURL)
+        var verdict = integrity.verify(Self.tag(forDigest: coreDigest), fileURL: coreFileURL)
+        // The core's own writes since this store last tagged the file, a pull's before a quit among them.
+        if verdict != .trusted, digestsTheCoreVouchesFor().contains(coreDigest),
+           integrity.stamp(Self.tag(forDigest: coreDigest), fileURL: coreFileURL) {
+            verdict = .trusted
+        }
         let taggedOutside = verdict == .modified || verdict == .unstamped
         // The previous stable's stores, when they read and verify, hold what TablePro last wrote; a core file TablePro
         // did not tag never wins over them, whatever the mirror record says.
@@ -320,8 +361,12 @@ final class CoreLibraryStore {
             loaded.favoritesOrder = keepingUnreadFavorites(of: loaded.favoritesOrder, from: legacy.favoritesOrder)
             image = loaded
         }
-        remirrorIfBehind(loaded, legacyDigest: legacyDigest, legacyReads: legacy != nil, coreDigest: coreDigest)
-        return loaded
+        // Before the mirror is written again, or it would write the profiles the core does not hold yet out of it.
+        takeInProfiles(from: legacy)
+        if let current = image, let digest = seenDigest {
+            remirrorIfBehind(current, legacyDigest: mirror.digest(), legacyReads: legacy != nil, coreDigest: digest)
+        }
+        return image
     }
 
     // A file a newer build wrote stays as it is, and so does one with nothing to rebuild it from. A damaged one comes back
@@ -381,9 +426,12 @@ final class CoreLibraryStore {
             groups: legacy.groups,
             tags: legacy.tags,
             favoritesOrder: legacy.favoritesOrder,
-            projects: legacy.projects
+            projects: legacy.projects,
+            sshProfiles: legacy.sshProfiles.filter { !heldProfiles.contains($0.id) },
+            credentialProfiles: legacy.credentialProfiles.filter { !heldProfiles.contains($0.id) }
         ).keepingFirstOfEachId()
         imported.favoritesOrder = imported.favorites(keeping: unreadableIds)
+        profilesTrusted = mirror.profilesTrusted
         let write = records(for: imported, removing: [])
         let written: LibraryWritten
         do {
@@ -405,9 +453,11 @@ final class CoreLibraryStore {
         legacyHeld = legacy.connections.filter { heldByCore.contains($0.id) }
         // A file changed outside TablePro hands its verdict on; a missing tag must then read as modified, never adopted.
         settleTag(written.digest, stamping: mirror.isTrusted)
+        settleProfilesSeal(imported.credentialProfiles)
         image = imported
         updateLocalOnly(imported)
         mirror.record = mirrorRecord(legacy: digest, core: written.digest)
+        mirror.profilesInCore = true
         lastLoadFailed = false
         Self.logger.info("Read the connection library from connections.json into the core")
         return imported
@@ -415,6 +465,7 @@ final class CoreLibraryStore {
 
     private func adopt(_ contents: LibraryContents, verdict: ConnectionStoreIntegrity.Verdict) -> LibraryImage {
         isTrusted = verdict == .trusted
+        profilesTrusted = sealVerifies(contents.credentialProfiles.map(LibraryRecordMapping.credentialProfile))
         integrityKeyAnswered = verdict != .unavailable
         seenDigest = contents.digest
         remember(contents)
@@ -429,7 +480,9 @@ final class CoreLibraryStore {
             groups: contents.groups.map(LibraryRecordMapping.group),
             tags: contents.tags.map(LibraryRecordMapping.tag),
             favoritesOrder: contents.favorites.compactMap(UUID.init(uuidString:)),
-            projects: contents.projects.map(LibraryRecordMapping.project)
+            projects: contents.projects.map(LibraryRecordMapping.project),
+            sshProfiles: contents.sshProfiles.map(LibraryRecordMapping.sshProfile),
+            credentialProfiles: contents.credentialProfiles.map(LibraryRecordMapping.credentialProfile)
         )
         image = loaded
         updateLocalOnly(loaded)
@@ -451,6 +504,58 @@ final class CoreLibraryStore {
             previous = id
         }
         return merged
+    }
+
+    // Before this build the profiles lived only in the previous stable's stores, so a core file an earlier build wrote
+    // holds none: the first launch that finds them missing takes them in, once.
+    private func takeInProfiles(from legacy: LegacyLibraryMirror.Contents?) {
+        guard !mirror.profilesInCore, let legacy, let current = image else { return }
+        var next = current
+        let sshIds = Set(current.sshProfiles.map(\.id))
+        let credentialIds = Set(current.credentialProfiles.map(\.id))
+        next.sshProfiles += legacy.sshProfiles.filter { !sshIds.contains($0.id) && !heldProfiles.contains($0.id) }
+        next.credentialProfiles += legacy.credentialProfiles.filter {
+            !credentialIds.contains($0.id) && !heldProfiles.contains($0.id)
+        }
+        if next != current {
+            profilesTrusted = profilesTrusted && mirror.profilesTrusted
+            guard commit(next, byUser: false) else { return }
+        }
+        mirror.profilesInCore = true
+    }
+
+    private var profilesSealURL: URL {
+        coreFileURL.deletingLastPathComponent().appendingPathComponent("connections.json.credential-profiles")
+    }
+
+    // What a profile can run: its id and its password, in the format credentialProfiles.json has always stored it.
+    nonisolated private static func seal(of profiles: [CredentialProfile]) -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        var sealed = Data()
+        for profile in profiles.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            guard let mode = try? encoder.encode(profile.passwordMode) else { return nil }
+            sealed.append(Data(profile.id.uuidString.utf8))
+            sealed.append(mode)
+        }
+        return sealed
+    }
+
+    private func sealVerifies(_ profiles: [CredentialProfile]) -> Bool {
+        guard !profiles.isEmpty else { return true }
+        guard let sealed = Self.seal(of: profiles) else { return false }
+        return integrity.verify(sealed, fileURL: profilesSealURL) == .trusted
+    }
+
+    // Seals the profiles a write left while they were vouched for; any other write leaves no seal that could vouch.
+    private func settleProfilesSeal(_ profiles: [CredentialProfile]) {
+        if profilesTrusted, let sealed = Self.seal(of: profiles) {
+            profilesTrusted = integrity.stamp(sealed, fileURL: profilesSealURL)
+            return
+        }
+        try? FileManager.default.removeItem(at: ConnectionStoreIntegrity.tagURL(for: profilesSealURL))
+        _ = integrity.recordTagged(fileURL: profilesSealURL)
+        profilesTrusted = false
     }
 
     // Tags the file a write left when asked. Any other write leaves no tag beside it, since an older one could still
@@ -496,6 +601,28 @@ final class CoreLibraryStore {
             connectionsFileExisted: mirror.holdsConnectionsFile,
             legacyBehind: legacyBehind
         )
+    }
+
+    // The writes the core made itself since the last look, each made over a file this store vouched for or over another
+    // of them. One made over anything else, a file planted outside TablePro, never reaches the tag. Taken once: the
+    // core forgets what it handed over.
+    private func digestsTheCoreVouchesFor() -> Set<String> {
+        let reports: [LibraryWriteReport]
+        do {
+            let core = try host.core()
+            reports = try Self.blocking { try await core.takeLibraryWrites() }
+        } catch {
+            Self.logger.error("The core's own library writes could not be read: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            return []
+        }
+        var vouched: Set<String> = []
+        for report in reports {
+            guard let over = report.over else { continue }
+            if vouched.contains(over) || integrity.verify(Self.tag(forDigest: over), fileURL: coreFileURL) == .trusted {
+                vouched.insert(report.digest)
+            }
+        }
+        return vouched
     }
 
     nonisolated private static func code(of error: any Error) -> String? {
@@ -573,6 +700,8 @@ final class CoreLibraryStore {
         storedGroups = [:]
         storedTags = [:]
         storedProjects = [:]
+        storedSSHProfiles = [:]
+        heldProfiles = []
         heldByCore = []
     }
 
@@ -591,6 +720,7 @@ final class CoreLibraryStore {
     private func failLoad() -> LibraryImage? {
         lastLoadFailed = true
         isTrusted = false
+        profilesTrusted = false
         image = nil
         return nil
     }
@@ -602,22 +732,33 @@ final class CoreLibraryStore {
             connections: contents.connections,
             groups: contents.groups,
             tags: contents.tags,
-            projects: contents.projects
+            projects: contents.projects,
+            sshProfiles: contents.sshProfiles
         )
         heldByCore = Set(contents.unreadable.compactMap(UUID.init(uuidString:)))
+        heldProfiles = Set(contents.unreadableProfiles.compactMap(UUID.init(uuidString:)))
     }
 
     // The core holds what the write named, and the entries it held that the write did not take out.
     private func rememberWritten(_ write: LibraryWriteRecord) {
-        remember(connections: write.connections, groups: write.groups, tags: write.tags, projects: write.projects)
-        heldByCore.subtract(write.removing.compactMap(UUID.init(uuidString:)))
+        remember(
+            connections: write.connections,
+            groups: write.groups,
+            tags: write.tags,
+            projects: write.projects,
+            sshProfiles: write.sshProfiles
+        )
+        let removed = write.removing.compactMap(UUID.init(uuidString:))
+        heldByCore.subtract(removed)
+        heldProfiles.subtract(removed)
     }
 
     private func remember(
         connections: [LibraryConnectionRecord],
         groups: [GroupRecord],
         tags: [TagRecord],
-        projects: [ProjectRecord]
+        projects: [ProjectRecord],
+        sshProfiles: [SshProfileRecord]
     ) {
         stored = Dictionary(
             connections.compactMap { record in UUID(uuidString: record.connection.id).map { ($0, record) } },
@@ -635,10 +776,15 @@ final class CoreLibraryStore {
             projects.compactMap { record in UUID(uuidString: record.id).map { ($0, record) } },
             uniquingKeysWith: { first, _ in first }
         )
+        storedSSHProfiles = Dictionary(
+            sshProfiles.compactMap { record in UUID(uuidString: record.id).map { ($0, record) } },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     private func updateLocalOnly(_ image: LibraryImage) {
         localOnly.set(Set(image.connections.filter { !$0.participatesInSync }.map(\.id)))
+        profileSecrets.remember(image.credentialProfiles)
     }
 
     private func records(for image: LibraryImage, removing: Set<UUID>) -> LibraryWriteRecord {
@@ -649,6 +795,8 @@ final class CoreLibraryStore {
             // The core keeps only the favourites it holds; connections.json's unread ones stay in the mirror's order.
             favorites: image.favorites(keeping: heldByCore).map(\.uuidString),
             projects: image.projects.map { LibraryRecordMapping.record($0, keeping: storedProjects[$0.id]) },
+            sshProfiles: image.sshProfiles.map { LibraryRecordMapping.record($0, keeping: storedSSHProfiles[$0.id]) },
+            credentialProfiles: image.credentialProfiles.map(LibraryRecordMapping.record),
             removing: removing.map(\.uuidString)
         )
     }
@@ -665,13 +813,18 @@ final class CoreLibraryStore {
             groups: image.groups,
             tags: image.tags,
             favoritesOrder: image.favoritesOrder,
-            projects: image.projects
+            projects: image.projects,
+            sshProfiles: image.sshProfiles,
+            credentialProfiles: image.credentialProfiles
         )
         // Recorded first, so a launch after a crash here knows these stores are behind the core's.
         mirror.record = mirrorRecord(legacy: mirror.digest(), core: coreDigest, legacyBehind: true)
         // The copy vouches for no more than the store it copies.
         if !isTrusted {
             mirror.file.withdrawTrust()
+        }
+        if !profilesTrusted {
+            mirror.profilesFile.withdrawTrust()
         }
         guard mirror.write(
             contents,

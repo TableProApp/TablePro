@@ -110,9 +110,8 @@ final class ConnectionEditorStoreFixture {
             projectStorage: projects,
             appEvents: events
         )
-        sshProfiles = SSHProfileStorage(userDefaults: defaults, keychain: keychain, connectionStorage: storage)
+        sshProfiles = SSHProfileStorage(keychain: keychain, connectionStorage: storage)
         credentialProfiles = CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
             connectionStorage: storage
         )

@@ -62,6 +62,11 @@ nonisolated internal final class ConnectionKeychainSecrets: HostSecrets, @unchec
         }
     }
 
+    // A profile's secrets are the profiles' own, kept apart from any connection's.
+    func deleteProfile(profileId: String, kind: ProfileKindTag) throws -> SecretDeletionTag {
+        .notOwned
+    }
+
     func loadItem(item: SecretItemTag) throws -> String? {
         throw Self.notHere
     }

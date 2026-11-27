@@ -41,11 +41,9 @@ struct ProfileStorageSafetyTests {
         keychain: (any KeychainStoring)? = nil
     ) -> CredentialProfileStorage {
         CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain ?? self.keychain,
             syncJournal: tracker.journal,
-            connectionStorage: connections,
-            integrity: integrity
+            connectionStorage: connections
         )
     }
 
@@ -54,7 +52,6 @@ struct ProfileStorageSafetyTests {
         keychain: (any KeychainStoring)? = nil
     ) throws -> SSHProfileStorage {
         SSHProfileStorage(
-            userDefaults: try pool.make().defaults,
             keychain: keychain ?? self.keychain,
             syncJournal: tracker.journal,
             connectionStorage: connections
@@ -114,28 +111,29 @@ struct ProfileStorageSafetyTests {
         #expect(ProfileSecretRead(result) == expected)
     }
 
-    @Test("A credential profile is not deleted while the connections that may use it can't be read")
+    // The profiles live in the library with the connections that use them, so one that cannot be read holds both.
+    @Test("A credential profile is neither added nor deleted while the library can't be read")
     func credentialDeleteRefusesUnreadableLibrary() throws {
         let connections = try makeConnections(unreadable: true)
         let storage = makeCredentialStorage(connections: connections)
         let profile = CredentialProfile(name: "Prod reader", username: "app_reader")
-        #expect(storage.addProfile(profile))
+        #expect(!storage.addProfile(profile))
 
         #expect(!storage.unlinkConnections(from: profile, byUser: true))
         #expect(!storage.deleteProfile(profile))
-        #expect(storage.profile(for: profile.id) != nil)
+        #expect(try Data(contentsOf: directory.appendingPathComponent("connections.json")) == Data("not json".utf8))
     }
 
-    @Test("An SSH profile is not deleted while the connections that may use it can't be read")
+    @Test("An SSH profile is neither added nor deleted while the library can't be read")
     func sshDeleteRefusesUnreadableLibrary() throws {
         let connections = try makeConnections(unreadable: true)
         let storage = try makeSSHStorage(connections: connections)
         let profile = makeSSHProfile()
-        #expect(storage.addProfile(profile))
+        #expect(!storage.addProfile(profile))
 
         #expect(!storage.unlinkConnections(fromProfile: profile, byUser: true))
         #expect(!storage.deleteProfile(profile))
-        #expect(storage.profile(for: profile.id) != nil)
+        #expect(try Data(contentsOf: directory.appendingPathComponent("connections.json")) == Data("not json".utf8))
     }
 
     @Test("Adding a credential profile under an id already taken is refused")
@@ -277,7 +275,7 @@ struct ProfileStorageSafetyTests {
         let credentials = makeCredentialStorage(connections: connections)
         let model = makeModel(credentials: credentials, ssh: try makeSSHStorage(connections: connections), connections: connections)
         let profile = CredentialProfile(name: "Prod reader")
-        #expect(credentials.addProfile(profile))
+        #expect(!credentials.addProfile(profile))
 
         model.refresh()
 

@@ -40,11 +40,9 @@ struct CredentialProfileStorageTests {
         )
         connections = connectionStorage
         storage = CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
             syncJournal: tracker.journal,
-            connectionStorage: connectionStorage,
-            integrity: integrity
+            connectionStorage: connectionStorage
         )
     }
 
@@ -152,11 +150,9 @@ struct CredentialProfileStorageTests {
             keychain: lockedKeychain
         )
         let lockedStorage = CredentialProfileStorage(
-            fileURL: lockedDirectory.appendingPathComponent("credentialProfiles.json"),
             keychain: lockedKeychain,
             syncJournal: SyncHostJournal(),
-            connectionStorage: lockedConnections,
-            integrity: integrity
+            connectionStorage: lockedConnections
         )
 
         let profile = makeProfile()
@@ -170,110 +166,99 @@ struct CredentialProfileStorageTests {
         #expect(lockedConnections.loadConnection(id: connection.id)?.credentialMode == .profile(id: profile.id))
     }
 
-    @Test("A file that will not decode is never overwritten with an empty list")
-    func corruptFileRefusesEveryWrite() {
-        let unique = UUID().uuidString
-        let corruptDirectory = FileManager.default.temporaryDirectory
+    // A library of its own in a new folder, first read with `profiles` already in its credentialProfiles.json, as a
+    // build before the core left it.
+    private func freshLibrary(
+        credentialProfiles: Data? = nil
+    ) throws -> (connections: ConnectionStorage, profiles: CredentialProfileStorage, folder: URL) {
+        let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent(unique)
-        try? FileManager.default.createDirectory(at: corruptDirectory, withIntermediateDirectories: true)
-        let fileURL = corruptDirectory.appendingPathComponent("credentialProfiles.json")
-        try? Data("not json".utf8).write(to: fileURL)
-
-        let corrupted = CredentialProfileStorage(
-            fileURL: fileURL,
-            keychain: InMemoryKeychain(),
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        if let credentialProfiles {
+            try credentialProfiles.write(to: folder.appendingPathComponent("credentialProfiles.json"))
+        }
+        let connections = ConnectionStorage(
+            fileURL: folder.appendingPathComponent("connections.json"),
+            userDefaults: try pool.make().defaults,
             syncJournal: SyncHostJournal(),
-            connectionStorage: connections,
+            keychain: keychain,
             integrity: integrity
         )
-
-        #expect(corrupted.loadProfiles().isEmpty)
-        #expect(corrupted.lastLoadFailed)
-        #expect(!corrupted.addProfile(makeProfile()))
-        #expect(!corrupted.updateProfile(makeProfile()))
-        #expect(!corrupted.deleteProfile(makeProfile()))
-        #expect((try? Data(contentsOf: fileURL)) == Data("not json".utf8))
+        let profiles = CredentialProfileStorage(keychain: keychain, syncJournal: SyncHostJournal(), connectionStorage: connections)
+        return (connections, profiles, folder)
     }
 
-    /// The file carries its own tag because a profile can name a shell command to read the
-    /// password from, and `ConnectionCredentialResolver` refuses to run one from a file something
-    /// else wrote.
-    @Test("A profiles file edited outside TablePro is not trusted")
-    func editedFileIsNotTrusted() {
+    @Test("A profiles file that will not decode leaves the library unread and never written over")
+    func corruptFileRefusesEveryWrite() throws {
+        let library = try freshLibrary(credentialProfiles: Data("not json".utf8))
+
+        #expect(library.profiles.loadProfiles().isEmpty)
+        #expect(library.profiles.lastLoadFailed)
+        #expect(!library.profiles.addProfile(makeProfile()))
+        #expect(!library.profiles.updateProfile(makeProfile()))
+        #expect(!library.profiles.deleteProfile(makeProfile()))
+        #expect((try? Data(contentsOf: library.folder.appendingPathComponent("credentialProfiles.json"))) == Data("not json".utf8))
+    }
+
+    // A profile can name a shell command to read the password from, and `ConnectionCredentialResolver` refuses to run
+    // one from profiles something else wrote.
+    @Test("A profiles file edited outside TablePro is not trusted once the library takes the edit in")
+    func editedFileIsNotTrusted() throws {
         let profile = makeProfile()
         #expect(storage.addProfile(profile))
         #expect(storage.storeIsTrusted)
 
         let fileURL = directory.appendingPathComponent("credentialProfiles.json")
-        var raw = try? Data(contentsOf: fileURL)
-        raw?.append(contentsOf: [0x20])
-        try? raw?.write(to: fileURL)
+        var raw = try Data(contentsOf: fileURL)
+        raw.append(contentsOf: [0x20])
+        try raw.write(to: fileURL)
 
         let reopened = CredentialProfileStorage(
-            fileURL: fileURL,
             keychain: keychain,
             syncJournal: SyncHostJournal(),
-            connectionStorage: connections,
-            integrity: integrity
+            connectionStorage: ConnectionStorage(
+                fileURL: directory.appendingPathComponent("connections.json"),
+                userDefaults: try pool.make().defaults,
+                syncJournal: SyncHostJournal(),
+                keychain: keychain,
+                integrity: integrity
+            )
         )
-        _ = reopened.loadProfiles()
 
+        #expect(reopened.profile(for: profile.id) != nil)
         #expect(!reopened.storeIsTrusted)
     }
 
-    /// Both halves of one hazard: a profiles file something else wrote holds a password source
-    /// that can name a shell command, and `connections.json` treats a user save as consent to
-    /// trust itself. Nothing may move a source from the first into the second, and no save of the
-    /// first may sign the rest of what is in it.
-    @Test("A save never blesses a profiles file TablePro did not write")
-    func saveDoesNotEstablishTrustForAPlantedFile() {
-        let fileURL = directory.appendingPathComponent("planted.json")
-        let planted = CredentialProfile(
-            name: "Planted",
-            passwordMode: .source(.command(shell: "echo owned"))
-        )
-        try? JSONEncoder().encode([planted]).write(to: fileURL)
+    // A profiles file something else wrote holds a password source that can name a shell command, and a person's
+    // connection save vouches for the library. Neither that save nor a profile save may vouch for the profiles.
+    @Test("No save vouches for profiles TablePro did not write")
+    func saveDoesNotEstablishTrustForAPlantedFile() throws {
+        let planted = CredentialProfile(name: "Planted", passwordMode: .source(.command(shell: "echo owned")))
+        let library = try freshLibrary(credentialProfiles: try JSONEncoder().encode([planted]))
 
-        let store = CredentialProfileStorage(
-            fileURL: fileURL,
-            keychain: keychain,
-            syncJournal: SyncHostJournal(),
-            connectionStorage: connections,
-            integrity: integrity
-        )
-        #expect(store.loadProfiles().count == 1)
-        #expect(!store.storeIsTrusted)
+        #expect(library.profiles.loadProfiles().count == 1)
+        #expect(!library.profiles.storeIsTrusted)
 
-        #expect(store.addProfile(makeProfile(name: "Mine")))
-        #expect(!store.storeIsTrusted)
+        #expect(library.profiles.addProfile(makeProfile(name: "Mine")))
+        #expect(library.connections.addConnection(TestFixtures.makeConnection()))
+        #expect(library.connections.storeIsTrusted)
+        #expect(!library.profiles.storeIsTrusted)
     }
 
     @Test("Deleting an untrusted profile never hands its password source to a connection")
-    func deleteDoesNotCarryAnUntrustedPasswordSource() {
-        let fileURL = directory.appendingPathComponent("planted-linked.json")
-        let planted = CredentialProfile(
-            name: "Planted",
-            passwordMode: .source(.command(shell: "echo owned"))
-        )
-        try? JSONEncoder().encode([planted]).write(to: fileURL)
-
-        let store = CredentialProfileStorage(
-            fileURL: fileURL,
-            keychain: keychain,
-            syncJournal: SyncHostJournal(),
-            connectionStorage: connections,
-            integrity: integrity
-        )
+    func deleteDoesNotCarryAnUntrustedPasswordSource() throws {
+        let planted = CredentialProfile(name: "Planted", passwordMode: .source(.command(shell: "echo owned")))
+        let library = try freshLibrary(credentialProfiles: try JSONEncoder().encode([planted]))
         var connection = TestFixtures.makeConnection()
         connection.credentialMode = .profile(id: planted.id)
-        connections.addConnection(connection)
-        #expect(store.loadProfiles().count == 1)
-        #expect(!store.storeIsTrusted)
+        library.connections.addConnection(connection)
+        #expect(library.profiles.loadProfiles().count == 1)
+        #expect(!library.profiles.storeIsTrusted)
 
-        #expect(store.deleteProfile(planted))
+        #expect(library.profiles.deleteProfile(planted))
 
-        let reloaded = connections.loadConnection(id: connection.id)
+        let reloaded = library.connections.loadConnection(id: connection.id)
         #expect(reloaded?.passwordSource == nil)
         #expect(reloaded?.promptForPassword == true)
     }

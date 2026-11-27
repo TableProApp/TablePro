@@ -46,11 +46,9 @@ struct DriverOpenSecretReadTests {
         )
         connections = connectionStorage
         profiles = CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
             syncJournal: tracker.journal,
-            connectionStorage: connectionStorage,
-            integrity: integrity
+            connectionStorage: connectionStorage
         )
     }
 

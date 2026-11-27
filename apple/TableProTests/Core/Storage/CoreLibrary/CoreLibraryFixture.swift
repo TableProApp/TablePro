@@ -58,6 +58,24 @@ final class CoreLibraryFixture {
         )
     }
 
+    func sshProfiles(_ storage: ConnectionStorage) -> SSHProfileStorage {
+        SSHProfileStorage(keychain: keychain, syncJournal: journal.journal, connectionStorage: storage)
+    }
+
+    func credentialProfiles(_ storage: ConnectionStorage) -> CredentialProfileStorage {
+        CredentialProfileStorage(keychain: keychain, syncJournal: journal.journal, connectionStorage: storage)
+    }
+
+    var credentialProfilesURL: URL { directory.appendingPathComponent("credentialProfiles.json") }
+
+    func legacySSHProfiles() throws -> [SSHProfile] {
+        try JSONDecoder().decode([SSHProfile].self, from: defaults.data(forKey: "com.TablePro.sshProfiles") ?? Data())
+    }
+
+    func legacyCredentialProfiles() throws -> [CredentialProfile] {
+        try JSONDecoder().decode([CredentialProfile].self, from: Data(contentsOf: credentialProfilesURL))
+    }
+
     func legacyProjects() throws -> [ConnectionProject] {
         try JSONDecoder().decode([ConnectionProject].self, from: defaults.data(forKey: "com.TablePro.projects") ?? Data())
     }

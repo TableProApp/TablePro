@@ -17,6 +17,8 @@ final class LegacyLibraryMirror {
         var tags: [ConnectionTag]
         var favoritesOrder: [UUID]
         var projects: [ConnectionProject]
+        var sshProfiles: [SSHProfile]
+        var credentialProfiles: [CredentialProfile]
     }
 
     // What the last complete write left in each store, so a launch can tell which side another build changed.
@@ -32,11 +34,15 @@ final class LegacyLibraryMirror {
     static let groupsKey = "com.TablePro.groups"
     static let tagsKey = "com.TablePro.tags"
     static let projectsKey = "com.TablePro.projects"
+    static let sshProfilesKey = "com.TablePro.sshProfiles"
     static let recordKey = "com.TablePro.library.mirrorRecord"
+    static let profilesInCoreKey = "com.TablePro.library.profilesInCore"
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LegacyLibraryMirror")
 
     let file: IntegrityStampedFileStore<StoredConnection>
+    // Its own tag, which no save of a profile ever vouches for: a profile can name a command to run.
+    let profilesFile: IntegrityStampedFileStore<CredentialProfile>
     private let defaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -49,12 +55,27 @@ final class LegacyLibraryMirror {
             userSaveEstablishesTrust: true,
             integrity: integrity
         )
+        self.profilesFile = IntegrityStampedFileStore(
+            fileURL: fileURL.deletingLastPathComponent().appendingPathComponent("credentialProfiles.json"),
+            label: "credentialProfiles.json",
+            logger: logger,
+            userSaveEstablishesTrust: false,
+            integrity: integrity
+        )
         self.defaults = defaults
     }
 
     var isTrusted: Bool { file.isTrusted }
+    var profilesTrusted: Bool { profilesFile.isTrusted }
     var unreadableIds: Set<UUID> { file.unreadableIds }
+    var unreadableProfileIds: Set<UUID> { profilesFile.unreadableIds }
     var holdsConnectionsFile: Bool { FileManager.default.fileExists(atPath: file.fileURL.path) }
+
+    // Set once the core holds the profiles: until then only the previous stable's stores did.
+    var profilesInCore: Bool {
+        get { defaults.bool(forKey: Self.profilesInCoreKey) }
+        set { defaults.set(newValue, forKey: Self.profilesInCoreKey) }
+    }
 
     var record: Record? {
         get { defaults.data(forKey: Self.recordKey).flatMap { try? decoder.decode(Record.self, from: $0) } }
@@ -70,6 +91,7 @@ final class LegacyLibraryMirror {
     // Nil when one of the stores holds something no decoding can read; the library then stays as the core has it.
     func read() -> Contents? {
         guard let stored = file.load() else { return nil }
+        guard let credentialProfiles = profilesFile.load() else { return unreadable("credential profiles") }
         var groups: [ConnectionGroup] = []
         var tags = ConnectionTag.presets
         if let data = defaults.data(forKey: Self.groupsKey) {
@@ -85,6 +107,11 @@ final class LegacyLibraryMirror {
             guard let decoded = Self.salvaged(data, SalvagedProject.self, \.project) else { return unreadable("projects") }
             projects = decoded
         }
+        var sshProfiles: [SSHProfile] = []
+        if let data = defaults.data(forKey: Self.sshProfilesKey) {
+            guard let decoded = Self.salvaged(data, SalvagedSSHProfile.self, \.profile) else { return unreadable("SSH profiles") }
+            sshProfiles = decoded
+        }
         let order = (defaults.stringArray(forKey: PreferenceKeys.connectionListFavoritesOrder.name) ?? [])
             .compactMap(UUID.init(uuidString:))
         return Contents(
@@ -92,7 +119,9 @@ final class LegacyLibraryMirror {
             groups: groups,
             tags: tags,
             favoritesOrder: order,
-            projects: projects
+            projects: projects,
+            sshProfiles: sshProfiles,
+            credentialProfiles: credentialProfiles.sorted { $0.sortOrder < $1.sortOrder }
         )
     }
 
@@ -101,8 +130,8 @@ final class LegacyLibraryMirror {
         return nil
     }
 
-    // False when connections.json was not written; the defaults it writes after it cannot fail. `connectionsWritten`
-    // runs between the two, so a record can name the half-written stores this build left.
+    // False when connections.json or credentialProfiles.json was not written; the defaults it writes after them cannot
+    // fail. `connectionsWritten` runs after connections.json, so a record can name the half-written stores this build left.
     func write(
         _ contents: Contents,
         byUser: Bool,
@@ -119,10 +148,14 @@ final class LegacyLibraryMirror {
             return false
         }
         connectionsWritten()
+        guard profilesFile.save(contents.credentialProfiles, byUser: false, removingSecrets: removingSecrets) else {
+            return false
+        }
         do {
             defaults.set(try encoder.encode(contents.groups), forKey: Self.groupsKey)
             defaults.set(try encoder.encode(contents.tags), forKey: Self.tagsKey)
             defaults.set(try encoder.encode(contents.projects), forKey: Self.projectsKey)
+            defaults.set(try encoder.encode(contents.sshProfiles), forKey: Self.sshProfilesKey)
         } catch {
             Self.logger.error("Could not encode the groups or tags: \(error.publicLogShape, privacy: .public)")
             return false
@@ -146,6 +179,8 @@ final class LegacyLibraryMirror {
         add(defaults.data(forKey: Self.groupsKey))
         add(defaults.data(forKey: Self.tagsKey))
         add(defaults.data(forKey: Self.projectsKey))
+        add(try? Data(contentsOf: profilesFile.fileURL))
+        add(defaults.data(forKey: Self.sshProfilesKey))
         add(defaults.stringArray(forKey: PreferenceKeys.connectionListFavoritesOrder.name).map {
             Data($0.joined(separator: ",").utf8)
         })
@@ -179,6 +214,14 @@ private struct SalvagedGroup: Decodable {
 
     init(from decoder: Decoder) throws {
         group = try? ConnectionGroup(from: decoder)
+    }
+}
+
+private struct SalvagedSSHProfile: Decodable {
+    let profile: SSHProfile?
+
+    init(from decoder: Decoder) throws {
+        profile = try? SSHProfile(from: decoder)
     }
 }
 

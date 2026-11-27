@@ -86,14 +86,11 @@ final class ImportLibraryFixture {
         )
         tags = TagStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage, appEvents: events)
         profiles = CredentialProfileStorage(
-            fileURL: profilesURL,
             keychain: keychain,
             syncJournal: tracker.journal,
-            connectionStorage: connectionStorage,
-            integrity: integrity
+            connectionStorage: connectionStorage
         )
         sshProfiles = SSHProfileStorage(
-            userDefaults: defaults,
             keychain: keychain,
             syncJournal: tracker.journal,
             connectionStorage: connectionStorage

@@ -182,6 +182,47 @@ struct LibraryRecordMappingTests {
 }
 
 struct ConnectionKeychainSecretsTests {
+    @Test("A profile the core takes out loses every Keychain item this Mac wrote for it, and an id no profile has is not this Mac's")
+    func profileSecretsGoWithTheProfile() throws {
+        let keychain = InMemoryKeychain()
+        let secrets = ProfileKeychainSecrets(keychain: keychain)
+        let server = UUID()
+        let reader = CredentialProfile(name: "Reader", secureFieldIds: ["token"])
+        for secret in SSHSecret.allCases {
+            #expect(keychain.writeString("s", forKey: SSHProfileStorage.key(secret, server)))
+        }
+        #expect(keychain.writeString("p", forKey: CredentialProfileStorage.passwordKey(reader.id)))
+        #expect(keychain.writeString("f", forKey: CredentialProfileStorage.fieldKey("token", reader.id)))
+        secrets.remember([reader])
+
+        #expect(secrets.delete(profileId: server.uuidString.lowercased(), kind: .ssh) == .deleted)
+        #expect(secrets.delete(profileId: reader.id.uuidString.lowercased(), kind: .credential) == .deleted)
+        #expect(secrets.delete(profileId: "not an id", kind: .ssh) == .notOwned)
+
+        for secret in SSHSecret.allCases {
+            #expect(keychain.readString(forKey: SSHProfileStorage.key(secret, server)) == nil)
+        }
+        #expect(keychain.readString(forKey: CredentialProfileStorage.passwordKey(reader.id)) == nil)
+        #expect(keychain.readString(forKey: CredentialProfileStorage.fieldKey("token", reader.id)) == nil)
+    }
+
+    @Test("Profiles round trip through the core's records")
+    func profilesRoundTrip() {
+        let server = SSHProfile(
+            name: "Bastion", host: "bastion.example.com", port: 2_222, username: "deploy", authMethod: .privateKey,
+            privateKeyPath: "~/.ssh/id_ed25519", totpMode: .autoGenerate
+        )
+        let readers = [
+            CredentialProfile(name: "Stored", username: "a", passwordMode: .stored, secureFieldIds: ["t"], sortOrder: 2),
+            CredentialProfile(name: "Command", passwordMode: .source(.command(shell: "op read x", reuseSeconds: 60))),
+            CredentialProfile(name: "Env", passwordMode: .source(.env(variable: "PGPASSWORD"))),
+            CredentialProfile(name: "Pgpass", passwordMode: .pgpass),
+        ]
+
+        #expect(LibraryRecordMapping.sshProfile(LibraryRecordMapping.record(server, keeping: nil)) == server)
+        #expect(readers.map { LibraryRecordMapping.credentialProfile(LibraryRecordMapping.record($0)) } == readers)
+    }
+
     @Test("Until the library first reads, the core gets no connection secret, since no scope is known")
     func noScopeBeforeTheFirstRead() throws {
         let localOnly = LocalOnlyConnections()

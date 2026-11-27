@@ -221,6 +221,82 @@ nonisolated enum LibraryRecordMapping {
         )
     }
 
+    // MARK: - Profiles
+
+    // The core keeps a profile's SSH settings as a connection's, so a hop id it lacks is derived from the profile's id.
+    static func sshProfile(_ record: SshProfileRecord) -> SSHProfile {
+        let config = sshConfiguration(record.ssh, connectionId: record.id)
+        return SSHProfile(
+            id: UUID(uuidString: record.id) ?? UUID(),
+            name: record.name,
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            authMethod: config.authMethod,
+            privateKeyPath: config.privateKeyPath,
+            agentSocketPath: config.agentSocketPath,
+            jumpHosts: config.jumpHosts,
+            totpMode: config.totpMode,
+            totpAlgorithm: config.totpAlgorithm,
+            totpDigits: config.totpDigits,
+            totpPeriod: config.totpPeriod
+        )
+    }
+
+    static func record(_ profile: SSHProfile, keeping stored: SshProfileRecord?) -> SshProfileRecord {
+        SshProfileRecord(
+            id: profile.id.uuidString,
+            name: profile.name,
+            ssh: sshSettings(profile.toSSHConfiguration(), enabled: true, keeping: stored?.ssh)
+        )
+    }
+
+    static func credentialProfile(_ record: CredentialProfileRecord) -> CredentialProfile {
+        CredentialProfile(
+            id: UUID(uuidString: record.id) ?? UUID(),
+            name: record.name,
+            username: record.username,
+            passwordMode: passwordMode(record.password),
+            secureFieldIds: record.secureFieldIds,
+            sortOrder: Int(record.order)
+        )
+    }
+
+    static func record(_ profile: CredentialProfile) -> CredentialProfileRecord {
+        CredentialProfileRecord(
+            id: profile.id.uuidString,
+            name: profile.name,
+            username: profile.username,
+            password: passwordRecord(profile.passwordMode),
+            secureFieldIds: profile.secureFieldIds,
+            order: UInt32(clamping: profile.sortOrder)
+        )
+    }
+
+    // A source the Mac cannot name reads as a prompt, as a malformed one in credentialProfiles.json always has.
+    private static func passwordMode(_ record: CredentialPasswordRecord) -> CredentialPasswordMode {
+        switch record {
+        case .stored: .stored
+        case .prompt: .prompt
+        case .pgpass: .pgpass
+        case .reference(let reference): passwordSource(reference: reference, local: nil).map { .source($0) } ?? .prompt
+        case .local(let source): passwordSource(reference: nil, local: source).map { .source($0) } ?? .prompt
+        }
+    }
+
+    private static func passwordRecord(_ mode: CredentialPasswordMode) -> CredentialPasswordRecord {
+        switch mode {
+        case .stored: return .stored
+        case .prompt: return .prompt
+        case .pgpass: return .pgpass
+        case .source(let source):
+            let (reference, local) = passwordSourceRecords(source)
+            if let local { return .local(source: local) }
+            if let reference { return .reference(reference: reference) }
+            return .prompt
+        }
+    }
+
     static func tag(_ record: TagRecord) -> ConnectionTag {
         ConnectionTag(
             id: UUID(uuidString: record.id) ?? UUID(),

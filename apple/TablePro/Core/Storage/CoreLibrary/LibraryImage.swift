@@ -14,6 +14,9 @@ struct LibraryImage: Equatable {
     var favoritesOrder: [UUID]
     // Every project: a write that leaves one out deletes it.
     var projects: [ConnectionProject] = []
+    // Every profile, the same way: one a write leaves out goes, with its secrets.
+    var sshProfiles: [SSHProfile] = []
+    var credentialProfiles: [CredentialProfile] = []
 
     static let empty = LibraryImage(connections: [], groups: [], tags: [], favoritesOrder: [])
 
@@ -24,6 +27,8 @@ struct LibraryImage: Equatable {
         copy.groups = Self.firstOfEachId(groups)
         copy.tags = Self.firstOfEachId(tags)
         copy.projects = Self.firstOfEachId(projects)
+        copy.sshProfiles = Self.firstOfEachId(sshProfiles)
+        copy.credentialProfiles = Self.firstOfEachId(credentialProfiles)
         return copy
     }
 

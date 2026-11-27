@@ -36,11 +36,9 @@ struct CredentialProfileImportTests {
         )
         connections = connectionStorage
         storage = CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
             syncJournal: tracker.journal,
-            connectionStorage: connectionStorage,
-            integrity: integrity
+            connectionStorage: connectionStorage
         )
     }
 
@@ -111,17 +109,22 @@ struct CredentialProfileImportTests {
         #expect(storage.loadProfiles().map(\.sortOrder) == [0, 1])
     }
 
-    @Test("An unreadable profile store returns nil and keeps its bytes")
+    @Test("An unreadable library returns nil and keeps the profiles file's bytes")
     func unreadableStoreReturnsNil() throws {
-        let fileURL = directory.appendingPathComponent("unreadable-profiles.json")
+        let folder = directory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let fileURL = folder.appendingPathComponent("credentialProfiles.json")
         let corrupt = Data("not json".utf8)
         try corrupt.write(to: fileURL)
         let unreadable = CredentialProfileStorage(
-            fileURL: fileURL,
             keychain: keychain,
             syncJournal: SyncHostJournal(),
-            connectionStorage: connections,
-            integrity: integrity
+            connectionStorage: ConnectionStorage(
+                fileURL: folder.appendingPathComponent("connections.json"),
+                userDefaults: try pool.make().defaults,
+                syncJournal: SyncHostJournal(),
+                keychain: keychain
+            )
         )
 
         #expect(unreadable.addImportedProfiles([planned("p1", name: "Reader")]) == nil)

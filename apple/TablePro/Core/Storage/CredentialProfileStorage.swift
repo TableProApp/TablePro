@@ -53,7 +53,6 @@ final class CredentialProfileStorage {
     nonisolated static let secretKeyPrefix = "com.TablePro.credprofile."
     private static let secretPrefix = secretKeyPrefix
 
-    private let file: IntegrityStampedFileStore<CredentialProfile>
     private let keychain: any KeychainStoring
     private let syncJournal: SyncHostJournal
     private let connectionStorageProvider: () -> ConnectionStorage
@@ -61,46 +60,36 @@ final class CredentialProfileStorage {
     // Every mutation refuses while this is true, or a save would write an empty list over the file.
     private(set) var lastLoadFailed = false
 
-    var storeIsTrusted: Bool { file.isTrusted }
+    // The profiles' own seal, which no save of a profile establishes: a profile can name a command to run.
+    var storeIsTrusted: Bool {
+        _ = loadProfiles()
+        return connectionStorageProvider().library.profilesTrusted
+    }
 
     init(
-        fileURL: URL = CredentialProfileStorage.defaultFileURL(),
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
         syncJournal: SyncHostJournal = .shared,
-        connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
-        integrity: ConnectionStoreIntegrity = .shared
+        connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared
     ) {
-        self.file = IntegrityStampedFileStore(
-            fileURL: fileURL,
-            label: "credentialProfiles.json",
-            logger: Self.logger,
-            userSaveEstablishesTrust: false,
-            integrity: integrity
-        )
         self.keychain = keychain
         self.syncJournal = syncJournal
         self.connectionStorageProvider = connectionStorage
     }
 
-    nonisolated static func defaultFileURL() -> URL {
-        let directory = AppStorageEnvironment.shared.supportDirectory
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("credentialProfiles.json")
-    }
-
+    // The profiles live in the connection library, written with it in one commit.
     func loadProfiles() -> [CredentialProfile] {
-        guard let profiles = file.load() else {
+        guard let image = connectionStorageProvider().library.current() else {
             lastLoadFailed = true
             return []
         }
         lastLoadFailed = false
-        return profiles.sorted { $0.sortOrder < $1.sortOrder }
+        return image.credentialProfiles.sorted { $0.sortOrder < $1.sortOrder }
     }
 
     // Loads first, so the answer does not depend on whether anything has read the file yet.
     var unreadableProfileIds: Set<UUID> {
         _ = loadProfiles()
-        return file.unreadableIds
+        return connectionStorageProvider().library.unreadableProfileIds
     }
 
     func profile(for id: UUID) -> CredentialProfile? {
@@ -125,7 +114,13 @@ final class CredentialProfileStorage {
             Self.logger.warning("Refusing to save credential profiles: the last load failed and this would overwrite them")
             return false
         }
-        guard file.save(profiles) else { return false }
+        let library = connectionStorageProvider().library
+        guard var image = library.current() else { return false }
+        image.credentialProfiles = profiles
+        guard library.commit(image, byUser: false) else {
+            Self.logger.error("Failed to save credential profiles")
+            return false
+        }
         NotificationCenter.default.post(name: .credentialProfilesDidChange, object: nil)
         return true
     }
@@ -135,7 +130,7 @@ final class CredentialProfileStorage {
         var profiles = loadProfiles()
         guard !lastLoadFailed else { return false }
         // A record this build cannot read still owns its id, so a second record under it would replace it on save.
-        guard !profiles.contains(where: { $0.id == profile.id }), !file.unreadableIds.contains(profile.id) else {
+        guard !profiles.contains(where: { $0.id == profile.id }), !unreadableProfileIds.contains(profile.id) else {
             Self.logger.error("Refusing to add credential profile \(profile.id.uuidString, privacy: .public): the id is taken")
             return false
         }
@@ -330,11 +325,11 @@ final class CredentialProfileStorage {
         name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    private static func passwordKey(_ profileId: UUID) -> String {
+    nonisolated static func passwordKey(_ profileId: UUID) -> String {
         "\(secretPrefix)password.\(profileId.uuidString)"
     }
 
-    private static func fieldKey(_ fieldId: String, _ profileId: UUID) -> String {
+    nonisolated static func fieldKey(_ fieldId: String, _ profileId: UUID) -> String {
         "\(secretPrefix)field.\(fieldId).\(profileId.uuidString)"
     }
 

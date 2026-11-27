@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 @testable import TablePro
 import TableProFFI
 import Testing
@@ -508,11 +509,16 @@ struct CoreLibraryStoreTests {
         #expect(reopened.storeIsTrusted)
     }
 
-    private func coreLibrary() throws -> ConnectionLibrary {
-        try Core(
+    // Another core over the same folder. Reporting, it seals its own writes as the app's core does for its engine.
+    private func coreLibrary(reporting: Bool = false) throws -> ConnectionLibrary {
+        let core = try Core(
             config: HostConfig(clientVersion: "test", storageDir: fixture.coreURL.deletingLastPathComponent().path),
             secrets: ConnectionKeychainSecrets(keychain: fixture.keychain) { _ in false }
-        ).library()
+        )
+        if reporting, let key = ConnectionStoreIntegrity.shared.libraryReportKey() {
+            try core.reportLibraryWrites(key: key)
+        }
+        return try core.library()
     }
 
     // A write the core makes on its own, as its engine does for a pull, which this Mac's store is not told of.
@@ -527,10 +533,43 @@ struct CoreLibraryStoreTests {
                 tags: contents.tags,
                 favorites: contents.favorites,
                 projects: contents.projects,
+                sshProfiles: contents.sshProfiles,
+                credentialProfiles: contents.credentialProfiles,
                 removing: []
             ),
             over: contents.digest
         )
+    }
+
+    @Test("A write the core reports as its own, made over the file this Mac tagged, is tagged in turn")
+    func aReportedCoreWriteIsTagged() async throws {
+        let storage = fixture.launch()
+        let alpha = connection("alpha")
+        #expect(storage.addConnection(alpha))
+        #expect(storage.storeIsTrusted)
+
+        try await coreLibrary(reporting: true).renameConnection(id: alpha.id.uuidString, name: "renamed by a pull")
+        storage.readCoreWrites()
+
+        #expect(storage.loadConnections().map(\.name) == ["renamed by a pull"])
+        #expect(storage.storeIsTrusted)
+        let reopened = fixture.launch()
+        #expect(reopened.loadConnections().map(\.name) == ["renamed by a pull"])
+        #expect(reopened.storeIsTrusted)
+    }
+
+    @Test("A write the core reports, made over a file planted outside TablePro, is never tagged")
+    func aReportedWriteOverAPlantedFileIsNotTagged() async throws {
+        let storage = fixture.launch()
+        let alpha = connection("alpha")
+        #expect(storage.addConnection(alpha))
+        try plantReadableCoreConnection(named: "planted")
+
+        try await coreLibrary(reporting: true).renameConnection(id: alpha.id.uuidString, name: "renamed over the plant")
+        storage.readCoreWrites()
+
+        #expect(Set(storage.loadConnections().map(\.name)) == ["renamed over the plant", "planted"])
+        #expect(!storage.storeIsTrusted)
     }
 
     @Test("A connections.json changed outside TablePro hands its doubt to the core")
@@ -589,6 +628,54 @@ struct CoreLibraryStoreTests {
         #expect(storage.loadConnection(id: member.id)?.projectId == acme.id)
         #expect(fixture.groups(storage).group(for: group.id)?.projectId == acme.id)
         #expect(try fixture.launchFromCoreOnly().loadConnection(id: member.id)?.projectId == acme.id)
+    }
+
+    // MARK: - Profiles
+
+    @Test("SSH and credential profiles live in the core, and the previous stable's stores keep a copy")
+    func profilesGoThroughTheCore() throws {
+        let storage = fixture.launch()
+        let bastion = SSHProfile(name: "Bastion", host: "bastion.example.com", port: 2_222, username: "deploy")
+        let reader = CredentialProfile(name: "Reader", username: "app_reader", passwordMode: .pgpass, secureFieldIds: ["token"])
+        #expect(fixture.sshProfiles(storage).addProfile(bastion))
+        #expect(fixture.credentialProfiles(storage).addProfile(reader))
+        #expect(fixture.credentialProfiles(storage).storeIsTrusted)
+
+        let relaunched = try fixture.launchFromCoreOnly()
+
+        #expect(fixture.sshProfiles(relaunched).loadProfiles() == [bastion])
+        #expect(fixture.credentialProfiles(relaunched).loadProfiles() == [reader])
+        #expect(fixture.credentialProfiles(relaunched).storeIsTrusted)
+        #expect(try fixture.legacySSHProfiles() == [bastion])
+        #expect(try fixture.legacyCredentialProfiles() == [reader])
+    }
+
+    @Test("Profiles an earlier build kept only in the previous stable's stores move into the core once")
+    func profilesMoveIntoAnEarlierCore() throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("alpha")))
+        let bastion = SSHProfile(name: "Bastion", host: "bastion.example.com", username: "deploy")
+        fixture.defaults.set(try JSONEncoder().encode([bastion]), forKey: "com.TablePro.sshProfiles")
+        fixture.defaults.removeObject(forKey: LegacyLibraryMirror.profilesInCoreKey)
+        // As an earlier build left it: its record names these stores, and its core file holds no profile.
+        let mirror = LegacyLibraryMirror(
+            fileURL: fixture.legacyURL,
+            defaults: fixture.defaults,
+            integrity: .shared,
+            logger: Logger(subsystem: "com.TablePro", category: "tests")
+        )
+        mirror.record = LegacyLibraryMirror.Record(
+            legacy: mirror.digest(),
+            core: LegacyLibraryMirror.digest(of: try Data(contentsOf: fixture.coreURL)),
+            connectionsFileExisted: true,
+            legacyBehind: false
+        )
+
+        let relaunched = fixture.launch()
+
+        #expect(fixture.sshProfiles(relaunched).loadProfiles() == [bastion])
+        #expect(try fixture.launchFromCoreOnly().loadConnections().map(\.name) == ["alpha"])
+        #expect(fixture.sshProfiles(fixture.launch()).loadProfiles() == [bastion])
     }
 
     // MARK: - Favourites
