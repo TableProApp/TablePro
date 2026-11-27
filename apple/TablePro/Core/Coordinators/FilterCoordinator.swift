@@ -285,6 +285,35 @@ final class FilterCoordinator: ObservableObject {
         ).query
     }
 
+    // The statement the tab's pending seek reads its page with. Nil keeps the offset: the tab's own statement was
+    // built on other columns than these, or the key or a filter has no form a seek can send.
+    func keyedPageStatement(for tab: QueryTab) -> KeyedPageStatement? {
+        guard let tableName = tab.tableContext.tableName, let sortState = querySortState(for: tab) else { return nil }
+        let built = parent.tableQueryColumns(for: tab)
+        let page = tableQuery(
+            for: tab, tableName: tableName, limit: tab.pagination.pageSize,
+            offset: tab.pagination.currentOffset, columns: built
+        )
+        guard !page.isRefused, page.query == tab.content.query,
+              let seek = parent.keysetSeek(for: tab, columns: built.columns, columnTypes: built.columnTypes),
+              let limit = seek.key == nil ? tab.pagination.lastPageRowCount : tab.pagination.pageSize
+        else { return nil }
+        let applied = tab.filterState.applied
+        return parent.queryBuilder.buildKeysetPageQuery(
+            tableName: tableName,
+            schemaName: tab.tableContext.schemaName,
+            filters: applied?.filters ?? [],
+            logicMode: parent.supportsMatchAnyFilters ? applied?.logicMode ?? .and : .and,
+            sortState: sortState,
+            columns: built.columns,
+            columnTypes: built.columnTypes,
+            selectColumns: built.selectColumns,
+            unloadedValues: built.unloadedValues,
+            limit: limit,
+            seek: seek
+        )
+    }
+
     // The same view with no LIMIT or OFFSET, as a shared link shows it; nil when the host cannot write it as SQL.
     func viewSQL(for tab: QueryTab) -> String? {
         guard parent.queryBuilder.writesSQL,

@@ -261,3 +261,27 @@ struct PostgreSQLTableListingLadderTests {
         #expect(!PostgreSQLTableListingLadder.isDegradable(sqlState: nil))
     }
 }
+
+// A SELECT of an inheritance parent reads its children's rows, whose keys the parent's own key does not cover.
+struct PostgreSQLInheritanceChildrenTests {
+    @Test("The key check finds a parent with ordinary inheritance children, in its own schema only")
+    func findsOrdinaryInheritanceChildren() {
+        #expect(PostgreSQLSchemaQueries.inheritanceChildren(schema: "app", table: "events") == """
+            SELECT 1
+            FROM pg_catalog.pg_inherits i
+            JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+            JOIN pg_catalog.pg_namespace pn ON pn.oid = parent.relnamespace
+            WHERE pn.nspname = 'app'
+              AND parent.relname = 'events'
+              AND parent.relkind <> 'p'
+            LIMIT 1
+            """)
+    }
+
+    @Test("A name holding a quote or a backslash stays one literal")
+    func quotesTheNames() {
+        let query = PostgreSQLSchemaQueries.inheritanceChildren(schema: "o'neil", table: #"a\b"#)
+        #expect(query.contains("pn.nspname = 'o''neil'"))
+        #expect(query.contains(#"parent.relname = E'a\\b'"#))
+    }
+}

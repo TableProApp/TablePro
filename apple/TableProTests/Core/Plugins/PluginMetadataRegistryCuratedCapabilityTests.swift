@@ -517,6 +517,29 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         }
     }
 
+    // A seek trusts the key to name one row: Redshift, Snowflake and BigQuery accept duplicate keys.
+    @Test("Only the engines that enforce their keys seek keyed pages")
+    func seeksKeyedPagesPerEngine() {
+        let registry = PluginMetadataRegistry.shared
+        for typeId in ["MySQL", "MariaDB", "PostgreSQL", "SQLite"] {
+            #expect(registry.snapshot(forRegisteredTypeId: typeId)?.capabilities.seeksKeyedPages == true, "\(typeId)")
+        }
+        for typeId in ["Redshift", "Snowflake", "BigQuery", "KingbaseES", "SQL Server", "DuckDB", "ClickHouse"] {
+            #expect(
+                (registry.snapshot(forRegisteredTypeId: typeId)?.capabilities.seeksKeyedPages ?? false) == false,
+                "\(typeId)"
+            )
+        }
+    }
+
+    @Test("MySQL, PostgreSQL and SQLite keep seeking keyed pages when their plugins register")
+    func seeksKeyedPagesSurvivesRegistration() {
+        let registry = PluginMetadataRegistry.shared
+        #expect(registry.buildMetadataSnapshot(from: MockMySQLPlugin.self).capabilities.seeksKeyedPages)
+        #expect(registry.buildMetadataSnapshot(from: MockPostgreSQLPlugin.self).capabilities.seeksKeyedPages)
+        #expect(registry.buildMetadataSnapshot(from: MockSQLitePlugin.self).capabilities.seeksKeyedPages)
+    }
+
     @Test("Spanner keeps its implicit schema when its plugin registers")
     func spannerKeepsItsImplicitSchema() {
         let registry = PluginMetadataRegistry.shared
@@ -675,6 +698,7 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.authenticationIsDatabaseScoped == false)
         #expect(built.capabilities.browsingRequiresSelectedDatabase == false)
         #expect(built.capabilities.exactRowCountIsFullScan == false)
+        #expect(built.capabilities.seeksKeyedPages == false)
         #expect(built.capabilities.supportsColumnSort == true)
         #expect(built.capabilities.supportsMatchAnyFilters == true)
         #expect(built.capabilities.supportsRawFilter == true)

@@ -415,3 +415,26 @@ private func starRocksStringValue(of literal: String) -> String? {
     }
     return String(utf16CodeUnits: value, count: value.count)
 }
+
+// MySQL 5.7 compares a string parameter with an integer column inside a row value as a double, so the host's integer
+// key parts go as integers.
+struct MySQLIntegerParameterTests {
+    @Test("A value typed as an integer binds as a signed or unsigned 64-bit integer")
+    func integerKindBindsAsInteger() {
+        #expect(MySQLIntegerParameter(text: "9007199254740993", kind: .integer)
+            == MySQLIntegerParameter(bits: 9_007_199_254_740_993, isUnsigned: false))
+        #expect(MySQLIntegerParameter(text: "-1", kind: .integer)
+            == MySQLIntegerParameter(bits: UInt64.max, isUnsigned: false))
+        #expect(MySQLIntegerParameter(text: "18446744073709551615", kind: .integer)
+            == MySQLIntegerParameter(bits: UInt64.max, isUnsigned: true))
+    }
+
+    @Test("Text that is not a 64-bit integer, or no integer kind, stays a string")
+    func otherValuesStayStrings() {
+        #expect(MySQLIntegerParameter(text: "18446744073709551616", kind: .integer) == nil)
+        #expect(MySQLIntegerParameter(text: "1.0", kind: .integer) == nil)
+        #expect(MySQLIntegerParameter(text: "42", kind: nil) == nil)
+        #expect(MySQLIntegerParameter(text: "42", kind: .decimal) == nil)
+        #expect(MySQLIntegerParameter(text: "42", kind: .text) == nil)
+    }
+}

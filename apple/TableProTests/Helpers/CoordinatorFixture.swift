@@ -41,7 +41,10 @@ final class CoordinatorFixture {
 
     isolated deinit {
         if !coordinator.isTearingDown { coordinator.teardown() }
-        if injectedSession { DatabaseManager.shared.removeSession(for: connection.id) }
+        if injectedSession {
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
     }
 }
 

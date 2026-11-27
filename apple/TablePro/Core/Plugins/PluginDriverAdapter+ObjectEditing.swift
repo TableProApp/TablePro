@@ -52,6 +52,12 @@ extension PluginDriverAdapter {
         try await pluginDriver.fetchViewRowEditing(view: view, schema: readSchema(schema))
     }
 
+    @concurrent
+    func primaryKeyNamesOneRow(inTable table: String, schema: String?) async throws -> Bool {
+        guard primaryKeyNamesOneRow else { return false }
+        return try await pluginDriver.primaryKeyNamesOneRow(table: table, schema: readSchema(schema))
+    }
+
     // MARK: - Table Options
 
     @concurrent
