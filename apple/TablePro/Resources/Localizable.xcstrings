@@ -86874,6 +86874,12 @@
     "Exclude from iCloud Sync?" : {
 
     },
+    "Exclude from TablePro Sync" : {
+
+    },
+    "Exclude from TablePro Sync?" : {
+
+    },
     "Exclude the AUTO_INCREMENT counter" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -106879,6 +106885,9 @@
         }
       }
     },
+    "Include in TablePro Sync" : {
+
+    },
     "Include NULL values" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -111704,6 +111713,9 @@
           }
         }
       }
+    },
+    "It stays on this Mac and stops syncing to your other devices." : {
+
     },
     "It stopped after adding ^[%lld row](inflect: true)." : {
 
@@ -226054,6 +226066,9 @@
         }
       }
     },
+    "This connection won't sync to other devices via TablePro Sync." : {
+
+    },
     "This connection's CA certificate is not readable on this device (%@). Certificate files do not sync between devices, so add the certificate here or lower the SSL mode to Required." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -251590,6 +251605,9 @@
           }
         }
       }
+    },
+    "Your TablePro account changed, so nothing moved. Start again to see what this account gets." : {
+
     },
     "your team" : {
 
