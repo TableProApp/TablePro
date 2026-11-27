@@ -836,19 +836,59 @@ async fn an_icloud_pull_keeps_the_project_this_device_filed_a_connection_and_a_g
     assert_eq!(list.groups[0].name.as_str(), "Work 2");
 }
 
-// A name is required: a pulled project with none the store can hold, and no stored one to keep, is left out.
+// A name is required: a pulled project with none the store can hold, and no stored one to keep, is refused as a record
+// this build cannot read, so the engine holds it by id rather than send its absence as a deletion.
 #[tokio::test]
-async fn a_pulled_project_with_a_blank_name_is_left_out() {
+async fn a_pulled_project_with_a_blank_name_is_refused_as_unreadable() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
 
-    adapter(&store, Kind::ConnectionProject)
+    let refused = adapter(&store, Kind::ConnectionProject)
         .apply(
             ScopeName::Personal,
             put(PROJECT, json!({"name": "  ", "color": "None", "sort_order": 0})),
         )
-        .await
-        .unwrap();
+        .await;
 
+    assert!(matches!(refused, Err(AdapterError::Unreadable { .. })), "{refused:?}");
     assert!(store.list_blocking().unwrap().projects.is_empty());
+}
+
+// Projects pulled one page at a time keep the orders the records carry, so a later page never lands out of place and
+// nothing goes back up as an edit.
+#[tokio::test]
+async fn projects_pulled_on_separate_pages_keep_the_orders_they_carry() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let projects = adapter(&store, Kind::ConnectionProject);
+
+    for (id, name, order) in [(OTHER_PROJECT, "Globex", 1), (PROJECT, "Acme", 0)] {
+        projects
+            .apply(
+                ScopeName::Personal,
+                put(id, json!({"name": name, "color": "None", "sort_order": order})),
+            )
+            .await
+            .unwrap();
+    }
+
+    let list = store.list_blocking().unwrap();
+    let names: Vec<&str> = list
+        .projects_in_order()
+        .into_iter()
+        .map(|project| project.name.as_str())
+        .collect();
+    assert_eq!(names, ["Acme", "Globex"]);
+    let mut orders: Vec<(String, Value)> = projects
+        .records(ScopeName::Personal)
+        .await
+        .unwrap()
+        .records
+        .into_iter()
+        .map(|record| (record.record_id, record.fields["sort_order"].clone()))
+        .collect();
+    orders.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut expected = vec![(PROJECT.to_owned(), json!(0)), (OTHER_PROJECT.to_owned(), json!(1))];
+    expected.sort_by(|left, right| left.0.cmp(&right.0));
+    assert_eq!(orders, expected);
 }

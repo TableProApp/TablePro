@@ -303,36 +303,35 @@ fn local_records(
 }
 
 // What the pulled records write, read against the list as it is under the store's write lock: a member a record
-// carries as the store's copy reads keeps the store's value (`connection::model`).
+// carries as the store's copy reads keeps the store's value (`connection::model`). None when a record is one the store
+// cannot hold, which the engine then holds by id rather than read as a deletion.
 fn settled(
     kind: Kind,
     names: DriverNames,
     projects: bool,
     list: &ConnectionList,
     changes: Vec<LocalChange>,
-) -> Vec<LibraryChange> {
-    let settled = changes
-        .into_iter()
-        .filter_map(|change| {
-            let (record_id, fields) = match change {
-                LocalChange::Put { record_id, fields } => (record_id, Some(fields)),
-                LocalChange::Delete { record_id } => (record_id, None),
-            };
-            let Some(id) = parse_uuid(&record_id) else {
-                tracing::warn!(kind = kind.as_str(), "a record whose id is not a UUID was left out");
-                return None;
-            };
-            match fields {
-                None => Some(gone(kind, id)),
-                Some(fields) => put(kind, names, projects, list, id, &fields),
-            }
-        })
-        .collect();
-    if kind == Kind::CredentialProfile {
+) -> Option<Vec<LibraryChange>> {
+    let mut settled = Vec::with_capacity(changes.len());
+    for change in changes {
+        let (record_id, fields) = match change {
+            LocalChange::Put { record_id, fields } => (record_id, Some(fields)),
+            LocalChange::Delete { record_id } => (record_id, None),
+        };
+        let Some(id) = parse_uuid(&record_id) else {
+            tracing::warn!(kind = kind.as_str(), "a record whose id is not a UUID was left out");
+            continue;
+        };
+        settled.push(match fields {
+            None => gone(kind, id),
+            Some(fields) => put(kind, names, projects, list, id, &fields)?,
+        });
+    }
+    Some(if kind == Kind::CredentialProfile {
         unique_profile_names(list, settled)
     } else {
         settled
-    }
+    })
 }
 
 // Every picker offers a credential profile by its name alone and the editor refuses two of one name, so a pull that
@@ -448,11 +447,7 @@ fn put(
         }
         Kind::ConnectionProject => {
             let stored = list.projects.iter().find(|project| project.id == id);
-            let Some(project) = groups::project(id, fields, stored) else {
-                tracing::warn!("a project with no name the store can hold was left out");
-                return None;
-            };
-            LibraryChange::Project(project)
+            LibraryChange::Project(groups::project(id, fields, stored)?)
         }
         Kind::Tag => {
             let stored = list.tags.iter().find(|tag| tag.id == id);
@@ -518,8 +513,8 @@ impl RecordAdapter for LibraryAdapter {
         let expected = lock(&self.seen).take();
         let (store, kind, names, projects, publisher) =
             (self.store.clone(), self.kind, self.names, self.projects, self.publisher);
-        let (written, changed) = blocking(move || {
-            let mut changed = false;
+        let (written, changed, refused) = blocking(move || {
+            let (mut changed, mut refused) = (false, false);
             let written = store.apply_synced_blocking(|list| {
                 if let Some(expected) = &expected {
                     let held = &list.unreadable_profiles;
@@ -529,14 +524,22 @@ impl RecordAdapter for LibraryAdapter {
                         return Vec::new();
                     }
                 }
-                settled(kind, names, projects, list, changes)
+                settled(kind, names, projects, list, changes).unwrap_or_else(|| {
+                    refused = true;
+                    Vec::new()
+                })
             });
-            (written, changed)
+            (written, changed, refused)
         })
         .await?;
         let identity = written.map_err(store_error)?;
         if changed {
             return Err(stale(STORE));
+        }
+        if refused {
+            return Err(AdapterError::Unreadable {
+                detail: format!("a {} the store cannot hold", kind.as_str()),
+            });
         }
         Ok(stamp(identity))
     }

@@ -9,17 +9,8 @@ impl ConnectionsDocument {
     pub(super) fn tidy_library(&mut self) {
         let mut projects = HashSet::with_capacity(self.projects.len());
         self.projects.retain(|project| projects.insert(project.id));
-        // Projects alone are numbered from 0 on every write, ties in file order (core ADR 0067).
-        let mut ranked: Vec<(u32, usize)> = self
-            .projects
-            .iter()
-            .enumerate()
-            .map(|(index, project)| (project.order, index))
-            .collect();
-        ranked.sort_unstable();
-        for (rank, (_, index)) in ranked.into_iter().enumerate() {
-            self.projects[index].order = u32::try_from(rank).unwrap_or(u32::MAX);
-        }
+        // A project keeps the order its write gave it, ties in file order. Numbering them again here would change a
+        // pull's orders before its last page lands, and the next push would send those changes as edits.
         // A project id no project holds stays as stored and reads as no project: a pull can bring a member before its
         // project.
         let mut seen = HashSet::with_capacity(self.groups.len());

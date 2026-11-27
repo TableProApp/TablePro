@@ -50,7 +50,8 @@ pub(super) fn project_to_wire(project: &ConnectionProject) -> Value {
         .done()
 }
 
-// None for a record with no name the store can hold and no stored project to keep the name of: a name is required.
+// None for a record with no name the store can hold and no stored project to keep the name of: a name is required, so
+// the record is one this build cannot read.
 pub(super) fn project(id: Uuid, fields: &Value, stored: Option<&ConnectionProject>) -> Option<ConnectionProject> {
     let name = text(fields, "name")
         .and_then(|name| ConnectionProjectName::from_stored(name).ok())
