@@ -116,15 +116,16 @@ struct CredentialProfileImportTests {
         let fileURL = folder.appendingPathComponent("credentialProfiles.json")
         let corrupt = Data("not json".utf8)
         try corrupt.write(to: fileURL)
+        let unreadableConnections = ConnectionStorage(
+            fileURL: folder.appendingPathComponent("connections.json"),
+            userDefaults: try pool.make().defaults,
+            syncJournal: SyncHostJournal(),
+            keychain: keychain
+        )
         let unreadable = CredentialProfileStorage(
             keychain: keychain,
             syncJournal: SyncHostJournal(),
-            connectionStorage: ConnectionStorage(
-                fileURL: folder.appendingPathComponent("connections.json"),
-                userDefaults: try pool.make().defaults,
-                syncJournal: SyncHostJournal(),
-                keychain: keychain
-            )
+            connectionStorage: unreadableConnections
         )
 
         #expect(unreadable.addImportedProfiles([planned("p1", name: "Reader")]) == nil)

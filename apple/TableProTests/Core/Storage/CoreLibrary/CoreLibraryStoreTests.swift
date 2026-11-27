@@ -681,7 +681,7 @@ struct CoreLibraryStoreTests {
         var entries = try #require(
             try JSONSerialization.jsonObject(with: JSONEncoder().encode([acme])) as? [Any]
         )
-        entries.append(["id": unread.uuidString, "name": 7])
+        entries.append(["id": unread.uuidString, "name": 7] as [String: Any])
         fixture.defaults.set(try JSONSerialization.data(withJSONObject: entries), forKey: "com.TablePro.projects")
 
         let storage = fixture.launch()

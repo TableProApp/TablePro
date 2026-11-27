@@ -16,6 +16,7 @@ struct CredentialProfileStorageTests {
     private let connections: ConnectionStorage
     private let keychain: InMemoryKeychain
     private let directory: URL
+    private let defaults: UserDefaults
     /// The system keychain is out of reach in a test host, so every store it stamps would read back
     /// untrusted and the trust assertions here would pass or fail on the environment.
     private let integrity: ConnectionStoreIntegrity
@@ -31,9 +32,10 @@ struct CredentialProfileStorageTests {
 
         keychain = InMemoryKeychain()
         integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
+        defaults = try pool.make().defaults
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
-            userDefaults: try pool.make().defaults,
+            userDefaults: defaults,
             syncJournal: tracker.journal,
             keychain: keychain,
             integrity: integrity
@@ -214,16 +216,18 @@ struct CredentialProfileStorageTests {
         raw.append(contentsOf: [0x20])
         try raw.write(to: fileURL)
 
+        // The same defaults, so the launch sees the previous stable's stores changed since the last write.
+        let reopenedConnections = ConnectionStorage(
+            fileURL: directory.appendingPathComponent("connections.json"),
+            userDefaults: defaults,
+            syncJournal: SyncHostJournal(),
+            keychain: keychain,
+            integrity: integrity
+        )
         let reopened = CredentialProfileStorage(
             keychain: keychain,
             syncJournal: SyncHostJournal(),
-            connectionStorage: ConnectionStorage(
-                fileURL: directory.appendingPathComponent("connections.json"),
-                userDefaults: try pool.make().defaults,
-                syncJournal: SyncHostJournal(),
-                keychain: keychain,
-                integrity: integrity
-            )
+            connectionStorage: reopenedConnections
         )
 
         #expect(reopened.profile(for: profile.id) != nil)

@@ -181,6 +181,13 @@ struct LibraryRecordMappingTests {
         #expect(fixture.groups(reopened).loadGroups() == [parent, child])
         #expect(fixture.tags(reopened).loadTags() == tags)
     }
+
+    @Test("A project name goes to the core with no control character in it")
+    func projectNamesLoseControlCharacters() {
+        #expect(LibraryRecordMapping.projectName("Acme") == "Acme")
+        #expect(LibraryRecordMapping.projectName("Acme\tWest") == "Acme West")
+        #expect(LibraryRecordMapping.projectName("\u{01}") == "\\u{01}")
+    }
 }
 
 struct ConnectionKeychainSecretsTests {
@@ -202,17 +209,10 @@ struct ConnectionKeychainSecretsTests {
         #expect(secrets.delete(profileId: "not an id", kind: .ssh) == .notOwned)
 
         for secret in SSHSecret.allCases {
-            #expect(keychain.readString(forKey: SSHProfileStorage.key(secret, server)) == nil)
+            #expect(keychain.readStringResult(forKey: SSHProfileStorage.key(secret, server)) == .notFound)
         }
-        #expect(keychain.readString(forKey: CredentialProfileStorage.passwordKey(reader.id)) == nil)
-        #expect(keychain.readString(forKey: CredentialProfileStorage.fieldKey("token", reader.id)) == nil)
-    }
-
-    @Test("A project name goes to the core with no control character in it")
-    func projectNamesLoseControlCharacters() {
-        #expect(LibraryRecordMapping.projectName("Acme") == "Acme")
-        #expect(LibraryRecordMapping.projectName("Acme\tWest") == "Acme West")
-        #expect(LibraryRecordMapping.projectName("\u{01}") == "\\u{1}")
+        #expect(keychain.readStringResult(forKey: CredentialProfileStorage.passwordKey(reader.id)) == .notFound)
+        #expect(keychain.readStringResult(forKey: CredentialProfileStorage.fieldKey("token", reader.id)) == .notFound)
     }
 
     @Test("Profiles round trip through the core's records")
