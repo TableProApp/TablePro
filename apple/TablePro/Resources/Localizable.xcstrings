@@ -204263,10 +204263,16 @@
     "Sync through your TablePro account with every device signed in to it, end-to-end encrypted." : {
 
     },
+    "Sync through your TablePro account with every device signed in to it. Passwords, other secrets and query history are end-to-end encrypted." : {
+
+    },
     "Sync waits for this Mac's keychain. It starts again on its own once the keychain answers." : {
 
     },
     "Sync your connections, settings, and query history through your TablePro account, end-to-end encrypted." : {
+
+    },
+    "Sync your connections, settings, and query history through your TablePro account. Passwords, other secrets and query history are end-to-end encrypted." : {
 
     },
     "Synced" : {
@@ -229321,6 +229327,9 @@
       }
     },
     "This Mac's data goes up to your TablePro account, end-to-end encrypted." : {
+
+    },
+    "This Mac's data goes up to your TablePro account. Passwords, other secrets and query history are end-to-end encrypted; the server can read connections, saved queries and settings." : {
 
     },
     "This Mac's encryption keys are erased, so after you sign in again another device or your recovery key approves it." : {
