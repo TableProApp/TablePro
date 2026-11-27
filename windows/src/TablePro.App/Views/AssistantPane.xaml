@@ -31,6 +31,13 @@
             <Setter Property="CornerRadius" Value="4" />
             <Setter Property="Padding" Value="8" />
         </Style>
+        <Style x:Key="AssistantToolCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10" />
+        </Style>
     </UserControl.Resources>
 
     <Grid>
@@ -57,6 +64,7 @@
                         TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </CommandBar.Content>
+            <AppBarToggleButton x:Uid="AssistantAgentToggle" x:Name="AgentToggle" AutomationProperties.AutomationId="AssistantAgentToggle" Icon="Repair" Click="OnAgentToggled" />
             <AppBarButton x:Uid="AssistantNewButton" x:Name="NewButton" AutomationProperties.AutomationId="AssistantNewButton" Icon="Add" Click="OnNewConversation" IsEnabled="False" />
             <AppBarButton x:Uid="AssistantCloseButton" AutomationProperties.AutomationId="AssistantCloseButton" Icon="Cancel" Click="OnClose" />
         </CommandBar>

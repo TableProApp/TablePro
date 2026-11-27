@@ -70,6 +70,12 @@ internal static partial class Mapping
     public static AiReplyEvent ReplyEvent(Native.AiReplyEvent replyEvent) => replyEvent switch
     {
         Native.AiReplyEvent.Text text => new AiReplyEvent.Text(text.Part),
+        Native.AiReplyEvent.ToolCall call => new AiReplyEvent.ToolCall(call.Id, call.Name, call.Input),
+        Native.AiReplyEvent.ToolStarted started => new AiReplyEvent.ToolStarted(started.Id),
+        Native.AiReplyEvent.ToolFinished finished => new AiReplyEvent.ToolFinished(
+            finished.Id,
+            finished.Output,
+            finished.IsError),
         Native.AiReplyEvent.Finished finished => new AiReplyEvent.Finished(
             finished.Stop switch
             {
