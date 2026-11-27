@@ -97,7 +97,7 @@ public sealed class LicenseGateTests
             mac.Append(PlanFeatures.SharedLinks).Order(StringComparer.Ordinal),
             PlanFeatures.All.Select(feature => feature.Code).Order(StringComparer.Ordinal));
         Assert.Equal(
-            [PlanFeatures.ServiceSync, PlanFeatures.SharedLinks],
+            [PlanFeatures.ServiceSync, PlanFeatures.TeamLibrary, PlanFeatures.SharedLinks],
             PlanFeatures.OnWindows.Select(feature => feature.Code));
     }
 

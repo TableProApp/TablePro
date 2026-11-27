@@ -43,6 +43,10 @@ internal sealed class FakeSyncEngine : ISyncEngine
 
     public IKeyFlows Keys => KeyFlows;
 
+    public FakeTeamCalls TeamCalls { get; } = new();
+
+    public ITeamCalls Team => TeamCalls;
+
     public IReadOnlyList<string> Calls
     {
         get
@@ -361,5 +365,139 @@ internal sealed class FakeKeyFlows : IKeyFlows
         {
             _calls.Add(call);
         }
+    }
+}
+
+// The team calls as a script, as FakeKeyFlows is: each call noted, its answer set beforehand, Fails throwing once.
+internal sealed class FakeTeamCalls : ITeamCalls
+{
+    private readonly Lock _gate = new();
+    private readonly List<string> _calls = [];
+
+    public IReadOnlyList<TeamLibraryTeam> Teams { get; set; } = [];
+
+    public IReadOnlyList<TeamScopeStatus> Statuses { get; set; } = [];
+
+    public List<UnsentTeamEdit> Unsent { get; } = [];
+
+    public List<TeamConflict> Conflicts { get; } = [];
+
+    public TeamPublish Publish { get; set; } = new(2, 0, 0, null);
+
+    public TeamKeys? Keys { get; set; }
+
+    public IReadOnlyList<KeyNotice> Notices { get; set; } = [];
+
+    // An upload clears the unsent edits only while this holds.
+    public bool UploadSends { get; set; } = true;
+
+    public Dictionary<string, CoreError> Fails { get; } = new(StringComparer.Ordinal);
+
+    public IReadOnlyList<string> Calls
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _calls];
+            }
+        }
+    }
+
+    public Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync() => Answer("teams", Teams);
+
+    public Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync() => Answer("statuses", Statuses);
+
+    public Task<TeamPublish> PublishTeamSavedQueriesAsync(
+        string teamId,
+        IReadOnlyList<TeamFolderEdit> folders,
+        IReadOnlyList<TeamQueryEdit> queries) =>
+        Answer($"publish {teamId} {folders.Count} folders {queries.Count} queries", Publish);
+
+    public Task<TeamPublish> RemoveTeamItemsAsync(string teamId, IReadOnlyList<TeamItemRef> items) =>
+        Answer($"remove {teamId} {string.Join(',', items.Select(item => item.Id))}", Publish);
+
+    public Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync() =>
+        Answer<IReadOnlyList<UnsentTeamEdit>>("unsent", [.. Unsent]);
+
+    public Task DiscardTeamEditsAsync(string? teamId)
+    {
+        Unsent.Clear();
+        return Answer($"discard {teamId ?? "all"}", true);
+    }
+
+    public Task DeleteTeamLibraryDataAsync() => Answer("delete data", true);
+
+    public Task<IReadOnlyList<TeamConflict>> GetConflictsAsync() =>
+        Answer<IReadOnlyList<TeamConflict>>("conflicts", [.. Conflicts]);
+
+    public Task ResolveConflictAsync(TeamConflict conflict, ConflictChoice keep)
+    {
+        var answer = Answer($"resolve {conflict.Record.RecordId} {keep}", true);
+        if (answer.IsCompletedSuccessfully)
+        {
+            Conflicts.RemoveAll(each => each.Record == conflict.Record);
+        }
+
+        return answer;
+    }
+
+    public Task SyncNowAsync()
+    {
+        var answer = Answer("sync now", true);
+        if (answer.IsCompletedSuccessfully && UploadSends)
+        {
+            Unsent.Clear();
+        }
+
+        return answer;
+    }
+
+    public Task<TeamKeys> GetTeamKeysAsync(string team) =>
+        Answer($"team keys {team}", Keys ?? throw new InvalidOperationException("no keys scripted"));
+
+    public Task CreateTeamKeysAsync(string team) => Answer($"create {team}", true);
+
+    public Task ConfirmMemberAsync(string team, string account) => Answer($"confirm {team} {account}", true);
+
+    public Task RotateTeamKeyAsync(string team, IReadOnlyList<string> remove) =>
+        Answer($"rotate {team} {string.Join(',', remove)}", true);
+
+    public Task RestartTeamKeyAsync(string team, IReadOnlyList<string> confirm) =>
+        Answer($"restart {team} {string.Join(',', confirm)}", true);
+
+    public Task<HeldRestart?> GetHeldTeamRestartAsync(string team) => Answer<HeldRestart?>($"held {team}", null);
+
+    public Task AcceptTeamRestartAsync(string team, string signerIdentityKey) =>
+        Answer($"accept restart {team} {signerIdentityKey}", true);
+
+    public Task<KeyFingerprint> GetOwnFingerprintAsync() =>
+        Answer("own words", new KeyFingerprint(["a", "b", "c", "d", "e"], "qr"));
+
+    public Task<KeyFingerprint> GetAccountFingerprintAsync(string account) =>
+        Answer($"words {account}", new KeyFingerprint(["f", "g", "h", "i", "j"], "qr"));
+
+    public Task<KeyChange?> GetKeyChangeAsync(string account) => Answer<KeyChange?>($"key change {account}", null);
+
+    public Task AcceptKeyChangeAsync(string account, string offeredIdentityKey, bool compared) =>
+        Answer($"accept change {account} {offeredIdentityKey} {compared}", true);
+
+    public Task<IReadOnlyList<KeyNotice>> GetKeyNoticesAsync() => Answer("notices", Notices);
+
+    public Task DismissKeyNoticeAsync(string notice) => Answer($"dismiss {notice}", true);
+
+    private Task<T> Answer<T>(string call, T value)
+    {
+        lock (_gate)
+        {
+            _calls.Add(call);
+            var name = call.Split(' ')[0];
+            if (Fails.Remove(name, out var error))
+            {
+                return Task.FromException<T>(new TableProException(error));
+            }
+        }
+
+        return Task.FromResult(value);
     }
 }

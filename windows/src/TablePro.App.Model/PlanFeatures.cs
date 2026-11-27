@@ -33,7 +33,7 @@ public static class PlanFeatures
         new(CompareSync, false),
         new(DataRewind, false),
         new(TeamCatalog, false),
-        new(TeamLibrary, false),
+        new(TeamLibrary, true),
         new(SharedLinks, true),
     ];
 
