@@ -49,8 +49,7 @@ private final class WelcomeLibraryFixture {
         #expect(connectionStorage.saveConnections([alpha, beta, gamma]))
 
         let projects = ProjectStorage(
-            userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             groupStorage: groupStorage,
             appEvents: events

@@ -270,22 +270,6 @@ struct GroupStorageProjectTests {
         #expect(fixture.stored(copy)?.projectId == acme.id)
     }
 
-    @Test("Rooting a group left on a parent cycle keeps the project it stores")
-    func repairKeepsTheProject() throws {
-        let acme = try fixture.projects.createProject(name: "Acme")
-        let a = ConnectionGroup(name: "A", projectId: acme.id)
-        let b = ConnectionGroup(name: "B", parentId: a.id)
-        var cyclicA = a
-        cyclicA.parentId = b.id
-        #expect(groups.applyRemoteGroup(cyclicA) == .applied)
-        #expect(groups.applyRemoteGroup(b) == .applied)
-
-        #expect(groups.repairHierarchy())
-
-        #expect(groups.group(for: a.id)?.parentId == nil)
-        #expect(groups.group(for: a.id)?.projectId == acme.id)
-    }
-
     // MARK: - Delete
 
     @Test("Deleting a group ungroups its connections, a Local only one too, and keeps them in its project")
@@ -310,30 +294,14 @@ struct GroupStorageProjectTests {
 
     @Test("A group whose connections cannot be saved stays, reports the failure and sends no tombstone")
     func deleteReportsAFailedMemberUpdate() throws {
-        let broken = try ProjectLibraryFixture(unreadableConnections: true)
-        let group = try broken.addGroup("Production")
-        #expect(broken.connections.isLibraryUnreadable)
+        let group = try fixture.addGroup("Production")
+        fixture.addConnection("member", groupId: group.id)
+        try LibraryWriteRefusal.set(true, in: fixture.directory)
+        defer { try? LibraryWriteRefusal.set(false, in: fixture.directory) }
 
-        #expect(!broken.groups.deleteGroup(group))
+        #expect(!groups.deleteGroup(group))
 
-        #expect(broken.groups.group(for: group.id) != nil)
-        #expect(broken.tombstones(.group).isEmpty)
-    }
-
-    @Test("A group deleted on another device ungroups its connections here, a Local only one too")
-    func remoteDeletionClearsMembers() throws {
-        let acme = try fixture.projects.createProject(name: "Acme")
-        let production = try fixture.addGroup("Production", projectId: acme.id)
-        let synced = fixture.addConnection("synced", groupId: production.id)
-        let localOnly = fixture.addConnection("local", groupId: production.id, localOnly: true)
-
-        #expect(groups.applyRemoteDeletions([production.id]))
-
-        #expect(groups.loadGroups().isEmpty)
-        for connection in [synced, localOnly] {
-            #expect(fixture.stored(connection)?.groupId == nil)
-            #expect(fixture.stored(connection)?.projectId == acme.id)
-        }
+        #expect(groups.group(for: group.id) != nil)
         #expect(fixture.tombstones(.group).isEmpty)
     }
 

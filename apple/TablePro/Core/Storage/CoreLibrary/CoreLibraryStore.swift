@@ -27,6 +27,7 @@ final class CoreLibraryStore {
     private var stored: [UUID: LibraryConnectionRecord] = [:]
     private var storedGroups: [UUID: GroupRecord] = [:]
     private var storedTags: [UUID: TagRecord] = [:]
+    private var storedProjects: [UUID: ProjectRecord] = [:]
     private var heldByCore: Set<UUID> = []
     // The previous stable's copies of connections the core holds unread, kept in its file as they are.
     private var legacyHeld: [DatabaseConnection] = []
@@ -379,7 +380,8 @@ final class CoreLibraryStore {
             connections: legacy.connections.filter { !heldByCore.contains($0.id) },
             groups: legacy.groups,
             tags: legacy.tags,
-            favoritesOrder: legacy.favoritesOrder
+            favoritesOrder: legacy.favoritesOrder,
+            projects: legacy.projects
         ).keepingFirstOfEachId()
         imported.favoritesOrder = imported.favorites(keeping: unreadableIds)
         let write = records(for: imported, removing: [])
@@ -426,7 +428,8 @@ final class CoreLibraryStore {
             },
             groups: contents.groups.map(LibraryRecordMapping.group),
             tags: contents.tags.map(LibraryRecordMapping.tag),
-            favoritesOrder: contents.favorites.compactMap(UUID.init(uuidString:))
+            favoritesOrder: contents.favorites.compactMap(UUID.init(uuidString:)),
+            projects: contents.projects.map(LibraryRecordMapping.project)
         )
         image = loaded
         updateLocalOnly(loaded)
@@ -569,6 +572,7 @@ final class CoreLibraryStore {
         stored = [:]
         storedGroups = [:]
         storedTags = [:]
+        storedProjects = [:]
         heldByCore = []
     }
 
@@ -594,17 +598,27 @@ final class CoreLibraryStore {
     // MARK: - State
 
     private func remember(_ contents: LibraryContents) {
-        remember(connections: contents.connections, groups: contents.groups, tags: contents.tags)
+        remember(
+            connections: contents.connections,
+            groups: contents.groups,
+            tags: contents.tags,
+            projects: contents.projects
+        )
         heldByCore = Set(contents.unreadable.compactMap(UUID.init(uuidString:)))
     }
 
     // The core holds what the write named, and the entries it held that the write did not take out.
     private func rememberWritten(_ write: LibraryWriteRecord) {
-        remember(connections: write.connections, groups: write.groups, tags: write.tags)
+        remember(connections: write.connections, groups: write.groups, tags: write.tags, projects: write.projects)
         heldByCore.subtract(write.removing.compactMap(UUID.init(uuidString:)))
     }
 
-    private func remember(connections: [LibraryConnectionRecord], groups: [GroupRecord], tags: [TagRecord]) {
+    private func remember(
+        connections: [LibraryConnectionRecord],
+        groups: [GroupRecord],
+        tags: [TagRecord],
+        projects: [ProjectRecord]
+    ) {
         stored = Dictionary(
             connections.compactMap { record in UUID(uuidString: record.connection.id).map { ($0, record) } },
             uniquingKeysWith: { first, _ in first }
@@ -615,6 +629,10 @@ final class CoreLibraryStore {
         )
         storedTags = Dictionary(
             tags.compactMap { record in UUID(uuidString: record.id).map { ($0, record) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        storedProjects = Dictionary(
+            projects.compactMap { record in UUID(uuidString: record.id).map { ($0, record) } },
             uniquingKeysWith: { first, _ in first }
         )
     }
@@ -630,6 +648,7 @@ final class CoreLibraryStore {
             tags: image.tags.map { LibraryRecordMapping.record($0, keeping: storedTags[$0.id]) },
             // The core keeps only the favourites it holds; connections.json's unread ones stay in the mirror's order.
             favorites: image.favorites(keeping: heldByCore).map(\.uuidString),
+            projects: image.projects.map { LibraryRecordMapping.record($0, keeping: storedProjects[$0.id]) },
             removing: removing.map(\.uuidString)
         )
     }
@@ -645,7 +664,8 @@ final class CoreLibraryStore {
             connections: image.connections + legacyHeld.filter { heldByCore.contains($0.id) },
             groups: image.groups,
             tags: image.tags,
-            favoritesOrder: image.favoritesOrder
+            favoritesOrder: image.favoritesOrder,
+            projects: image.projects
         )
         // Recorded first, so a launch after a crash here knows these stores are behind the core's.
         mirror.record = mirrorRecord(legacy: mirror.digest(), core: coreDigest, legacyBehind: true)

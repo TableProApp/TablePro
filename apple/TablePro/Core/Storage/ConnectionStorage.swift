@@ -365,7 +365,7 @@ final class ConnectionStorage {
             Self.logger.error("Aborted rewriteMembership: persistence failed for \(changed.count, privacy: .public) connection(s)")
             return false
         }
-        syncTracker.markDirty(.connection, ids: changed.filter(\.participatesInSync).map { $0.id.uuidString })
+        syncJournal.recorded(.connection, written: changed.filter(\.participatesInSync).map { $0.id.uuidString })
         return true
     }
 

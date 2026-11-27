@@ -117,6 +117,7 @@ extension SyncRecordType {
         case .credentialProfile: "credential_profile"
         case .tableFolder: "table_folder"
         case .tableFolderItem: "table_folder_item"
+        case .project: "connection_project"
         }
     }
 }

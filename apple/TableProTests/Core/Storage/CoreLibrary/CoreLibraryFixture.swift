@@ -49,6 +49,19 @@ final class CoreLibraryFixture {
         TagStorage(syncJournal: journal.journal, connectionStorage: storage, appEvents: events)
     }
 
+    func projects(_ storage: ConnectionStorage) -> ProjectStorage {
+        ProjectStorage(
+            syncJournal: journal.journal,
+            connectionStorage: storage,
+            groupStorage: groups(storage),
+            appEvents: events
+        )
+    }
+
+    func legacyProjects() throws -> [ConnectionProject] {
+        try JSONDecoder().decode([ConnectionProject].self, from: defaults.data(forKey: "com.TablePro.projects") ?? Data())
+    }
+
     func preferences(_ storage: ConnectionStorage) -> ConnectionListPreferences {
         ConnectionListPreferences(defaults: defaults, connectionStorage: storage, appEvents: events)
     }

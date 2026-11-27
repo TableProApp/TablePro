@@ -37,29 +37,20 @@ internal enum ProjectStorageError: LocalizedError, Equatable {
 internal final class ProjectStorage {
     internal static let shared = ProjectStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ProjectStorage")
-    nonisolated private static let projectsKey = "com.TablePro.projects"
-
-    private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let connectionStorageProvider: () -> ConnectionStorage
     private let groupStorageProvider: () -> GroupStorage
     private let appEvents: AppEvents
-    private let encoder = JSONEncoder()
-    private var cachedProjects: [ConnectionProject]?
-    // Records this build cannot read. Every write puts them back as they were read.
-    private var preserved: [UnreadableLibraryRecord] = []
-    // Every write replaces the whole list, so a payload that could not be read is never written over.
+    // Every write rewrites the whole library, so one that could not be read is never written over.
     internal private(set) var storeIsUnreadable = false
 
     internal init(
-        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
         groupStorage: @escaping @autoclosure () -> GroupStorage = .shared,
         appEvents: AppEvents = .shared
     ) {
-        self.defaults = userDefaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.connectionStorageProvider = connectionStorage
         self.groupStorageProvider = groupStorage
         self.appEvents = appEvents
@@ -69,23 +60,13 @@ internal final class ProjectStorage {
 
     // In display order.
     internal func loadProjects() -> [ConnectionProject] {
-        if let cached = cachedProjects { return cached }
-        guard let records = Self.decode(defaults.data(forKey: Self.projectsKey)) else {
+        guard let image = connectionStorageProvider().library.current() else {
+            Self.logger.error("The connection library could not be read; leaving the projects untouched")
             storeIsUnreadable = true
-            preserved = []
             return []
         }
         storeIsUnreadable = false
-        preserved = records.unreadable
-        let ordered = Self.ordered(records.elements)
-        cachedProjects = ordered
-        return ordered
-    }
-
-    // Loads first, so the answer does not depend on whether anything has read the store yet.
-    internal var unreadableProjectIds: Set<UUID> {
-        _ = loadProjects()
-        return Set(preserved.compactMap(\.id))
+        return Self.ordered(image.projects)
     }
 
     internal func project(for id: UUID) -> ConnectionProject? {
@@ -96,38 +77,23 @@ internal final class ProjectStorage {
         Set(loadProjects().map(\.id))
     }
 
-    // For a store that shares this defaults suite and only needs to know which ids resolve.
-    internal static func projectIds(in defaults: UserDefaults) -> Set<UUID> {
-Set((decode(defaults.data(forKey: projectsKey))?.elements ?? []).map(\.id))
-    }
-
     // MARK: - Writing
 
-    // A save carrying the id of a record this build cannot read is refused. `removingUnreadable` drops such
-    // records by id, as a deletion another device made does.
     @discardableResult
-    internal func saveProjects(
-        _ projects: [ConnectionProject],
-        removingUnreadable removedIds: Set<UUID> = []
-    ) -> Bool {
+    internal func saveProjects(_ projects: [ConnectionProject]) -> Bool {
         let previous = loadProjects()
-        guard !storeIsUnreadable else {
+        let library = connectionStorageProvider().library
+        guard !storeIsUnreadable, var image = library.current() else {
             Self.logger.error("Refusing to overwrite an unreadable project store")
             return false
         }
-        do {
-            let encoded = try LibraryFileRecords.encoded(
-                projects, keeping: preserved, removing: removedIds, using: encoder
-            )
-            defaults.set(encoded.data, forKey: Self.projectsKey)
-            preserved = encoded.kept
-            cachedProjects = nil
-            syncTracker.markDirty(.project, ids: SyncRecordChanges.changedIds(from: previous, to: projects))
-            return true
-        } catch {
-            Self.logger.error("Failed to save projects: \(error.publicLogShape, privacy: .public)")
+        image.projects = projects
+        guard library.commit(image, byUser: false) else {
+            Self.logger.error("Failed to save projects")
             return false
         }
+        syncJournal.recorded(.project, written: SyncRecordChanges.changedIds(from: previous, to: projects))
+        return true
     }
 
     @discardableResult
@@ -194,11 +160,11 @@ Set((decode(defaults.data(forKey: projectsKey))?.elements ?? []).map(\.id))
         var projects = loadProjects()
         guard !storeIsUnreadable else { throw ProjectStorageError.storeUnreadable }
         guard projects.contains(where: { $0.id == id }) else { throw ProjectStorageError.projectNotFound }
-        guard clearMembership(of: [id], byUser: true) else { throw ProjectStorageError.membershipNotSaved }
+        guard clearMembership(of: [id]) else { throw ProjectStorageError.membershipNotSaved }
 
         projects.removeAll { $0.id == id }
         guard saveProjects(projects) else { throw ProjectStorageError.storeUnreadable }
-        syncTracker.markDeleted(.project, id: id.uuidString)
+        syncJournal.recorded(.project, deleted: [id.uuidString])
         notifyChanged()
     }
 
@@ -213,7 +179,7 @@ Set((decode(defaults.data(forKey: projectsKey))?.elements ?? []).map(\.id))
         let target = scope.resolved(projectId)
         let moving = Set(ids)
         var nextRootOrder = ConnectionStorage.nextSortOrder(in: connections, groupId: nil)
-        let saved = storage.rewriteMembership(byUser: true) { connection in
+        let saved = storage.rewriteMembership(byUser: false) { connection in
             guard moving.contains(connection.id), scope.effectiveProjectId(of: connection) != target else { return }
             if connection.groupId != nil {
                 connection.groupId = nil
@@ -231,41 +197,13 @@ Set((decode(defaults.data(forKey: projectsKey))?.elements ?? []).map(\.id))
         try groupStorageProvider().moveGroups(ids, toProject: projectId)
     }
 
-    // MARK: - Sync
-
-    // Written as it arrived: two devices can each make a project of one name, and both are kept.
-    @discardableResult
-    internal func applyRemoteProject(_ project: ConnectionProject) -> RemoteApplyOutcome {
-        var projects = loadProjects()
-        if let index = projects.firstIndex(where: { $0.id == project.id }) {
-            guard projects[index] != project else { return .skipped }
-            projects[index] = project
-        } else {
-            projects.append(project)
-        }
-        return saveProjects(projects) ? .applied : .failed
-    }
-
-    // A deletion another device made. No tombstone, and the members are cleared as a local delete clears them.
-    @discardableResult
-    internal func applyRemoteDeletions(_ ids: Set<UUID>) -> Bool {
-        guard !ids.isEmpty else { return true }
-        var projects = loadProjects()
-        guard !storeIsUnreadable else { return false }
-        guard clearMembership(of: ids, byUser: false) else { return false }
-        projects.removeAll { ids.contains($0.id) }
-        // A project always syncs, so one this build cannot read goes by its id.
-        return saveProjects(projects, removingUnreadable: ids)
-    }
-
     // MARK: - Import
 
     internal func ensureProjects(_ planned: [PlannedProject]) throws -> [BundleRef: UUID] {
         guard !planned.isEmpty else { return [:] }
         var projects = loadProjects()
         guard !storeIsUnreadable else { throw ProjectStorageError.storeUnreadable }
-        let takenIds = Set(preserved.compactMap(\.id))
-        let resolved = ImportProjectResolver.resolve(planned, existing: projects, takenIds: takenIds)
+        let resolved = ImportProjectResolver.resolve(planned, existing: projects, takenIds: [])
         guard !resolved.created.isEmpty else { return resolved.ids }
         for created in resolved.created {
             projects.append(ConnectionProject(
@@ -283,7 +221,7 @@ Set((decode(defaults.data(forKey: projectsKey))?.elements ?? []).map(\.id))
 
     // MARK: - Private
 
-    private func clearMembership(of ids: Set<UUID>, byUser: Bool) -> Bool {
+    private func clearMembership(of ids: Set<UUID>) -> Bool {
         let connectionStorage = connectionStorageProvider()
         let groupStorage = groupStorageProvider()
         let connections = connectionStorage.loadConnections()
@@ -299,7 +237,7 @@ Set((decode(defaults.data(forKey: projectsKey))?.elements ?? []).map(\.id))
         guard !changes.isEmpty else { return true }
         if !changes.connections.isEmpty {
             guard !connectionStorage.isLibraryUnreadable else { return false }
-            let saved = connectionStorage.rewriteMembership(byUser: byUser) { connection in
+            let saved = connectionStorage.rewriteMembership(byUser: false) { connection in
                 connection.projectId = changes.connectionProjectId(connection.id, current: connection.projectId)
             }
             guard saved else {
@@ -339,18 +277,5 @@ Set((decode(defaults.data(forKey: projectsKey))?.elements ?? []).map(\.id))
         projects.sorted { lhs, rhs in
             lhs.sortOrder == rhs.sortOrder ? lhs.id.uuidString < rhs.id.uuidString : lhs.sortOrder < rhs.sortOrder
         }
-    }
-
-    // Nil when the payload is not a list. An entry that does not decode is kept as it was read.
-    private static func decode(_ data: Data?) -> LibraryFileRecords<ConnectionProject>? {
-        guard let data else { return try? LibraryFileRecords(decoding: Data("[]".utf8)) }
-        guard let records = try? LibraryFileRecords<ConnectionProject>(decoding: data) else {
-            logger.error("Project store could not be read; leaving it untouched")
-            return nil
-        }
-        if !records.unreadable.isEmpty {
-            logger.error("Kept \(records.unreadable.count, privacy: .public) project entries this build cannot read")
-        }
-        return records
     }
 }

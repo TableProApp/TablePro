@@ -4,12 +4,11 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-// The three library stores over one throwaway defaults suite, with the scope that reads them.
+// The three library stores over one library in its own folder, with the scope that reads them.
 @MainActor
 final class ProjectLibraryFixture {
     let defaults: UserDefaults
-    let metadata: SyncMetadataStorage
-    let tracker: SyncChangeTracker
+    let journal = SyncJournalRecorder()
     let appEvents: AppEvents
     let connections: ConnectionStorage
     let groups: GroupStorage
@@ -18,17 +17,11 @@ final class ProjectLibraryFixture {
     let connectionsURL: URL
 
     private let suite: EphemeralDefaults
-    private let syncSuite: EphemeralDefaults
-    private let directory: URL
+    let directory: URL
 
     init(unreadableConnections: Bool = false) throws {
         suite = try EphemeralDefaults("ProjectLibraryFixture")
-        syncSuite = try EphemeralDefaults("ProjectLibraryFixture.sync")
         defaults = suite.defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncSuite.defaults)
-        self.metadata = metadata
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
-        self.tracker = tracker
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("project-library-\(UUID().uuidString)", isDirectory: true)
@@ -43,22 +36,20 @@ final class ProjectLibraryFixture {
         let connectionStorage = ConnectionStorage(
             fileURL: connectionsURL,
             userDefaults: suite.defaults,
-            syncTracker: tracker,
+            syncJournal: journal.journal,
             keychain: keychain,
             appEvents: events,
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         )
         connections = connectionStorage
         let groupStorage = GroupStorage(
-            userDefaults: suite.defaults,
-            syncTracker: tracker,
+            syncJournal: journal.journal,
             connectionStorage: connectionStorage,
             appEvents: events
         )
         groups = groupStorage
         let projectStorage = ProjectStorage(
-            userDefaults: suite.defaults,
-            syncTracker: tracker,
+            syncJournal: journal.journal,
             connectionStorage: connectionStorage,
             groupStorage: groupStorage,
             appEvents: events
@@ -101,16 +92,14 @@ final class ProjectLibraryFixture {
     }
 
     func dirty(_ type: SyncRecordType) -> Set<String> {
-        tracker.dirtyRecords(for: type)
+        journal.dirtyIds(for: type)
     }
 
     func tombstones(_ type: SyncRecordType) -> Set<String> {
-        Set(metadata.tombstones(for: type).map(\.id))
+        journal.tombstonedIds(for: type)
     }
 
     func clearDirty() {
-        for type in SyncRecordType.allCases {
-            tracker.clearAllDirty(type)
-        }
+        journal.clear()
     }
 }

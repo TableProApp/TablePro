@@ -90,7 +90,8 @@ struct ConnectionScopeTests {
         #expect(scope.projectId(ofConnection: connection.id) == nil)
         #expect(fixture.stored(connection)?.projectId == arrivesLater)
 
-        #expect(fixture.projects.applyRemoteProject(ConnectionProject(id: arrivesLater, name: "Late")) == .applied)
+        // As a pull writes it into the library.
+        #expect(fixture.projects.saveProjects(fixture.projects.loadProjects() + [ConnectionProject(id: arrivesLater, name: "Late")]))
         scope.setActiveProject(arrivesLater)
         #expect(scope.connectionIds == [connection.id])
     }
@@ -206,7 +207,7 @@ struct ConnectionScopeTests {
         scope.setActiveProject(globex.id)
         let beforePull = snapshots.count
         // A pull applies the deletion, then announces the library once.
-        #expect(fixture.projects.applyRemoteDeletions([globex.id]))
+        #expect(fixture.projects.saveProjects(fixture.projects.loadProjects().filter { $0.id != globex.id }))
         #expect(snapshots.count == beforePull)
         fixture.appEvents.connectionUpdated.send(nil)
         #expect(snapshots.count == beforePull + 1)

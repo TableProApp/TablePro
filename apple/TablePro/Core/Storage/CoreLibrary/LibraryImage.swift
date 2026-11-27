@@ -12,6 +12,8 @@ struct LibraryImage: Equatable {
     var tags: [ConnectionTag]
     // The favourites in the order this Mac shows them; `isFavorite` on each connection says which ones are.
     var favoritesOrder: [UUID]
+    // Every project: a write that leaves one out deletes it.
+    var projects: [ConnectionProject] = []
 
     static let empty = LibraryImage(connections: [], groups: [], tags: [], favoritesOrder: [])
 
@@ -21,6 +23,7 @@ struct LibraryImage: Equatable {
         copy.connections = Self.firstOfEachId(connections)
         copy.groups = Self.firstOfEachId(groups)
         copy.tags = Self.firstOfEachId(tags)
+        copy.projects = Self.firstOfEachId(projects)
         return copy
     }
 

@@ -821,11 +821,9 @@ final class WelcomeViewModelTests {
         #expect(connectionStorage.loadConnection(id: moving.id)?.groupId == nil)
     }
 
-    // Two projects over the suite the group store reads its project ids from.
+    // Two projects in the library the group store reads its project ids from.
     private func makeProjects() throws -> (acme: ConnectionProject, globex: ConnectionProject) {
         let projects = ProjectStorage(
-            userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults)),
             connectionStorage: self.connectionStorage,
             groupStorage: self.groupStorage,
             appEvents: AppEvents()

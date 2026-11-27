@@ -16,9 +16,13 @@ struct WelcomeViewModelProjectTests {
     init() throws {
         let fixture = try ProjectLibraryFixture()
         self.fixture = fixture
-        tags = TagStorage(userDefaults: fixture.defaults, syncTracker: fixture.tracker, appEvents: fixture.appEvents)
+        tags = TagStorage(syncJournal: fixture.journal.journal, connectionStorage: fixture.connections, appEvents: fixture.appEvents)
         recents = RecentConnectionsStore(defaults: fixture.defaults, appEvents: fixture.appEvents)
-        preferences = ConnectionListPreferences(defaults: fixture.defaults, appEvents: fixture.appEvents)
+        preferences = ConnectionListPreferences(
+            defaults: fixture.defaults,
+            connectionStorage: fixture.connections,
+            appEvents: fixture.appEvents
+        )
         viewModel = WelcomeViewModel(
             services: Self.services(fixture: fixture, tags: tags),
             importableAppDetector: { false },
@@ -61,7 +65,7 @@ struct WelcomeViewModelProjectTests {
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: fixture.tracker,
+            syncJournal: fixture.journal.journal,
             welcomeRouter: WelcomeRouter(appEvents: fixture.appEvents),
             telemetry: live.telemetry,
             projectStorage: fixture.projects

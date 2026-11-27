@@ -444,7 +444,16 @@ async fn recent_and_the_history_follow_the_project_and_a_deleted_connections_run
     let search = |project: Option<String>| {
         let history = history.clone();
         async move {
-            let page = history.search(String::new(), None, project, None, 50).await.unwrap();
+            let filter = tablepro_ffi::HistoryFilterArg {
+                text: String::new(),
+                connection_ids: None,
+                project_id: project,
+                sources: None,
+                status: tablepro_ffi::HistoryStatusTag::Any,
+                executed_after_ms: None,
+                executed_before_ms: None,
+            };
+            let page = history.search(filter, None, 50).await.unwrap();
             page.entries.into_iter().map(|entry| entry.sql).collect::<Vec<_>>()
         }
     };

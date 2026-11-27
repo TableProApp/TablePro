@@ -58,6 +58,7 @@ nonisolated enum LibraryRecordMapping {
             iconName: record.icon.flatMap(symbol),
             tagIds: record.tags.compactMap(UUID.init(uuidString:)),
             groupId: record.groupId.flatMap(UUID.init(uuidString:)),
+            projectId: record.projectId.flatMap(UUID.init(uuidString:)),
             sshProfileId: sshProfileId,
             sshTunnelMode: tunnelMode,
             credentialMode: details.credentialProfileId.flatMap(UUID.init(uuidString:)).map { .profile(id: $0) } ?? .inline,
@@ -133,6 +134,7 @@ nonisolated enum LibraryRecordMapping {
             }.map(\.uuidString),
             aiPolicy: aiPolicyTag(connection.aiPolicy),
             externalAccess: externalAccessTag(connection.externalAccess),
+            projectId: connection.projectId?.uuidString,
             icon: icon(connection.iconName),
             order: UInt32(clamping: connection.sortOrder)
         )
@@ -180,7 +182,8 @@ nonisolated enum LibraryRecordMapping {
             color: color(record.color),
             iconName: record.icon.flatMap(symbol),
             parentId: record.parentId.flatMap(UUID.init(uuidString:)),
-            sortOrder: Int(record.order)
+            sortOrder: Int(record.order),
+            projectId: record.projectId.flatMap(UUID.init(uuidString:))
         )
     }
 
@@ -191,7 +194,30 @@ nonisolated enum LibraryRecordMapping {
             parentId: group.parentId?.uuidString,
             order: UInt32(clamping: group.sortOrder),
             color: colorId(group.color, keeping: stored?.color),
+            projectId: group.projectId?.uuidString,
             icon: icon(group.iconName)
+        )
+    }
+
+    // MARK: - Projects
+
+    static func project(_ record: ProjectRecord) -> ConnectionProject {
+        ConnectionProject(
+            id: UUID(uuidString: record.id) ?? UUID(),
+            name: record.name,
+            color: color(record.color),
+            iconName: record.icon.flatMap(symbol),
+            sortOrder: Int(record.order)
+        )
+    }
+
+    static func record(_ project: ConnectionProject, keeping stored: ProjectRecord?) -> ProjectRecord {
+        ProjectRecord(
+            id: project.id.uuidString,
+            name: project.name,
+            order: UInt32(clamping: project.sortOrder),
+            color: colorId(project.color, keeping: stored?.color),
+            icon: icon(project.iconName)
         )
     }
 

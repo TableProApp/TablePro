@@ -309,6 +309,7 @@ fn everything() -> HistoryFilterArg {
     HistoryFilterArg {
         text: String::new(),
         connection_ids: None,
+        project_id: None,
         sources: None,
         status: HistoryStatusTag::Any,
         executed_after_ms: None,

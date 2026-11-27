@@ -16,6 +16,7 @@ final class LegacyLibraryMirror {
         var groups: [ConnectionGroup]
         var tags: [ConnectionTag]
         var favoritesOrder: [UUID]
+        var projects: [ConnectionProject]
     }
 
     // What the last complete write left in each store, so a launch can tell which side another build changed.
@@ -30,6 +31,7 @@ final class LegacyLibraryMirror {
 
     static let groupsKey = "com.TablePro.groups"
     static let tagsKey = "com.TablePro.tags"
+    static let projectsKey = "com.TablePro.projects"
     static let recordKey = "com.TablePro.library.mirrorRecord"
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LegacyLibraryMirror")
@@ -78,13 +80,19 @@ final class LegacyLibraryMirror {
             guard let decoded = Self.salvaged(data, SalvagedTag.self, \.tag) else { return unreadable("tags") }
             tags = decoded
         }
+        var projects: [ConnectionProject] = []
+        if let data = defaults.data(forKey: Self.projectsKey) {
+            guard let decoded = Self.salvaged(data, SalvagedProject.self, \.project) else { return unreadable("projects") }
+            projects = decoded
+        }
         let order = (defaults.stringArray(forKey: PreferenceKeys.connectionListFavoritesOrder.name) ?? [])
             .compactMap(UUID.init(uuidString:))
         return Contents(
             connections: stored.map { $0.toConnection() },
             groups: groups,
             tags: tags,
-            favoritesOrder: order
+            favoritesOrder: order,
+            projects: projects
         )
     }
 
@@ -114,6 +122,7 @@ final class LegacyLibraryMirror {
         do {
             defaults.set(try encoder.encode(contents.groups), forKey: Self.groupsKey)
             defaults.set(try encoder.encode(contents.tags), forKey: Self.tagsKey)
+            defaults.set(try encoder.encode(contents.projects), forKey: Self.projectsKey)
         } catch {
             Self.logger.error("Could not encode the groups or tags: \(error.publicLogShape, privacy: .public)")
             return false
@@ -136,6 +145,7 @@ final class LegacyLibraryMirror {
         add(try? Data(contentsOf: file.fileURL))
         add(defaults.data(forKey: Self.groupsKey))
         add(defaults.data(forKey: Self.tagsKey))
+        add(defaults.data(forKey: Self.projectsKey))
         add(defaults.stringArray(forKey: PreferenceKeys.connectionListFavoritesOrder.name).map {
             Data($0.joined(separator: ",").utf8)
         })
@@ -169,6 +179,14 @@ private struct SalvagedGroup: Decodable {
 
     init(from decoder: Decoder) throws {
         group = try? ConnectionGroup(from: decoder)
+    }
+}
+
+private struct SalvagedProject: Decodable {
+    let project: ConnectionProject?
+
+    init(from decoder: Decoder) throws {
+        project = try? ConnectionProject(from: decoder)
     }
 }
 

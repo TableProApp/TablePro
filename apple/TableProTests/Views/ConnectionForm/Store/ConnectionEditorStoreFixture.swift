@@ -95,10 +95,9 @@ final class ConnectionEditorStoreFixture {
             appEvents: events
         )
         self.storage = storage
-        let groups = GroupStorage(userDefaults: defaults, connectionStorage: storage, appEvents: events)
+        let groups = GroupStorage(connectionStorage: storage, appEvents: events)
         self.groups = groups
         let projects = ProjectStorage(
-            userDefaults: defaults,
             connectionStorage: storage,
             groupStorage: groups,
             appEvents: events

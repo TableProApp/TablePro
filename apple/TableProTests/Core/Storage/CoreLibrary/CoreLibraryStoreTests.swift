@@ -551,6 +551,45 @@ struct CoreLibraryStoreTests {
         #expect(!again.storeIsTrusted)
     }
 
+    // MARK: - Projects
+
+    @Test("Projects and their members live in the core, and the previous stable's stores keep a copy")
+    func projectsGoThroughTheCore() throws {
+        let storage = fixture.launch()
+        let acme = try fixture.projects(storage).createProject(name: "Acme", color: .purple)
+        let group = ConnectionGroup(name: "Production", projectId: acme.id)
+        try fixture.groups(storage).addGroup(group)
+        var loose = connection("loose")
+        loose.projectId = acme.id
+        #expect(storage.saveConnections([loose, connection("grouped", group: group.id)]))
+
+        let relaunched = try fixture.launchFromCoreOnly()
+
+        #expect(fixture.projects(relaunched).loadProjects().map(\.name) == ["Acme"])
+        #expect(fixture.projects(relaunched).project(for: acme.id)?.color == .purple)
+        #expect(relaunched.loadConnection(id: loose.id)?.projectId == acme.id)
+        #expect(fixture.groups(relaunched).group(for: group.id)?.projectId == acme.id)
+        #expect(try fixture.legacyProjects().map(\.id) == [acme.id])
+        #expect(try fixture.legacyGroups().first?.projectId == acme.id)
+    }
+
+    @Test("A build's projects in the previous formats move into the core at the first launch")
+    func projectsMoveIn() throws {
+        let acme = ConnectionProject(name: "Acme", sortOrder: 0)
+        var member = connection("member")
+        member.projectId = acme.id
+        let group = ConnectionGroup(name: "Staging", projectId: acme.id)
+        try fixture.writeAsPreviousStable(connections: [member], groups: [group])
+        fixture.defaults.set(try JSONEncoder().encode([acme]), forKey: "com.TablePro.projects")
+
+        let storage = fixture.launch()
+
+        #expect(fixture.projects(storage).loadProjects().map(\.id) == [acme.id])
+        #expect(storage.loadConnection(id: member.id)?.projectId == acme.id)
+        #expect(fixture.groups(storage).group(for: group.id)?.projectId == acme.id)
+        #expect(try fixture.launchFromCoreOnly().loadConnection(id: member.id)?.projectId == acme.id)
+    }
+
     // MARK: - Favourites
 
     @Test("A favourite the order does not name yet follows the ordered ones by name")
