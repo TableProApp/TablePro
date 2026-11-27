@@ -100,6 +100,27 @@ struct TableContextMenuTests {
         #expect(list.table.clickedColumn == 0)
     }
 
+    @Test("A deferred menu recognizes an outline row by its item, so a reload that moves another item there cancels it")
+    func outlineRowIdentityIsItsItem() throws {
+        final class Source: NSObject, NSOutlineViewDataSource {
+            var items: [NSString] = ["a", "b"]
+            func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { item == nil ? items.count : 0 }
+            func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { items[index] }
+            func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
+        }
+        let outline = NSOutlineView()
+        let source = Source()
+        outline.dataSource = source
+        outline.reloadData()
+        let before = try #require(outline.contextMenuIdentity(ofRow: 0))
+        #expect(before == AnyHashable(ObjectIdentifier(source.items[0])))
+
+        source.items = ["c", "a"]
+        outline.reloadData()
+        #expect(outline.contextMenuIdentity(ofRow: 0) != before)
+        #expect(outline.contextMenuIdentity(ofRow: 1) == before)
+    }
+
     @Test("A table without a menu offers none, so its cells leave Show Menu to AppKit")
     func tableWithoutMenuOffersNone() {
         let list = makeList(withMenu: false)

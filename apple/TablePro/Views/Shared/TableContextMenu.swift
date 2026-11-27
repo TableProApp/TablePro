@@ -29,9 +29,22 @@ internal protocol RowMenuBuildingTableView: NSTableView {
     var buildsRowMenus: Bool { get }
 }
 
+// A table that is not an outline names what each row shows, so a deferred menu can tell the row still shows it.
+@MainActor
+internal protocol ContextMenuRowIdentifying: NSTableView {
+    func contextMenuRowIdentity(_ row: Int) -> AnyHashable?
+}
+
 internal extension NSTableView {
     var offersContextMenu: Bool {
         menu != nil || (self as? any RowMenuBuildingTableView)?.buildsRowMenus == true
+    }
+
+    func contextMenuIdentity(ofRow row: Int) -> AnyHashable? {
+        if let outline = self as? NSOutlineView {
+            return (outline.item(atRow: row) as AnyObject?).map { AnyHashable(ObjectIdentifier($0)) }
+        }
+        return (self as? any ContextMenuRowIdentifying)?.contextMenuRowIdentity(row)
     }
 
     // The event a right-click at the middle of the cell sends; column -1 takes the middle of the row.
@@ -54,26 +67,20 @@ internal extension NSTableView {
     // False with nothing selected, so the caller's `super` opens AppKit's empty-area menu.
     func showContextMenuForSelectedRow() -> Bool {
         guard offersContextMenu,
-              case .row = TableContextMenuTarget.resolve(requestedRow: nil, selectedRow: selectedRow, numberOfRows: numberOfRows)
+              case .row(let row) = TableContextMenuTarget.resolve(requestedRow: nil, selectedRow: selectedRow, numberOfRows: numberOfRows)
         else { return false }
-        scheduleContextMenu { table in
-            guard case .row(let row) = TableContextMenuTarget.resolve(
-                requestedRow: nil,
-                selectedRow: table.selectedRow,
-                numberOfRows: table.numberOfRows
-            ) else { return nil }
-            table.scrollRowToVisible(row)
-            return (row, -1)
-        }
+        scrollRowToVisible(row)
+        scheduleContextMenu(row: row, column: -1)
         return true
     }
 
     // Deferred, because a Show Menu request has to return before the menu starts tracking or the client times out.
-    // The target is read again when it runs, in case the rows changed meanwhile.
-    func scheduleContextMenu(at target: @escaping @MainActor @Sendable (NSTableView) -> (row: Int, column: Int)?) {
+    // A reload in between can put another item on the row, and then nothing opens.
+    func scheduleContextMenu(row: Int, column: Int) {
+        let identity = contextMenuIdentity(ofRow: row)
         DispatchQueue.main.async { [weak self] in
-            guard let self, let cell = target(self),
-                  let event = contextMenuEvent(row: cell.row, column: cell.column),
+            guard let self, (0..<numberOfRows).contains(row), contextMenuIdentity(ofRow: row) == identity,
+                  let event = contextMenuEvent(row: row, column: column),
                   let menu = menu(for: event) else { return }
             NSMenu.popUpContextMenu(menu, with: event, for: self)
         }
@@ -93,17 +100,14 @@ internal extension NSView {
     // AppKit's AXRow is its own element and offers no Show Menu, so a cell answers for its row with the menu a
     // right-click on it opens. False when the table has no menu, so the caller's `super` decides.
     func showEnclosingRowContextMenu() -> Bool {
-        guard let table = enclosingTableView, table.offersContextMenu, case .row = contextMenuTarget(in: table) else {
-            return false
-        }
-        table.scheduleContextMenu { [weak self] table in
-            guard let self, case .row(let row) = contextMenuTarget(in: table) else { return nil }
-            return (row, table.column(for: self))
-        }
+        guard let table = enclosingTableView, table.offersContextMenu,
+              case .row(let row) = TableContextMenuTarget.resolve(
+                  requestedRow: table.row(for: self),
+                  selectedRow: table.selectedRow,
+                  numberOfRows: table.numberOfRows
+              )
+        else { return false }
+        table.scheduleContextMenu(row: row, column: table.column(for: self))
         return true
-    }
-
-    private func contextMenuTarget(in table: NSTableView) -> TableContextMenuTarget {
-        TableContextMenuTarget.resolve(requestedRow: table.row(for: self), selectedRow: table.selectedRow, numberOfRows: table.numberOfRows)
     }
 }

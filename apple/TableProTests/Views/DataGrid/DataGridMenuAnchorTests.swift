@@ -30,18 +30,17 @@ struct DataGridMenuAnchorTests {
         #expect(context.isCurrentSelection)
     }
 
-    @Test("The keyboard's menu key anchors on the active cell, not the middle of its row")
-    func keyboardAnchorRectIsTheActiveCell() throws {
-        guard #available(macOS 15.0, *) else { return }
+    @Test("A deferred menu recognizes a grid row by the row it shows, not its position")
+    func rowIdentityIsTheRowID() throws {
         let grid = HostedDataGrid(rows: GridFixtureRows.people)
         defer { grid.close() }
-        grid.model.setSelection(GridSelectionReducer.single(GridCoord(row: 2, displayColumn: 0)))
-        let column = try #require(grid.tableIndex(ofDisplayPosition: 0))
+        let first = try #require(grid.model.rowID(at: 0))
 
-        #expect(grid.main.selectionAnchorRect == grid.main.frameOfCell(atColumn: column, row: 2))
+        #expect(grid.main.contextMenuIdentity(ofRow: 0) == AnyHashable(first))
+        #expect(grid.main.contextMenuIdentity(ofRow: 1) != grid.main.contextMenuIdentity(ofRow: 0))
     }
 
-    @Test("With nothing selected the grid has no anchor, so Show Menu opens its empty-space menu")
+    @Test("With nothing selected the grid has no anchor and leaves Show Menu to AppKit")
     func noSelectionHasNoAnchor() {
         let grid = HostedDataGrid(rows: GridFixtureRows.people)
         defer { grid.close() }

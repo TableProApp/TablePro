@@ -280,8 +280,7 @@ final class DataGridTableView: NSTableView {
         return controller?.accessibilitySelectedCells() ?? super.accessibilitySelectedCells()
     }
 
-    // The active cell stands where a list's last selected row does when its menu opens without a pointer, so the
-    // menu acts on the selection around it.
+    // A menu opened without a pointer opens on the active cell, so it acts on the selection around it.
     var contextMenuAnchor: (row: Int, column: Int)? {
         guard paneKind == .main, let controller, let active = controller.model.selection.activeCell,
               (0..<numberOfRows).contains(active.row),
@@ -291,12 +290,21 @@ final class DataGridTableView: NSTableView {
     }
 
     override func accessibilityPerformShowMenu() -> Bool {
-        guard contextMenuAnchor != nil else { return super.accessibilityPerformShowMenu() }
-        scheduleContextMenu { table in
-            guard let grid = table as? DataGridTableView, let anchor = grid.contextMenuAnchor else { return nil }
-            grid.controller?.revealActiveCell()
-            return anchor
-        }
+        showContextMenuForActiveCell() || super.accessibilityPerformShowMenu()
+    }
+
+    // AppKit's keyboard menu opens over the last selected row's middle, which can sit in any column. With no
+    // active cell it stays AppKit's, as on every list.
+    @available(macOS 15.0, *)
+    override func showContextMenuForSelection(_ sender: Any?) {
+        guard !showContextMenuForActiveCell() else { return }
+        super.showContextMenuForSelection(sender)
+    }
+
+    private func showContextMenuForActiveCell() -> Bool {
+        guard let anchor = contextMenuAnchor else { return false }
+        controller?.revealActiveCell()
+        scheduleContextMenu(row: anchor.row, column: anchor.column)
         return true
     }
 
@@ -313,12 +321,9 @@ final class DataGridTableView: NSTableView {
     }
 }
 
-// The keyboard's menu key opens over this rect. AppKit's own is the last selected row, whose middle can sit in any column.
-extension DataGridTableView: NSViewContentSelectionInfo {
-    @available(macOS 15.0, *)
-    var selectionAnchorRect: NSRect {
-        guard let anchor = contextMenuAnchor else { return .null }
-        return frameOfCell(atColumn: anchor.column, row: anchor.row)
+extension DataGridTableView: ContextMenuRowIdentifying {
+    func contextMenuRowIdentity(_ row: Int) -> AnyHashable? {
+        controller?.model.rowID(at: row)
     }
 }
 

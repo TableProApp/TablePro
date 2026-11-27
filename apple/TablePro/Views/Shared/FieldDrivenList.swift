@@ -161,6 +161,10 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             }
             tableView.onDelete = { [weak self] in self?.owner.onDeleteCommand?() }
             tableView.onCopy = { [weak self] in self?.owner.onCopyCommand?() }
+            tableView.rowIdentity = { [weak self] row in
+                guard let self, entries.indices.contains(row) else { return nil }
+                return entries[row].identity
+            }
         }
 
         internal func apply(owner: FieldDrivenList) {
@@ -395,11 +399,12 @@ internal final class FieldDrivenRowView: NSTableRowView {
 }
 
 // A chooser leaves focus in its search field; a browser takes it, to be arrowed through.
-internal final class FieldDrivenTableView: NSTableView, RowMenuBuildingTableView {
+internal final class FieldDrivenTableView: NSTableView, RowMenuBuildingTableView, ContextMenuRowIdentifying {
     internal var acceptsFocus = false
     internal var onActivate: (() -> Void)?
     internal var onDelete: (() -> Void)?
     internal var onCopy: (() -> Void)?
+    internal var rowIdentity: ((Int) -> AnyHashable?)?
 
     override internal var acceptsFirstResponder: Bool { acceptsFocus }
 
@@ -425,6 +430,10 @@ internal final class FieldDrivenTableView: NSTableView, RowMenuBuildingTableView
 
     internal var buildsRowMenus: Bool {
         (delegate as? any FieldDrivenMenuProviding)?.offersMenus ?? false
+    }
+
+    internal func contextMenuRowIdentity(_ row: Int) -> AnyHashable? {
+        rowIdentity?(row)
     }
 
     override internal func accessibilityPerformShowMenu() -> Bool {

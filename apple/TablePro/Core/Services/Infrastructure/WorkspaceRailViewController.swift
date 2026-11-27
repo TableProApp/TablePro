@@ -15,8 +15,9 @@ internal protocol WorkspaceRailHost: AnyObject {
 
 // AppKit table on purpose: `NSTableView` routes no middle-click, and a source list pads rows a free cell never shows.
 @MainActor
-internal final class WorkspaceRailTableView: NSTableView {
+internal final class WorkspaceRailTableView: NSTableView, ContextMenuRowIdentifying {
     internal var onMiddleClick: ((Int) -> Void)?
+    internal var rowIdentity: ((Int) -> AnyHashable?)?
 
     // Set the moment the strip hides: AppKit hides a collapsing item only after its animation, so the list could take first key view.
     internal var isStripShown = true
@@ -63,6 +64,10 @@ internal final class WorkspaceRailTableView: NSTableView {
 
     override internal func accessibilityPerformShowMenu() -> Bool {
         showContextMenuForSelectedRow() || super.accessibilityPerformShowMenu()
+    }
+
+    internal func contextMenuRowIdentity(_ row: Int) -> AnyHashable? {
+        rowIdentity?(row)
     }
 
     override internal func otherMouseUp(with event: NSEvent) {
@@ -153,6 +158,10 @@ internal final class WorkspaceRailViewController: NSViewController {
         tableView.registerForDraggedTypes([Self.reorderType])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         tableView.onMiddleClick = { [weak self] row in self?.closeWorkspace(atRow: row) }
+        tableView.rowIdentity = { [weak self] row in
+            guard let self, entries.indices.contains(row) else { return nil }
+            return entries[row].workspace
+        }
         tableView.setAccessibilityIdentifier("workspace-rail")
         tableView.setAccessibilityLabel(String(localized: "Open Connections"))
 
