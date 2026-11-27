@@ -855,13 +855,16 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
               keywordCase.rewritesTypedText,
               KeywordUppercaseHelper.isWordBoundary(string),
               PluginManager.shared.editorLanguage(for: databaseType ?? .mysql) == .sql,
-              (textView.textStorage.string as NSString).length < 500_000 else { return }
+              textView.textStorage.length < 500_000 else { return }
 
-        let nsText = textView.textStorage.string as NSString
+        let nsText = textView.string as NSString
         guard let match = KeywordUppercaseHelper.keywordBeforePosition(
             nsText,
             at: range.location,
             uppercase: keywordCase.prefersUppercase,
+            codeStart: statementRunController.statementStart(
+                containing: range.location, in: textView, grammar: lexicalGrammar
+            ),
             grammar: lexicalGrammar
         ) else { return }
 

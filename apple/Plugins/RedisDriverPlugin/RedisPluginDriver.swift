@@ -188,9 +188,13 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// cleanly and then fails on every real command. INFO says which kind of server answered, so
     /// the mismatch is reported once, at connect, naming the field to change.
     private func verifyServerMode(_ expected: RedisConnectionMode, on channel: any RedisCommandChannel) async throws {
-        let reply = try await channel.executeCommand(["INFO", "server"], scope: .outsideBlock)
-        guard let info = reply.stringValue,
-              let actual = RedisServerInfo.mode(from: info) else { return }
+        let info: String?
+        if let kept = channel.connectServerInfo {
+            info = kept
+        } else {
+            info = try await channel.executeCommand(["INFO", "server"], scope: .outsideBlock).stringValue
+        }
+        guard let info, let actual = RedisServerInfo.mode(from: info) else { return }
         let isTunneled = config.additionalFields["preTunnelHost"]?.isEmpty == false
         guard let message = RedisTopologyDiagnostics.mismatch(
             expected: expected, actual: actual, isTunneled: isTunneled

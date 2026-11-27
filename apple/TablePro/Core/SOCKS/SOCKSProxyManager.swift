@@ -72,7 +72,6 @@ actor SOCKSProxyManager: TunnelManaging {
 
     private var tunnels: [UUID: TunnelState] = [:]
     private var creations = TunnelCreationGenerations()
-    private var appNapActivity: NSObjectProtocol?
     private let connectTimeout: TimeInterval
     private let now: @Sendable () -> ContinuousClock.Instant
 
@@ -187,7 +186,6 @@ actor SOCKSProxyManager: TunnelManaging {
         )
         tunnels[connectionId] = state
         TransportActivityRegistry.shared.register(state.byteCounter, for: connectionId)
-        updateAppNapState()
         Self.logger.info("SOCKS proxy tunnel ready for \(connectionId.uuidString, privacy: .public) on 127.0.0.1:\(localPort)")
         return localPort
     }
@@ -200,7 +198,6 @@ actor SOCKSProxyManager: TunnelManaging {
 
     private func discardTunnel(connectionId: UUID) async throws {
         guard let state = tunnels.removeValue(forKey: connectionId) else { return }
-        updateAppNapState()
         state.listener.stateUpdateHandler = nil
         state.listener.cancel()
         for relay in state.relays.values {
@@ -348,25 +345,12 @@ actor SOCKSProxyManager: TunnelManaging {
     private func handleListenerDeath(connectionId: UUID, listener: NWListener, error: NWError) async {
         guard let state = tunnels[connectionId], state.listener === listener else { return }
         tunnels.removeValue(forKey: connectionId)
-        updateAppNapState()
         for relay in state.relays.values {
             relay.inbound.cancel()
             relay.outbound.cancel()
         }
         Self.logger.warning("SOCKS proxy listener died for \(connectionId.uuidString, privacy: .public): \(error.localizedDescription)")
         await DatabaseManager.shared.handleSOCKSProxyTunnelDied(connectionId: connectionId)
-    }
-
-    private func updateAppNapState() {
-        if !tunnels.isEmpty, appNapActivity == nil {
-            appNapActivity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiatedAllowingIdleSystemSleep,
-                reason: "SOCKS proxy tunnel requires timely execution"
-            )
-        } else if tunnels.isEmpty, let activity = appNapActivity {
-            ProcessInfo.processInfo.endActivity(activity)
-            appNapActivity = nil
-        }
     }
 
     private static func nwPort(_ port: Int) -> NWEndpoint.Port? {
