@@ -199,11 +199,11 @@ internal sealed class FakeSyncApp : ISyncHostApp
         return Task.FromResult<ISyncEngine>(engine);
     }
 
-    public void Note(string what, CoreError error)
+    public void Note(string what, CoreError failure)
     {
         lock (_gate)
         {
-            _notes.Add($"{what}: {error.Code}");
+            _notes.Add($"{what}: {failure.Code}");
         }
     }
 }

@@ -50,7 +50,7 @@ public interface ISyncHostApp
     Task<ISyncEngine> OpenAsync(SyncConfiguration configuration);
 
     // A failure the person did not ask about, for the log: its code only, since the detail can name what they hold.
-    void Note(string what, CoreError error);
+    void Note(string what, CoreError failure);
 }
 
 public enum SyncRefusal

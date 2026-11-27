@@ -340,7 +340,7 @@ public sealed class SyncHostTests
             return _configurations.Count == 1 ? first : Task.FromResult<ISyncEngine>(new FakeSyncEngine());
         }
 
-        public void Note(string what, CoreError error)
+        public void Note(string what, CoreError failure)
         {
         }
     }

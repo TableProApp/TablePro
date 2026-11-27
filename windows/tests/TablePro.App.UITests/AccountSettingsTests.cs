@@ -52,11 +52,11 @@ public sealed partial class ShellTests
         Assert.True(app.TryFind("SyncCategoriesExpander") is null or { IsOffscreen: true });
         Assert.True(app.TryFind("SyncStatusCard") is null or { IsOffscreen: true });
         provider.Focus();
-        app.Screenshot("62-settings-sync");
+        app.Screenshot("250-settings-sync");
 
         provider.Select("TablePro Sync");
         app.FindByName("TablePro Sync needs a paid plan");
-        app.Screenshot("63-settings-sync-plan");
+        app.Screenshot("251-settings-sync-plan");
         app.CloseDialog();
 
         var back = Retry.WhileFalse(

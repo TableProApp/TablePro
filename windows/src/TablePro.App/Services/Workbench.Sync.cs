@@ -106,6 +106,6 @@ internal sealed partial class Workbench
             return new SyncEngineAdapter(sync);
         }
 
-        public void Note(string what, CoreError error) => CrashLog.Note("sync " + what, error.Code);
+        public void Note(string what, CoreError failure) => CrashLog.Note("sync " + what, failure.Code);
     }
 }
