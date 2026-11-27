@@ -6574,4 +6574,88 @@ New fingerprint: {2}</value>
   <data name="Error_project_name_control_character" xml:space="preserve">
     <value>The name has a character that can't be shown.</value>
   </data>
+  <data name="MenuCommandPalette.Text" xml:space="preserve">
+    <value>Command palette</value>
+  </data>
+  <data name="PaletteSearch.PlaceholderText" xml:space="preserve">
+    <value>Search tables, connections and commands</value>
+  </data>
+  <data name="PaletteResultsName" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="PaletteScopeAll.Text" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="PaletteScopeTables.Text" xml:space="preserve">
+    <value>Tables</value>
+  </data>
+  <data name="PaletteScopeDatabases.Text" xml:space="preserve">
+    <value>Databases</value>
+  </data>
+  <data name="PaletteScopeQueries.Text" xml:space="preserve">
+    <value>Queries</value>
+  </data>
+  <data name="PaletteScopeConnections.Text" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="PaletteScopeCommands.Text" xml:space="preserve">
+    <value>Commands</value>
+  </data>
+  <data name="PaletteHintOpen.Text" xml:space="preserve">
+    <value>Enter Open</value>
+  </data>
+  <data name="PaletteHintNewTab.Text" xml:space="preserve">
+    <value>Ctrl+Enter New tab</value>
+  </data>
+  <data name="PaletteHintScope.Text" xml:space="preserve">
+    <value>Ctrl+1-6 Scope</value>
+  </data>
+  <data name="PaletteHintClose.Text" xml:space="preserve">
+    <value>Esc Close</value>
+  </data>
+  <data name="PaletteRecent" xml:space="preserve">
+    <value>Recent</value>
+  </data>
+  <data name="PaletteNoResults" xml:space="preserve">
+    <value>No results for "{0}"</value>
+  </data>
+  <data name="PaletteSection_Table" xml:space="preserve">
+    <value>Tables</value>
+  </data>
+  <data name="PaletteSection_View" xml:space="preserve">
+    <value>Views</value>
+  </data>
+  <data name="PaletteSection_SystemTable" xml:space="preserve">
+    <value>System tables</value>
+  </data>
+  <data name="PaletteSection_Database" xml:space="preserve">
+    <value>Databases</value>
+  </data>
+  <data name="PaletteSection_Schema" xml:space="preserve">
+    <value>Schemas</value>
+  </data>
+  <data name="PaletteSection_Procedure" xml:space="preserve">
+    <value>Procedures</value>
+  </data>
+  <data name="PaletteSection_Function" xml:space="preserve">
+    <value>Functions</value>
+  </data>
+  <data name="PaletteSection_Trigger" xml:space="preserve">
+    <value>Triggers</value>
+  </data>
+  <data name="PaletteSection_Type" xml:space="preserve">
+    <value>Types</value>
+  </data>
+  <data name="PaletteSection_SavedQuery" xml:space="preserve">
+    <value>Saved queries</value>
+  </data>
+  <data name="PaletteSection_History" xml:space="preserve">
+    <value>Recent queries</value>
+  </data>
+  <data name="PaletteSection_Connection" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="PaletteSection_Command" xml:space="preserve">
+    <value>Commands</value>
+  </data>
 </root>

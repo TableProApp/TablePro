@@ -299,6 +299,8 @@ public static class Keymap
         Menu("manageConnections", "ctrl+shift+h", CommandScope.Global);
         Menu("toggleTableBrowser", "ctrl+b", CommandScope.Workspace);
         Menu("focusSidebarSearch", "ctrl+p", CommandScope.Workspace);
+        // The command palette. ctrl+shift+o after Xcode's Open Quickly, since ctrl+p already focuses sidebar search.
+        Menu("quickSwitcher", "ctrl+shift+o", CommandScope.Global);
         Menu("toggleHistory", null, CommandScope.Workspace);
         Menu("refresh", "f5", CommandScope.Workspace);
         Menu("openDatabase", "ctrl+k", CommandScope.Workspace);
