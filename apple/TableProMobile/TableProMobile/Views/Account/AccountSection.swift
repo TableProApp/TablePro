@@ -17,6 +17,10 @@ struct AccountSection: View {
     @State private var isCheckingKeys = false
     @State private var isErasingKeys = false
     @State private var keysPrompt = AccountKeysSignOutPrompt()
+    // Team Library edits the team has not taken, nil when they could not be read, and why an upload left some.
+    @State private var teamChanges: [String]? = []
+    @State private var uploadProblem: TeamLibraryProblem?
+    @State private var isUploadingTeamChanges = false
 
     var body: some View {
         Section {
@@ -58,13 +62,20 @@ struct AccountSection: View {
             isPresented: $confirmsSignOut,
             titleVisibility: .visible
         ) {
-            Button(String(localized: "Sign Out"), role: .destructive) {
-                Task { await signOut() }
+            if hasTeamChanges {
+                Button(String(localized: "Upload and Sign Out")) {
+                    Task { await uploadThenSignOut() }
+                }
+                Button(String(localized: "Discard and Sign Out"), role: .destructive) {
+                    Task { await signOut() }
+                }
+            } else {
+                Button(String(localized: "Sign Out"), role: .destructive) {
+                    Task { await signOut() }
+                }
             }
         } message: {
-            if signOutErasesKeys {
-                Text("This device's end-to-end keys are erased. After you sign in again, approve it from another device or use your recovery key.")
-            }
+            Text(signOutMessage)
         }
         .alert(
             String(localized: "This Device's Keys Weren't Erased"),
@@ -126,7 +137,7 @@ struct AccountSection: View {
         Button(String(localized: "Sign Out"), role: .destructive) {
             Task { await askToSignOut() }
         }
-        .disabled(account.isBusy || isCheckingKeys || isErasingKeys)
+        .disabled(account.isBusy || isCheckingKeys || isErasingKeys || isUploadingTeamChanges)
     }
 
     private var serverRow: some View {
@@ -180,16 +191,64 @@ struct AccountSection: View {
         }
     }
 
-    // Whether this device holds keys is read first, so the question can say Sign Out erases them.
+    // Nil, edits that could not be read, counts as some: discarding may lose them.
+    private var hasTeamChanges: Bool {
+        teamChanges.map { !$0.isEmpty } ?? true
+    }
+
+    // The Mac's sentences (AccountSignOutConfirmation), for this device.
+    private var signOutMessage: String {
+        var sentences: [String] = []
+        if let teamChanges, !teamChanges.isEmpty {
+            if let uploadProblem {
+                sentences.append(String(format: String(localized: "The upload did not finish. %@"), uploadProblem.message))
+            }
+            sentences.append(String(
+                format: String(localized: "These changes are not uploaded yet and are lost if you discard them: %@."),
+                teamChanges.formatted(.list(type: .and))
+            ))
+        } else if teamChanges == nil {
+            if let uploadProblem {
+                sentences.append(String(format: String(localized: "The upload did not finish. %@"), uploadProblem.message))
+            }
+            sentences.append(String(localized: "TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are."))
+        }
+        if signOutErasesKeys {
+            sentences.append(String(localized: "This device's end-to-end keys are erased. After you sign in again, approve it from another device or use your recovery key."))
+        }
+        return sentences.joined(separator: " ")
+    }
+
+    // Whether this device holds keys and which Team Library edits are not sent are read first, so the question can say
+    // what Sign Out erases and loses.
     private func askToSignOut() async {
         isCheckingKeys = true
         signOutErasesKeys = await appState.keysSignOut(askAfterFailure: keysPrompt.ask).holdsKeys()
+        teamChanges = await appState.teamLibrary.unsentNames()
+        uploadProblem = nil
         isCheckingKeys = false
         confirmsSignOut = true
     }
 
+    // What the upload leaves is asked about again; all sent, the sign-out goes on.
+    private func uploadThenSignOut() async {
+        let session = account.snapshot.sessionID
+        isUploadingTeamChanges = true
+        let (left, problem) = await appState.teamLibrary.upload()
+        isUploadingTeamChanges = false
+        guard account.snapshot.sessionID == session, account.isSignedIn else { return }
+        if left?.isEmpty == true {
+            await signOut()
+            return
+        }
+        teamChanges = left
+        uploadProblem = problem
+        confirmsSignOut = true
+    }
+
     // The keys go before the sign-in (core ADR 0056, Sign Out). Kept signed in when the person cancels after the keys
-    // could not be erased, or when another sign-in took this one's place meanwhile.
+    // could not be erased, or when another sign-in took this one's place meanwhile. Once signed out, the account's Team
+    // Library data is deleted, verified.
     private func signOut() async {
         let session = account.snapshot.sessionID
         let keys = appState.keysSignOut(askAfterFailure: keysPrompt.ask)
@@ -197,7 +256,9 @@ struct AccountSection: View {
         let erased = await keys.signOut({ account.snapshot.sessionID == session })
         isErasingKeys = false
         guard erased else { return }
-        await account.signOut()
+        let deleted = await appState.teamLibrary.signOut(session: session) { await account.signOut() }
+        guard deleted == false else { return }
+        failure = String(localized: "TablePro couldn't delete the Team Library data of the account you signed out of. Team Library stays off until it can.")
     }
 
     private func signIn() async {

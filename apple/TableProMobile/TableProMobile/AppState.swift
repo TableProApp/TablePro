@@ -46,6 +46,8 @@ final class AppState {
     let syncCoordinator: IOSSyncCoordinator
     // TablePro Sync and the moves between it and iCloud; iCloud's passes stay the coordinator's.
     let providerMoves: IOSProviderMoves
+    // One per app, so the connection list and its sheets show the same teams.
+    let teamLibrary: TeamLibraryModel
     let account: AccountModel
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
@@ -111,7 +113,19 @@ final class AppState {
                 syncCoordinator.setEnabled(onboarding.isCloudSyncEnabled)
             }
         ))
-        account.onSignInChange = { [weak host = syncCoordinator.host] in host?.signInChanged() }
+        let teamLibrary = TeamLibraryModel(source: .live(
+            host: syncCoordinator.host,
+            account: account,
+            deleteOtherOwners: { [library] keep in
+                try await library.host.core().deleteOtherTeamLibraryData(keep: keep)
+            }
+        ))
+        self.teamLibrary = teamLibrary
+        // A sign-in with no service open reopens nothing, so the Team Library reads its teams here too.
+        account.onSignInChange = { [weak host = syncCoordinator.host, weak teamLibrary] in
+            host?.signInChanged()
+            Task { await teamLibrary?.refresh() }
+        }
         queryHistory = QueryHistoryStorage(directory: libraryDirectory)
         savedQueries = SavedQueryLibrary(
             directory: libraryDirectory,
@@ -189,6 +203,7 @@ final class AppState {
         syncCoordinator.start()
         providerMoves.start()
         keychainFollower?.start(host: syncCoordinator.host)
+        teamLibrary.start()
     }
 
     private static func liveSyncCoordinator(core: MobileCoreHost, account: AccountModel) -> IOSSyncCoordinator {

@@ -230,4 +230,43 @@ struct TeamLibraryModelTests {
         #expect(TeamLibraryModel.name(of: unnamed) == "c1")
         #expect(TeamLibraryModel.state(of: unnamed) == String(localized: "Removal waiting to send"))
     }
+
+    @Test("Sign Out signs out the sign-in it was asked for, then deletes that account's Team Library data")
+    func signOutDeletesAfterSigningOut() async {
+        let fixture = Fixture()
+        await fixture.library.refresh()
+        var signedOut = 0
+
+        let deleted = await fixture.library.signOut(session: "session_a") {
+            signedOut += 1
+            fixture.session = nil
+        }
+
+        #expect(deleted == true)
+        #expect(signedOut == 1)
+        #expect(fixture.engine.read { $0.deletes } == 1)
+    }
+
+    @Test("Another sign-in in place of the one asked about is neither signed out nor deleted")
+    func signOutOfAnEndedSessionDoesNothing() async {
+        let fixture = Fixture()
+        fixture.session = "session_b"
+        var signedOut = 0
+
+        let deleted = await fixture.library.signOut(session: "session_a") { signedOut += 1 }
+
+        #expect(deleted == nil)
+        #expect(signedOut == 0)
+        #expect(fixture.engine.read { $0.deletes } == 0)
+    }
+
+    @Test("A delete that fails after the sign-out says the data is still here")
+    func failedDeleteIsReported() async {
+        let fixture = Fixture()
+        fixture.engine.fail("delete", with: FakeTeamLibraryCalls.failure("sync.network"))
+
+        let deleted = await fixture.library.signOut(session: "session_a") { fixture.session = nil }
+
+        #expect(deleted == false)
+    }
 }

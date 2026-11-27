@@ -275,6 +275,29 @@ final class TeamLibraryModel {
         }
     }
 
+    // Sign Out's Upload: one pass now. What the team has still not taken comes back, with why; nil when it could not be
+    // read.
+    func upload() async -> (unsent: [String]?, problem: TeamLibraryProblem?) {
+        var problem: TeamLibraryProblem?
+        do throws(TeamLibraryProblem) {
+            try await sendUnsent()
+        } catch {
+            problem = error
+        }
+        guard let left = await unsentNames() else { return (nil, problem) }
+        return (left, left.isEmpty ? nil : problem)
+    }
+
+    // The sign-out of `session`, then all of the account's Team Library data, as the Mac's TeamLibrary.signOut. The
+    // engine is the service of the sign-in that ends, read before it ends, which still deletes after. Nil when the
+    // session ended another way first, so nothing was signed out or deleted.
+    func signOut(session: String?, through signOut: @MainActor () async -> Void) async -> Bool? {
+        let engine = try? await source.engine()
+        guard source.session() == session, session != nil else { return nil }
+        await signOut()
+        return await deleteDataAfterSignOut(through: engine)
+    }
+
     // All of the signing-out account's Team Library data, verified gone, through the service of the sign-in that ends,
     // which still deletes after it ended. False when any of it remains, which keeps Team Library off for that account
     // until a later delete succeeds.
