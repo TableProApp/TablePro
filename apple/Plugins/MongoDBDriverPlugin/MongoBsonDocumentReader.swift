@@ -126,6 +126,7 @@ nonisolated final class MongoBsonDocumentReader {
         if depth > MongoDocumentText.maximumDepth { state.isStrict = false }
         var dictionary: [String: Any] = [:]
         var members: [MongoDocumentText.Member] = []
+        var names: Set<Data> = []
         var isComplete = true
         while bson_iter_next(iterator) {
             guard let key = Self.key(iterator) else { return nil }
@@ -133,7 +134,7 @@ nonisolated final class MongoBsonDocumentReader {
             if buildsCanonical {
                 // A strict read refuses a repeated name, so the document then has no canonical tree, as before. Names
                 // are compared as bytes, since Swift calls two spellings of one character equal and BSON does not.
-                if dictionary[key] != nil, members.contains(where: { $0.key.utf8.elementsEqual(key.utf8) }) {
+                if !names.insert(Data(key.utf8)).inserted {
                     state.isStrict = false
                 }
                 if depth == 1, key == MongoDocumentIdentity.field, !state.readsIdentifier {
