@@ -130,6 +130,30 @@ public abstract class SqlEngineTests : IAsyncDisposable
             TextsById(after.Set, "note"));
     }
 
+    [Fact]
+    public async Task AnExplainVariantParsesIntoAPlanTree()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (session, editor) = await StartAsync(cancellationToken);
+        var table = await PeopleAsync(session, editor, cancellationToken);
+        var sql = $"SELECT * FROM {Qualified(table.Name)}";
+
+        ExplainOutcome.Parsed? parsed = null;
+        foreach (var variant in QueryPlans.VariantsFor(session.EngineId).Where(variant => variant.IsSqlPrefix))
+        {
+            if (await QueryPlans.ExplainAsync(editor, variant, sql, cancellationToken: cancellationToken)
+                is ExplainOutcome.Parsed outcome)
+            {
+                parsed = outcome;
+                break;
+            }
+        }
+
+        Assert.SkipWhen(parsed is null, $"{session.EngineId} has no EXPLAIN format the core parses yet.");
+        Assert.False(string.IsNullOrWhiteSpace(parsed!.Plan.Root.Operation));
+        Assert.NotEqual(string.Empty, parsed.Plan.RawText);
+    }
+
     public async ValueTask DisposeAsync()
     {
         for (var index = _open.Count - 1; index >= 0; index--)

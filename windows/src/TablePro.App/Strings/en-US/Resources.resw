@@ -5228,6 +5228,54 @@ New fingerprint: {2}</value>
   <data name="JsonCopyFailed" xml:space="preserve">
     <value>The JSON could not be put on the clipboard.</value>
   </data>
+  <data name="ExplainPlanCommand" xml:space="preserve">
+    <value>Explain plan</value>
+  </data>
+  <data name="StatusExplaining" xml:space="preserve">
+    <value>Reading the query plan…</value>
+  </data>
+  <data name="PlanReady" xml:space="preserve">
+    <value>Query plan</value>
+  </data>
+  <data name="PlanRawOnly" xml:space="preserve">
+    <value>Query plan: the output has no tree to show</value>
+  </data>
+  <data name="PlanModes" xml:space="preserve">
+    <value>Tree or raw</value>
+  </data>
+  <data name="PlanTreeMode" xml:space="preserve">
+    <value>Tree</value>
+  </data>
+  <data name="PlanRawMode" xml:space="preserve">
+    <value>Raw</value>
+  </data>
+  <data name="PlanTreeName" xml:space="preserve">
+    <value>Plan tree</value>
+  </data>
+  <data name="PlanRawName" xml:space="preserve">
+    <value>Plan as text</value>
+  </data>
+  <data name="PlanMetricName" xml:space="preserve">
+    <value>Bar metric</value>
+  </data>
+  <data name="PlanMetricCost" xml:space="preserve">
+    <value>Cost</value>
+  </data>
+  <data name="PlanMetricRows" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="PlanPlanningTime" xml:space="preserve">
+    <value>Planning: {0:0.###} ms</value>
+    <comment>{0} is the planning time in milliseconds.</comment>
+  </data>
+  <data name="PlanExecutionTime" xml:space="preserve">
+    <value>Execution: {0:0.###} ms</value>
+    <comment>{0} is the execution time in milliseconds.</comment>
+  </data>
+  <data name="PlanDetailSchema" xml:space="preserve">
+    <value>Schema: {0}</value>
+    <comment>{0} is the node's schema name.</comment>
+  </data>
   <data name="AiHeader.Text" xml:space="preserve">
     <value>AI assistant</value>
   </data>
@@ -5555,6 +5603,12 @@ New fingerprint: {2}</value>
   </data>
   <data name="MenuAiOptimize.AccessKey" xml:space="preserve">
     <value>O</value>
+  </data>
+  <data name="MenuExplainPlan.Text" xml:space="preserve">
+    <value>Explain Plan</value>
+  </data>
+  <data name="MenuExplainPlan.AccessKey" xml:space="preserve">
+    <value>P</value>
   </data>
   <data name="McpHeader.Text" xml:space="preserve">
     <value>MCP server</value>
