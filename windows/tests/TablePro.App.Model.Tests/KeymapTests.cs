@@ -33,8 +33,11 @@ public sealed class KeymapTests
                 ["duplicateRow"] = "ctrl+d",
                 ["showSettings"] = "ctrl+,",
                 ["cancelQuery"] = "ctrl+.",
+                // Ctrl+P takes the palette here, as on macOS Cmd+P, so sidebar search keeps no key.
+                ["quickSwitcher"] = "ctrl+p",
+                ["focusSidebarSearch"] = "",
             },
-            []
+            ["focusSidebarSearch"]
         },
         {
             "dbeaver",
@@ -60,8 +63,11 @@ public sealed class KeymapTests
                 ["duplicateRow"] = "ctrl+d",
                 ["findAndReplace"] = "ctrl+r",
                 ["cancelQuery"] = "ctrl+f2",
+                // Its Ctrl+N opens the palette, so New Connection keeps no key.
+                ["quickSwitcher"] = "ctrl+n",
+                ["newConnection"] = "",
             },
-            []
+            ["newConnection"]
         },
         {
             "beekeeperstudio",
@@ -70,8 +76,11 @@ public sealed class KeymapTests
                 ["addRow"] = "ctrl+n",
                 ["duplicateRow"] = "ctrl+d",
                 ["newConnection"] = string.Empty,
+                // Ctrl+N (addRow) displaces New Connection; Ctrl+P (palette) displaces sidebar search.
+                ["quickSwitcher"] = "ctrl+p",
+                ["focusSidebarSearch"] = string.Empty,
             },
-            ["newConnection"]
+            ["newConnection", "focusSidebarSearch"]
         },
         {
             "navicat",
@@ -99,8 +108,11 @@ public sealed class KeymapTests
                 ["findAndReplace"] = "ctrl+r",
                 ["showSettings"] = "ctrl+,",
                 ["newConnection"] = string.Empty,
+                // Ctrl+N (addRow) displaces New Connection; Ctrl+P (palette) displaces sidebar search.
+                ["quickSwitcher"] = "ctrl+p",
+                ["focusSidebarSearch"] = string.Empty,
             },
-            ["newConnection"]
+            ["newConnection", "focusSidebarSearch"]
         },
     };
 
@@ -206,7 +218,6 @@ public sealed class KeymapTests
     [Theory]
     [InlineData("showNextTab", "ctrl+pagedown")]
     [InlineData("delete", "ctrl+delete")]
-    [InlineData("quickSwitcher", "ctrl+p")]
     [InlineData("explainQuery", "ctrl+shift+e")]
     public void ARowForAFixedCommandOrOneWindowsLacksMovesNothing(string action, string chord)
     {
@@ -215,6 +226,12 @@ public sealed class KeymapTests
         Assert.Equal(Movable(EffectiveKeymap.TablePro), Movable(keymap));
         Assert.Equal("ctrl+p", Keys(keymap, "focusSidebarSearch"));
         Assert.Equal("ctrl+shift+e", Keys(keymap, "exportResults"));
+    }
+
+    [Fact]
+    public void TheCommandPaletteStartsOnCtrlShiftO()
+    {
+        Assert.Equal("ctrl+shift+o", Keys(EffectiveKeymap.TablePro, "quickSwitcher"));
     }
 
     [Fact]
