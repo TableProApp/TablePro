@@ -22,8 +22,11 @@ internal enum RegistryStorageSweep {
 
     internal static func sweepProductionStorage() {
         let environment = AppStorageEnvironment.shared
-        let legacyCaches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.TablePro", isDirectory: true)
+        // The bundle's caches folder is the real store's, which a device profile shares.
+        let legacyCaches = environment.isProductionStore
+            ? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+                .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.TablePro", isDirectory: true)
+            : nil
         sweep(supportDirectory: environment.supportDirectory, legacyCachesDirectory: legacyCaches, defaults: environment.defaults)
     }
 

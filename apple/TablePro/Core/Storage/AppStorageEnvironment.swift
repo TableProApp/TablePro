@@ -105,8 +105,9 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         return isDeviceProfileName(profile) ? .deviceProfile(name: profile) : .refuseProfile
     }
 
+    // Lower case only: the folder name is case-insensitive on APFS, and the machine ID is not.
     internal static func isDeviceProfileName(_ name: String) -> Bool {
-        name.count <= 32 && name.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil
+        name.count <= 32 && name.range(of: "^[a-z0-9_-]+$", options: .regularExpression) != nil
     }
 
     internal static var isDebugBuild: Bool {
@@ -130,12 +131,12 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         case let .isolated(path):
             return isolated(at: URL(fileURLWithPath: path), isUnitTestHost: isUnitTestHost)
         case let .deviceProfile(name):
-            return deviceProfile(named: name, isUnitTestHost: isUnitTestHost)
+            return deviceProfile(named: name, in: productionRoot(), isUnitTestHost: isUnitTestHost)
         case .refuseProfile:
             logger.fault(
                 """
-                Refusing to launch: \(deviceProfileVariable, privacy: .public) must be 1 to 32 letters, digits, \
-                hyphens or underscores.
+                Refusing to launch: \(deviceProfileVariable, privacy: .public) must be 1 to 32 lower-case letters, \
+                digits, hyphens or underscores.
                 """
             )
             exit(EXIT_FAILURE)
@@ -205,8 +206,12 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
 
     // Its folder sits beside the real one; its Keychain items take a service of their own in the same access group,
     // and iCloud Keychain stays off, as CloudKit does (SyncEngineHost).
-    private static func deviceProfile(named name: String, isUnitTestHost: Bool) -> AppStorageEnvironment {
-        let root = productionRoot().appendingPathComponent("TablePro-\(name)", isDirectory: true)
+    internal static func deviceProfile(
+        named name: String,
+        in applicationSupport: URL,
+        isUnitTestHost: Bool
+    ) -> AppStorageEnvironment {
+        let root = applicationSupport.appendingPathComponent("TablePro-\(name)", isDirectory: true)
         let supportDirectory = root.appendingPathComponent("TablePro", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: supportDirectory, withIntermediateDirectories: true)

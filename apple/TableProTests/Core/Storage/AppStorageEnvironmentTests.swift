@@ -67,6 +67,7 @@ struct AppStorageEnvironmentTests {
         "device a",
         "device/a",
         "device.a",
+        "Device-A",
         String(repeating: "a", count: 33)
     ])
     func refusesAnUnusableProfileName(_ name: String) {
@@ -78,6 +79,30 @@ struct AppStorageEnvironmentTests {
     func sandboxIsNotTheProductionStore() {
         #expect(!AppStorageEnvironment.shared.isProductionStore)
         #expect(AppStorageEnvironment.deviceProfileSuiteName("device-a") == "com.TablePro.profile.device-a")
+    }
+
+    @Test("A device profile keeps its folder, suite and sync items apart and still starts the account and sync")
+    func deviceProfileStorage() throws {
+        let support = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppStorageEnvironmentTests-\(UUID().uuidString)", isDirectory: true)
+        let name = "unit-\(UUID().uuidString.prefix(8).lowercased())"
+        defer {
+            try? FileManager.default.removeItem(at: support)
+            UserDefaults.standard.removePersistentDomain(forName: AppStorageEnvironment.deviceProfileSuiteName(name))
+        }
+
+        let environment = AppStorageEnvironment.deviceProfile(named: name, in: support, isUnitTestHost: true)
+
+        #expect(environment.deviceProfile == name)
+        #expect(!environment.isIsolated)
+        #expect(!environment.isProductionStore)
+        #expect(environment.supportDirectory.path == support.appendingPathComponent("TablePro-\(name)/TablePro").path)
+        #expect(FileManager.default.fileExists(atPath: environment.supportDirectory.path))
+        #expect(environment.defaultsSuiteName == "com.TablePro.profile.\(name)")
+        #expect(environment.defaults !== UserDefaults.standard)
+        let items = try #require(environment.deviceItems as? ProfileDeviceKeychainItems)
+        #expect(items.profile == name)
+        #expect(items.base is SystemDeviceKeychainItems)
     }
 
     @Test("Whitespace around the path is not a path")
