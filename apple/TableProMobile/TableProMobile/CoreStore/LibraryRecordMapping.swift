@@ -12,16 +12,18 @@ nonisolated enum LibraryRecordMapping {
 
     // MARK: - Connections
 
+    // `earlier` holds the flags an earlier build kept in UserDefaults, read until they move into the record.
     static func connection(
         _ stored: LibraryConnectionRecord,
         isFavorite: Bool,
-        flags: ConnectionDeviceFlags
+        earlier: ConnectionDeviceFlags = ConnectionDeviceFlags()
     ) -> DatabaseConnection {
         let record = stored.connection
         let details = stored.details
         let id = UUID(uuidString: record.id) ?? derivedId(record.id, "connection")
         let level = safeMode(record.safeMode)
-        let ssl = sslConfiguration(record.tls, legacyRequire: flags.legacySSLRequire.contains(id))
+        let legacyRequire = stored.device.tlsModeUnsettled || earlier.legacySSLRequire.contains(id)
+        let ssl = sslConfiguration(record.tls, legacyRequire: legacyRequire)
         var additionalFields = details.additionalFields
         if let database = details.redisDatabase {
             additionalFields[redisDatabaseKey] = String(database)
@@ -51,7 +53,7 @@ nonisolated enum LibraryRecordMapping {
             isSample: stored.device.isSample
         )
         connection.sshProfileId = details.sshProfileId.flatMap(UUID.init(uuidString:))
-        connection.clearsSSHProfileLink = flags.profileLinksToClear.contains(id)
+        connection.clearsSSHProfileLink = stored.device.sshProfileUnlinked || earlier.profileLinksToClear.contains(id)
         connection.sshRoute = details.sshRoute.flatMap(route)
         return connection
     }
@@ -109,6 +111,8 @@ nonisolated enum LibraryRecordMapping {
             tunnelCommand: nil
         )
         device.isSample = connection.isSample
+        device.tlsModeUnsettled = connection.sslConfiguration?.isLegacyRequire == true
+        device.sshProfileUnlinked = connection.clearsSSHProfileLink
         return LibraryConnectionRecord(connection: record, details: details, device: device)
     }
 

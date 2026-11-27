@@ -70,11 +70,7 @@ struct LibraryRecordMappingTests {
     func everyFieldRoundTrips() {
         let connection = fullConnection()
         let record = LibraryRecordMapping.record(connection, keeping: nil)
-        let read = LibraryRecordMapping.connection(
-            record,
-            isFavorite: true,
-            flags: ConnectionDeviceFlags(of: [connection])
-        )
+        let read = LibraryRecordMapping.connection(record, isFavorite: true)
 
         #expect(read == connection)
         #expect(record.details.redisDatabase == 3)
@@ -84,7 +80,7 @@ struct LibraryRecordMappingTests {
     @Test("A write of what was read keeps every value only the Mac or the core holds")
     func storedValuesSurviveAnUntouchedWrite() throws {
         let stored = try #require(LibraryRecordMapping.record(fullConnection(), keeping: nil).withMacOnlyValues())
-        let read = LibraryRecordMapping.connection(stored, isFavorite: false, flags: ConnectionDeviceFlags())
+        let read = LibraryRecordMapping.connection(stored, isFavorite: false)
 
         #expect(read.safeModeLevel == .confirmWrites)
         #expect(read.sslConfiguration?.mode == .verifyFull)
@@ -95,7 +91,7 @@ struct LibraryRecordMappingTests {
     @Test("An edit writes the value iOS shows, and keeps what it does not touch")
     func editReplacesOnlyWhatChanged() throws {
         let stored = try #require(LibraryRecordMapping.record(fullConnection(), keeping: nil).withMacOnlyValues())
-        var read = LibraryRecordMapping.connection(stored, isFavorite: false, flags: ConnectionDeviceFlags())
+        var read = LibraryRecordMapping.connection(stored, isFavorite: false)
         read.safeModeLevel = .readOnly
         read.name = "Renamed"
 
@@ -169,8 +165,8 @@ struct LibraryRecordMappingTests {
         ssh.jumpHosts = [SshJumpHostRecord(id: nil, host: "typed", port: nil, username: nil, auth: nil, keyPath: nil)]
         record.connection.ssh = ssh
 
-        let first = LibraryRecordMapping.connection(record, isFavorite: false, flags: ConnectionDeviceFlags())
-        let second = LibraryRecordMapping.connection(record, isFavorite: false, flags: ConnectionDeviceFlags())
+        let first = LibraryRecordMapping.connection(record, isFavorite: false)
+        let second = LibraryRecordMapping.connection(record, isFavorite: false)
 
         #expect(first.sshConfiguration?.jumpHosts.map(\.id) == second.sshConfiguration?.jumpHosts.map(\.id))
         #expect(LibraryRecordMapping.record(first, keeping: record).connection.ssh == record.connection.ssh)

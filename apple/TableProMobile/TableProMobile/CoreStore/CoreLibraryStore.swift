@@ -48,11 +48,12 @@ final class CoreLibraryStore {
     private var storedTags: [UUID: TagRecord] = [:]
     private var storedFavorites: [UUID] = []
     private var heldByCore: Set<UUID> = []
+    // Flags an earlier build kept in UserDefaults, read at load until one write moves them into the core's records.
+    private var earlierFlags = ConnectionDeviceFlags()
     // The digest of the core's file as this store last read or wrote it; a write over another file is refused.
     private var fileDigest: String?
     // The previous stable's copies of connections the core holds unread, which every mirror write keeps.
     private var legacyCopiesOfHeld: [DatabaseConnection] = []
-    private var flags = ConnectionDeviceFlags()
     private var secretCopiesPending = false
 
     // Pasted SSH keys an older build left in connections.json that the Keychain has not taken yet.
@@ -100,7 +101,7 @@ final class CoreLibraryStore {
         pastedSSHKeys = legacy.pastedSSHKeys
         legacyCopiesOfHeld = []
         let legacyDigest = mirror.digest()
-        flags = ConnectionDeviceFlags(defaults: defaults)
+        earlierFlags = ConnectionDeviceFlags(defaults: defaults)
 
         // The core reads a blank file as an empty library, and its own writes never leave one, so one is damage.
         if let bytes = try? Data(contentsOf: coreFileURL), bytes.allSatisfy(Self.asciiWhitespace.contains) {
@@ -141,7 +142,21 @@ final class CoreLibraryStore {
                 mirror.logBehind(error)
             }
         }
+        moveEarlierFlags(image, in: library)
         return image
+    }
+
+    // One write puts the flags an earlier build kept in UserDefaults into the core's records, then their keys go. A write
+    // that does not land keeps the keys, and the next load tries again.
+    private func moveEarlierFlags(_ image: Library, in library: ConnectionLibrary) {
+        guard !earlierFlags.isEmpty else { return }
+        do {
+            _ = try replace(with: image, favoritesOrder: favoritesOrder, in: library)
+            earlierFlags = ConnectionDeviceFlags()
+            ConnectionDeviceFlags.forget(in: defaults)
+        } catch {
+            Self.logger.error("The device flags an earlier build kept did not move into the library: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+        }
     }
 
     // Whether the core's store moved since this store last read or wrote it, as a pass that pulled moves it.
@@ -160,8 +175,10 @@ final class CoreLibraryStore {
         if cleaned != readable {
             try removeSecretCopies()
         }
-        flags = ConnectionDeviceFlags(of: imported.connections).keeping(heldByCore, from: flags)
         let digest = try replace(with: imported, favoritesOrder: favoritesOrder, in: library)
+        // The previous stable's files carry both flags on each connection, so the imported records hold them now.
+        earlierFlags = ConnectionDeviceFlags()
+        ConnectionDeviceFlags.forget(in: defaults)
         loaded = true
         if cleaned != readable {
             do {
@@ -213,16 +230,7 @@ final class CoreLibraryStore {
         // Taken out by the same write, under its check of the file, rather than by deletes that would not check it.
         let unread = removed.connections.intersection(heldByCore)
         let staying = heldByCore.subtracting(unread)
-        let previousFlags = flags
-        flags = ConnectionDeviceFlags(of: next.connections).keeping(staying, from: flags)
-        let digest: String?
-        do {
-            digest = try replace(with: next, favoritesOrder: favoritesOrder, removing: unread, keepingHeld: staying, in: library)
-        } catch {
-            // A write that did not land keeps the flags of the entries it was taking out.
-            flags = previousFlags
-            throw error
-        }
+        let digest = try replace(with: next, favoritesOrder: favoritesOrder, removing: unread, keepingHeld: staying, in: library)
         heldByCore.subtract(unread)
         legacyCopiesOfHeld.removeAll { unread.contains($0.id) }
         pastedSSHKeys = pasted
@@ -263,7 +271,6 @@ final class CoreLibraryStore {
             if contents.digest == written.digest {
                 remember(contents)
             }
-            flags.save(to: defaults)
             return written.digest
         } catch {
             Self.logger.error("The core refused the library write: \(LogRedaction.publicDescription(of: error), privacy: .public)")
@@ -329,7 +336,7 @@ final class CoreLibraryStore {
                 LibraryRecordMapping.connection(
                     record,
                     isFavorite: UUID(uuidString: record.connection.id).map(favorites.contains) ?? false,
-                    flags: flags
+                    earlier: earlierFlags
                 )
             },
             groups: contents.groups.map(LibraryRecordMapping.group),

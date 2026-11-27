@@ -391,6 +391,28 @@ struct CoreLibraryStoreTests {
         #expect(!FileManager.default.fileExists(atPath: reopened.unreadableCopyURL.path))
     }
 
+    @Test("The device flags an earlier build kept in UserDefaults move into the core's records, and their keys go")
+    func earlierDeviceFlagsMoveIntoTheRecords() throws {
+        let store = makeStore()
+        var library = try store.load()
+        var connection = DatabaseConnection(name: "Orders", type: .postgresql, sslEnabled: true)
+        connection.sslConfiguration = SSLConfiguration(mode: .require)
+        library.connections = [connection]
+        try store.write(library, keepingPastedSSHKeys: [:])
+        defaults.set([connection.id.uuidString], forKey: ConnectionDeviceFlags.legacySSLRequireKey)
+        defaults.set([connection.id.uuidString], forKey: ConnectionDeviceFlags.profileLinksToClearKey)
+
+        let moved = try #require(try makeStore().load().connections.first)
+        let reread = try #require(try makeStore().load().connections.first)
+
+        #expect(moved.sslConfiguration?.isLegacyRequire == true)
+        #expect(moved.clearsSSHProfileLink)
+        #expect(defaults.stringArray(forKey: ConnectionDeviceFlags.legacySSLRequireKey) == nil)
+        #expect(defaults.stringArray(forKey: ConnectionDeviceFlags.profileLinksToClearKey) == nil)
+        #expect(reread.sslConfiguration?.isLegacyRequire == true)
+        #expect(reread.clearsSSHProfileLink)
+    }
+
     @Test("An older build's SSL require and a dropped profile link survive the core")
     func deviceFlagsSurvive() throws {
         let store = makeStore()
