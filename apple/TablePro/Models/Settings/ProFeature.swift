@@ -77,7 +77,7 @@ internal enum ProFeature: String, CaseIterable {
         case .iCloudSync:
             return String(localized: "Sync connections, settings, and favorites across your Macs.")
         case .serviceSync:
-            return String(localized: "Sync your connections, settings, and query history through your TablePro account, end-to-end encrypted.")
+            return String(localized: "Sync your connections, settings, and query history through your TablePro account. Passwords and query history are end-to-end encrypted.")
         case .encryptedExport:
             return String(localized: "Export connections with encrypted credentials.")
         case .envVarReferences:
