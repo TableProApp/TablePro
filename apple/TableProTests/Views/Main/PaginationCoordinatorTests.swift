@@ -244,8 +244,9 @@ struct PaginationCoordinatorTests {
         #expect(!built.contains("WHERE"))
     }
 
-    // SQLite takes NULL in a primary key that is not its rowid, and a seek passes over every NULL key.
-    @Test("A key the catalog says can hold NULL keeps the offset, unless it is a lone INTEGER rowid")
+    // SQLite takes NULL in a primary key that is not its rowid, `INTEGER PRIMARY KEY DESC` included, and a seek passes
+    // over every NULL key.
+    @Test("A key the catalog says can hold NULL keeps the offset, a lone INTEGER key too")
     func nullableKeyKeepsTheOffset() {
         let (coordinator, tabManager, tabId) = makeKeyedCoordinator(page: 3, type: .sqlite, keyIsNullable: true)
         coordinator.goToNextPage()
@@ -256,6 +257,8 @@ struct PaginationCoordinatorTests {
         rows.columnNullable = ["id": true]
         #expect(!MainContentCoordinator.keyHoldsNoNull(["id"], in: rows))
         rows.columnDeclaredTypes = ["id": "integer"]
+        #expect(!MainContentCoordinator.keyHoldsNoNull(["id"], in: rows))
+        rows.columnNullable = ["id": false]
         #expect(MainContentCoordinator.keyHoldsNoNull(["id"], in: rows))
         #expect(!MainContentCoordinator.keyHoldsNoNull(["id", "name"], in: rows))
     }

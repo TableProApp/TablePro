@@ -73,11 +73,10 @@ extension MainContentCoordinator {
     }
 
     // A seek past an edge compares the key, which passes over every NULL one: SQLite takes NULL in a primary key that
-    // is not its rowid, and those rows would drop out of each page read toward them. A lone INTEGER key is the rowid,
-    // never NULL, though SQLite reports it nullable.
+    // is not its rowid, and those rows would drop out of each page read toward them. A lone INTEGER key is not proof
+    // of the rowid: `INTEGER PRIMARY KEY DESC` is an ordinary column, and the catalog reports both nullable.
     static func keyHoldsNoNull(_ keys: [String], in rows: TableRows) -> Bool {
-        if keys.count == 1, rows.columnDeclaredTypes[keys[0]]?.uppercased() == "INTEGER" { return true }
-        return keys.allSatisfy { rows.columnNullable[$0] == false }
+        keys.allSatisfy { rows.columnNullable[$0] == false }
     }
 
     // A row added in the grid has no place on the server yet, and a key with a NULL part orders nowhere.

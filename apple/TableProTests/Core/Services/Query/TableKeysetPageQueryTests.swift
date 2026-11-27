@@ -126,6 +126,7 @@ struct TableKeysetPageQueryTests {
         #expect(Self.query(Self.seek(["1\u{301}"], types: [.decimal(rawType: "NUMERIC")])) == nil)
         #expect(Self.query(Self.seek(["2460640.12345679"], types: [.date(rawType: "DATE")])) == nil)
         #expect(Self.query(Self.seek(["2024-11-03 01:30:00"], types: [.timestamp(rawType: "TIMESTAMP")])) == nil)
+        #expect(Self.query(Self.seek(["a\u{0}b"], types: [.text(rawType: "TEXT")])) == nil)
         #expect(Self.query(Self.seek(["1 OR 1=1"])) == nil)
         #expect(Self.query(Self.seek(["5"]), sort: Self.byKey(["name"])) == nil)
         #expect(Self.query(Self.seek(["5"]), sort: Self.byKey(["id"], .descending)) == nil)

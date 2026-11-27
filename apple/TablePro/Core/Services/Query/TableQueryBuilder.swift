@@ -206,8 +206,9 @@ struct TableQueryBuilder {
         case .text(let rawType) where (rawType ?? "").isEmpty || rawType?.uppercased() == "ANY":
             return nil
         // A SQLite column of a date or other non-text type keeps a number-like value as a double, printed rounded.
+        // Standard escaping drops a NUL, and SQLite keeps one in text, so that literal would name another key.
         case .text, .date, .datetime:
-            guard Double(text) == nil || Self.isWholeNumber(text) else { return nil }
+            guard Double(text) == nil || Self.isWholeNumber(text), !text.unicodeScalars.contains("\0") else { return nil }
             let body = SQLQuoting.stringLiteralBody(text, escapes: stringEscapes)
             return "\(SQLStringLiteralPrefix.forDatabaseType(databaseType))'\(body)'"
         // A MySQL TIMESTAMP prints in the session's zone, where the hour a clock turns back reads twice.
