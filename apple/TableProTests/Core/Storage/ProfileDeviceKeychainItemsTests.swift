@@ -2,6 +2,7 @@ import Foundation
 import os
 import Security
 @testable import TablePro
+import TableProFFI
 import Testing
 
 private final class RecordingDeviceKeychain: DeviceKeychainItems, @unchecked Sendable {
