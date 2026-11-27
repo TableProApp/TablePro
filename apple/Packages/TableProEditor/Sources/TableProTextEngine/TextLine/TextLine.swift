@@ -26,6 +26,12 @@ public final class TextLine: Identifiable, Equatable {
         typesetter = Typesetter()
     }
 
+    /// Marks a line that was typeset as needing layout, and leaves one that never was as it is.
+    func discardTypesetting() {
+        guard !needsLayout else { return }
+        setNeedsLayout()
+    }
+
     /// Determines if the line needs to be laid out again.
     /// - Parameter maxWidth: The new max width to check.
     /// - Returns: True, if this line has been marked as needing layout using ``TextLine/setNeedsLayout()`` or if the
