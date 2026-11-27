@@ -57,7 +57,8 @@ struct DataGridCellContent {
         case .absent:
             return absentFieldText
         case .unloaded(let byteCount):
-            return unloadedText(byteCount: byteCount)
+            // A text value left on the server arrives with its first characters, shown as the start of a longer value.
+            return displayText.isEmpty ? unloadedText(byteCount: byteCount) : displayText + "…"
         }
     }
 

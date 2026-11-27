@@ -76,15 +76,13 @@ final class SQLCompletionService: QueryCompletionService {
                   text: window.text,
                   cursorPosition: offset - window.start,
                   keywordCase: keywordCase,
-                  identifierCase: identifierCase
+                  identifierCase: identifierCase,
+                  suppressesEmptyPrefix: !isManualTrigger
               ) else {
             return nil
         }
 
         let context = result.sqlContext.offset(by: window.start)
-        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(context, isManualTrigger: isManualTrigger) else {
-            return nil
-        }
 
         lastContext = context
         return QueryCompletionSession(

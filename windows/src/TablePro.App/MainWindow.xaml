@@ -36,6 +36,8 @@
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="ImportAppMenu" x:Name="MenuImportFromApp" AutomationProperties.AutomationId="MenuImportFromApp" Click="OnImportFromApp" />
                 <MenuFlyoutItem x:Uid="MenuExportConnections" x:Name="MenuExportConnections" Click="OnExportConnections" />
+                <!-- The Connections page's switcher, here for the keyboard and for a window with no Connections page. -->
+                <MenuFlyoutSubItem x:Uid="MenuProject" x:Name="MenuProject" AutomationProperties.AutomationId="MenuProject" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuNewQueryTab" x:Name="MenuNewQueryTab" Click="OnNewQueryTab" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuCloseTab" x:Name="MenuCloseTab" Click="OnCloseTab" IsEnabled="False" />

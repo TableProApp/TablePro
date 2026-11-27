@@ -139,9 +139,10 @@ impl Core {
         let paths = self.paths.clone().ok_or_else(no_storage)?;
         let history = self.history.clone();
         let tasks = self.tasks.clone();
+        let connections = self.store.clone();
         on_runtime(&self.tasks, async move {
             history
-                .get_or_try_init(|| QueryHistoryStore::open(paths, tasks))
+                .get_or_try_init(|| QueryHistoryStore::open(paths, tasks, connections))
                 .await
                 .cloned()
         })
@@ -420,6 +421,7 @@ impl Core {
         HistoryAccess {
             paths: self.paths.clone(),
             store: self.history.clone(),
+            connections: self.store.clone(),
         }
     }
 

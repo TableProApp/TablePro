@@ -85,7 +85,7 @@ internal sealed class ImportFromAppPanel : IDisposable
         _sources = sources;
         _queuePasswords = wantsPasswords;
         _queueQueries = wantsQueries;
-        _form = new ForeignImportForm(importer);
+        _form = new ForeignImportForm(importer, workbench.ActiveProject);
         LayOutChoose();
         LayOutReading();
         LayOutReview();
@@ -478,7 +478,7 @@ internal sealed class ImportFromAppPanel : IDisposable
 
         var app = _queue[_next++].App;
         _form.Dispose();
-        _form = new ForeignImportForm(_importer, _sources, app);
+        _form = new ForeignImportForm(_importer, _sources, app, _workbench.ActiveProject);
         _form.SetPasswords(_queuePasswords);
         _form.SetQueries(_queueQueries);
         if (!_form.CanContinue)

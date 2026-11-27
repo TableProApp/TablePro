@@ -82,6 +82,9 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     private let defaults: UserDefaults
     private let frecencyStore: QuickSwitcherFrecencyStore
     private let catalogStore: QuickSwitcherCatalogStore
+    // The active project's connections, or nil in All Connections.
+    private let projectConnectionIds: @MainActor () -> Set<UUID>?
+    private var scopeSubscription: AnyCancellable?
 
     /// The catalog arriving is what ends the load, so this owns `isLoading` rather than the one
     /// call site that happened to fetch it. A load that is superseded or cancelled after it has
@@ -232,13 +235,22 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         connectionId: UUID,
         services: AppServices,
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        catalogStore: QuickSwitcherCatalogStore = .shared
+        catalogStore: QuickSwitcherCatalogStore = .shared,
+        projectConnectionIds: @escaping @MainActor () -> Set<UUID>? = { ConnectionScope.shared.allowedConnectionIds },
+        scopeChanged: AnyPublisher<Void, Never> = ConnectionScope.shared.scopedSetChanged
     ) {
+        self.projectConnectionIds = projectConnectionIds
         self.connectionId = connectionId
         self.services = services
         self.defaults = defaults
         self.catalogStore = catalogStore
         self.frecencyStore = QuickSwitcherFrecencyStore(connectionId: connectionId, defaults: defaults)
+        // The queries of other connections are the active project's. The revision is part of the version a
+        // load is checked against, so one already out under the old scope is dropped.
+        scopeSubscription = scopeChanged
+            .sink { [weak self] _ in
+                self?.invalidateCrossConnectionQueryItems()
+            }
     }
 
     convenience init(connectionId: UUID = UUID()) {
@@ -586,7 +598,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             }
         }
 
-        let targets = queryTargets()
+        let projectIds = projectConnectionIds()
+        let targets = queryTargets(projectConnectionIds: projectIds)
         async let favorites = services.sqlFavoriteManager.fetchFavorites(
             allowedConnectionIds: Set(targets.keys)
         )
@@ -609,7 +622,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// The panel's own connection stays listed while its session is reconnecting. Saved queries and
     /// history are stored locally, so a session that dropped is no reason to hide the queries the
     /// panel was opened next to, and the All scope keeps showing them either way.
-    private func queryTargets() -> [UUID: QuickSwitcherTarget] {
+    private func queryTargets(projectConnectionIds: Set<UUID>?) -> [UUID: QuickSwitcherTarget] {
         var targets = Dictionary(
             connectedSessions().map { ($0.id, queryTarget(for: $0)) },
             uniquingKeysWith: { _, latest in latest }
@@ -618,7 +631,17 @@ internal final class QuickSwitcherViewModel: ObservableObject {
            let session = services.databaseManager.session(for: connectionId) {
             targets[connectionId] = queryTarget(for: session)
         }
-        return targets
+        return Self.inActiveProject(targets, own: connectionId, projectConnectionIds: projectConnectionIds)
+    }
+
+    // The panel's own connection stays, since its window is open whatever project is active.
+    static func inActiveProject<Target>(
+        _ targets: [UUID: Target],
+        own connectionId: UUID,
+        projectConnectionIds: Set<UUID>?
+    ) -> [UUID: Target] {
+        guard let projectConnectionIds else { return targets }
+        return targets.filter { $0.key == connectionId || projectConnectionIds.contains($0.key) }
     }
 
     /// One busy connection must not crowd every other one out of the list. A single query capped at
@@ -916,7 +939,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
     private var crossConnectionQueryVersion: CrossConnectionQueryVersion {
         CrossConnectionQueryVersion(
-            connectedConnectionIds: queryTargets().keys.sorted { $0.uuidString < $1.uuidString },
+            connectedConnectionIds: queryTargets(projectConnectionIds: projectConnectionIds()).keys.sorted { $0.uuidString < $1.uuidString },
             contentRevision: crossConnectionQueryContentRevision
         )
     }

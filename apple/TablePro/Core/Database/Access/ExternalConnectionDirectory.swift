@@ -58,6 +58,22 @@ internal enum ExternalConnectionDirectory {
         )
     }
 
+    // What an outside client is offered: the active project's connections. A lookup by id, the in-app
+    // chat and the sheets that grant access read `listings()`, which no project narrows.
+    @MainActor
+    internal static func listingsInActiveProject() -> [ExternalConnectionListing] {
+        inScope(listings(), allowedConnectionIds: ConnectionScope.shared.allowedConnectionIds)
+    }
+
+    // Nil is All Connections.
+    internal static func inScope(
+        _ listings: [ExternalConnectionListing],
+        allowedConnectionIds: Set<UUID>?
+    ) -> [ExternalConnectionListing] {
+        guard let allowedConnectionIds else { return listings }
+        return listings.filter { allowedConnectionIds.contains($0.id) }
+    }
+
     // A session the reconnect loop is redialing is not connected to an outside client.
     internal static func liveState(for session: ConnectionSession) -> LiveState {
         LiveState(

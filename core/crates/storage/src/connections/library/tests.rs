@@ -10,25 +10,25 @@ use crate::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, LibraryIcon, StoragePaths, SymbolName,
 };
 
-struct Library {
-    store: ConnectionStore,
+pub(super) struct Library {
+    pub(super) store: ConnectionStore,
     _root: TempDir,
 }
 
 impl Library {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let root = TempDir::new().expect("tempdir");
         let store = ConnectionStore::new(&StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro"));
         Self { store, _root: root }
     }
 
-    fn group(&self, name: &str, parent: Option<&ConnectionGroup>) -> ConnectionGroup {
+    pub(super) fn group(&self, name: &str, parent: Option<&ConnectionGroup>) -> ConnectionGroup {
         self.store
             .create_group_blocking(ConnectionGroup::new(group_name(name), parent.map(|parent| parent.id)))
             .expect("the group")
     }
 
-    fn connection(&self, name: &str, group: Option<&ConnectionGroup>) -> Uuid {
+    pub(super) fn connection(&self, name: &str, group: Option<&ConnectionGroup>) -> Uuid {
         let connection = SavedConnection {
             group_id: group.map(|group| group.id),
             ..connection(name)
@@ -38,7 +38,7 @@ impl Library {
     }
 
     /// The names of the connections in `group`, in their order.
-    fn in_group(&self, group: Option<&ConnectionGroup>) -> Vec<String> {
+    pub(super) fn in_group(&self, group: Option<&ConnectionGroup>) -> Vec<String> {
         let list = self.store.list_blocking().expect("the list");
         list.connections_in(group.map(|group| group.id))
             .iter()
@@ -47,7 +47,7 @@ impl Library {
     }
 
     /// The names of the groups under `parent`, in their order.
-    fn under(&self, parent: Option<&ConnectionGroup>) -> Vec<String> {
+    pub(super) fn under(&self, parent: Option<&ConnectionGroup>) -> Vec<String> {
         let list = self.store.list_blocking().expect("the list");
         list.group_tree()
             .children(parent.map(|parent| parent.id))
@@ -65,11 +65,11 @@ impl Library {
             .collect()
     }
 
-    fn revision(&self) -> u64 {
+    pub(super) fn revision(&self) -> u64 {
         self.store.snapshot().revision
     }
 
-    fn seeded(document: &ConnectionsDocument) -> Self {
+    pub(super) fn seeded(document: &ConnectionsDocument) -> Self {
         let library = Self::new();
         let file = library.store.path().to_owned();
         std::fs::create_dir_all(file.parent().expect("a parent")).expect("the directory");
@@ -77,22 +77,22 @@ impl Library {
         library
     }
 
-    fn import(&self, document: &ConnectionsDocument) {
+    pub(super) fn import(&self, document: &ConnectionsDocument) {
         self.store
             .import_blocking(Path::new("/tmp/c.json"), &encoded(document))
             .expect("the import");
     }
 }
 
-fn encoded(document: &ConnectionsDocument) -> Vec<u8> {
+pub(super) fn encoded(document: &ConnectionsDocument) -> Vec<u8> {
     crate::document::encode_document(document).expect("encode")
 }
 
-fn group_name(name: &str) -> ConnectionGroupName {
+pub(super) fn group_name(name: &str) -> ConnectionGroupName {
     ConnectionGroupName::new(name).expect("a group name")
 }
 
-fn connection(name: &str) -> SavedConnection {
+pub(super) fn connection(name: &str) -> SavedConnection {
     SavedConnection {
         id: Uuid::new_v4(),
         name: name.to_owned(),
@@ -111,6 +111,7 @@ fn connection(name: &str) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
@@ -505,7 +506,7 @@ fn a_named_group_is_found_in_any_case_or_made_last() {
 
     let found = library
         .store
-        .move_connections_to_group_named_blocking(&[b, a], None, group_name("work"))
+        .move_connections_to_group_named_blocking(&[b, a], None, None, group_name("work"))
         .expect("the move");
     assert_eq!(found.id, work.id);
     assert_eq!(
@@ -516,7 +517,7 @@ fn a_named_group_is_found_in_any_case_or_made_last() {
 
     let made = library
         .store
-        .move_connections_to_group_named_blocking(&[c], Some(work.id), group_name("Staging"))
+        .move_connections_to_group_named_blocking(&[c], Some(work.id), None, group_name("Staging"))
         .expect("the new group");
     assert_eq!(made.parent_id, Some(work.id));
     assert_eq!(library.under(Some(&work)), ["Staging"]);
@@ -525,7 +526,7 @@ fn a_named_group_is_found_in_any_case_or_made_last() {
     let revision = library.revision();
     library
         .store
-        .move_connections_to_group_named_blocking(&[a], None, group_name("Work"))
+        .move_connections_to_group_named_blocking(&[a], None, None, group_name("Work"))
         .expect("already there");
     assert_eq!(library.revision(), revision);
 }
@@ -545,7 +546,7 @@ fn a_named_group_prefers_the_exact_name_and_respects_the_depth_limit() {
 
     let found = library
         .store
-        .move_connections_to_group_named_blocking(&[a], None, group_name("WORK"))
+        .move_connections_to_group_named_blocking(&[a], None, None, group_name("WORK"))
         .expect("the move");
     assert_eq!(found.id, lower.id);
 
@@ -553,7 +554,7 @@ fn a_named_group_prefers_the_exact_name_and_respects_the_depth_limit() {
     let eu = library.group("EU", Some(&staging));
     let deep = library
         .store
-        .move_connections_to_group_named_blocking(&[a], Some(eu.id), group_name("Paris"));
+        .move_connections_to_group_named_blocking(&[a], Some(eu.id), None, group_name("Paris"));
     assert!(matches!(deep, Err(StorageError::GroupTooDeep { .. })), "{deep:?}");
 }
 

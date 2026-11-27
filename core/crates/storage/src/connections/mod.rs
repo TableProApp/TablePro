@@ -16,7 +16,7 @@ use crate::error::StorageError;
 use crate::journal::{ChangeJournal, JournalEntry, JournalSlot, RecordKind, RecordRef};
 use crate::lenient::{Identified, Lenient};
 use crate::store_identity::StoreIdentity;
-use crate::{ConnectionGroup, ConnectionTag, ConnectionTagName, GroupTree};
+use crate::{ConnectionGroup, ConnectionProject, ConnectionTag, ConnectionTagName, GroupTree};
 
 mod additions;
 mod cloud;
@@ -25,6 +25,7 @@ pub mod field_trust;
 mod library;
 mod placement;
 mod profiles;
+mod projects;
 mod ssh;
 #[cfg(test)]
 mod store_tests;
@@ -38,6 +39,7 @@ pub use details::{
 };
 pub use library::{LibraryRead, LibraryWrite, Rebuilt};
 pub use profiles::{CredentialPassword, CredentialProfile, SshProfile};
+pub use projects::ProjectMembership;
 pub use ssh::{
     RemoteFileAccess, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm,
     SshTotpMode,
@@ -82,6 +84,9 @@ pub struct SavedConnection {
     pub color: Option<crate::ConnectionColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_id: Option<Uuid>,
+    /// Counts only while the connection has no group, whose top-level group decides otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<Uuid>,
     /// Every write numbers each group's connections from 0 again.
     #[serde(default)]
     pub order: u32,
@@ -155,6 +160,7 @@ impl SavedConnection {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
@@ -239,6 +245,8 @@ struct ConnectionsDocument {
     tags: Vec<ConnectionTag>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     favorites: Vec<Uuid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    projects: Vec<ConnectionProject>,
     #[serde(default, skip_serializing_if = "is_empty_list")]
     ssh_profiles: Lenient<SshProfile>,
     #[serde(default, skip_serializing_if = "is_empty_list")]
@@ -269,6 +277,7 @@ impl ConnectionsDocument {
             groups: Arc::from(self.groups.as_slice()),
             tags: Arc::from(self.tags.as_slice()),
             favorites: Arc::from(self.favorites.as_slice()),
+            projects: Arc::from(self.projects.as_slice()),
             ssh_profiles: Arc::from(self.ssh_profiles.as_slice()),
             credential_profiles: Arc::from(self.credential_profiles.as_slice()),
             unreadable: Arc::from(self.connections.held_ids()),
@@ -316,6 +325,7 @@ impl ConnectionsDocument {
                 &before.credential_profiles,
                 &self.credential_profiles,
             ),
+            list_changes(RecordKind::ConnectionProject, &before.projects, &self.projects),
         ]
         .into_iter()
         .filter(|entry| !entry.is_empty())
@@ -334,6 +344,7 @@ impl ConnectionsDocument {
             groups: self.groups.clone(),
             tags: self.tags.clone(),
             favorites: self.favorites.clone(),
+            projects: self.projects.clone(),
             ..Self::default()
         }
     }
@@ -370,6 +381,7 @@ impl ConnectionsDocument {
             groups,
             tags,
             favorites: self.favorites,
+            projects: self.projects,
             ..Self::default()
         };
         imported.merge_tags_by_name();
@@ -418,6 +430,7 @@ pub struct ConnectionList {
     pub groups: Arc<[ConnectionGroup]>,
     pub tags: Arc<[ConnectionTag]>,
     pub favorites: Arc<[Uuid]>,
+    pub projects: Arc<[ConnectionProject]>,
     pub ssh_profiles: Arc<[SshProfile]>,
     pub credential_profiles: Arc<[CredentialProfile]>,
     /// Ids of connections this build cannot read. The file keeps them as they were.
@@ -435,6 +448,7 @@ impl ConnectionList {
             groups: Arc::from([]),
             tags: tags.into(),
             favorites: Arc::from([]),
+            projects: Arc::from([]),
             ssh_profiles: Arc::from([]),
             credential_profiles: Arc::from([]),
             unreadable: Arc::from([]),
@@ -455,6 +469,14 @@ impl ConnectionList {
     pub fn with_favorites(self, favorites: impl Into<Arc<[Uuid]>>) -> Self {
         Self {
             favorites: favorites.into(),
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_projects(self, projects: impl Into<Arc<[ConnectionProject]>>) -> Self {
+        Self {
+            projects: projects.into(),
             ..self
         }
     }
@@ -562,12 +584,18 @@ pub struct ImportPreview {
     entries: Vec<ImportEntry>,
     before: ConnectionsDocument,
     after: ConnectionsDocument,
+    changes: bool,
 }
 
 impl ImportPreview {
     /// Each connection of the file as it will be saved, in file order.
     pub fn entries(&self) -> &[ImportEntry] {
         &self.entries
+    }
+
+    // A file of projects or groups and no connections still changes the list.
+    pub fn changes_library(&self) -> bool {
+        self.changes
     }
 
     pub fn report(&self) -> ImportReport {
@@ -615,6 +643,13 @@ pub enum ImportChange {
 pub enum RemoveOutcome {
     Removed,
     NotPresent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Writer {
+    Local,
+    // A pull has no order, so it settles no membership but that of a deleted group's members.
+    Pull,
 }
 
 // The file's bytes when the cache was read from it or written to it, `None` for no file.
@@ -707,7 +742,8 @@ impl ConnectionStore {
     /// A new entry, or one that changed group, goes last in its group.
     pub fn upsert_blocking(&self, connection: SavedConnection) -> Result<(), StorageError> {
         let mut state = self.lock_to_write();
-        let mut document = self.ensure_current(&mut state)?;
+        let before = self.ensure_current(&mut state)?;
+        let mut document = before.clone();
         let mut connection = connection;
         let stored = document
             .connections
@@ -722,13 +758,15 @@ impl ConnectionStore {
             Some(slot) => *slot = connection,
             None => document.connections.push(connection),
         }
+        document.keep_membership(&before);
         self.commit(&mut state, document)
     }
 
     // One write, so no publish shows a copy at the end of its group before it moves up.
     pub fn insert_after_blocking(&self, connection: SavedConnection, after: Uuid) -> Result<(), StorageError> {
         let mut state = self.lock_to_write();
-        let mut document = self.ensure_current(&mut state)?;
+        let before = self.ensure_current(&mut state)?;
+        let mut document = before.clone();
         let mut connection = connection;
         let stored = document
             .connections
@@ -740,9 +778,9 @@ impl ConnectionStore {
             .connections
             .iter()
             .find(|saved| saved.id == after)
-            .map(|saved| (saved.group_id, saved.order));
+            .map(|saved| (saved.group_id, saved.order, saved.project_id));
         match anchor {
-            Some((group, order)) => {
+            Some((group, order, project)) => {
                 for later in document
                     .connections
                     .iter_mut()
@@ -751,12 +789,15 @@ impl ConnectionStore {
                     later.order = later.order.saturating_add(1);
                 }
                 connection.group_id = group;
+                // A copy shows beside its original, so it is in the same project.
+                connection.project_id = project;
                 connection.order = order.saturating_add(1);
             }
             None => document.settle_place(&mut connection, stored),
         }
         document.connections.release(connection.id);
         document.connections.push(connection);
+        document.keep_membership(&before);
         self.commit(&mut state, document)
     }
 
@@ -837,7 +878,8 @@ impl ConnectionStore {
         change: impl FnOnce(&mut SavedConnection),
     ) -> Result<Option<SavedConnection>, StorageError> {
         let mut state = self.lock_to_write();
-        let mut document = self.ensure_current(&mut state)?;
+        let held = self.ensure_current(&mut state)?;
+        let mut document = held.clone();
         let Some(index) = document.connections.iter().position(|saved| saved.id == id) else {
             return Ok(None);
         };
@@ -849,6 +891,7 @@ impl ConnectionStore {
         let kept = Some((before.group_id, changed.order));
         document.settle_place(&mut changed, kept);
         document.connections[index] = changed;
+        document.keep_membership(&held);
         document.tidy();
         let updated = document.connections[index].clone();
         if updated != before {
@@ -916,6 +959,16 @@ impl ConnectionStore {
     /// another id, leaves one tag of each name. Groups are matched by id,
     /// then by the same name in the same place, the same way.
     pub fn preview_import_blocking(&self, path: &Path, bytes: &[u8]) -> Result<ImportPreview, StorageError> {
+        self.preview_import_into_blocking(path, bytes, None)
+    }
+
+    // `project` is where a new entry the file files under no project lands; an updated one keeps its own.
+    pub fn preview_import_into_blocking(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        project: Option<Uuid>,
+    ) -> Result<ImportPreview, StorageError> {
         let mut incoming = crate::document::decode_document::<ConnectionsDocument>(path, bytes)
             .map_err(StorageError::DocumentUnavailable)?
             .imported();
@@ -930,8 +983,24 @@ impl ConnectionStore {
             .map(|saved| (crate::name_rules::shown(&saved.name), saved.id))
             .collect();
         let mut entries = Vec::with_capacity(incoming.connections.len());
-        let same_tags = merge_tags(&mut document.tags, incoming.tags);
-        let same_groups = library::merge_groups(&mut document.groups, &incoming.groups);
+        // Tags ride on the connections that carry them, so a file of tags alone adds none.
+        let same_tags = if incoming.connections.is_empty() {
+            HashMap::new()
+        } else {
+            merge_tags(&mut document.tags, incoming.tags)
+        };
+        let into = project.filter(|id| document.projects.iter().any(|held| held.id == *id));
+        let same_projects = library::merge_projects(&mut document.projects, incoming.projects);
+        let landing = library::Landing {
+            projects: &same_projects,
+            into,
+        };
+        let same_groups = library::merge_groups(&mut document.groups, &incoming.groups, &landing);
+        let was = before.membership();
+        let saved_before: HashMap<Uuid, &SavedConnection> =
+            before.connections.iter().map(|saved| (saved.id, saved)).collect();
+        let landed_in = document.membership();
+        let mut own_paths: HashMap<(Uuid, Option<Uuid>), Option<Uuid>> = HashMap::new();
         let mut landed: HashMap<Uuid, Uuid> = HashMap::with_capacity(incoming.connections.len());
         // Added entries follow the list's own and keep the file's order.
         let mut after: HashMap<Option<Uuid>, u32> = HashMap::new();
@@ -947,14 +1016,45 @@ impl ConnectionStore {
                 .iter()
                 .filter_map(|id| same_tags.get(id).copied())
                 .collect();
-            connection.group_id = connection.group_id.and_then(|id| same_groups.get(&id).copied());
+            let filed = connection.group_id;
+            connection.group_id = filed.and_then(|id| same_groups.get(&id).copied());
+            // An entry the import only updates files under its own project, not the one the file's group landed in.
+            if let Some(leaf) = filed
+                && let Some(group) = connection.group_id
+                && let Some(saved) = saved_before.get(&connection.id)
+                && saved.connects_like(&connection)
+            {
+                let own = was.of_connection(saved);
+                if landed_in.of_group(group) != own {
+                    let kept = *own_paths.entry((leaf, own)).or_insert_with(|| {
+                        let landing = library::Landing {
+                            projects: &same_projects,
+                            into: own,
+                        };
+                        library::merge_group_path(&mut document.groups, &incoming.groups, leaf, &landing)
+                    });
+                    connection.group_id = kept.or(connection.group_id);
+                }
+            }
+            connection.project_id = match connection.group_id {
+                Some(_) => None,
+                None => landing.named(connection.project_id),
+            };
             let last = *after
                 .entry(connection.group_id)
                 .or_insert_with(|| placement::next_order(&document.connections, connection.group_id));
             connection.order = connection.order.saturating_add(last);
-            let entry = merge_connection(&mut document.connections, &held, connection);
+            let entry = merge_connection(&mut document.connections, &held, connection, into);
             landed.insert(from, entry.connection.id);
             entries.push(entry);
+        }
+        document.keep_membership(&before);
+        let settled: HashMap<Uuid, &SavedConnection> =
+            document.connections.iter().map(|saved| (saved.id, saved)).collect();
+        for entry in &mut entries {
+            if let Some(saved) = settled.get(&entry.connection.id) {
+                entry.connection.project_id = saved.project_id;
+            }
         }
         // Added and never taken away: a file that lists none must not
         // clear the user's.
@@ -964,10 +1064,15 @@ impl ConnectionStore {
                 document.favorites.push(*id);
             }
         }
+        // Against the list as any write would settle it, so a membership id a pull left in place counts as no change.
+        let mut settled = before.clone();
+        settled.keep_membership(&before);
+        let changes = document != settled;
         Ok(ImportPreview {
             entries,
             before,
             after: document,
+            changes,
         })
     }
 
@@ -980,9 +1085,8 @@ impl ConnectionStore {
         if current != preview.before {
             return Err(StorageError::ImportOutdated);
         }
-        // Nothing to write for an empty file, and writing anyway would
-        // rewrite the list for no reason.
-        if report.total() == 0 {
+        // Writing a list the file left as it was would rewrite it for no reason.
+        if !preview.changes_library() {
             return Ok(report);
         }
         self.commit(&mut state, preview.after.clone())?;
@@ -1086,10 +1190,22 @@ impl ConnectionStore {
         &self,
         change: impl FnOnce(&mut ConnectionsDocument) -> Result<T, StorageError>,
     ) -> Result<T, StorageError> {
+        self.change(Writer::Local, change)
+    }
+
+    fn change<T>(
+        &self,
+        writer: Writer,
+        change: impl FnOnce(&mut ConnectionsDocument) -> Result<T, StorageError>,
+    ) -> Result<T, StorageError> {
         let mut state = self.lock_to_write();
         let before = self.ensure_current(&mut state)?;
         let mut document = before.clone();
         let outcome = change(&mut document)?;
+        match writer {
+            Writer::Local => document.keep_membership(&before),
+            Writer::Pull => document.keep_membership_of_released(&before),
+        }
         document.tidy();
         if document != before {
             self.commit(&mut state, document)?;
@@ -1248,7 +1364,15 @@ fn merge_connection(
     list: &mut Vec<SavedConnection>,
     held: &HashMap<String, Uuid>,
     mut connection: SavedConnection,
+    into: Option<Uuid>,
 ) -> ImportEntry {
+    // Only a new entry lands in the project the import was started in.
+    let added = |mut connection: SavedConnection| {
+        if connection.group_id.is_none() {
+            connection.project_id = connection.project_id.or(into);
+        }
+        connection
+    };
     match list.iter().position(|saved| saved.id == connection.id) {
         Some(index) if list[index].connects_like(&connection) => {
             // Two connections saved without a name to one server share
@@ -1267,6 +1391,9 @@ fn merge_connection(
             let before = std::mem::replace(&mut existing.name, name);
             existing.color = connection.color;
             existing.group_id = connection.group_id;
+            if connection.project_id.is_some() {
+                existing.project_id = connection.project_id;
+            }
             existing.order = order;
             existing.tags = connection.tags;
             existing.icon = connection.icon;
@@ -1279,12 +1406,12 @@ fn merge_connection(
         Some(_) => {
             connection.id = Uuid::new_v4();
             ImportEntry {
-                connection: add_imported(list, held, connection),
+                connection: add_imported(list, held, added(connection)),
                 change: ImportChange::Added,
             }
         }
         None => ImportEntry {
-            connection: add_imported(list, held, connection),
+            connection: add_imported(list, held, added(connection)),
             change: ImportChange::Added,
         },
     }
@@ -1361,6 +1488,7 @@ mod tests {
             last_opened_at: Some(Utc::now()),
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
@@ -1394,6 +1522,7 @@ mod tests {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,

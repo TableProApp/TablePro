@@ -2,10 +2,14 @@ import Foundation
 
 public struct LibraryQueryMatcher: Sendable {
     public let query: LibraryQuery
+    private let words: [String]
     private let tagNamesById: [UUID: String]
+    private let graph: LibraryGroupGraph?
 
-    public init<Tag: LibraryTagRepresentable>(query: LibraryQuery, tags: [Tag]) {
+    public init<Tag: LibraryTagRepresentable>(query: LibraryQuery, tags: [Tag], groups graph: LibraryGroupGraph? = nil) {
         self.query = query
+        words = query.words
+        self.graph = graph
         var names: [UUID: String] = [:]
         for tag in tags where names[tag.id] == nil {
             names[tag.id] = tag.name
@@ -14,16 +18,15 @@ public struct LibraryQueryMatcher: Sendable {
     }
 
     public func matchesText<Connection: LibraryConnectionRepresentable>(_ connection: Connection) -> Bool {
-        let term = query.trimmedText
-        guard !term.isEmpty else { return true }
+        guard !words.isEmpty else { return true }
         let fields = [
             connection.name,
             connection.host,
             connection.database,
             connection.username,
             connection.libraryTypeName
-        ] + connection.tagIds.compactMap { tagNamesById[$0] }
-        return fields.contains { $0.localizedCaseInsensitiveContains(term) }
+        ] + connection.tagIds.compactMap { tagNamesById[$0] } + groupPath(connection.groupId)
+        return everyWord(in: fields)
     }
 
     public func matchesTags<Connection: LibraryConnectionRepresentable>(_ connection: Connection) -> Bool {
@@ -42,16 +45,27 @@ public struct LibraryQueryMatcher: Sendable {
     }
 
     public func matchesText(groupName: String) -> Bool {
-        let term = query.trimmedText
-        guard !term.isEmpty else { return false }
-        return groupName.localizedCaseInsensitiveContains(term)
+        !words.isEmpty && everyWord(in: [groupName])
+    }
+
+    public func matchesText(groupId: UUID) -> Bool {
+        !words.isEmpty && everyWord(in: groupPath(groupId))
     }
 
     public func matches(_ entry: LibraryExternalEntry) -> Bool {
         guard query.tagIds.isEmpty else { return false }
-        let term = query.trimmedText
-        guard !term.isEmpty else { return true }
-        return [entry.name, entry.host, entry.database, entry.username, entry.typeName]
-            .contains { $0.localizedCaseInsensitiveContains(term) }
+        guard !words.isEmpty else { return true }
+        return everyWord(in: [entry.name, entry.host, entry.database, entry.username, entry.typeName])
+    }
+
+    private func groupPath(_ groupId: UUID?) -> [String] {
+        guard let groupId, let graph else { return [] }
+        return graph.pathNames(to: groupId)
+    }
+
+    private func everyWord(in fields: [String]) -> Bool {
+        words.allSatisfy { word in
+            fields.contains { $0.localizedCaseInsensitiveContains(word) }
+        }
     }
 }

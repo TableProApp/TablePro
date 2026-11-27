@@ -7,7 +7,6 @@ import TableProTabularIO
 // Another connection for a file opened from another app. Picking one closes this sheet and opens that connection
 // with the file, the way a link to it opens it.
 struct ImportConnectionChoice {
-    let connections: [DatabaseConnection]
     let move: (_ connectionId: UUID, _ fileURL: URL) -> Void
 }
 
@@ -261,9 +260,13 @@ private struct ConnectionChoiceSection: View {
     let choice: ImportConnectionChoice
     let currentId: UUID
     let handOff: () -> URL?
+    @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        let connections = ConnectionListSelection.openable(
+            in: appState.scopedConnections, keeping: currentId, from: appState.connections
+        )
         Section {
             Picker("Connection", selection: Binding(
                 get: { currentId },
@@ -273,7 +276,7 @@ private struct ConnectionChoiceSection: View {
                     dismiss()
                 }
             )) {
-                ForEach(choice.connections) { connection in
+                ForEach(connections) { connection in
                     Text(verbatim: connection.name.isEmpty ? connection.host : connection.name).tag(connection.id)
                 }
             }

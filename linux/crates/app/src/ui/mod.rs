@@ -41,6 +41,7 @@ mod name_entry;
 mod picker;
 mod plain_toast;
 mod preferences_dialog;
+pub(crate) mod projects;
 mod quick_open;
 mod result_pane;
 pub(crate) mod safe_mode;

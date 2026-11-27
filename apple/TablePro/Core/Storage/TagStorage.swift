@@ -8,6 +8,7 @@
 import Combine
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProImport
 import TableProSyncTransport
 
@@ -37,9 +38,10 @@ internal final class TagStorage {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var cachedTags: [ConnectionTag]?
-    /// Set when the stored payload could not be understood at all. Every mutation rewrites the
-    /// whole array, so continuing over an unreadable store would replace a user's own tags with
-    /// the preset list this falls back to for display.
+    // Records this build cannot read. Every write puts them back as they were read.
+    private var preserved: [UnreadableLibraryRecord] = []
+    // Every write replaces the whole list, so a payload that could not be read is never written over with the
+    // presets shown in its place.
     internal private(set) var storeIsUnreadable = false
 
     internal init(
@@ -57,58 +59,66 @@ internal final class TagStorage {
 
     // MARK: - Tag CRUD
 
-    /// A payload that decodes element by element keeps every tag it can read: one entry written by
-    /// a future version, or truncated on disk, used to take the whole library down with it and
-    /// leave the presets standing in its place.
+    // An entry that does not decode is kept as it was read, and the rest of the list loads.
     internal func loadTags() -> [ConnectionTag] {
         if let cached = cachedTags { return cached }
 
         guard let data = defaults.data(forKey: tagsKey) else {
             storeIsUnreadable = false
+            preserved = []
             let tags = ConnectionTag.presets
             cachedTags = tags
             return tags
         }
 
-        if let tags = try? decoder.decode([ConnectionTag].self, from: data) {
-            storeIsUnreadable = false
-            cachedTags = tags
-            return tags
-        }
-
-        guard let salvaged = try? decoder.decode([SalvagedTag].self, from: data) else {
+        guard let records = try? LibraryFileRecords<ConnectionTag>(decoding: data, using: decoder) else {
             Self.logger.error("Tag store could not be read; leaving it untouched")
             storeIsUnreadable = true
+            preserved = []
             return ConnectionTag.presets
         }
 
-        let tags = salvaged.compactMap(\.tag)
-        Self.logger.error(
-            "Dropped \(salvaged.count - tags.count, privacy: .public) unreadable tag entries"
-        )
+        if !records.unreadable.isEmpty {
+            Self.logger.error("Kept \(records.unreadable.count, privacy: .public) tag entries this build cannot read")
+        }
         storeIsUnreadable = false
-        cachedTags = tags
-        return tags
+        preserved = records.unreadable
+        cachedTags = records.elements
+        return records.elements
     }
 
-    /// A save that failed leaves the store holding the previous set, so a caller that goes on to
-    /// write related state must check the result.
+    // Loads first, so the answer does not depend on whether anything has read the store yet.
+    internal var unreadableTagIds: Set<UUID> {
+        _ = loadTags()
+        return Set(preserved.compactMap(\.id))
+    }
+
+    // False leaves the store holding the previous set. A save carrying the id of a record this build cannot read
+    // is refused. `removingUnreadable` drops such records by id, as a deletion another device made does.
     @discardableResult
-    internal func saveTags(_ tags: [ConnectionTag]) -> Bool {
-        let previous = defaults.data(forKey: tagsKey) == nil ? [] : loadTags()
+    internal func saveTags(
+        _ tags: [ConnectionTag],
+        removingUnreadable removedIds: Set<UUID> = []
+    ) -> Bool {
+        let loaded = loadTags()
+        // With nothing stored, what loaded is the presets shown in its place, which were never saved.
+        let previous = defaults.data(forKey: tagsKey) == nil ? [] : loaded
         guard !storeIsUnreadable else {
             Self.logger.error("Refusing to overwrite an unreadable tag store")
             return false
         }
 
         do {
-            let data = try encoder.encode(tags)
-            defaults.set(data, forKey: tagsKey)
+            let encoded = try LibraryFileRecords.encoded(
+                tags, keeping: preserved, removing: removedIds, using: encoder
+            )
+            defaults.set(encoded.data, forKey: tagsKey)
+            preserved = encoded.kept
             cachedTags = nil
             syncTracker.markDirty(.tag, ids: SyncRecordChanges.changedIds(from: previous, to: tags))
             return true
         } catch {
-            Self.logger.error("Failed to save tags: \(error)")
+            Self.logger.error("Failed to save tags: \(error.publicLogShape, privacy: .public)")
             return false
         }
     }
@@ -141,6 +151,17 @@ internal final class TagStorage {
         return saveTags(tags) ? .applied : .failed
     }
 
+    // A deletion another device made: no tombstone and no notification, which the pull raises once. A tag always
+    // syncs, so one this build cannot read goes by its id.
+    @discardableResult
+    internal func applyRemoteDeletions(_ ids: Set<UUID>) -> Bool {
+        guard !ids.isEmpty else { return true }
+        var tags = loadTags()
+        guard !storeIsUnreadable else { return false }
+        tags.removeAll { ids.contains($0.id) }
+        return saveTags(tags, removingUnreadable: ids)
+    }
+
     internal func deleteTag(_ tag: ConnectionTag) {
         guard !tag.isPreset else { return }
         var tags = loadTags()
@@ -165,6 +186,8 @@ internal final class TagStorage {
         var tags = loadTags()
         guard !storeIsUnreadable else { throw TagStorageError.storeUnreadable }
 
+        // The id of a record this build cannot read is taken, so its preset is not restored over it.
+        let takenIds = unreadableTagIds
         var ids: [String: UUID] = [:]
         var created = false
         for tag in wanted {
@@ -174,7 +197,8 @@ internal final class TagStorage {
                 continue
             }
             let restorablePreset = ConnectionTag.presets.first { preset in
-                Self.matchKey(preset.name) == key && !tags.contains { $0.id == preset.id }
+                Self.matchKey(preset.name) == key && !takenIds.contains(preset.id)
+                    && !tags.contains { $0.id == preset.id }
             }
             let added = restorablePreset ?? ConnectionTag(
                 name: tag.name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -215,15 +239,5 @@ internal final class TagStorage {
     private static func match(_ key: String, in tags: [ConnectionTag]) -> ConnectionTag? {
         let named = tags.filter { matchKey($0.name) == key }
         return named.first(where: \.isPreset) ?? named.first
-    }
-}
-
-/// Decodes one tag and keeps going when it cannot, so a single unreadable entry costs that entry
-/// rather than the whole library.
-private struct SalvagedTag: Decodable {
-    let tag: ConnectionTag?
-
-    init(from decoder: Decoder) throws {
-        tag = try? ConnectionTag(from: decoder)
     }
 }

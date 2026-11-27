@@ -214,4 +214,104 @@ struct SyncUnreadableCopiesTests {
         #expect(write?.added.isEmpty ?? true)
         #expect(try unreadableRow() == original)
     }
+
+    // MARK: - Groups and tags
+
+    private var unreadableLibraryRow: String {
+        #"{"id":"\#(unreadableId.uuidString)","name":7,"shape":2}"#
+    }
+
+    private var originalLibraryRow: NSDictionary? {
+        try? JSONSerialization.jsonObject(with: Data(unreadableLibraryRow.utf8)) as? NSDictionary
+    }
+
+    private func libraryRow(forKey key: String) throws -> NSDictionary? {
+        let data = try #require(environment.defaults.data(forKey: key))
+        let rows = try #require(try JSONSerialization.jsonObject(with: data) as? [NSDictionary])
+        return rows.first { $0["id"] as? String == unreadableId.uuidString }
+    }
+
+    // Written before either store reads, since nothing rereads a payload changed under a loaded store.
+    private func coordinatorHoldingAnUnreadableGroupAndTag() throws -> (coordinator: SyncCoordinator, readable: ConnectionGroup) {
+        let readable = ConnectionGroup(name: "Production")
+        let group = try String(decoding: JSONEncoder().encode(readable), as: UTF8.self)
+        environment.defaults.set(Data("[\(group),\(unreadableLibraryRow)]".utf8), forKey: "com.TablePro.groups")
+        // A save drops what the tag store read when it was built, so its next read is of the payload below.
+        #expect(environment.tags.saveTags(ConnectionTag.presets))
+        environment.tracker.clearAllDirty(.tag)
+        let tag = try String(decoding: JSONEncoder().encode(ConnectionTag(name: "billing")), as: UTF8.self)
+        environment.defaults.set(Data("[\(tag),\(unreadableLibraryRow)]".utf8), forKey: "com.TablePro.tags")
+        #expect(environment.groups.unreadableGroupIds == [unreadableId])
+        #expect(environment.tags.unreadableTagIds == [unreadableId])
+        return (environment.makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID)), readable)
+    }
+
+    private func libraryRecordID(_ type: SyncRecordType) -> CKRecord.ID {
+        SyncRecordMapper.recordID(type: type, id: unreadableId.uuidString, in: Self.zoneID)
+    }
+
+    @Test("A change from iCloud never writes over a group or a tag this Mac cannot read: it is held and kept out of the cache")
+    func groupAndTagChangesAreHeld() async throws {
+        let (coordinator, _) = try coordinatorHoldingAnUnreadableGroupAndTag()
+        let changed = [
+            SyncRecordMapper.toCKRecord(ConnectionGroup(id: unreadableId, name: "Renamed elsewhere"), in: Self.zoneID),
+            SyncRecordMapper.toCKRecord(ConnectionTag(id: unreadableId, name: "renamed elsewhere"), in: Self.zoneID),
+        ]
+
+        #expect(await coordinator.applyPullResult(pull(changed: changed), settings: .default))
+
+        #expect(try libraryRow(forKey: "com.TablePro.groups") == originalLibraryRow)
+        #expect(try libraryRow(forKey: "com.TablePro.tags") == originalLibraryRow)
+        #expect(environment.metadata.changesHeldForUnreadableCopies == [
+            SyncRecordType.group.recordName(for: unreadableId.uuidString),
+            SyncRecordType.tag.recordName(for: unreadableId.uuidString),
+        ])
+        #expect(environment.recordCache.record(for: libraryRecordID(.group)) == nil)
+        #expect(environment.recordCache.record(for: libraryRecordID(.tag)) == nil)
+    }
+
+    @Test("A build that reads the group fetches the record held for it by id and takes the change")
+    func readableGroupTakesTheHeldChange() async throws {
+        let name = SyncRecordType.group.recordName(for: unreadableId.uuidString)
+        let readBack = ConnectionGroup(id: unreadableId, name: "Read by a newer build")
+        environment.defaults.set(try JSONEncoder().encode([readBack]), forKey: "com.TablePro.groups")
+        environment.metadata.changesHeldForUnreadableCopies = [name]
+        let changed = SyncRecordMapper.toCKRecord(ConnectionGroup(id: unreadableId, name: "Renamed elsewhere"), in: Self.zoneID)
+        let transport = ScriptedSyncTransport(zoneID: Self.zoneID)
+        let coordinator = environment.makeCoordinator(transport: transport)
+        await transport.serveOnFetch(changed)
+
+        #expect(await coordinator.runSyncCycle() == nil)
+
+        #expect(environment.groups.group(for: unreadableId)?.name == "Renamed elsewhere")
+        #expect(!environment.metadata.changesHeldForUnreadableCopies.contains(name))
+    }
+
+    @Test("The upload mark of a group or a tag this Mac cannot read waits for a build that can push it")
+    func groupAndTagUploadMarksAreHeld() async throws {
+        let (coordinator, _) = try coordinatorHoldingAnUnreadableGroupAndTag()
+        environment.tracker.markDirty(.group, id: unreadableId.uuidString)
+        environment.tracker.markDirty(.tag, id: unreadableId.uuidString)
+
+        let batch = await coordinator.collectPushBatch(
+            snapshot: environment.tracker.editSnapshot(),
+            boundary: coordinator.syncBoundary(settings: .default),
+            zoneID: Self.zoneID
+        )
+
+        #expect(batch.records.isEmpty)
+        #expect(environment.tracker.dirtyRecords(for: .group).contains(unreadableId.uuidString))
+        #expect(environment.tracker.dirtyRecords(for: .tag).contains(unreadableId.uuidString))
+    }
+
+    @Test("A deletion from iCloud removes a group this Mac cannot read by its id")
+    func deletionRemovesAnUnreadableGroup() async throws {
+        let (coordinator, readable) = try coordinatorHoldingAnUnreadableGroupAndTag()
+
+        #expect(await coordinator.applyPullResult(pull(deleted: [libraryRecordID(.group)]), settings: .default))
+
+        #expect(environment.groups.unreadableGroupIds.isEmpty)
+        #expect(environment.groups.loadGroups().map(\.id) == [readable.id])
+        #expect(try libraryRow(forKey: "com.TablePro.tags") == originalLibraryRow)
+    }
 }

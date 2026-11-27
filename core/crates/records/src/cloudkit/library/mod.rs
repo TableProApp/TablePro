@@ -85,7 +85,16 @@ struct ConnectionPlace {
 
 // Unknown groups stay in the record cache for a newer reader to understand.
 pub fn layout(list: &ConnectionList, records: &CloudRecords, favorites_order: &[Uuid]) -> ConnectionList {
-    let groups = read_groups(&records.groups);
+    let mut groups = read_groups(&records.groups);
+    // No record carries a project, so a group keeps the one this device stored.
+    let projects: HashMap<Uuid, Uuid> = list
+        .groups
+        .iter()
+        .filter_map(|group| Some((group.id, group.project_id?)))
+        .collect();
+    for group in &mut groups {
+        group.project_id = projects.get(&group.id).copied();
+    }
     let known: HashSet<Uuid> = groups.iter().map(|group| group.id).collect();
     let recorded = by_id(&records.connections, |record| &record.connection_id);
 
@@ -210,6 +219,7 @@ fn read_groups(records: &[CloudGroup]) -> Vec<ConnectionGroup> {
             order: 0,
             color: color(record.color.as_deref()),
             icon: icon(record.icon_name.as_deref()),
+            project_id: None,
         };
         read.push((group, sort_key(record.sort_order)));
     }

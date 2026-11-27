@@ -71,17 +71,17 @@ extension MainContentCoordinator {
         )
     }
 
-    // The byte-length columns a query ends with, from the list its SQL was built on: a rerun sends that SQL unchanged.
-    func unloadedValueLengthColumns(for tab: QueryTab, sql: String) -> [String] {
+    // The size and head columns a query ends with, from the list its SQL was built on: a rerun sends that SQL unchanged.
+    func unloadedValueLayout(for tab: QueryTab, sql: String) -> UnloadedValueLayout? {
         let schema = catalogPageList(of: tab, sql: sql) ?? tableSchemaColumns(for: tab)
         guard let plan = unloadedValuePlan(for: tab, schema: schema),
               let selected = selectColumns(for: tab, schema: schema)
-        else { return [] }
-        return plan.lengthColumns(for: selected)
+        else { return nil }
+        return plan.layout(for: selected)
     }
 
-    var defersBinaryValues: Bool {
-        PluginManager.shared.binaryLengthFunction(for: connection.type) != nil
+    var defersLargeValues: Bool {
+        PluginManager.shared.largeValueFunctions(for: connection.type) != nil
     }
 
     private func tableSchemaColumns(for tab: QueryTab) -> SchemaColumnStore.Entry? {
@@ -111,7 +111,7 @@ extension MainContentCoordinator {
             primaryKeys: schema.primaryKeys,
             sortColumns: tab.sortState.columns.compactMap(\.columnName),
             valueFilteredColumns: valueFilteredColumnNames(of: tab),
-            byteLengthFunction: PluginManager.shared.binaryLengthFunction(for: connection.type),
+            functions: PluginManager.shared.largeValueFunctions(for: connection.type),
             inlineByteLimit: connection.binaryInlineLimitBytes
         )
     }

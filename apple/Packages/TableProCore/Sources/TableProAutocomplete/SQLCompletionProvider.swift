@@ -24,7 +24,7 @@ public final class SQLCompletionProvider: Sendable {
     private let defaultMaxSuggestions = 20
 
     // What a quoted name can hold: a keyword or a call typed between the quotes would be read as a name.
-    private static let nameKinds: Set<SQLCompletionKind> = [.table, .view, .column, .schema, .alias]
+    static let nameKinds: Set<SQLCompletionKind> = [.table, .view, .column, .schema, .alias]
 
     private func maxSuggestions(for clauseType: SQLClauseType) -> Int {
         switch clauseType {
@@ -68,14 +68,17 @@ public final class SQLCompletionProvider: Sendable {
     public func completionSession(
         text: String,
         cursorPosition: Int,
-        forcedTableReferences: [TableReference]? = nil
+        forcedTableReferences: [TableReference]? = nil,
+        suppressesEmptyPrefix: Bool = false
     ) async -> SQLCompletionSession {
         var context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition, grammar: grammar)
         if let forcedTableReferences {
             context = context.replacingTableReferences(forcedTableReferences)
         }
 
-        if context.isInsideString || context.isInsideComment || Task.isCancelled {
+        // A suppressed request never reads the catalog: at a statement start that is every table.
+        if context.isInsideString || context.isInsideComment || Task.isCancelled
+            || suppressesEmptyPrefix && SQLCompletionTriggerPolicy.suppressesEmptyPrefix(context, isManualTrigger: false) {
             return SQLCompletionSession(items: [], candidates: [], context: context, candidatesTruncated: false)
         }
 
@@ -89,33 +92,6 @@ public final class SQLCompletionProvider: Sendable {
             context: context,
             limit: limit,
             pool: sessionPool(for: limit)
-        )
-    }
-
-    // A catalog can list tens of thousands of tables, so joining, filtering and sorting them leaves the caller's actor.
-    @concurrent
-    private static func rankedSession(
-        _ segments: [[SQLCompletionItem]],
-        context: SQLContext,
-        limit: Int,
-        pool: Int
-    ) async -> SQLCompletionSession {
-        var candidates = Array(segments.joined())
-        if context.quotedName != nil {
-            candidates = candidates.filter { nameKinds.contains($0.kind) }
-        }
-
-        if !context.prefix.isEmpty {
-            candidates = filterByPrefix(candidates, prefix: context.prefix)
-        }
-
-        candidates = rankResults(candidates, prefix: context.prefix, context: context)
-
-        return SQLCompletionSession(
-            items: Array(candidates.prefix(limit)),
-            candidates: Array(candidates.prefix(pool)),
-            context: context,
-            candidatesTruncated: candidates.count > pool
         )
     }
 
@@ -158,8 +134,8 @@ public final class SQLCompletionProvider: Sendable {
     // In emission order. The catalog's table list stays a segment of its own, so the caller never copies it.
     private func getCandidates( // swiftlint:disable:this function_body_length
         for context: SQLContext
-    ) async -> [[SQLCompletionItem]] {
-        var segments: [[SQLCompletionItem]] = []
+    ) async -> [CandidateSegment] {
+        var segments: [CandidateSegment] = []
         var items: [SQLCompletionItem] = []
 
         // A dot prefix is a table or alias first, then a schema (its tables) or a database (its schemas, or its
@@ -174,7 +150,7 @@ public final class SQLCompletionProvider: Sendable {
                 }) {
                     let columns = await derivedColumns(of: derived)
                     if !columns.isEmpty {
-                        return [columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }]
+                        return [.items(columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) })]
                     }
                 }
                 if let tableName = await catalog.resolveAlias(dotPrefix, in: context.tableReferences) {
@@ -194,12 +170,12 @@ public final class SQLCompletionProvider: Sendable {
                     }
                 }
             }
-            return [items]
+            return [.items(items)]
         }
 
         switch context.clauseType {
         case .from, .join:
-            segments = [await catalog?.tableCompletionItems() ?? []]
+            segments = [await tableSegment()]
             items = await catalog?.namespaceCompletionItems() ?? []
             items += filterKeywords([
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
@@ -210,7 +186,7 @@ public final class SQLCompletionProvider: Sendable {
             ])
 
         case .into:
-            segments = [await catalog?.tableCompletionItems() ?? []]
+            segments = [await tableSegment()]
             items = filterKeywords([
                 "VALUES", "SELECT", "SET",
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
@@ -448,12 +424,12 @@ public final class SQLCompletionProvider: Sendable {
             ])
 
         case .dropObject:
-            segments = [await catalog?.tableCompletionItems() ?? []]
+            segments = [await tableSegment()]
             items = filterKeywords(["IF EXISTS", "CASCADE", "RESTRICT"])
 
         case .createIndex:
             if context.tableReferences.isEmpty {
-                segments = [await catalog?.tableCompletionItems() ?? []]
+                segments = [await tableSegment()]
                 items = filterKeywords(["ON"])
             } else {
                 items = await columnItems(for: context.tableReferences)
@@ -461,18 +437,25 @@ public final class SQLCompletionProvider: Sendable {
             }
 
         case .createView:
-            segments = [filterKeywords(["SELECT", "AS"]), await catalog?.tableCompletionItems() ?? []]
+            segments = [.items(filterKeywords(["SELECT", "AS"])), await tableSegment()]
 
         case .castTarget:
             items = castTargetCompletionItems()
 
         case .unknown:
-            segments = [statementStartCompletionItems(), await catalog?.tableCompletionItems() ?? []]
+            segments = [.items(statementStartCompletionItems()), await tableSegment()]
         }
 
         items += favoriteCompletions(matching: context.prefix)
 
-        return segments + [items]
+        return segments + [.items(items)]
+    }
+
+    // A catalog with an index ranks its table list without an item per table; any other hands the items over.
+    private func tableSegment() async -> CandidateSegment {
+        guard let catalog else { return .items([]) }
+        if let index = await catalog.tableNameIndex() { return .tables(index) }
+        return .items(await catalog.tableCompletionItems())
     }
 
     private func favoriteCompletions(matching prefix: String) -> [SQLCompletionItem] {
@@ -750,7 +733,7 @@ public final class SQLCompletionProvider: Sendable {
 
     // Resolves `matchedRanges` and the fuzzy-only `fuzzyPenalty` once per candidate, so ranking never matches again.
     // Both are assigned rather than accumulated, so filtering a filtered list is idempotent.
-    private static func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+    static func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
         guard !prefix.isEmpty else {
             var reset = items
             for i in reset.indices {
@@ -887,41 +870,61 @@ public final class SQLCompletionProvider: Sendable {
         Self.calculateScore(for: item, prefix: prefix, context: context)
     }
 
-    // Lower is better.
-    private static func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
-        var score = item.sortPriority + item.fuzzyPenalty
+    static func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
+        score(
+            kind: item.kind,
+            priority: item.sortPriority + item.fuzzyPenalty,
+            startsWithPrefix: item.filterText.hasPrefix(prefix),
+            equalsPrefix: item.filterText == prefix,
+            labelLength: (item.label as NSString).length,
+            prefixIsEmpty: prefix.isEmpty,
+            context: context
+        )
+    }
 
-        if item.filterText.hasPrefix(prefix) {
+    // Lower is better. Takes the parts of a candidate the score reads, so an indexed name scores without an item.
+    static func score(
+        kind: SQLCompletionKind,
+        priority: Int,
+        startsWithPrefix: Bool,
+        equalsPrefix: Bool,
+        labelLength: Int,
+        prefixIsEmpty: Bool,
+        context: SQLContext
+    ) -> Int {
+        var score = priority
+
+        if startsWithPrefix {
             score -= 500
         }
 
-        if item.filterText == prefix {
+        if equalsPrefix {
             score -= 1_000
         }
 
         // With nothing typed and tables in scope, tables lead in an operand slot (`... JOIN |`) and keywords lead at
         // a clause transition (`FROM users |`).
-        if prefix.isEmpty && !context.tableReferences.isEmpty && !context.isAfterComma {
+        if prefixIsEmpty && !context.tableReferences.isEmpty && !context.isAfterComma {
             if context.expectsObjectName {
-                if item.kind == .table || item.kind == .view || item.kind == .schema {
+                if kind == .table || kind == .view || kind == .schema {
                     score -= 300
                 }
-            } else if item.kind == .keyword {
+            } else if kind == .keyword {
                 score -= 300
             }
         } else {
             switch context.clauseType {
             case .from, .join, .into, .dropObject, .createIndex:
-                if item.kind == .table || item.kind == .view {
+                if kind == .table || kind == .view {
                     score -= 200
                 }
             case .select, .where_, .and, .on, .having, .groupBy, .orderBy,
                  .returning, .using, .window:
-                if item.kind == .column || item.kind == .joinCondition {
+                if kind == .column || kind == .joinCondition {
                     score -= 200
                 }
             case .set, .insertColumns:
-                if item.kind == .column {
+                if kind == .column {
                     score -= 300
                 }
             default:
@@ -929,7 +932,7 @@ public final class SQLCompletionProvider: Sendable {
             }
         }
 
-        score += (item.label as NSString).length
+        score += labelLength
 
         return score
     }

@@ -96,6 +96,10 @@ public sealed record SavedConnection(
 
     // Always set on a connection read back; null on a save keeps the stored one, ReadOnly for a new connection.
     public ExternalAccess? ExternalAccess { get; init; }
+
+    // Read back, the project it shows in: its top-level group's when grouped. On a save it places a connection with
+    // no group, and null keeps the stored one.
+    public Guid? ProjectId { get; init; }
 }
 
 // A null secret keeps what is stored; an empty one is stored as empty, for a server that takes none.
@@ -116,7 +120,14 @@ public sealed record ConnectionSecrets(
     }
 }
 
-public sealed record ConnectionGroup(Guid Id, string Name, Guid? ParentId, int Order, string? Color);
+public sealed record ConnectionGroup(Guid Id, string Name, Guid? ParentId, int Order, string? Color)
+{
+    // The project it shows in, which its top-level group names.
+    public Guid? ProjectId { get; init; }
+}
+
+// All connections is no project and has no record. Color is one of the connection colours' ids, or null.
+public sealed record ConnectionProject(Guid Id, string Name, int Order, string? Color);
 
 // A label several connections share. Color is one of the connection colours' ids.
 // Color is null for a tag with no colour, which the macOS app can hold.
@@ -130,6 +141,12 @@ public sealed record LibrarySnapshot(
     IReadOnlyList<Guid> Recent)
 {
     public IReadOnlyList<ConnectionTag> Tags { get; init; } = [];
+
+    // Every project in its order, whatever the scope.
+    public IReadOnlyList<ConnectionProject> Projects { get; init; } = [];
+
+    // The project the lists are narrowed to; null for all connections, also when the id asked for names no project.
+    public Guid? Scope { get; init; }
 }
 
 // ConnectionIds: the saved connections the file wrote, added or updated, once each in file order (core 0057).
