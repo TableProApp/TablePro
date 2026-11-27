@@ -18,6 +18,8 @@ internal enum ProviderMoveError: Error, Equatable {
     case superseded
     // The server this Mac is signed in to keeps no personal data (core ADR 0051, Policies).
     case serverRefusesPersonalSync
+    // The account signed in or out after the person confirmed the move, so the open service may serve another one.
+    case signInChanged
 }
 
 internal enum MoveToServiceOutcome: Equatable {
@@ -36,6 +38,7 @@ internal struct ProviderMoveHost {
     var passesFinished: @MainActor () async -> Void
     var cloudKit: CloudKitReach
     var policy: @MainActor () -> ManagedPolicySnapshot
+    var session: @MainActor () -> String?
 }
 
 internal struct CloudKitReach {
@@ -172,7 +175,9 @@ internal final class ProviderMoves: ObservableObject {
     // CloudKit open until the move returns; only then does the stored provider change, which stops the coordinator. From
     // Off it is the first upload, the server's copy winning a conflict. A move that fails leaves iCloud stopped in the
     // core and the stored provider where it was, so Try Again goes on from there.
-    func moveToService() async throws -> MoveToServiceOutcome {
+    // `session` is the sign-in the person confirmed the move under; the move goes nowhere once another holds the account.
+    func moveToService(confirmedUnder session: String?) async throws -> MoveToServiceOutcome {
+        guard host.session() == session else { throw ProviderMoveError.signInChanged }
         guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
         guard !Self.refusesPersonalSync(scopes) else { throw ProviderMoveError.serverRefusesPersonalSync }
         let asked = choice
@@ -185,6 +190,7 @@ internal final class ProviderMoves: ObservableObject {
             // The profile is read again in the same turn as the call, and the core checks it as well. From iCloud the
             // core moves, from Off it makes the first upload.
             guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
+            guard host.session() == session else { throw ProviderMoveError.signInChanged }
             try await engine.chooseProvider(provider: .tableproSync)
             guard choice == asked else {
                 await stopPersonalSyncAfterSupersededMove()
@@ -396,6 +402,8 @@ extension ProviderMoves {
                 return String(localized: "Your server does not keep personal data, so this Mac cannot sync it there.")
             case .superseded:
                 return String(localized: "How this Mac syncs changed while this ran, so it stopped.")
+            case .signInChanged:
+                return String(localized: "Your TablePro account changed, so nothing moved. Start again to see what this account gets.")
             case .engineUnavailable:
                 return message(forCode: "")
             }
@@ -444,7 +452,8 @@ extension ProviderMoveHost {
                 open: { engines.transport.open() },
                 close: { engines.transport.close() }
             ),
-            policy: { ManagedPolicyCenter.shared.snapshot }
+            policy: { ManagedPolicyCenter.shared.snapshot },
+            session: { FeatureAccess.shared.state.sessionID }
         )
     }
 }

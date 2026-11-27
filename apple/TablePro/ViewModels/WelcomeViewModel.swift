@@ -126,7 +126,7 @@ final class WelcomeViewModel: ObservableObject {
     @Published var connectionsToExcludeFromSync: [DatabaseConnection] = []
     @Published var showExcludeFromSyncConfirmation = false
     // The provider the Exclude question names, read when it is asked.
-    @Published private(set) var excludeFromSyncProvider: SyncProviderSetting = .iCloud
+    @Published var excludeFromSyncProvider: SyncProviderSetting = .iCloud
     @Published var pendingDeleteHasFavorites = false
     private var deleteRequestToken = UUID()
     @Published var showDeleteGroupConfirmation = false

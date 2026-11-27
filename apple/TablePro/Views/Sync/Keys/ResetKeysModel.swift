@@ -82,36 +82,63 @@ internal final class ResetKeysModel: ObservableObject {
     let service: any ResetKeysService
     let stepUp: StepUpRetry
     private let now: @MainActor () -> Date
-    private var changeObserver: AnyCancellable?
+    private var observers: Set<AnyCancellable> = []
     private var generation = 0
+    // Bumped when the account signs in or out, so what an operation for the old one answers lands nowhere.
+    private var account = 0
 
     init(
         service: any ResetKeysService,
         stepUp: StepUpRetry,
         changes: AnyPublisher<Void, Never>,
+        accountChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher(),
         now: @escaping @MainActor () -> Date = { Date() }
     ) {
         self.service = service
         self.stepUp = stepUp
         self.now = now
-        changeObserver = changes.sink { [weak self] _ in
-            guard let self else { return }
-            Task { await self.load() }
-        }
+        changes
+            .sink { [weak self] _ in
+                guard let self else { return }
+                Task { await self.load() }
+            }
+            .store(in: &observers)
+        accountChanges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.forgetAccount()
+                    await self?.load()
+                }
+            }
+            .store(in: &observers)
     }
 
-    // Over the keys page's service and step-up. A sign-in or sign-out reads again, so another account's reset never
-    // stays on screen.
+    // Over the keys page's service and step-up.
     convenience init(environment: AccountKeysEnvironment) {
         self.init(
             service: environment.resets,
             stepUp: environment.stepUp,
-            changes: environment.keyChanges
-                .merge(with: environment.accountChanges)
-                .receive(on: DispatchQueue.main)
-                .eraseToAnyPublisher(),
+            changes: environment.keyChanges.receive(on: DispatchQueue.main).eraseToAnyPublisher(),
+            accountChanges: environment.accountChanges,
             now: environment.now
         )
+    }
+
+    // Another account's reset, notices and open questions never show under the next one, even when its first read fails.
+    private func forgetAccount() {
+        account += 1
+        generation += 1
+        keyState = nil
+        pending = nil
+        notices = []
+        isLoading = false
+        loadFailure = nil
+        proposal = nil
+        cancelsWithRecoveryKey = nil
+        pendingActivation = nil
+        pendingCancel = nil
+        failure = nil
     }
 
     // Kind 2 keeps the scope keys and starts from an approved device; kind 3 starts empty from a sign-in whose device is
@@ -207,15 +234,17 @@ internal final class ResetKeysModel: ObservableObject {
         guard self.work == nil else { return false }
         self.work = work
         defer { self.work = nil }
+        let started = account
         var succeeded = false
         do {
             try await call()
             succeeded = true
         } catch {
-            if let message = TeamKeysFailureText.message(error) {
+            if started == account, let message = TeamKeysFailureText.message(error) {
                 failure = AccountActionFailure(title: failureTitle, message: message)
             }
         }
+        guard started == account else { return false }
         await load()
         return succeeded
     }

@@ -151,9 +151,9 @@ private struct ResetRecoveryKeyStep: View {
             GroupBox {
                 LazyVGrid(columns: columns, spacing: 10) {
                     ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                        // Not selectable: an ordinary Copy would skip the concealed type the Copy button writes.
                         Text(verbatim: group)
                             .font(.title3.monospaced())
-                            .textSelection(.enabled)
                     }
                 }
                 .padding(8)

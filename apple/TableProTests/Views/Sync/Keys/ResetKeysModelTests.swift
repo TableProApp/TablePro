@@ -89,6 +89,32 @@ struct ResetKeysModelTests {
         ])
     }
 
+    @Test("A sign-in or sign-out forgets the reset, its notices and the open question, even when the next read fails")
+    func accountChangeForgetsTheReset() async throws {
+        let accountChanges = PassthroughSubject<Void, Never>()
+        service.update { state in
+            state.pending = R.pending(mine: false)
+            state.notices = [F.notice("n1", .resetEnded(reset: "reset-0", state: .cancelled))]
+        }
+        let model = ResetKeysModel(
+            service: service,
+            stepUp: stepUp,
+            changes: changes.eraseToAnyPublisher(),
+            accountChanges: accountChanges.eraseToAnyPublisher()
+        )
+        await model.load()
+        model.pendingCancel = model.pending
+        service.update { $0.failures["keyState"] = [F.failure("sync.network")] }
+
+        accountChanges.send()
+
+        try await waitUntil { model.loadFailure != nil }
+        #expect(model.pending == nil)
+        #expect(model.keyState == nil)
+        #expect(model.notices.isEmpty)
+        #expect(model.pendingCancel == nil)
+    }
+
     @Test("Only the proposing Mac finishes, and only once the wait has passed")
     func activationWaitsForTheHold() {
         let before = model(now: R.held.addingTimeInterval(-1))

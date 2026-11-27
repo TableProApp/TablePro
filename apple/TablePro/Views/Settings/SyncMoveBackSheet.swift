@@ -1,3 +1,4 @@
+import Combine
 import os
 import SwiftUI
 import TableProFFI
@@ -50,6 +51,10 @@ struct SyncMoveBackSheet: View {
         .accessibilityIdentifier("settings-sync-move-back-sheet")
         .task {
             await loadPlan()
+        }
+        // The plan it shows is the account's it opened under.
+        .onReceive(AccountServices.shared.events.receive(on: DispatchQueue.main)) { _ in
+            dismiss()
         }
     }
 

@@ -23,8 +23,9 @@ internal struct AccountKeysSignOut {
 
     // Whether this Mac holds keys that Sign Out erases, for the question it asks first.
     var holdsKeys: @MainActor () async -> Bool
-    // False when the person keeps the sign-in after the keys could not be erased.
-    var signOut: @MainActor () async -> Bool
+    // False when the person keeps the sign-in after the keys could not be erased, or when the sign-in it ran for ended,
+    // which `isCurrent` answers before each try.
+    var signOut: @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Bool
 
     static var live: AccountKeysSignOut {
         over(AccountKeysEnvironment.liveFlows, askAfterFailure: AccountKeysSignOutPrompt.askAfterFailure)
@@ -41,11 +42,22 @@ internal struct AccountKeysSignOut {
                 default: false
                 }
             },
-            signOut: {
-                while true {
+            signOut: { isCurrent in
+                // Every try goes to the one service the first reached: it stays bound to the sign-in it opened under, so
+                // a retry after another sign-in never erases that one's keys.
+                var bound: (any AccountKeyFlows)?
+                while isCurrent() {
                     do {
+                        let service: any AccountKeyFlows
+                        if let bound {
+                            service = bound
+                        } else {
+                            service = try await flows()
+                            guard isCurrent() else { return false }
+                            bound = service
+                        }
                         // The core decides whether anything is there to erase, whatever the key state reads.
-                        let outcome = try await flows().signOutKeys()
+                        let outcome = try await service.signOutKeys()
                         logger.notice("Signed out of the keys: \(String(describing: outcome), privacy: .public)")
                         return true
                     } catch where isUnfilled(error) {
@@ -58,11 +70,12 @@ internal struct AccountKeysSignOut {
                         )
                         switch await askAfterFailure(AccountKeysText.message(for: error)) {
                         case .retry: continue
-                        case .signOutAnyway: return true
+                        case .signOutAnyway: return isCurrent()
                         case .cancel: return false
                         }
                     }
                 }
+                return false
             }
         )
     }

@@ -66,9 +66,9 @@ struct AccountSettingsModelTests {
         let prompt = ScriptedSignOutPrompt([.discard])
         var signedInAtRevoke: Bool?
         let live = AccountKeysSignOut.over({ flows }, askAfterFailure: { _ in .cancel })
-        let keys = AccountKeysSignOut(holdsKeys: live.holdsKeys) {
+        let keys = AccountKeysSignOut(holdsKeys: live.holdsKeys) { isCurrent in
             signedInAtRevoke = fixture.services.isSignedIn
-            return await live.signOut()
+            return await live.signOut(isCurrent)
         }
         let model = AccountSettingsModel(
             services: fixture.services, teamLibrary: { Self.idleTeamLibrary(fixture) }, keys: keys, askSignOut: prompt.ask
@@ -503,6 +503,32 @@ struct AccountSettingsModelTests {
         #expect(prompt.asked.count == 1, "Nothing is asked of a sign-in that is gone")
         #expect(engine.deletes == 0)
         #expect(fixture.discarded.isEmpty)
+    }
+
+    @Test("Another sign-in during the keys' failure question is never erased by Try Again, nor signed out")
+    func keyRetryStopsAfterAnotherSignIn() async throws {
+        let fixture = try await TeamLibraryFixture()
+        try await fixture.start()
+        let flows = FakeAccountKeyFlows()
+        flows.state = .approved(av: 2, keyDevice: "key-this")
+        flows.fail("signOutKeys", with: FakeAccountKeyFlows.failure("sync.network"))
+        let keys = AccountKeysSignOut.over({ flows }) { _ in
+            try? await fixture.refuseRefresh()
+            await fixture.account.server.set { $0.accountID = "acct_other" }
+            try? await fixture.account.signIn()
+            return .retry
+        }
+        let model = AccountSettingsModel(
+            services: fixture.account.services, teamLibrary: { fixture.library }, keys: keys,
+            askSignOut: ScriptedSignOutPrompt([.discard]).ask
+        )
+
+        await model.signOut()
+
+        #expect(flows.calls(named: "signOutKeys").count == 1)
+        #expect(fixture.account.services.isSignedIn)
+        #expect(fixture.account.access.state.entitlement?.accountID == "acct_other")
+        #expect(fixture.engine.deletes == 0)
     }
 
     @Test("Another account that signs in during Upload and Sign Out is neither signed out nor deleted")

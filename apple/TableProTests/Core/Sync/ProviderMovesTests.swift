@@ -144,6 +144,7 @@ private final class Fixture {
     var snapshot = ManagedPolicySnapshot()
     var passesGate: AsyncGate?
     var prepare: (FakeMoveEngine) -> Void = { _ in }
+    var sessionID: String?
     private(set) var moves: ProviderMoves!
 
     init(provider: SyncProviderSetting, open: SyncProviderTag? = nil) {
@@ -178,7 +179,8 @@ private final class Fixture {
                     cloudKitClosed = true
                 }
             ),
-            policy: { [unowned self] in snapshot }
+            policy: { [unowned self] in snapshot },
+            session: { [unowned self] in sessionID }
         )
         moves = ProviderMoves(host: host, settings: slice)
         if let open {
@@ -209,7 +211,7 @@ struct ProviderMovesTests {
     func moveFromICloud() async throws {
         let fixture = Fixture(provider: .iCloud, open: .icloud)
 
-        let outcome = try await fixture.moves.moveToService()
+        let outcome = try await fixture.moves.moveToService(confirmedUnder: nil)
 
         #expect(outcome == .moved)
         #expect(fixture.log.all == [
@@ -221,11 +223,34 @@ struct ProviderMovesTests {
         #expect(!fixture.moves.awaitsMove)
     }
 
+    @Test("A move confirmed under one sign-in chooses nothing once another holds the account, before or while it reads the keys")
+    func moveConfirmedUnderAnotherSignInStops() async throws {
+        let fixture = Fixture(provider: .iCloud, open: .icloud)
+        fixture.sessionID = "session-b"
+
+        await #expect(throws: ProviderMoveError.signInChanged) {
+            try await fixture.moves.moveToService(confirmedUnder: "session-a")
+        }
+        #expect(fixture.log.all.isEmpty)
+
+        let gate = AsyncGate()
+        fixture.opened?.update { $0.keysGate = gate }
+        fixture.sessionID = "session-a"
+        let moving = Task { try await fixture.moves.moveToService(confirmedUnder: "session-a") }
+        await gate.arrived(1)
+        fixture.sessionID = "session-b"
+        await gate.open()
+
+        await #expect(throws: ProviderMoveError.signInChanged) { try await moving.value }
+        #expect(fixture.log.all == ["icloud keyState"])
+        #expect(fixture.provider == .iCloud)
+    }
+
     @Test("From Off it is the first upload, on the service open for Off")
     func moveFromOff() async throws {
         let fixture = Fixture(provider: .off)
 
-        _ = try await fixture.moves.moveToService()
+        _ = try await fixture.moves.moveToService(confirmedUnder: nil)
 
         #expect(fixture.log.all == [
             "off keyState", "off chooseProvider tableproSync", "provider tablepro-sync", "tablepro-sync syncNow"
@@ -240,7 +265,7 @@ struct ProviderMovesTests {
             let fixture = Fixture(provider: .iCloud)
             fixture.prepare = { $0.update { $0.keys = keys } }
 
-            let outcome = try await fixture.moves.moveToService()
+            let outcome = try await fixture.moves.moveToService(confirmedUnder: nil)
 
             #expect(outcome == .needsKeys(keys))
             #expect(fixture.log.all == ["icloud keyState"])
@@ -254,12 +279,12 @@ struct ProviderMovesTests {
         fixture.opened?.update { $0.moveFails = true }
 
         await #expect(throws: ScriptedFailure.self) {
-            try await fixture.moves.moveToService()
+            try await fixture.moves.moveToService(confirmedUnder: nil)
         }
         #expect(fixture.provider == .iCloud)
 
         fixture.opened?.update { $0.moveFails = false }
-        #expect(try await fixture.moves.moveToService() == .moved)
+        #expect(try await fixture.moves.moveToService(confirmedUnder: nil) == .moved)
         #expect(fixture.log.all.filter { $0 == "icloud chooseProvider tableproSync" }.count == 2)
         #expect(fixture.provider == .tableproSync)
     }
@@ -270,7 +295,7 @@ struct ProviderMovesTests {
         fixture.snapshot = ManagedPolicySnapshot(personalSyncProvider: ["off", "icloud"])
 
         await #expect(throws: ProviderMoveError.notAllowed) {
-            try await fixture.moves.moveToService()
+            try await fixture.moves.moveToService(confirmedUnder: nil)
         }
         #expect(fixture.log.all.isEmpty)
         #expect(fixture.provider == .iCloud)
@@ -286,7 +311,7 @@ struct ProviderMovesTests {
         fixture.engineChanges.send()
 
         await #expect(throws: ProviderMoveError.serverRefusesPersonalSync) {
-            try await fixture.moves.moveToService()
+            try await fixture.moves.moveToService(confirmedUnder: nil)
         }
         #expect(!fixture.log.all.contains("off chooseProvider tableproSync"))
     }
@@ -297,10 +322,10 @@ struct ProviderMovesTests {
         let gate = AsyncGate()
         fixture.opened?.update { $0.moveGate = gate }
 
-        let first = Task { try await fixture.moves.moveToService() == .moved }
+        let first = Task { try await fixture.moves.moveToService(confirmedUnder: nil) == .moved }
         await gate.arrived(1)
         await #expect(throws: ProviderMoveError.inProgress) {
-            try await fixture.moves.moveToService()
+            try await fixture.moves.moveToService(confirmedUnder: nil)
         }
         await gate.open()
 
@@ -313,7 +338,7 @@ struct ProviderMovesTests {
         let gate = AsyncGate()
         fixture.opened?.update { $0.moveGate = gate }
 
-        let move = Task { try await fixture.moves.moveToService() == .moved }
+        let move = Task { try await fixture.moves.moveToService(confirmedUnder: nil) == .moved }
         await gate.arrived(1)
         fixture.slice.update { $0.provider = .off }
         await gate.open()
@@ -334,7 +359,7 @@ struct ProviderMovesTests {
         let gate = AsyncGate()
         fixture.opened?.update { $0.keysGate = gate }
 
-        let move = Task { try await fixture.moves.moveToService() == .moved }
+        let move = Task { try await fixture.moves.moveToService(confirmedUnder: nil) == .moved }
         await gate.arrived(1)
         fixture.snapshot = ManagedPolicySnapshot(personalSyncProvider: ["off", "icloud"])
         await gate.open()
@@ -441,7 +466,7 @@ struct ProviderMovesTests {
 
         #expect(fixture.moves.awaitsMove)
 
-        _ = try await fixture.moves.moveToService()
+        _ = try await fixture.moves.moveToService(confirmedUnder: nil)
 
         #expect(fixture.provider == .tableproSync)
         #expect(!fixture.moves.awaitsMove)
@@ -718,14 +743,15 @@ struct ProviderMovesCoordinatorTests {
                     open: { transport.open() },
                     close: { transport.close() }
                 ),
-                policy: { ManagedPolicySnapshot() }
+                policy: { ManagedPolicySnapshot() },
+                session: { nil }
             ),
             settings: slice
         )
         coordinator.start()
         await coordinator.passesFinished()
 
-        #expect(try await moves.moveToService() == .moved)
+        #expect(try await moves.moveToService(confirmedUnder: nil) == .moved)
         await coordinator.passesFinished()
 
         let iCloud = try #require(services.first(.icloud))

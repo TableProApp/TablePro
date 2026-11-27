@@ -1,3 +1,4 @@
+import Combine
 import os
 import SwiftUI
 import TableProFFI
@@ -16,6 +17,8 @@ struct SyncMoveSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var moves: ProviderMoves
     let fromICloud: Bool
+    // The sign-in the sheet opened under. Another sign-in, or a sign-out, closes it with its key sheets.
+    let session: String?
 
     @State private var step: Step = .loading
     @State private var plan: MovePlanInfo?
@@ -56,6 +59,10 @@ struct SyncMoveSheet: View {
         }
         .sheet(item: $keysSheet) { keysStep in
             keysSheetContent(keysStep)
+        }
+        .onReceive(AccountServices.shared.events.receive(on: DispatchQueue.main)) { _ in
+            keysSheet = nil
+            dismiss()
         }
     }
 
@@ -216,7 +223,7 @@ struct SyncMoveSheet: View {
     private func move() async {
         step = .moving
         do {
-            switch try await moves.moveToService() {
+            switch try await moves.moveToService(confirmedUnder: session) {
             case .moved:
                 dismiss()
             case .needsKeys(let state):

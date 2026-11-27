@@ -260,7 +260,9 @@ internal final class AccountSettingsModel: ObservableObject {
         let teamLibrary = teamLibrary()
         // Everything below is this sign-in's: another one that began meanwhile is never signed out or deleted.
         let session = services.access.state.sessionID
-        let isCurrent = { [services] in services.isSignedIn && services.access.state.sessionID == session }
+        let isCurrent: @MainActor () -> Bool = { [services] in
+            services.isSignedIn && services.access.state.sessionID == session
+        }
         var changes = await teamLibrary.unsentChanges()
         var failure: TeamLibraryFailure?
         let erasesKeys = await keys.holdsKeys()
@@ -278,21 +280,25 @@ internal final class AccountSettingsModel: ObservableObject {
             case .cancel:
                 return
             case .discard:
-                await finishSignOut(teamLibrary, session: session)
+                await finishSignOut(teamLibrary, session: session, isCurrent: isCurrent)
                 return
             case .upload:
                 (changes, failure) = await teamLibrary.upload()
                 if changes?.isEmpty == true, isCurrent() {
-                    await finishSignOut(teamLibrary, session: session)
+                    await finishSignOut(teamLibrary, session: session, isCurrent: isCurrent)
                     return
                 }
             }
         }
     }
 
-    private func finishSignOut(_ teamLibrary: TeamLibrary, session: String?) async {
+    private func finishSignOut(
+        _ teamLibrary: TeamLibrary,
+        session: String?,
+        isCurrent: @escaping @MainActor () -> Bool
+    ) async {
         // The key device is revoked while the sign-in it proves itself with still works (core ADR 0051, Sign Out).
-        guard await keys.signOut() else { return }
+        guard await keys.signOut(isCurrent) else { return }
         let deleted = await teamLibrary.signOut(session: session) { [services] in await services.signOut() }
         guard deleted == false else { return }
         actionFailure = AccountActionFailure(

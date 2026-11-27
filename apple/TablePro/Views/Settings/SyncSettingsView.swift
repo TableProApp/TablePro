@@ -61,7 +61,7 @@ struct SyncSettingsView: View {
             if let notice = layout.serviceNotice {
                 Section {
                     SyncServiceNoticeRow(notice: notice) {
-                        sheet = notice == .awaitsMoveBack ? .moveToICloud : .moveToService(fromICloud: movesFromICloud)
+                        sheet = notice == .awaitsMoveBack ? .moveToICloud : moveToService
                     }
                 }
             }
@@ -110,8 +110,8 @@ struct SyncSettingsView: View {
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {
-            case .moveToService(let fromICloud):
-                SyncMoveSheet(moves: moves, fromICloud: fromICloud)
+            case .moveToService(let fromICloud, let session):
+                SyncMoveSheet(moves: moves, fromICloud: fromICloud, session: session)
             case .moveToICloud:
                 SyncMoveBackSheet(moves: moves)
             }
@@ -183,8 +183,13 @@ struct SyncSettingsView: View {
                 LicenseGateAlert.present(for: .serviceSync, in: NSApp.keyWindow)
                 return
             }
-            sheet = .moveToService(fromICloud: movesFromICloud)
+            sheet = moveToService
         }
+    }
+
+    // Bound to the sign-in it opens under: the plan the person confirms is that account's.
+    private var moveToService: SyncProviderSheet {
+        .moveToService(fromICloud: movesFromICloud, session: featureAccess.state.sessionID)
     }
 
     // MARK: - Rows
@@ -432,7 +437,7 @@ struct SyncSettingsView: View {
 }
 
 enum SyncProviderSheet: Hashable, Identifiable {
-    case moveToService(fromICloud: Bool)
+    case moveToService(fromICloud: Bool, session: String?)
     case moveToICloud
 
     var id: Self { self }

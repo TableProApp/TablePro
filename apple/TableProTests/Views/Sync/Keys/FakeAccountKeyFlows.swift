@@ -237,7 +237,7 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
 extension AccountKeysSignOut {
     // For an account test that signs out with no end-to-end keys in play.
     static var untouched: AccountKeysSignOut {
-        AccountKeysSignOut(holdsKeys: { false }, signOut: { true })
+        AccountKeysSignOut(holdsKeys: { false }, signOut: { _ in true })
     }
 }
 
