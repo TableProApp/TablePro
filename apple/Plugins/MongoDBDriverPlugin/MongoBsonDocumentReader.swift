@@ -102,6 +102,7 @@ nonisolated final class MongoBsonDocumentReader {
     private struct State {
         var isStrict = true
         var identifier: String?
+        var readsIdentifier = false
     }
 
     private enum Container {
@@ -134,10 +135,15 @@ nonisolated final class MongoBsonDocumentReader {
                 if dictionary[key] != nil, members.contains(where: { $0.key.utf8.elementsEqual(key.utf8) }) {
                     state.isStrict = false
                 }
-                if depth == 1, key == MongoDocumentIdentity.field, state.identifier == nil {
-                    state.identifier = value.canonical.compactText
+                if depth == 1, key == MongoDocumentIdentity.field, !state.readsIdentifier {
+                    state.readsIdentifier = true
+                    state.identifier = value.canonical?.compactText
                 }
-                members.append(MongoDocumentText.Member(key: key, value: value.canonical))
+                if let canonical = value.canonical {
+                    members.append(MongoDocumentText.Member(key: key, value: canonical))
+                } else {
+                    state.isStrict = false
+                }
             }
             dictionary[key] = value.decoded
         }
@@ -152,7 +158,9 @@ nonisolated final class MongoBsonDocumentReader {
         while bson_iter_next(iterator) {
             guard let value = readValue(iterator, depth: depth, state: &state) else { return nil }
             decoded.append(value.decoded)
-            if buildsCanonical { canonical.append(value.canonical) }
+            if buildsCanonical {
+                if let value = value.canonical { canonical.append(value) } else { state.isStrict = false }
+            }
         }
         guard Self.reachedEnd(iterator) else { return nil }
         return .array(decoded, canonical)
@@ -165,7 +173,8 @@ nonisolated final class MongoBsonDocumentReader {
 
     private struct Value {
         let decoded: Any
-        let canonical: MongoDocumentText.Value
+        // Nil when the strict reader refuses the value's own text, which leaves its document no canonical tree.
+        let canonical: MongoDocumentText.Value?
     }
 
     private func readValue(_ iterator: OpaquePointer, depth: Int, state: inout State) -> Value? {
@@ -300,11 +309,14 @@ nonisolated final class MongoBsonDocumentReader {
         guard let json = bson_as_canonical_extended_json(single, &length) else { return nil }
         defer { bson_free(json) }
         let text = String(cString: json)
-        guard case .object(let members)? = try? MongoDocumentText.Value(parsing: text),
-              let member = members.first,
-              let data = text.data(using: .utf8),
+        guard let data = text.data(using: .utf8),
               let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let raw = object["v"] else { return nil }
+        // A code scope can repeat a name, which the strict reader refuses; the row still reads, as it did from text.
+        let parsed = try? MongoDocumentText.Value(parsing: text)
+        guard case .object(let members)? = parsed, let member = members.first else {
+            return Value(decoded: MongoDBConnection.unwrapExtendedJson(raw), canonical: nil)
+        }
         return Value(decoded: MongoDBConnection.unwrapExtendedJson(raw), canonical: member.value)
     }
 }

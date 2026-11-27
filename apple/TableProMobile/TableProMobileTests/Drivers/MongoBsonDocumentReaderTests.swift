@@ -88,6 +88,15 @@ struct MongoBsonDocumentReaderTests {
         #expect(read.dictionary["a"] != nil)
     }
 
+    @Test("A code scope that repeats a name keeps its row, without a canonical tree")
+    func repeatedScopeNameKeepsTheRow() throws {
+        let bson = try Self.bson(#"{"_id":{"$numberInt":"1"},"f":{"$code":"x","$scope":{"x":{"$numberInt":"1"},"x":"again"}}}"#)
+        let read = try #require(MongoBsonDocumentReader().read(bson))
+        #expect(read.canonical == nil)
+        #expect(read.identifier == #"{"$numberInt":"1"}"#)
+        #expect(read.dictionary["f"] != nil)
+    }
+
     @Test("Two spellings of one character are two field names, as BSON compares names by their bytes")
     func namesCompareAsBytes() throws {
         let bson = try Self.bson(#"{"_id":{"$numberInt":"1"},"nested":{"é":"precomposed","é":"combining"}}"#)
