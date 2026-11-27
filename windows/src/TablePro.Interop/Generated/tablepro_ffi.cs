@@ -795,7 +795,7 @@ static class _UniFFILib {
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceHostSecretsMethod5(
-        ulong @uniffiHandle,RustBuffer @profileId,RustBuffer @kind,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
+        ulong @uniffiHandle,RustBuffer @profileId,RustBuffer @kind,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceHostSecretsMethod6(
@@ -13271,8 +13271,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_profile();
-            if (checksum != 11256) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_profile` checksum `11256`, library returned `{checksum}`");
+            if (checksum != 57464) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_profile` checksum `57464`, library returned `{checksum}`");
             }
         }
         {
@@ -38619,6 +38619,42 @@ class FfiConverterTypeScanDepthTag: FfiConverterRustBuffer<ScanDepthTag> {
 
 
 
+internal enum SecretDeletionTag: int {
+    Deleted,
+    NotOwned
+}
+
+class FfiConverterTypeSecretDeletionTag: FfiConverterRustBuffer<SecretDeletionTag> {
+    public static FfiConverterTypeSecretDeletionTag INSTANCE = new FfiConverterTypeSecretDeletionTag();
+
+    public override SecretDeletionTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return SecretDeletionTag.Deleted;
+            case 2: return SecretDeletionTag.NotOwned;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSecretDeletionTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(SecretDeletionTag value) {
+        return 4;
+    }
+
+    public override void Write(SecretDeletionTag value, BigEndianStream stream) {
+        switch (value) {
+            case SecretDeletionTag.Deleted: stream.WriteInt(1); break;
+            case SecretDeletionTag.NotOwned: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSecretDeletionTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal enum SecretHitKindTag: int {
     AwsAccessKey,
     PrivateKey,
@@ -41599,7 +41635,7 @@ internal interface HostSecrets {
     /// <exception cref="HostSecretException"></exception>
     void DeleteConnection(string @connectionId);
     /// <exception cref="HostSecretException"></exception>
-    void DeleteProfile(string @profileId, ProfileKindTag @kind);
+    SecretDeletionTag DeleteProfile(string @profileId, ProfileKindTag @kind);
     /// <exception cref="HostSecretException"></exception>
     SecretString? LoadItem(SecretItemTag @item);
     /// <summary>
@@ -41763,15 +41799,19 @@ class UniffiCallbackInterfaceHostSecrets {
             }
         }
     }
-    static void DeleteProfile(ulong @uniffiHandle,RustBuffer @profileId,RustBuffer @kind,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
+    static void DeleteProfile(ulong @uniffiHandle,RustBuffer @profileId,RustBuffer @kind,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
         var handle = @uniffiHandle;
         try {
             if (!FfiConverterTypeHostSecrets.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
                 throw new InternalException($"No callback in handlemap '{handle}'");
             }
+            var result =
             uniffiObject.DeleteProfile(
                 FfiConverterString.INSTANCE.Lift(@profileId), 
                 FfiConverterTypeProfileKindTag.INSTANCE.Lift(@kind));
+            unsafe {
+                *(RustBuffer*)uniffiOutReturn = FfiConverterTypeSecretDeletionTag.INSTANCE.Lower(result);
+            }
 
             _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
         }

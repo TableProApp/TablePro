@@ -1939,6 +1939,47 @@ fn no_other_writer_gets_in_between_the_write_and_its_deletions() {
 }
 
 #[test]
+fn a_write_without_the_lock_file_deletes_no_secret_and_leaves_the_list() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let profile = ssh_profile();
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![profile.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+    let mut lock = paths(&root).connections_file().into_os_string();
+    lock.push(".lock");
+    // The lock file stays between writes; a directory in its place makes it fail to open.
+    if std::path::Path::new(&lock).exists() {
+        std::fs::remove_file(&lock).expect("the lock file");
+    }
+    std::fs::create_dir(&lock).expect("a directory where the lock file goes");
+    let mut deleted = Vec::new();
+
+    replace_deleting(&store, LibraryWrite::default(), |owner| {
+        deleted.push(owner);
+        true
+    })
+    .expect("the write still lands on its re-read");
+
+    assert!(deleted.is_empty(), "a secret went without the lock: {deleted:?}");
+    let owner = SecretOwner::new(SecretOwnerKind::SshProfile, profile.id);
+    assert_eq!(pending(&root), [owner]);
+    std::fs::remove_dir(&lock).expect("the directory");
+    replace_deleting(&store, LibraryWrite::default(), |owner| {
+        deleted.push(owner);
+        true
+    })
+    .expect("the next write");
+    assert_eq!(deleted, [owner]);
+    assert!(pending(&root).is_empty());
+}
+
+#[test]
 fn a_rebuild_drops_the_deletions_its_file_listed() {
     let root = TempDir::new().expect("tempdir");
     let store = store(&root);

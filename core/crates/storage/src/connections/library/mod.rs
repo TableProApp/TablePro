@@ -148,6 +148,10 @@ impl ConnectionStore {
         state: &mut WriteGuard<'_>,
         mut delete: impl FnMut(SecretOwner) -> bool,
     ) -> Result<(), StorageError> {
+        // Without the lock file another process could bring an owner back mid-way, so the list waits for a write with it.
+        if !state.holds_file_lock() {
+            return Ok(());
+        }
         let StoreState::Ready(current, _) = &**state else {
             return Ok(());
         };
