@@ -397,6 +397,8 @@ nonisolated enum CoreHistoryMapping {
         return HistoryFilterArg(
             text: filter.searchText ?? "",
             connectionIds: connections.map { $0.map(\.uuidString).sorted() },
+            // The active project is already in `connectionIds`, as `query_history.db` scopes it.
+            projectId: nil,
             sources: sources,
             status: status,
             executedAfterMs: filter.since.map(CoreMirrorTime.milliseconds),
