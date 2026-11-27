@@ -39,11 +39,13 @@ pub struct QueryImportOutcome {
 }
 
 // Refused with ImportOutdated when the library changed since the review, which would make its
-// duplicates, and the connections Keep Existing names, stale.
+// duplicates, and the connections Keep Existing names, stale. Another app has no projects, so every new
+// entry lands in `project`; one that replaces a saved connection keeps the project it has.
 pub fn apply_blocking(
     review: &ImportReview,
     plan: &ImportPlan,
     store: &ConnectionStore,
+    project: Option<Uuid>,
 ) -> Result<AppliedImport, StorageError> {
     let entries = plan
         .connections()
@@ -52,6 +54,7 @@ pub fn apply_blocking(
             connection: planned.connection.clone(),
             group_path: planned.group_path.clone(),
             replaces: planned.replaces,
+            project_id: project,
         })
         .collect();
     let saved = store.add_imported_blocking(review.library(), entries)?;

@@ -38,6 +38,7 @@ use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::i18n::{gettext, ngettext_f};
 use crate::runtime::spawn_and_deliver;
 use crate::services::history_service::HistoryService;
+use crate::services::saved_connection_list::{ProjectScope, SavedConnectionList};
 use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
 use history_export::{ExportKind, history_export_failure_text, save_export, show_export_failure};
 
@@ -62,6 +63,8 @@ pub(crate) struct HistoryDialogInit {
     pub connections: ConnectionStore,
     /// The presenting window's connection, which the filter starts on.
     pub preferred_connection: Option<Uuid>,
+    // Its scope narrows the list, and its scope signal reads it again.
+    pub saved: Rc<SavedConnectionList>,
     pub revealer: Rc<dyn FileRevealer>,
     pub tasks: Tasks,
 }
@@ -87,6 +90,7 @@ pub(super) struct DialogParts {
     history: Option<QueryHistory>,
     connections: ConnectionStore,
     preferred_connection: Option<Uuid>,
+    saved: Rc<SavedConnectionList>,
     filters: HistoryFilters,
     revealer: Rc<dyn FileRevealer>,
     tasks: Tasks,
@@ -110,10 +114,20 @@ impl HistoryDialog {
         let filters = HistoryFilters::new(&ConnectionFilterModel::new());
         // After the search bar, so the filters sit under it.
         imp.toolbar_view.add_top_bar(filters.root());
+        let weak = dialog.downgrade();
+        let observer = init.saved.connect_scope_changed(move || {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.scope_changed();
+            }
+        });
+        imp.scope_observer.set(Some(observer));
+        // The workspace keeps a closed dialog until the next one opens.
+        dialog.connect_closed(|dialog| dialog.imp().unfollow_scope());
         let _ = imp.parts.set(DialogParts {
             history: init.history.store(),
             connections: init.connections,
             preferred_connection: init.preferred_connection,
+            saved: init.saved,
             filters,
             revealer: init.revealer,
             tasks: init.tasks,
@@ -175,6 +189,7 @@ impl HistoryDialog {
 
     fn connect_filters(&self) {
         let imp = self.imp();
+        imp.filters_connected.set(true);
         let dialog = self.downgrade();
         imp.search_entry.connect_search_changed(move |_| {
             if let Some(dialog) = dialog.upgrade() {
@@ -778,10 +793,19 @@ impl HistoryDialog {
         let (store, tasks) = (parts.connections.clone(), parts.tasks.clone());
         let blocking = tasks.clone();
         let dialog = self.downgrade();
+        let scope = self.scope();
+        let imp = self.imp();
+        let generation = imp.connections_generation.get().wrapping_add(1);
+        imp.connections_generation.set(generation);
+        parts
+            .filters
+            .connections()
+            .set_all_label(scope.as_ref().map(|scope| scope.name.as_str()));
         drop(spawn_and_deliver(
             &tasks,
             async move {
-                let listed = history.connections_with_history().await;
+                let within = scope.as_ref().map(|scope| scope.connections.as_slice());
+                let listed = history.connections_with_history_in(within).await;
                 let saved = blocking.spawn_blocking_task(move || store.load_blocking()).await;
                 (listed, saved)
             },
@@ -789,6 +813,10 @@ impl HistoryDialog {
                 let Some(dialog) = dialog.upgrade() else {
                     return;
                 };
+                // A read of the scope before a change would list another project's connections.
+                if dialog.imp().connections_generation.get() != generation {
+                    return;
+                }
                 let connections = match loaded {
                     Ok((listed, saved)) => connections_read(listed, saved),
                     Err(failure) => {
@@ -799,6 +827,25 @@ impl HistoryDialog {
                 then(&dialog, connections);
             },
         ));
+    }
+
+    fn scope(&self) -> Option<ProjectScope> {
+        let parts = self.imp().parts.get()?;
+        Some(parts.saved.scope()?.with(parts.preferred_connection))
+    }
+
+    // The refresh starts a new generation, so a page of the old scope on its way is dropped.
+    fn scope_changed(&self) {
+        if self.storage().is_none() {
+            return;
+        }
+        // Before the first list lands the filter still has to start on the window's connection.
+        if !self.imp().filters_connected.get() {
+            self.load_connections();
+            return;
+        }
+        self.reload_connections();
+        self.refresh();
     }
 
     fn fill_connections(&self, listed: &[HistoryConnection], saved: &[SavedConnection], select: Option<Uuid>) {
@@ -815,6 +862,11 @@ impl HistoryDialog {
         if let Some(parts) = imp.parts.get() {
             let state = parts.filters.state();
             query.connection = state.connection;
+            // One connection picked is the whole filter; with none picked the project is.
+            query.connections = match state.connection {
+                Some(_) => None,
+                None => self.scope().map(|scope| scope.connections),
+            };
             query.status = state.status;
             query.executed_after = state.window.executed_after(SystemTime::now());
         }

@@ -34,6 +34,20 @@ public sealed class ForeignImportTests : IDisposable
     }
 
     [Fact]
+    public async Task AnImportedConnectionLandsInTheProjectGiven()
+    {
+        WriteDBeaver();
+        var acme = await _core.Library.CreateProjectAsync("Acme");
+        using var review = await _core.ReadForeignAsync(
+            ForeignApp.DBeaver, _dirs, null, new ForeignImportRequest(true, true), TestContext.Current.CancellationToken);
+
+        await review.ApplyAsync(acme.Id);
+
+        var saved = Assert.Single((await _core.Library.GetSnapshotAsync(acme.Id)).Connections);
+        Assert.Equal(acme.Id, saved.ProjectId);
+    }
+
+    [Fact]
     public async Task ADBeaverConnectionLandsWithItsPasswordAndItsScriptOnce()
     {
         WriteDBeaver();
@@ -43,7 +57,7 @@ public sealed class ForeignImportTests : IDisposable
             ForeignApp.DBeaver, _dirs, null, new ForeignImportRequest(true, true), TestContext.Current.CancellationToken);
         var choices = review.Choices();
         var outcome = await review.ApplyAsync();
-        var again = await Assert.ThrowsAsync<TableProException>(review.ApplyAsync);
+        var again = await Assert.ThrowsAsync<TableProException>(() => review.ApplyAsync());
         var saved = (await _core.Library.GetSnapshotAsync()).Connections.Single();
 
         var dbeaver = sources.Single(source => source.App == ForeignApp.DBeaver);

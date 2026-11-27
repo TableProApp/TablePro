@@ -144,6 +144,9 @@ public sealed record AppSettings
 
     public int McpServerPort { get; set; } = DefaultMcpServerPort;
 
+    // The project the Connections page shows, on this PC only; null, and an id no project holds, show all connections.
+    public Guid? ActiveProjectId { get; set; }
+
     // The channel Settings chose; null follows the App Installer file the app was installed from.
     public UpdateChannel? UpdateChannel { get; set; }
 

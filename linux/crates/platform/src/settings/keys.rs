@@ -24,6 +24,7 @@ pub const VIM_KEYBINDINGS: &str = "vim-keybindings";
 pub const SHORTCUT_PRESET: &str = "shortcut-preset";
 pub const CONNECT_DIALOG_DRIVER: &str = "connect-dialog-driver";
 pub const RESTORE_SESSION: &str = "restore-session";
+pub const ACTIVE_PROJECT: &str = "active-project";
 pub const LAST_SEEN_VERSION: &str = "last-seen-version";
 pub const SETUP_GUIDE_SEEN: &str = "setup-guide-seen";
 pub const SHARE_USAGE_DATA: &str = "share-usage-data";

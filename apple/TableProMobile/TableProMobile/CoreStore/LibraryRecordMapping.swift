@@ -50,6 +50,7 @@ nonisolated enum LibraryRecordMapping {
             isFavorite: isFavorite,
             isSample: stored.device.isSample
         )
+        connection.projectId = record.projectId.flatMap(UUID.init(uuidString:))
         connection.sshProfileId = details.sshProfileId.flatMap(UUID.init(uuidString:))
         connection.clearsSSHProfileLink = flags.profileLinksToClear.contains(id)
         connection.sshRoute = details.sshRoute.flatMap(route)
@@ -84,6 +85,7 @@ nonisolated enum LibraryRecordMapping {
             tags: connection.tagIds.map(\.uuidString),
             aiPolicy: kept?.aiPolicy,
             externalAccess: kept?.externalAccess,
+            projectId: connection.projectId?.uuidString,
             icon: icon(connection.iconName, keeping: kept?.icon),
             order: UInt32(clamping: connection.sortOrder)
         )
@@ -121,7 +123,8 @@ nonisolated enum LibraryRecordMapping {
             sortOrder: Int(record.order),
             color: color(record.color),
             iconName: record.icon.flatMap(symbol),
-            parentId: record.parentId.flatMap(UUID.init(uuidString:))
+            parentId: record.parentId.flatMap(UUID.init(uuidString:)),
+            projectId: record.projectId.flatMap(UUID.init(uuidString:))
         )
     }
 
@@ -132,7 +135,28 @@ nonisolated enum LibraryRecordMapping {
             parentId: group.parentId?.uuidString,
             order: UInt32(clamping: group.sortOrder),
             color: colorId(group.color, keeping: stored?.color),
+            projectId: group.projectId?.uuidString,
             icon: icon(group.iconName, keeping: stored?.icon)
+        )
+    }
+
+    static func project(_ record: ProjectRecord) -> ConnectionProject {
+        ConnectionProject(
+            id: UUID(uuidString: record.id) ?? derivedId(record.id, "project"),
+            name: record.name,
+            sortOrder: Int(record.order),
+            color: color(record.color),
+            iconName: record.icon.flatMap(symbol)
+        )
+    }
+
+    static func record(_ project: ConnectionProject, keeping stored: ProjectRecord?) -> ProjectRecord {
+        ProjectRecord(
+            id: project.id.uuidString,
+            name: project.name,
+            order: UInt32(clamping: project.sortOrder),
+            color: colorId(project.color, keeping: stored?.color),
+            icon: icon(project.iconName, keeping: stored?.icon)
         )
     }
 

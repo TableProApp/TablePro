@@ -31,6 +31,26 @@ public enum LibraryOrdering {
         current.filter { !removing.contains($0) }
     }
 
+    // A list that shows one project orders only what it shows, so every other id keeps its place in the saved order.
+    public static func favoritesOrder(_ saved: [UUID], scoped: [UUID], reorderedTo updated: [UUID]) -> [UUID] {
+        let inScope = Set(scoped).union(updated)
+        var seen: Set<UUID> = []
+        var pending = updated.filter { seen.insert($0).inserted }[...]
+        var merged: [UUID] = []
+        var afterLastSlot: Int?
+        for id in saved {
+            guard inScope.contains(id) else {
+                merged.append(id)
+                continue
+            }
+            guard let next = pending.popFirst() else { continue }
+            merged.append(next)
+            afterLastSlot = merged.count
+        }
+        merged.insert(contentsOf: pending, at: afterLastSlot ?? merged.count)
+        return merged
+    }
+
     public static func favoritesOrder(_ current: [UUID], keeping favorites: Set<UUID>) -> [UUID] {
         var seen: Set<UUID> = []
         return current.filter { favorites.contains($0) && seen.insert($0).inserted }

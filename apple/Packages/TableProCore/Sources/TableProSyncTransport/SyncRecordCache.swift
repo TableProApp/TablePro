@@ -157,3 +157,18 @@ public final class SyncRecordCache {
         }
     }
 }
+
+public extension SyncRecordCache {
+    // The project the last server copy names, for a copy here that kept its own while no pull read the field.
+    func projectId(ofConnection id: UUID) -> UUID? {
+        record(named: SyncRecordType.connection.recordName(for: id.uuidString))
+            .flatMap { $0.fields(ConnectionSyncField.self)[.projectId] as? String }
+            .flatMap { UUID(uuidString: $0) }
+    }
+
+    func projectId(ofGroup id: UUID) -> UUID? {
+        record(named: SyncRecordType.group.recordName(for: id.uuidString))
+            .flatMap { $0.fields(ConnectionGroupSyncField.self)[.projectId] as? String }
+            .flatMap { UUID(uuidString: $0) }
+    }
+}

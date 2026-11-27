@@ -171,6 +171,23 @@ struct DataGridDisplayCacheTests {
         #expect(grid.model.display.cache.box(forID: .existing(1))?.values[0] == "C")
     }
 
+    @Test("The prewarm formats a cut text's first characters, as the draw does")
+    func prewarmShowsCutTextHead() async throws {
+        let grid = DisplayGrid(TableRows.from(
+            queryRows: [[.text("lorem ipsum")], [.text("dolor")]],
+            columns: ["body"],
+            columnTypes: [.text(rawType: "LONGTEXT")],
+            unloadedCells: [0: [0: 5_242_880]]
+        ))
+        let walk = try #require(grid.presenter.prewarmBatch(in: 0..<2, from: 0))
+        let batch = try #require(walk.batch)
+        let formatted = await batch.formatted()
+
+        #expect(grid.presenter.installPrewarmed(formatted, of: batch))
+        #expect(grid.model.display.cache.box(forID: .existing(0))?.values[0] == "lorem ipsum")
+        #expect(grid.model.display.cache.box(forID: .existing(1))?.values[0] == "dolor")
+    }
+
     @Test("A batch copies only rows with no text yet, and stops at its limit")
     func prewarmBatchSkipsCachedRows() throws {
         let rowCount = DataGridPrewarmBatch.rowLimit * 2

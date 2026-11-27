@@ -37,6 +37,8 @@ final class SyncCoordinator: ObservableObject {
     private let policyGate: @MainActor () -> DisableReason?
     private let policyChanges: AnyPublisher<DisableReason?, Never>
     let recordCreationDate: (CKRecord) -> Date?
+    // What a push may write: Production's schema, or one a test stands in.
+    let schema: SyncWritableSchema
     private var triggers: SyncTriggers?
     private var licenseCancellable: AnyCancellable?
     private var policyCancellable: AnyCancellable?
@@ -107,8 +109,10 @@ final class SyncCoordinator: ObservableObject {
             .eraseToAnyPublisher(),
         recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate },
         activationClock: any Clock<Duration> = ContinuousClock(),
-        pushRegistrar: SyncPushRegistrar = .live
+        pushRegistrar: SyncPushRegistrar = .live,
+        schema: SyncWritableSchema = .production
     ) {
+        self.schema = schema
         self.services = services
         self.activationClock = activationClock
         self.pushChannel = SyncPushChannel(registrar: pushRegistrar, metadata: services.syncMetadataStorage)
@@ -287,6 +291,7 @@ final class SyncCoordinator: ObservableObject {
             }
         }
 
+        seedProjectMembershipIfNeeded()
         let push = admission == .full && !isStoppedByPolicy ? await performPush() : PushReport()
         // A provider the organization stops commits nothing more, so nothing else of this run is kept.
         guard !isStoppedByPolicy else { return CycleResult(admission: admission, failure: nil) }
@@ -720,13 +725,6 @@ final class SyncCoordinator: ObservableObject {
 
     // MARK: - Pull
 
-    // A delta never resends a record the token passed, and a category toggle starts no run, so every pull checks.
-    private func adoptReadableContent(for settings: SyncSettings) {
-        guard metadataStorage.adoptReadableRecordTypes(Self.readableContent(for: settings)) else { return }
-        metadataStorage.saveToken(nil)
-        Self.logger.info("Reading record types the last pull skipped: cleared sync token for full fetch")
-    }
-
     private struct PullReport {
         var failure: SyncStepFailure?
         // A delta that carried records this run did not upload, which another device sent.
@@ -850,9 +848,10 @@ final class SyncCoordinator: ObservableObject {
 
         // Only what the local copy took: a record of a category this Mac does not sync stays out until a full fetch
         // applies it, and one whose copy here it cannot read until a build that reads the copy fetches it.
+        let readsProjects = isProjectSyncWritable()
         recordCache.store(admitted.changedRecords.filter { record in
             echoGuard?.withholds(record.recordID, tracker: changeTracker) != true
-                && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) } == true
+                && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) && ($0 != .project || readsProjects) } == true
                 && !unreadableNames.contains(record.recordID.recordName)
         })
         recordCache.remove(result.deletedRecordIDs + deferred.due + held.due + missing)
@@ -933,6 +932,8 @@ final class SyncCoordinator: ObservableObject {
         let connectionTombstoneIds = Set(metadataStorage.tombstones(for: .connection).map(\.id))
         let groupTombstoneIds = Set(metadataStorage.tombstones(for: .group).map(\.id))
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
+        let projectTombstoneIds = Set(metadataStorage.tombstones(for: .project).map(\.id))
+        let readsProjects = isProjectSyncWritable()
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
         let credentialTombstoneIds = Set(metadataStorage.tombstones(for: .credentialProfile).map(\.id))
         let settingsTombstoneIds = Set(metadataStorage.tombstones(for: .settings).map(\.id))
@@ -942,6 +943,11 @@ final class SyncCoordinator: ObservableObject {
         var tableFolderRecords: [CKRecord] = []
         var connectionBatch: RemoteConnectionBatch?
         var heldNames: Set<String> = []
+        let pendingDeletions = SyncPendingDeletions.parse(deletedRecordIDs, settings: settings, readsProjects: readsProjects)
+        // Read before any record lands: the update that takes a member out of a group can come with the group's deletion.
+        let membershipBefore = pendingDeletions.groups.isEmpty
+            ? nil
+            : membershipBeforePull(bringing: changedRecords, readsProjects: readsProjects)
 
         func persistConnectionBatch() {
             guard let batch = connectionBatch else { return }
@@ -1005,6 +1011,14 @@ final class SyncCoordinator: ObservableObject {
                 applyRemoteDatabaseFavorite(record, tombstoneIds: databaseFavoriteTombstoneIds)
             case .tableFolder, .tableFolderItem:
                 tableFolderRecords.append(record)
+            case .project:
+                // Not applied and not cached until the type is readable, when a full fetch brings it.
+                guard readsProjects else { continue }
+                switch applyRemoteProject(record, tombstoneIds: projectTombstoneIds) {
+                case .applied: groupsOrTagsChanged = true
+                case .failed: persistenceFailed = true
+                case .skipped: break
+                }
             case .favorite, .favoriteFolder:
                 break
             }
@@ -1014,8 +1028,9 @@ final class SyncCoordinator: ObservableObject {
         holdChanges(heldNames)
 
         var effects = applyRemoteDeletions(
-            SyncPendingDeletions.parse(deletedRecordIDs, settings: settings),
-            alongside: tableFavorites
+            pendingDeletions,
+            alongside: tableFavorites,
+            membershipBefore: membershipBefore
         )
         actualConnectionChanges = actualConnectionChanges || effects.connectionsChanged
         groupsOrTagsChanged = groupsOrTagsChanged || effects.groupsOrTagsChanged
@@ -1070,12 +1085,13 @@ final class SyncCoordinator: ObservableObject {
             localConnection,
             in: remoteRecord.recordID.zoneID,
             base: base,
-            publisher: services.connectionStorage.sshRoutePublisherId
+            publisher: services.connectionStorage.sshRoutePublisherId,
+            schema: schema
         )
         guard let merged = edit.rebased(onto: remoteRecord) else { return nil }
 
         do {
-            return try SyncRecordMapper.toConnection(merged)
+            return try SyncRecordMapper.toConnection(merged, readsProject: isProjectSyncWritable())
         } catch {
             Self.logger.error("Failed to merge local edits: \(error.localizedDescription)")
             return nil
@@ -1091,7 +1107,7 @@ final class SyncCoordinator: ObservableObject {
     ) {
         let remoteConnection: DatabaseConnection
         do {
-            remoteConnection = try SyncRecordMapper.toConnection(record)
+            remoteConnection = try SyncRecordMapper.toConnection(record, readsProject: isProjectSyncWritable())
         } catch {
             Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
             return
@@ -1129,7 +1145,12 @@ final class SyncCoordinator: ObservableObject {
             batch.cleanedIds.insert(remoteConnection.id.uuidString)
         }
         if let index {
-            batch.replace(at: index, with: kept.adoptingDeviceLocalState(from: batch.connections[index]))
+            var adopted = kept.adoptingDeviceLocalState(from: batch.connections[index])
+            // Until a record can carry a project, membership is this Mac's own and a pull leaves it.
+            if !isProjectSyncWritable() {
+                adopted.projectId = batch.connections[index].projectId
+            }
+            batch.replace(at: index, with: adopted)
         } else {
             var inserted = kept
             inserted.origin = .synced
@@ -1148,21 +1169,6 @@ final class SyncCoordinator: ObservableObject {
         }
         connectionsCleanedOnPull.formUnion(batch.cleanedIds)
         return .applied
-    }
-
-    private func applyRemoteGroup(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
-        guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return .skipped }
-        if tombstoneIds.contains(remoteGroup.id.uuidString) { return .skipped }
-
-        return services.groupStorage.applyRemoteGroup(remoteGroup)
-    }
-
-    @discardableResult
-    private func applyRemoteTag(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
-        guard let remoteTag = SyncRecordMapper.toTag(record) else { return .skipped }
-        if tombstoneIds.contains(remoteTag.id.uuidString) { return .skipped }
-
-        return services.tagStorage.applyRemoteTag(remoteTag)
     }
 
     private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {

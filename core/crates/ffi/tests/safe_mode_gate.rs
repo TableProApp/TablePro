@@ -119,6 +119,7 @@ async fn saved(core: &Core, path: &Path, safe_mode: SafeModeTag) -> Arc<Database
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        project_id: None,
         icon: None,
         order: 0,
     };

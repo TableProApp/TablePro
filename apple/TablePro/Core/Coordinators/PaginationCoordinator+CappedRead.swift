@@ -37,11 +37,11 @@ extension PaginationCoordinator {
         if let denial = decision.denialError { throw denial }
 
         let isTableTab = tab.tabType == .table
-        let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: tab, sql: query) : []
+        let unloadedLayout = isTableTab ? parent.unloadedValueLayout(for: tab, sql: query) : nil
         let safeModeIsReadOnly = parent.runsAtReadOnly
         return try await parent.withExecutionDriver(scope: scope, isTableTab: isTableTab, lease: DriverLeaseOwner()) { driver in
             let values = parameters.map { $0.map { $0 as Any? } }
-            let result: QueryResult
+            var result: QueryResult
             if let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) {
                 result = try await driver.executeUserQuery(
                     query: query, rowCap: rowCap, parameters: values, context: context
@@ -49,7 +49,8 @@ extension PaginationCoordinator {
             } else {
                 result = try await driver.executeUserQuery(query: query, rowCap: rowCap, parameters: values)
             }
-            return result.foldingUnloadedValues(lengthColumns: lengthColumns)
+            result.foldUnloadedValues(unloadedLayout)
+            return result
         }
     }
 }

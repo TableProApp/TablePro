@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -8,7 +8,7 @@ use tablepro_mcp::{McpHost, OpenOutcome, WriteApproval};
 use tablepro_session::Session;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::query_history::NewEntry;
-use tablepro_storage::{SavedConnection, StoragePaths};
+use tablepro_storage::{ConnectionStore, SavedConnection, StoragePaths};
 use tokio::sync::OnceCell;
 use uuid::Uuid;
 
@@ -53,6 +53,21 @@ pub(crate) struct AppBridge {
     pub(crate) tasks: Tasks,
     pub(crate) history: HistoryAccess,
     pub(crate) requests: AtomicU64,
+    pub(crate) project: ActiveProject,
+}
+
+// The project the app shows, which the app sets on each switch and every tool call reads.
+#[derive(Clone, Default)]
+pub(crate) struct ActiveProject(Arc<Mutex<Option<Uuid>>>);
+
+impl ActiveProject {
+    pub(crate) fn get(&self) -> Option<Uuid> {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn set(&self, project: Option<Uuid>) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = project;
+    }
 }
 
 // The core's one history store, opened by whichever of the app and the server reads it first.
@@ -60,6 +75,7 @@ pub(crate) struct AppBridge {
 pub(crate) struct HistoryAccess {
     pub(crate) paths: Option<StoragePaths>,
     pub(crate) store: Arc<OnceCell<Arc<QueryHistoryStore>>>,
+    pub(crate) connections: Option<ConnectionStore>,
 }
 
 impl AppBridge {
@@ -152,6 +168,10 @@ impl McpHost for AppBridge {
         }
     }
 
+    fn active_project(&self) -> Option<Uuid> {
+        self.project.get()
+    }
+
     async fn record(&self, entry: NewEntry, dialect: Arc<dyn SqlDialect>) {
         if let Some(store) = self.history.store(&self.tasks).await {
             store.record_entry(entry, dialect).await;
@@ -163,9 +183,10 @@ impl HistoryAccess {
     async fn store(&self, tasks: &Tasks) -> Option<Arc<QueryHistoryStore>> {
         let paths = self.paths.clone()?;
         let tasks = tasks.clone();
+        let connections = self.connections.clone();
         match self
             .store
-            .get_or_try_init(|| QueryHistoryStore::open(paths, tasks))
+            .get_or_try_init(|| QueryHistoryStore::open(paths, tasks, connections))
             .await
         {
             Ok(store) => Some(store.clone()),

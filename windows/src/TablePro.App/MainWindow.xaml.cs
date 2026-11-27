@@ -364,6 +364,55 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuOpenRecent.Items.Add(clear);
     }
 
+    // Built again when the projects or the scope change, in each window's own menu bar.
+    private void ShowProjects()
+    {
+        ProjectMenus.Fill(
+            MenuProject.Items,
+            _workbench,
+            "Menu",
+            async () => await NewProjectAsync(),
+            async () => await ManageProjectsAsync());
+        if (_home is not null && ReferenceEquals(Rail.Content, _home))
+        {
+            AppTitleBar.Subtitle = ProjectSubtitle();
+        }
+    }
+
+    private void OnProjectChanged(object? sender, EventArgs e) => ShowProjects();
+
+    // The item clicked checked itself; the menu goes back to the project the lists show.
+    private void OnScopeReadFailed(object? sender, ScopeReadFailedEventArgs e) => ShowProjects();
+
+    // All connections adds nothing to the title, so a library with no project looks as it did.
+    private string ProjectSubtitle() => _workbench.ActiveProjectRecord?.Name ?? string.Empty;
+
+    private async Task NewProjectAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.NewProjectAsync();
+            return;
+        }
+
+        ShowHome();
+        await _home.NewProjectAsync();
+    }
+
+    private async Task ManageProjectsAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.ManageProjectsAsync();
+            return;
+        }
+
+        ShowHome();
+        await _home.ManageProjectsAsync();
+    }
+
     public async Task ImportAsync()
     {
         if (_home is null)
@@ -384,7 +433,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         ShowHome();
         try
         {
-            var summary = await _workbench.Library.ImportAsync(result.Path);
+            var summary = await _workbench.Library.ImportAsync(result.Path, _workbench.ActiveProject);
             _workbench.NotifyLibraryChanged();
             _home.ShowMessage(Strings.Format("ImportDone", summary.Added, summary.Updated), InfoBarSeverity.Success);
             await HandOffAsync(SetupGuide.Handoff(summary.ConnectionIds, ImportSource.FileOrLink));
@@ -460,7 +509,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     // The launch's first read of the library decides whether the guide shows, while the Connections page is in front.
-    private void OnLibraryRead(object? sender, LibrarySnapshot snapshot)
+    private async void OnLibraryRead(object? sender, LibrarySnapshot snapshot)
     {
         if (_launchGateAsked)
         {
@@ -468,8 +517,22 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         _launchGateAsked = true;
+        // A snapshot narrowed to a project counts that project; the guide is for a library with nothing anywhere.
+        var connections = snapshot.Connections.Count;
+        if (connections == 0 && snapshot.Scope is not null)
+        {
+            try
+            {
+                connections = (await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true)).Connections.Count;
+            }
+            catch (TableProException)
+            {
+                return;
+            }
+        }
+
         var gate = new SetupGate(
-            false, true, snapshot.Connections.Count, _workbench.Settings.SetupGuideSeen, LaunchWork: _waitingFiles.Count > 0);
+            false, true, connections, _workbench.Settings.SetupGuideSeen, LaunchWork: _waitingFiles.Count > 0);
         if (ReferenceEquals(Rail.Content, _home) && SetupGuide.ShouldShow(gate))
         {
             ShowSetupGuide();
@@ -726,8 +789,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         };
         ShowKeys();
         ShowRecentFiles();
+        ShowProjects();
         WatchUpdates();
         _workbench.RecentFilesChanged += OnRecentFilesChanged;
+        _workbench.ProjectChanged += OnProjectChanged;
+        _workbench.ScopeChanged += OnProjectChanged;
+        _workbench.ScopeReadFailed += OnScopeReadFailed;
         _workbench.SettingsChanged += OnSettingsChanged;
         _workbench.LibraryChanged += OnLibraryChanged;
         AppWindow.Closing += OnClosing;
@@ -1028,7 +1095,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void Show(UIElement page)
     {
         SetContent(page);
-        AppTitleBar.Subtitle = string.Empty;
+        AppTitleBar.Subtitle = ReferenceEquals(page, _home) ? ProjectSubtitle() : string.Empty;
         ShowCue(null);
         // While the rail is hidden, Settings is reached from the Connections page, so the title bar leads back.
         AppTitleBar.IsBackButtonVisible = page is SetupView setup
@@ -1635,6 +1702,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     {
         _workbench.SettingsChanged -= OnSettingsChanged;
         _workbench.LibraryChanged -= OnLibraryChanged;
+        _workbench.ProjectChanged -= OnProjectChanged;
+        _workbench.ScopeChanged -= OnProjectChanged;
+        _workbench.ScopeReadFailed -= OnScopeReadFailed;
         _workbench.RecentFilesChanged -= OnRecentFilesChanged;
         if (IsPrimary)
         {

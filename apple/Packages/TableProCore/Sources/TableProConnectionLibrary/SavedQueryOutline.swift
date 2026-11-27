@@ -15,6 +15,11 @@ public protocol SavedQueryFolderRepresentable: LibraryGroupRepresentable {
     var connectionId: UUID? { get }
 }
 
+public extension SavedQueryFolderRepresentable {
+    // A folder is scoped by its connection, never by a project of its own.
+    var projectId: UUID? { nil }
+}
+
 public enum SavedQueryOutlineID: Hashable, Sendable {
     case folder(UUID)
     case query(UUID)

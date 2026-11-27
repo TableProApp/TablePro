@@ -5,18 +5,18 @@ import TableProModels
 // opens with the import sheet over it.
 struct DataImportConnectionChooser: View {
     let fileURL: URL
-    let connections: [DatabaseConnection]
     let choose: (UUID) -> Void
 
+    @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
-    init(fileURL: URL, connections: [DatabaseConnection], choose: @escaping (UUID) -> Void) {
+    init(fileURL: URL, choose: @escaping (UUID) -> Void) {
         self.fileURL = fileURL
-        self.connections = connections
         self.choose = choose
     }
 
     var body: some View {
+        let connections = ConnectionListSelection.openable(in: appState.scopedConnections)
         NavigationStack {
             Group {
                 if connections.isEmpty {

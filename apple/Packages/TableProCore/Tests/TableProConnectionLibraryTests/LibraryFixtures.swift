@@ -9,6 +9,7 @@ struct FixtureConnection: LibraryConnectionRepresentable {
     var username = ""
     var libraryTypeName = "PostgreSQL"
     var groupId: UUID?
+    var projectId: UUID?
     var tagIds: [UUID] = []
     var sortOrder = 0
     var isFavorite = false
@@ -18,6 +19,13 @@ struct FixtureGroup: LibraryGroupRepresentable {
     var id = UUID()
     var name: String
     var parentId: UUID?
+    var projectId: UUID?
+    var sortOrder = 0
+}
+
+struct FixtureProject: LibraryProjectRepresentable {
+    var id = UUID()
+    var name: String
     var sortOrder = 0
 }
 

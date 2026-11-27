@@ -6267,4 +6267,127 @@ New fingerprint: {2}</value>
   <data name="SetupThemeSystem.Text" xml:space="preserve">
     <value>Use system setting</value>
   </data>
+  <data name="MenuProject.Text" xml:space="preserve">
+    <value>Project</value>
+  </data>
+  <data name="MenuProject.AccessKey" xml:space="preserve">
+    <value>P</value>
+  </data>
+  <data name="ProjectSwitcherName" xml:space="preserve">
+    <value>Project: {0}</value>
+    <comment>What a screen reader calls the project switcher. {0} is the active project's name, or All connections.</comment>
+  </data>
+  <data name="ProjectSwitcher.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Switch project</value>
+  </data>
+  <data name="ProjectAllConnections" xml:space="preserve">
+    <value>All connections</value>
+    <comment>The built-in choice of the project switcher that shows every connection.</comment>
+  </data>
+  <data name="ProjectNew" xml:space="preserve">
+    <value>New project...</value>
+  </data>
+  <data name="ProjectManage" xml:space="preserve">
+    <value>Manage projects...</value>
+  </data>
+  <data name="NewProjectTitle" xml:space="preserve">
+    <value>New project</value>
+  </data>
+  <data name="ManageProjectsTitle" xml:space="preserve">
+    <value>Manage projects</value>
+  </data>
+  <data name="ManageProjectsList" xml:space="preserve">
+    <value>Projects</value>
+  </data>
+  <data name="ManageProjectsEmpty" xml:space="preserve">
+    <value>No projects yet. A project keeps one product's connections apart from the rest.</value>
+  </data>
+  <data name="ManageProjectsMoveUp" xml:space="preserve">
+    <value>Move up</value>
+  </data>
+  <data name="ManageProjectsMoveDown" xml:space="preserve">
+    <value>Move down</value>
+  </data>
+  <data name="DeleteProjectTitle" xml:space="preserve">
+    <value>Delete {0}?</value>
+    <comment>{0} is the project's name.</comment>
+  </data>
+  <data name="DeleteProjectMessage" xml:space="preserve">
+    <value>Its connections and groups are kept. They show in All connections.</value>
+  </data>
+  <data name="MenuMoveToProject" xml:space="preserve">
+    <value>Move to project</value>
+  </data>
+  <data name="MenuNoProject" xml:space="preserve">
+    <value>No project</value>
+  </data>
+  <data name="EmptyProjectTitle" xml:space="preserve">
+    <value>No connections in {0}</value>
+    <comment>{0} is the project's name.</comment>
+  </data>
+  <data name="EmptyProjectMessage.Text" xml:space="preserve">
+    <value>Add a connection, or move one here from All connections.</value>
+  </data>
+  <data name="EmptyProjectNewConnection.Content" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="SearchAllConnectionsButton.Content" xml:space="preserve">
+    <value>Search all connections</value>
+  </data>
+  <data name="HistoryListProject" xml:space="preserve">
+    <value>Queries run on this project's connections</value>
+  </data>
+  <data name="DeleteHistoryChoice_one" xml:space="preserve">
+    <value>Also delete its query history</value>
+    <comment>{0} is the number of connections.</comment>
+  </data>
+  <data name="DeleteHistoryChoice_other" xml:space="preserve">
+    <value>Also delete their query history</value>
+    <comment>{0} is the number of connections.</comment>
+  </data>
+  <data name="DeleteKeptSavedQueries_one" xml:space="preserve">
+    <value>The connection was deleted, but its saved queries couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose saved queries stayed.</comment>
+  </data>
+  <data name="DeleteKeptSavedQueries_other" xml:space="preserve">
+    <value>The connections were deleted, but the saved queries of {0:N0} of them couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose saved queries stayed.</comment>
+  </data>
+  <data name="DeleteKeptHistory_one" xml:space="preserve">
+    <value>The connection was deleted, but its query history couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose history stayed.</comment>
+  </data>
+  <data name="DeleteKeptHistory_other" xml:space="preserve">
+    <value>The connections were deleted, but the query history of {0:N0} of them couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose history stayed.</comment>
+  </data>
+  <data name="DeleteKeptBoth_one" xml:space="preserve">
+    <value>The connection was deleted, but its saved queries and query history couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose saved queries or history stayed.</comment>
+  </data>
+  <data name="DeleteKeptBoth_other" xml:space="preserve">
+    <value>The connections were deleted, but the saved queries and query history of {0:N0} of them couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose saved queries or history stayed.</comment>
+  </data>
+  <data name="Error_storage_project_not_found" xml:space="preserve">
+    <value>The project is gone. It may have been deleted.</value>
+  </data>
+  <data name="Error_storage_project_exists" xml:space="preserve">
+    <value>That project is already there.</value>
+  </data>
+  <data name="Error_storage_project_name_taken" xml:space="preserve">
+    <value>Another project has that name.</value>
+  </data>
+  <data name="Error_storage_connection_grouped" xml:space="preserve">
+    <value>A connection in a group moves with its group. Move the group instead.</value>
+  </data>
+  <data name="Error_storage_group_not_top_level" xml:space="preserve">
+    <value>Only a top-level group can move to a project.</value>
+  </data>
+  <data name="Error_project_name_empty" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="Error_project_name_control_character" xml:space="preserve">
+    <value>The name has a character that can't be shown.</value>
+  </data>
 </root>

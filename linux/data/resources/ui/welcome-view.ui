@@ -61,10 +61,45 @@
           <object class="GtkStackPage">
             <property name="name">no-results</property>
             <property name="child">
-              <object class="AdwStatusPage">
+              <object class="AdwStatusPage" id="no_results_page">
                 <property name="icon-name">system-search-symbolic</property>
                 <property name="title" translatable="yes">No Results Found</property>
                 <property name="description" translatable="yes">Try a different search.</property>
+                <property name="child">
+                  <!-- Shown inside a project only: the same search over every connection. -->
+                  <object class="GtkButton" id="search_all_button">
+                    <property name="label" translatable="yes">Search All Connections</property>
+                    <property name="action-name">win.project</property>
+                    <property name="action-target">''</property>
+                    <property name="halign">center</property>
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="pill"/>
+                    </style>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">empty-project</property>
+            <property name="child">
+              <object class="AdwStatusPage" id="empty_project_page">
+                <property name="icon-name">folder-symbolic</property>
+                <property name="description" translatable="yes">Add a connection, or move one here from All Connections.</property>
+                <property name="child">
+                  <object class="GtkButton">
+                    <property name="label" translatable="yes">New Connection</property>
+                    <property name="action-name">win.new-connection</property>
+                    <property name="halign">center</property>
+                    <style>
+                      <class name="suggested-action"/>
+                      <class name="pill"/>
+                    </style>
+                  </object>
+                </property>
               </object>
             </property>
           </object>

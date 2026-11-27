@@ -470,6 +470,27 @@ struct GridFindEngineTests {
         #expect(result.edits.map { $0.value } == [.enteredText("ann@test.dev"), .enteredText("bob@test.dev")])
     }
 
+    @Test("Replace leaves a cut value alone and does not count it")
+    func replaceSkipsCutValue() {
+        let rows = TableRows.from(
+            queryRows: [["1", "foo at the start"], ["2", "foo"]],
+            columns: ["id", "body"],
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "LONGTEXT")],
+            unloadedCells: [0: [1: 5_242_880]]
+        )
+        let source = self.source(rows)
+        let found = GridFindEngine.search("foo", options: GridFindState.Options(), in: source)
+        let result = GridFindEngine.replacements(
+            for: found.matches, term: "foo", options: GridFindState.Options(), template: "bar",
+            in: source, isWritable: { _ in true }
+        )
+
+        #expect(result.edits == [
+            DataGridCellEdit(rowID: .existing(1), columnID: DataGridColumnID(name: "body", occurrence: 0), value: .enteredText("bar"))
+        ])
+        #expect(result.replacements == 1)
+    }
+
     @Test("Replace skips a column it may not write")
     func replaceSkipsUnwritableColumn() {
         let result = replace("example", with: "test") { $0.name != "email" }
