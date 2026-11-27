@@ -28,7 +28,7 @@ final class IOSSyncCoordinator {
     // After each pass the engine finished, so the stores' readers take what it wrote.
     @ObservationIgnored var onPassFinished: (() -> Void)?
 
-    @ObservationIgnored private let host: IOSSyncEngineHost
+    @ObservationIgnored let host: IOSSyncEngineHost
     @ObservationIgnored private let isEnabled: () -> Bool
     @ObservationIgnored private let database: any CloudKitDatabase
     @ObservationIgnored private let notificationCenter: NotificationCenter
@@ -160,6 +160,16 @@ final class IOSSyncCoordinator {
     func passesFinished() async {
         while let pass = currentPass {
             await pass.value
+        }
+    }
+
+    // A move waits for these too, so the Off told when iCloud stops reaches iCloud's service before another opens.
+    func passesAndChoicesFinished() async {
+        await passesFinished()
+        while let choice = providerChoice {
+            await choice.value
+            guard providerChoice == choice else { continue }
+            return
         }
     }
 

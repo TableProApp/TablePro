@@ -3,6 +3,7 @@ import BackgroundTasks
 import os
 import SwiftUI
 import TableProDatabase
+import TableProFFI
 import TableProModels
 import TableProSyncTransport
 import UIKit
@@ -66,10 +67,14 @@ struct TableProMobileApp: App {
                 appState.backgroundRelease.cancelPreparation()
                 MemoryPressureMonitor.shared.start()
                 appState.retryLoadIfFailed()
-                if appState.onboarding.isCloudSyncEnabled && appState.loadStatus == .ready {
+                if appState.onboarding.syncProvider != .off && appState.loadStatus == .ready {
                     syncTask?.cancel()
                     syncTask = Task {
-                        await appState.syncCoordinator.syncOnSceneActivation()
+                        if appState.onboarding.isCloudSyncEnabled {
+                            await appState.syncCoordinator.syncOnSceneActivation()
+                        } else {
+                            await appState.providerMoves.sceneBecameActive()
+                        }
                     }
                 }
                 Telemetry.shared.sceneBecameActive()
@@ -108,7 +113,7 @@ struct TableProMobileApp: App {
     }
 
     private func scheduleBackgroundSync() {
-        guard AppPreferences.isCloudSyncEnabled else { return }
+        guard AppPreferences.syncProvider != .off else { return }
         let request = BGAppRefreshTaskRequest(identifier: Self.backgroundSyncIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
         do {

@@ -7,8 +7,7 @@ import TableProFFI
 // Absent, or of another type, a key leaves the person's own setting.
 nonisolated struct ManagedAppConfiguration: Equatable, Sendable {
     static let defaultsKey = "com.apple.configuration.managed"
-    // Until TablePro Sync ships here, iOS offers Off and iCloud, and the iCloud switch is its picker.
-    static let offeredProviders: [SyncProviderTag] = [.off, .icloud]
+    static let offeredProviders: [SyncProviderTag] = [.off, .icloud, .tableproSync]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ManagedAppConfiguration")
 
@@ -69,28 +68,52 @@ nonisolated struct ManagedAppConfiguration: Equatable, Sendable {
     }
 
     // PersonalSyncProvider and ICloudSyncAllowed together, as the core reads them.
+    var syncChoices: PersonalSyncChoices {
+        personalSyncChoices(policy: coreArgument, offered: Self.offeredProviders)
+    }
+
     var allowsICloudSync: Bool {
-        iCloudChoices.providers.contains(.icloud)
+        syncChoices.providers.contains(.icloud)
     }
 
-    // One choice or none: the iCloud switch is the organization's.
+    var allowsTableProSync: Bool {
+        syncChoices.providers.contains(.tableproSync)
+    }
+
+    // One choice or none: the provider is the organization's.
+    var locksSyncProvider: Bool {
+        syncChoices.locked
+    }
+
+    // The first run's iCloud question is the person's only while both iCloud and Off are theirs to pick.
     var locksICloudSync: Bool {
-        iCloudChoices.locked
+        let providers = syncChoices.providers
+        return !(providers.contains(.icloud) && providers.contains(.off))
     }
 
-    // A forced iCloud turns sync on as the person would, and iCloud taken away turns it off; with a choice left, the
-    // person's own stands.
-    func settledICloudSync(_ chosen: Bool) -> Bool {
-        settledSyncProvider(
+    // The provider the values leave this device on, by the Mac's rule (SyncProviderPolicy.settledProvider). A forced
+    // iCloud is taken as the person would pick it, and one taken away goes off. A move waits for the person: a forced
+    // TablePro Sync leaves a device that is not on it off until the upload they confirm has run, and a forced iCloud
+    // leaves one on TablePro Sync where it is until they confirm the move back (core ADRs 0054 and 0055).
+    func settledProvider(_ chosen: SyncProviderTag) -> SyncProviderTag {
+        let settled = settledSyncProvider(
             policy: coreArgument,
             offered: Self.offeredProviders,
-            current: chosen ? .icloud : .off,
-            tableproSyncAvailable: false
-        ) == .icloud
+            current: chosen,
+            tableproSyncAvailable: true
+        )
+        switch (chosen, settled) {
+        case (.tableproSync, .icloud):
+            return .tableproSync
+        case (.off, .tableproSync), (.icloud, .tableproSync):
+            return .off
+        default:
+            return settled
+        }
     }
 
-    private var iCloudChoices: PersonalSyncChoices {
-        personalSyncChoices(policy: coreArgument, offered: Self.offeredProviders)
+    func settledICloudSync(_ chosen: Bool) -> Bool {
+        settledProvider(chosen ? .icloud : .off) == .icloud
     }
 
     private static func string(_ values: [String: Any], _ key: String) -> String? {

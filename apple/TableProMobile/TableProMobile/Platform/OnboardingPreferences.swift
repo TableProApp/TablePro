@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TableProFFI
 
 @MainActor @Observable
 final class OnboardingPreferences {
@@ -11,7 +12,8 @@ final class OnboardingPreferences {
 
     @ObservationIgnored private let defaults: UserDefaults
 
-    private(set) var syncChoice: Bool?
+    // Nil until the person chose a provider, or answered the first run's iCloud question.
+    private(set) var providerChoice: SyncProviderTag?
     private(set) var usageDataChoice: Bool?
     private(set) var hasSeenOrigin: Bool
     private(set) var lastSeenVersion: String?
@@ -21,15 +23,24 @@ final class OnboardingPreferences {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         Self.migrateLegacyState(in: defaults)
-        syncChoice = defaults.object(forKey: AppPreferences.cloudSyncEnabledKey) as? Bool
+        providerChoice = AppPreferences.storedSyncProvider(in: defaults)
         usageDataChoice = defaults.object(forKey: AppPreferences.usageDataKey) as? Bool
         hasSeenOrigin = defaults.bool(forKey: Self.hasSeenOriginKey)
         lastSeenVersion = defaults.string(forKey: Self.lastSeenVersionKey)
         managed = ManagedAppConfiguration.current(defaults: defaults)
     }
 
+    // Whether the first run's iCloud question was answered, either way.
+    var syncChoice: Bool? {
+        providerChoice.map { $0 != .off }
+    }
+
+    var syncProvider: SyncProviderTag {
+        managed.settledProvider(providerChoice ?? .off)
+    }
+
     var isCloudSyncEnabled: Bool {
-        managed.settledICloudSync(syncChoice == true)
+        syncProvider == .icloud
     }
 
     var isUsageDataEnabled: Bool {
@@ -44,8 +55,12 @@ final class OnboardingPreferences {
     }
 
     func setSyncChoice(_ enabled: Bool) {
-        syncChoice = enabled
-        defaults.set(enabled, forKey: AppPreferences.cloudSyncEnabledKey)
+        setProvider(enabled ? .icloud : .off)
+    }
+
+    func setProvider(_ provider: SyncProviderTag) {
+        providerChoice = provider
+        AppPreferences.storeSyncProvider(provider, in: defaults)
     }
 
     func setUsageDataChoice(_ enabled: Bool) {

@@ -31,6 +31,8 @@ final class AccountModel: AccountBackendListener {
     // A sign-out the person did not ask for, shown until the next sign-in.
     private(set) var involuntarySignOut: AccountSignOutCause?
 
+    // A sign-in, a sign-out or a switch: the sync service bound to the one before opens again.
+    @ObservationIgnored var onSignInChange: (() -> Void)?
     @ObservationIgnored private var backend: (any AccountBackend)?
     @ObservationIgnored private let opener: Opener
     @ObservationIgnored private var configuration: ManagedAppConfiguration
@@ -143,6 +145,20 @@ final class AccountModel: AccountBackendListener {
         try await restoredBackend().devices()
     }
 
+    // The core account the sync service opens with; nil when it did not open.
+    func syncAccountService() async -> AccountService? {
+        guard let backend else { return nil }
+        await backend.waitUntilRestored()
+        return await (backend as? any SyncAccountProviding)?.accountService()
+    }
+
+    // The sign-in page again, for the methods and age a call's challenge named (RFC 9470). The caller then retries it.
+    func stepUp(acrValues: [String], maxAgeSecs: UInt64?, using authenticator: some WebAuthenticating) async throws(AccountError) {
+        let backend = try await restoredBackend()
+        try await backend.stepUp(acrValues: acrValues, maxAgeSecs: maxAgeSecs, using: authenticator)
+        publish()
+    }
+
     func removeDevice(_ id: String) async throws(AccountError) {
         let backend = try await restoredBackend()
         try await backend.removeDevice(id)
@@ -175,7 +191,11 @@ final class AccountModel: AccountBackendListener {
         guard let backend else { return }
         // Read before the snapshot: once the restore is marked, the snapshot read after it holds what it restored.
         isRestored = backend.isRestored
+        let session = snapshot.sessionID
         snapshot = backend.status()
+        if snapshot.sessionID != session {
+            onSignInChange?()
+        }
         server = backend.server()
         license = backend.license()
     }

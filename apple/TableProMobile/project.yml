@@ -98,6 +98,8 @@ targets:
       - ../TablePro/Core/Sync/LegacyMirror
       # The core sync engine's device store over the Keychain, the same in both apps.
       - ../TablePro/Core/Sync/DeviceStore
+      # What a move between iCloud and TablePro Sync asks of the core's sync service, the same in both apps.
+      - ../TablePro/Core/Sync/MoveEngine.swift
       # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.
       - path: ../Plugins/ClickHouseDriverPlugin
         excludes:

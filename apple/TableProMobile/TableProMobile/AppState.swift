@@ -3,6 +3,7 @@ import Observation
 import os
 import TableProConnectionLibrary
 import TableProDatabase
+import TableProFFI
 import TableProLogRedaction
 import TableProModels
 import TableProSyncTransport
@@ -43,6 +44,8 @@ final class AppState {
     let catalogChanges = CatalogChangeBoard()
     let sessionModels = ConnectionSessionModels()
     let syncCoordinator: IOSSyncCoordinator
+    // TablePro Sync and the moves between it and iCloud; iCloud's passes stay the coordinator's.
+    let providerMoves: IOSProviderMoves
     let account: AccountModel
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
@@ -68,6 +71,7 @@ final class AppState {
 
     private let sampleInstaller: SampleDatabaseInstaller
     private let libraryPublisher: ConnectionLibraryPublisher
+    private let defaults: UserDefaults
     private let library: CoreLibraryStore
 
     init(
@@ -92,7 +96,20 @@ final class AppState {
         self.account = account
         let library = CoreLibraryStore(directory: libraryDirectory, defaults: defaults, secureStore: secureStore)
         self.library = library
-        syncCoordinator = injectedSyncCoordinator ?? Self.liveSyncCoordinator(core: library.host)
+        let syncCoordinator = injectedSyncCoordinator ?? Self.liveSyncCoordinator(core: library.host, account: account)
+        self.syncCoordinator = syncCoordinator
+        self.defaults = defaults
+        providerMoves = IOSProviderMoves(host: .live(
+            engines: syncCoordinator.host,
+            coordinator: syncCoordinator,
+            onboarding: onboarding,
+            account: account,
+            setProvider: { [onboarding, syncCoordinator] provider in
+                onboarding.setProvider(provider)
+                syncCoordinator.setEnabled(onboarding.isCloudSyncEnabled)
+            }
+        ))
+        account.onSignInChange = { [weak host = syncCoordinator.host] in host?.signInChanged() }
         queryHistory = QueryHistoryStorage(directory: libraryDirectory)
         savedQueries = SavedQueryLibrary(
             directory: libraryDirectory,
@@ -161,14 +178,19 @@ final class AppState {
         syncCoordinator.onPassFinished = { [weak self] in
             self?.reloadAfterSync()
         }
+        providerMoves.onPassFinished = { [weak self] in
+            self?.reloadAfterSync()
+        }
         syncCoordinator.start()
+        providerMoves.start()
     }
 
-    private static func liveSyncCoordinator(core: MobileCoreHost) -> IOSSyncCoordinator {
+    private static func liveSyncCoordinator(core: MobileCoreHost, account: AccountModel) -> IOSSyncCoordinator {
         let metadata = SyncMetadataStorage(userDefaults: .standard)
         let database = PolicyCheckedCloudKitDatabase { ManagedAppConfiguration.current().allowsICloudSync }
         let host = IOSSyncEngineHost.live(
             core: core,
+            account: { [weak account] in await account?.syncAccountService() },
             database: database,
             metadata: metadata,
             recordCache: SyncRecordCache(directory: IOSSyncEngineHost.recordCacheDirectory, defaults: .standard),
@@ -277,13 +299,23 @@ final class AppState {
 
     // A background wake can come while the device is locked and the library unreadable, so nothing runs until it loads.
     func syncFromBackground(_ trigger: SyncTrigger) async -> Bool {
-        guard onboarding.isCloudSyncEnabled else { return false }
+        let provider = onboarding.syncProvider
+        guard provider != .off else { return false }
         retryLoadIfFailed()
         guard loadStatus == .ready else {
             Self.logger.warning("Background sync skipped: persistence load not ready (likely device locked)")
             return false
         }
-        await syncCoordinator.sync(trigger)
+        if provider == .icloud {
+            await syncCoordinator.sync(trigger)
+        } else {
+            do {
+                try await providerMoves.syncNow()
+            } catch {
+                Self.logger.warning("A background TablePro Sync pass failed: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+                return false
+            }
+        }
         return true
     }
 
@@ -749,7 +781,31 @@ final class AppState {
 
     func setCloudSyncEnabled(_ enabled: Bool) {
         onboarding.setSyncChoice(enabled)
-        syncCoordinator.setEnabled(enabled)
+        syncCoordinator.setEnabled(onboarding.isCloudSyncEnabled)
+        providerMoves.providerChangedElsewhere()
+    }
+
+    // Off, and iCloud from Off. A move between iCloud and TablePro Sync runs through its sheet, which shows what moves.
+    func chooseSyncProvider(_ provider: SyncProviderTag) {
+        switch provider {
+        case .off:
+            Task { await providerMoves.turnOff() }
+        case .icloud:
+            providerMoves.turnOnICloud()
+        case .tableproSync:
+            break
+        }
+    }
+
+    var syncCategories: SyncCategories {
+        SyncCategories(defaults: defaults)
+    }
+
+    // The service open now hears the change; one opened later reads them at its open.
+    func setSyncCategories(_ categories: SyncCategories) {
+        categories.store(in: defaults)
+        let host = syncCoordinator.host
+        Task { await host.setCategories(categories.coreArgument) }
     }
 
     func setUsageDataEnabled(_ enabled: Bool) {
@@ -759,12 +815,12 @@ final class AppState {
     // ADR 0055: iCloud sync stops at once when the organization takes it away, with no last pass, starts when it
     // forces it, and comes back to the person's own choice when it lets go.
     func refreshManagedConfiguration() {
-        let wasEnabled = onboarding.isCloudSyncEnabled
+        let was = onboarding.syncProvider
         onboarding.refreshManagedConfiguration()
         account.apply(onboarding.managed)
-        let enabled = onboarding.isCloudSyncEnabled
-        guard enabled != wasEnabled else { return }
-        syncCoordinator.setEnabled(enabled)
+        guard onboarding.syncProvider != was else { return }
+        syncCoordinator.setEnabled(onboarding.isCloudSyncEnabled)
+        providerMoves.providerChangedElsewhere()
     }
 
     // An MDM's new values post a defaults change, as any write to the domain does (Apple's managed app configuration).
