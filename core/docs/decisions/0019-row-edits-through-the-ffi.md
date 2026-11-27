@@ -1,6 +1,6 @@
 # 0019: A table tab's row edits cross the FFI as typed text, and the core plans and runs the save
 
-- **Status**: Accepted; query results amended by 0033
+- **Status**: Accepted; query results amended by 0033; the tracker, undo and PK identity move to the core per 0068 (Proposed), which supersedes this ADR on where they live once it lands
 - **Date**: 2026-11-11
 
 ## Context
