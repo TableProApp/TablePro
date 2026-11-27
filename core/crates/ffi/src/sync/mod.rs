@@ -1,5 +1,5 @@
-// The sync surface the apps call (core ADRs 0054 and 0056): `SyncService` over the engine, its listener, and the
-// callbacks the apps implement.
+// The sync surface the apps call (core ADRs 0054 and 0056): `SyncService` over the engine, its listener, the
+// callbacks the apps implement, and Team Library.
 
 mod cloudkit;
 mod engines;
@@ -12,6 +12,7 @@ mod names;
 mod open;
 mod service;
 mod service_records;
+mod team_library;
 #[cfg(test)]
 mod tests;
 
@@ -39,4 +40,9 @@ pub use service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
     PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener,
     SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo,
+};
+pub use team_library::{
+    TeamConnectionArg, TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo,
+    TeamLibraryItemRef, TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg,
+    TeamScopeStatusInfo, UnsentTeamEditInfo, UnsentTeamEditTag,
 };

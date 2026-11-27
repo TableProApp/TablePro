@@ -102,7 +102,7 @@ internal struct WelcomePresentations: ViewModifier {
         case .deeplinkImport(let bundle):
             DeeplinkImportSheet(bundle: bundle, onCancel: { vm.activeSheet = nil }) { vm.finishImport($0, from: .fileOrLink) }
         case .teamLibraryConflicts:
-            TeamLibraryConflictSheet(sync: .shared)
+            TeamLibraryFieldConflictSheet(model: TeamLibrary.shared.conflicts)
         }
     }
 }

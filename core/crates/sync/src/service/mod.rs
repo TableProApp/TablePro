@@ -910,3 +910,6 @@ impl SyncControl for ServiceSync {
         Ok(held)
     }
 }
+
+// Team Library's calls reach the engine; each answers `sync.unimplemented` until its body lands.
+impl crate::api::team_library::TeamLibraryControl for ServiceSync {}

@@ -5,63 +5,10 @@
 
 import AppKit
 
-// What happens to Team Library edits not uploaded yet, which live only in memory (I1, I4 and I5 on TeamLibrarySync).
+// How Sign Out names the Team Library edits the team has not taken yet, and the notice when another account's sign-in
+// deleted edits an earlier sign-in left on this Mac.
 @MainActor
 internal enum TeamLibraryUnsentChanges {
-    enum Choice: Equatable {
-        case upload
-        case discard
-        case cancel
-    }
-
-    // The quit's question, then the rest of the quit with Team Library held. A Cancel here or a later step that stops
-    // the quit releases the hold, so the app that stays open syncs again. Discard drops the edits only once the quit
-    // is committed, in applicationWillTerminate, so a quit that stops later keeps them.
-    static func quit(
-        _ sync: TeamLibrarySync = .shared,
-        ask: @MainActor ([String], TeamLibraryFailure?) async -> Choice = askBeforeQuitting,
-        then rest: @MainActor () async -> Bool
-    ) async -> Bool {
-        let hold = await sync.hold()
-        var quits = false
-        defer {
-            if !quits {
-                hold.release()
-            }
-        }
-        var changes = sync.unsentChanges
-        var failure: TeamLibraryFailure?
-        while !changes.isEmpty {
-            switch await ask(changes, failure) {
-            case .upload:
-                (changes, failure) = await sync.pushHeld()
-            case .discard:
-                changes = []
-            case .cancel:
-                return false
-            }
-        }
-        quits = await rest()
-        return quits
-    }
-
-    static func askBeforeQuitting(_ changes: [String], failure: TeamLibraryFailure?) async -> Choice {
-        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = String(localized: "Upload Team Library changes before quitting?")
-        alert.informativeText = message(changes, failure: failure)
-        alert.addButton(withTitle: String(localized: "Upload and Quit"))
-        let discard = alert.addButton(withTitle: String(localized: "Discard and Quit"))
-        discard.hasDestructiveAction = true
-        _ = AlertHelper.addCancelButton(to: alert, title: String(localized: "Cancel"))
-        switch await AlertHelper.response(to: alert, in: nil) {
-        case .alertFirstButtonReturn: return .upload
-        case .alertSecondButtonReturn: return .discard
-        default: return .cancel
-        }
-    }
-
     nonisolated static func message(_ changes: [String], failure: TeamLibraryFailure?) -> String {
         var sentences: [String] = []
         if let failure {
@@ -97,23 +44,11 @@ internal enum TeamLibraryUnsentChanges {
         String(format: String(localized: "%@ (not sent: changed on the team since)"), name)
     }
 
-    // An involuntary sign-out, or a lost team_library, leaves no one to push for, so its unsent edits go and the person
-    // is told which.
     static func presentDiscarded(_ changes: [String]) {
         notify(
             title: String(localized: "Team Library changes were discarded"),
             message: String(
                 format: String(localized: "Team Library ended for this sign-in before these changes were uploaded: %@."),
-                changes.formatted(.list(type: .and))
-            )
-        )
-    }
-
-    static func presentEarlierEditsNotTaken(_ changes: [String]) {
-        notify(
-            title: String(localized: "Some Team Library changes from before the update were not uploaded"),
-            message: String(
-                format: String(localized: "TablePro uploaded the changes left from before the update once. These were not taken and were dropped: %@."),
                 changes.formatted(.list(type: .and))
             )
         )

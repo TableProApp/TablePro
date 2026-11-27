@@ -49,9 +49,6 @@ actor FakeAccountServer {
     )]
     // Removing a device that holds a slot frees it, so the next entitlement answers.
     var removalFreesSlot = true
-    var library = FakeTeamLibrary()
-    // Answered, one per GET /me, before anything else; a 429 carries the library's Retry-After.
-    var profileFaults: [Int] = []
     private(set) var requests: [Request] = []
     private var authorizations = 0
     private let now: @Sendable () -> Date
@@ -115,9 +112,6 @@ actor FakeAccountServer {
 
         switch (request.method, path) {
         case (.get, "/me"):
-            if !profileFaults.isEmpty {
-                return library.fault(profileFaults.removeFirst())
-            }
             var account = accountClaim
             account["id"] = "acct_test"
             return Self.json(status: .ok, [
@@ -129,12 +123,6 @@ actor FakeAccountServer {
             return Self.json(status: .ok, ["data": devices])
         case (.delete, let devicePath) where devicePath.hasPrefix("/devices/"):
             return removeDevice(String(devicePath.dropFirst("/devices/".count)))
-        case (.get, let libraryPath) where libraryPath.hasPrefix("/teams/"):
-            if let gate = library.pullGate { await gate.wait() }
-            return library.pull(path: libraryPath, memberships: memberships)
-        case (.post, let libraryPath) where libraryPath.hasPrefix("/teams/"):
-            if let gate = library.pushGate { await gate.wait() }
-            return library.push(path: libraryPath, body: data, memberships: memberships)
         default:
             return Self.problem(status: 404, code: "not_found")
         }

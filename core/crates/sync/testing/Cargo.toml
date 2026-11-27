@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 tablepro-keys.workspace = true
 tablepro-records.workspace = true
+tablepro-storage.workspace = true
 tablepro-sync.workspace = true
 async-trait.workspace = true
 base64.workspace = true

@@ -26,6 +26,8 @@ pub enum SyncError {
     State(#[from] StateError),
     #[error(transparent)]
     Adapter(#[from] AdapterError),
+    #[error(transparent)]
+    TeamLibrary(#[from] super::team_library::TeamLibraryError),
     // A flow's change set or write was refused, with the change's code (0051, Push).
     #[error("the server refused the change: {}", code.as_str())]
     Rejected { code: RejectedCode },
@@ -64,6 +66,7 @@ impl SyncError {
             Self::DeviceStore(error) => error.code(),
             Self::State(error) => error.code(),
             Self::Adapter(error) => error.code(),
+            Self::TeamLibrary(error) => error.code(),
             Self::Rejected { .. } => "sync.rejected",
             Self::Locked { .. } => "sync.locked",
             Self::TypedBackWrong => "sync.typed_back_wrong",

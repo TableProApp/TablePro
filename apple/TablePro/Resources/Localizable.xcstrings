@@ -833,6 +833,9 @@
         }
       }
     },
+    "“%@” changed after you deleted it" : {
+
+    },
     "“%@” Changed on Disk" : {
       "localizations" : {
         "fr" : {
@@ -1331,6 +1334,9 @@
           }
         }
       }
+    },
+    "“%@” was deleted from the team library" : {
+
     },
     "\"%@\" was deleted or moved." : {
       "localizations" : {
@@ -74063,6 +74069,9 @@
     "Deletes rows from %@ (not counted)" : {
 
     },
+    "Deletes the item from the team library" : {
+
+    },
     "Deleting row %@ from %@ permanently removes it." : {
       "localizations" : {
         "en" : {
@@ -113612,6 +113621,9 @@
         }
       }
     },
+    "Kept on this Mac and uploaded when the team library takes them. Signing out asks first." : {
+
+    },
     "Kerberos (GSSAPI)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -116506,6 +116518,9 @@
           }
         }
       }
+    },
+    "Leaves the item deleted" : {
+
     },
     "Leaves the team's version as it is" : {
 
@@ -160446,6 +160461,9 @@
         }
       }
     },
+    "Puts the item back with your changes" : {
+
+    },
     "Puzzle Piece" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -195613,6 +195631,12 @@
     "Someone in %@ changed this item after TablePro last downloaded the team library. Choose the version the team library keeps." : {
 
     },
+    "Someone in %@ changed this item after you deleted it. Keep Mine deletes it, and Keep Theirs keeps the team's version." : {
+
+    },
+    "Someone in %@ deleted this item after you changed it. Keep Mine puts it back with your changes, and Keep Theirs leaves it deleted." : {
+
+    },
     "Someone who is not on this team started the team key over. Don't accept it unless an owner tells you why." : {
 
     },
@@ -207463,6 +207487,12 @@
     "TablePro couldn't create a token for this client, so the client wasn't paired. Try pairing again." : {
 
     },
+    "TablePro couldn't delete the Team Library data of the account you signed out of. Team Library stays off until it can." : {
+
+    },
+    "TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are." : {
+
+    },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
       "localizations" : {
         "fr" : {
@@ -207550,6 +207580,9 @@
 
     },
     "TablePro couldn't save a token for this client to the Keychain, so the client wasn't paired. Try pairing again." : {
+
+    },
+    "TablePro couldn't save your choice. Try again." : {
 
     },
     "TablePro Data Was Removed from iCloud" : {
@@ -208132,6 +208165,9 @@
           }
         }
       }
+    },
+    "TablePro is still deleting the Team Library data of the last account on this Mac. Team Library stays off until it is gone." : {
+
     },
     "TablePro is still trying to reconnect." : {
       "localizations" : {
@@ -210007,7 +210043,13 @@
     "Team Library changes were discarded" : {
 
     },
+    "Team Library data is still on this Mac" : {
+
+    },
     "Team Library ended for this sign-in before these changes were uploaded: %@." : {
+
+    },
+    "Team Library isn't available on this Mac right now." : {
 
     },
     "Team library updated %@" : {
@@ -228369,6 +228411,9 @@
           }
         }
       }
+    },
+    "This item changed again. Review the new version, then choose." : {
+
     },
     "This item expired while the grid was open. Refresh to see whether it still exists." : {
       "extractionState" : "manual",
@@ -250240,6 +250285,9 @@
           }
         }
       }
+    },
+    "You and someone in %@ changed the same fields of this item. Choose the version the team library keeps." : {
+
     },
     "You appear to be offline. Try again once you're connected." : {
       "localizations" : {
