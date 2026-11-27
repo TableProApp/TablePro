@@ -87,10 +87,11 @@ internal extension LibPQPluginConnection {
         return LibPQCellDecoding.value(from: UnsafeRawBufferPointer(start: valuePtr, count: length), oid: oid)
     }
 
-    // The one row a single-row mode result holds.
+    // The one row a single-row mode result holds. Mapped over `indices`, not `enumerated()`: before the OS 26
+    // standard library an enumerated sequence is not a Collection, so its map grows the row by doubling.
     static func singleRow(of result: OpaquePointer, oids: [UInt32]) -> [PluginCellValue] {
-        oids.enumerated().map { column in
-            decodeCell(from: result, row: 0, column: Int32(column.offset), oid: column.element)
+        oids.indices.map { column in
+            decodeCell(from: result, row: 0, column: Int32(column), oid: oids[column])
         }
     }
 
