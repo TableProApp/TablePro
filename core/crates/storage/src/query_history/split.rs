@@ -292,7 +292,7 @@ async fn mark(database: &mut SqliteConnection) -> Result<(), StorageError> {
     .bind(MOVED_AWAY)
     .execute(&mut *transaction)
     .await?;
-    owe_compaction(&mut *transaction).await?;
+    owe_compaction(&mut transaction).await?;
     transaction.commit().await?;
     Ok(())
 }
@@ -443,7 +443,7 @@ pub(crate) async fn move_out(pool: &SqlitePool, paths: &StoragePaths) -> Result<
     Migrate::apply(&mut *transaction, &schema::MIGRATOR.table_name, migration)
         .await
         .map_err(StorageError::HistoryMigration)?;
-    owe_compaction(&mut *transaction).await?;
+    owe_compaction(&mut transaction).await?;
     transaction.commit().await?;
     finish(paths)
 }

@@ -996,12 +996,9 @@ async fn a_vacuum_that_fails_is_owed_until_a_later_open_does_it() {
     assert_history_kept(&old, &history).await;
     history.pool().close().await;
 
+    // Whether the text is still there depends on the SQLite build: Debian's zeroes freed pages by default.
     assert!(owes(&tables(&history_path).await));
     assert!(owes(&tables(&before).await));
-    assert!(
-        holds(&history_path, SAVED_TEXT),
-        "the failed VACUUM was not what left the text"
-    );
     super::split::FAILING_VACUUMS
         .lock()
         .expect("failing")
