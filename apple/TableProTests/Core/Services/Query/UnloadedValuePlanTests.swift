@@ -181,15 +181,37 @@ struct UnloadedValuePlanTests {
             """)
     }
 
-    @Test("SQLite counts a text's bytes through a cast")
+    @Test("SQLite counts a text's bytes through a cast, and keeps a row whose key is NULL whole")
     func sqliteProjection() throws {
         let types: [String: ColumnType] = ["id": .integer(rawType: "INTEGER"), "body": .text(rawType: "TEXT")]
         let plan = try #require(Self.plan(columns: ["id", "body"], types: types, functions: .sqlite, limit: 1_024))
+        let cut = #"("id" IS NOT NULL AND length(CAST("body" AS BLOB)) > 1024)"#
         #expect(plan.selectList(for: ["id", "body"], quote: { "\"\($0)\"" }) == """
-            "id", CASE WHEN length(CAST("body" AS BLOB)) <= 1024 THEN "body" END AS "body", \
+            "id", CASE WHEN \(cut) THEN NULL ELSE "body" END AS "body", \
             length(CAST("body" AS BLOB)) AS "__tablepro_byte_length_1", \
-            CASE WHEN length(CAST("body" AS BLOB)) > 1024 THEN substr("body", 1, 256) END AS "__tablepro_head_1"
+            CASE WHEN \(cut) THEN substr("body", 1, 256) END AS "__tablepro_head_1"
             """)
+    }
+
+    @Test("Every column of a composite SQLite key must hold a value before a cell is cut")
+    func sqliteCompositeKeyGuard() throws {
+        let types: [String: ColumnType] = [
+            "a": .text(rawType: "TEXT"), "b": .text(rawType: "TEXT"), "body": .blob(rawType: "BLOB")
+        ]
+        let plan = try #require(Self.plan(
+            columns: ["a", "b", "body"], types: types, primaryKeys: ["a", "b"], functions: .sqlite, limit: 1_024
+        ))
+        #expect(plan.nullableKeys == ["a", "b"])
+        #expect(plan.selectList(for: ["a", "b", "body"], quote: { "\"\($0)\"" }).contains(
+            #"CASE WHEN ("a" IS NOT NULL AND "b" IS NOT NULL AND length(CAST("body" AS BLOB)) > 1024) THEN NULL ELSE "body" END"#
+        ))
+    }
+
+    @Test("An engine whose keys are never NULL cuts on size alone")
+    func enforcedKeysNeedNoGuard() throws {
+        let types: [String: ColumnType] = ["id": .integer(rawType: "integer"), "body": .text(rawType: "text")]
+        #expect(try #require(Self.plan(columns: ["id", "body"], types: types, functions: .postgreSQL)).nullableKeys.isEmpty)
+        #expect(try #require(Self.plan(columns: ["id", "body"], types: types, functions: .mySQL)).nullableKeys.isEmpty)
     }
 
     @Test("A placeholder in a quoted name is not filled in")

@@ -21,6 +21,9 @@ struct LargeValueFunctions: Equatable, Sendable {
     var enforcesDeclaredLength = true
     // Types whose name carries their largest size, so a value of one under the limit is never cut.
     var boundedTypeBytes: [String: Int] = [:]
+    // True where a primary key column can hold NULL. A value is read back by its key, so a row with a NULL key
+    // keeps its values in the page.
+    var keysCanBeNull = false
 
     static let mySQL = LargeValueFunctions(
         binaryLength: "OCTET_LENGTH({})", textLength: "OCTET_LENGTH({})", textHead: "LEFT({}, {count})",
@@ -32,10 +35,11 @@ struct LargeValueFunctions: Equatable, Sendable {
         binaryLength: "octet_length({})", textLength: "octet_length({}::text)", textHead: "substr({}::text, 1, {count})",
         documentStoredSize: "pg_column_size({})"
     )
-    // `length` counts a text's characters, its bytes only once cast.
+    // `length` counts a text's characters, its bytes only once cast. A rowid table's key that is not the rowid
+    // takes NULL.
     static let sqlite = LargeValueFunctions(
         binaryLength: "length(CAST({} AS BLOB))", textLength: "length(CAST({} AS BLOB))", textHead: "substr({}, 1, {count})",
-        enforcesDeclaredLength: false
+        enforcesDeclaredLength: false, keysCanBeNull: true
     )
 
     // The column goes in last, so text a quoted name holds is never read as a placeholder.
@@ -62,6 +66,8 @@ struct UnloadedValuePlan: Equatable, Sendable {
     let columnTypes: [String: ColumnType]
     let functions: LargeValueFunctions
     let inlineByteLimit: Int
+    // The key columns that can hold NULL, which a cut also checks.
+    var nullableKeys: [String] = []
 
     // MySQL's BLOB holds at most 64 KB, so a BLOB value always arrives with the page.
     static let defaultInlineByteLimit = 65_536
@@ -99,7 +105,8 @@ struct UnloadedValuePlan: Equatable, Sendable {
         }
         guard !deferred.isEmpty else { return nil }
         return UnloadedValuePlan(
-            columns: deferred, kinds: kinds, columnTypes: types, functions: functions, inlineByteLimit: limit
+            columns: deferred, kinds: kinds, columnTypes: types, functions: functions, inlineByteLimit: limit,
+            nullableKeys: functions.keysCanBeNull ? primaryKeys : []
         )
     }
 
@@ -133,6 +140,7 @@ struct UnloadedValuePlan: Equatable, Sendable {
         var items: [String] = []
         var lengths: [String] = []
         var heads: [String] = []
+        let keyGuard = nullableKeys.map { "\(quote($0)) IS NOT NULL" }.joined(separator: " AND ")
         for (index, name) in selectColumns.enumerated() {
             let quoted = quote(name)
             guard let kind = kinds[name] else {
@@ -142,7 +150,7 @@ struct UnloadedValuePlan: Equatable, Sendable {
             let template = kind == .binary ? functions.binaryLength : functions.textLength
             let length = LargeValueFunctions.render(template, column: quoted)
             let lengthAlias = quote(Self.lengthAliasPrefix + String(index))
-            let isCut: String
+            var isCut: String
             if kind == .document, let stored = functions.documentStoredSize {
                 let storedSize = LargeValueFunctions.render(stored, column: quoted)
                 isCut = """
@@ -150,8 +158,13 @@ struct UnloadedValuePlan: Equatable, Sendable {
                     WHEN \(storedSize) <= \(inlineByteLimit / 8) THEN FALSE \
                     ELSE \(length) > \(inlineByteLimit) END)
                     """
+                if !keyGuard.isEmpty { isCut = "(\(keyGuard) AND \(isCut))" }
                 items.append("CASE WHEN \(isCut) THEN NULL ELSE \(quoted) END AS \(quoted)")
                 lengths.append("CASE WHEN \(isCut) THEN \(length) END AS \(lengthAlias)")
+            } else if !keyGuard.isEmpty {
+                isCut = "(\(keyGuard) AND \(length) > \(inlineByteLimit))"
+                items.append("CASE WHEN \(isCut) THEN NULL ELSE \(quoted) END AS \(quoted)")
+                lengths.append("\(length) AS \(lengthAlias)")
             } else {
                 isCut = "\(length) > \(inlineByteLimit)"
                 items.append("CASE WHEN \(length) <= \(inlineByteLimit) THEN \(quoted) END AS \(quoted)")
