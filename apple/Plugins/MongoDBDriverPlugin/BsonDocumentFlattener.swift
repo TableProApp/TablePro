@@ -96,9 +96,12 @@ nonisolated struct BsonDocumentFlattener {
         representation: MongoDBUuidRepresentation,
         stored canonical: [MongoDocumentText?] = []
     ) -> [[PluginCellValue]] {
-        documents.enumerated().map { offset, doc in
+        // `indices`, not `enumerated()`: before the OS 26 standard library the enumerated map cannot reserve its count.
+        documents.indices.map { offset in
+            let doc = documents[offset]
             var stored: [String: MongoDocumentText.Value]?
-            return columns.enumerated().map { index, column in
+            return columns.indices.map { index in
+                let column = columns[index]
                 guard let value = doc[column] else { return PluginCellValue.null }
                 if isNestedValue(value), offset < canonical.count, let document = canonical[offset] {
                     if stored == nil { stored = storedMembers(of: document) }

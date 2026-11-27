@@ -8,25 +8,26 @@ The public beta is available as [0.1.0-beta.3](https://github.com/TableProApp/Ta
 
 ## Supported servers
 
-TablePro supports the server releases their vendors still support. CI runs each driver's whole Docker suite on every release in the second column ([docs/testing.md](docs/testing.md#server-releases)).
+TablePro supports the server releases their vendors still support, and PostgreSQL back to 10. CI runs each driver's whole Docker suite on every release in the second column ([docs/testing.md](docs/testing.md#server-releases)).
 
 | Engine | Tested releases | Not supported |
 |---|---|---|
-| PostgreSQL | 14, 15, 17 and 18 | 13 and older, past end of life (13 on 2025-11-13). 19 until it is released |
+| PostgreSQL | 14, 15, 17 and 18 | 9.6 and older, which the driver refuses when it connects. 19 until it is released |
 | MySQL | 8.0, 8.4 and 9.7 | 8.1 to 9.6, innovation releases past end of life. 5.7 and older |
 | MariaDB | 10.11, 11.4 and 12.3 | 10.6 and older, past end of life (10.6 on 2026-07-06). Rolling releases such as 13.0 |
 | SQL Server | 2017, 2019, 2022 and 2025 | 2016 and older, past extended support (2016 on 2026-07-14) |
 | ClickHouse | 26.3 and 26.8 | Monthly releases between long-term ones. 25.8 and older long-term releases, past end of life (25.8 on 2026-08-29) |
 | Apache Cassandra | 4.0 and 5.0 | 3.11 and older, past end of life. 6.0 until it is released |
 | ScyllaDB | 2025.1 and 2026.1 | Feature releases between long-term ones, such as 2026.3. Enterprise 2024.1 and older, past end of life |
-| SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
+| SQLite | the system library, 3.43.0 or newer | older libraries, which the driver refuses when it opens a file |
 | DuckDB | 2.0.1, compiled into the app ([ADR 0031](docs/decisions/0031-duckdb-2.md)) | files a newer DuckDB wrote in a storage format 2.0.1 cannot read |
 | Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 | MongoDB | 7.0 and 8.0 | 6.0 and older, past end of life (6.0 on 2025-07-31). Minor releases between major ones, such as 8.2, are not tested. A sharded cluster is reached through `mongos` and is not tested |
 
-- PostgreSQL 14 reaches end of life on 2026-11-12, and 15, the oldest release after it, is tested already.
+- PostgreSQL 14 reached end of life on 2026-11-12, and 15, the oldest release after it, is tested already.
 - MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.
 - MariaDB 11.8, PostgreSQL 16 and Cassandra 4.1 are supported between the tested releases, which bound them.
+- PostgreSQL 10 to 13 are past end of life and work: CI checks every catalog read, a row save and connecting on them, not the whole suite.
 
 Redshift, CockroachDB, TiDB, OceanBase and Databend are untested on Linux. PostgreSQL or MySQL protocol compatibility, or importing a connection from another app, does not establish support. Add a product here only after connect, catalog, read and write tests against that product pass on Linux.
 

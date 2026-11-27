@@ -40,9 +40,10 @@ public enum QueryResultStreaming {
                 continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                 break
             }
-            let cells = legacyRow.enumerated().map { index, value -> Cell in
+            // `indices`, not `enumerated()`: before the OS 26 standard library the enumerated map cannot reserve its count.
+            let cells = legacyRow.indices.map { index -> Cell in
                 let typeName = index < result.columns.count ? result.columns[index].typeName : nil
-                return Cell.from(legacyValue: value, columnTypeName: typeName, options: options)
+                return Cell.from(legacyValue: legacyRow[index], columnTypeName: typeName, options: options)
             }
             continuation.yield(.row(Row(cells: cells)))
             emitted += 1

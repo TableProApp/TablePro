@@ -18,6 +18,7 @@ use tablepro_core::dump::{
 use tablepro_core::meta::TableRef;
 use tokio_postgres::{Client, Row};
 
+use crate::catalog_release::CatalogRelease;
 use crate::errors::map_error;
 use crate::metadata::text_rows;
 use catalog_rows::{
@@ -25,8 +26,8 @@ use catalog_rows::{
     UserType, View,
 };
 use catalog_sql::{
-    COLLATIONS_SQL, COLUMNS_SQL, CONSTRAINTS_SQL, DOMAIN_CHECKS_SQL, EXTENSIONS_SQL, FUNCTIONS_SQL,
-    FUNCTIONS_SQL_BEFORE_14, INDEXES_SQL, SCHEMAS_SQL, SEQUENCES_SQL, TABLES_SQL, TRIGGERS_SQL, TYPES_SQL, VIEWS_SQL,
+    COLLATIONS_SQL, COLUMNS_SQL, CONSTRAINTS_SQL, DOMAIN_CHECKS_SQL, EXTENSIONS_SQL, FUNCTIONS_SQL, INDEXES_SQL,
+    SCHEMAS_SQL, SEQUENCES_SQL, TABLES_SQL, TRIGGERS_SQL, TYPES_SQL, VIEWS_SQL,
 };
 use statements::qualified;
 
@@ -70,7 +71,7 @@ const EMPTY_SEARCH_PATH: &str = "SELECT pg_catalog.set_config('search_path', '',
 pub(crate) async fn read_dump_catalog(
     client: &Client,
     scope: &DumpScope,
-    sql_bodies: bool,
+    release: CatalogRelease,
 ) -> Result<DumpCatalog, DriverError> {
     client
         .batch_execute(EMPTY_SEARCH_PATH)
@@ -80,10 +81,36 @@ pub(crate) async fn read_dump_catalog(
         DumpScope::Database => ["all", ""],
         DumpScope::Schema(schema) => ["schema", schema.as_str()],
     };
-    let functions_sql = match sql_bodies {
-        true => FUNCTIONS_SQL,
-        false => FUNCTIONS_SQL_BEFORE_14,
-    };
+    let [
+        schemas_sql,
+        extensions_sql,
+        collations_sql,
+        types_sql,
+        domain_checks_sql,
+        functions_sql,
+        sequences_sql,
+        tables_sql,
+        columns_sql,
+        constraints_sql,
+        indexes_sql,
+        views_sql,
+        triggers_sql,
+    ] = [
+        SCHEMAS_SQL,
+        EXTENSIONS_SQL,
+        COLLATIONS_SQL,
+        TYPES_SQL,
+        DOMAIN_CHECKS_SQL,
+        FUNCTIONS_SQL,
+        SEQUENCES_SQL,
+        TABLES_SQL,
+        COLUMNS_SQL,
+        CONSTRAINTS_SQL,
+        INDEXES_SQL,
+        VIEWS_SQL,
+        TRIGGERS_SQL,
+    ]
+    .map(|sql| release.render(sql));
     let (
         schemas,
         extensions,
@@ -99,19 +126,19 @@ pub(crate) async fn read_dump_catalog(
         views,
         triggers,
     ) = futures_util::try_join!(
-        text_rows(client, SCHEMAS_SQL, &params),
-        text_rows(client, EXTENSIONS_SQL, &params),
-        text_rows(client, COLLATIONS_SQL, &params),
-        text_rows(client, TYPES_SQL, &params),
-        text_rows(client, DOMAIN_CHECKS_SQL, &params),
-        text_rows(client, functions_sql, &params),
-        text_rows(client, SEQUENCES_SQL, &params),
-        text_rows(client, TABLES_SQL, &params),
-        text_rows(client, COLUMNS_SQL, &params),
-        text_rows(client, CONSTRAINTS_SQL, &params),
-        text_rows(client, INDEXES_SQL, &params),
-        text_rows(client, VIEWS_SQL, &params),
-        text_rows(client, TRIGGERS_SQL, &params),
+        text_rows(client, &schemas_sql, &params),
+        text_rows(client, &extensions_sql, &params),
+        text_rows(client, &collations_sql, &params),
+        text_rows(client, &types_sql, &params),
+        text_rows(client, &domain_checks_sql, &params),
+        text_rows(client, &functions_sql, &params),
+        text_rows(client, &sequences_sql, &params),
+        text_rows(client, &tables_sql, &params),
+        text_rows(client, &columns_sql, &params),
+        text_rows(client, &constraints_sql, &params),
+        text_rows(client, &indexes_sql, &params),
+        text_rows(client, &views_sql, &params),
+        text_rows(client, &triggers_sql, &params),
     )?;
     let facts = CatalogFacts {
         schemas: decoded(&schemas, catalog_rows::schema_name)?,
@@ -1183,7 +1210,6 @@ mod tests {
             TYPES_SQL,
             DOMAIN_CHECKS_SQL,
             FUNCTIONS_SQL,
-            FUNCTIONS_SQL_BEFORE_14,
             SEQUENCES_SQL,
             TABLES_SQL,
             COLUMNS_SQL,

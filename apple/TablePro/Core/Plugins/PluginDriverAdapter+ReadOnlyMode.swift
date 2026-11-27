@@ -11,6 +11,7 @@ extension PluginDriverAdapter {
         pluginDriver.capabilities.contains(.enforcesReadOnlyMode)
     }
 
+    @concurrent
     func executeBoundedQuery(query: String, rowCap: Int, context: PluginStatementContext) async throws -> QueryResult? {
         try admit(query)
         try refuseUnenforcedPolicy(context)

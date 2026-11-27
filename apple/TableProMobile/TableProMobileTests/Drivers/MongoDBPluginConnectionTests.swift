@@ -453,6 +453,21 @@ struct MongoDBNewDocumentIdentityTests {
         #expect(try insert(id: "user-42", idKinds: [.objectId, .string]).count == 1)
         #expect(try insert(id: "64b7f0c2a1b2c3d4e5f60718", idKinds: [.objectId]).count == 1)
     }
+
+    @Test("Each flattened document is allocated at its column count, with no spare slots")
+    func flattenedRowHasExactCapacity() throws {
+        let columns = (0..<20).map { "f\($0)" }
+        let document = Dictionary(uniqueKeysWithValues: columns.map { ($0, "v" as Any) })
+        let rows = BsonDocumentFlattener.flatten(
+            documents: [document],
+            columns: columns,
+            kinds: Array(repeating: .string, count: columns.count),
+            representation: .unspecified
+        )
+        let row = try #require(rows.first)
+        #expect(row.count == 20)
+        #expect(row.capacity == row.count)
+    }
 }
 
 private struct KeyPairFiles {

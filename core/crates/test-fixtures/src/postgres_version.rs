@@ -2,10 +2,13 @@ use crate::{FixtureImage, ServerVersion};
 
 /// The PostgreSQL major a fixture runs.
 ///
-/// 13 is past its end of life, and stays for the catalog query the
-/// driver keeps for servers before 14.
+/// 10 to 13 are past their end of life. The driver still reads their
+/// catalogs, and a test checks each of them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PostgresVersion {
+    V10,
+    V11,
+    V12,
     V13,
     V14,
     V15,
@@ -17,6 +20,9 @@ pub enum PostgresVersion {
 impl PostgresVersion {
     pub fn major(self) -> u32 {
         match self {
+            Self::V10 => 10,
+            Self::V11 => 11,
+            Self::V12 => 12,
             Self::V13 => 13,
             Self::V14 => 14,
             Self::V15 => 15,
@@ -28,10 +34,22 @@ impl PostgresVersion {
 
 impl ServerVersion for PostgresVersion {
     const VARIABLE: &'static str = "TABLEPRO_TEST_POSTGRES";
-    const ALL: &'static [Self] = &[Self::V13, Self::V14, Self::V15, Self::V17, Self::V18];
+    const ALL: &'static [Self] = &[
+        Self::V10,
+        Self::V11,
+        Self::V12,
+        Self::V13,
+        Self::V14,
+        Self::V15,
+        Self::V17,
+        Self::V18,
+    ];
 
     fn name(self) -> &'static str {
         match self {
+            Self::V10 => "10",
+            Self::V11 => "11",
+            Self::V12 => "12",
             Self::V13 => "13",
             Self::V14 => "14",
             Self::V15 => "15",
@@ -42,6 +60,9 @@ impl ServerVersion for PostgresVersion {
 
     fn image(self) -> FixtureImage {
         match self {
+            Self::V10 => FixtureImage::POSTGRES_10,
+            Self::V11 => FixtureImage::POSTGRES_11,
+            Self::V12 => FixtureImage::POSTGRES_12,
             Self::V13 => FixtureImage::POSTGRES_13,
             Self::V14 => FixtureImage::POSTGRES_14,
             Self::V15 => FixtureImage::POSTGRES_15,

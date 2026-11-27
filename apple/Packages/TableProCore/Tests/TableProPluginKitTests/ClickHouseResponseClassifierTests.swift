@@ -305,4 +305,23 @@ struct ClickHouseResponseClassifierTests {
         #expect(items.contains(URLQueryItem(name: "wait_end_of_query", value: "1")))
         #expect(!items.contains { $0.name == "http_write_exception_in_output_format" })
     }
+
+    // MARK: - Row Capacity
+
+    @Test("A row rebuilt for a binary column is allocated at its column count, with no spare slots")
+    func demotedRowHasExactCapacity() throws {
+        let columns = 0..<20
+        var body = Data(columns.map { "c\($0)" }.joined(separator: "\t").utf8)
+        body.append(contentsOf: Data(("\n" + columns.map { _ in "String" }.joined(separator: "\t") + "\n").utf8))
+        body.append(contentsOf: Data((columns.map { "v\($0)" }.joined(separator: "\t") + "\n").utf8))
+        body.append(contentsOf: [0xC3])
+        body.append(contentsOf: Data((columns.dropFirst().map { "\tw\($0)" }.joined() + "\n").utf8))
+
+        let outcome = ClickHouseResponseClassifier.classify(headers: matchingFormatHeaders, body: body)
+        let row = try #require(outcome.rows.first)
+
+        #expect(row.first == .bytes(Data("v0".utf8)))
+        #expect(row.count == 20)
+        #expect(row.capacity == row.count)
+    }
 }

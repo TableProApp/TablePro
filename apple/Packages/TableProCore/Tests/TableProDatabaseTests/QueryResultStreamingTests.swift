@@ -101,4 +101,19 @@ struct QueryResultStreamingTests {
         let events = try await collect(stream)
         #expect(events == [.cancelled])
     }
+
+    @Test("each streamed row is allocated at its column count, with no spare slots")
+    func streamedRowHasExactCapacity() async throws {
+        let columns = (0..<20).map { ColumnInfo(name: "c\($0)", typeName: "string", ordinalPosition: $0) }
+        let result = QueryResult(
+            columns: columns, rows: [(0..<20).map { "v\($0)" }], rowsAffected: 0, executionTime: 0
+        )
+        var streamed: [Row] = []
+        for try await element in QueryResultStreaming.stream(options: .default, producing: { result }) {
+            if case .row(let row) = element { streamed.append(row) }
+        }
+        let row = try #require(streamed.first)
+        #expect(row.cells.count == 20)
+        #expect(row.cells.capacity == row.cells.count)
+    }
 }

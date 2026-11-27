@@ -1016,8 +1016,8 @@ final class SnowflakeConnection: @unchecked Sendable {
     /// reason: a row decoded without its columns is a row of raw wire text.
     static func rows(from rowset: [[Any]], columns: [SnowflakeColumnMeta]) -> [[PluginCellValueBox]] {
         rowset.map { row in
-            row.enumerated().map { index, value in
-                box(value, as: index < columns.count ? columns[index] : nil)
+            row.indices.map { index in
+                box(row[index], as: index < columns.count ? columns[index] : nil)
             }
         }
     }
