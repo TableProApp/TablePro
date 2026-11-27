@@ -12634,6 +12634,15 @@
         }
       }
     },
+    "%lld items deleted on TablePro Sync since this Mac moved are deleted from iCloud too, unless another device changed them there." : {
+
+    },
+    "%lld items go up." : {
+
+    },
+    "%lld items stay on this Mac: Local only and sample connections, and categories you turned off." : {
+
+    },
     "%lld keys" : {
 
     },
@@ -13168,6 +13177,9 @@
           }
         }
       }
+    },
+    "%lld passwords are encrypted for TablePro Sync, and this Mac keeps its own copy of each." : {
+
     },
     "%lld pending changes" : {
       "localizations" : {
@@ -15633,6 +15645,15 @@
         }
       }
     },
+    "1 item deleted on TablePro Sync since this Mac moved is deleted from iCloud too, unless another device changed it there." : {
+
+    },
+    "1 item goes up." : {
+
+    },
+    "1 item stays on this Mac: a Local only or sample connection, or a category you turned off." : {
+
+    },
     "1 key" : {
 
     },
@@ -15716,6 +15737,9 @@
 
     },
     "1 password could not be kept in the Keychain." : {
+
+    },
+    "1 password is encrypted for TablePro Sync, and this Mac keeps its own copy." : {
 
     },
     "1 plugin could not be loaded." : {
@@ -29213,6 +29237,9 @@
         }
       }
     },
+    "Another change to how this Mac syncs is still running." : {
+
+    },
     "Another check constraint is already named %@." : {
 
     },
@@ -31739,10 +31766,16 @@
     "Approve This Mac From Another Device" : {
 
     },
+    "Approve this Mac from another device signed in to your account, or use your recovery key, then check again." : {
+
+    },
     "Approve this Mac from another of your devices first." : {
 
     },
     "Approve This Mac Instead" : {
+
+    },
+    "Approve This Mac…" : {
 
     },
     "Approve…" : {
@@ -33145,6 +33178,9 @@
           }
         }
       }
+    },
+    "Ask your administrator to renew it. TablePro Sync stops taking changes once the grace period ends." : {
+
     },
     "Ask your DBA to confirm the user has an 11G or 12C password verifier (SELECT password_versions FROM dba_users WHERE username = '<USER>')." : {
       "extractionState" : "manual",
@@ -43733,6 +43769,12 @@
       }
     },
     "Checking the license key" : {
+
+    },
+    "Checking what changed on TablePro Sync…" : {
+
+    },
+    "Checking what this Mac uploads…" : {
 
     },
     "Checking your credentials" : {
@@ -56964,6 +57006,9 @@
       }
     },
     "Connections and saved queries from apps on this Mac" : {
+
+    },
+    "Connections and settings stay on this Mac." : {
 
     },
     "Connections are reached without asking." : {
@@ -73001,6 +73046,9 @@
         }
       }
     },
+    "Delete iCloud Data…" : {
+
+    },
     "Delete Index" : {
       "localizations" : {
         "fr" : {
@@ -73498,6 +73546,9 @@
           }
         }
       }
+    },
+    "Delete TablePro's Data from iCloud?" : {
+
     },
     "Delete the tag “%@”?" : {
 
@@ -75136,6 +75187,9 @@
           }
         }
       }
+    },
+    "Devices still syncing with iCloud stop syncing until one of them uploads again. What this Mac and TablePro Sync hold stays." : {
+
     },
     "Devices With Your Keys" : {
 
@@ -77378,6 +77432,9 @@
 
     },
     "Downloading cloud-sql-proxy" : {
+
+    },
+    "Downloading Only" : {
 
     },
     "Downloading plugin" : {
@@ -82939,6 +82996,9 @@
 
     },
     "Encrypts the connection without checking the server certificate." : {
+
+    },
+    "End-to-end encrypted with your account's keys. This Mac also keeps its own copy of each password." : {
 
     },
     "End-to-End Encryption" : {
@@ -103393,6 +103453,9 @@
         }
       }
     },
+    "How this Mac syncs changed while this ran, so it stopped." : {
+
+    },
     "How to read value: percent is a fraction (0.25 means 25 percent), date is ISO 8601" : {
 
     },
@@ -103621,6 +103684,9 @@
       }
     },
     "iCloud could not complete the sync. TablePro tries again on the next sync." : {
+
+    },
+    "iCloud data" : {
 
     },
     "iCloud Is Not Ready" : {
@@ -128177,6 +128243,18 @@
         }
       }
     },
+    "Move and Delete %lld Items" : {
+
+    },
+    "Move and Delete 1 Item" : {
+
+    },
+    "Move Back" : {
+
+    },
+    "Move Back to iCloud" : {
+
+    },
     "Move Column Down" : {
       "localizations" : {
         "fr" : {
@@ -128540,6 +128618,9 @@
         }
       }
     },
+    "Move My Data" : {
+
+    },
     "Move Right" : {
 
     },
@@ -128768,6 +128849,9 @@
           }
         }
       }
+    },
+    "Move this Mac's data into the account it now syncs with, or start empty with what that account already holds." : {
+
     },
     "Move to" : {
       "localizations" : {
@@ -129019,6 +129103,9 @@
         }
       }
     },
+    "Move to TablePro Sync" : {
+
+    },
     "Move to Trash" : {
       "localizations" : {
         "fr" : {
@@ -129219,6 +129306,9 @@
         }
       }
     },
+    "Moving back to iCloud…" : {
+
+    },
     "Moving this tab to another database or schema will discard all unsaved changes." : {
 
     },
@@ -129231,6 +129321,9 @@
           }
         }
       }
+    },
+    "Moving to TablePro Sync…" : {
+
     },
     "MQL" : {
       "extractionState" : "stale",
@@ -146356,6 +146449,9 @@
           }
         }
       }
+    },
+    "Open End-to-End Encryption Settings" : {
+
     },
     "Open External Database Connection?" : {
       "localizations" : {
@@ -174461,6 +174557,9 @@
     "Review Changes…" : {
 
     },
+    "Review Move Back…" : {
+
+    },
     "Review the current query against its tables" : {
       "localizations" : {
         "fr" : {
@@ -174480,6 +174579,9 @@
           }
         }
       }
+    },
+    "Review Upload…" : {
+
     },
     "Review with AI" : {
       "localizations" : {
@@ -187987,10 +188089,16 @@
     "Set Up a Recovery Key" : {
 
     },
+    "Set up a recovery key for your account before this Mac uploads, then check again." : {
+
+    },
     "Set up an app to use TablePro's MCP server" : {
 
     },
     "Set up end-to-end encryption" : {
+
+    },
+    "Set Up Recovery Key…" : {
 
     },
     "Set up with a token" : {
@@ -193585,6 +193693,9 @@
         }
       }
     },
+    "Signed In to Another Account" : {
+
+    },
     "Signed in to Vault. You can close this window and return to TablePro." : {
 
     },
@@ -199006,6 +199117,9 @@
     "Start a new %@ session to load it." : {
 
     },
+    "Start Empty" : {
+
+    },
     "Start one to ask about this connection." : {
       "localizations" : {
         "fr" : {
@@ -204061,6 +204175,9 @@
         }
       }
     },
+    "Sync this Mac with" : {
+
+    },
     "Sync this Mac with iCloud" : {
       "localizations" : {
         "fr" : {
@@ -204100,6 +204217,12 @@
           }
         }
       }
+    },
+    "Sync through your TablePro account with every device signed in to it, end-to-end encrypted." : {
+
+    },
+    "Sync your connections, settings, and query history through your TablePro account, end-to-end encrypted." : {
+
     },
     "Synced" : {
       "extractionState" : "stale",
@@ -208374,7 +208497,16 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro Sync cannot be reached. Your data stays on this Mac; try again once you are online." : {
+
+    },
+    "TablePro Sync could not finish. Your data stays on this Mac; try again later." : {
+
+    },
     "TablePro Sync deletes everything you synced to it, passwords and query history included. This can't be undone." : {
+
+    },
+    "TablePro Sync takes changes until %@. Ask your administrator to renew it." : {
 
     },
     "TablePro takes no funding and sells no data. If you want to do more, sponsorship goes to the same place." : {
@@ -208530,7 +208662,13 @@
     "TablePro's client list has a setup for this client that it cannot fill in." : {
 
     },
+    "TablePro's data could not be deleted from iCloud. Try again later." : {
+
+    },
     "TablePro's data is no longer in iCloud. It may have been deleted in iCloud settings. Upload what this Mac has again, or turn off sync to keep it on this Mac only." : {
+
+    },
+    "TablePro's data stays in iCloud after this Mac stops syncing with it." : {
 
     },
     "TablePro's MCP server does not provide this endpoint." : {
@@ -228949,13 +229087,28 @@
         }
       }
     },
+    "This Mac can no longer read your account's keys. Approve it again from another device, then check again." : {
+
+    },
     "This Mac can't do that right now." : {
 
     },
     "This Mac can't keep keys" : {
 
     },
+    "This Mac cannot read your account's keys. Approve it from another device, or use your recovery key." : {
+
+    },
     "This Mac does not support Apple Intelligence." : {
+
+    },
+    "This Mac downloads the latest from TablePro Sync, then syncs with iCloud again." : {
+
+    },
+    "This Mac goes back to iCloud once you review what the move deletes there." : {
+
+    },
+    "This Mac has no place to keep its device keys, so it cannot use TablePro Sync." : {
 
     },
     "This Mac holds the team key and can share passwords with the team." : {
@@ -229059,10 +229212,19 @@
         }
       }
     },
+    "This Mac starts syncing with TablePro Sync once you review what it uploads." : {
+
+    },
     "This Mac stopped using the team key: it couldn't verify a newer version. An owner or admin needs to confirm this Mac again." : {
 
     },
     "This Mac stopped using the team key: it couldn't verify a newer version. An owner or admin who held version %lld needs to confirm this Mac again. TablePro has let them know." : {
+
+    },
+    "This Mac stops syncing with devices still on iCloud. Move each of them to keep them together. TablePro's data stays in iCloud until you delete it." : {
+
+    },
+    "This Mac stops syncing with devices still on TablePro Sync. Your data stays in TablePro Sync." : {
 
     },
     "This Mac was removed from your account" : {
@@ -229085,6 +229247,9 @@
           }
         }
       }
+    },
+    "This Mac's data goes up to your TablePro account, end-to-end encrypted." : {
+
     },
     "This Mac's encryption keys are erased, so after you sign in again another device or your recovery key approves it." : {
 
@@ -240626,7 +240791,16 @@
     "Upload Team Library changes from before the update?" : {
 
     },
+    "Upload to TablePro Sync" : {
+
+    },
     "Uploaded when the team library answers. Signing out or quitting asks first, since they are not kept on this Mac." : {
+
+    },
+    "Uploading to TablePro Sync…" : {
+
+    },
+    "Uploads Paused" : {
 
     },
     "Upper Bound" : {
@@ -250500,6 +250674,9 @@
     "Your account no longer has a seat in this team's library." : {
 
     },
+    "Your account no longer includes TablePro Sync uploads. Your data stays on this Mac." : {
+
+    },
     "Your account unlocks the features your plan includes on this Mac. Everything else works without an account." : {
       "localizations" : {
         "fr" : {
@@ -251050,6 +251227,9 @@
     "Your old recovery key no longer works. Devices you didn't keep ask for approval again." : {
 
     },
+    "Your organization does not allow this on this Mac." : {
+
+    },
     "Your organization doesn't allow links from tablepro.app on this Mac." : {
 
     },
@@ -251070,6 +251250,12 @@
       }
     },
     "Your organization set up this TablePro server. Sign in with your work account." : {
+
+    },
+    "Your Organization Uses iCloud" : {
+
+    },
+    "Your Organization Uses TablePro Sync" : {
 
     },
     "Your organization's server licenses this Mac. A license key or an offline file is not needed." : {
@@ -251253,6 +251439,9 @@
         }
       }
     },
+    "Your plan no longer includes TablePro Sync. This Mac still downloads changes and keeps its own until you renew." : {
+
+    },
     "Your prompts, schema, and query text reach Anthropic under your consumer plan and its privacy settings, not the API's commercial terms." : {
       "localizations" : {
         "fr" : {
@@ -251294,6 +251483,24 @@
       }
     },
     "Your role on this team doesn't allow this." : {
+
+    },
+    "Your server does not keep personal data, so this Mac cannot sync it there." : {
+
+    },
+    "Your server does not keep personal data, so this Mac keeps its own. Team Library goes on syncing." : {
+
+    },
+    "Your server does not sync passwords. Each one stays on this Mac." : {
+
+    },
+    "Your server does not sync query history. It stays on this Mac." : {
+
+    },
+    "Your Server's License Has Expired" : {
+
+    },
+    "Your server's license has expired. This Mac still downloads changes and keeps its own until your administrator renews it." : {
 
     },
     "Your subscription is governed by Anthropic's Consumer Terms and Usage Policy. Read them and decide whether this use fits. TablePro cannot grant rights under them." : {

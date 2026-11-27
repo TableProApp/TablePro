@@ -157,6 +157,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SyncProviderPolicy.shared.start()
         KeychainProviderFollower.shared.start(host: .shared)
         SyncProviderCoordinator.shared.start()
+        ProviderMoves.shared.start()
         // Its gate reads the sign-in the core restores after launch.
         Task {
             await AccountServices.shared.waitUntilRestored()

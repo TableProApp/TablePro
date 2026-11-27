@@ -3,6 +3,7 @@ import Foundation
 // Raw values are the feature codes the entitlement carries (product.md, Feature codes).
 internal enum ProFeature: String, CaseIterable {
     case iCloudSync = "icloud_sync"
+    case serviceSync = "service_sync"
     case encryptedExport = "encrypted_export"
     case envVarReferences = "env_var_references"
     case linkedFolders = "linked_folders"
@@ -21,6 +22,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Result Charts")
         case .iCloudSync:
             return String(localized: "iCloud Sync")
+        case .serviceSync:
+            return "TablePro Sync"
         case .encryptedExport:
             return String(localized: "Encrypted Export")
         case .envVarReferences:
@@ -46,6 +49,8 @@ internal enum ProFeature: String, CaseIterable {
             return "chart.xyaxis.line"
         case .iCloudSync:
             return "icloud"
+        case .serviceSync:
+            return "arrow.triangle.2.circlepath"
         case .encryptedExport:
             return "lock.doc"
         case .envVarReferences:
@@ -71,6 +76,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Turn loaded query results into native bar, line, area, and scatter charts.")
         case .iCloudSync:
             return String(localized: "Sync connections, settings, and favorites across your Macs.")
+        case .serviceSync:
+            return String(localized: "Sync your connections, settings, and query history through your TablePro account, end-to-end encrypted.")
         case .encryptedExport:
             return String(localized: "Export connections with encrypted credentials.")
         case .envVarReferences:

@@ -333,7 +333,9 @@ extension SettingsPane {
             ] + AppModule.allCases.map(\.title)
         case .sync:
             [
-                String(localized: "Sync this Mac with iCloud"),
+                String(localized: "Sync this Mac with"),
+                "TablePro Sync",
+                String(localized: "Delete iCloud Data…"),
                 String(localized: "Last synced"),
                 String(localized: "Sync Now"),
                 String(localized: "What Syncs"),
@@ -417,7 +419,8 @@ extension SettingsPane {
         case .sync:
             [
                 "icloud", "apple account", "keychain", "password", "connections", "saved queries", "favorites", "folders",
-                "credential", "device", "last synced", "sync now", "cloudkit",
+                "credential", "device", "last synced", "sync now", "cloudkit", "tablepro sync", "provider", "move",
+                "end-to-end",
             ]
         case .account:
             [
