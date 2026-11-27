@@ -55,6 +55,8 @@ public sealed partial class SettingsView
         ShowSyncPolicies(pane.ServerPolicies);
         ShowSyncStatus(pane);
         SyncCategoriesExpander.Visibility = pane.ShowsCategories ? Visibility.Visible : Visibility.Collapsed;
+        SyncKeysCard.Visibility = _workbench.SignInSession is null ? Visibility.Collapsed : Visibility.Visible;
+        SyncKeysCard.Description = KeysSummary(host.Keys);
         SyncPasswordsCard.IsEnabled = sync.Connections && !pane.PasswordsOffOnServer;
         SyncPasswordsCard.Description = Strings.Get(pane.PasswordsOffOnServer
             ? "SyncPasswordsOffOnServer"
@@ -261,7 +263,7 @@ public sealed partial class SettingsView
             }
             else if (await _shell.RequirePlanAsync(PlanFeatures.ServiceSync).ConfigureAwait(true))
             {
-                await SyncUploadDialog.ShowAsync(this, _workbench).ConfigureAwait(true);
+                await UploadAsync().ConfigureAwait(true);
             }
         }
         finally
@@ -270,6 +272,67 @@ public sealed partial class SettingsView
             ShowSync();
         }
     }
+
+    // The keys come before the upload: the key dialogs run between two openings of the upload dialog.
+    private async Task UploadAsync()
+    {
+        while (true)
+        {
+            var (result, request) = await SyncUploadDialog.ShowAsync(this, _workbench).ConfigureAwait(true);
+            switch (result)
+            {
+                case UploadDialogResult.SetUpRecoveryKey:
+                    var made = await KeyDialogs.RecoveryKeyAsync(this, _workbench, RecoveryKeyPurpose.SetUp)
+                        .ConfigureAwait(true);
+                    if (made == KeyDialogResult.Done
+                        || (made == KeyDialogResult.AskForApproval && await ApproveThisComputerAsync(null).ConfigureAwait(true)))
+                    {
+                        continue;
+                    }
+
+                    return;
+                case UploadDialogResult.ApproveThisComputer:
+                    if (await ApproveThisComputerAsync(request).ConfigureAwait(true))
+                    {
+                        continue;
+                    }
+
+                    return;
+                case UploadDialogResult.OpenEncryptionSettings:
+                    _shell.ShowAccountKeys();
+                    return;
+                default:
+                    return;
+            }
+        }
+    }
+
+    // A request that ended asks again with a new one; true once this computer is approved.
+    private async Task<bool> ApproveThisComputerAsync(string? open)
+    {
+        var request = open;
+        while (true)
+        {
+            var result = await KeyDialogs.ApprovalAsync(this, _workbench, null, request).ConfigureAwait(true);
+            if (result != KeyDialogResult.AskForApproval)
+            {
+                return result == KeyDialogResult.Done;
+            }
+
+            request = null;
+        }
+    }
+
+    private void OnSyncKeysCard(object sender, RoutedEventArgs e) => _shell.ShowAccountKeys();
+
+    private static string KeysSummary(KeyState? keys) => keys switch
+    {
+        KeyState.Approved => Strings.Get("SyncKeysOn"),
+        KeyState.NeedsApproval => Strings.Get("SyncStatusNeedsApproval"),
+        KeyState.NoKeys => Strings.Get("SyncKeysNotSetUp"),
+        KeyState.Locked locked => SyncText.LockTitle(locked.Cause),
+        _ => Strings.Get("SyncKeysDescription"),
+    };
 
     private void OnSyncCategoryToggled(object sender, RoutedEventArgs e)
     {

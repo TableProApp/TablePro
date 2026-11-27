@@ -71,6 +71,9 @@
                     <Button x:Uid="SyncNowButton" x:Name="SyncNowButton" AutomationProperties.AutomationId="SyncNowButton" Click="OnSyncNow" />
                 </StackPanel>
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="SyncKeysCard" x:Name="SyncKeysCard" AutomationProperties.AutomationId="SyncKeysCard" IsClickEnabled="True" Click="OnSyncKeysCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsCard.HeaderIcon>
+            </toolkit:SettingsCard>
             <toolkit:SettingsExpander x:Uid="SyncCategoriesExpander" x:Name="SyncCategoriesExpander" AutomationProperties.AutomationId="SyncCategoriesExpander" Visibility="Collapsed">
                 <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE71D;" /></toolkit:SettingsExpander.HeaderIcon>
                 <toolkit:SettingsExpander.Items>

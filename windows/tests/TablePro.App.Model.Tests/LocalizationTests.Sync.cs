@@ -31,7 +31,11 @@ public sealed partial class LocalizationTests
             .Concat(Enum.GetValues<SyncRefusal>().Select(refusal => "SyncRefusal_" + refusal))
             .Concat(Enum.GetValues<UploadKeysStep>().Select(step => "SyncUploadKeys_" + step))
             .Concat(["SyncProviderOffSummary", "SyncProviderTableProSyncSummary", "SyncPasswordsEncrypted"])
-            .Concat(["SyncPasswordsOffOnServer", "SyncUploadButton", "AccountTryAgain"]);
+            .Concat(["SyncPasswordsOffOnServer", "SyncUploadButton", "AccountTryAgain"])
+            .Concat(Enum.GetValues<UploadKeysStep>().Select(step => "SyncUploadKeysAction_" + step))
+            .Concat(Enum.GetValues<ResetState>().Select(state => "KeysResetEnded_" + state))
+            .Concat(Enum.GetValues<ResetKind>().SelectMany(kind =>
+                new[] { "KeysResetExplain_" + kind, "KeysResetCard_" + kind }));
 
         var missing = names.Where(name => !s_strings.Value.ContainsKey(name)).ToList();
 

@@ -7225,4 +7225,487 @@ New fingerprint: {2}</value>
   <data name="SyncRefusal_AccountChoicePending" xml:space="preserve">
     <value>Another account's data on this computer waits for your choice. Choose Move my data or Start empty in Settings first.</value>
   </data>
+  <data name="AccountKeysTitle.Text" xml:space="preserve">
+    <value>End-to-end encryption</value>
+  </data>
+  <data name="AccountKeysIntro.Text" xml:space="preserve">
+    <value>Passwords, other secrets and query history are sealed on this computer with your account's keys before they sync. Each device holds the keys once another device approves it or you use your recovery key.</value>
+  </data>
+  <data name="KeysResetHeader.Text" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="SyncKeysCard.Header" xml:space="preserve">
+    <value>End-to-end encryption</value>
+  </data>
+  <data name="SyncKeysCard.Description" xml:space="preserve">
+    <value>Your account's keys on this computer, its devices and your recovery key</value>
+  </data>
+  <data name="SyncKeysOn" xml:space="preserve">
+    <value>This computer holds your account's keys.</value>
+  </data>
+  <data name="SyncKeysNotSetUp" xml:space="preserve">
+    <value>Not set up yet</value>
+  </data>
+  <data name="SyncKeysDescription" xml:space="preserve">
+    <value>Your account's keys on this computer, its devices and your recovery key</value>
+  </data>
+  <data name="SyncUploadKeysAction_SetUpRecoveryKey" xml:space="preserve">
+    <value>Set up recovery key...</value>
+  </data>
+  <data name="SyncUploadKeysAction_ApproveThisPc" xml:space="preserve">
+    <value>Approve this computer...</value>
+  </data>
+  <data name="SyncUploadKeysAction_Locked" xml:space="preserve">
+    <value>Open end-to-end encryption</value>
+  </data>
+  <data name="SyncUploadKeysAction_NoDeviceStore" xml:space="preserve">
+    <value>Upload</value>
+  </data>
+  <data name="KeysReadFailedTitle" xml:space="preserve">
+    <value>Your keys could not be read</value>
+  </data>
+  <data name="KeysChecking" xml:space="preserve">
+    <value>Checking your keys...</value>
+  </data>
+  <data name="KeysNoDeviceStoreTitle" xml:space="preserve">
+    <value>This computer can't keep keys</value>
+  </data>
+  <data name="KeysNoDeviceStoreMessage" xml:space="preserve">
+    <value>Without a place to keep keys, TablePro Sync carries only team records without their secrets here.</value>
+  </data>
+  <data name="KeysSetUpCardTitle" xml:space="preserve">
+    <value>Set up end-to-end encryption</value>
+  </data>
+  <data name="KeysSetUpCardMessage" xml:space="preserve">
+    <value>Your passwords, history and team secrets are sealed on this computer before they sync. A recovery key you keep lets you add and remove devices.</value>
+  </data>
+  <data name="KeysSetUpButton" xml:space="preserve">
+    <value>Set up...</value>
+  </data>
+  <data name="KeysNeedsApprovalTitle" xml:space="preserve">
+    <value>Approve this computer</value>
+  </data>
+  <data name="KeysNeedsApprovalMessage" xml:space="preserve">
+    <value>Approve it from another device signed in to your account, or use your recovery key when no other device is at hand.</value>
+  </data>
+  <data name="KeysAskForApproval" xml:space="preserve">
+    <value>Ask for approval...</value>
+  </data>
+  <data name="KeysUseRecoveryKeyButton" xml:space="preserve">
+    <value>Use recovery key...</value>
+  </data>
+  <data name="KeysRecoveryKeyTitle" xml:space="preserve">
+    <value>Recovery key</value>
+  </data>
+  <data name="KeysRecoveryKeyMessage" xml:space="preserve">
+    <value>Lets you approve a device and remove a lost one. Replace it if someone else may have seen it.</value>
+  </data>
+  <data name="KeysReplaceButton" xml:space="preserve">
+    <value>Replace...</value>
+  </data>
+  <data name="KeysRequestsHeader" xml:space="preserve">
+    <value>Waiting for approval</value>
+  </data>
+  <data name="KeysRequestsDescription" xml:space="preserve">
+    <value>Approve only a device you're signing in to right now.</value>
+  </data>
+  <data name="KeysApproveButton" xml:space="preserve">
+    <value>Approve...</value>
+  </data>
+  <data name="KeysApproveName" xml:space="preserve">
+    <value>Approve {0}</value>
+  </data>
+  <data name="KeysDevicesHeader" xml:space="preserve">
+    <value>Devices with your keys</value>
+  </data>
+  <data name="KeysDevicesDescription" xml:space="preserve">
+    <value>Each device that can read what TablePro Sync keeps for you</value>
+  </data>
+  <data name="KeysRemoveTitle" xml:space="preserve">
+    <value>Remove “{0}”?</value>
+  </data>
+  <data name="KeysRemoveMessage" xml:space="preserve">
+    <value>It's signed out and can't read anything new. First confirm it's you in your browser, then enter your recovery key so TablePro can change your keys.</value>
+  </data>
+  <data name="KeysRemoveFailedTitle" xml:space="preserve">
+    <value>Could not remove “{0}”</value>
+  </data>
+  <data name="KeysResetPendingTitle" xml:space="preserve">
+    <value>A key reset is waiting</value>
+  </data>
+  <data name="KeysResetCardTitle" xml:space="preserve">
+    <value>Reset end-to-end encryption</value>
+  </data>
+  <data name="KeysResetCard_KeepScopeKeys" xml:space="preserve">
+    <value>Use this when your recovery key is lost. Your account gets new keys and a new recovery key after a 7-day wait that any of your devices can cancel.</value>
+  </data>
+  <data name="KeysResetCard_StartEmpty" xml:space="preserve">
+    <value>Use this when no approved device and no recovery key is left. After a 7-day wait your account starts again with new keys, and what was sealed before can't be read.</value>
+  </data>
+  <data name="KeysResetButton" xml:space="preserve">
+    <value>Reset...</value>
+  </data>
+  <data name="KeysResetAskAgain" xml:space="preserve">
+    <value>Ask again</value>
+  </data>
+  <data name="KeysResetCancelButton" xml:space="preserve">
+    <value>Cancel reset</value>
+  </data>
+  <data name="KeysResetFinishButton" xml:space="preserve">
+    <value>Finish reset</value>
+  </data>
+  <data name="KeysResetCancelTitle" xml:space="preserve">
+    <value>Cancel the key reset?</value>
+  </data>
+  <data name="KeysResetCancelMessage" xml:space="preserve">
+    <value>Your keys stay as they are, and the device that asked for the reset can't finish it.</value>
+  </data>
+  <data name="KeysResetCancelWithKeyMessage" xml:space="preserve">
+    <value>Enter your recovery key to cancel the reset. Your keys stay as they are.</value>
+  </data>
+  <data name="KeysResetFinishTitle" xml:space="preserve">
+    <value>Finish the key reset?</value>
+  </data>
+  <data name="KeysResetFinishMessage" xml:space="preserve">
+    <value>Your account gets new keys. Every other device asks this computer for approval again.</value>
+  </data>
+  <data name="KeysResetMine" xml:space="preserve">
+    <value>This computer asked to reset your keys. You can finish the reset from {0:g}.</value>
+  </data>
+  <data name="KeysResetOther" xml:space="preserve">
+    <value>“{0}” asked to reset your keys. Cancel it if you didn't ask for it; otherwise it can finish from {1:g}.</value>
+  </data>
+  <data name="KeysResetWaitsForStepUp" xml:space="preserve">
+    <value>A server restore lost your key reset. Confirm it's you to ask for it again.</value>
+  </data>
+  <data name="KeysResetEnded_Pending" xml:space="preserve">
+    <value>A key reset is waiting.</value>
+  </data>
+  <data name="KeysResetEnded_Cancelled" xml:space="preserve">
+    <value>The key reset was cancelled.</value>
+  </data>
+  <data name="KeysResetEnded_Superseded" xml:space="preserve">
+    <value>The key reset ended without changing your keys.</value>
+  </data>
+  <data name="KeysResetEnded_Active" xml:space="preserve">
+    <value>Your keys were reset.</value>
+  </data>
+  <data name="KeysUnnamedDevice" xml:space="preserve">
+    <value>Unnamed device</value>
+  </data>
+  <data name="KeysDeviceAdded" xml:space="preserve">
+    <value>added {0:d}</value>
+  </data>
+  <data name="KeysCompared" xml:space="preserve">
+    <value>You compared words with it</value>
+  </data>
+  <data name="KeysAsksAgain" xml:space="preserve">
+    <value>Asks for approval again</value>
+  </data>
+  <data name="KeysYou" xml:space="preserve">
+    <value>You</value>
+  </data>
+  <data name="KeysUnnamedTeammate" xml:space="preserve">
+    <value>Unnamed teammate</value>
+  </data>
+  <data name="KeysUnnamedTeam" xml:space="preserve">
+    <value>Unnamed team</value>
+  </data>
+  <data name="KeysTypeBackGroups" xml:space="preserve">
+    <value>Type groups {0} and {1} of your recovery key.</value>
+  </data>
+  <data name="KeysTypeBack" xml:space="preserve">
+    <value>Type the groups of your recovery key it asks for.</value>
+  </data>
+  <data name="KeysGroup" xml:space="preserve">
+    <value>Group {0}</value>
+  </data>
+  <data name="KeysGroupLine" xml:space="preserve">
+    <value>{0,2}  {1}</value>
+  </data>
+  <data name="KeysApproveTitle" xml:space="preserve">
+    <value>Approve “{0}”?</value>
+  </data>
+  <data name="KeysAskingTitle" xml:space="preserve">
+    <value>Asking for approval</value>
+  </data>
+  <data name="KeysStartingTitle" xml:space="preserve">
+    <value>Starting the approval</value>
+  </data>
+  <data name="KeysWaitingTitle" xml:space="preserve">
+    <value>Approve this computer from another device</value>
+  </data>
+  <data name="KeysChosenTitle" xml:space="preserve">
+    <value>Another device is approving this computer</value>
+  </data>
+  <data name="KeysWaitingForTitle" xml:space="preserve">
+    <value>Waiting for “{0}”</value>
+  </data>
+  <data name="KeysCompareTitle" xml:space="preserve">
+    <value>Compare the words</value>
+  </data>
+  <data name="KeysConfirmedTitle" xml:space="preserve">
+    <value>Waiting for the other device</value>
+  </data>
+  <data name="KeysApprovedTitle" xml:space="preserve">
+    <value>This computer is approved</value>
+  </data>
+  <data name="KeysOtherApprovedTitle" xml:space="preserve">
+    <value>“{0}” is approved</value>
+  </data>
+  <data name="KeysTakenElsewhereTitle" xml:space="preserve">
+    <value>Another device is approving it</value>
+  </data>
+  <data name="KeysMismatchTitle" xml:space="preserve">
+    <value>The words didn't match</value>
+  </data>
+  <data name="KeysCommitmentTitle" xml:space="preserve">
+    <value>The request couldn't be checked</value>
+  </data>
+  <data name="KeysCancelledTitle" xml:space="preserve">
+    <value>Request cancelled</value>
+  </data>
+  <data name="KeysExpiredTitle" xml:space="preserve">
+    <value>Request expired</value>
+  </data>
+  <data name="KeysFailedTitle" xml:space="preserve">
+    <value>Approval didn't start</value>
+  </data>
+  <data name="KeysApproveMessage" xml:space="preserve">
+    <value>Approve only a device you're signing in to right now. It gets your keys and everything TablePro Sync keeps for you.</value>
+  </data>
+  <data name="KeysWaitingMessage" xml:space="preserve">
+    <value>On another device signed in to your account, open TablePro's settings, choose End-to-end encryption and approve this computer.</value>
+  </data>
+  <data name="KeysChosenMessage" xml:space="preserve">
+    <value>The five words to compare appear in a moment.</value>
+  </data>
+  <data name="KeysCompareMessage" xml:space="preserve">
+    <value>Check that the other device shows the same five words in the same order.</value>
+  </data>
+  <data name="KeysCompareOtherMessage" xml:space="preserve">
+    <value>Check that “{0}” shows the same five words in the same order.</value>
+  </data>
+  <data name="KeysConfirmedMessage" xml:space="preserve">
+    <value>Confirm the words on the other device too.</value>
+  </data>
+  <data name="KeysApprovedMessage" xml:space="preserve">
+    <value>It now has your keys, and TablePro Sync starts here.</value>
+  </data>
+  <data name="KeysOtherApprovedMessage" xml:space="preserve">
+    <value>It now has your keys.</value>
+  </data>
+  <data name="KeysTakenElsewhereMessage" xml:space="preserve">
+    <value>“{0}” is being approved on another of your devices.</value>
+  </data>
+  <data name="KeysMismatchMessage" xml:space="preserve">
+    <value>Nothing was approved. If you didn't start this request, someone may be trying to get your keys.</value>
+  </data>
+  <data name="KeysCommitmentMessage" xml:space="preserve">
+    <value>The other device's answer didn't match what this computer sent, so nothing was approved.</value>
+  </data>
+  <data name="KeysCancelledMessage" xml:space="preserve">
+    <value>Nothing was approved.</value>
+  </data>
+  <data name="KeysExpiredMessage" xml:space="preserve">
+    <value>A request lasts 10 minutes. Nothing was approved.</value>
+  </data>
+  <data name="KeysTimeLeft" xml:space="preserve">
+    <value>Time left: {0}</value>
+  </data>
+  <data name="KeysRequestDetail" xml:space="preserve">
+    <value>{0} · asked {1:t}</value>
+  </data>
+  <data name="KeysApprove" xml:space="preserve">
+    <value>Approve</value>
+  </data>
+  <data name="KeysWaitingForDevice" xml:space="preserve">
+    <value>Waiting for another device</value>
+  </data>
+  <data name="KeysWaitingForWords" xml:space="preserve">
+    <value>Waiting for the words</value>
+  </data>
+  <data name="KeysWaitingForConfirm" xml:space="preserve">
+    <value>Waiting for the other device to confirm</value>
+  </data>
+  <data name="KeysWordsMatch" xml:space="preserve">
+    <value>The words match</value>
+  </data>
+  <data name="KeysWordsDiffer" xml:space="preserve">
+    <value>They don't match</value>
+  </data>
+  <data name="KeysWordsName" xml:space="preserve">
+    <value>The words: {0}</value>
+  </data>
+  <data name="KeysAskAgain" xml:space="preserve">
+    <value>Ask again</value>
+  </data>
+  <data name="KeysReplaceTitle" xml:space="preserve">
+    <value>Replace recovery key</value>
+  </data>
+  <data name="KeysReplaceMessage" xml:space="preserve">
+    <value>Enter your current recovery key. You get a new one, and the current one stops working.</value>
+  </data>
+  <data name="KeysContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="KeysKeepDevicesTitle" xml:space="preserve">
+    <value>Keep your devices?</value>
+  </data>
+  <data name="KeysKeepDevicesMessage" xml:space="preserve">
+    <value>Devices you compared words with can keep your keys. Every other device asks for approval again.</value>
+  </data>
+  <data name="KeysNewKeyTitle" xml:space="preserve">
+    <value>Your new recovery key</value>
+  </data>
+  <data name="KeysSetUpTitle" xml:space="preserve">
+    <value>Set up a recovery key</value>
+  </data>
+  <data name="KeysSaveKeyMessage" xml:space="preserve">
+    <value>Save it in a password manager or write it down. TablePro can't show it again or recover it. You need it to remove a lost device.</value>
+  </data>
+  <data name="KeysMakingKey" xml:space="preserve">
+    <value>Making your recovery key...</value>
+  </data>
+  <data name="KeysConfirmKeyTitle" xml:space="preserve">
+    <value>Confirm your recovery key</value>
+  </data>
+  <data name="KeysShowKeyAgain" xml:space="preserve">
+    <value>Show key again</value>
+  </data>
+  <data name="KeysReplace" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="KeysSetUp" xml:space="preserve">
+    <value>Set up</value>
+  </data>
+  <data name="KeysAnotherDeviceWonTitle" xml:space="preserve">
+    <value>Approve this computer instead</value>
+  </data>
+  <data name="KeysAnotherDeviceWonMessage" xml:space="preserve">
+    <value>Another device set up your keys first, so this key wasn't used. Ask that device to approve this computer.</value>
+  </data>
+  <data name="KeysAskAnotherDevice" xml:space="preserve">
+    <value>Ask another device...</value>
+  </data>
+  <data name="KeysClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="KeysReplacedTitle" xml:space="preserve">
+    <value>Recovery key replaced</value>
+  </data>
+  <data name="KeysReplacedMessage" xml:space="preserve">
+    <value>Your old recovery key no longer works. Devices you didn't keep ask for approval again.</value>
+  </data>
+  <data name="KeysSetUpDoneTitle" xml:space="preserve">
+    <value>Recovery key set up</value>
+  </data>
+  <data name="KeysSetUpDoneMessage" xml:space="preserve">
+    <value>Keep your recovery key somewhere safe. TablePro Sync now seals your secrets on this computer.</value>
+  </data>
+  <data name="KeysDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="KeysWorking" xml:space="preserve">
+    <value>Working...</value>
+  </data>
+  <data name="KeysRecoverTitle" xml:space="preserve">
+    <value>Use your recovery key</value>
+  </data>
+  <data name="KeysRecoverMessage" xml:space="preserve">
+    <value>Use it only when no other device of yours is at hand. This computer gets new keys, and your other devices ask it for approval again.</value>
+  </data>
+  <data name="KeysRecoveredMessage" xml:space="preserve">
+    <value>It has your keys again. Approve your other devices from this computer when they ask.</value>
+  </data>
+  <data name="KeysUseRecoveryKey" xml:space="preserve">
+    <value>Use recovery key</value>
+  </data>
+  <data name="KeysRecoveryKeyHeader" xml:space="preserve">
+    <value>Recovery key</value>
+  </data>
+  <data name="KeysRecoveryKeyPlaceholder" xml:space="preserve">
+    <value>XXXX-XXXX-XXXX-...</value>
+  </data>
+  <data name="KeysCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="KeysCopyName" xml:space="preserve">
+    <value>Copy recovery key</value>
+  </data>
+  <data name="KeysCopied" xml:space="preserve">
+    <value>Copied. It stays out of the clipboard history.</value>
+  </data>
+  <data name="KeysLater" xml:space="preserve">
+    <value>Later</value>
+  </data>
+  <data name="KeysRemovalTitle" xml:space="preserve">
+    <value>Finish removing “{0}”</value>
+  </data>
+  <data name="KeysRemovalMessage" xml:space="preserve">
+    <value>Enter your recovery key so TablePro can give your account new keys that the removed device doesn't have.</value>
+  </data>
+  <data name="KeysReviewTitle" xml:space="preserve">
+    <value>Review before changing your keys</value>
+  </data>
+  <data name="KeysReviewMessage" xml:space="preserve">
+    <value>Choose the devices that keep your keys, and check the teammates you confirmed while the removed device had them.</value>
+  </data>
+  <data name="KeysYourDevices" xml:space="preserve">
+    <value>Your devices</value>
+  </data>
+  <data name="KeysConfirmedWhile" xml:space="preserve">
+    <value>Confirmed while “{0}” had your keys. Clear anyone you didn't mean to confirm.</value>
+  </data>
+  <data name="KeysChangeKeys" xml:space="preserve">
+    <value>Change keys</value>
+  </data>
+  <data name="KeysSeatsTitle" xml:space="preserve">
+    <value>Remove their seats first</value>
+  </data>
+  <data name="KeysSeatsMessage" xml:space="preserve">
+    <value>Remove the seats of the teammates you cleared, then change your keys. The new team keys leave them out either way.</value>
+  </data>
+  <data name="KeysManageTeam" xml:space="preserve">
+    <value>Manage...</value>
+  </data>
+  <data name="KeysBack" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="KeysRemovedTitle" xml:space="preserve">
+    <value>“{0}” removed</value>
+  </data>
+  <data name="KeysRemovedMessage" xml:space="preserve">
+    <value>Your keys changed. Your other devices pick up the new keys the next time they sync.</value>
+  </data>
+  <data name="KeysRemovalTryAgain" xml:space="preserve">
+    <value>Enter your recovery key to try again.</value>
+  </data>
+  <data name="KeysResetTitle" xml:space="preserve">
+    <value>Reset end-to-end encryption</value>
+  </data>
+  <data name="KeysResetExplain_KeepScopeKeys" xml:space="preserve">
+    <value>Your account gets new keys and a new recovery key. The reset waits 7 days, and any of your approved devices or your current recovery key can cancel it. Every other device asks for approval again after.</value>
+  </data>
+  <data name="KeysResetExplain_StartEmpty" xml:space="preserve">
+    <value>Your account starts again with new keys and a new recovery key. The reset waits 7 days and needs you to confirm it's you. What was sealed before can't be read after.</value>
+  </data>
+  <data name="KeysAskToReset" xml:space="preserve">
+    <value>Ask to reset</value>
+  </data>
+  <data name="KeysResetAskedTitle" xml:space="preserve">
+    <value>Reset requested</value>
+  </data>
+  <data name="KeysResetAskedMessage" xml:space="preserve">
+    <value>The reset waits 7 days before you can finish it.</value>
+  </data>
+  <data name="KeysSignOutFailedTitle" xml:space="preserve">
+    <value>This computer's encryption keys weren't erased</value>
+  </data>
+  <data name="KeysSignOutFailedMessage" xml:space="preserve">
+    <value>{0} If you sign out anyway, the keys stay on this computer until another account signs in here.</value>
+  </data>
+  <data name="KeysSignOutAnyway" xml:space="preserve">
+    <value>Sign out anyway</value>
+  </data>
 </root>
