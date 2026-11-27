@@ -516,6 +516,6 @@ async fn a_project_narrows_the_picked_connections_and_what_a_clear_deletes() {
         picked_outside.is_empty(),
         "a connection outside the project shows nothing"
     );
-    assert_eq!(cleared, 1);
+    assert_eq!(cleared.len(), 1);
     assert_eq!(left, ["SELECT 2"], "a clear in a project keeps the other runs");
 }

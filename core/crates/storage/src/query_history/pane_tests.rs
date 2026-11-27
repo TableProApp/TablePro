@@ -189,7 +189,18 @@ async fn clearing_what_the_pane_shows_deletes_only_that_and_leaves_tombstones() 
     let mut shown = HistoryQuery::from_input("widgets");
     shown.sources = Some(vec![RunSource::Editor]);
 
-    assert_eq!(history.delete_matching(&shown).await.expect("clear"), 1);
+    let all = history
+        .search_page(&HistoryQuery::default(), HistoryPageRequest::first(MAX_PAGE_SIZE))
+        .await
+        .expect("search")
+        .entries;
+    let widgets = all
+        .iter()
+        .find(|entry| entry.query == "SELECT widgets")
+        .expect("the run shown")
+        .record_id;
+
+    assert_eq!(history.delete_matching(&shown).await.expect("clear"), [widgets]);
 
     assert_eq!(
         found(&history, &HistoryQuery::default()).await,
@@ -255,4 +266,43 @@ async fn unsuccessful_runs_are_the_failed_and_the_cancelled_ones() {
     query.status = StatusFilter::Unsuccessful;
 
     assert_eq!(found(&history, &query).await, ["SELECT bad", "SELECT stopped"]);
+}
+
+// Every run the filter matches goes, and the ids come back in rowid order, so a host can drop the same runs from its
+// own store.
+#[tokio::test]
+async fn clearing_what_the_pane_shows_returns_the_ids_in_rowid_order() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let history = QueryHistory::open(&paths(&root)).await.expect("open");
+    let connection = Uuid::new_v4();
+    let mut recorded = Vec::new();
+    for query in [
+        "SELECT widgets 1",
+        "SELECT gadgets",
+        "SELECT widgets 2",
+        "SELECT widgets 3",
+    ] {
+        let entry = run(query, connection, RunSource::Editor);
+        recorded.push((query, entry.record_id));
+        history.record(entry).await.expect("record");
+    }
+
+    let gone = history
+        .delete_matching(&HistoryQuery::from_input("widgets"))
+        .await
+        .expect("clear");
+
+    let widgets: Vec<Uuid> = recorded
+        .iter()
+        .filter(|(query, _)| query.contains("widgets"))
+        .map(|(_, id)| *id)
+        .collect();
+    assert_eq!(gone, widgets);
+    assert!(
+        history
+            .delete_matching(&HistoryQuery::from_input("widgets"))
+            .await
+            .expect("clear again")
+            .is_empty()
+    );
 }

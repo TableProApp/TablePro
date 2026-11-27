@@ -9,8 +9,8 @@ use std::sync::Arc;
 use secrecy::SecretString;
 use tablepro_ffi::{
     Core, DatabaseEnvironmentTag, FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteRecordWrite,
-    FavouriteTableRecord, HistoryEntryRecord, HistoryFilterArg, HistoryFingerprintArg, HistoryOutcomeTag,
-    HistoryRunDetails, HistorySourceTag, HistoryStatusTag, HostConfig, HostSecretError, HostSecrets,
+    FavouriteTableRecord, HistoryDetailsRecord, HistoryEntryRecord, HistoryFilterArg, HistoryFingerprintArg,
+    HistoryOutcomeTag, HistoryRunDetails, HistorySourceTag, HistoryStatusTag, HostConfig, HostSecretError, HostSecrets,
     SavedQueryFolderRecord, SavedQueryRecord, SavedQueryRecordWrite, SecretItemTag, SecretKindTag, StatementTypeTag,
     TableFolderRecord, TableFolderRecordWrite, TableKeyRecord, TablePlacementRecord, TableRefRecord,
 };
@@ -372,8 +372,105 @@ async fn the_history_pane_reads_and_clears_by_its_filters_and_every_detail_comes
         .unwrap();
     assert_eq!(first.details, editor.details);
 
-    assert_eq!(history.delete_matching(browsing).await.unwrap(), 1);
+    let gone = history.delete_matching(browsing).await.unwrap();
+    assert_eq!(gone.iter().map(|id| id.to_uppercase()).collect::<Vec<_>>(), [QUERY]);
     assert_eq!(history.search(everything(), None, 50).await.unwrap().entries.len(), 1);
+}
+
+const LATER: &str = "5E6F7A8B-9C0D-4E1F-8A2B-3C4D5E6F7A8B";
+
+// Runs a host mirrored before it kept details get them by record id, and only where they had none: a source filled
+// in brings the run under the pane's source filter. A deleted run is not brought back.
+#[tokio::test]
+async fn details_fill_in_on_runs_mirrored_without_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = started(dir.path()).history().await.unwrap();
+    let mut bare = moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor);
+    bare.details = HistoryRunDetails::default();
+    let kept = moved_in(QUERY, 1_700_000_060_000, HistorySourceTag::TableBrowse);
+    let mut deleted = moved_in(LATER, 1_700_000_120_000, HistorySourceTag::Editor);
+    deleted.details = HistoryRunDetails::default();
+    history.put_entries(vec![bare, kept.clone(), deleted]).await.unwrap();
+    history.delete_entries(vec![LATER.to_owned()]).await.unwrap();
+    let editor_runs = HistoryFilterArg {
+        sources: Some(vec![HistorySourceTag::Editor]),
+        ..everything()
+    };
+    assert!(
+        history
+            .search(editor_runs.clone(), None, 50)
+            .await
+            .unwrap()
+            .entries
+            .is_empty()
+    );
+    let learned = HistoryRunDetails {
+        database: Some("shop".to_owned()),
+        schema: Some("public".to_owned()),
+        source: Some(HistorySourceTag::Editor),
+        statement_type: Some(StatementTypeTag::Select),
+        first_row_ms: Some(3),
+        server_ms: Some(2),
+        fingerprint: Some(7),
+    };
+
+    let changed = history
+        .fill_details(
+            [RUN, QUERY, LATER]
+                .iter()
+                .map(|id| HistoryDetailsRecord {
+                    record_id: (*id).to_owned(),
+                    details: learned.clone(),
+                })
+                .collect(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(changed, 2);
+    let found = history.search(editor_runs, None, 50).await.unwrap().entries;
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].record_id.to_uppercase(), RUN);
+    assert_eq!(found[0].details, learned);
+    let read = history.entries(vec![QUERY.to_owned()]).await.unwrap();
+    assert_eq!(
+        read[0].details,
+        HistoryRunDetails {
+            schema: Some("public".to_owned()),
+            fingerprint: Some(7),
+            ..kept.details
+        }
+    );
+    assert_eq!(history.record_ids().await.unwrap().len(), 2);
+}
+
+// Runs by record id: ids the store does not hold, a deleted one among them, are left out.
+#[tokio::test]
+async fn runs_read_by_record_id_leave_out_what_the_store_does_not_hold() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = started(dir.path()).history().await.unwrap();
+    history
+        .put_entries(vec![
+            moved_in(RUN, 1_700_000_000_000, HistorySourceTag::Editor),
+            moved_in(QUERY, 1_700_000_060_000, HistorySourceTag::Editor),
+        ])
+        .await
+        .unwrap();
+    history.delete_entries(vec![QUERY.to_owned()]).await.unwrap();
+
+    let read = history
+        .entries(vec![QUERY.to_owned(), RUN.to_owned(), LATER.to_owned()])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        read.iter()
+            .map(|entry| entry.record_id.to_uppercase())
+            .collect::<Vec<_>>(),
+        [RUN]
+    );
+    assert_eq!(read[0].sql, "SELECT 1");
+    assert!(history.entries(vec!["not an id".to_owned()]).await.is_err());
 }
 
 #[tokio::test]
