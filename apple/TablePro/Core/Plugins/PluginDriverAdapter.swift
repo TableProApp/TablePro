@@ -28,16 +28,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         var connectAttempt: ConnectAttempt?
         var connectionMayBeOpen = false
         var disconnectInProgress = false
-        /// Read from the driver when its connect is adopted, so it outlives the `disconnect()` Test Connection
-        /// makes before anyone asks for it.
+        // Read from the driver when its connect is adopted, so both outlive the `disconnect()` Test Connection makes
+        // before anyone asks: a driver forgets its server's version when it disconnects.
         var connectionWarning: String?
+        var signInServerVersion: String?
         // Only a yes is kept, so the driver's own code is not asked again on every read.
         var buildsBrowseQueries = false
+        var databaseMoves = 0
     }
 
     let connection: DatabaseConnection
     let effectiveQueryTimeoutSeconds: Int
-    private let pluginDriver: any PluginDatabaseDriver
+    let pluginDriver: any PluginDatabaseDriver
     // The Vault lease this driver signed in with. Its database user goes away when it ends.
     private let credentialLease: VaultLeaseHold?
     private let connectionDeadline: ConnectionDeadline
@@ -54,13 +56,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.hasLostConnection || credentialLease?.hasEnded == true
     }
 
-    var serverVersion: String? { pluginDriver.serverVersion }
+    var serverVersion: String? { pluginDriver.serverVersion ?? state.withLock { $0.signInServerVersion } }
     var connectionWarning: String? { state.withLock { $0.connectionWarning } }
     var sessionLexicalState: PluginSessionLexicalState? { pluginDriver.sessionLexicalState }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
 
-    /// The underlying plugin driver, exposed for DDL schema generation delegation.
-    var schemaPluginDriver: any PluginDatabaseDriver { pluginDriver }
+    var plugin: (any PluginDatabaseDriver)? { pluginDriver }
+
+    var sessionQueryTimeoutSeconds: Int? { effectiveQueryTimeoutSeconds }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? {
         if state.withLock({ $0.buildsBrowseQueries }) { return pluginDriver }
@@ -93,6 +96,11 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var escapedSchema: String? {
         guard let schema = currentSchema else { return nil }
         return pluginDriver.escapeStringLiteral(schema)
+    }
+
+    // A read whose caller named no schema reads the connection's own; the one place a forward consults it.
+    func readSchema(_ schema: String?) -> String? {
+        schema ?? pluginDriver.currentSchema
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginDriverAdapter")
@@ -158,6 +166,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             let generation = state.nextConnectGeneration
             state.status = .connecting
             state.connectionWarning = nil
+            state.signInServerVersion = nil
             state.connectAttempt = ConnectAttempt(generation: generation, gate: gate, deadline: connectionDeadline.instant)
             return generation
         }
@@ -349,6 +358,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         error: Error?
     ) {
         let warning = succeeded ? pluginDriver.connectionWarning : nil
+        let version = succeeded ? pluginDriver.serverVersion : nil
         let shouldDisconnect = state.withLock { state in
             guard let attempt = state.connectAttempt, attempt.generation == generation else {
                 return false
@@ -359,6 +369,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 state.connectionMayBeOpen = true
                 state.status = .connected
                 state.connectionWarning = warning
+                state.signInServerVersion = version
                 return false
             }
             if let error, adopted {
@@ -376,18 +387,22 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         state.withLock { $0.disconnectInProgress = false }
     }
 
+    @concurrent
     func ping() async throws {
         try await pluginDriver.ping()
     }
 
+    @concurrent
     func applyQueryTimeout(_ seconds: Int) async throws {
         try await pluginDriver.applyQueryTimeout(seconds)
     }
 
+    @concurrent
     func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? {
         try await pluginDriver.openSessionScope(for: purpose)
     }
 
+    @concurrent
     func closeSessionScope(_ scope: PluginSessionScope) async throws {
         try await pluginDriver.closeSessionScope(scope)
     }
@@ -396,14 +411,17 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.releasableResourceCommandTitle
     }
 
+    @concurrent
     func releaseIdleResource() async throws -> PluginResourceRelease {
         try await pluginDriver.releaseIdleResource()
     }
 
+    @concurrent
     func importExportedDatabase(from folder: URL, into file: URL) async throws {
         try await pluginDriver.importExportedDatabase(from: folder, into: file)
     }
 
+    @concurrent
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile
@@ -416,14 +434,42 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     // MARK: - Query Execution
 
+    // Texts this driver sent that may have left its session in another database, counted before each goes out so a
+    // failed or cancelled one counts too. The host compares it with the count where it last placed the driver.
+    var databaseMoves: Int { state.withLock { $0.databaseMoves } }
+
+    // The door every text takes to the plugin: a NUL is refused, and one that may move the database is counted.
+    func admit(_ statement: String) throws {
+        try StatementTextValidator.validate(statement)
+        noteDatabaseMoves([statement])
+    }
+
+    // An engine the classifier has no reading for is not ruled out, unless no statement can move its database at all.
+    func noteDatabaseMoves(_ texts: [String]) {
+        let databaseType = connection.type
+        guard !texts.isEmpty,
+              PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.statementsCanSwitchDatabase ?? true
+        else { return }
+        if let dialect = SQLSessionDialect(TransactionEngineFamily.of(databaseType)) {
+            let grammar = SQLLexicalResolver.readings(for: databaseType, session: pluginDriver.sessionLexicalState).execution
+            guard SQLSessionStateClassifier.mayChangeDatabase(ofStatements: texts, dialect: dialect, grammar: grammar)
+            else { return }
+        }
+        state.withLock { $0.databaseMoves += 1 }
+    }
+
+    // Both `execute` overloads stay on their caller. A script's statements and the cleanup that must run after Stop
+    // share them, so neither can check for cancellation, and off the caller Stop could land between the checks and
+    // a driver that only cancels a query already running.
     func execute(query: String) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         let pluginResult = try await pluginDriver.execute(query: query, context: statementContext(query))
         return mapQueryResult(pluginResult)
     }
 
+    @concurrent
     func executeRead(query: String) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         var context = PluginStatementContext()
         context.readOnly = true
         context.lexicalFeatures = sessionLexicalFeatures
@@ -456,8 +502,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
 
+    @concurrent
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         guard let pluginResult = try await pluginDriver.executeBoundedQuery(query: query, rowCap: rowCap) else {
             return nil
         }
@@ -468,12 +515,19 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.capabilities.contains(.resultSetBatches)
     }
 
+    // The parameters are made Sendable here, on the caller's actor, so the driver call itself can leave it.
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? {
-        try StatementTextValidator.validate(query)
+        try await executeBatch(query: query, rowCap: rowCap, cellValues: parameters?.map(Self.cellValue(for:)))
+    }
+
+    @concurrent
+    private func executeBatch(query: String, rowCap: Int?, cellValues: [PluginCellValue]?) async throws -> QueryBatchResult? {
+        try admit(query)
+        try Task.checkCancellation()
         guard let batch = try await pluginDriver.executeBatch(
             query: query,
             rowCap: rowCap,
-            parameters: parameters?.map(Self.cellValue(for:))
+            parameters: cellValues
         ) else {
             return nil
         }
@@ -486,28 +540,80 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         )
     }
 
+    var supportsStatementBatches: Bool {
+        pluginDriver.capabilities.contains(.statementBatches)
+    }
+
+    // Each statement is checked and described as its own call would, and one that would be refused ends the batch there.
+    @concurrent
+    func executeStatements(_ statements: [BatchedStatement]) async throws -> [BatchedStatementOutcome]? {
+        var items: [PluginBatchStatement] = []
+        var refusal: (any Error)?
+        for statement in statements {
+            do {
+                try StatementTextValidator.validate(statement.sql)
+                try refuseUnenforcedPolicy(statement.context ?? PluginStatementContext())
+            } catch {
+                refusal = error
+                break
+            }
+            items.append(pluginStatement(for: statement))
+        }
+        guard !items.isEmpty else { return refusal.map { [.failed($0)] } }
+        noteDatabaseMoves(items.map(\.query))
+        try Task.checkCancellation()
+        guard let answered = try await pluginDriver.executeStatements(items) else { return nil }
+        var outcomes: [BatchedStatementOutcome] = []
+        for answer in answered.prefix(items.count) {
+            outcomes.append(BatchedStatementOutcome(answer))
+            guard outcomes.last?.succeeded == true else { return outcomes }
+        }
+        guard outcomes.count == items.count else {
+            return outcomes + [.failed(DatabaseError.queryFailed(
+                String(localized: "The driver did not report every statement it was sent.")
+            ))]
+        }
+        return outcomes + (refusal.map { [.failed($0)] } ?? [])
+    }
+
+    private func pluginStatement(for statement: BatchedStatement) -> PluginBatchStatement {
+        guard let parameters = statement.parameters else {
+            let context = statement.context.map { statementContext(statement.sql, approvedAs: $0) }
+                ?? statementContext(statement.sql)
+            return PluginBatchStatement(query: statement.sql, parameters: nil, context: context)
+        }
+        return PluginBatchStatement(
+            query: statement.sql,
+            parameters: parameters.map(Self.cellValue(for:)),
+            context: statementContext(
+                statement.sql, approvedAs: statement.context ?? PluginStatementContext(), parameters: parameters
+            )
+        )
+    }
+
+    // The subject itself is read, whatever the driver wraps it in: SQL Server runs a `USE` under SHOWPLAN too.
+    @concurrent
     func explainPlan(statement: String, variantId: String) async throws -> QueryResult {
-        try StatementTextValidator.validate(statement)
+        try admit(statement)
         return mapQueryResult(try await pluginDriver.explainPlan(statement: statement, variantId: variantId))
     }
 
     // MARK: - Schema Operations
 
-    func fetchTables() async throws -> [TableInfo] {
-        try await fetchTables(schema: nil)
-    }
-
+    @concurrent
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let resolvedSchema = readSchema(schema)
         let pluginTables = try await pluginDriver.fetchTables(schema: resolvedSchema)
         return await Self.mapPluginTables(pluginTables, schemaFallback: resolvedSchema)
     }
 
+    @concurrent
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? {
         guard let pluginTables = try await pluginDriver.fetchTablesInAllSchemas() else { return nil }
         return await Self.mapPluginTables(pluginTables, schemaFallback: nil)
     }
 
+    @concurrent
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? {
         guard let pluginTables = try await pluginDriver.fetchTables(inSchemas: schemas) else { return nil }
         let schemaFallback = schemas.count == 1 ? schemas.first : nil
@@ -518,13 +624,15 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.capabilities.contains(.temporaryTables)
     }
 
+    @concurrent
     func fetchTemporaryTables() async throws -> [TableInfo] {
         let pluginTables = try await pluginDriver.fetchTemporaryTables()
         return await Self.mapPluginTables(pluginTables, schemaFallback: nil, isTemporary: true)
     }
 
+    @concurrent
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] {
-        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let resolvedSchema = readSchema(schema)
         let partitions = try await pluginDriver.fetchPartitionDetails(table: table, schema: resolvedSchema)
         return partitions.map { partition in
             let relationType = partition.relationType.flatMap(Self.mapPluginTableType)
@@ -584,83 +692,71 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         )
     }
 
-    func fetchColumns(table: String) async throws -> [ColumnInfo] {
-        let pluginColumns = try await pluginDriver.fetchColumns(table: table, schema: pluginDriver.currentSchema)
-        return pluginColumns.map(ColumnInfo.init)
-    }
-
+    @concurrent
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let pluginColumns = try await pluginDriver.fetchColumns(table: table, schema: schema ?? pluginDriver.currentSchema)
+        let pluginColumns = try await pluginDriver.fetchColumns(table: table, schema: readSchema(schema))
         return pluginColumns.map(ColumnInfo.init)
     }
 
-    func fetchIndexes(table: String) async throws -> [IndexInfo] {
-        try await fetchIndexes(table: table, schema: nil)
-    }
-
+    @concurrent
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
         let pluginIndexes = try await pluginDriver.fetchIndexes(
-            table: table, schema: schema ?? pluginDriver.currentSchema
+            table: table, schema: readSchema(schema)
         )
         return pluginIndexes.map(IndexInfo.init)
     }
 
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] {
-        try await fetchForeignKeys(table: table, schema: nil)
-    }
-
+    @concurrent
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
         let pluginFKs = try await pluginDriver.fetchForeignKeys(
-            table: table, schema: schema ?? pluginDriver.currentSchema
+            table: table, schema: readSchema(schema)
         )
         return pluginFKs.map(ForeignKeyInfo.init)
     }
 
+    @concurrent
     func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> {
-        try await pluginDriver.fetchImmutableColumns(table: table, schema: schema ?? pluginDriver.currentSchema)
+        try await pluginDriver.fetchImmutableColumns(table: table, schema: readSchema(schema))
     }
 
-    func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] {
-        try await fetchCheckConstraints(table: table, schema: nil)
-    }
-
+    @concurrent
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] {
         let pluginConstraints = try await pluginDriver.fetchCheckConstraints(
-            table: table, schema: schema ?? pluginDriver.currentSchema
+            table: table, schema: readSchema(schema)
         )
         return pluginConstraints.map(CheckConstraintInfo.init)
     }
 
-    func fetchTriggers(table: String) async throws -> [TriggerInfo] {
-        try await fetchTriggers(table: table, schema: nil)
-    }
-
+    @concurrent
     func fetchTriggers(table: String, schema: String?) async throws -> [TriggerInfo] {
-        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let resolvedSchema = readSchema(schema)
         let pluginTriggers = try await pluginDriver.fetchTriggers(table: table, schema: resolvedSchema)
         return pluginTriggers.map { TriggerInfo($0.adopting(table: table, schema: resolvedSchema)) }
     }
 
+    @concurrent
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] {
-        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let resolvedSchema = readSchema(schema)
         let pluginTriggers = try await pluginDriver.fetchAllTriggers(schema: resolvedSchema)
         return pluginTriggers.map { TriggerInfo($0.adopting(table: nil, schema: resolvedSchema)) }
     }
 
+    @concurrent
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
         try await pluginDriver.fetchTriggerDDL(trigger.pluginTrigger)
     }
 
-    func createTriggerTemplate(table: String) -> String? {
-        pluginDriver.createTriggerTemplate(table: table, schema: pluginDriver.currentSchema)
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        pluginDriver.createTriggerTemplate(table: table, schema: readSchema(schema))
     }
 
-    func fetchTriggerDefinition(name: String, table: String) async throws -> String? {
-        try await pluginDriver.fetchTriggerDefinition(name: name, table: table, schema: pluginDriver.currentSchema)
+    @concurrent
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
+        try await pluginDriver.fetchTriggerDefinition(name: name, table: table, schema: readSchema(schema))
     }
 
-    func generateDropTriggerSQL(name: String, table: String) -> String? {
-        pluginDriver.generateDropTriggerSQL(name: name, table: table, schema: pluginDriver.currentSchema)
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        pluginDriver.generateDropTriggerSQL(name: name, table: table, schema: readSchema(schema))
     }
 
     var triggerEditUsesReplace: Bool { pluginDriver.triggerEditUsesReplace }
@@ -673,21 +769,25 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     var checkConstraintRefusal: String? { pluginDriver.checkConstraintRefusal }
 
-    func fetchApproximateRowCount(table: String) async throws -> Int? {
-        try await fetchApproximateRowCount(table: table, schema: nil)
+    // A raw condition is text the user wrote, which the driver writes into its count.
+    private func noteRawFilterMoves(_ filters: [PluginQueryFilter]) {
+        noteDatabaseMoves(filters.filter { $0.column == TableFilter.rawSQLColumn }.map(\.value))
     }
 
+    @concurrent
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         try await pluginDriver.fetchApproximateRowCount(
-            table: table, schema: schema ?? pluginDriver.currentSchema
+            table: table, schema: readSchema(schema)
         )
     }
 
+    @concurrent
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
         guard !FilterSQLGenerator.withholdsFromDriver(filters, databaseType: connection.type) else { return nil }
         let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
             .map(\.asPluginQueryFilter)
+        noteRawFilterMoves(queryFilters)
         return try await pluginDriver.fetchFilteredRowCount(
             table: table,
             queryFilters: queryFilters,
@@ -695,94 +795,99 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         )
     }
 
-    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+    @concurrent
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode
+    ) async throws -> Int? {
         guard !FilterSQLGenerator.withholdsFromDriver(filters, databaseType: connection.type) else { return nil }
         let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
             .map(\.asPluginQueryFilter)
+        noteRawFilterMoves(queryFilters)
         return try await pluginDriver.fetchExactRowCount(
             table: table,
-            schema: pluginDriver.currentSchema,
+            schema: readSchema(schema),
             queryFilters: queryFilters,
             logicMode: logicMode == .and ? "and" : "or"
         )
     }
 
-    func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int? {
-        try await pluginDriver.fetchExactRowCount(
+    @concurrent
+    func fetchExactRowCount(table: String, schema: String?, browseFilters: [PluginQueryFilter]) async throws -> Int? {
+        noteRawFilterMoves(browseFilters)
+        return try await pluginDriver.fetchExactRowCount(
             table: table,
-            schema: pluginDriver.currentSchema,
+            schema: readSchema(schema),
             queryFilters: browseFilters,
             logicMode: "and"
         )
     }
 
-    func fetchTableDDL(table: String) async throws -> String {
-        try await fetchTableDDL(table: table, schema: nil)
-    }
-
+    @concurrent
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        try await pluginDriver.fetchTableDDL(table: table, schema: schema ?? pluginDriver.currentSchema)
+        try await pluginDriver.fetchTableDDL(table: table, schema: readSchema(schema))
     }
 
-    func fetchIndexDDL(table: String) async throws -> [String] {
-        try await fetchIndexDDL(table: table, schema: nil)
-    }
-
+    @concurrent
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        try await pluginDriver.fetchIndexDDL(table: table, schema: schema ?? pluginDriver.currentSchema)
+        try await pluginDriver.fetchIndexDDL(table: table, schema: readSchema(schema))
     }
 
-    func fetchCommentDDL(table: String) async throws -> [String] {
-        try await fetchCommentDDL(table: table, schema: nil)
-    }
-
+    @concurrent
     func fetchCommentDDL(table: String, schema: String?) async throws -> [String] {
-        try await pluginDriver.fetchCommentDDL(table: table, schema: schema ?? pluginDriver.currentSchema)
+        try await pluginDriver.fetchCommentDDL(table: table, schema: readSchema(schema))
     }
 
-    func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])] {
-        try await pluginDriver.fetchDependentTypes(table: table, schema: pluginDriver.currentSchema)
+    @concurrent
+    func fetchDependentTypes(forTable table: String, schema: String?) async throws -> [(name: String, labels: [String])] {
+        try await pluginDriver.fetchDependentTypes(table: table, schema: readSchema(schema))
     }
 
-    func fetchDependentSequences(forTable table: String) async throws -> [(name: String, ddl: String)] {
-        try await pluginDriver.fetchDependentSequences(table: table, schema: pluginDriver.currentSchema)
+    @concurrent
+    func fetchDependentSequences(forTable table: String, schema: String?) async throws -> [(name: String, ddl: String)] {
+        try await pluginDriver.fetchDependentSequences(table: table, schema: readSchema(schema))
     }
 
-    func fetchViewDefinition(view: String) async throws -> String {
-        try await pluginDriver.fetchViewDefinition(view: view, schema: pluginDriver.currentSchema)
+    @concurrent
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String {
+        try await pluginDriver.fetchViewDefinition(view: view, schema: readSchema(schema))
     }
 
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
-        try await fetchTableMetadata(tableName: tableName, schema: nil)
-    }
-
+    @concurrent
     func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         let pluginMeta = try await pluginDriver.fetchTableMetadata(
             table: tableName,
-            schema: schema ?? pluginDriver.currentSchema
+            schema: readSchema(schema)
         )
         return TableMetadata(pluginMeta)
     }
 
-    func fetchObjectComment(tableName: String) async throws -> String? {
-        try await pluginDriver.fetchObjectComment(table: tableName, schema: pluginDriver.currentSchema)
+    @concurrent
+    func fetchObjectComment(tableName: String, schema: String?) async throws -> String? {
+        try await pluginDriver.fetchObjectComment(table: tableName, schema: readSchema(schema))
     }
 
+    @concurrent
     func fetchDatabases() async throws -> [String] {
         try await pluginDriver.fetchDatabases()
     }
 
+    @concurrent
     func fetchSchemas() async throws -> [String] {
         try await pluginDriver.fetchSchemas()
     }
 
+    @concurrent
     func fetchExternalSchemaNames() async throws -> Set<String> {
         try await pluginDriver.fetchExternalSchemaNames()
     }
 
+    @concurrent
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
-        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let resolvedSchema = readSchema(schema)
         do {
             let pluginRoutines = try await pluginDriver.fetchRoutines(schema: resolvedSchema)
             return pluginRoutines.map { RoutineInfo($0.adopting(kind: $0.kind, schema: resolvedSchema)) }
@@ -793,6 +898,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         }
     }
 
+    @concurrent
     func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
         try await pluginDriver.fetchRoutineDDL(routine.pluginRoutine)
     }
@@ -800,8 +906,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     /// The resolved schema is stamped on any type that came back without one, the same backfill
     /// `fetchRoutines` does above. A driver that leaves it nil produces types whose qualified name
     /// is bare, which the sidebar then files under no schema at all.
+    @concurrent
     func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] {
-        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let resolvedSchema = readSchema(schema)
         do {
             return try await pluginDriver.fetchUserDefinedTypes(schema: resolvedSchema)
                 .map { UserDefinedTypeInfo($0.adoptingSchema(resolvedSchema)) }
@@ -813,6 +920,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     /// Only a one-schema list can stamp a schema on a type that came back without one.
+    @concurrent
     func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [UserDefinedTypeInfo]? {
         let schemaFallback = schemas.count == 1 ? schemas.first : nil
         do {
@@ -826,6 +934,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         }
     }
 
+    @concurrent
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo {
         UserDefinedTypeInfo(try await pluginDriver.fetchUserDefinedType(type.pluginType))
     }
@@ -846,37 +955,45 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.userDefinedTypeChangeRunsOutsideTransaction(change)
     }
 
+    @concurrent
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         let pluginMeta = try await pluginDriver.fetchDatabaseMetadata(database)
         return Self.databaseMetadata(pluginMeta, systemDatabaseNames: systemDatabaseNames)
     }
 
+    @concurrent
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? {
         guard let pluginSpec = try await pluginDriver.createDatabaseFormSpec() else { return nil }
         return mapFormSpec(pluginSpec)
     }
 
+    @concurrent
     func createDatabase(_ request: CreateDatabaseRequest) async throws {
         let pluginRequest = PluginCreateDatabaseRequest(name: request.name, values: request.values)
         try await pluginDriver.createDatabase(pluginRequest)
     }
 
+    @concurrent
     func dropDatabase(name: String) async throws {
         try await pluginDriver.dropDatabase(name: name)
     }
 
+    @concurrent
     func dropSchema(name: String) async throws {
         try await pluginDriver.dropSchema(name: name)
     }
 
+    @concurrent
     func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
         try await pluginDriver.renameTable(name: name, schema: schema, to: newName, objectType: objectType)
     }
 
+    @concurrent
     func renameDatabase(name: String, to newName: String) async throws {
         try await pluginDriver.renameDatabase(name: name, to: newName)
     }
 
+    @concurrent
     func renameSchema(name: String, to newName: String) async throws {
         try await pluginDriver.renameSchema(name: name, to: newName)
     }
@@ -885,10 +1002,12 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try pluginDriver.documentWriteStatement(write)
     }
 
+    @concurrent
     func executeDocumentWrite(_ write: PluginDocumentWrite) async throws {
         try await pluginDriver.executeDocumentWrite(write)
     }
 
+    @concurrent
     func fetchDocument(table: String, schema: String?, locator: String) async throws -> String? {
         try await pluginDriver.fetchDocument(table: table, schema: schema, locator: locator)
     }
@@ -908,44 +1027,76 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.alterSchemaStatements(from: current, to: target)
     }
 
+    @concurrent
     func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? {
         try await pluginDriver.fetchSchemaDetails(name: name)
     }
 
+    @concurrent
     func fetchSessionContexts() async throws -> [PluginSessionContext]? {
         try await pluginDriver.fetchSessionContexts()
     }
 
+    @concurrent
     func switchSessionContext(id: String, to value: String) async throws {
         try await pluginDriver.switchSessionContext(id: id, to: value)
     }
 
     // MARK: - Batch Operations
 
-    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
-        try await pluginDriver.sampleFieldPaths(table: table, schema: pluginDriver.currentSchema, limit: limit)
+    @concurrent
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
+        try await pluginDriver.sampleFieldPaths(table: table, schema: readSchema(schema), limit: limit)
     }
 
     var providesBulkColumnFetch: Bool { pluginDriver.providesBulkColumnFetch }
 
     var fetchesAllColumnsInOneRequest: Bool { pluginDriver.fetchesAllColumnsInOneRequest }
 
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
-        let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
-        return pluginResult.mapValues { $0.map(ColumnInfo.init) }
+    @concurrent
+    func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]] {
+        let schema = readSchema(schema)
+        do {
+            return try await pluginDriver.fetchAllColumns(schema: schema).keyedByCatalogName
+                .mapValues { $0.map(ColumnInfo.init) }
+        } catch is PluginCatalogNameCollision {
+            return try await readEachTable(in: schema) { table in
+                try await pluginDriver.fetchColumns(table: table, schema: schema).map(ColumnInfo.init)
+            }
+        }
     }
 
     var providesBulkForeignKeyFetch: Bool { pluginDriver.providesBulkForeignKeyFetch }
 
-    func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
-        try await fetchAllForeignKeys(schema: nil)
+    @concurrent
+    func fetchAllForeignKeys(schema: String?) async throws -> [CatalogName: [ForeignKeyInfo]] {
+        let schema = readSchema(schema)
+        do {
+            return try await pluginDriver.fetchAllForeignKeys(schema: schema).keyedByCatalogName
+                .mapValues { $0.map(ForeignKeyInfo.init) }
+        } catch is PluginCatalogNameCollision {
+            return try await readEachTable(in: schema) { table in
+                let keys = try await pluginDriver.fetchForeignKeys(table: table, schema: schema)
+                return keys.isEmpty ? nil : keys.map(ForeignKeyInfo.init)
+            }
+        }
     }
 
-    func fetchAllForeignKeys(schema: String?) async throws -> [String: [ForeignKeyInfo]] {
-        let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: schema ?? pluginDriver.currentSchema)
-        return pluginResult.mapValues { $0.map(ForeignKeyInfo.init) }
+    // The schema-wide answer named two objects Swift's String equates, so each listed object is read alone. A table that
+    // cannot be read fails the read, as the schema-wide one would have.
+    private func readEachTable<Value>(
+        in schema: String?,
+        _ read: (String) async throws -> Value?
+    ) async throws -> [CatalogName: Value] {
+        var result: [CatalogName: Value] = [:]
+        for table in try await pluginDriver.fetchTables(schema: schema) {
+            try Task.checkCancellation()
+            if let value = try await read(table.name) { result[CatalogName(table.name)] = value }
+        }
+        return result
     }
 
+    @concurrent
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {
         let pluginResult = try await pluginDriver.fetchAllDatabaseMetadata()
         let systemNames = systemDatabaseNames
@@ -982,129 +1133,24 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try pluginDriver.cancelQuery()
     }
 
-    // MARK: - Transaction Management
+    // MARK: - Server Output
 
-    var supportsTransactions: Bool {
-        pluginDriver.supportsTransactions
-    }
-
-    func beginTransaction() async throws {
-        try await pluginDriver.beginTransaction()
-    }
-
-    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
-        try await pluginDriver.beginTransaction(mode: mode)
-    }
-
-    func commitTransaction() async throws {
-        try await pluginDriver.commitTransaction()
-    }
-
-    func rollbackTransaction() async throws {
-        try await pluginDriver.rollbackTransaction()
-    }
-
-    func sessionTransactionState() async -> PluginSessionTransactionState {
-        await pluginDriver.sessionTransactionState()
-    }
-
+    @concurrent
     func fetchServerOutput() async throws -> PluginServerOutput {
         try await pluginDriver.fetchServerOutput()
     }
 
     // MARK: - Schema Switching
 
+    @concurrent
     func switchSchema(to schema: String) async throws {
         try await pluginDriver.switchSchema(to: schema)
     }
 
     // MARK: - Database Switching
 
-    func switchDatabase(to database: String) async throws {
-        try await pluginDriver.switchDatabase(to: database)
-    }
-
     var currentDatabase: String? {
         pluginDriver.currentDatabase
-    }
-
-    // MARK: - DDL Schema Generation
-
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        pluginDriver.generateAddColumnSQL(table: table, column: column)
-    }
-
-    func generateModifyColumnSQL(
-        table: String,
-        oldColumn: PluginColumnDefinition,
-        newColumn: PluginColumnDefinition
-    ) -> String? {
-        pluginDriver.generateModifyColumnSQL(table: table, oldColumn: oldColumn, newColumn: newColumn)
-    }
-
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        pluginDriver.generateDropColumnSQL(table: table, columnName: columnName)
-    }
-
-    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        pluginDriver.generateAddIndexSQL(table: table, index: index)
-    }
-
-    func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        pluginDriver.generateDropIndexSQL(table: table, indexName: indexName)
-    }
-
-    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        pluginDriver.generateAddForeignKeySQL(table: table, fk: fk)
-    }
-
-    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        pluginDriver.generateDropForeignKeySQL(table: table, constraintName: constraintName)
-    }
-
-    func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
-        pluginDriver.generateModifyPrimaryKeySQL(table: table, oldColumns: oldColumns, newColumns: newColumns, constraintName: constraintName)
-    }
-
-    func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? {
-        pluginDriver.generateMoveColumnSQL(table: table, column: column, afterColumn: afterColumn)
-    }
-
-    /// Routed to the session driver rather than through `withMetadataDriver`. A rebuild plan reads
-    /// the catalog of the database this session is on, and a pooled driver is a second connection
-    /// that an embedded engine answers from a different database entirely.
-    func generateColumnReorderPlan(
-        table: String,
-        schema: String?,
-        columns: [PluginColumnDefinition],
-        desiredOrder: [String]
-    ) async throws -> PluginColumnReorderPlan? {
-        try await pluginDriver.generateColumnReorderPlan(
-            table: table,
-            schema: schema,
-            columns: columns,
-            desiredOrder: desiredOrder
-        )
-    }
-
-    func generateTableRebuildPlan(
-        table: String,
-        schema: String?,
-        respecification: PluginTableRespecification
-    ) async throws -> PluginColumnReorderPlan? {
-        try await pluginDriver.generateTableRebuildPlan(
-            table: table,
-            schema: schema,
-            respecification: respecification
-        )
-    }
-
-    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
-        try await pluginDriver.columnReorderSchemaFingerprint(table: table, schema: schema)
-    }
-
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        pluginDriver.generateCreateTableSQL(definition: definition)
     }
 
     // MARK: - Definition SQL (clipboard copy)
@@ -1149,39 +1195,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         SQLDDLFallbackPolicy.allowsGeneratedDDL(for: connection.type)
     }
 
-    /// Which of these objects this connection has a drop or truncate statement for.
-    ///
-    /// Resolved per object rather than per engine, because a plugin answers per object: Typesense
-    /// has a statement for a collection and none for anything else, and Elasticsearch has none for
-    /// an index name carrying a wildcard. Every menu that offers either operation asks this, so the
-    /// answer and the statement it leads to come from one place.
-    func tableOperationEligibility(
-        for refs: some Collection<DatabaseTreeTableRef>,
-        isReadOnly: Bool
-    ) -> TableOperationEligibility.Context {
-        guard !isReadOnly else { return .unavailable }
-        var droppable: Set<DatabaseTreeTableRef> = []
-        var truncatable: Set<DatabaseTreeTableRef> = []
-        for ref in refs {
-            if dropObjectStatement(
-                name: ref.table.name,
-                objectType: TableObjectKeyword.forDDL(ref.table.type),
-                schema: ref.qualifyingSchema,
-                cascade: false
-            ) != nil {
-                droppable.insert(ref)
-            }
-            if truncateTableStatements(
-                table: ref.table.name, schema: ref.qualifyingSchema, cascade: false
-            ) != nil {
-                truncatable.insert(ref)
-            }
-        }
-        return TableOperationEligibility.Context(
-            droppable: droppable, truncatable: truncatable, isReadOnly: false
-        )
-    }
-
     func foreignKeyDisableStatements() -> [String]? {
         pluginDriver.foreignKeyDisableStatements()
     }
@@ -1196,107 +1209,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func rowDeleteStatement(table: String, predicate: String?) -> String? {
         pluginDriver.rowDeleteStatement(table: table, predicate: predicate)
-    }
-
-    // MARK: - Maintenance Operations
-
-    func maintenanceOperations() -> [PluginMaintenanceOperation]? {
-        pluginDriver.maintenanceOperations()
-    }
-
-    /// The session's own schema stands in only when the caller has none, so a command that does carry
-    /// the object's schema qualifies with that one rather than with wherever the session points.
-    func maintenanceStatements(
-        operation: String,
-        table: String?,
-        schema: String?,
-        options: [String: String]
-    ) -> [String]? {
-        pluginDriver.maintenanceStatements(
-            operation: operation,
-            table: table,
-            schema: schema ?? pluginDriver.currentSchema,
-            options: options
-        )
-    }
-
-    // MARK: - Object Comments and Materialized Views
-
-    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
-        pluginDriver.objectCommentStatement(name: name, objectType: objectType, schema: schema, comment: comment)
-    }
-
-    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String? {
-        pluginDriver.refreshMaterializedViewStatement(name: name, schema: schema, concurrently: concurrently)
-    }
-
-    func concurrentRefreshAvailability(
-        materializedView: String,
-        schema: String?
-    ) async throws -> PluginConcurrentRefreshAvailability? {
-        try await pluginDriver.concurrentRefreshAvailability(materializedView: materializedView, schema: schema)
-    }
-
-    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
-        try await pluginDriver.fetchViewRowEditing(view: view, schema: schema ?? pluginDriver.currentSchema)
-    }
-
-    // MARK: - Table Options
-
-    func fetchTableOptions(tableName: String) async throws -> TableOptions? {
-        try await pluginDriver.fetchTableOptions(table: tableName, schema: pluginDriver.currentSchema)
-            .map(TableOptions.init)
-    }
-
-    func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog? {
-        try await pluginDriver.fetchTableOptionsCatalog().map(TableOptionsCatalog.init)
-    }
-
-    func fetchDefaultTableOptions(schema: String?) async throws -> TableOptions? {
-        try await pluginDriver.fetchDefaultTableOptions(schema: schema ?? pluginDriver.currentSchema)
-            .map(TableOptions.init)
-    }
-
-    func tableOptionsStatement(tableName: String, schema: String?, change: PluginTableOptionsChange) -> String? {
-        pluginDriver.tableOptionsStatement(table: tableName, schema: schema, change: change)
-    }
-
-    // MARK: - Sequences
-
-    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? {
-        try await pluginDriver.fetchSequenceDetails(sequence: sequence, schema: schema ?? pluginDriver.currentSchema)
-    }
-
-    func sequenceNextValueStatement(for sequence: PluginSequenceDetails, nextValue: PluginSequenceNextValue) -> String? {
-        pluginDriver.sequenceNextValueStatement(for: sequence, nextValue: nextValue)
-    }
-
-    func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String? {
-        pluginDriver.alterSequenceStatement(for: sequence, settings: settings)
-    }
-
-    // MARK: - All Tables Metadata SQL
-
-    func allTablesMetadataSQL(schema: String?) -> String? {
-        pluginDriver.allTablesMetadataSQL(schema: schema)
-    }
-
-    // MARK: - View Templates
-
-    func createViewTemplate() -> String? {
-        pluginDriver.createViewTemplate()
-    }
-
-    func createSequenceTemplate() -> String? {
-        pluginDriver.createSequenceTemplate()
-    }
-
-    func editViewFallbackTemplate(viewName: String) -> String? {
-        pluginDriver.editViewFallbackTemplate(viewName: viewName)
-    }
-
-    func castColumnToText(_ column: String) -> String {
-        pluginDriver.castColumnToText(column)
     }
 
     // MARK: - Identifier Quoting
@@ -1421,7 +1333,7 @@ private extension PluginDriverAdapter {
 
 extension PluginDriverAdapter {
     func execute(query: String, context: PluginStatementContext) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         try refuseUnenforcedPolicy(context)
         let pluginResult = try await pluginDriver.execute(query: query, context: statementContext(query, approvedAs: context))
         return mapQueryResult(pluginResult)
@@ -1431,18 +1343,35 @@ extension PluginDriverAdapter {
         pluginDriver.capabilities.contains(.readOnlyStatements)
     }
 
+    // `[Any?]` is not Sendable, so only its conversion stays on the caller's actor; the checks, the statement's
+    // description and the driver call leave it with the Sendable values. Stop can land while they run off the main
+    // actor, and a driver that only cancels a running query would still start this one, so a user statement checks
+    // for cancellation last, just before the driver gets it.
     func executeParameterized(
         query: String,
         parameters: [Any?],
         context: PluginStatementContext
     ) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
-        try refuseUnenforcedPolicy(context)
-        let pluginResult = try await pluginDriver.executeParameterized(
+        try await executeParameterized(
             query: query,
-            parameters: parameters.map(Self.cellValue(for:)),
-            context: statementContext(query, approvedAs: context, parameters: parameters)
+            cellValues: parameters.map(Self.cellValue(for:)),
+            parameterKinds: TypedParameterValue.kinds(of: parameters),
+            context: context
         )
+    }
+
+    @concurrent
+    private func executeParameterized(
+        query: String,
+        cellValues: [PluginCellValue],
+        parameterKinds: [PluginColumnKind?]?,
+        context: PluginStatementContext
+    ) async throws -> QueryResult {
+        try admit(query)
+        try refuseUnenforcedPolicy(context)
+        let described = statementContext(query, approvedAs: context, parameterKinds: parameterKinds)
+        try Task.checkCancellation()
+        let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: cellValues, context: described)
         return mapQueryResult(pluginResult)
     }
 
@@ -1452,21 +1381,45 @@ extension PluginDriverAdapter {
         parameters: [Any?]?,
         context: PluginStatementContext
     ) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
-        try refuseUnenforcedPolicy(context)
-        let pluginResult = try await pluginDriver.executeUserQuery(
+        try await executeUserQuery(
             query: query,
             rowCap: rowCap,
-            parameters: parameters?.map(Self.cellValue(for:)),
-            context: statementContext(query, approvedAs: context, parameters: parameters)
+            cellValues: parameters?.map(Self.cellValue(for:)),
+            parameterKinds: TypedParameterValue.kinds(of: parameters),
+            context: context
+        )
+    }
+
+    @concurrent
+    private func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        cellValues: [PluginCellValue]?,
+        parameterKinds: [PluginColumnKind?]?,
+        context: PluginStatementContext
+    ) async throws -> QueryResult {
+        try admit(query)
+        try refuseUnenforcedPolicy(context)
+        let described = statementContext(query, approvedAs: context, parameterKinds: parameterKinds)
+        try Task.checkCancellation()
+        let pluginResult = try await pluginDriver.executeUserQuery(
+            query: query, rowCap: rowCap, parameters: cellValues, context: described
         )
         return mapQueryResult(pluginResult)
     }
 
     func statementContext(_ query: String, approvedAs caller: PluginStatementContext, parameters: [Any?]? = nil) -> PluginStatementContext {
+        statementContext(query, approvedAs: caller, parameterKinds: TypedParameterValue.kinds(of: parameters))
+    }
+
+    func statementContext(
+        _ query: String,
+        approvedAs caller: PluginStatementContext,
+        parameterKinds: [PluginColumnKind?]?
+    ) -> PluginStatementContext {
         var context = PluginStatementContext.statement(query, databaseType: connection.type, approvedAs: caller)
         context.lexicalFeatures = sessionLexicalFeatures
-        context.parameterKinds = TypedParameterValue.kinds(of: parameters) ?? context.parameterKinds
+        context.parameterKinds = parameterKinds ?? context.parameterKinds
         return context
     }
 

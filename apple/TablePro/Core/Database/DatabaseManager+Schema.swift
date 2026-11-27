@@ -72,7 +72,7 @@ extension DatabaseManager {
                 do {
                     for stmt in statements {
                         let startedAt = Date()
-                        _ = try await driver.execute(query: stmt.sql)
+                        try await Self.runSchemaStatement(stmt.sql, on: driver, wrapped: useTransaction, isPooled: isPooled)
                         measured.append(Date().timeIntervalSince(startedAt))
                     }
                     if useTransaction {
@@ -86,6 +86,9 @@ extension DatabaseManager {
                             Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
                         }
                     }
+                    if measured.isEmpty, error is DefinitionInOpenTransactionRefusal {
+                        throw error
+                    }
                     let applied: [SchemaStatement] = useTransaction
                         ? []
                         : statements.prefix(measured.count).filter { !$0.carriesCredentials }
@@ -98,6 +101,8 @@ extension DatabaseManager {
                 return measured
             }
         } catch let refusal as SchemaOperationRefusedError {
+            throw refusal
+        } catch let refusal as DefinitionInOpenTransactionRefusal {
             throw refusal
         } catch let failure as SchemaChangeFailedAfterWriting {
             Self.reportCatalogChangeAfterFailure(in: scope)
@@ -135,6 +140,22 @@ extension DatabaseManager {
     /// undoes nothing, and on Teradata it turns every statement after the first DDL into error 3932.
     nonisolated static func wrapsDDLInTransaction(_ driver: DatabaseDriver) -> Bool {
         driver.supportsTransactions && driver.supportsTransactionalDDL
+    }
+
+    // On the session driver the commit after an unwrapped statement would end the user's open transaction too.
+    nonisolated private static func runSchemaStatement(
+        _ sql: String,
+        on driver: DatabaseDriver,
+        wrapped: Bool,
+        isPooled: Bool
+    ) async throws {
+        guard !wrapped else {
+            _ = try await driver.execute(query: sql)
+            return
+        }
+        _ = try await AppDefinitionCommit.run(on: driver, refusesOpenTransaction: !isPooled) {
+            try await driver.execute(query: sql)
+        }
     }
 
     /// A save that only set the comment changed no column, so it is announced as a comment change.
@@ -272,7 +293,7 @@ extension DatabaseManager {
                 do {
                     for statement in statements {
                         let startedAt = Date()
-                        _ = try await driver.execute(query: statement)
+                        try await Self.runSchemaStatement(statement, on: driver, wrapped: useTransaction, isPooled: isPooled)
                         measured.append(Date().timeIntervalSince(startedAt))
                     }
                     if useTransaction {

@@ -17,9 +17,9 @@ struct ERClusterAnalyzerTests {
     private func makeGraph(
         tables: [String],
         foreignKeys: [(from: String, to: String)]
-    ) -> (nodes: [ERTableNode], edges: [EREdge], index: [String: UUID]) {
+    ) -> (nodes: [ERTableNode], edges: [EREdge], index: [CatalogName: UUID]) {
         let nodes = tables.map(node)
-        let index = Dictionary(uniqueKeysWithValues: nodes.map { ($0.tableName, $0.id) })
+        let index = Dictionary(uniqueKeysWithValues: nodes.map { (CatalogName($0.tableName), $0.id) })
         let edges = foreignKeys.enumerated().map { offset, fk in
             EREdge(
                 id: UUID(),

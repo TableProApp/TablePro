@@ -29,7 +29,9 @@ struct SQLStateChangingFunctionsTests {
         "scheduled_jobs": SQLStateChangingFunctions.scheduledJobs,
         "hypertables_and_chunks": SQLStateChangingFunctions.hypertablesAndChunks,
         "roles_and_grants": SQLStateChangingFunctions.rolesAndGrants,
-        "duckdb_calls": SQLStateChangingFunctions.duckDBCalls
+        "duckdb_calls": SQLStateChangingFunctions.duckDBCalls,
+        "duckdb_call_families": Set(SQLStateChangingFunctions.duckDBCallFamilies),
+        "duckdb_destructive_call_families": Set(SQLStateChangingFunctions.duckDBDestructiveCallFamilies)
     ]
 
     @Test("Each family lists the names the Linux app lists")
@@ -37,7 +39,7 @@ struct SQLStateChangingFunctionsTests {
         let data = try Data(contentsOf: Self.sharedNames)
         let shared = try JSONDecoder().decode([String: [String]].self, from: data)
         let sharedFamilies = shared.mapValues { Set($0) }
-        let everyEngine = Set(shared.filter { $0.key != "duckdb_calls" }.values.joined())
+        let everyEngine = Set(shared.filter { !$0.key.hasPrefix("duckdb_") }.values.joined())
         #expect(Self.families == sharedFamilies)
         #expect(SQLStateChangingFunctions.names == everyEngine)
     }
@@ -54,5 +56,32 @@ struct SQLStateChangingFunctionsTests {
     ])
     func otherNamesAreNotListed(name: String) {
         #expect(!SQLStateChangingFunctions.contains(name))
+    }
+
+    @Test("A MotherDuck md_ or __md_ name is a DuckDB call in any case", arguments: [
+        "md_drop_database", "MD_CREATE_DATABASE", "__md_force_detach", "md_list_databases"
+    ])
+    func motherDuckFamilyIsADuckDBCall(name: String) {
+        #expect(SQLStateChangingFunctions.isDuckDBCall(name))
+        #expect(!SQLStateChangingFunctions.contains(name))
+    }
+
+    @Test("A name that only holds md_ is not a DuckDB call", arguments: ["get_md_token", "cmd_run", "md"])
+    func lookalikeOfMotherDuckFamilyIsNotADuckDBCall(name: String) {
+        #expect(!SQLStateChangingFunctions.isDuckDBCall(name))
+    }
+
+    @Test("A MotherDuck drop or delete name is a destructive DuckDB call in any case", arguments: [
+        "md_drop_database", "MD_DROP_DATABASE_SHARE", "md_delete_dive"
+    ])
+    func motherDuckDropIsADestructiveCall(name: String) {
+        #expect(SQLStateChangingFunctions.isDuckDBDestructiveCall(name))
+    }
+
+    @Test("Any other MotherDuck name is not a destructive call", arguments: [
+        "md_create_database", "md_list_databases", "md_dropped", "__md_force_detach"
+    ])
+    func otherMotherDuckNamesAreNotDestructive(name: String) {
+        #expect(!SQLStateChangingFunctions.isDuckDBDestructiveCall(name))
     }
 }

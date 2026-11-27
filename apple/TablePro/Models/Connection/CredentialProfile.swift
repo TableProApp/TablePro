@@ -1,21 +1,10 @@
-//
-//  CredentialProfile.swift
-//  TablePro
-//
-
 import Foundation
 
-/// Where a profile's password comes from, which is the same vocabulary a connection already has.
-///
-/// The payload of `.source` never leaves this Mac. It can name a shell command, and a command that
-/// arrived over iCloud or inside a shared export file would be one this Mac never agreed to run.
+// The .source payload never leaves this Mac: it can name a shell command this Mac never agreed to run.
 enum CredentialPasswordMode: Hashable, Sendable {
-    /// In the Keychain, under the profile's own id.
     case stored
-    /// Asked for on every connect.
     case prompt
     case source(PasswordSource)
-    /// Looked up in `~/.pgpass` by host, port, database and username.
     case pgpass
 }
 
@@ -38,8 +27,7 @@ extension CredentialPasswordMode: Codable {
         case .pgpass:
             self = .pgpass
         case .source:
-            /// A malformed payload becomes a prompt rather than failing the whole store: one
-            /// unreadable profile must not take every other profile down with it.
+            // A malformed payload becomes a prompt, so one bad profile does not fail the whole store.
             guard let source = PasswordSource.resilientlyDecoded(from: container, forKey: .source) else {
                 self = .prompt
                 return
@@ -64,24 +52,14 @@ extension CredentialPasswordMode: Codable {
     }
 }
 
-/// One set of database credentials, named, that any number of connections point at.
-///
-/// The point of the type is that the secret exists once. A connection linked to a profile holds no
-/// Keychain item of its own, so rotating the password is one edit rather than one edit per
-/// connection, which is what issue #2853 asked for.
+// The secret exists once: a linked connection holds no Keychain item of its own (#2853).
 struct CredentialProfile: Identifiable, Hashable, Codable, Sendable {
     let id: UUID
     var name: String
     var username: String
     var passwordMode: CredentialPasswordMode
 
-    /// Plugin-declared secure fields this profile carries, such as an AWS secret access key. The
-    /// values are in the Keychain under the profile's id; only the ids are stored here.
-    ///
-    /// There is no database type on the profile, because a connection only ever reads the fields
-    /// its own type declares: `DatabaseDriverFactory.buildAdditionalFields` loops over
-    /// `secureConnectionFieldIds(for: connection.type)`, so a field another engine's profile
-    /// carries is never looked at.
+    // No database type here: a connection reads only the secure fields its own type declares.
     var secureFieldIds: [String]
     var sortOrder: Int
 
@@ -115,7 +93,6 @@ struct CredentialProfile: Identifiable, Hashable, Codable, Sendable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
     }
 
-    /// What the picker and the profile list show beside the name.
     var summary: String {
         let trimmed = username.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return passwordMode.displayName }
@@ -123,18 +100,54 @@ struct CredentialProfile: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-extension CredentialPasswordMode {
+// One vocabulary for the editor's picker, the profile list and the connection form.
+enum CredentialPasswordKind: String, CaseIterable, Identifiable, Sendable {
+    case stored, prompt, pgpass, source
+
+    var id: String { rawValue }
+
     var displayName: String {
         switch self {
-        case .stored: String(localized: "Saved password")
-        case .prompt: String(localized: "Ask every time")
+        case .stored: String(localized: "Saved in Keychain")
+        case .prompt: String(localized: "Ask Every Time")
         case .pgpass: String(localized: "~/.pgpass")
-        case .source(.vaultDatabaseRole): String(localized: "Vault database role")
-        case .source: String(localized: "Password source")
+        case .source: String(localized: "Password Source")
         }
     }
 
-    /// Whether this mode keeps a secret in the Keychain under the profile's id.
+    var help: String {
+        switch self {
+        case .stored:
+            String(localized: "Saved in the Keychain once and used by every connection on this profile.")
+        case .prompt:
+            String(localized: "Every connection using this profile asks for the password once each time TablePro runs.")
+        case .pgpass:
+            String(localized: """
+                Looked up in ~/.pgpass by the host, port, database and username of the PostgreSQL-family connection \
+                that is opening. Other connections ask for the password.
+                """)
+        case .source:
+            String(localized: "It stays on this Mac and never syncs, because it can name a command to run.")
+        }
+    }
+}
+
+extension CredentialPasswordMode {
+    var kind: CredentialPasswordKind {
+        switch self {
+        case .stored: .stored
+        case .prompt: .prompt
+        case .pgpass: .pgpass
+        case .source: .source
+        }
+    }
+
+    // A Vault role also supplies the username, so the row and the connection form name it.
+    var displayName: String {
+        if case .source(.vaultDatabaseRole) = self { return String(localized: "Vault database role") }
+        return kind.displayName
+    }
+
     var usesStoredSecret: Bool {
         if case .stored = self { return true }
         return false

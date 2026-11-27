@@ -48,7 +48,9 @@ final class FindCoordinator {
               parent.supportsMatchAnyFilters,
               tab.filterState.filters.isEmpty else { return false }
         let rows = parent.tabSessionRegistry.tableRows(for: tabID)
-        return tab.pagination.hasUnloadedRows(loadedRowCount: rows.rows.count) && !serverSearchableColumns(in: rows).isEmpty
+        // The server searches a cut value whole, where the page holds only its first characters.
+        let pageIsPartial = tab.pagination.hasUnloadedRows(loadedRowCount: rows.rows.count) || rows.hasUnloadedValues
+        return pageIsPartial && !serverSearchableColumns(in: rows).isEmpty
     }
 
     // Its own filter rows: addFilter would apply the user's default-column setting.
@@ -56,7 +58,7 @@ final class FindCoordinator {
         guard parent.tabManager.selectedTabId == tabID else { return }
         let columns = serverSearchableColumns(in: parent.tabSessionRegistry.tableRows(for: tabID))
         guard !columns.isEmpty else { return }
-        parent.filterCoordinator.applyCrossColumnSearch(term: term, columns: columns)
+        parent.filterCoordinator.applyCrossColumnSearch(term: term, columns: columns, forTab: tabID)
     }
 
     func serverSearchableColumns(in rows: TableRows) -> [String] {

@@ -33,14 +33,17 @@ internal final class LaunchIntentRouter {
             case .openConnectionShare(let url):
                 WelcomeRouter.shared.routeShare(url)
 
+            case .openSharedLink(let token):
+                await SharedLinkOpener.shared.open(token: token)
+
             case .pairIntegration(let request):
                 try await MCPPairingService.shared.startPairing(request)
 
             case .startMCPServer:
                 await startMCPServer()
 
-            case .openSettings(let pane):
-                WindowOpener.shared.openSettings(tab: pane)
+            case .openSettings(let location):
+                WindowOpener.shared.openSettings(location)
 
             case .installPlugin(let url):
                 try await installPlugin(url)
@@ -78,7 +81,10 @@ internal final class LaunchIntentRouter {
             isIdleMachineSession: { AppActivationPolicyController.shared.isIdleMachineSession }
         )
         guard quits else { return }
-        NSApp.terminate(nil)
+        // A terminate from inside a main-actor job never lets the quit's reply task run.
+        RunLoop.main.perform {
+            MainActor.assumeIsolated { NSApp.terminate(nil) }
+        }
     }
 
     // A launch made only to serve MCP has nothing left to do once the server is refused or fails to start.
@@ -100,7 +106,7 @@ internal final class LaunchIntentRouter {
     private func installPlugin(_ url: URL) async throws {
         let entry = try await PluginManager.shared.installPlugin(from: url)
         Self.logger.info("Installed plugin '\(entry.name, privacy: .public)' from Finder")
-        WindowOpener.shared.openSettings(tab: .plugins)
+        WindowOpener.shared.openSettings(revealingPlugin: entry.id)
     }
 
     private func presentRecoverableError(_ error: Error, for intent: LaunchIntent, title: String) -> Bool {
@@ -160,7 +166,7 @@ internal final class LaunchIntentRouter {
             title = String(localized: "Connection Failed")
         case .openSQLFile, .openDataFile:
             title = String(localized: "Could Not Open File")
-        case .importConnection, .openConnectionShare, .startMCPServer, .openSettings:
+        case .importConnection, .openConnectionShare, .openSharedLink, .startMCPServer, .openSettings:
             title = String(localized: "Action Failed")
         }
         if presentRecoverableError(error, for: intent, title: title) { return }

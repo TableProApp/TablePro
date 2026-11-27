@@ -38,9 +38,9 @@ struct AccountErrorPresentationTests {
     func actionsSayWhatHappened() throws {
         let refusedKey = try #require(AccountError.oauth("invalid_grant", description: nil).licenseKeyDescription)
         #expect(refusedKey != Self.unreadable)
-        let otherMachine = try #require(AccountError.entitlementRejected(.machine).offlineFileDescription)
-        let expired = try #require(AccountError.entitlementRejected(.expired).offlineFileDescription)
-        let damaged = try #require(AccountError.entitlementRejected(.signature).offlineFileDescription)
+        let otherMachine = try #require(AccountError.offlineFileRejected(.otherMachine).offlineFileDescription)
+        let expired = try #require(AccountError.offlineFileRejected(.expired).offlineFileDescription)
+        let damaged = try #require(AccountError.offlineFileRejected(.unreadable).offlineFileDescription)
         #expect(Set([otherMachine, expired, damaged]).count == 3)
         let offlineDevice = try #require(AccountError.server(status: 409, code: "offline_file_active").deviceRemovalDescription)
         #expect(offlineDevice != AccountError.server(status: 409, code: nil).deviceRemovalDescription)

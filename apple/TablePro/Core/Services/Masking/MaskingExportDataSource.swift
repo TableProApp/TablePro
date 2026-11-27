@@ -196,6 +196,32 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
         try await base.fetchIndexes(table: table, databaseName: databaseName)
     }
 
+    var bulkReads: PluginExportBulkReads { base.bulkReads }
+
+    func fetchAllIndexes(databaseName: String) async throws -> [String: [PluginIndexInfo]] {
+        try await base.fetchAllIndexes(databaseName: databaseName)
+    }
+
+    func fetchAllIndexDDL(databaseName: String) async throws -> [String: [String]] {
+        try await base.fetchAllIndexDDL(databaseName: databaseName)
+    }
+
+    func fetchAllTableDDL(databaseName: String) async throws -> [String: String] {
+        try await base.fetchAllTableDDL(databaseName: databaseName)
+    }
+
+    func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]] {
+        try await base.fetchAllCommentDDL(databaseName: databaseName)
+    }
+
+    func fetchAllDependentSequences(databaseName: String) async throws -> [String: [PluginSequenceInfo]] {
+        try await base.fetchAllDependentSequences(databaseName: databaseName)
+    }
+
+    func fetchAllDependentTypes(databaseName: String) async throws -> [String: [PluginEnumTypeInfo]] {
+        try await base.fetchAllDependentTypes(databaseName: databaseName)
+    }
+
     func fetchObjectComment(_ object: PluginExportTable) async throws -> String? {
         try await base.fetchObjectComment(object)
     }

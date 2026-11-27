@@ -10,7 +10,7 @@ import Foundation
 import TableProPluginKit
 import TableProPostgreSQLCore
 
-public struct PostgreSQLDomainConstraint: Sendable, Equatable {
+nonisolated public struct PostgreSQLDomainConstraint: Sendable, Equatable {
     public let name: String
 
     /// `pg_get_constraintdef` without the ` NOT VALID` it appends to an unvalidated check.
@@ -24,7 +24,7 @@ public struct PostgreSQLDomainConstraint: Sendable, Equatable {
     }
 }
 
-public struct PostgreSQLUserDefinedTypeRecord: Sendable, Equatable {
+nonisolated public struct PostgreSQLUserDefinedTypeRecord: Sendable, Equatable {
     public enum Kind: String, Sendable {
         case enumeration = "e"
         case composite = "c"
@@ -108,7 +108,7 @@ public struct PostgreSQLUserDefinedTypeRecord: Sendable, Equatable {
     }
 }
 
-public enum PostgreSQLTypeDefinition {
+nonisolated public enum PostgreSQLTypeDefinition {
     /// The projection `PostgreSQLObjectQueries.userDefinedTypeList` selects, in order. The parser
     /// reads by these positions, so the query and the parser cannot drift apart silently.
     public enum Column: Int, CaseIterable {

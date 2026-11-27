@@ -5,17 +5,13 @@
 
 import Foundation
 import os
-import TableProHTTP
 import TableProMCP
 
 final class GeminiProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "GeminiProvider")
 
-    private let endpoint: String
-    private let resolvedEndpoint: AIEndpoint?
-    private let apiKey: String
+    private let transport: AIProviderTransport
     private let maxOutputTokens: Int
-    private let session: URLSession
 
     init(
         endpoint: String,
@@ -23,96 +19,44 @@ final class GeminiProvider: ChatTransport {
         maxOutputTokens: Int = 8_192,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
-        self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.resolvedEndpoint = AIEndpoint(endpoint, style: .gemini)
-        self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.transport = AIProviderTransport(
+            endpoint: endpoint,
+            style: .gemini,
+            headers: ["x-goog-api-key": apiKey.trimmingCharacters(in: .whitespacesAndNewlines)],
+            forbiddenIsAuthFailure: true,
+            session: session
+        )
         self.maxOutputTokens = maxOutputTokens
-        self.session = session
-    }
-
-    private func requestURL(_ resource: String, query: [URLQueryItem] = []) throws -> URL {
-        guard let url = resolvedEndpoint?.url(appending: resource, query: query) else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
-        return url
     }
 
     func streamChat(
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        SSEEventStream.make(
-            session: session,
-            treatForbiddenAsAuthFailure: true,
-            buildRequest: { [self] in try buildStreamRequest(turns: turns, options: options) },
-            decodeLine: { Self.decodeStreamLine($0) },
-            makeState: { GeminiStreamState() },
-            parse: { json, state in
-                if let error = AIProviderError.streamError(in: json) { throw error }
-                return Self.parseChunk(json, state: &state, idGenerator: { UUID().uuidString })
-            },
-            finalEvents: { state in state.finalUsageEvent().map { [$0] } ?? [] }
-        )
-    }
-
-    private static let offlineModels: [AIModelInfo] = [
-        "gemini-3.6-flash",
-        "gemini-3.5-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-3.1-pro-preview",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash"
-    ].map {
-        AIModelInfo(
-            id: $0,
-            modalities: [.text, .image],
-            reasoning: AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high], defaultEffort: .medium)
-        )
+        transport.stream(GeminiStreamWire()) { [self] in
+            try buildStreamRequest(turns: turns, options: options)
+        }
     }
 
     func fetchAvailableModels() async throws -> [AIModelInfo] {
-        let url = try requestURL(AIEndpointStyle.gemini.modelsResource)
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = AIProvider.modelListTimeout
-        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
-        } catch {
-            Self.logger.warning("Gemini model fetch failed; using known models: \(error.publicLogShape, privacy: .public)")
-            return Self.offlineModels
+        let url = try transport.url(
+            AIEndpointStyle.gemini.modelsResource,
+            query: [URLQueryItem(name: "pageSize", value: "1000")]
+        )
+        switch await transport.modelList(at: url, key: "models") {
+        case .unreachable(let error):
+            Self.logger.warning("Gemini model fetch failed: \(error.publicLogShape, privacy: .public)")
+            throw AIProviderError.networkError(String(localized: "Failed to fetch models"))
+        case .notHTTP, .entries(nil):
+            throw AIProviderError.networkError(String(localized: "Failed to fetch models"))
+        case .rejected(let reply):
+            throw transport.httpError(reply, url: url)
+        case .entries(let models?):
+            return models.compactMap(Self.decodeModel(_:))
         }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            Self.logger.warning("Gemini model fetch returned no HTTP response; using known models")
-            return Self.offlineModels
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw AIProviderError.mapHTTPError(
-                statusCode: httpResponse.statusCode,
-                body: body,
-                treatForbiddenAsAuthFailure: true,
-                requestURL: url
-            )
-        }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let models = json["models"] as? [[String: Any]]
-        else {
-            Self.logger.warning("Gemini model fetch returned unexpected response; using known models")
-            return Self.offlineModels
-        }
-
-        let fetched = models.compactMap(Self.decodeModel(_:))
-        return fetched.isEmpty ? Self.offlineModels : fetched
     }
 
+    // The list says nothing about image input; the catalog does. Gemini sends no thinking configuration here.
     static func decodeModel(_ json: [String: Any]) -> AIModelInfo? {
         guard let name = json["name"] as? String,
               let methods = json["supportedGenerationMethods"] as? [String],
@@ -120,49 +64,22 @@ final class GeminiProvider: ChatTransport {
         else { return nil }
 
         let id = name.hasPrefix("models/") ? String(name.dropFirst(7)) : name
-        let supportsThinking = json["thinking"] as? Bool ?? false
-
         return AIModelInfo(
             id: id,
             displayName: json["displayName"] as? String,
             contextWindow: json["inputTokenLimit"] as? Int,
-            maxOutputTokens: json["outputTokenLimit"] as? Int,
-            modalities: [.text, .image],
-            reasoning: supportsThinking
-                ? AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high], defaultEffort: .medium)
-                : .unsupported
+            maxOutputTokens: json["outputTokenLimit"] as? Int
         )
     }
 
     func testConnection() async throws -> Bool {
-        let url = try requestURL(AIEndpointStyle.gemini.modelsResource)
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-
-        let (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
+        let url = try transport.url(AIEndpointStyle.gemini.modelsResource)
+        guard let reply = try await transport.connectionReply(to: transport.get(url, timeout: nil)) else {
             return false
         }
-
-        let statusCode = httpResponse.statusCode
-
-        if statusCode == 401 || statusCode == 403 {
-            throw AIProviderError.authenticationFailed("")
+        guard reply.statusCode == 200 else {
+            throw transport.httpError(reply, url: url)
         }
-
-        guard statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw AIProviderError.mapHTTPError(
-                statusCode: statusCode,
-                body: body,
-                treatForbiddenAsAuthFailure: true,
-                requestURL: url
-            )
-        }
-
         return true
     }
 
@@ -171,12 +88,7 @@ final class GeminiProvider: ChatTransport {
         options: ChatTransportOptions
     ) throws -> URLRequest {
         let style = AIEndpointStyle.gemini
-        let url = try requestURL(style.chatResource(model: options.model), query: style.chatQuery)
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        let url = try transport.url(style.chatResource(model: options.model), query: style.chatQuery)
 
         var body: [String: Any] = [
             "generationConfig": ["maxOutputTokens": options.maxOutputTokens ?? maxOutputTokens]
@@ -201,8 +113,7 @@ final class GeminiProvider: ChatTransport {
 
         body["contents"] = encodeContents(turns: turns)
 
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        return request
+        return try transport.post(url, body: body)
     }
 
     func encodeContents(turns: [ChatTurnWire]) -> [[String: Any]] {
@@ -276,66 +187,6 @@ final class GeminiProvider: ChatTransport {
         return nil
     }
 
-    /// Decodes one Gemini SSE line. Returns nil for non-data lines.
-    static func decodeStreamLine(_ line: String) -> [String: Any]? {
-        guard let jsonString = SSEEventStream.dataPayload(line),
-              let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        return json
-    }
-
-    /// Translate a single Gemini chunk to events.
-    ///
-    /// Gemini does not provide tool-call ids on `functionCall` parts, so we
-    /// synthesize one per call. `idGenerator` is injected so tests can pin the
-    /// synthetic id to a stable value; production passes `{ UUID().uuidString }`.
-    /// Each call to `idGenerator()` returns a fresh id, so multiple
-    /// `functionCall` parts in one chunk get distinct ids in production.
-    static func parseChunk(
-        _ json: [String: Any],
-        state: inout GeminiStreamState,
-        idGenerator: () -> String
-    ) -> [ChatStreamEvent] {
-        var events: [ChatStreamEvent] = []
-        if let candidates = json["candidates"] as? [[String: Any]],
-           let firstCandidate = candidates.first,
-           let content = firstCandidate["content"] as? [String: Any],
-           let parts = content["parts"] as? [[String: Any]] {
-            for part in parts {
-                if let text = part["text"] as? String, !text.isEmpty {
-                    events.append(.textDelta(text))
-                }
-                if let functionCall = part["functionCall"] as? [String: Any],
-                   let name = functionCall["name"] as? String {
-                    let id = idGenerator()
-                    let argsObject = functionCall["args"] ?? [String: Any]()
-                    let argsString = encodeArgsToJSONString(argsObject)
-                    var metadata: [String: String]?
-                    if let signature = part["thoughtSignature"] as? String, !signature.isEmpty {
-                        metadata = ["thoughtSignature": signature]
-                    }
-                    events.append(.toolUseStart(id: id, name: name, providerMetadata: metadata))
-                    events.append(.toolUseDelta(id: id, inputJSONDelta: argsString))
-                    events.append(.toolUseEnd(id: id))
-                }
-            }
-        }
-        if let candidates = json["candidates"] as? [[String: Any]],
-           candidates.first?["finishReason"] as? String == "MAX_TOKENS" {
-            events.append(.outputLimitReached(.outputTokens))
-        }
-        if let usageMetadata = json["usageMetadata"] as? [String: Any] {
-            if let prompt = usageMetadata["promptTokenCount"] as? Int {
-                state.inputTokens = prompt
-            }
-            if let candidates = usageMetadata["candidatesTokenCount"] as? Int {
-                state.outputTokens = candidates
-            }
-        }
-        return events
-    }
-
     static func encodeArgsToJSONString(_ args: Any) -> String {
         guard JSONSerialization.isValidJSONObject(args) else {
             Self.logger.warning("Gemini functionCall args was not a valid JSON object; falling back to empty input")
@@ -350,12 +201,7 @@ final class GeminiProvider: ChatTransport {
         }
     }
 
-    // MARK: - Schema Sanitization
-
-    /// Strip JSON Schema features Gemini's `function_declarations` API rejects.
-    /// Removes `additionalProperties` keys at any depth. Rewrites optional fields
-    /// expressed as `type: ["X", "null"]` to `type: "X"` plus `nullable: true`,
-    /// which is the form Gemini accepts.
+    // Gemini's function declarations reject `additionalProperties` and a `type` array; nullable is its own flag there.
     static func sanitizeSchemaForGemini(_ schema: JsonValue) -> JsonValue {
         switch schema {
         case .object(let fields):
@@ -402,13 +248,61 @@ final class GeminiProvider: ChatTransport {
     }
 }
 
-/// Mutable state carried across `GeminiProvider.parseChunk` calls.
-struct GeminiStreamState {
+struct GeminiStreamWire: ChatStreamWire {
+    // Gemini sends no tool-call ids, so each call gets one made here.
+    var idGenerator: @Sendable () -> String = { UUID().uuidString }
+
+    func parse(_ json: [String: Any], state: inout GeminiStreamState) -> [ChatStreamEvent] {
+        var events: [ChatStreamEvent] = []
+        if let candidates = json["candidates"] as? [[String: Any]],
+           let firstCandidate = candidates.first,
+           let content = firstCandidate["content"] as? [String: Any],
+           let parts = content["parts"] as? [[String: Any]] {
+            for part in parts {
+                if let text = part["text"] as? String, !text.isEmpty {
+                    events.append(.textDelta(text))
+                }
+                if let functionCall = part["functionCall"] as? [String: Any],
+                   let name = functionCall["name"] as? String {
+                    let id = idGenerator()
+                    let argsObject = functionCall["args"] ?? [String: Any]()
+                    let argsString = GeminiProvider.encodeArgsToJSONString(argsObject)
+                    var metadata: [String: String]?
+                    if let signature = part["thoughtSignature"] as? String, !signature.isEmpty {
+                        metadata = ["thoughtSignature": signature]
+                    }
+                    events.append(.toolUseStart(id: id, name: name, providerMetadata: metadata))
+                    events.append(.toolUseDelta(id: id, inputJSONDelta: argsString))
+                    events.append(.toolUseEnd(id: id))
+                }
+            }
+        }
+        if let finishReason = (json["candidates"] as? [[String: Any]])?.first?["finishReason"] as? String,
+           !finishReason.isEmpty {
+            state.receivedOutput = true
+            if finishReason == "MAX_TOKENS" {
+                events.append(.outputLimitReached(.outputTokens))
+            }
+        }
+        // A blocked prompt is answered with its reason and no candidates, and that is the whole reply.
+        if let blockReason = (json["promptFeedback"] as? [String: Any])?["blockReason"] as? String,
+           !blockReason.isEmpty {
+            state.receivedOutput = true
+        }
+        if let usageMetadata = json["usageMetadata"] as? [String: Any] {
+            if let prompt = usageMetadata["promptTokenCount"] as? Int {
+                state.inputTokens = prompt
+            }
+            if let candidates = usageMetadata["candidatesTokenCount"] as? Int {
+                state.outputTokens = candidates
+            }
+        }
+        return events
+    }
+}
+
+struct GeminiStreamState: ChatStreamState {
     var inputTokens: Int = 0
     var outputTokens: Int = 0
-
-    func finalUsageEvent() -> ChatStreamEvent? {
-        guard inputTokens > 0 || outputTokens > 0 else { return nil }
-        return .usage(AITokenUsage(inputTokens: inputTokens, outputTokens: outputTokens))
-    }
+    var receivedOutput = false
 }

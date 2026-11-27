@@ -7,8 +7,23 @@ import Foundation
 @testable import TablePro
 import Testing
 
-private struct SSETestState {
-    var deltas = 0
+private struct SSETestState: ChatStreamState {
+    var inputTokens = 0
+    var outputTokens = 0
+    var receivedOutput = false
+}
+
+private struct SSETestWire: ChatStreamWire {
+    var closing: [String] = []
+
+    func parse(_ json: [String: Any], state: inout SSETestState) -> [ChatStreamEvent] {
+        guard let text = json["text"] as? String else { return [] }
+        return [.textDelta(text)]
+    }
+
+    func closingEvents(_ state: inout SSETestState) -> [ChatStreamEvent] {
+        closing.map { .textDelta($0) }
+    }
 }
 
 private actor RefreshCounter {
@@ -18,22 +33,6 @@ private actor RefreshCounter {
 
 private func sseRequest() -> URLRequest {
     URLRequest(url: URL(string: "https://example.com/responses")!)
-}
-
-private func sseDecodeLine(_ line: String) -> [String: Any]? {
-    guard line.hasPrefix("data: ") else { return nil }
-    let payload = String(line.dropFirst(6))
-    guard let data = payload.data(using: .utf8),
-          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        return nil
-    }
-    return json
-}
-
-private func sseParse(_ json: [String: Any], _ state: inout SSETestState) -> [ChatStreamEvent] {
-    guard let text = json["text"] as? String else { return [] }
-    state.deltas += 1
-    return [.textDelta(text)]
 }
 
 private func collectText(_ stream: AsyncThrowingStream<ChatStreamEvent, Error>) async throws -> [String] {
@@ -99,11 +98,8 @@ struct SSEEventStreamTests {
         )
         let stream = SSEEventStream.make(
             session: session,
-            buildRequest: { sseRequest() },
-            decodeLine: sseDecodeLine,
-            makeState: { SSETestState() },
-            parse: { sseParse($0, &$1) },
-            finalEvents: { _ in [.textDelta("FINAL")] }
+            wire: SSETestWire(closing: ["FINAL"]),
+            buildRequest: { sseRequest() }
         )
         let texts = try await collectText(stream)
         #expect(texts == ["a", "b", "FINAL"])
@@ -114,10 +110,8 @@ struct SSEEventStreamTests {
         let session = MockSSEProtocol.session(replying: [(500, Data("{\"error\":{\"message\":\"boom\"}}".utf8))])
         let stream = SSEEventStream.make(
             session: session,
-            buildRequest: { sseRequest() },
-            decodeLine: sseDecodeLine,
-            makeState: { SSETestState() },
-            parse: { sseParse($0, &$1) }
+            wire: SSETestWire(),
+            buildRequest: { sseRequest() }
         )
         await #expect(throws: AIProviderError.self) {
             _ = try await collectText(stream)
@@ -133,14 +127,40 @@ struct SSEEventStreamTests {
         let counter = RefreshCounter()
         let stream = SSEEventStream.make(
             session: session,
+            wire: SSETestWire(),
             buildRequest: { sseRequest() },
-            decodeLine: sseDecodeLine,
-            makeState: { SSETestState() },
-            parse: { sseParse($0, &$1) },
             refreshOnUnauthorized: { await counter.bump() }
         )
         let texts = try await collectText(stream)
         #expect(texts == ["ok"])
         #expect(await counter.count == 1)
+    }
+
+    @Test("A 200 whose body holds no event fails instead of ending as an empty reply")
+    func pageInsteadOfStreamThrows() async throws {
+        let session = MockSSEProtocol.session(replying: [(200, Data("<html><body>Sign in</body></html>".utf8))])
+        let stream = SSEEventStream.make(
+            session: session,
+            wire: SSETestWire(),
+            buildRequest: { sseRequest() }
+        )
+        await #expect(throws: AIProviderError.self) {
+            _ = try await collectText(stream)
+        }
+    }
+
+    @Test("An error frame fails the stream on any wire")
+    func errorFrameThrows() async throws {
+        let session = MockSSEProtocol.session(
+            replying: [(200, Data("data: {\"text\":\"a\"}\n\ndata: {\"error\":{\"message\":\"boom\"}}\n\n".utf8))]
+        )
+        let stream = SSEEventStream.make(
+            session: session,
+            wire: SSETestWire(),
+            buildRequest: { sseRequest() }
+        )
+        await #expect(throws: AIProviderError.self) {
+            _ = try await collectText(stream)
+        }
     }
 }

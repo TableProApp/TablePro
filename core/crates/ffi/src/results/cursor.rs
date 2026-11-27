@@ -17,6 +17,8 @@ pub(crate) struct Cursor {
     raw: Vec<i64>,
     offsets: Vec<u32>,
     text: Vec<u8>,
+    // Set by each fetch: whether its cells keep their line breaks.
+    keep_breaks: bool,
     window: TpWindow,
 }
 
@@ -41,6 +43,7 @@ impl Cursor {
             raw: Vec::new(),
             offsets: Vec::new(),
             text: Vec::new(),
+            keep_breaks: false,
             window: TpWindow {
                 first_row: 0,
                 total_rows: 0,
@@ -61,6 +64,31 @@ impl Cursor {
 
     // `None` when the window's text could pass what a `u32` offset holds.
     pub(crate) fn fetch(
+        &mut self,
+        first_row: u64,
+        row_count: u32,
+        first_column: u32,
+        column_count: u32,
+        max_chars: u32,
+    ) -> Option<&TpWindow> {
+        self.keep_breaks = false;
+        self.pack(first_row, row_count, first_column, column_count, max_chars)
+    }
+
+    // As `fetch`, with each line break in a cell kept as one `\n`, for a grid that wraps its cells.
+    pub(crate) fn fetch_lines(
+        &mut self,
+        first_row: u64,
+        row_count: u32,
+        first_column: u32,
+        column_count: u32,
+        max_chars: u32,
+    ) -> Option<&TpWindow> {
+        self.keep_breaks = true;
+        self.pack(first_row, row_count, first_column, column_count, max_chars)
+    }
+
+    fn pack(
         &mut self,
         first_row: u64,
         row_count: u32,
@@ -165,7 +193,12 @@ impl Cursor {
             Some((kind, value)) => {
                 self.cell_kinds[cell] = kind as u8;
                 self.raw[cell] = value.raw;
-                if cell_text::display(kind, value.bytes, max_chars, &mut self.text) {
+                let cut = if self.keep_breaks {
+                    cell_text::display_lines(kind, value.bytes, max_chars, &mut self.text)
+                } else {
+                    cell_text::display(kind, value.bytes, max_chars, &mut self.text)
+                };
+                if cut {
                     set_bit(&mut self.truncated, cell);
                 }
             }
@@ -318,10 +351,56 @@ mod tests {
         assert_eq!(tail.texts, [Some("2".to_owned()), Some("4".to_owned())]);
     }
 
+    fn breaks() -> Arc<ResultStore> {
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("note", ColumnType::untyped_text(""))].into();
+        let store = Arc::new(ResultStore::new(columns));
+        store.append(&[
+            vec![Value::Text("first\r\nsecond\u{2028}third".to_owned())],
+            vec![Value::Text("tab\there".to_owned())],
+            vec![Value::Null],
+        ]);
+        store
+    }
+
+    #[test]
+    fn a_window_that_keeps_line_breaks_holds_one_newline_per_break() {
+        let mut cursor = Cursor::new(breaks(), None);
+
+        let window = read(cursor.fetch_lines(0, 50, 0, 1, 100).unwrap());
+
+        assert_eq!(
+            window.texts,
+            [
+                Some("first\nsecond\nthird".to_owned()),
+                Some("tab here".to_owned()),
+                None
+            ]
+        );
+        assert_eq!(window.truncated, [false, false, false]);
+        assert_eq!(window.raw[0], "first\r\nsecond\u{2028}third".len() as i64);
+    }
+
+    #[test]
+    fn one_cursor_serves_flat_and_kept_windows_in_turn() {
+        let mut cursor = Cursor::new(breaks(), None);
+
+        let kept = read(cursor.fetch_lines(0, 1, 0, 1, 7).unwrap());
+        let flat = read(cursor.fetch(0, 1, 0, 1, 100).unwrap());
+        let again = read(cursor.fetch_lines(0, 1, 0, 1, 100).unwrap());
+
+        assert_eq!(
+            (kept.texts, kept.truncated),
+            (vec![Some("first\n".to_owned())], vec![true])
+        );
+        assert_eq!(flat.texts, [Some("first  second third".to_owned())]);
+        assert_eq!(again.texts, [Some("first\nsecond\nthird".to_owned())]);
+    }
+
     #[test]
     fn a_window_whose_text_could_pass_four_gib_is_refused() {
         let mut cursor = Cursor::new(store(), None);
 
         assert!(cursor.fetch(0, 3, 0, 2, u32::MAX).is_none());
+        assert!(cursor.fetch_lines(0, 3, 0, 2, u32::MAX).is_none());
     }
 }

@@ -96,3 +96,10 @@ struct CSVImportOptionsView: View {
         .font(.system(size: 13))
     }
 }
+
+extension CSVImportPlugin {
+    @MainActor
+    func settingsView() -> AnyView? {
+        AnyView(CSVImportOptionsView(plugin: self))
+    }
+}

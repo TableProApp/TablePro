@@ -27,6 +27,16 @@ public extension TextViewController {
         textView.replaceCharacters(in: span, with: rebuilt, skipUpdateSelection: true)
     }
 
+    // A key command's edit, as Vim's are: a plain replace that leaves undo grouping and the selection to the text view,
+    // with no typing filters and no suggestion triggers.
+    func replaceCharactersUnfiltered(in range: NSRange, with string: String) {
+        guard let textView else { return }
+        let wasUnfiltered = isApplyingUnfilteredEdits
+        isApplyingUnfilteredEdits = true
+        defer { isApplyingUnfilteredEdits = wasUnfiltered }
+        textView.replaceCharacters(in: range, with: string)
+    }
+
     // A command's replacement, unlike `setText`, keeps the undo history: one undo group, no typing filters, no
     // suggestion triggers. The binding gets the text before this returns, so a run right after reads it.
     @discardableResult

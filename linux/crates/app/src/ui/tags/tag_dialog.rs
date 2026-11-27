@@ -49,8 +49,7 @@ impl TagForm {
             .activates_default(true)
             .build();
         let color = color_row();
-        let picked = editing.map_or_else(|| unused_color(existing), |tag| tag.color);
-        color.set_selected(position(picked));
+        color.set_selected(position(preselected(existing, editing)));
         let rows = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
         rows.add_css_class("boxed-list");
         rows.append(&name);
@@ -76,7 +75,7 @@ impl TagForm {
         });
         dialog.set_response_enabled(SAVE, false);
         if let Some(tag) = editing {
-            name.set_text(tag.name.as_str());
+            name.set_text(&tag.name.shown());
         }
         Self { dialog, name, color }
     }
@@ -97,6 +96,13 @@ impl TagForm {
     }
 }
 
+// A tag with no colour, which macOS can hold, starts on the first colour no tag has; saving that leaves it with none.
+pub(crate) fn preselected(existing: &[ConnectionTag], editing: Option<&ConnectionTag>) -> ConnectionColor {
+    editing
+        .and_then(|tag| tag.color)
+        .unwrap_or_else(|| unused_color(existing))
+}
+
 fn position(color: ConnectionColor) -> u32 {
     ConnectionColor::ALL
         .iter()
@@ -110,7 +116,7 @@ fn position(color: ConnectionColor) -> u32 {
 fn unused_color(existing: &[ConnectionTag]) -> ConnectionColor {
     ConnectionColor::ALL
         .into_iter()
-        .find(|color| existing.iter().all(|tag| tag.color != *color))
+        .find(|color| existing.iter().all(|tag| tag.color != Some(*color)))
         .unwrap_or(ConnectionColor::Blue)
 }
 

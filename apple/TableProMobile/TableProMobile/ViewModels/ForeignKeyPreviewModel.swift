@@ -28,12 +28,21 @@ final class ForeignKeyPreviewModel {
 
     @ObservationIgnored private let session: ConnectionSession?
     @ObservationIgnored private let databaseType: DatabaseType
+    @ObservationIgnored private let trackRead: DataBrowserViewModel.SessionReadTracker?
     @ObservationIgnored private var isRunning = false
 
-    init(reference: ForeignKeyReference, session: ConnectionSession?, databaseType: DatabaseType) {
+    // `trackRead` marks the session busy for the reads, so an import cannot start between them, and refuses them while
+    // one holds the session.
+    init(
+        reference: ForeignKeyReference,
+        session: ConnectionSession?,
+        databaseType: DatabaseType,
+        trackRead: DataBrowserViewModel.SessionReadTracker? = nil
+    ) {
         self.reference = reference
         self.session = session
         self.databaseType = databaseType
+        self.trackRead = trackRead
     }
 
     var isLoaded: Bool {
@@ -78,10 +87,30 @@ final class ForeignKeyPreviewModel {
         defer { isRunning = false }
 
         let driver = session.driver
+        guard let trackRead else {
+            await read(on: driver)
+            return
+        }
+        do {
+            try await trackRead { await self.read(on: driver) }
+        } catch {
+            phase = .failed((error as? SessionHeldByImport)?.appError ?? AppError(
+                category: .query,
+                title: String(localized: "Could Not Load the Referenced Row"),
+                message: error.localizedDescription,
+                recovery: nil,
+                underlying: error
+            ))
+        }
+    }
+
+    private func read(on driver: any DatabaseDriver) async {
         // The key columns' types pick each literal, as they do for the filter Open Table runs.
         var keyColumns: [ColumnInfo] = []
         do {
-            keyColumns = try await driver.fetchColumns(table: reference.table, schema: reference.schema)
+            keyColumns = try await driver.fetchColumns(
+                table: reference.table, schema: reference.schema, database: reference.database
+            )
         } catch is CancellationError {
             return
         } catch {
@@ -98,6 +127,7 @@ final class ForeignKeyPreviewModel {
         let query = SQLBuilder.buildSingleRowLookup(
             table: reference.table,
             schema: reference.schema,
+            database: reference.database,
             key: key,
             columns: keyColumns,
             type: databaseType,
@@ -126,12 +156,17 @@ final class ForeignKeyPreviewModel {
 
         var foreignKeys: [ForeignKeyInfo] = []
         do {
-            foreignKeys = try await driver.fetchForeignKeys(table: reference.table, schema: reference.schema)
+            foreignKeys = try await driver.fetchForeignKeys(
+                table: reference.table, schema: reference.schema, database: reference.database
+            )
         } catch {
             Self.logger.warning("Foreign key preview could not read keys: \(error.localizedDescription, privacy: .private)")
         }
 
-        fields = Self.fields(columns: result.columns, row: row, foreignKeys: foreignKeys, schema: reference.schema)
+        fields = Self.fields(
+            columns: result.columns, row: row, foreignKeys: foreignKeys, schema: reference.schema,
+            database: reference.database
+        )
         phase = .loaded
     }
 
@@ -140,7 +175,8 @@ final class ForeignKeyPreviewModel {
         columns: [ColumnInfo],
         row: [String?],
         foreignKeys: [ForeignKeyInfo],
-        schema: String?
+        schema: String?,
+        database: String?
     ) -> [Field] {
         let options = StreamOptions(textTruncationBytes: .max)
         let cells = row.indices.map { index in
@@ -160,7 +196,8 @@ final class ForeignKeyPreviewModel {
                     foreignKeys: foreignKeys,
                     columns: columns,
                     cells: cells,
-                    sourceSchema: schema
+                    sourceSchema: schema,
+                    sourceDatabase: database
                 )
             )
         }

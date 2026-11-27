@@ -17,6 +17,10 @@ public enum SQLFunctionCallScanner {
         var calls: [Call] = []
         for index in 0..<code.length where code.character(at: index) == openParenthesis {
             guard let callee = callee(before: index, code: code, source: source) else { continue }
+            if case .named(_, let start) = callee,
+               declaresColumns(nameStart: start, parenthesis: index, code: code, source: source) {
+                continue
+            }
             calls.append(Call(callee: callee, parenthesis: index))
         }
         return calls
@@ -114,5 +118,189 @@ public enum SQLFunctionCallScanner {
               let name = quotedName(in: code.substring(with: NSRange(location: cursor, length: closer - cursor + 1)))
         else { return nil }
         return (name: name, start: cursor)
+    }
+
+    private struct Word {
+        let text: String
+        let start: Int
+        let end: Int
+    }
+
+    private static let comma = UInt16(UnicodeScalar(",").value)
+    private static let period = UInt16(UnicodeScalar(".").value)
+    private static let closeParenthesis = UInt16(UnicodeScalar(")").value)
+    private static let digits = UInt16(UnicodeScalar("0").value)...UInt16(UnicodeScalar("9").value)
+
+    // A quote mark where the projection is blank: a string or a quoted name stands there, not just a comment.
+    private static let quoteMarks = Set("'\"`[$".utf16)
+
+    // A clause word before the alias says the AS is not in a FROM or JOIN list.
+    private static let clausesOutsideTableLists: Set<String> = [
+        "SELECT", "WHERE", "GROUP", "HAVING", "QUALIFY", "WINDOW", "ORDER", "LIMIT", "OFFSET", "UNION", "INTERSECT",
+        "EXCEPT", "RETURNING", "SET", "VALUES", "INTO", "TABLE", "CREATE", "WITH", "DEFINE", "MEASURES",
+    ]
+
+    // `WITH name(a) AS (` declares a CTE's columns and `FROM t AS name(a)` an alias's: a call there is a parse error.
+    private static func declaresColumns(nameStart: Int, parenthesis: Int, code: NSString, source: NSString) -> Bool {
+        let before = lastUnit(before: nameStart, in: code)
+        guard before >= 0, !holdsQuotedText(from: before + 1, to: nameStart, in: source) else { return false }
+        if code.character(at: before) == comma {
+            return endsCommonTableExpression(separator: before, code: code)
+                && opensCommonTableExpression(parenthesis, code: code, source: source)
+        }
+        if leadsCommonTableExpressions(endingAt: before, in: code) {
+            return opensCommonTableExpression(parenthesis, code: code, source: source)
+        }
+        guard let keyword = wordEnding(at: before, in: code), keyword.text == "AS" else { return false }
+        return aliasesRelation(before: keyword.start, code: code)
+    }
+
+    // `(a, b) AS [[NOT] MATERIALIZED] (`, with nothing but blanks and comments between.
+    private static func opensCommonTableExpression(_ parenthesis: Int, code: NSString, source: NSString) -> Bool {
+        guard let close = matchingClose(of: parenthesis, in: code),
+              let keyword = wordStarting(at: firstUnit(from: close + 1, in: code), in: code), keyword.text == "AS"
+        else { return false }
+        var cursor = firstUnit(from: keyword.end, in: code)
+        if let hint = wordStarting(at: cursor, in: code) {
+            let afterNot = hint.text == "NOT" ? wordStarting(at: firstUnit(from: hint.end, in: code), in: code) : hint
+            guard let materialized = afterNot, materialized.text == "MATERIALIZED" else { return false }
+            cursor = firstUnit(from: materialized.end, in: code)
+        }
+        return cursor < code.length && code.character(at: cursor) == openParenthesis
+            && !holdsQuotedText(from: close + 1, to: cursor, in: source)
+    }
+
+    // Every item back to the WITH is a CTE, so a FROM list's `f() AS (a int), g(` is not one.
+    private static func endsCommonTableExpression(separator: Int, code: NSString) -> Bool {
+        var separator = separator
+        while true {
+            let close = lastUnit(before: separator, in: code)
+            guard close >= 0, code.character(at: close) == closeParenthesis,
+                  let body = matchingOpen(of: close, in: code), let keyword = bodyKeyword(before: body, in: code)
+            else { return false }
+            var nameEnd = lastUnit(before: keyword.start, in: code)
+            if nameEnd >= 0, code.character(at: nameEnd) == closeParenthesis {
+                guard let columns = matchingOpen(of: nameEnd, in: code) else { return false }
+                nameEnd = lastUnit(before: columns, in: code)
+            }
+            guard let name = wordEnding(at: nameEnd, in: code) else { return false }
+            let before = lastUnit(before: name.start, in: code)
+            guard before >= 0, code.character(at: before) == comma else {
+                return leadsCommonTableExpressions(endingAt: before, in: code)
+            }
+            separator = before
+        }
+    }
+
+    private static func leadsCommonTableExpressions(endingAt end: Int, in code: NSString) -> Bool {
+        guard let word = wordEnding(at: end, in: code) else { return false }
+        guard word.text == "RECURSIVE" else { return word.text == "WITH" }
+        return wordEnding(at: lastUnit(before: word.start, in: code), in: code)?.text == "WITH"
+    }
+
+    // The AS of `AS [[NOT] MATERIALIZED] (`.
+    private static func bodyKeyword(before parenthesis: Int, in code: NSString) -> Word? {
+        guard let last = wordEnding(at: lastUnit(before: parenthesis, in: code), in: code) else { return nil }
+        guard last.text == "MATERIALIZED" else { return last.text == "AS" ? last : nil }
+        guard let previous = wordEnding(at: lastUnit(before: last.start, in: code), in: code) else { return nil }
+        guard previous.text == "NOT" else { return previous.text == "AS" ? previous : nil }
+        let keyword = wordEnding(at: lastUnit(before: previous.start, in: code), in: code)
+        return keyword?.text == "AS" ? keyword : nil
+    }
+
+    // Only a FROM or JOIN list holds one: ClickHouse's `CREATE TABLE t AS remote(...)` is a call.
+    private static func aliasesRelation(before keyword: Int, code: NSString) -> Bool {
+        var cursor = lastUnit(before: keyword, in: code)
+        while cursor >= 0 {
+            let unit = code.character(at: cursor)
+            if unit == closeParenthesis {
+                guard let open = matchingOpen(of: cursor, in: code) else { return false }
+                cursor = lastUnit(before: open, in: code)
+            } else if unit == comma || unit == period {
+                cursor = lastUnit(before: cursor, in: code)
+            } else if let word = wordEnding(at: cursor, in: code) {
+                if word.text == "FROM" || word.text == "JOIN" { return true }
+                guard !clausesOutsideTableLists.contains(word.text) else { return false }
+                cursor = lastUnit(before: word.start, in: code)
+            } else {
+                return false
+            }
+        }
+        return false
+    }
+
+    private static func holdsQuotedText(from start: Int, to end: Int, in source: NSString) -> Bool {
+        guard end > start else { return false }
+        let stretch = source.substring(with: NSRange(location: start, length: end - start))
+        return stretch.utf16.contains(where: quoteMarks.contains)
+    }
+
+    private static func lastUnit(before index: Int, in code: NSString) -> Int {
+        var cursor = index - 1
+        while cursor >= 0, blankUnits(endingAt: cursor, in: code) > 0 {
+            cursor -= blankUnits(endingAt: cursor, in: code)
+        }
+        return cursor
+    }
+
+    private static func firstUnit(from index: Int, in code: NSString) -> Int {
+        var cursor = index
+        while cursor < code.length, StatementBlank.blankLength(in: code, at: cursor) > 0 {
+            cursor += StatementBlank.blankLength(in: code, at: cursor)
+        }
+        return cursor
+    }
+
+    private static func wordEnding(at last: Int, in code: NSString) -> Word? {
+        guard last >= 0, last < code.length, isIdentifierUnit(code.character(at: last)) else { return nil }
+        var start = last
+        while start > 0, isIdentifierUnit(code.character(at: start - 1)),
+              blankUnits(endingAt: start - 1, in: code) == 0 {
+            start -= 1
+        }
+        return word(from: start, to: last + 1, in: code)
+    }
+
+    private static func wordStarting(at first: Int, in code: NSString) -> Word? {
+        var end = first
+        while end < code.length, isIdentifierUnit(code.character(at: end)),
+              StatementBlank.blankLength(in: code, at: end) == 0 {
+            end += 1
+        }
+        return end > first ? word(from: first, to: end, in: code) : nil
+    }
+
+    // A keyword is ASCII, so a word with a letter outside it keeps its spelling and matches none.
+    private static func word(from start: Int, to end: Int, in code: NSString) -> Word? {
+        guard !digits.contains(code.character(at: start)) else { return nil }
+        let text = code.substring(with: NSRange(location: start, length: end - start))
+        let isASCII = text.utf16.allSatisfy { $0 < 0x80 }
+        return Word(text: isASCII ? text.uppercased() : text, start: start, end: end)
+    }
+
+    private static func matchingClose(of open: Int, in code: NSString) -> Int? {
+        var depth = 0
+        for cursor in open..<code.length {
+            let unit = code.character(at: cursor)
+            if unit == openParenthesis { depth += 1 }
+            if unit == closeParenthesis {
+                depth -= 1
+                if depth == 0 { return cursor }
+            }
+        }
+        return nil
+    }
+
+    private static func matchingOpen(of close: Int, in code: NSString) -> Int? {
+        var depth = 0
+        for cursor in stride(from: close, through: 0, by: -1) {
+            let unit = code.character(at: cursor)
+            if unit == closeParenthesis { depth += 1 }
+            if unit == openParenthesis {
+                depth -= 1
+                if depth == 0 { return cursor }
+            }
+        }
+        return nil
     }
 }

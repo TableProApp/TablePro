@@ -15,7 +15,7 @@ import TableProPluginKit
 ///
 /// Separate from `SQLExportInsertRenderer`, which owns the statement's prefix and suffix for an
 /// insert mode. This owns the rows between them.
-internal struct SQLExportRowValueEncoder {
+nonisolated internal struct SQLExportRowValueEncoder {
     internal let includedColumnIndices: [Int]
 
     /// The values this encoder rendered that the engine cannot carry in one statement whatever
@@ -40,30 +40,40 @@ internal struct SQLExportRowValueEncoder {
 
     internal let unrepresentableValues = UnrepresentableValueCount()
 
-    private let numericIndices: Set<Int>
-    private let bitIndices: Set<Int>
+    // What a text cell of each included column may be written as bare, parallel to `includedColumnIndices`.
+    private enum BareText {
+        case never
+        case number
+        case unsignedInteger
+    }
+
+    private let bareText: [BareText]
     private let databaseTypeId: String
+    private let stringLiteralPrefix: String
     private let escapeStringLiteral: (String) -> String
 
     internal init(
         columns: [String],
         columnTypeNames: [String],
-        excludedColumnNames: Set<String>,
+        excludedColumnNames: Set<[UInt8]>,
         databaseTypeId: String,
         escapeStringLiteral: @escaping (String) -> String
     ) {
         includedColumnIndices = columns.enumerated().compactMap { index, name in
-            excludedColumnNames.contains(name) ? nil : index
+            excludedColumnNames.contains(PluginExportSpelling.key(name)) ? nil : index
         }
-        numericIndices = Set(includedColumnIndices.filter { index in
-            index < columnTypeNames.count
-                && PluginExportUtilities.isNumericColumnType(columnTypeNames[index])
-        })
         let readsBitAsNumber = SqlDialect.from(databaseTypeId: databaseTypeId) == .mysql
-        bitIndices = Set(includedColumnIndices.filter { index in
-            readsBitAsNumber && index < columnTypeNames.count && Self.isBitType(columnTypeNames[index])
-        })
+        bareText = includedColumnIndices.map { index in
+            guard index < columnTypeNames.count else { return .never }
+            if PluginExportUtilities.isNumericColumnType(columnTypeNames[index]) { return .number }
+            if readsBitAsNumber, Self.isBitType(columnTypeNames[index]) { return .unsignedInteger }
+            return .never
+        }
         self.databaseTypeId = databaseTypeId
+        // SQL Server reads '...' in the database's code page, so 日本 in an nvarchar restored as ??, and db-lib
+        // reports an nvarchar column as varchar, so the type cannot pick the columns. N'...' converts back into any
+        // text column. Measured on SQL Server 2022.
+        stringLiteralPrefix = databaseTypeId == "SQL Server" ? "N'" : "'"
         self.escapeStringLiteral = escapeStringLiteral
     }
 
@@ -78,40 +88,56 @@ internal struct SQLExportRowValueEncoder {
         !value.isEmpty && value.utf8.allSatisfy { $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") }
     }
 
-    // SQL Server reads '...' in the database's code page, so 日本 in an nvarchar restored as ??, and db-lib reports an
-    // nvarchar column as varchar, so the type cannot pick the columns. N'...' converts back into any text column.
-    // Measured on SQL Server 2022.
-    private var stringLiteralPrefix: String {
-        databaseTypeId == "SQL Server" ? "N" : ""
-    }
-
     internal var writesNothing: Bool { includedColumnIndices.isEmpty }
 
     internal func columnNames(from columns: [String]) -> [String] {
         includedColumnIndices.map { columns[$0] }
     }
 
+    // One string grown in place: an export renders every row, and a string per value plus a join cost more than
+    // the values.
     internal func render(_ row: [PluginCellValue]) -> String {
-        let values = includedColumnIndices.map { columnIndex -> String in
-            guard columnIndex < row.count else { return "NULL" }
+        var line = "  ("
+        line.reserveCapacity(Self.estimatedLength(of: row, columns: includedColumnIndices))
+        for (position, columnIndex) in includedColumnIndices.enumerated() {
+            if position > 0 { line += ", " }
+            guard columnIndex < row.count else {
+                line += "NULL"
+                continue
+            }
             switch row[columnIndex] {
             case .null:
-                return "NULL"
+                line += "NULL"
             case .bytes(let data):
                 if SQLExportBinaryLiteral.exceedsLiteralCeiling(data, databaseTypeId: databaseTypeId) {
                     unrepresentableValues.record()
                 }
-                return SQLExportBinaryLiteral.render(data, databaseTypeId: databaseTypeId)
+                line += SQLExportBinaryLiteral.render(data, databaseTypeId: databaseTypeId)
             case .text(let value):
-                if numericIndices.contains(columnIndex), PluginNumericLiteral.isValid(value) {
-                    return value
+                switch bareText[position] {
+                case .number where PluginNumericLiteral.isValid(value),
+                     .unsignedInteger where Self.isUnsignedInteger(value):
+                    line += value
+                default:
+                    line += stringLiteralPrefix
+                    line += escapeStringLiteral(value)
+                    line += "'"
                 }
-                if bitIndices.contains(columnIndex), Self.isUnsignedInteger(value) {
-                    return value
-                }
-                return "\(stringLiteralPrefix)'\(escapeStringLiteral(value))'"
             }
         }
-        return "  (\(values.joined(separator: ", ")))"
+        line += ")"
+        return line
+    }
+
+    private static func estimatedLength(of row: [PluginCellValue], columns: [Int]) -> Int {
+        var length = 3 + 2 * columns.count
+        for columnIndex in columns where columnIndex < row.count {
+            switch row[columnIndex] {
+            case .null: length += 4
+            case .text(let value): length += value.utf8.count + 3
+            case .bytes(let data): length += data.count * 2 + 3
+            }
+        }
+        return length
     }
 }

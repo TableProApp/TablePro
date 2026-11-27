@@ -1,32 +1,48 @@
-//
-//  AccountFeaturesSection.swift
-//  TablePro
-//
-
 import SwiftUI
 
-struct AccountFeaturesSection: View {
+internal struct AccountFeaturesPage: View {
     @ObservedObject var access: FeatureAccess
-    let offersPurchase: Bool
+
+    private var offersPurchase: Bool {
+        access.state.server.isProduction && !access.state.isSignedIn && access.state.entitlement == nil
+    }
 
     var body: some View {
-        Section {
-            ForEach(ProFeature.allCases, id: \.self) { feature in
-                AccountFeatureRow(feature: feature, isIncluded: access.isAvailable(feature))
+        Form {
+            Section {
+                ForEach(ProFeature.allCases, id: \.self) { feature in
+                    AccountFeatureRow(feature: feature, isIncluded: access.isAvailable(feature))
+                }
             }
-        } header: {
-            Text("Features")
-        } footer: {
-            HStack(spacing: 16) {
+
+            Section {
                 if offersPurchase {
-                    Link("Buy a License", destination: SupportLinks.pricing(.licenseSettings))
-                        .countsUpgradeClicks(from: .licenseSettings)
+                    LabeledContent {
+                        Link(String(localized: "View Plans…"), destination: SupportLinks.pricing(.licenseSettings))
+                            .buttonStyle(.bordered)
+                            .fixedSize()
+                            .countsUpgradeClicks(from: .licenseSettings)
+                            .accessibilityIdentifier("account-view-plans")
+                    } label: {
+                        Text("Paid plans")
+                        Text("Compare what each plan includes.")
+                    }
                 }
 
-                Link("Learn More About Licensing", destination: SupportLinks.licensingGuide)
+                LabeledContent {
+                    Link(String(localized: "Learn More…"), destination: SupportLinks.licensingGuide)
+                        .buttonStyle(.bordered)
+                        .fixedSize()
+                        .accessibilityIdentifier("account-licensing-guide")
+                } label: {
+                    Text("Plans and devices")
+                    Text("How plans, devices and offline files work.")
+                }
             }
-            .font(.callout)
         }
+        .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(SettingsPage.accountFeatures.pageIdentifier)
     }
 }
 
@@ -45,12 +61,12 @@ private struct AccountFeatureRow: View {
                 Text(feature.displayName)
 
                 Text(feature.featureDescription)
-                    .font(.callout)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer()
+            Spacer(minLength: 12)
 
             if isIncluded {
                 Label {
@@ -60,13 +76,18 @@ private struct AccountFeatureRow: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 }
+                .fixedSize()
             } else {
-                Image(systemName: "lock.fill")
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel(Text(feature.paidPlanRequirement))
+                Label {
+                    Text("Not included")
+                } icon: {
+                    Image(systemName: "lock.fill")
+                }
+                .foregroundStyle(.secondary)
+                .fixedSize()
+                .accessibilityLabel(Text(feature.paidPlanRequirement))
             }
         }
-        .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
     }
 }

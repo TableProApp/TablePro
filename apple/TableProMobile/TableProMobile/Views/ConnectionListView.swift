@@ -37,6 +37,7 @@ struct ConnectionListView: View {
     /// that is on screen dismisses, and only one that is on screen can be waited on.
     @State private var isConnectionCoverOnScreen = false
     @State private var importResult: MobileImportOutcomeMessage?
+    @State private var scrollTarget: LibraryRowID?
     @State private var actionErrorMessage: String?
     @State private var iCloudAccountAvailable = false
     @State private var tips = ConnectionListTips.makeGroup()
@@ -72,6 +73,11 @@ struct ConnectionListView: View {
         editMode == .active
     }
 
+    // The title menu takes the room of one bar item, so Edit moves into More and "+" stays on the bar.
+    private var foldsEditIntoMore: Bool {
+        !appState.projects.isEmpty
+    }
+
     private var hasLibraryItems: Bool {
         !appState.connections.isEmpty || !appState.groups.isEmpty
     }
@@ -80,6 +86,7 @@ struct ConnectionListView: View {
         ConnectionListState.resolve(
             loadStatus: appState.loadStatus,
             hasLibraryItems: hasLibraryItems,
+            hasActiveProject: appState.activeProject != nil,
             isSyncEnabled: isSyncEnabled,
             syncStatus: appState.syncCoordinator.status,
             hasCompletedFirstSync: appState.syncCoordinator.hasCompletedFirstSync
@@ -94,16 +101,21 @@ struct ConnectionListView: View {
         )
     }
 
-    private var outline: LibraryOutline {
-        LibraryOutlineBuilder.build(LibraryOutlineRequest(
-            connections: appState.connections,
-            groups: appState.groups,
+    private var outlineRequest: LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag> {
+        let scoped = appState.scopedLibrary
+        return LibraryOutlineRequest(
+            connections: scoped.connections,
+            groups: scoped.groups,
             tags: appState.tags,
             sortMode: appState.libraryPreferences.sortMode,
             query: query,
             favoritesOrder: appState.libraryPreferences.favoritesOrder,
             lastConnected: appState.libraryPreferences.lastConnected
-        ))
+        )
+    }
+
+    private var outline: LibraryOutline {
+        LibraryOutlineBuilder.build(outlineRequest)
     }
 
     private var suggestedTokens: [ConnectionTagToken] {
@@ -116,16 +128,12 @@ struct ConnectionListView: View {
     }
 
     private var selectedConnectionIds: [UUID] {
-        var seen: Set<UUID> = []
-        return selection.compactMap { row -> UUID? in
-            guard case .connection(let id, _) = row, seen.insert(id).inserted else { return nil }
-            return id
-        }
+        ConnectionListSelection.connectionIds(in: selection, scopedTo: appState.scopedConnectionIds)
     }
 
     private var tipInputs: [Int] {
         [
-            appState.onboarding.hasSeenWelcome && presenter.sheet == nil ? 1 : 0,
+            appState.onboarding.hasSeenOrigin && presenter.sheet == nil ? 1 : 0,
             appState.connections.count,
             appState.connections.contains(where: \.isFavorite) ? 1 : 0,
             appState.connections.contains { !$0.tagIds.isEmpty } ? 1 : 0
@@ -140,7 +148,12 @@ struct ConnectionListView: View {
         @Bindable var presenter = presenter
         NavigationStack {
             content
-                .navigationTitle("Connections")
+                .modifier(ProjectTitleModifier(
+                    activeProject: appState.activeProject,
+                    projects: appState.orderedProjects,
+                    selection: activeProjectBinding,
+                    manage: { presenter.present(.projects) }
+                ))
                 .toolbar { toolbarContent }
                 .onChange(of: editMode) { _, mode in
                     guard mode == .inactive else { return }
@@ -150,6 +163,11 @@ struct ConnectionListView: View {
                     guard !hasItems else { return }
                     editMode = .inactive
                     selection = []
+                }
+                .onChange(of: appState.scopedConnectionIds) { _, scoped in
+                    let kept = ConnectionListSelection.rows(selection, scopedTo: scoped)
+                    guard kept != selection else { return }
+                    selection = kept
                 }
                 .onChange(of: appState.tags) { _, tags in
                     let known = Set(tags.map(\.id))
@@ -247,10 +265,8 @@ struct ConnectionListView: View {
 
     private var emptyActions: ConnectionListEmptyActions {
         ConnectionListEmptyActions(
-            addConnection: { presenter.present(.addConnection) },
-            openSample: openSampleDatabase,
-            turnOnICloud: !isSyncEnabled && iCloudAccountAvailable ? { appState.setCloudSyncEnabled(true) } : nil,
-            importConnections: { showingFileImporter = true },
+            start: perform,
+            offersICloud: !isSyncEnabled && iCloudAccountAvailable,
             performSyncAction: { appState.performSyncAction($0) },
             retryLoad: { appState.retryLoadIfFailed() }
         )
@@ -305,9 +321,43 @@ struct ConnectionListView: View {
             }
         }
         .listStyle(.insetGrouped)
+        // A list with no rows drops the grouped background, and the empty states sit on it.
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemGroupedBackground))
+        .modifier(ScrollToRow(target: $scrollTarget))
         .overlay {
             if outline.isEmpty && outline.isQueryActive {
-                ContentUnavailableView.search(text: searchText)
+                if let project = appState.activeProject {
+                    ContentUnavailableView {
+                        Label(
+                            String(format: String(localized: "No Results in %@"), project.name),
+                            systemImage: "magnifyingglass"
+                        )
+                    } description: {
+                        Text("Check the spelling or try a new search.")
+                    } actions: {
+                        Button("Search All Connections") {
+                            appState.setActiveProject(nil)
+                        }
+                    }
+                } else {
+                    ContentUnavailableView.search(text: searchText)
+                }
+            } else if let project = appState.activeProject, outline.isEmpty {
+                ContentUnavailableView {
+                    Label(
+                        String(format: String(localized: "No Connections in %@"), project.name),
+                        systemImage: "server.rack"
+                    )
+                } description: {
+                    Text("Add a connection, or move one here from All Connections.")
+                } actions: {
+                    Button("New Connection") {
+                        presenter.present(.addConnection)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!appState.isLibraryWritable)
+                }
             }
         }
         .environment(\.editMode, $editMode)
@@ -396,6 +446,7 @@ struct ConnectionListView: View {
                 onCommitRename: { commitRename(rowId, connectionId: connection.id, name: $0) },
                 onCancelRename: { renamingRow = nil }
             )
+            .id(rowId)
             .tag(rowId)
             .draggable(connection.id.uuidString)
             .swipeActions(edge: .leading) {
@@ -459,6 +510,9 @@ struct ConnectionListView: View {
                         } label: {
                             Label("New Subgroup", systemImage: "folder.badge.plus")
                         }
+                    }
+                    if group.parentId == nil || appState.group(for: group.parentId) == nil {
+                        moveToProjectMenu(connections: [], groups: [group.id])
                     }
                     Divider()
                     Button(role: .destructive) {
@@ -543,6 +597,10 @@ struct ConnectionListView: View {
         } label: {
             Label("Move to Group", systemImage: "folder")
         }
+        // A connection in a group moves with its top-level group, which offers the same menu.
+        if appState.group(for: connection.groupId) == nil {
+            moveToProjectMenu(connections: [connection.id], groups: [])
+        }
         if section == .recent {
             Button {
                 appState.libraryPreferences.removeFromRecent([connection.id])
@@ -577,19 +635,11 @@ struct ConnectionListView: View {
             }
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
-            moreMenu
-            if hasLibraryItems {
-                Button {
-                    withAnimation {
-                        editMode = isEditing ? .inactive : .active
-                    }
-                } label: {
-                    if isEditing {
-                        Label("Done", systemImage: "checkmark")
-                    } else {
-                        Label("Edit", systemImage: "checklist")
-                    }
-                }
+            if !(foldsEditIntoMore && isEditing) {
+                moreMenu
+            }
+            if hasLibraryItems, !foldsEditIntoMore || isEditing {
+                editButton
             }
             Button {
                 presenter.present(.addConnection)
@@ -608,6 +658,11 @@ struct ConnectionListView: View {
                     Label("Move", systemImage: "folder")
                 }
                 .disabled(ids.isEmpty)
+                let ungrouped = ungroupedConnectionIds(in: ids)
+                if !appState.projects.isEmpty {
+                    moveToProjectMenu(connections: ungrouped, groups: [])
+                        .disabled(ungrouped.isEmpty)
+                }
                 selectionFavoriteButton(ids)
                 Button(role: .destructive) {
                     connectionsPendingDeletion = Set(ids)
@@ -635,8 +690,80 @@ struct ConnectionListView: View {
         .disabled(ids.isEmpty)
     }
 
+    private func ungroupedConnectionIds(in ids: [UUID]) -> Set<UUID> {
+        let selected = Set(ids)
+        return Set(appState.connections
+            .filter { selected.contains($0.id) && appState.group(for: $0.groupId) == nil }
+            .map(\.id))
+    }
+
+    // Lists nothing until a project exists, so a library without projects keeps the menus it had.
+    @ViewBuilder
+    private func moveToProjectMenu(connections connectionIds: Set<UUID>, groups groupIds: Set<UUID>) -> some View {
+        let projects = appState.orderedProjects
+        if !projects.isEmpty {
+            let scope = appState.projectScope
+            let current = Set(
+                appState.connections.filter { connectionIds.contains($0.id) }.map { scope.effectiveProjectId(of: $0) }
+                    + appState.groups.filter { groupIds.contains($0.id) }.map { scope.effectiveProjectId(of: $0) }
+            )
+            Menu {
+                Toggle("None", isOn: projectMembership(nil, current: current, connections: connectionIds, groups: groupIds))
+                ForEach(projects) { project in
+                    Toggle(isOn: projectMembership(project.id, current: current, connections: connectionIds, groups: groupIds)) {
+                        Text(verbatim: project.name)
+                    }
+                }
+            } label: {
+                Label("Move to Project", systemImage: "square.stack")
+            }
+        }
+    }
+
+    private func projectMembership(
+        _ projectId: UUID?,
+        current: Set<UUID?>,
+        connections connectionIds: Set<UUID>,
+        groups groupIds: Set<UUID>
+    ) -> Binding<Bool> {
+        Binding(
+            get: { current == [projectId] },
+            set: { _ in
+                ConnectionListTips.connectionMenuUsed()
+                appState.moveToProject(projectId, connections: connectionIds, groups: groupIds)
+            }
+        )
+    }
+
+    private var activeProjectBinding: Binding<UUID?> {
+        Binding(
+            get: { appState.activeProjectId },
+            set: { appState.setActiveProject($0) }
+        )
+    }
+
+    private var editButton: some View {
+        Button {
+            withMotion {
+                editMode = isEditing ? .inactive : .active
+            }
+        } label: {
+            if isEditing {
+                Label("Done", systemImage: "checkmark")
+            } else {
+                Label("Edit", systemImage: "checklist")
+            }
+        }
+    }
+
     private var moreMenu: some View {
         Menu {
+            if foldsEditIntoMore, hasLibraryItems {
+                Section {
+                    editButton
+                }
+            }
+
             Picker(selection: sortModeBinding) {
                 ForEach(LibrarySortMode.allCases, id: \.self) { mode in
                     Text(mode.mobileTitle).tag(mode)
@@ -661,17 +788,25 @@ struct ConnectionListView: View {
                 } label: {
                     Label("Manage Tags", systemImage: "tag")
                 }
+                Button {
+                    presenter.present(.projects)
+                } label: {
+                    Label("Manage Projects…", systemImage: "square.stack")
+                }
             }
             .disabled(!appState.isLibraryWritable)
 
             Section {
-                Button(action: openSampleDatabase) {
-                    Label("Open Sample Database", systemImage: "music.note.list")
+                // The sample lands in no project, so a project's list would open it and never show it.
+                if appState.activeProject == nil {
+                    startMenuItem(.openSample)
                 }
+                startMenuItem(.importConnections)
+                    .disabled(!appState.isLibraryWritable)
                 Button {
-                    showingFileImporter = true
+                    presenter.presentSetupGuide()
                 } label: {
-                    Label("Import Connections", systemImage: "square.and.arrow.down")
+                    Label("Setup Guide", systemImage: "signpost.right")
                 }
                 .disabled(!appState.isLibraryWritable)
                 Button {
@@ -679,10 +814,22 @@ struct ConnectionListView: View {
                 } label: {
                     Label("Export Connections", systemImage: "square.and.arrow.up")
                 }
-                .disabled(!appState.connections.contains(where: \.participatesInSync))
+                .disabled(!appState.scopedConnections.contains(where: \.participatesInSync))
             }
         } label: {
             Label("More", systemImage: ToolbarSymbols.more())
+        }
+    }
+
+    private func startMenuItem(_ action: LibraryStartAction) -> some View {
+        Button {
+            perform(action)
+        } label: {
+            Label {
+                Text(action.title)
+            } icon: {
+                Image(systemName: action.systemImage)
+            }
         }
     }
 
@@ -692,11 +839,12 @@ struct ConnectionListView: View {
     private func sheetContent(_ sheet: SceneSheet) -> some View {
         switch sheet {
         case .firstRun(let pages):
-            FirstRunSheet(pages: pages)
+            FirstRunSheet(pages: pages) { presenter.recordStartAction($0) }
         case .whatsNew(let version):
             WhatsNewSheet(version: version)
         case .addConnection:
-            ConnectionFormSheet(connection: nil, objects: sceneObjects) { _ in
+            ConnectionFormSheet(connection: nil, objects: sceneObjects) { savedId in
+                presenter.openAfterSheet(savedId)
                 presenter.sheet = nil
             }
         case .editConnection(let connection):
@@ -711,6 +859,8 @@ struct ConnectionListView: View {
             GroupFormSheet(editing: group)
         case .tags:
             TagManagementView()
+        case .projects:
+            ProjectManagementView()
         case .settings:
             NavigationStack {
                 SettingsView()
@@ -724,12 +874,20 @@ struct ConnectionListView: View {
             }
         case .importFile(let url):
             MobileConnectionImportSheet(fileURL: url) { outcome in
-                importResult = MobileImportOutcomeMessage(outcome)
+                if let message = presenter.finishImport(outcome, from: .fileOrLink) {
+                    importResult = message
+                }
             }
             .environment(appState)
         case .export:
-            MobileConnectionExportSheet(connections: appState.connections.filter(\.participatesInSync))
+            MobileConnectionExportSheet()
                 .environment(appState)
+        case .importData(let url):
+            DataImportConnectionChooser(fileURL: url) { connectionId in
+                presenter.requestDataImport(url, in: connectionId)
+                presenter.sheet = nil
+            }
+            .environment(appState)
         }
     }
 
@@ -828,6 +986,40 @@ struct ConnectionListView: View {
         return MacOnlyConnection.isMacOnly(connection)
     }
 
+    private func perform(_ action: LibraryStartAction) {
+        switch action {
+        case .turnOnICloud:
+            guard !isSyncEnabled else { return }
+            appState.setCloudSyncEnabled(true)
+        case .importConnections:
+            showingFileImporter = true
+        case .addConnection:
+            presenter.present(.addConnection)
+        case .openSample:
+            openSampleDatabase()
+        }
+    }
+
+    private func reveal(_ connectionIds: [UUID]) {
+        guard let plan = ConnectionListReveal.plan(
+            revealing: connectionIds,
+            in: outlineRequest,
+            collapsedGroupIds: appState.libraryPreferences.collapsedGroupIds,
+            isEditing: isEditing
+        ) else { return }
+        if plan.clearsQuery {
+            searchText = ""
+            searchTokens = []
+        }
+        for groupId in plan.groupIdsToExpand {
+            appState.libraryPreferences.setGroup(groupId, expanded: true)
+        }
+        if let marked = plan.selection {
+            selection = marked
+        }
+        scrollTarget = plan.scrollTarget
+    }
+
     private func openSampleDatabase() {
         do {
             let sampleId = try appState.openSampleDatabase()
@@ -885,8 +1077,28 @@ struct ConnectionListView: View {
     }
 
     private func sheetDidDismiss() {
-        presenter.sheetDidDismiss(appState: appState)
+        let startAction = presenter.sheetDidDismiss(appState: appState)
+        let handoff = presenter.takeHandoffAfterSheet()
         deliverPendingIntent()
+        openConnectionForDataImport()
+        switch handoff {
+        case .open(let connectionId):
+            open(connectionId)
+        case .reveal(let connectionIds):
+            reveal(connectionIds)
+        case nil:
+            break
+        }
+        if let startAction {
+            perform(startAction)
+        }
+    }
+
+    // The chooser has gone, so the cover the chosen connection needs can come up.
+    private func openConnectionForDataImport() {
+        guard let pending = presenter.pendingDataImport, !isConnectionCoverOnScreen,
+              selectedConnectionUUID != pending.connectionId else { return }
+        open(pending.connectionId)
     }
 
     private func deliverPendingIntent() {
@@ -904,6 +1116,13 @@ struct ConnectionListView: View {
         case .importConnections(let url):
             selectedConnectionIdString = nil
             presenter.presentImportFile(url, coverIsOnScreen: isConnectionCoverOnScreen)
+        case .importData(let url):
+            // The connection on screen, or the one about to be restored, keeps its session and takes the file.
+            if let connectionId = selectedConnectionUUID, presentableRecord(for: connectionId) != nil {
+                presenter.requestDataImport(url, in: connectionId)
+            } else {
+                presenter.present(.importData(url))
+            }
         }
     }
 
@@ -916,10 +1135,60 @@ struct ConnectionListView: View {
 
     private func connectionCoverDidDismiss() {
         isConnectionCoverOnScreen = false
+        presenter.discardDataImport(unlessFor: selectedConnectionUUID)
         presenter.dismissConnectionEditor()
         coordinatorStore.discardRemovedRecords()
         presenter.presentHeldImport()
         presenter.presentHeldRefusal()
+    }
+}
+
+// The title names the scope and its menu switches it. With no project the screen keeps its large "Connections" title
+// and no menu: a title menu opens from an inline title.
+private struct ProjectTitleModifier: ViewModifier {
+    let activeProject: ConnectionProject?
+    let projects: [ConnectionProject]
+    let selection: Binding<UUID?>
+    let manage: () -> Void
+
+    func body(content: Content) -> some View {
+        if projects.isEmpty {
+            content.navigationTitle("Connections")
+        } else {
+            content
+                .navigationTitle(activeProject.map { Text(verbatim: $0.name) } ?? Text("All Connections"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarRole(.browser)
+                .toolbarTitleMenu {
+                    Picker("Project", selection: selection) {
+                        Text("All Connections").tag(UUID?.none)
+                        ForEach(projects) { project in
+                            Text(verbatim: project.name).tag(Optional(project.id))
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    Button(action: manage) {
+                        Label("Manage Projects…", systemImage: "square.stack")
+                    }
+                }
+        }
+    }
+}
+
+private struct ScrollToRow: ViewModifier {
+    @Binding var target: LibraryRowID?
+
+    // Driven by state rather than called from the reveal: rows of a group the same reveal opens exist only after that update.
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content.onChange(of: target, initial: true) { _, row in
+                guard let row else { return }
+                target = nil
+                withMotion {
+                    proxy.scrollTo(row, anchor: .top)
+                }
+            }
+        }
     }
 }
 

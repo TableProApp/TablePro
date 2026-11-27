@@ -35,17 +35,17 @@ struct TabQueryIsolationTests {
     @Test("Running a query in another tab leaves the first tab's batch alone")
     func runQueryLeavesTheOtherTabAlone() async {
         await withTwoTabs { coordinator, _, _ in
-            coordinator.executeQueryInternal("SELECT 1")
+            coordinator.executeQueryInternal("SELECT 1", onTab: coordinator.commandTabId)
         }
     }
 
     @Test("Running a parameterized query in another tab leaves the first tab's batch alone")
     func parameterizedQueryLeavesTheOtherTabAlone() async {
         await withTwoTabs { coordinator, _, _ in
-            coordinator.queryExecutionCoordinator.executeQueryInternalParameterized(
-                "SELECT ?",
-                parameters: ["1"],
-                originalParameters: []
+            coordinator.queryExecutionCoordinator.executeQueryWithParameters(
+                "SELECT :id",
+                parameters: [QueryParameter(name: "id", value: "1")],
+                onTab: coordinator.commandTabId
             )
         }
     }
@@ -55,7 +55,8 @@ struct TabQueryIsolationTests {
         await withTwoTabs { coordinator, _, _ in
             coordinator.queryExecutionCoordinator.executeMultipleStatementsWithParameters(
                 SQLStatementScanner.executableStatements(in: "SELECT 1; SELECT 2"),
-                parameters: []
+                parameters: [],
+                onTab: coordinator.commandTabId
             )
         }
     }
@@ -67,6 +68,7 @@ struct TabQueryIsolationTests {
         await withTwoTabs { coordinator, _, _ in
             coordinator.executionGate = AlwaysAllowGate()
             await coordinator.runExplain(
+                onTab: coordinator.commandTabId,
                 variant: ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")
             )?.value
         }
@@ -247,7 +249,6 @@ struct TabQueryIsolationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
 
@@ -326,13 +327,11 @@ private final class CancelCountingDriver: DatabaseDriver, @unchecked Sendable {
         Self.emptyResult
     }
 
-    func fetchTables() async throws -> [TableInfo] { [] }
     func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] { [:] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]] { [:] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
     func fetchDatabases() async throws -> [String] { [] }
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         DatabaseMetadata(
@@ -346,8 +345,8 @@ private final class CancelCountingDriver: DatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName,
             dataSize: nil,
@@ -363,7 +362,7 @@ private final class CancelCountingDriver: DatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}

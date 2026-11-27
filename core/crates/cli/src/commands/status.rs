@@ -7,7 +7,7 @@ use crate::command_line::FormatArgs;
 use crate::console::Console;
 use crate::endpoint::endpoint;
 use crate::exit::Exit;
-use crate::host::{Host, HostError, Terminal};
+use crate::host::{Host, HostError, Places, Terminal};
 use crate::output::{Cell, Table};
 
 // Reports what a command would meet, and exits as that command would; it never starts or changes anything.
@@ -51,7 +51,7 @@ pub(super) async fn run(
     match reached {
         Ok(_) => Ok(Exit::Success),
         Err(error) => {
-            console.note(&error.to_string());
+            console.report(&error);
             Ok(error.exit())
         }
     }
@@ -110,5 +110,9 @@ impl Host for Reading<'_> {
 
     fn terminal(&self) -> Terminal {
         self.terminal
+    }
+
+    fn places(&self) -> Places {
+        self.host.places()
     }
 }

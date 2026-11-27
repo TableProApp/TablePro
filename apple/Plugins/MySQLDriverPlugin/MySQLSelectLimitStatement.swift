@@ -24,6 +24,12 @@ internal func mysqlSelectLimitAction(applied: UInt64?, desired: UInt64?) -> MySQ
     return .apply(desired)
 }
 
+// Does the work of the reset a left-out `USE` would have sent, then of the statement's own reconcile, in one `SET`.
+internal func mysqlSelectLimitActionAfterSkippedUse(desired: UInt64?, returnsAtMostOneRow: Bool) -> MySQLSelectLimitAction {
+    guard let desired, !returnsAtMostOneRow else { return .reset }
+    return .apply(desired)
+}
+
 internal func mysqlClampedRowCap(_ rowCap: Int?) -> Int? {
     guard let rowCap, rowCap > 0 else { return nil }
     return min(rowCap, PluginRowLimits.emergencyMax)

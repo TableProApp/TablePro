@@ -11,6 +11,7 @@ use std::time::Duration;
 use gio::prelude::SettingsExt;
 use tablepro_core::AiProvider;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
+use uuid::Uuid;
 
 pub use editor_font::EditorFont;
 pub use error::SettingsError;
@@ -149,6 +150,14 @@ impl AppSettings {
         self.set_boolean(keys::SHOW_INVISIBLE_CHARACTERS, show)
     }
 
+    pub fn grid_wrap_text(&self) -> bool {
+        self.grid_preferences().snapshot().wrap_text
+    }
+
+    pub fn set_grid_wrap_text(&self, wrap: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::GRID_WRAP_TEXT, wrap)
+    }
+
     pub fn date_format(&self) -> DateFormat {
         self.grid_preferences().snapshot().date_format
     }
@@ -253,6 +262,14 @@ impl AppSettings {
         self.set_boolean(keys::VIM_KEYBINDINGS, on)
     }
 
+    pub fn shortcut_preset(&self) -> String {
+        self.settings.string(keys::SHORTCUT_PRESET).into()
+    }
+
+    pub fn set_shortcut_preset(&self, id: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::SHORTCUT_PRESET, id)
+    }
+
     /// The driver the connect dialog opens on. Remembered so the
     /// common case is one click, not a combo hunt every time.
     pub fn connect_dialog_driver(&self) -> String {
@@ -272,12 +289,37 @@ impl AppSettings {
         self.set_boolean(keys::RESTORE_SESSION, restore)
     }
 
+    // Empty or unreadable is All Connections; whether a project still has the id is the list's to say.
+    pub fn active_project(&self) -> Option<Uuid> {
+        Uuid::parse_str(self.settings.string(keys::ACTIVE_PROJECT).as_str()).ok()
+    }
+
+    pub fn set_active_project(&self, project: Option<Uuid>) -> Result<(), SettingsError> {
+        let id = project.map(|id| id.to_string()).unwrap_or_default();
+        self.set_string(keys::ACTIVE_PROJECT, &id)
+    }
+
+    pub fn connect_active_project_changed(&self, changed: impl Fn(Option<Uuid>) + 'static) -> glib::SignalHandlerId {
+        self.settings
+            .connect_changed(Some(keys::ACTIVE_PROJECT), move |settings, key| {
+                changed(Uuid::parse_str(settings.string(key).as_str()).ok());
+            })
+    }
+
     pub fn last_seen_version(&self) -> String {
         self.settings.string(keys::LAST_SEEN_VERSION).into()
     }
 
     pub fn set_last_seen_version(&self, version: &str) -> Result<(), SettingsError> {
         self.set_string(keys::LAST_SEEN_VERSION, version)
+    }
+
+    pub fn setup_guide_seen(&self) -> bool {
+        self.settings.boolean(keys::SETUP_GUIDE_SEEN)
+    }
+
+    pub fn set_setup_guide_seen(&self, seen: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SETUP_GUIDE_SEEN, seen)
     }
 
     pub fn share_usage_data(&self) -> bool {

@@ -1,8 +1,3 @@
-//
-//  JsonRowConverterTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 
@@ -411,5 +406,31 @@ struct JsonRowConverterTests {
         let result = converter.generateJson(rows: [[.text("__DEFAULT")]])
 
         #expect(result.contains("\"__DEFAULT\""))
+    }
+
+    @Test("Cancellation is checked every 256 rows and stops the document there")
+    func cancellationStopsBeforeTheLastRow() {
+        let converter = makeConverter(columns: ["id"], columnTypes: [.integer(rawType: nil)])
+        let rows: [[PluginCellValue]] = (0..<1_000).map { [.text("\($0)")] }
+        var checks = 0
+
+        let json = converter.generateJson(rows: rows) {
+            checks += 1
+            return checks > 2
+        }
+
+        #expect(checks == 3)
+        #expect(json.contains("\"id\": 511"))
+        #expect(!json.contains("\"id\": 512"))
+    }
+
+    @Test("Without cancellation every row up to the cap is written")
+    func uncancelledWritesEveryRow() {
+        let converter = makeConverter(columns: ["id"], columnTypes: [.integer(rawType: nil)])
+        let rows: [[PluginCellValue]] = (0..<1_000).map { [.text("\($0)")] }
+
+        let json = converter.generateJson(rows: rows)
+
+        #expect(json.hasSuffix("\"id\": 999\n  }\n]"))
     }
 }

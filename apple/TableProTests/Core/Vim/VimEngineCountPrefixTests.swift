@@ -194,4 +194,41 @@ final class VimEngineCountPrefixTests {
         let consumed = engine.process("3", shift: false)
         #expect(!consumed, "Digits in insert mode must pass through to the text view")
     }
+
+    // MARK: - A count or register the command does not use
+
+    @Test("A count before a command that takes none is dropped")
+    func unusedCountIsDropped() {
+        buffer = VimTextBufferMock(text: "abcdef\n")
+        engine = VimEngine(buffer: buffer)
+        keys("3max")
+        #expect(buffer.text == "bcdef\n")
+    }
+
+    @Test("A register before a motion is dropped with it")
+    func registerBeforeAMotionIsDropped() {
+        buffer = VimTextBufferMock(text: "one two three\n")
+        engine = VimEngine(buffer: buffer)
+        keys("\"awyw")
+        #expect(engine.namedRegisters["a"] == nil)
+        #expect(engine.register.text == "two ")
+    }
+
+    @Test("Escape drops a register typed before it")
+    func escapeDropsTheRegister() {
+        buffer = VimTextBufferMock(text: "one two\n")
+        engine = VimEngine(buffer: buffer)
+        keys("\"a\u{1B}yw")
+        #expect(engine.namedRegisters["a"] == nil)
+        #expect(engine.register.text == "one ")
+    }
+
+    @Test("Escape drops a count and an operator")
+    func escapeDropsCountAndOperator() {
+        buffer = VimTextBufferMock(text: "one two three four\n")
+        engine = VimEngine(buffer: buffer)
+        keys("2d\u{1B}w")
+        #expect(buffer.text == "one two three four\n")
+        #expect(buffer.selectedRange().location == 4)
+    }
 }

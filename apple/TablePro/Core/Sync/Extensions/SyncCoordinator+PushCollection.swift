@@ -75,7 +75,8 @@ extension SyncCoordinator {
             field,
             record: build(base?.copy() as? CKRecord),
             base: base,
-            baseAsWritten: base.flatMap(reread)
+            baseAsWritten: base.flatMap(reread),
+            schema: schema
         )
     }
 
@@ -93,6 +94,8 @@ extension SyncCoordinator {
             await collectRecords(of: .connection, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let connections = storage.loadConnections()
                 return storage.lastLoadFailed ? nil : connections
+            } unreadable: {
+                storage.unreadableConnectionIds
             } disposition: { (connection: DatabaseConnection) in
                 guard connection.participatesInSync else { return .drop }
                 let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
@@ -100,7 +103,8 @@ extension SyncCoordinator {
                     Self.syncedTunnel(of: connection, profiles: profiles),
                     in: zoneID,
                     base: recordCache.record(for: recordID),
-                    publisher: routePublisher
+                    publisher: routePublisher,
+                    schema: schema
                 ))
             }
         }
@@ -110,11 +114,30 @@ extension SyncCoordinator {
             await collectRecords(of: .group, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let groups = groupStorage.loadGroups()
                 return groupStorage.storeIsUnreadable ? nil : groups
+            } unreadable: {
+                groupStorage.unreadableGroupIds
             } disposition: { (group: ConnectionGroup) in
                 .push(edit(ConnectionGroupSyncField.self, .group, id: group.id.uuidString, in: zoneID) { base in
-                    SyncRecordMapper.toCKRecord(group, in: zoneID, base: base)
+                    SyncRecordMapper.toCKRecord(group, in: zoneID, base: base, schema: schema)
                 } reread: { base in
-                    SyncRecordMapper.toGroup(base).map { SyncRecordMapper.toCKRecord($0, in: zoneID) }
+                    SyncRecordMapper.toGroup(base, readsProject: schema.writesProjects)
+                        .map { SyncRecordMapper.toCKRecord($0, in: zoneID, schema: schema) }
+                })
+            }
+        }
+
+        if boundary.includes(.project) {
+            let projectStorage = services.projectStorage
+            await collectRecords(of: .project, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
+                let projects = projectStorage.loadProjects()
+                return projectStorage.storeIsUnreadable ? nil : projects
+            } unreadable: {
+                projectStorage.unreadableProjectIds
+            } disposition: { (project: ConnectionProject) in
+                .push(edit(ConnectionProjectSyncField.self, .project, id: project.id.uuidString, in: zoneID) { base in
+                    SyncRecordMapper.toCKRecord(project, in: zoneID, base: base, schema: schema)
+                } reread: { base in
+                    SyncRecordMapper.toProject(base).map { SyncRecordMapper.toCKRecord($0, in: zoneID, schema: schema) }
                 })
             }
         }
@@ -124,6 +147,8 @@ extension SyncCoordinator {
             await collectRecords(of: .tag, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let tags = tagStorage.loadTags()
                 return tagStorage.storeIsUnreadable ? nil : tags
+            } unreadable: {
+                tagStorage.unreadableTagIds
             } disposition: { (tag: ConnectionTag) in
                 .push(edit(ConnectionTagSyncField.self, .tag, id: tag.id.uuidString, in: zoneID) { base in
                     SyncRecordMapper.toCKRecord(tag, in: zoneID, base: base)
@@ -154,6 +179,8 @@ extension SyncCoordinator {
             ) {
                 let profiles = storage.loadProfiles()
                 return storage.lastLoadFailed ? nil : profiles
+            } unreadable: {
+                storage.unreadableProfileIds
             } disposition: { (profile: CredentialProfile) in
                 .push(edit(CredentialProfileSyncField.self, .credentialProfile, id: profile.id.uuidString, in: zoneID) { base in
                     SyncRecordMapper.toCKRecord(profile, in: zoneID, base: base)
@@ -195,6 +222,7 @@ extension SyncCoordinator {
         into batch: inout SyncPushBatch,
         zoneID: CKRecordZone.ID,
         loaded: () async -> [Record]?,
+        unreadable: () -> Set<UUID> = { [] },
         disposition: (Record) -> SyncPushDisposition
     ) async where Record.ID == UUID {
         let dirtyIds = snapshot.dirtyIds(for: type)
@@ -203,7 +231,12 @@ extension SyncCoordinator {
             return
         }
         let collected = await loaded().map { records in
-            Self.collect(records, dirtyIds: dirtyIds, id: { $0.id.uuidString }, disposition: disposition)
+            var collected = Self.collect(records, dirtyIds: dirtyIds, id: { $0.id.uuidString }, disposition: disposition)
+            // A copy this Mac cannot read keeps its mark for a build that can push it.
+            for id in unreadable().map(\.uuidString) where dirtyIds.contains(id) && !collected.hasResolved(id) {
+                collected.add(id, .hold)
+            }
+            return collected
         }
         append(type, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
     }

@@ -24,4 +24,17 @@ public enum MongoCommandCatalog {
     public static func preserves(_ name: String) -> Bool {
         name.unicodeScalars.allSatisfy(\.isASCII) && preservingCommands.contains(name.lowercased())
     }
+
+    // The commands among `preservingCommands` that read only, whatever their options: no `validate`, whose `repair`
+    // fixes the collection, no `explain`, `getMore` or `killCursors`.
+    public static let readCommands: Set<String> = [
+        "ping", "hello", "ismaster", "buildinfo", "hostinfo", "serverstatus", "connectionstatus", "whatsmyuri",
+        "listcommands", "getcmdlineopts", "getparameter", "getlog", "currentop", "top", "replsetgetstatus",
+        "replsetgetconfig", "connpoolstats", "listdatabases", "listcollections", "listindexes", "dbstats",
+        "collstats", "datasize", "usersinfo", "rolesinfo", "find", "count", "distinct", "aggregate",
+    ]
+
+    public static func readsOnly(_ name: String) -> Bool {
+        name.unicodeScalars.allSatisfy(\.isASCII) && readCommands.contains(name.lowercased())
+    }
 }

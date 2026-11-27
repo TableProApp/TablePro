@@ -9,19 +9,16 @@ final class SchemaForeignKeyStore {
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaForeignKeyStore")
 
-    private var entries: [String: [String: [ForeignKeyInfo]]] = [:]
-    private var loads: [String: Task<Void, Never>] = [:]
+    // By name bytes: a schema, or a database, can hold two tables or schemas whose names Swift's String equates.
+    private var entries: [DatabaseScope.CatalogKey: [CatalogName: [ForeignKeyInfo]]] = [:]
+    private var loads: [DatabaseScope.CatalogKey: Task<Void, Never>] = [:]
 
     init() {}
 
-    static func key(for scope: DatabaseScope) -> String {
-        "\(scope.connectionId):\(scope.database):\(scope.schema ?? "")"
-    }
-
     /// Keyed by column name, which is the shape `TableRows.columnForeignKeys` wants.
     func foreignKeysByColumn(for scope: DatabaseScope, table: String) -> [String: ForeignKeyInfo]? {
-        guard let tables = entries[Self.key(for: scope)] else { return nil }
-        guard let foreignKeys = tables[table] else { return [:] }
+        guard let tables = entries[scope.catalogKey] else { return nil }
+        guard let foreignKeys = tables[CatalogName(table)] else { return [:] }
         var byColumn: [String: ForeignKeyInfo] = [:]
         for foreignKey in foreignKeys {
             byColumn[foreignKey.column] = foreignKey
@@ -29,16 +26,23 @@ final class SchemaForeignKeyStore {
         return byColumn
     }
 
-    func store(_ foreignKeys: [String: [ForeignKeyInfo]], for scope: DatabaseScope) {
-        entries[Self.key(for: scope)] = foreignKeys
+    // Nil until the schema's read landed, or for a session's own scope. A name the read does not list has no keys only
+    // when the catalog lists it too: a name typed in SQL can differ in case from the one the read keyed.
+    func listedForeignKeys(of table: String, in scope: DatabaseScope, nameIsCataloged: Bool) -> [ForeignKeyInfo]? {
+        guard !scope.isSessionBound, let tables = entries[scope.catalogKey] else { return nil }
+        if let foreignKeys = tables[CatalogName(table)] { return foreignKeys }
+        return nameIsCataloged ? [] : nil
+    }
+
+    func store(_ foreignKeys: [CatalogName: [ForeignKeyInfo]], for scope: DatabaseScope) {
+        entries[scope.catalogKey] = foreignKeys
     }
 
     func invalidate(connectionId: UUID) {
-        let prefix = "\(connectionId):"
-        for key in entries.keys where key.hasPrefix(prefix) {
+        for key in entries.keys where key.connectionId == connectionId {
             entries.removeValue(forKey: key)
         }
-        for (key, load) in loads where key.hasPrefix(prefix) {
+        for (key, load) in loads where key.connectionId == connectionId {
             load.cancel()
             loads.removeValue(forKey: key)
         }
@@ -53,9 +57,9 @@ final class SchemaForeignKeyStore {
     @discardableResult
     func prefetch(
         scope: DatabaseScope,
-        using fetch: @escaping () async -> [String: [ForeignKeyInfo]]?
+        using fetch: @escaping () async -> [CatalogName: [ForeignKeyInfo]]?
     ) -> Task<Void, Never>? {
-        let key = Self.key(for: scope)
+        let key = scope.catalogKey
         guard entries[key] == nil, loads[key] == nil else { return nil }
         let load = Task { [weak self] in
             let fetched = await fetch()
@@ -65,7 +69,7 @@ final class SchemaForeignKeyStore {
             guard let fetched else { return }
             entries[key] = fetched
             Self.logger.info(
-                "[fk] prefetched schema foreign keys tables=\(fetched.count) scope=\(key, privacy: .private(mask: .hash))"
+                "[fk] prefetched schema foreign keys tables=\(fetched.count) scope=\(scope.qualifiedDescription, privacy: .private(mask: .hash))"
             )
         }
         loads[key] = load

@@ -485,6 +485,69 @@ final class VimEngineVisualModeTests {
         key("V", shift: true)
         #expect(engine.mode.displayLabel == "VISUAL LINE")
     }
+
+    // MARK: - Text objects and registers in Visual mode
+
+    private func make(_ text: String, at offset: Int) {
+        buffer = VimTextBufferMock(text: text)
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: offset, length: 0))
+    }
+
+    @Test("After viw from inside a word, the next motion extends from the word's end")
+    func motionAfterInnerWordExtendsTheSelection() {
+        make("hello world\n", at: 2)
+        keys("viwe")
+        #expect(buffer.string(in: sel) == "hello world")
+    }
+
+    @Test("iw in Visual Line mode selects the word characterwise")
+    func innerWordLeavesVisualLine() {
+        make("hello world\nfoo\n", at: 0)
+        key("V", shift: true)
+        keys("iwd")
+        #expect(buffer.text == " world\nfoo\n")
+    }
+
+    @Test("vip selects the paragraph's lines in Visual Line mode")
+    func innerParagraphSwitchesToVisualLine() {
+        make("a\nb\n\nc\n", at: 0)
+        keys("vip")
+        #expect(engine.mode == .visual(linewise: true))
+        #expect(sel == NSRange(location: 0, length: 4))
+    }
+
+    @Test("\"a before y in Visual mode yanks into register a")
+    func visualYankIntoANamedRegister() {
+        make("abc def\n", at: 0)
+        keys("viw\"ay")
+        #expect(engine.namedRegisters["a"]?.text == "abc")
+    }
+
+    @Test("p over a selection puts the replaced text in the unnamed register")
+    func visualPasteKeepsTheReplacedText() {
+        make("abc def\n", at: 0)
+        keys("yiwwviwp")
+        #expect(buffer.text == "abc abc\n")
+        #expect(engine.register.text == "def")
+    }
+
+    @Test("P over a selection leaves the registers as they were")
+    func visualCapitalPasteKeepsTheRegister() {
+        make("abc def\n", at: 0)
+        keys("yiwwviw")
+        key("P", shift: true)
+        #expect(buffer.text == "abc abc\n")
+        #expect(engine.register.text == "abc")
+    }
+
+    @Test("\"ap over a selection pastes register a")
+    func visualPasteFromANamedRegister() {
+        make("abc def\n", at: 0)
+        keys("\"ayiwwviw\"ap")
+        #expect(buffer.text == "abc abc\n")
+        #expect(engine.namedRegisters["a"]?.text == "abc")
+    }
 }
 
 // swiftlint:enable file_length type_body_length

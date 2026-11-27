@@ -155,8 +155,9 @@ struct FavoritesMenuSpecTests {
         #expect(issued.contains(.removeTableFavorite(row.entry)))
     }
 
-    @Test("A diagram the tab could not tell apart from the browsed schema's is not offered")
-    func unrepresentableDiagramIsNotOffered() {
+    // The diagram tab records the schema it was opened on, so neither case loses it to the browsed one.
+    @Test("A table in a schema named default, or with no active database, still offers its own diagram")
+    func diagramIsOfferedWhateverTheSchemaIsCalled() {
         let noDatabase = commands(FavoritesMenuSpec.sections(for: context(
             clicked: .table(table(schema: "sales", otherSchema: "sales")),
             activeDatabase: nil
@@ -169,8 +170,8 @@ struct FavoritesMenuSpecTests {
             activeDatabase: nil
         )))
 
-        #expect(!noDatabase.contains { if case .showERDiagram = $0 { true } else { false } })
-        #expect(!markerSchema.contains { if case .showERDiagram = $0 { true } else { false } })
+        #expect(noDatabase.contains(.showERDiagram(schema: "sales")))
+        #expect(markerSchema.contains(.showERDiagram(schema: "default")))
         #expect(browsedSchema.contains(.showERDiagram(schema: nil)))
     }
 
@@ -376,6 +377,45 @@ struct FavoritesMenuSpecTests {
         #expect(issued.contains(.showFavoriteHistory(query)))
     }
 
+    @Test("A saved query offers Share… right after Copy Query, whatever the plan")
+    func savedQueryOffersShare() throws {
+        let query = favorite()
+        let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: .query(.favorite(query)))))
+        let copy = try #require(issued.firstIndex(of: .copyText(query.query)))
+        #expect(issued.firstIndex(of: .shareFavorite(query)) == copy + 1)
+    }
+
+    @Test("A linked file offers Share… right after Copy Query")
+    func linkedFileOffersShare() throws {
+        let file = linkedFile()
+        let issued = linkedCommands(file, gitState: nil)
+        let copy = try #require(issued.firstIndex(of: .copyLinkedFavoriteQuery(file)))
+        #expect(issued.firstIndex(of: .shareLinkedFavorite(file)) == copy + 1)
+    }
+
+    @Test("Signed in to a company server, which keeps no shared links, no saved query or linked file offers Share…")
+    func companyServerOffersNoShare() {
+        let query = favorite()
+        let file = linkedFile()
+        let saved = commands(FavoritesMenuSpec.sections(for: FavoritesMenuContext(
+            clicked: .query(.favorite(query)), sharesLinks: false
+        )))
+        let linked = commands(FavoritesMenuSpec.sections(for: FavoritesMenuContext(
+            clicked: .query(.linkedFavorite(file)), sharesLinks: false
+        )))
+        #expect(!saved.contains(.shareFavorite(query)))
+        #expect(saved.contains(.copyText(query.query)))
+        #expect(!linked.contains(.shareLinkedFavorite(file)))
+        #expect(linked.contains(.copyLinkedFavoriteQuery(file)))
+    }
+
+    @Test("Only a saved query offers Share…")
+    func onlySavedQueriesOfferShare() {
+        let folder = SQLFavoriteFolder(name: "Reports")
+        let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: .query(.folder(folder, children: [])))))
+        #expect(!issued.contains { if case .shareFavorite = $0 { return true } else { return false } })
+    }
+
     private func linkedFile() -> LinkedSQLFavorite {
         LinkedSQLFavorite(
             folderId: UUID(),
@@ -424,7 +464,7 @@ struct FavoritesMenuSpecTests {
         sections.nonEmptySections().map { commands($0.items) }
     }
 
-    @Test("A linked file copies its absolute and relative paths between Copy Query and Show in Finder")
+    @Test("A linked file copies its absolute and relative paths between Copy Query, Share… and Show in Finder")
     func linkedFileOffersBothPaths() {
         let file = LinkedSQLFavorite(
             folderId: UUID(),
@@ -438,6 +478,7 @@ struct FavoritesMenuSpecTests {
 
         #expect(groups.contains([
             .copyLinkedFavoriteQuery(file),
+            .shareLinkedFavorite(file),
             .copyPath("/tmp/queries/reports/daily.sql"),
             .copyRelativePath("reports/daily.sql"),
             .revealLinkedFavorite(file)

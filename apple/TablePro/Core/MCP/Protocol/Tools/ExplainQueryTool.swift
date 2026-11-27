@@ -53,7 +53,9 @@ public struct ExplainQueryTool: MCPToolImplementation {
                 of: .object(["type": .string("array"), "items": MCPToolSchema.cell])
             ),
             "plan_text": MCPToolSchema.string(String(localized: "Flattened plan text")),
-            "status_message": MCPToolSchema.string(String(localized: "Why values are masked, when they are")),
+            "status_message": MCPToolSchema.string(
+                String(localized: "Why values are masked, and what happened to the open transaction, when either applies")
+            ),
             "is_truncated": MCPToolSchema.boolean(
                 String(localized: "Present and true when the answer's size limit cut plan_text or left the parsed plan or rows out")
             ),
@@ -133,7 +135,7 @@ public struct ExplainQueryTool: MCPToolImplementation {
             context: context
         )
 
-        let scope = try await MCPScopeArguments.resolve(
+        let scope = try await MCPScopeArguments.resolveForStatements(
             arguments,
             connectionId: connectionId,
             services: services

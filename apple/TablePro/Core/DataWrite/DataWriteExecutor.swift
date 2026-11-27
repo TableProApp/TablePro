@@ -26,6 +26,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 struct DataWriteStepResult: Sendable {
     let executionTime: TimeInterval
@@ -118,6 +119,11 @@ enum DataWriteExecutor {
             try ManualCommit.refuseUnheldWrite(supportsTransactions: driver.supportsTransactions, sessionState: state)
         }
 
+        let endsSegment = definitionSteps(steps, of: plan)
+        if endsSegment.contains(true) {
+            try await refuseDefinitions(on: driver, commitMode: commitMode)
+        }
+
         // A row a lookup cannot find on its own refuses the save before anything is written. Each step reads its
         // lookup again right before it runs, since the steps ahead of it can move or change its rows.
         for step in steps {
@@ -173,6 +179,9 @@ enum DataWriteExecutor {
         let engineCountsMatchedRows = DataWriteRowCounts.countsMatchedRows(for: plan.databaseType)
         // A delete earlier in the save can cascade to a row a later update edits, which then matches nothing.
         var ranDelete = false
+        let closesSegments = endsSegment.contains(true) && owner == .app
+        var committedCount = 0
+        var lastSegmentClosed = false
 
         do {
             if owner.sendsBegin {
@@ -180,7 +189,7 @@ enum DataWriteExecutor {
                 if owner == .held { ManualCommit.turnHold?.mark(true) }
             }
 
-            for step in steps {
+            for (index, step) in steps.enumerated() {
                 let start = Date()
                 var statement = step.statement
                 if let lookup = step.lookup {
@@ -232,9 +241,19 @@ enum DataWriteExecutor {
                 if let check = step.lookup?.check {
                     try await confirmLanded(check, for: step, on: driver)
                 }
+
+                if closesSegments, endsSegment[index] {
+                    try await TaskCancellationShield.run { try await driver.commitTransaction() }
+                    committedCount = results.count
+                    lastSegmentClosed = index == steps.count - 1
+                    if !lastSegmentClosed {
+                        try await driver.beginTransaction(mode: mode)
+                    }
+                }
             }
 
-            if owner.commitsAtEnd {
+            // Teradata mode answers an END TRANSACTION with no BT open with an error.
+            if owner.commitsAtEnd, !lastSegmentClosed {
                 try await driver.commitTransaction()
             }
         } catch {
@@ -250,11 +269,16 @@ enum DataWriteExecutor {
             }
             await drainEpilogue()
 
-            /// Without a transaction the statements that already ran are on the server for good,
-            /// and so they are when the rollback itself failed. Reporting that as a plain failure
-            /// tells the user to try again, and trying again writes them a second time. A run that
-            /// joined the user's own transaction is the third case: the statements are pending in
-            /// it, and only the user can commit or roll it back.
+            if committedCount > 0 {
+                throw DataWritePartialCommitError(
+                    committed: rollbackSucceeded ? Array(results.prefix(committedCount)) : results,
+                    totalStatements: steps.count,
+                    engine: plan.databaseType.rawValue,
+                    disposition: .written,
+                    underlying: error
+                )
+            }
+            // What ran stays written, or pending in a transaction only the user ends, so a plain failure would invite a retry.
             if !rollbackSucceeded, !results.isEmpty {
                 throw DataWritePartialCommitError(
                     committed: results,
@@ -269,6 +293,31 @@ enum DataWriteExecutor {
 
         await drainEpilogue()
         return DataWriteRun(results: results, sideStatements: sideStatements)
+    }
+
+    // Teradata takes only COMMIT or ROLLBACK after a definition statement; its truncate is a DELETE, which joins as DML.
+    private static func definitionSteps(_ steps: [DataWriteStep], of plan: DataWritePlan) -> [Bool] {
+        let family = TransactionEngineFamily.of(plan.databaseType)
+        guard family.definitionEndsTransaction else { return Array(repeating: false, count: steps.count) }
+        let grammar = SQLLexicalResolver.readings(for: plan.databaseType, session: plan.sessionLexicalState).execution
+        return steps.map { AutocommitOnlyStatement.matches($0.statement.sql, family: family, grammar: grammar) }
+    }
+
+    // Refused before anything runs: the commit after a definition statement would end the transaction the session holds.
+    private static func refuseDefinitions(on driver: DatabaseDriver, commitMode: ConnectionCommitMode) async throws {
+        let owner = WriteTransactionOwner.resolve(
+            supportsTransactions: driver.supportsTransactions,
+            sessionState: await driver.heldSessionTransactionState(),
+            commitMode: commitMode
+        )
+        switch owner {
+        case .session:
+            throw DefinitionInOpenTransactionRefusal()
+        case .held:
+            throw ManualCommitRefusal()
+        case .app, .none:
+            return
+        }
     }
 
     private static func openPreservingScope(on driver: DatabaseDriver) async -> PluginSessionScope? {

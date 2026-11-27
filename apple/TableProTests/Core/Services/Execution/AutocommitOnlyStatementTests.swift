@@ -413,6 +413,8 @@ struct AutocommitOnlyStatementTeradataTests {
             "SET SESSION DATABASE sales",
             "SET SESSION DATEFORM = ANSIDATE",
             "SET QUERY_BAND = 'app=tp;' FOR SESSION",
+            "SET QUERY_BAND = 'app=tp;' UPDATE FOR SESSION VOLATILE",
+            "SET QUERY_BAND = NONE FOR SESSION",
             "SET ROLE analyst",
             "SET TIME ZONE LOCAL",
             "MODIFY USER u AS PERM = 1e9",
@@ -453,9 +455,46 @@ struct AutocommitOnlyStatementTeradataTests {
             "CHECKPOINT sales.j",
             "LOCKING ROW FOR ACCESS SELECT * FROM sales.t",
             "SELECT 'CREATE TABLE t (a INTEGER)'",
+            "SET QUERY_BAND = 'a=1;' FOR TRANSACTION",
+            "set query_band = 'job=nightly;' for transaction;",
+            "SET QUERY_BAND = NONE FOR TRANSACTION",
         ]
     )
     func teradataAcceptances(statement: String) {
         #expect(!AutocommitOnlyFixture.matches(statement, .teradata))
+    }
+
+    private static func movesDatabase(_ statement: String, _ family: TransactionEngineFamily = .teradata) -> Bool {
+        AutocommitOnlyStatement.movesDatabase(
+            statement, family: family, grammar: AutocommitOnlyFixture.grammar(for: family)
+        )
+    }
+
+    @Test(
+        "These move the session's default database",
+        arguments: [
+            "DATABASE sales", "database sales;", "SET SESSION DATABASE sales", "SS DATABASE sales",
+            "-- switch\nDATABASE sales",
+        ]
+    )
+    func teradataDatabaseMoves(statement: String) {
+        #expect(Self.movesDatabase(statement))
+    }
+
+    @Test(
+        "These leave the default database where it is",
+        arguments: [
+            "SET SESSION DATEFORM = ANSIDATE", "DELETE DATABASE sales", "CREATE DATABASE d FROM sales AS PERM = 1e6",
+            "SELECT DATABASE", "SS", "SET SESSION", "MODIFY DATABASE sales AS PERM = 1e9",
+        ]
+    )
+    func teradataNonMoves(statement: String) {
+        #expect(!Self.movesDatabase(statement))
+    }
+
+    @Test("A database move is read only on Teradata")
+    func databaseMoveIsTeradataOnly() {
+        #expect(!Self.movesDatabase("DATABASE sales", .postgres))
+        #expect(!Self.movesDatabase("SET SESSION DATABASE sales", .mysql))
     }
 }

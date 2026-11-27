@@ -1,6 +1,6 @@
 # 0002: TablePro's own SQL editor control
 
-- **Status**: Accepted
+- **Status**: Accepted; the key table amended by [0025](0025-setup-guide-and-shortcut-presets.md), which makes it the TablePro preset
 - **Date**: 2026-11-02
 
 ## Context
@@ -38,7 +38,7 @@
 - A SwapChainPanel holds a composition swap chain (flip sequential, three buffers, at most two frames waiting). A frame starts only when the swap chain can take it, through its frame latency object, so Present never blocks the UI thread. Direct3D 11 runs on the GPU, or WARP when there is none or software rendering is asked for. Direct2D draws on it, DirectWrite lays out each visible line.
 - Every editor on a UI thread draws on one Direct3D and Direct2D device, as the grid's rows do (0003), and the first editor to find it lost replaces it for the rest. Each editor has its own device context and swap chain. TabView unloads a tab's content on every switch, so a hidden editor gives back its swap chain (`SetSwapChain(null)`) and keeps its layouts and brushes; showing it again makes one swap chain.
 - Line layouts are cached by text and colors, so lines that shift after an edit keep theirs; only the edited line is laid out again. A line over 4,096 characters is laid out in a slice around the visible columns.
-- A frame is drawn on the UI thread when something changed, and many changes before it give one frame. It holds the gutter, current line band, find matches, selections, text, IME marks and carets. The caret blinks at the system rate, with the system caret width, and stops after the system caret timeout (`SPI_GETCARETTIMEOUT`, 5 seconds when the call fails) with no input, shown, as a Win32 edit control's does. In an inactive window (`InputActivationListener`) it is hidden and nothing blinks, as Win32's About Carets asks.
+- A frame is drawn on the UI thread when something changed, and many changes before it give one frame. It holds the gutter, current line band, find matches, selections, text and IME marks. The carets are a composition visual of their own over the swap chain, one sprite per visible caret, as WinUI's TextBox keeps its caret in an element of its own (`TextBoxView.cpp`, `EnsureCaretElement`). SwapChainPanel draws its swap chain first (`SwapChainPanel.cpp`, `GetChildrenInRenderOrder`), so the panel's child visual lies above it. A frame places the sprites at the positions it laid out, snapped to pixels; a blink, focus or the window's activation only shows or hides the visual, with no frame. On `windows-2025` (run 43277097648) focus and a 5 second blink of 10 toggles presented 11 frames when the frame held the caret, and 0 with the visual. WinUI raises LostFocus on the focused editor when another window takes the activation, and GotFocus when it comes back (run 43614838421), so focus leaving clears the composition and draws only when one was shown. The caret blinks at the system rate, with the system caret width, and stops after the system caret timeout (`SPI_GETCARETTIMEOUT`, 5 seconds when the call fails) with no input, shown, as a Win32 edit control's does. In an inactive window (`InputActivationListener`) it is hidden and nothing blinks, as Win32's About Carets asks.
 - Why a SwapChainPanel and not Composition drawing surfaces: one surface, presented when something changed, and a frame time measured from input to present; the same model as Windows Terminal. Surfaces per line would add their own management for scrolling that this cost does not need.
 - Colors: theme resources for the chrome. In high contrast the system colors, selected text in the highlight text color, and no syntax colors.
 - DPI: the buffer is in pixels and the panel's composition scale shrinks it back. Ctrl+wheel, Ctrl+= and Ctrl+- zoom.
@@ -62,14 +62,45 @@
 | Alt+Up/Down, Shift+Alt+Up/Down, Ctrl+Shift+K | Move, copy, delete lines |
 | Ctrl+/, Tab, Shift+Tab, Ctrl+], Ctrl+[ | Line comment, indent, outdent |
 | Ctrl+F, F3, Shift+F3 | Find, next, previous |
+| Ctrl+Shift+[, Ctrl+Shift+] | Fold the innermost region at the caret, unfold the one on its line |
+| Ctrl+Space | Completion, wherever a name or a keyword can go |
+| Ctrl+Shift+F | Format the selection, or the whole text without one, as on Linux; Query > Filter rows has the same keys only in a table tab, which holds no editor |
 
 - Typing closes brackets and quotes and steps over a closer already there; Enter keeps indentation and opens a bracket pair onto its own lines; Backspace in indentation goes back one tab stop.
 - Mouse: click, Shift+click, double-click word, triple-click line, drag to select with auto-scroll, drag and drop of text (a move inside the editor is one undo step), and a context menu.
+
+### Rows: word wrap and folding
+
+- `VisualRows` in the model maps document lines to the rows on screen. With no wrap and no fold a row is a line and nothing is stored. Drawing, hit testing, carets, scrolling and the UIA geometry all read rows.
+- Word wrap breaks a line by columns, as a monospaced font lays it out (`LineWrap`): a wide East Asian character or an emoji takes two, a combining mark none, a tab runs to the next stop of its row. A row breaks after its last space, else at the edge, and spaces hang past the edge, as Notepad and VS Code wrap. Each row is its own DirectWrite layout, so the drawing breaks where the model does. An edit lays out only its own lines again; a new width lays out every line.
+- A caret at a row's first offset draws at the start of that row. Up and Down move by rows and keep their column; Home and End stay on the row, as a wrapping Windows text box has them, and the first row keeps smart Home.
+- A fold keeps its first line on screen with a chip after its text and hides the lines after it (`FoldSet`). Folding never touches the document, so it makes no undo step. A caret sent into a fold, by find, undo or Go to Error, opens it, and so does text UIA scrolls into view; Left and Right step over a fold. An edit on the hidden lines, or one that splits or joins the first line, opens it.
+- Chevrons in a gutter column show while the pointer is over the gutter, and stay on a folded line, as the macOS editor and VS Code reveal them. A click on a chevron or a chip folds or opens. The menu has Fold, Unfold, Fold All and Unfold All; Fold All folds top-level regions only, as the macOS editor's does.
+
+### Statements, fold regions and bracket pairs
+
+- `ISqlStructure` is what the lexer knows past colors: its statement split and which of its kinds carry structure. `CoreSqlLexer` splits through the core's `tablepro_script_statements`, the split the drivers and Run Statement read, from UTF-16 with no copy into a UniFFI string.
+- `DocumentStructure` reads the statements and the fold regions of one version of the text: statements over more than one line, multi-line block comments, brackets (to the line before the closer, as VS Code folds them) and `BEGIN` or `CASE` to `END`. A text up to 64 KB is read before the frame that needs it; a longer one off the UI thread once typing pauses for 200 ms, mapped through each edit in between. Over 2,000,000 characters there are none, the limit the macOS editor stops at.
+- The band behind the statement the caret is in is the host's to turn on, as the macOS editor's is. It is the statement Run Statement sends: the one the primary caret is in, or the last one before it, and it steps aside for a selection.
+- The bracket beside the caret, before it first as the macOS editor reads it, and its pair get a box, as VS Code and Visual Studio mark them on Windows. Only a bracket the lexer gives as punctuation or an operator pairs, so one inside a string, a comment or a quoted name never does. A text the lexer gives no tokens for, such as a MongoDB query, pairs plain characters.
+
+### Completion and format
+
+- The core decides what completes and how it is written (`DatabaseSession.CompleteAsync`, over `tablepro_core::sql_syntax::completion` and `tablepro_session::completion`, the code the Linux editor runs): the scope at the caret, the catalog reads the object tree shares, keyword case, quoting and ranking. A tab in another of the server's databases reads that database where the catalog lists it as a schema (MySQL), and offers only keywords where it does not. The editor shows the list and inserts the choice.
+- As in the macOS editor, the list opens 50 ms after a letter, and after a space, comma, dot or parenthesis where the place alone takes a name (after FROM, after an alias's dot); Ctrl+Space opens it anywhere. Typing narrows it without reading the catalog again, ranked off the UI thread, and it closes when nothing matches, when the caret leaves the word, on focus loss or on Escape.
+- A WinUI `Popup` over the editor holds a `ListView` whose rows are made once and filled again for each word. It never takes focus, so the editor keeps the keys, the caret and the IME, whose composition closes it. Up and Down stop at the ends, Page Up and Page Down move a page, and Tab and a double click accept. Enter accepts only a row that changes what is typed, once the rows are ranked for the word as typed, as VS Code's smart Enter does; otherwise it is the line break, so typing `FROM Track` and Enter starts a new line; with Vim on, these keys reach the list before Vim, and Escape closes it and leaves Insert mode too. The choice replaces the whole word the caret is in, as on Linux, as one undo step.
+- Each row has the object tree's symbol for its kind, the matched characters in semibold, and the kind or a column's type. The list is in the editor's `ControlledPeers`, and the editor raises a UIA notification for the selected row ("Track, Table, 1 of 3").
+- Format query (the Query menu, the editor's menu, Ctrl+Shift+F) runs the core's formatter off the UI thread (`SqlFormatter`, over `tablepro_core::sql_syntax::format`). A statement whose tokens the formatter would change is kept as typed; a selection is formatted only where the whole text keeps its tokens, so one inside a comment or a string stays as it is. Only the part that changed is replaced, as one undo step; the caret keeps the characters around it, or goes after a formatted selection, as the macOS editor leaves it. Text typed while the format runs wins.
+
+### Color schemes
+
+- The editor half of each built-in macOS theme is a scheme (`windows/scripts/editor-schemes.py` writes `ColorSchemes.Themes.cs` from `apple/TablePro/Resources/Themes`). The host picks one for light and one for dark; none keeps the Windows colors. Names the user wrote, punctuation and quoted names draw as text, as the macOS editor colors them. High contrast draws the system colors whatever the scheme.
 
 ### Accessibility
 
 - A FrameworkElementAutomationPeer of type Edit with TextPattern and TextPattern2: document range, selections, visible ranges, caret range, range from point, bounding rectangles in screen pixels.
 - Character, word and line units move by the model's own rules. Units it does not have fall back to the next larger one: format to word, paragraph to line, page to document.
+- Bounding rectangles come one per row on screen, so a wrapped line gives several and a folded one none, and the visible ranges split where a fold hides lines.
 - Text changes and selection changes raise their UIA events.
 
 ### Interop
@@ -86,8 +117,9 @@
 - Text input, hit testing and accessibility are ours to keep right; RichEditBox's own behaviors no longer come for free.
 - A transitory TSF context gives up reconversion and IME features that read the text around the caret.
 - The composition is drawn at the primary caret only, and committed text goes to every caret.
-- Seams for the later slices: the lexer is an `ISyntaxLexer`; the model's commands and `SqlEditor.HandleKey` are public; `FramePresented` reports every frame. Completion, hover, diagnostics, formatting, Vim and folding are not built.
-- Not yet: word wrap, bracket matching, the current-statement band, regex find, replace.
+- Seams for the later slices: the lexer is an `ISyntaxLexer`; the model's commands and `SqlEditor.HandleKey` are public; `FramePresented` reports every frame. Hover and diagnostics are not built; Vim mode is [0017](0017-vim-mode.md). Completion offers no snippets and no saved query keywords yet.
+- A new width lays out every line again for word wrap, which on a 5 MB script costs a pass over its text per column the width gains or loses.
+- The fold chevrons have no UIA element of their own; the keys and the menu reach every fold.
 
 ## Alternatives considered
 

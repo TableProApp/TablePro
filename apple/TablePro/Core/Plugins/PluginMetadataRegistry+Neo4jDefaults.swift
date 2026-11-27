@@ -23,6 +23,8 @@ extension PluginMetadataRegistry {
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: false,
+                    statementsCanSwitchDatabase: false,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: true,
@@ -39,7 +41,8 @@ extension PluginMetadataRegistry {
                     supportsDropColumn: false,
                     supportsAddIndex: false,
                     supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false
+                    supportsModifyPrimaryKey: false,
+                    dataCommands: neo4jDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "Labels",
@@ -69,6 +72,13 @@ extension PluginMetadataRegistry {
         ]
     }
 }
+
+// Cypher Manual clauses index (Cypher 25) and the Operations Manual's WRITE procedures, Neo4j 4.2 to 2026.x, named as
+// `QueryClassifier.cypherDataCommands` names them.
+private let neo4jDataCommands: Set<String> = [
+    "CREATE", "MERGE", "SET", "REMOVE", "DELETE", "DETACH DELETE", "FOREACH", "INSERT",
+    "db.create.setnodevectorproperty", "db.create.setrelationshipvectorproperty", "db.create.setvectorproperty"
+]
 
 private let neo4jColumnTypes: [String: [String]] = [
     "Scalar": ["STRING", "INTEGER", "FLOAT", "BOOLEAN", "BYTES"],

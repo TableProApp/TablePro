@@ -6,10 +6,9 @@
 import Foundation
 import os
 
-// Cancelling a Swift task does not cancel the GCD block that runs a hop's `SSHChannelRelay`, so
-// teardown wakes its descriptors and waits here for its last libssh2 call before freeing the channel
-// or session. The stop action and the relay's final close share one lock, so a late stop cannot
-// `shutdown` a descriptor number the kernel already handed to someone else.
+// A hop's relay runs on its session's queue, outside any Swift task, so teardown stops it and waits
+// here for its last libssh2 call before freeing the channel or session. The stop action and the
+// finish share one lock, so a stop that comes after the finish does nothing.
 public final class SSHJumpRelayFence: @unchecked Sendable {
     private struct State {
         var stopAction: (@Sendable () -> Void)?

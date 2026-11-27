@@ -15,5 +15,5 @@ mod tool_arguments;
 
 pub use dispatch::{Dispatch, classify};
 pub use exit::Exit;
-pub use host::{Host, HostError, Terminal};
+pub use host::{Host, HostError, Places, Terminal};
 pub use runner::run;

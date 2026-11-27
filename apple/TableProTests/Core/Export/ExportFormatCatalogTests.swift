@@ -87,7 +87,7 @@ struct ExportFormatCatalogTests {
     /// unknown format at the end of the list and showed no description at all.
     @Test("Parquet is ordered and described like the formats that shipped before it")
     func parquetIsCurated() {
-        let sorted = ExportFormatCatalog.sorted([StubParquet(), StubCSV(), StubSQL()])
+        let sorted = ExportFormatOffer.sorted([StubParquet(), StubCSV(), StubSQL()])
         #expect(ids(sorted) == ["csv", "sql", "parquet"])
 
         let description = ExportFormatCatalog.description(for: StubParquet())
@@ -99,7 +99,7 @@ struct ExportFormatCatalogTests {
     /// land somewhere stable rather than tying with every other unknown one.
     @Test("An unknown format sorts after the curated ones, by display name")
     func unknownFormatsSortLast() {
-        let sorted = ExportFormatCatalog.sorted([StubZebra(), StubAardvark(), StubSQL()])
+        let sorted = ExportFormatOffer.sorted([StubZebra(), StubAardvark(), StubSQL()])
         #expect(ids(sorted) == ["sql", "aardvark", "zebra"])
     }
 
@@ -117,9 +117,9 @@ struct ExportFormatCatalogTests {
     @Test("Sorting does not depend on the order it is handed")
     func sortIsOrderIndependent() {
         let forwards = ids(
-            ExportFormatCatalog.sorted([StubCSV(), StubSQL(), StubParquet(), StubZebra()]))
+            ExportFormatOffer.sorted([StubCSV(), StubSQL(), StubParquet(), StubZebra()]))
         let backwards = ids(
-            ExportFormatCatalog.sorted([StubZebra(), StubParquet(), StubSQL(), StubCSV()]))
+            ExportFormatOffer.sorted([StubZebra(), StubParquet(), StubSQL(), StubCSV()]))
         #expect(forwards == backwards)
         #expect(forwards == ["csv", "sql", "parquet", "zebra"])
     }

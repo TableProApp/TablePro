@@ -182,12 +182,17 @@ fn record(name: &str, driver_id: &str, database: &str) -> ConnectionRecord {
             server_name: None,
         },
         ssh: None,
-        safe_mode: SafeModeTag::Off,
+        safe_mode: SafeModeTag::Silent,
         query_timeout_secs: None,
         color: None,
         group_id: None,
         last_opened_ms: None,
         tags: Vec::new(),
+        ai_policy: None,
+        external_access: None,
+        project_id: None,
+        icon: None,
+        order: 0,
     }
 }
 
@@ -204,7 +209,7 @@ async fn sqlite_file(core: &Core, path: &Path) {
         )
         .await
         .unwrap();
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     struct Quiet;
     impl tablepro_ffi::RunListener for Quiet {
         fn events_pending(&self) {}
@@ -225,9 +230,9 @@ async fn a_saved_connection_comes_back_in_its_group_and_among_the_favourites() {
     let core = core(dir.path(), MemorySecrets::default());
     let library = core.library().unwrap();
 
-    let group = library.create_group("Work".to_owned(), None).await.unwrap();
+    let group = library.create_group("Work".to_owned(), None, None).await.unwrap();
     let nested = library
-        .create_group("Staging".to_owned(), Some(group.id.clone()))
+        .create_group("Staging".to_owned(), Some(group.id.clone()), None)
         .await
         .unwrap();
     let mut shop = record("shop", "postgres", "shop");
@@ -243,6 +248,42 @@ async fn a_saved_connection_comes_back_in_its_group_and_among_the_favourites() {
     assert_eq!(snapshot.connections.len(), 1);
     assert_eq!(snapshot.connections[0].group_id.as_deref(), Some(nested.id.as_str()));
     assert_eq!(snapshot.favorites, [saved.id]);
+}
+
+#[tokio::test]
+async fn a_groups_colour_is_set_taken_off_and_an_unknown_one_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let group = library.create_group("Work".to_owned(), None, None).await.unwrap();
+
+    library
+        .set_group_color(group.id.clone(), Some("red".to_owned()))
+        .await
+        .unwrap();
+    let red = library.snapshot().await.unwrap().groups[0].color.clone();
+    let refused = library
+        .set_group_color(group.id.clone(), Some("mauve".to_owned()))
+        .await
+        .unwrap_err();
+    library.set_group_color(group.id.clone(), None).await.unwrap();
+    let none = library.snapshot().await.unwrap().groups[0].color.clone();
+
+    assert_eq!(red.as_deref(), Some("red"));
+    assert_eq!(refused.code(), "library.unknown_color");
+    assert_eq!(none, None);
+}
+
+#[test]
+fn jump_hosts_are_checked_as_a_connect_reads_them() {
+    assert!(tablepro_ffi::check_jump_hosts(String::new()).is_ok());
+    assert!(tablepro_ffi::check_jump_hosts("ops@jump1:2200, [fd00::1], bastion".to_owned()).is_ok());
+
+    let empty_hop = tablepro_ffi::check_jump_hosts("jump1,,jump2".to_owned()).unwrap_err();
+    let bad_port = tablepro_ffi::check_jump_hosts("jump1:ssh".to_owned()).unwrap_err();
+
+    assert_eq!(empty_hop.code(), "ssh.invalid_destination");
+    assert_eq!(bad_port.code(), "ssh.invalid_destination");
 }
 
 #[tokio::test]
@@ -545,6 +586,7 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
     let session = core
         .connect_saved(
             saved.id.clone(),
+            None,
             ConnectionSecrets::default(),
             ConnectionSecrets::default(),
             None,
@@ -567,6 +609,7 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
             None,
             100,
             0,
+            None,
             Box::new(Quiet),
             None,
         )
@@ -637,10 +680,10 @@ async fn a_typed_secret_is_kept_once_its_connect_logs_in_and_not_when_it_fails()
         ..ConnectionSecrets::default()
     };
 
-    core.connect_saved(people.id.clone(), typed(), typed(), None, None)
+    core.connect_saved(people.id.clone(), None, typed(), typed(), None, None)
         .await
         .unwrap();
-    core.connect_saved(shop.id.clone(), typed(), typed(), None, None)
+    core.connect_saved(shop.id.clone(), None, typed(), typed(), None, None)
         .await
         .unwrap_err();
 
@@ -666,6 +709,7 @@ async fn a_network_login_with_no_saved_password_says_so() {
     let error = core
         .connect_saved(
             saved.id,
+            None,
             ConnectionSecrets::default(),
             ConnectionSecrets::default(),
             None,
@@ -694,6 +738,7 @@ async fn a_password_typed_at_connect_is_used_when_none_is_saved() {
     let error = core
         .connect_saved(
             saved.id,
+            None,
             ConnectionSecrets {
                 database_password: Some(SecretString::from("typed")),
                 ..ConnectionSecrets::default()
@@ -756,6 +801,8 @@ fn through_ssh(port: u16) -> ConnectionRecord {
         username: Some("tester".to_owned()),
         jump_hosts: Vec::new(),
         auth: SshAuthTag::Password,
+        enabled: None,
+        options: None,
     });
     shop
 }
@@ -826,6 +873,7 @@ async fn an_empty_database_password_survives_a_separately_stored_ssh_password() 
         let error = core
             .connect_saved(
                 saved.id,
+                None,
                 ConnectionSecrets {
                     database_password: Some(SecretString::from("")),
                     ..ConnectionSecrets::default()
@@ -881,14 +929,14 @@ async fn a_tag_goes_on_several_connections_and_a_rename_reaches_all_of_them() {
         .await
         .unwrap();
     library
-        .update_tag(tag.id.clone(), "production".to_owned(), "orange".to_owned())
+        .update_tag(tag.id.clone(), "production".to_owned(), Some("orange".to_owned()))
         .await
         .unwrap();
     let snapshot = library.snapshot().await.unwrap();
 
     assert_eq!(snapshot.tags.len(), 1);
     assert_eq!(snapshot.tags[0].name, "production");
-    assert_eq!(snapshot.tags[0].color, "orange");
+    assert_eq!(snapshot.tags[0].color.as_deref(), Some("orange"));
     assert!(snapshot.connections.iter().all(|saved| saved.tags == [tag.id.clone()]));
 
     library
@@ -996,7 +1044,7 @@ async fn a_drop_places_connections_before_another_and_reorders_favourites() {
     let dir = tempfile::tempdir().unwrap();
     let core = core(dir.path(), MemorySecrets::default());
     let library = core.library().unwrap();
-    let group = library.create_group("Work".to_owned(), None).await.unwrap();
+    let group = library.create_group("Work".to_owned(), None, None).await.unwrap();
     let mut ids = Vec::new();
     for name in ["a", "b", "c"] {
         let saved = library
@@ -1046,8 +1094,8 @@ async fn a_group_dropped_on_another_goes_inside_it_but_not_inside_itself() {
     let dir = tempfile::tempdir().unwrap();
     let core = core(dir.path(), MemorySecrets::default());
     let library = core.library().unwrap();
-    let work = library.create_group("Work".to_owned(), None).await.unwrap();
-    let staging = library.create_group("Staging".to_owned(), None).await.unwrap();
+    let work = library.create_group("Work".to_owned(), None, None).await.unwrap();
+    let staging = library.create_group("Staging".to_owned(), None, None).await.unwrap();
 
     library
         .move_groups(vec![staging.id.clone()], Some(work.id.clone()), None)

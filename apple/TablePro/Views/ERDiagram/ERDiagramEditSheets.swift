@@ -147,34 +147,25 @@ struct ERDiagramForeignKeySheet: View {
         .listStyle(.bordered(alternatesRowBackgrounds: false))
         .frame(height: listHeight)
         .onDeleteCommand { removeSelection() }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                Divider()
-                HStack(spacing: 0) {
-                    AddRemoveControlGroup(
-                        addLabel: String(localized: "Add Column Pair"),
-                        removeLabel: String(localized: "Remove Column Pair"),
-                        canRemove: canRemoveSelection,
-                        addIdentifier: "er-diagram-foreign-key-add-pair",
-                        removeIdentifier: "er-diagram-foreign-key-remove-pair",
-                        onAdd: addPair,
-                        onRemove: removeSelection
-                    )
-                    Spacer()
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-            }
-            .background(.bar)
+        .listBar {
+            AddRemoveControlGroup(
+                addLabel: String(localized: "Add Column Pair"),
+                removeLabel: String(localized: "Remove Column Pair"),
+                canRemove: canRemoveSelection,
+                addIdentifier: "er-diagram-foreign-key-add-pair",
+                removeIdentifier: "er-diagram-foreign-key-remove-pair",
+                onAdd: addPair,
+                onRemove: removeSelection
+            )
         }
     }
 
-    private let rowHeight: CGFloat = 26
-    private let buttonBarHeight: CGFloat = 32
+    // A row of two pop-up buttons is 32pt on macOS 27, taller than a text field row.
+    private let rowHeight: CGFloat = 32
 
     // No cap: a List in a grouped Form never scrolls, so it shows every pair and the Form scrolls.
     private var listHeight: CGFloat {
-        CGFloat(max(draft.pairs.count, 2)) * rowHeight + buttonBarHeight + 8
+        CGFloat(max(draft.pairs.count, 2)) * rowHeight + ListBarMetrics.height + 8
     }
 
     private var canRemoveSelection: Bool {

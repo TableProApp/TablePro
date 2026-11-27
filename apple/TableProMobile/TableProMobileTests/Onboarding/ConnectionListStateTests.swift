@@ -9,6 +9,7 @@ struct ConnectionListStateTests {
     private func state(
         loadStatus: LoadStatus = .ready,
         hasItems: Bool = false,
+        activeProject: Bool = false,
         syncEnabled: Bool = false,
         status: SyncStatus = .idle,
         firstSyncDone: Bool = false
@@ -16,6 +17,7 @@ struct ConnectionListStateTests {
         ConnectionListState.resolve(
             loadStatus: loadStatus,
             hasLibraryItems: hasItems,
+            hasActiveProject: activeProject,
             isSyncEnabled: syncEnabled,
             syncStatus: status,
             hasCompletedFirstSync: firstSyncDone
@@ -31,6 +33,21 @@ struct ConnectionListStateTests {
     @Test("An empty library with sync off offers the local actions")
     func emptyLocal() {
         #expect(state() == .empty(syncsWithICloud: false))
+    }
+
+    @Test("An empty library with an active project shows the project's list, not the first run")
+    func emptyLibraryInsideProject() {
+        #expect(state(activeProject: true) == .content(syncProblem: nil))
+        #expect(state(activeProject: true, syncEnabled: true, status: .syncing) == .content(syncProblem: nil))
+        #expect(
+            state(activeProject: true, syncEnabled: true, status: .error(.offline)) == .content(syncProblem: .offline)
+        )
+    }
+
+    @Test("A library that is still loading or failed to load ignores the active project")
+    func loadStatusWinsOverProject() {
+        #expect(state(loadStatus: .loading, activeProject: true) == .loading)
+        #expect(state(loadStatus: .failed, activeProject: true) == .failed)
     }
 
     @Test("The first iCloud pull shows progress instead of an empty list")

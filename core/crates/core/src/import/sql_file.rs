@@ -49,13 +49,16 @@ pub struct SqlFileReader {
     line: u64,
     first: bool,
     failed: bool,
+    /// The error that ended the reading, given once the units read before
+    /// it are taken.
+    error: Option<SqlFileError>,
     /// Set by whoever stopped taking units, so a long run of lines that
     /// make none, such as a refused COPY block, is not read to its end.
     stop: Arc<AtomicBool>,
 }
 
 impl SqlFileReader {
-    pub fn new(file: Box<dyn Read + Send>, grammar: SqlGrammar, copy_overriding: Option<&str>) -> Self {
+    pub fn new(file: Box<dyn Read + Send>, grammar: SqlGrammar) -> Self {
         let consumed = Arc::new(AtomicU64::new(0));
         let counted = Counted {
             inner: file,
@@ -72,19 +75,18 @@ impl SqlFileReader {
         };
         Self {
             source,
-            reader: Some(ScriptReader::new(grammar).with_copy_overriding(copy_overriding)),
+            reader: Some(ScriptReader::new(grammar)),
             units: VecDeque::new(),
             consumed,
             partial: Vec::new(),
             line: 1,
             first: true,
             failed: false,
+            error: None,
             stop: Arc::new(AtomicBool::new(false)),
         }
     }
 
-    /// The bytes of the file read so far, shared so another thread can
-    /// show progress.
     /// How the session reads a string as the file starts.
     pub fn with_settings(mut self, settings: LexicalSettings) -> Self {
         self.reader = self.reader.map(|reader| reader.with_settings(settings));
@@ -96,6 +98,8 @@ impl SqlFileReader {
         Arc::clone(&self.stop)
     }
 
+    /// The bytes of the file read so far, shared so another thread can
+    /// show progress.
     pub fn consumed(&self) -> Arc<AtomicU64> {
         Arc::clone(&self.consumed)
     }
@@ -106,11 +110,15 @@ impl SqlFileReader {
             match self.source.read(&mut bytes) {
                 Ok(read) => break read,
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(error) => return Err(SqlFileError::Read(error.to_string())),
+                Err(error) => {
+                    self.plan_held()?;
+                    return Err(SqlFileError::Read(error.to_string()));
+                }
             }
         };
         if read == 0 {
             if !self.partial.is_empty() {
+                self.plan_held()?;
                 return Err(SqlFileError::NotUtf8 { line: self.line });
             }
             let Some(reader) = self.reader.take() else {
@@ -137,6 +145,10 @@ impl SqlFileReader {
             Err(error) => {
                 let before = chunk.get(..error.valid_up_to()).unwrap_or_default();
                 let line = self.line + before.iter().filter(|byte| **byte == b'\n').count() as u64;
+                // The statements that end before the byte still run.
+                if let (Ok(text), Some(reader)) = (std::str::from_utf8(before), self.reader.as_mut()) {
+                    self.units.extend(reader.push_last(text)?);
+                }
                 return Err(SqlFileError::NotUtf8 { line });
             }
         };
@@ -151,6 +163,17 @@ impl SqlFileReader {
     }
 }
 
+impl SqlFileReader {
+    /// Plan what the reader holds now, so the statements read whole before
+    /// the file stops being readable still run.
+    fn plan_held(&mut self) -> Result<(), SqlFileError> {
+        if let Some(reader) = self.reader.as_mut() {
+            self.units.extend(reader.push_last("")?);
+        }
+        Ok(())
+    }
+}
+
 impl Iterator for SqlFileReader {
     type Item = Result<ScriptUnit, SqlFileError>;
 
@@ -158,6 +181,9 @@ impl Iterator for SqlFileReader {
         loop {
             if let Some(unit) = self.units.pop_front() {
                 return Some(Ok(unit));
+            }
+            if let Some(error) = self.error.take() {
+                return Some(Err(error));
             }
             if self.failed || self.stop.load(Ordering::Relaxed) {
                 return None;
@@ -167,7 +193,7 @@ impl Iterator for SqlFileReader {
                 Ok(false) => return None,
                 Err(error) => {
                     self.failed = true;
-                    return Some(Err(error));
+                    self.error = Some(error);
                 }
             }
         }
@@ -197,7 +223,7 @@ mod tests {
     use super::*;
 
     fn units(bytes: Vec<u8>) -> Vec<Result<ScriptUnit, SqlFileError>> {
-        SqlFileReader::new(Box::new(std::io::Cursor::new(bytes)), SqlGrammar::Sqlite, None).collect()
+        SqlFileReader::new(Box::new(std::io::Cursor::new(bytes)), SqlGrammar::Sqlite).collect()
     }
 
     fn texts(bytes: Vec<u8>) -> Vec<String> {
@@ -231,7 +257,92 @@ mod tests {
     fn bytes_that_are_not_utf8_name_their_line() {
         let read = units(b"SELECT 1;\nSELECT 2;\nSELECT X'00', '\xff';\n".to_vec());
 
+        let ran: Vec<&str> = read
+            .iter()
+            .filter_map(|unit| unit.as_ref().ok())
+            .map(|unit| unit.text.as_str())
+            .collect();
+        assert_eq!(ran, ["SELECT 1", "SELECT 2"], "the statements before the byte");
         assert_eq!(read.last(), Some(&Err(SqlFileError::NotUtf8 { line: 3 })));
+    }
+
+    #[test]
+    fn a_copy_row_that_is_not_utf8_names_its_line() {
+        let file = b"COPY t (a) FROM stdin;\nok\n\xff\n\\.\n".to_vec();
+
+        let read: Vec<Result<ScriptUnit, SqlFileError>> =
+            SqlFileReader::new(Box::new(std::io::Cursor::new(file)), SqlGrammar::PostgreSql).collect();
+
+        assert_eq!(read.last(), Some(&Err(SqlFileError::NotUtf8 { line: 3 })));
+    }
+
+    /// Gives at most `chunk` bytes a read, as a pipe can, and then fails
+    /// when `fails`.
+    struct Trickle {
+        bytes: Vec<u8>,
+        at: usize,
+        chunk: usize,
+        fails: bool,
+    }
+
+    impl Trickle {
+        fn new(bytes: &[u8], fails: bool) -> Self {
+            Self {
+                bytes: bytes.to_vec(),
+                at: 0,
+                chunk: 20,
+                fails,
+            }
+        }
+    }
+
+    impl Read for Trickle {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            let rest = self.bytes.get(self.at..).unwrap_or_default();
+            if rest.is_empty() && self.fails {
+                return Err(std::io::Error::other("the copy was cut off"));
+            }
+            let read = rest.len().min(self.chunk).min(buffer.len());
+            buffer[..read].copy_from_slice(&rest[..read]);
+            self.at += read;
+            Ok(read)
+        }
+    }
+
+    fn read_trickle(file: Trickle) -> (Vec<String>, Option<SqlFileError>) {
+        let read: Vec<Result<ScriptUnit, SqlFileError>> =
+            SqlFileReader::new(Box::new(file), SqlGrammar::Sqlite).collect();
+        let ran = read
+            .iter()
+            .filter_map(|unit| unit.as_ref().ok())
+            .map(|unit| unit.text.clone())
+            .collect();
+        (ran, read.last().and_then(|unit| unit.clone().err()))
+    }
+
+    #[test]
+    fn the_statements_read_whole_before_the_file_stops_being_readable_run() {
+        let cases = [
+            (
+                Trickle::new(b"SELECT 1;\nSELECT 2;\nSELECT 3;\n'\xff';\n", false),
+                SqlFileError::NotUtf8 { line: 4 },
+            ),
+            (
+                Trickle::new(b"SELECT 1;\nSELECT 2;\nSELECT 3;\n\xc3", false),
+                SqlFileError::NotUtf8 { line: 4 },
+            ),
+            (
+                Trickle::new(b"SELECT 1;\nSELECT 2;\nSELECT 3;\n", true),
+                SqlFileError::Read("the copy was cut off".to_owned()),
+            ),
+        ];
+
+        for (file, error) in cases {
+            let (ran, last) = read_trickle(file);
+
+            assert_eq!(ran, ["SELECT 1", "SELECT 2", "SELECT 3"], "{error:?}");
+            assert_eq!(last, Some(error));
+        }
     }
 
     #[test]

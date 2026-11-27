@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use gtk4::{AccessibleProperty, AccessibleState};
 use tablepro_core::credentials::{CredentialInteraction, SecretKind, SecretVault};
-use tablepro_core::{DriverError, FileOpenMode, TlsFailure, TlsMode};
+use tablepro_core::{AiPolicy, DriverError, FileOpenMode, TlsFailure, TlsMode};
 use tablepro_session::RequestTarget;
 use tablepro_session::fakes::{FakeConnector, FakeEstablish};
 use tablepro_test_support::ConnectionScript;
@@ -32,6 +32,7 @@ struct Options {
     mode: ConnectDialogMode,
     tags: Vec<tablepro_storage::ConnectionTag>,
     ai_assistant: bool,
+    new_project: Option<uuid::Uuid>,
 }
 
 impl Default for Options {
@@ -45,6 +46,7 @@ impl Default for Options {
             mode: ConnectDialogMode::Create,
             tags: Vec::new(),
             ai_assistant: false,
+            new_project: None,
         }
     }
 }
@@ -96,6 +98,7 @@ fn open(options: Options) -> Harness {
         interaction: CredentialInteraction::Unattended,
         tasks: runtime.tasks(),
         saved_connections: Arc::from(options.saved),
+        new_project: options.new_project,
         tags: Arc::from(options.tags),
         remembered_driver: options.remembered.to_owned(),
         ai_assistant: options.ai_assistant,
@@ -492,6 +495,51 @@ fn new_database_sets_create_new_endpoint() {
     assert!(harness.dialog.imp().connect_button.is_sensitive());
 }
 
+// The save chooser asked only about a file there when it closed; a free name must not replace one made later.
+#[gtk4::test]
+fn a_new_name_replaces_only_a_file_the_chooser_asked_about() {
+    let harness = dialog();
+    select(&harness.dialog, "sqlite");
+    let root = tempfile::tempdir().expect("tempdir");
+    let there = root.path().join("there.sqlite3");
+    std::fs::write(&there, b"").expect("a file");
+    let free = root.path().join("free.sqlite3");
+    let modes = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+
+    let found = modes.clone();
+    let asked = harness.dialog.imp().file_row.get();
+    glib::spawn_future_local(async move {
+        for path in [there, free] {
+            let mode = asked.new_file_mode(&path).await;
+            found.borrow_mut().push(mode);
+        }
+    });
+    wait_until(WAIT, || modes.borrow().len() == 2).expect("both answers");
+
+    assert_eq!(*modes.borrow(), [FileOpenMode::Replace, FileOpenMode::CreateNew]);
+}
+
+#[gtk4::test]
+fn a_tested_new_file_is_opened_by_connect() {
+    let harness = open(Options {
+        connector: FakeConnector::new([FakeEstablish::Connect(ConnectionScript::default())]),
+        ..Options::default()
+    });
+    select(&harness.dialog, "sqlite");
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("tested.sqlite3");
+    let imp = harness.dialog.imp();
+    imp.file_row.adopt_choice(path.clone(), FileOpenMode::CreateNew);
+
+    imp.test_button.emit_clicked();
+    wait_until(WAIT, || !imp.toasts.borrow().is_empty()).expect("the test result");
+
+    assert_eq!(imp.toasts.borrow().as_slice(), ["Connection works"]);
+    let file = imp.file_row.endpoint().expect("a file");
+    assert_eq!(file.path(), path);
+    assert_eq!(file.mode(), FileOpenMode::OpenExisting);
+}
+
 #[gtk4::test]
 fn mysql_requires_database() {
     let harness = dialog();
@@ -518,7 +566,7 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
             .get(driver_id)
             .map(|driver| driver.display_name().to_owned())
             .unwrap_or_default();
-        for (index, level) in SafeModeLevel::ALL.into_iter().enumerate() {
+        for (index, level) in SafeModeLevel::ENFORCED.into_iter().enumerate() {
             imp.safe_mode_row.set_selected(index as u32);
 
             assert_eq!(harness.dialog.form().safe_mode, level, "{driver_id}");
@@ -534,7 +582,7 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
 #[gtk4::test]
 fn an_edit_opens_on_the_saved_level_and_keeps_it() {
     let saved = SavedConnection {
-        safe_mode: SafeModeLevel::ConfirmWrites,
+        safe_mode: SafeModeLevel::Alert,
         ..shop()
     };
     let harness = open(Options {
@@ -546,7 +594,7 @@ fn an_edit_opens_on_the_saved_level_and_keeps_it() {
     let imp = harness.dialog.imp();
 
     assert_eq!(imp.safe_mode_row.selected(), 1);
-    assert_eq!(harness.dialog.form().safe_mode, SafeModeLevel::ConfirmWrites);
+    assert_eq!(harness.dialog.form().safe_mode, SafeModeLevel::Alert);
 }
 
 #[gtk4::test]
@@ -608,7 +656,7 @@ fn each_ai_policy_says_what_it_sends() {
     let imp = harness.dialog.imp();
 
     assert_eq!(harness.dialog.form().ai_policy, AiPolicy::Ask);
-    for (index, policy) in AiPolicy::ALL.into_iter().enumerate() {
+    for (index, policy) in crate::ui::ai_policy::OFFERED.into_iter().enumerate() {
         imp.ai_policy_row.set_selected(index as u32);
 
         assert_eq!(harness.dialog.form().ai_policy, policy);
@@ -827,6 +875,48 @@ fn a_reopened_entry_keeps_its_id_after_the_host_changes() {
 }
 
 #[gtk4::test]
+fn a_new_connection_lands_in_the_active_project_and_a_reopened_one_keeps_its_own() {
+    let (active, other) = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+    let first = open(Options {
+        new_project: Some(active),
+        ..Options::default()
+    });
+    let _first_window = present(&first.dialog);
+    fill_network(&first.dialog);
+    let log = SignalLog::connect(&first.dialog, "submitted", |values| {
+        values[1].get::<ConnectSubmission>().expect("a submission")
+    });
+    without_criticals(|| first.dialog.imp().connect_button.emit_clicked());
+    let saved = log.take().remove(0).pending_save.connection;
+    drop(log);
+    assert_eq!(saved.project_id, Some(active));
+
+    // Reopened after a failed connect while another project is active.
+    let reopened = open(Options {
+        saved: vec![saved.clone()],
+        prefill: Some(ConnectPrefill {
+            connection: saved.clone(),
+            password: None,
+        }),
+        new_project: Some(other),
+        ..Options::default()
+    });
+    let _reopened_window = present(&reopened.dialog);
+    let log = SignalLog::connect(&reopened.dialog, "submitted", |values| {
+        values[1].get::<ConnectSubmission>().expect("a submission")
+    });
+    without_criticals(|| reopened.dialog.imp().connect_button.emit_clicked());
+
+    let edited = log.take().remove(0).pending_save;
+    assert!(!edited.is_new);
+    assert_eq!(
+        edited.connection.project_id,
+        Some(active),
+        "an edit moved the connection"
+    );
+}
+
+#[gtk4::test]
 fn a_connect_from_new_connection_never_writes_over_a_saved_entry() {
     let saved = SavedConnection {
         safe_mode: tablepro_core::SafeModeLevel::ReadOnly,
@@ -849,7 +939,7 @@ fn a_connect_from_new_connection_never_writes_over_a_saved_entry() {
     assert!(submitted.is_new, "the connect replaced the saved entry");
     assert_ne!(submitted.connection.id, saved.id);
     assert_eq!(submitted.connection.name, "Shop RW");
-    assert_eq!(submitted.connection.safe_mode, SafeModeLevel::Off);
+    assert_eq!(submitted.connection.safe_mode, SafeModeLevel::Silent);
 }
 
 #[gtk4::test]
@@ -1359,7 +1449,12 @@ fn the_tags_and_icon_picked_go_with_the_connection_a_connect_saves() {
 
     let saved = submissions.take().remove(0).pending_save.connection;
     assert_eq!(saved.tags, [production.id]);
-    assert_eq!(saved.icon, Some(tablepro_storage::ConnectionIcon::Shield));
+    assert_eq!(
+        saved.icon,
+        Some(tablepro_storage::LibraryIcon::Named(
+            tablepro_storage::ConnectionIcon::Shield
+        ))
+    );
 }
 
 #[gtk4::test]
@@ -1367,7 +1462,9 @@ fn an_edit_opens_on_its_tags_and_icon_and_saves_what_changed() {
     let (acme, production) = (tag("acme"), tag("production"));
     let saved = SavedConnection {
         tags: vec![acme.id],
-        icon: Some(tablepro_storage::ConnectionIcon::Cloud),
+        icon: Some(tablepro_storage::LibraryIcon::Named(
+            tablepro_storage::ConnectionIcon::Cloud,
+        )),
         ..shop()
     };
     let harness = open(Options {
@@ -1657,4 +1754,24 @@ fn a_socket_the_url_names_is_kept_and_no_user_is_the_desktop_user() {
     let user = glib::user_name();
     assert_eq!(imp.username_row.text(), user.to_string_lossy().as_ref());
     assert!(imp.connect_button.is_sensitive());
+}
+
+#[test]
+fn a_saved_form_keeps_what_the_form_does_not_show() {
+    let mut saved = shop();
+    saved.details.startup_sql = Some("SET search_path TO app".to_owned());
+    saved.device.local_only = true;
+    saved.unknown.insert(
+        "project_id".to_owned(),
+        serde_json::json!("CBCAF15E-97D4-4B75-8D5D-01D586CADC97"),
+    );
+    let form = ConnectForm::from_saved(&saved, caps_of("postgres"));
+    let valid = form.validate(caps_of("postgres")).expect("valid");
+
+    let edited = form.saved_connection(caps_of("postgres"), &valid, saved.id, Some(&saved));
+
+    assert_eq!(
+        (edited.details, edited.device, edited.unknown),
+        (saved.details, saved.device, saved.unknown)
+    );
 }

@@ -32,9 +32,14 @@ final class ConnectionStorage {
     private(set) var fileReadCount = 0
     private(set) var fileWriteCount = 0
 
-    /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
-    /// something else, which is the signal to refuse to run a connection's password source.
+    // False once something else edited the file, so a connection's password source does not run.
     var storeIsTrusted: Bool { file.isTrusted }
+
+    // Records this build cannot read; what belongs to them is kept. Loads first, as `isLibraryUnreadable` does.
+    var unreadableConnectionIds: Set<UUID> {
+        _ = loadConnections()
+        return file.unreadableIds
+    }
 
     private let file: IntegrityStampedFileStore<StoredConnection>
     private var fileURL: URL { file.fileURL }
@@ -103,6 +108,11 @@ final class ConnectionStorage {
         let connections = storedConnections.map { stored in
             stored.toConnection()
         }
+        syncTracker.recordConnectionStanding(
+            syncing: Set(connections.filter(\.participatesInSync).map(\.id)),
+            keptOff: Set(connections.filter { !$0.participatesInSync }.map(\.id)),
+            unreadable: file.unreadableIds
+        )
 
         let migrated = Self.numberingUnrankedGroups(connections)
         if migrated != connections, storeIsTrusted {
@@ -116,32 +126,49 @@ final class ConnectionStorage {
         loadConnections().first { $0.id == id }
     }
 
-    /// Loads first, so the answer does not depend on whether anything has read the file yet.
+    // Loads first, so the answer does not depend on whether anything has read the file yet.
     var isLibraryUnreadable: Bool {
         _ = loadConnections()
         return lastLoadFailed
     }
 
-    /// Callers that mutate dependent state (sync tracker, keychain entries) must abort on `false`:
-    /// continuing can delete a password while the record stays on disk. Refuses while the file on
-    /// disk could not be read, because every write replaces the whole list.
-    /// `byUser` false keeps a store that failed its integrity check untrusted, since a write the
-    /// app makes on its own (a sync pull, a route a connect recorded) is not the user re-saving it.
+    // False refuses dependent writes (sync marks, keychain items), or a password goes while its record stays.
+    // `byUser` false is a write the app makes itself, which never clears a failed integrity check.
+    // `removingUnreadable` drops records this build cannot read, by id, as a deletion another device made does.
     @discardableResult
-    func saveConnections(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
+    func saveConnections(
+        _ connections: [DatabaseConnection],
+        byUser: Bool = true,
+        removingSecrets: Bool = false,
+        removingUnreadable removedIds: Set<UUID> = []
+    ) -> Bool {
         let previous = loadConnections()
         guard !lastLoadFailed else {
             Self.logger.error("Refused to save over connections.json: it could not be read")
             return false
         }
-        guard persist(connections, byUser: byUser) else { return false }
+        guard persist(connections, byUser: byUser, removingSecrets: removingSecrets, removingUnreadable: removedIds) else {
+            return false
+        }
         moveSecretsWhoseScopeChanged(from: previous, to: connections)
         return true
     }
 
     @discardableResult
-    private func persist(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
-        guard file.save(connections.map { StoredConnection(from: $0) }, byUser: byUser) else { return false }
+    private func persist(
+        _ connections: [DatabaseConnection],
+        byUser: Bool = true,
+        removingSecrets: Bool = false,
+        removingUnreadable removedIds: Set<UUID> = []
+    ) -> Bool {
+        guard file.save(
+            connections.map { StoredConnection(from: $0) },
+            byUser: byUser,
+            removingSecrets: removingSecrets,
+            removingUnreadable: removedIds
+        ) else {
+            return false
+        }
         fileWriteCount += 1
         cachedConnections = nil
         return true
@@ -207,7 +234,8 @@ final class ConnectionStorage {
             replaced.append(updated)
         }
 
-        var knownIds = Set(connections.map(\.id))
+        // A record this build cannot read keeps its id, so the import leaves it alone.
+        var knownIds = Set(connections.map(\.id)).union(file.unreadableIds)
         var added: [DatabaseConnection] = []
         for incoming in adding {
             guard knownIds.insert(incoming.id).inserted else { continue }
@@ -325,6 +353,28 @@ final class ConnectionStorage {
         return true
     }
 
+    // For a group or project that goes, by the user or by a pull. Every connection is offered, a Local only
+    // one too, and the caller announces the change. False only when the write failed.
+    @discardableResult
+    func rewriteMembership(byUser: Bool, _ rewrite: (inout DatabaseConnection) -> Void) -> Bool {
+        var connections = loadConnections()
+        var changed: [DatabaseConnection] = []
+        for index in connections.indices {
+            let original = connections[index]
+            rewrite(&connections[index])
+            if connections[index] != original {
+                changed.append(connections[index])
+            }
+        }
+        guard !changed.isEmpty else { return true }
+        guard saveConnections(connections, byUser: byUser) else {
+            Self.logger.error("Aborted rewriteMembership: persistence failed for \(changed.count, privacy: .public) connection(s)")
+            return false
+        }
+        syncTracker.markDirty(.connection, ids: changed.filter(\.participatesInSync).map { $0.id.uuidString })
+        return true
+    }
+
     var sshRoutePublisherId: UUID {
         if let stored = defaults.string(forKey: Self.sshRoutePublisherKey).flatMap(UUID.init(uuidString:)) {
             return stored
@@ -356,9 +406,10 @@ final class ConnectionStorage {
         _ ids: [UUID],
         toGroup groupId: UUID?,
         before: UUID?,
-        validGroupIds: Set<UUID>
+        groups: [ConnectionGroup]
     ) -> Bool {
         let connections = loadConnections()
+        let validGroupIds = Set(groups.map(\.id))
         var seen: Set<UUID> = []
         let moving = ids.filter { id in connections.contains { $0.id == id } && seen.insert(id).inserted }
         guard !moving.isEmpty else { return true }
@@ -383,9 +434,17 @@ final class ConnectionStorage {
             ranks = Dictionary(uniqueKeysWithValues: moving.enumerated().map { ($0.element, start + $0.offset) })
         }
 
+        // Read before the move: a connection that leaves a group keeps the project that group was in.
+        let projects = LibraryProjectNormalizer.movingConnections(
+            moving,
+            toGroup: groupId,
+            connections: connections,
+            groups: groups
+        )
         return mutateConnections(ids: Set(ranks.keys)) { connection in
             if movingSet.contains(connection.id) {
                 connection.groupId = groupId
+                connection.projectId = projects.connectionProjectId(connection.id, current: connection.projectId)
             }
             if let rank = ranks[connection.id] {
                 connection.sortOrder = rank
@@ -505,6 +564,7 @@ final class ConnectionStorage {
             iconName: connection.iconName,
             tagIds: connection.tagIds,
             groupId: connection.groupId,
+            projectId: connection.projectId,
             sshProfileId: connection.sshProfileId,
             sshTunnelMode: connection.sshTunnelMode,
             credentialMode: connection.credentialMode,
@@ -615,6 +675,11 @@ final class ConnectionStorage {
         return resolveString(.init(label: "Database password", connectionId: connectionId), forKey: key)
     }
 
+    func passwordRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "Database password", connectionId: connectionId), forKey: key)
+    }
+
     func deletePassword(for connectionId: UUID) {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
         deleteSecret(forKey: key, connectionId: connectionId)
@@ -631,6 +696,11 @@ final class ConnectionStorage {
     func loadSSHPassword(for connectionId: UUID) -> String? {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
         return resolveString(.init(label: "SSH password", connectionId: connectionId), forKey: key)
+    }
+
+    func sshPasswordRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "SSH password", connectionId: connectionId), forKey: key)
     }
 
     func deleteSSHPassword(for connectionId: UUID) {
@@ -651,6 +721,11 @@ final class ConnectionStorage {
         return resolveString(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
     }
 
+    func keyPassphraseRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
+    }
+
     func deleteKeyPassphrase(for connectionId: UUID) {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
         deleteSecret(forKey: key, connectionId: connectionId)
@@ -669,6 +744,11 @@ final class ConnectionStorage {
         return resolveString(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
     }
 
+    func sslClientKeyPassphraseRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
+    }
+
     func deleteSSLClientKeyPassphrase(for connectionId: UUID) {
         let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
         deleteSecret(forKey: key, connectionId: connectionId)
@@ -685,6 +765,11 @@ final class ConnectionStorage {
     func loadPluginSecureField(fieldId: String, for connectionId: UUID) -> String? {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
         return resolveString(.init(label: "Plugin field \(fieldId)", connectionId: connectionId), forKey: key)
+    }
+
+    func pluginSecureFieldRead(fieldId: String, for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
+        return deferredRead(.init(label: "Plugin field \(fieldId)", connectionId: connectionId), forKey: key)
     }
 
     func deletePluginSecureField(fieldId: String, for connectionId: UUID) {
@@ -709,6 +794,11 @@ final class ConnectionStorage {
     func loadTOTPSecret(for connectionId: UUID) -> String? {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
         return resolveString(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
+    }
+
+    func totpSecretRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
     }
 
     func deleteTOTPSecret(for connectionId: UUID) {
@@ -799,6 +889,19 @@ final class ConnectionStorage {
         }
         return Self.secretKinds.map { "com.TablePro.\($0).\(id)" }
             + fieldIds.map { "com.TablePro.plugin.\($0).\(id)" }
+    }
+
+    // Found by the id they end with: naming a plugin's secure fields needs the type the record no longer gives, and
+    // one left behind would reach whatever later saves a record with that id. Device-only, as for a remote delete.
+    func deleteSecrets(ofUnreadable ids: Set<UUID>) {
+        for id in ids {
+            let keys = keychain.deviceOnlyKeys(endingWith: ".\(id.uuidString)").filter { key in
+                key.hasPrefix("com.TablePro.") && !key.hasPrefix(CredentialProfileStorage.secretKeyPrefix)
+            }
+            for key in keys {
+                keychain.delete(forKey: key, deviceOnly: true)
+            }
+        }
     }
 
     // Removing an iCloud Keychain item removes it from every device, so only a delete the other devices follow does.
@@ -1069,11 +1172,22 @@ final class ConnectionStorage {
     private struct SecretContext {
         let label: String
         let connectionId: UUID
+
+        var logLabel: String { "\(label) (connId=\(connectionId.uuidString))" }
     }
 
     private func resolveString(_ context: SecretContext, forKey key: String) -> String? {
         readSecret(forKey: key, connectionId: context.connectionId)
-            .value(label: "\(context.label) (connId=\(context.connectionId.uuidString))", logger: Self.logger)
+            .value(label: context.logLabel, logger: Self.logger)
+    }
+
+    // A driver open's read: the scope is decided here, and the result never reaches a form's recorded reads.
+    private func deferredRead(_ context: SecretContext, forKey key: String) -> DeferredSecretRead {
+        let keychain = keychain
+        let deviceOnly = readsOwnItemFirst(context.connectionId)
+        return DeferredSecretRead(key: key, label: context.logLabel, logger: Self.logger) {
+            keychain.readStringResult(forKey: key, deviceOnly: deviceOnly)
+        }
     }
 
     // MARK: - Plugin Secure Field Migration
@@ -1118,7 +1232,7 @@ final class ConnectionStorage {
             }
         }
 
-        if changed, !saveConnections(connections, byUser: false) {
+        if changed, !saveConnections(connections, byUser: false, removingSecrets: true) {
             complete = false
         }
         if complete {

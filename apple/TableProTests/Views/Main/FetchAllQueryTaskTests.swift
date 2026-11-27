@@ -27,7 +27,6 @@ struct FetchAllQueryTaskTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         let tab = QueryTab(title: "Query", query: "SELECT 1", tabType: .query)
@@ -54,6 +53,41 @@ struct FetchAllQueryTaskTests {
         #expect(tabManager.tabs.first { $0.id == tab.id }?.pagination.isLoadingMore == false)
     }
 
+    @Test("Fetch All asks the gate again, and a refusal reaches no driver")
+    func refusedFetchAllRunsNothing() async {
+        let connection = TestFixtures.makeConnection()
+        let driver = GatedQueryDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        session.browseDatabase = connection.database
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            toolbarState: ConnectionToolbarState()
+        )
+        coordinator.executionGate = AlwaysDenyGate()
+        // Open, so a fetch that skipped the gate would finish and be counted rather than hang.
+        await driver.release()
+        let tab = QueryTab(title: "Query", query: "SELECT purge_orders()", tabType: .query)
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+
+        coordinator.paginationCoordinator.performFetchAll(
+            tabId: tab.id,
+            baseQuery: "SELECT purge_orders()",
+            scope: DatabaseScope(connectionId: connection.id, database: connection.database, schema: nil)
+        )
+        await coordinator.queryTasks.task(for: tab.id)?.value
+
+        #expect(driver.queryCount == 0)
+        #expect(tabManager.tabs.first { $0.id == tab.id }?.execution.errorMessage != nil)
+        #expect(tabManager.tabs.first { $0.id == tab.id }?.pagination.isLoadingMore == false)
+    }
+
     @Test("Fetch All on a query tab shows what its own run printed, not the first run's or anything before it")
     func fetchAllReplacesTheOutput() async {
         let firstRun = PluginServerOutput(lines: ["NOTICE:  page 1"], isTruncated: false)
@@ -73,7 +107,6 @@ struct FetchAllQueryTaskTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "Query", query: "SELECT noisy()", tabType: .query)
@@ -107,6 +140,12 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
 
     private let answer = AsyncGate()
     var serverOutputs: [PluginServerOutput] = []
+    private let lock = NSLock()
+    private var queries = 0
+
+    var queryCount: Int {
+        lock.withLock { queries }
+    }
 
     init(connection: DatabaseConnection) {
         self.connection = connection
@@ -123,6 +162,7 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
 
     /// The gate ignores cancellation, so the answer still comes back after the task is cancelled.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
+        lock.withLock { queries += 1 }
         await answer.wait()
         return Self.emptyResult
     }
@@ -140,13 +180,11 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
     func execute(query: String) async throws -> QueryResult { Self.emptyResult }
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult { Self.emptyResult }
 
-    func fetchTables() async throws -> [TableInfo] { [] }
     func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] { [:] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]] { [:] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
     func fetchDatabases() async throws -> [String] { [] }
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         DatabaseMetadata(
@@ -160,8 +198,8 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName,
             dataSize: nil,
@@ -177,7 +215,7 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}

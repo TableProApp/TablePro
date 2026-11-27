@@ -6,6 +6,8 @@
 import SwiftUI
 
 internal struct TransferProgressView: View {
+    internal static let sheetWidth: CGFloat = 420
+
     internal let progress: TransferProgress
 
     internal var body: some View {
@@ -83,28 +85,36 @@ internal struct TransferStopButton: View {
     }
 }
 
-internal struct TransferProgressSheet: View {
-    internal static let width: CGFloat = 420
-
+// The root of a transfer sheet while its job runs. A job whose stop needs more than one question passes its own control.
+internal struct TransferProgressSheet<StopControl: View>: View {
     internal let progress: TransferProgress
-    internal let onStop: () -> Void
+    private let stopControl: StopControl
+
+    internal init(progress: TransferProgress, @ViewBuilder stopControl: () -> StopControl) {
+        self.progress = progress
+        self.stopControl = stopControl()
+    }
 
     internal var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             TransferProgressView(progress: progress)
             HStack {
                 Spacer()
-                TransferStopButton(
-                    policy: progress.stopPolicy,
-                    isStopping: progress.isStopping,
-                    onStop: onStop
-                )
+                stopControl
             }
         }
         .controlSize(.regular)
         .padding(20)
-        .frame(width: Self.width)
+        .frame(width: TransferProgressView.sheetWidth)
         .interactiveDismissDisabled()
+    }
+}
+
+internal extension TransferProgressSheet where StopControl == TransferStopButton {
+    init(progress: TransferProgress, onStop: @escaping () -> Void) {
+        self.init(progress: progress) {
+            TransferStopButton(policy: progress.stopPolicy, isStopping: progress.isStopping, onStop: onStop)
+        }
     }
 }
 

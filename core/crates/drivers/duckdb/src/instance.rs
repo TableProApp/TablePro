@@ -21,7 +21,7 @@ use duckdb::{AccessMode, Config, InterruptHandle};
 use tablepro_core::{BusyReason, DriverError, FileClaim, FileEndpoint, FileIdentity, FileOpenMode, LossPhase};
 use tokio_util::sync::CancellationToken;
 
-use crate::create_file::create_or_replace;
+use crate::create_file::{create_new, replace};
 use crate::driver::ENGINE;
 use crate::errors::{map_error, map_open_error};
 
@@ -77,7 +77,11 @@ impl std::fmt::Debug for Instance {
 impl Drop for Instance {
     fn drop(&mut self) {
         let mut open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
-        drop(self.root.lock().unwrap_or_else(PoisonError::into_inner).take());
+        let root = self.root.lock().unwrap_or_else(PoisonError::into_inner).take();
+        // Closing checkpoints the file, which writes every expression in it back out, whichever thread drops this.
+        if let Err(error) = crate::connection::on_duckdb_stack(move || drop(root)) {
+            tracing::warn!(%error, "DuckDB did not close the file cleanly");
+        }
         if open
             .get(&self.id)
             .is_some_and(|entry| entry.instance.strong_count() == 0)
@@ -151,12 +155,7 @@ impl Link {
 }
 
 impl Instance {
-    /// Open the file the endpoint names, or join the instance this
-    /// process already has on it. Blocks: DuckDB reads the file and
-    /// replays its log here, and a file still closing is waited for.
-    /// `given_up` is the connect's own stop: the blocking open outlives a
-    /// caller that went while it waited, and must not then replace the
-    /// file.
+    // `given_up` is the connect's own stop: this blocking open outlives a caller that went while it waited.
     pub(crate) fn open(
         endpoint: &FileEndpoint,
         read_only: bool,
@@ -179,15 +178,22 @@ impl Instance {
                 }
                 // Replacing a file this process has open would pull it
                 // out from under the windows using it.
-                (Some(true), FileOpenMode::CreateNew) => return Err(DriverError::Busy(BusyReason::FileLocked)),
-                (None, FileOpenMode::CreateNew) => {
+                (Some(true), FileOpenMode::Replace) => return Err(DriverError::Busy(BusyReason::FileLocked)),
+                (None, FileOpenMode::Replace) => {
                     if FileIdentity::of(path).is_some_and(|id| attached(&open, id, None)) {
                         return Err(DriverError::Busy(BusyReason::FileLocked));
                     }
                     if given_up.is_cancelled() {
                         return Err(DriverError::Cancelled);
                     }
-                    create_or_replace(path, given_up)?;
+                    replace(path, given_up)?;
+                }
+                // A file there, open in this process or not, is refused by the create itself.
+                (_, FileOpenMode::CreateNew) => {
+                    if given_up.is_cancelled() {
+                        return Err(DriverError::Cancelled);
+                    }
+                    create_new(path, given_up)?;
                 }
                 (_, FileOpenMode::OpenExisting) => {}
             }
@@ -259,15 +265,13 @@ impl Instance {
         Ok(Link::new(connection, self.clone()))
     }
 
-    /// A connection for the app's own reads and saves. `SET
-    /// default_collation` in an editor tab reaches every connection to
-    /// the database, and `=` on a key would then find `'ABC'` and `'abc'`
-    /// alike, which DuckDB keeps as two rows: these compare byte for byte
-    /// whatever the tabs set.
+    // A tab's SET reaches every connection; the app's own compare keys byte for byte and keep a depth DuckDB fits.
     pub(crate) fn workspace_link(self: &Arc<Self>) -> Result<Link, DriverError> {
         let link = self.link()?;
         link.connection
-            .execute_batch("SET SESSION default_collation = ''")
+            .execute_batch(&format!(
+                "SET SESSION default_collation = ''; SET SESSION max_expression_depth = {MAX_EXPRESSION_DEPTH}"
+            ))
             .map_err(map_error)?;
         Ok(link)
     }
@@ -307,6 +311,13 @@ fn attached(open: &HashMap<FileIdentity, Opened>, id: FileIdentity, except: Opti
     })
 }
 
+// An error names the path as the statement wrote it; the checks use it as DuckDB opens it, links resolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AttachTarget {
+    pub(crate) asked: PathBuf,
+    pub(crate) opened: PathBuf,
+}
+
 /// Run `attach`, an ATTACH on `link` that may open any of `targets`,
 /// unless a database in this process has one of them open, as its own
 /// file or attached to it: DuckDB would make a second database on it,
@@ -318,14 +329,14 @@ fn attached(open: &HashMap<FileIdentity, Opened>, id: FileIdentity, except: Opti
 /// and no tab attaches it, in between.
 pub(crate) fn attach_unless_open<T>(
     link: &Link,
-    targets: &[PathBuf],
+    targets: &[AttachTarget],
     attach: impl FnOnce() -> Result<T, DriverError>,
 ) -> Result<T, DriverError> {
     let _opening = tablepro_core::opening_file_blocking();
     let open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
     let own = link.instance.id;
     let own_paths = open.get(&own).map(database_paths).unwrap_or_default();
-    let in_use = targets.iter().any(|target| {
+    let in_use = targets.iter().map(|target| &target.opened).any(|target| {
         let Some(id) = FileIdentity::of(target) else {
             return false;
         };
@@ -348,9 +359,11 @@ pub(crate) fn attach_unless_open<T>(
     // it, until something wrote to it.
     if let Some(target) = targets
         .iter()
-        .find(|target| std::fs::metadata(target).is_ok_and(|metadata| !metadata.is_file()))
+        .find(|target| std::fs::metadata(&target.opened).is_ok_and(|metadata| !metadata.is_file()))
     {
-        return Err(DriverError::NotADatabase { path: target.clone() });
+        return Err(DriverError::NotADatabase {
+            path: target.asked.clone(),
+        });
     }
     let result = attach()?;
     // `ATTACH IF NOT EXISTS` under an alias already taken opens nothing,
@@ -363,7 +376,7 @@ pub(crate) fn attach_unless_open<T>(
         .filter_map(|path| FileIdentity::of(Path::new(path)))
         .collect();
     let mut claims = Vec::with_capacity(targets.len());
-    for target in targets {
+    for target in targets.iter().map(|target| &target.opened) {
         if FileIdentity::of(target).is_some_and(|id| listed.contains(&id)) {
             claims.extend(tablepro_core::claim_file(target, ENGINE)?);
         }
@@ -381,9 +394,10 @@ pub(crate) fn attach_unless_open<T>(
 /// this keeps every file a connection creates or attaches readable there.
 const STORAGE_VERSION: &str = "v0.10.2";
 
-/// Every connection opens the same way. Extensions are never fetched:
-/// a query that needs one DuckDB does not link in fails instead of
-/// downloading it, as the app makes no requests of its own.
+// DuckDB binds about 1 KiB of stack per level, also on threads of its own that get 512 KiB on macOS (ADR 0030).
+const MAX_EXPRESSION_DEPTH: u32 = 250;
+
+// Extensions are never fetched: a query needing one DuckDB does not link in fails, as the app makes no requests.
 pub(crate) fn config(read_only: bool) -> Result<Config, DriverError> {
     let mode = match read_only {
         true => AccessMode::ReadOnly,
@@ -394,6 +408,7 @@ pub(crate) fn config(read_only: bool) -> Result<Config, DriverError> {
         .and_then(|config| config.with("storage_compatibility_version", STORAGE_VERSION))
         .and_then(|config| config.with("autoinstall_known_extensions", "false"))
         .and_then(|config| config.with("autoload_known_extensions", "false"))
+        .and_then(|config| config.with("max_expression_depth", MAX_EXPRESSION_DEPTH.to_string()))
         .map_err(map_error)
 }
 
@@ -496,7 +511,7 @@ mod tests {
         assert!(weak.upgrade().is_none());
         assert!(
             Instance::open(
-                &created(directory.path(), "kept.duckdb"),
+                &FileEndpoint::replace(directory.path().join("kept.duckdb")).unwrap(),
                 false,
                 &CancellationToken::new()
             )
@@ -505,8 +520,7 @@ mod tests {
         );
     }
 
-    /// A connect given up while its open waited does not go on to
-    /// replace the file.
+    // A connect given up while its open waited does not go on to replace the file.
     #[test]
     fn a_given_up_create_leaves_the_file_alone() {
         let directory = tempfile::tempdir().unwrap();
@@ -515,7 +529,7 @@ mod tests {
         let given_up = CancellationToken::new();
         given_up.cancel();
 
-        let opened = Instance::open(&FileEndpoint::create_new(path.clone()).unwrap(), false, &given_up);
+        let opened = Instance::open(&FileEndpoint::replace(path.clone()).unwrap(), false, &given_up);
 
         assert_eq!(opened.unwrap_err(), DriverError::Cancelled);
         assert_eq!(std::fs::read(&path).unwrap(), b"what the user had");
@@ -547,6 +561,17 @@ mod tests {
 
         assert_eq!(
             Instance::open(&endpoint, false, &CancellationToken::new()).unwrap_err(),
+            DriverError::FileExists {
+                path: endpoint.path().to_path_buf()
+            }
+        );
+        assert_eq!(
+            Instance::open(
+                &FileEndpoint::replace(endpoint.path().to_path_buf()).unwrap(),
+                false,
+                &CancellationToken::new()
+            )
+            .unwrap_err(),
             DriverError::Busy(BusyReason::FileLocked)
         );
     }

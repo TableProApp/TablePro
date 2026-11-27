@@ -438,4 +438,15 @@ struct PaginationStateTests {
             #expect(state.isBusy)
         }
     }
+
+    @Test("Retiring the total also forgets which filters it answered for")
+    func retiringForgetsTheSettledScope() {
+        var state = PaginationState(totalRowCount: 12, pageSize: 10)
+        state.settledRowCountScope = QueryTab(title: "t", query: "", tabType: .table, tableName: "t").rowCountScope(table: "t")
+
+        state.retireDerivedRowCount()
+
+        #expect(state.totalRowCount == nil)
+        #expect(state.settledRowCountScope == nil)
+    }
 }

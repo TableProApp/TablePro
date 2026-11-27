@@ -10,6 +10,7 @@
 # is reused.
 #
 # Usage: scripts/probes/ssh-tunnel-matrix/build-mac-harness.sh <build-dir>
+# TABLEPRO_SSH_HARNESS_OPTIMIZATION=-O builds it optimized, as the app ships, for throughput measurements.
 #
 # Prints the harness path. Exits 2 when it cannot build, with the first compiler error.
 
@@ -50,6 +51,8 @@ MACOS_VERSION="$(awk '
 TARGET="arm64-apple-macos$MACOS_VERSION"
 SDK="$(xcrun --sdk macosx --show-sdk-path 2> /dev/null)" || setup_failure "no macosx SDK"
 COMPILER="$(xcrun --sdk macosx swiftc --version 2> /dev/null)"
+# -O measures what the app ships; the default keeps a matrix build quick.
+OPTIMIZATION="${TABLEPRO_SSH_HARNESS_OPTIMIZATION:--Onone}"
 
 # The app's SSHTunnelManager and three Core/SSH files need AppKit or DatabaseManager; mac-harness.swift
 # stands in for what the tunnel uses from them.
@@ -62,6 +65,7 @@ for source in "$SSH"/*.swift "$SSH"/Auth/*.swift; do
 done
 APP_SOURCES+=(
     "$ROOT/TablePro/Core/Database/ConnectionDeadline.swift"
+    "$ROOT/TablePro/Core/Diagnostics/LogRedaction.swift"
     "$ROOT/TablePro/Core/Transport/TransportActivityRegistry.swift"
     "$ROOT/TablePro/Core/Transport/TransportByteCounter.swift"
     "$HERE/harness-common.swift"
@@ -155,7 +159,7 @@ while read -r module package; do
         SOURCES+=("$source")
     done < "$OUT/$module.sources"
     STAMP="$(
-        printf '%s\n%s\n%s\n%s\n' "$COMPILER" "$TARGET" "${FEATURES[*]-}" "$STAMP"
+        printf '%s\n%s\n%s\n%s\n%s\n' "$COMPILER" "$OPTIMIZATION" "$TARGET" "${FEATURES[*]-}" "$STAMP"
         stat -f '%N %m %z' "${SOURCES[@]}"
     )"
     STAMP="$(printf '%s' "$STAMP" | shasum -a 256 | cut -c1-16)"
@@ -165,7 +169,7 @@ while read -r module package; do
     fi
     echo "compiling $module (${#SOURCES[@]} files)" >&2
     rm -f "$OUT/$module.stamp"
-    xcrun --sdk macosx swiftc -sdk "$SDK" -target "$TARGET" -swift-version 6 -Onone \
+    xcrun --sdk macosx swiftc -sdk "$SDK" -target "$TARGET" -swift-version 6 "$OPTIMIZATION" \
         -parse-as-library -module-name "$module" -package-name "$package" -DSWIFT_PACKAGE -I "$OUT" \
         ${FEATURES[@]+"${FEATURES[@]}"} \
         -emit-module -emit-module-path "$OUT/$module.swiftmodule" \
@@ -177,7 +181,7 @@ done <<< "$MODULES"
 # The app target's own settings in project.yml: its Swift and header paths for CLibSSH2, and the
 # libssh2, OpenSSL and zlib it links. The rpath stands in for the copy the app embeds.
 echo "compiling the harness (${#APP_SOURCES[@]} files)" >&2
-xcrun --sdk macosx swiftc -sdk "$SDK" -target "$TARGET" -swift-version 6 -Onone \
+xcrun --sdk macosx swiftc -sdk "$SDK" -target "$TARGET" -swift-version 6 "$OPTIMIZATION" \
     -parse-as-library -module-name TablePro "${APP_FEATURES[@]}" \
     -I "$OUT" -I "$SSH/CLibSSH2" -Xcc "-I$SSH/CLibSSH2/include" \
     "${APP_SOURCES[@]}" "${LIBRARIES[@]}" \

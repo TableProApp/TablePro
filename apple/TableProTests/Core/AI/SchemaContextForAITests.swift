@@ -18,7 +18,7 @@ struct SchemaContextForAITests {
     private static func provider(tables: [TableInfo], columns: [String: [ColumnInfo]]) -> SQLSchemaProvider {
         let source = SQLSchemaProvider.ColumnMetadataSource(
             fetchColumns: { table, _ in columns[table] ?? [] },
-            fetchAllColumns: { columns }
+            fetchAllColumns: { columns.keyedByCatalogName }
         )
         return SQLSchemaProvider(metadataSource: source)
     }
@@ -235,7 +235,7 @@ struct SchemaContextForAITests {
     ) -> SQLSchemaProvider {
         let source = SQLSchemaProvider.ColumnMetadataSource(
             fetchColumns: { _, schema in schema.flatMap { columnsBySchema[$0] } ?? [] },
-            fetchAllColumns: { bulkColumns }
+            fetchAllColumns: { bulkColumns.keyedByCatalogName }
         )
         return SQLSchemaProvider(metadataSource: source)
     }

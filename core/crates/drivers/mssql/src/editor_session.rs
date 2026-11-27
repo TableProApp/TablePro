@@ -7,6 +7,7 @@ use tablepro_core::sql_syntax::{SqlGrammar, may_change_database};
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LossPhase,
     ResultSink, RunEnd, RunOptions, RunSummary, StopReason, StopRequest, TimeoutPhase, TransactionState, UserSql,
+    deadline_elapsed,
 };
 use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
@@ -173,7 +174,7 @@ impl Shared {
             biased;
             outcome = &mut running => return Some(outcome),
             () = options.cancel.cancelled() => request.request(StopReason::Cancelled),
-            () = elapsed(deadline) => request.request(StopReason::DeadlineElapsed),
+            () = deadline_elapsed(deadline) => request.request(StopReason::DeadlineElapsed),
         }
         tokio::time::timeout(self.cancel_grace, running).await.ok()
     }
@@ -195,13 +196,6 @@ impl Shared {
             // The question is still on the wire, unanswered.
             Err(_) => (TransactionState::Unknown, false),
         }
-    }
-}
-
-async fn elapsed(deadline: Option<Instant>) {
-    match deadline {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
     }
 }
 
@@ -253,7 +247,7 @@ impl EditorSession for MssqlEditorSession {
         let mut held = tokio::select! {
             biased;
             () = options.cancel().cancelled() => return Err(DriverError::Cancelled),
-            () = elapsed(options.deadline()) => {
+            () = deadline_elapsed(options.deadline()) => {
                 return Err(DriverError::Timeout { phase: TimeoutPhase::Statement, server_cancelled: false });
             }
             held = shared.link.lock() => held,
@@ -267,7 +261,7 @@ impl EditorSession for MssqlEditorSession {
         let used = tokio::select! {
             biased;
             () = options.cancel().cancelled() => None,
-            () = elapsed(options.deadline()) => None,
+            () = deadline_elapsed(options.deadline()) => None,
             used = using => Some(used),
         };
         match used {
@@ -302,7 +296,7 @@ impl EditorSession for MssqlEditorSession {
         let mut held = tokio::select! {
             biased;
             () = options.cancel().cancelled() => return Err(DriverError::Cancelled),
-            () = elapsed(options.deadline()) => {
+            () = deadline_elapsed(options.deadline()) => {
                 return Err(DriverError::Timeout { phase: TimeoutPhase::Statement, server_cancelled: false });
             }
             held = shared.link.lock() => held,
@@ -316,7 +310,7 @@ impl EditorSession for MssqlEditorSession {
         let answer = tokio::select! {
             biased;
             () = options.cancel().cancelled() => None,
-            () = elapsed(options.deadline()) => None,
+            () = deadline_elapsed(options.deadline()) => None,
             answer = asking => Some(answer),
         };
         match answer {

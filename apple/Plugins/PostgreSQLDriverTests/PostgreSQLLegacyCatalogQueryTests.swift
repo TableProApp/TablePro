@@ -31,6 +31,9 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: "orders"),
             PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: nil),
             PostgreSQLIndexQueries.standaloneIndexQuery(schema: "public", table: "orders"),
+            PostgreSQLIndexQueries.schemaStandaloneIndexQuery(schema: "public"),
+            PostgreSQLCommentStatements.schemaCatalogQuery(schema: "public"),
+            PostgreSQLSchemaQueries.schemaDependentEnumTypes(schema: "public"),
             PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: "public", table: "orders"),
             PostgreSQLSchemaQueries.tableDDLColumnsQuery(schema: "public", table: "orders", capabilities: legacy),
             PostgreSQLSchemaQueries.rebuildColumnsQuery(schema: "public", table: "orders", capabilities: legacy),
@@ -76,6 +79,10 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLSchemaQueries.tableDDLColumnsQuery(schema: hostile, table: hostile, capabilities: Self.legacy),
             PostgreSQLSchemaQueries.rebuildColumnsQuery(schema: hostile, table: hostile, capabilities: Self.legacy),
             PostgreSQLIndexQueries.standaloneIndexQuery(schema: hostile, table: hostile),
+            PostgreSQLIndexQueries.schemaStandaloneIndexQuery(schema: hostile),
+            PostgreSQLCommentStatements.schemaCatalogQuery(schema: hostile),
+            PostgreSQLSchemaQueries.schemaDependentEnumTypes(schema: hostile),
+            PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: hostile),
             PostgreSQLTableListing.query(
                 schema: hostile, includeMaterializedViews: true, includeForeignTables: true
             ),

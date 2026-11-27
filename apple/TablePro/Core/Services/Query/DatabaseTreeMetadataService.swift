@@ -15,15 +15,36 @@ import TableProSQLGrammar
 final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     static let shared = DatabaseTreeMetadataService()
 
+    // The keys compare names by bytes: two databases, schemas or tables Swift's String equates are two to the server.
     struct DatabaseKey: Hashable, Sendable {
         let connectionId: UUID
         let database: String
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+        }
     }
 
     struct ObjectsKey: Hashable, Sendable {
         let connectionId: UUID
         let database: String
         let schema: String?
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && CatalogName.same(lhs.schema, rhs.schema)
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            CatalogName.hash(schema, into: &hasher)
+        }
     }
 
     // A `.database` kind, and every kind on an engine without schemas, is keyed with no schema.
@@ -32,6 +53,18 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let database: String
         let schema: String?
         let kindId: String
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && CatalogName.same(lhs.schema, rhs.schema) && lhs.kindId == rhs.kindId
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            CatalogName.hash(schema, into: &hasher)
+            hasher.combine(kindId)
+        }
     }
 
     struct PartitionsKey: Hashable, Sendable {
@@ -39,6 +72,18 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let database: String
         let schema: String?
         let table: String
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && CatalogName.same(lhs.schema, rhs.schema) && CatalogName.same(lhs.table, rhs.table)
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            CatalogName.hash(schema, into: &hasher)
+            CatalogName.hash(table, into: &hasher)
+        }
     }
 
     /// Carries the revision it started under, so a read after a change never joins a fetch that
@@ -154,6 +199,28 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
 
     func databases(for connectionId: UUID) -> [DatabaseMetadata] {
         databaseList[connectionId]?.value ?? []
+    }
+
+    /// The connection's database list, read once and shared: the tree, the database switcher and the quick
+    /// switcher show this one list rather than each reading their own. A list already loaded is answered
+    /// without a read, and one being read is joined.
+    func databaseNames(connectionId: UUID, databaseType: DatabaseType) async throws -> [String] {
+        switch databaseListState(for: connectionId) {
+        case .loaded(let list):
+            return list.map(\.name)
+        case .loading:
+            return try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType).map(\.name)
+        case .idle, .failed:
+            await loadDatabases(connectionId: connectionId, databaseType: databaseType)
+            switch databaseListState(for: connectionId) {
+            case .loaded(let list):
+                return list.map(\.name)
+            case .failed(let message):
+                throw DatabaseError.queryFailed(message)
+            case .idle, .loading:
+                return try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType).map(\.name)
+            }
+        }
     }
 
     func schemaListState(connectionId: UUID, database: String) -> MetadataLoadState<[String]> {
@@ -1042,7 +1109,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             .connection.type.supportsUserDefinedTypeBrowse ?? false
     }
 
-    /// Always a scoped driver, through `withMetadataDriver`, which alone knows which engines cannot
+    /// Always a scoped driver, through `withMetadataRead`, which alone knows which engines cannot
     /// answer on a second connection. The scope names the database only: a scope per schema took a
     /// pooled connection per expanded schema node.
     private func withDriver<T: Sendable>(
@@ -1056,7 +1123,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         ) else {
             throw DatabaseError.notConnected
         }
-        return try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: workload, body)
+        return try await DatabaseManager.shared.withMetadataRead(scope: scope, workload: workload, body)
     }
 
     private static func objectsKey(connectionId: UUID, database: String, schema: String?) -> ObjectsKey {

@@ -47,15 +47,29 @@ extension MainContentCoordinator {
         return ServerErrorText.withheldMessage
     }
 
+    // A sync pull, a rename or a tag edit updates the connection too, and must not re-mask or make a Share sheet read
+    // its rows again.
     func observeMaskingRuleChanges() -> AnyCancellable {
-        services.appEvents.connectionUpdated
+        var applied = storedMaskingRules
+        return services.appEvents.connectionUpdated
             .filter { [connectionId] changed in changed == nil || changed == connectionId }
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.maskLoadedResults() }
+            .sink { [weak self] _ in
+                guard let self else { return }
+                let rules = storedMaskingRules
+                guard rules != applied else { return }
+                applied = rules
+                maskLoadedResults()
+                maskingRulesApplied.send()
+            }
     }
 
-    /// Masks the rows already on screen when a rule is saved, rather than waiting for the next run. Read from storage,
-    /// since the live session may adopt the saved record after this runs.
+    private var storedMaskingRules: [MaskingRule.Effect]? {
+        services.databaseManager.connectionStorage.loadConnection(id: connectionId)?.maskingRules.map(\.effect)
+    }
+
+    // Masks the rows already on screen when a rule is saved, rather than waiting for the next run. Read from storage,
+    // since the live session may adopt the saved record after this runs.
     func maskLoadedResults() {
         guard let stored = services.databaseManager.connectionStorage.loadConnection(id: connectionId) else { return }
         let policy = stored.maskingPolicy
@@ -83,16 +97,18 @@ extension MainContentCoordinator {
     ) async {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId }), !tab.revealsMaskedValues else { return }
         guard await authenticator.authenticate(reason: Self.revealMaskedValuesReason) else { return }
-        tabManager.mutate(tabId: tabId) { $0.revealsMaskedValues = true }
-        guard tabManager.selectedTabId == tabId else { return }
-        switch tab.tabType {
+        // Read again after the prompt: the editor text, or the tab itself, may have changed while it was up.
+        guard tabManager.mutate(tabId: tabId, { $0.revealsMaskedValues = true }),
+              tabManager.selectedTabId == tabId,
+              let revealed = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
+        switch revealed.tabType {
         case .table:
-            runQuery(viewport: .keepPlace)
+            runQuery(onTab: tabId, viewport: .keepPlace)
         default:
             // Running a query tab again could repeat a write, so only a read reruns; anything else shows on its next run.
-            let classification = QueryClassifier.classify(tab.content.query, databaseType: connection.type)
+            let classification = QueryClassifier.classify(revealed.content.query, databaseType: connection.type)
             guard classification.tier == .safe else { return }
-            runQuery(viewport: .keepPlace)
+            runQuery(onTab: tabId, viewport: .keepPlace)
         }
     }
 }

@@ -32,6 +32,15 @@ nonisolated final class MongoDBBackedDriver: PluginRowWritingDriver, DriverQuery
     }
 
     func pageQuery(_ request: TableReadRequest, limit: Int, offset: Int) -> String {
+        browseQuery(request, limit: limit, offset: offset)
+    }
+
+    // Every document the browse shows, in its order: what an export of a filtered or sorted collection reads.
+    func exportQuery(_ request: TableReadRequest) -> String {
+        browseQuery(request, limit: nil, offset: 0)
+    }
+
+    private func browseQuery(_ request: TableReadRequest, limit: Int?, offset: Int) -> String {
         let builder = mongo.filterQueryBuilder(for: request.table, database: pinnedDatabase)
         let sorted = request.sortState.columns
         return builder.buildQuery(

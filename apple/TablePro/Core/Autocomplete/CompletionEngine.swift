@@ -108,12 +108,14 @@ final class CompletionEngine {
         cursorPosition: Int,
         keywordCase: SQLKeywordCase = .default,
         identifierCase: SQLIdentifierCase = .default,
-        forcedTableReferences: [TableReference]? = nil
+        forcedTableReferences: [TableReference]? = nil,
+        suppressesEmptyPrefix: Bool = false
     ) async -> CompletionContext? {
         let session = await provider.completionSession(
             text: text,
             cursorPosition: cursorPosition,
-            forcedTableReferences: forcedTableReferences
+            forcedTableReferences: forcedTableReferences,
+            suppressesEmptyPrefix: suppressesEmptyPrefix
         )
         guard !session.items.isEmpty else { return nil }
 

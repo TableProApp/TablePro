@@ -1,8 +1,3 @@
-//
-//  LicensePresentation.swift
-//  TablePro
-//
-
 import Foundation
 
 internal enum LicenseNoticeAction: Equatable {
@@ -11,7 +6,8 @@ internal enum LicenseNoticeAction: Equatable {
     case upgrade
     case renew
     case retryValidation
-    case openAccountSettings
+    // nil opens the Account pane itself.
+    case openAccountSettings(page: SettingsPage?)
 
     var title: String {
         switch self {
@@ -43,9 +39,11 @@ internal struct LicenseNotice: Equatable {
 // Every surface that shows account state renders this, so a state reads the same everywhere.
 internal enum LicensePresentation {
     // A plan this Mac could not check reads as Settings > Account says it, so a paying customer is never asked to
-    // buy; only an account without the feature names a paid plan.
-    static func gate(for feature: ProFeature, state: AccountState, now: Date) -> LicenseNotice? {
-        switch FeatureAccess.resolve(feature, state: state, now: now) {
+    // buy; only an account without the feature names a paid plan. A company server's license is its administrator's,
+    // so no gate offers a purchase there.
+    static func gate(for feature: ProFeature, state: AccountState) -> LicenseNotice? {
+        let sellsPlans = state.server.isProduction
+        switch FeatureAccess.resolve(feature, state: state) {
         case .available:
             return nil
         case .signedOut:
@@ -53,43 +51,41 @@ internal enum LicensePresentation {
                 title: feature.paidPlanRequirement,
                 message: feature.featureDescription,
                 action: .signIn,
-                alternative: .purchase
+                alternative: sellsPlans ? .purchase : nil
             )
         case .notIncluded:
             if case .deviceLimitReached = state.refresh {
                 return LicenseNotice(
                     title: String(localized: "Your plan is in use on 3 other devices"),
                     message: String(localized: "Remove one in Settings to use your plan on this Mac."),
-                    action: .openAccountSettings
+                    action: .openAccountSettings(page: .accountDevices)
+                )
+            }
+            guard sellsPlans else {
+                return LicenseNotice(
+                    title: String(format: String(localized: "%@ is not part of your organization's license"), feature.displayName),
+                    message: String(localized: "Ask your administrator about it."),
+                    action: nil
                 )
             }
             return LicenseNotice(title: feature.paidPlanRequirement, message: feature.featureDescription, action: .upgrade)
-        case .expired:
+        // The core reads a failed refresh first; an entitlement that carried the feature has lapsed either way.
+        case .expired, .refreshFailed:
             if let entitlement = state.entitlement, entitlement.features.contains(feature.rawValue) {
                 return notice(.expired(at: entitlement.expiresAt, isOfflineFile: entitlement.isOffline))
             }
-            // A key from an older build past its own end date; one only past its 30 days waits for the exchange.
-            if let expiresAt = state.legacy?.expiresAt, expiresAt <= now {
-                return LicenseNotice(
-                    title: String(localized: "Your license has expired"),
-                    message: feature.featureDescription,
-                    action: .renew
-                )
-            }
-            return notice(.verificationFailed(message: nil))
-        case .refreshFailed:
             return notice(.verificationFailed(message: nil))
         }
     }
 
-    // The pane's first notice, then Sign In for a Mac with no account and no key from an older build. A canceling
-    // plan stays in the pane: the person chose it, and the pane shows the date it ends.
-    static func welcomeLine(state: AccountState, configuration: AccountConfiguration, now: Date) -> LicenseNotice? {
-        let notices = AccountSettingsContent.notices(state: state, configuration: configuration, now: now)
-        if let first = notices.first(where: { !$0.isCanceling }) {
+    // The pane's first notice, then Sign In for a Mac with no account. A canceling plan stays in the pane: the person
+    // chose it, and the pane shows the date it ends.
+    static func welcomeLine(state: AccountState, now: Date) -> LicenseNotice? {
+        let notices = AccountSettingsContent.notices(state: state, now: now)
+        if let first = notices.first(where: { !$0.isInformational }) {
             return notice(first)
         }
-        guard !state.isSignedIn, state.legacy == nil else { return nil }
+        guard !state.isSignedIn else { return nil }
         return LicenseNotice(
             title: String(localized: "Sign In"),
             message: String(
@@ -108,8 +104,12 @@ internal enum LicensePresentation {
         switch notice {
         case .expiringSoon(_, false), .expired(_, false), .verificationFailed:
             return .retryValidation
-        case .deviceLimit, .paymentProblem, .expiringSoon(_, true), .expired(_, true):
-            return .openAccountSettings
+        case .deviceLimit:
+            return .openAccountSettings(page: .accountDevices)
+        case .expiringSoon(_, true), .expired(_, true):
+            return .openAccountSettings(page: .accountOffline)
+        case .paymentProblem:
+            return .openAccountSettings(page: nil)
         case .canceling:
             return nil
         }
@@ -118,12 +118,5 @@ internal enum LicensePresentation {
     static func checkFailureMessage(_ refresh: EntitlementRefreshState) -> String? {
         guard case .failed(let error) = refresh else { return nil }
         return error.friendlyDescription
-    }
-}
-
-private extension AccountSettingsContent.Notice {
-    var isCanceling: Bool {
-        if case .canceling = self { return true }
-        return false
     }
 }

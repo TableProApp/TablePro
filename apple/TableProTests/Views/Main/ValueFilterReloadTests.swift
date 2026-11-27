@@ -24,7 +24,6 @@ struct ValueFilterReloadTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         let tab = QueryTab(title: "users", query: "SELECT id, name FROM users", tabType: tabType, tableName: "users")

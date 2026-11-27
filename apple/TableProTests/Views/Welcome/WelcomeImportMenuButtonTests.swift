@@ -44,4 +44,19 @@ struct WelcomeImportMenuButtonTests {
 
         #expect(recorder.fired == ["file", "url", "app", "aws", "folder"])
     }
+
+    @Test("The pull-down lists the shared import commands, a separator before each new group")
+    func listsTheSharedCommands() {
+        let menu = makeCoordinator(Recorder()).makeMenu()
+        let expected = Array(ImportCommand.groups.map { group in group.map { $0.title } }.joined(separator: [""]))
+        let listed = menu.items.dropFirst().map { $0.isSeparatorItem ? "" : $0.title }
+        let titles = ImportCommand.allCases.map { $0.title }
+        let groupSizes = ImportCommand.groups.map { $0.count }
+
+        #expect(listed == expected)
+        #expect(titles == [
+            "Import Connections…", "Import from URL…", "Import from Other App…", "Import from AWS…", "Open Project Folder…",
+        ])
+        #expect(groupSizes == [4, 1])
+    }
 }

@@ -1,0 +1,241 @@
+{
+  "area": "trust",
+  "suite": "tp1",
+  "format": 1,
+  "about": "The trust plaintext, its reading and what is left out for size (ADR 0056, Pins). A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
+  "encode": [
+    {
+      "name": "an open alert, a replaced IK and a version per purpose",
+      "op": "trust_plaintext",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "output": {
+        "padded_hex": "7b2276223a312c2270696e73223a5b7b226163636f756e74223a2230313941364232452d384633432d374434312d423241352d364330453946313444374238222c22696b223a22486154675f4d4a4d533770623855355a6b66576a3951746d504c6f777a4b7669526d564b616e334c4a496b222c226176223a332c22686f77223a22636f6d7061726564222c22616c657274223a66616c73652c227265706c61636564223a5b5d7d2c7b226163636f756e74223a2230313941364233312d344338442d374630322d394131362d334537443542324338463930222c22696b223a223459574b6a59354658485142656f374a696263307472625f525143316e515045417a476e634b322d32516b222c226176223a322c22686f77223a227265706c61636564222c22616c657274223a747275652c227265706c61636564223a5b22744d3279315270674c614e59387543744c466176755570506a2d336e475f3567734a744630535145656f51225d7d5d2c2276657273696f6e73223a5b7b226f776e6572223a2230313941364232452d384633432d374434312d423241352d364330453946313444374238222c22707572706f7365223a22706572736f6e616c222c2276657273696f6e223a332c227265636f7264223a22554f5f4a59344b4a33753875626d456e423756563668726731675a664b563657337763565f444678356e49227d2c7b226f776e6572223a2230313941364232452d384633432d374434312d423241352d364330453946313444374238222c22707572706f7365223a22686973746f7279222c2276657273696f6e223a332c227265636f7264223a226a61656a41444f6a795659514a77384173746a2d4e31645770676132706949467634544a45363737673030227d2c7b226f776e6572223a2230313941364233302d314432372d374539412d384334342d324635423741314530433633222c22707572706f7365223a227465616d222c2276657273696f6e223a372c227265636f7264223a223253435f494a5075454d364e53576e6f79374a705f793573796a796f486d5a565348544d53704e4d746c59227d5d7d800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "pins": 2,
+        "versions": 3
+      }
+    }
+  ],
+  "parse": [
+    {
+      "name": "a member the reader does not know",
+      "op": "trust_plaintext",
+      "row": "A plaintext with a member the reader does not know",
+      "input": {
+        "text": "{\"v\":1,\"later\":[1,2],\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"note\":\"x\",\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "output": {
+        "pins": 2,
+        "versions": 3
+      },
+      "server": null,
+      "clause": "A plaintext with a member the reader does not know"
+    },
+    {
+      "name": "a duplicate member",
+      "op": "trust_plaintext",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"alert\":false,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
+    },
+    {
+      "name": "a missing member",
+      "op": "trust_plaintext",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
+    },
+    {
+      "name": "a wrongly typed member",
+      "op": "trust_plaintext",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":\"3\",\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
+    },
+    {
+      "name": "an unknown v",
+      "op": "trust_plaintext",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "{\"v\":2,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
+    },
+    {
+      "name": "an av of 0",
+      "op": "trust_plaintext",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":0,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
+    },
+    {
+      "name": "a lower-case UUID",
+      "op": "trust_plaintext",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019a6b2e-8f3c-7d41-b2a5-6c0e9f14d7b8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019a6b2e-8f3c-7d41-b2a5-6c0e9f14d7b8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019a6b2e-8f3c-7d41-b2a5-6c0e9f14d7b8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
+    },
+    {
+      "name": "an unknown pin how",
+      "op": "trust_plaintext",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"trusted\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
+    },
+    {
+      "name": "an IK of 31 bytes",
+      "op": "trust_plaintext",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJA\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
+    }
+  ],
+  "fit": [
+    {
+      "name": "the whole plaintext fits",
+      "op": "trust_fit",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}",
+        "record_limit": 1677,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1677,
+        "fits": true,
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}"
+      }
+    },
+    {
+      "name": "first-use pins with no alert and no replaced IK are left out first, from the end",
+      "op": "trust_fit",
+      "row": "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit; a first-use pin with a replaced IK, kept",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}",
+        "record_limit": 1677,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1677,
+        "fits": true,
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}"
+      },
+      "server": null,
+      "clause": "a first-use pin with a replaced IK, kept"
+    },
+    {
+      "name": "only the alert and the replaced IK are left",
+      "op": "trust_fit",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}",
+        "record_limit": 994,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1677,
+        "fits": true,
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}"
+      }
+    },
+    {
+      "name": "alerts and replaced IKs alone pass the limit: nothing is dropped and the approval fails, as the server's too_large would",
+      "op": "trust_fit",
+      "row": "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit; a first-use pin with a replaced IK, kept",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}",
+        "record_limit": 993,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1677,
+        "fits": false
+      },
+      "server": "too_large",
+      "clause": "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit"
+    },
+    {
+      "name": "the most compared pins that fit 1 MiB",
+      "op": "trust_fit",
+      "row": "A rotation or a trust record at the record limit",
+      "input": {
+        "generated": {
+          "count": 5079,
+          "first_account": "019A0000-0000-7000-8000-000000000000",
+          "account_step": 1,
+          "ik": "KHrUN4yrfgXFBmRiq6XC-oNKUV4ZFj5d67bG88eNK00",
+          "av": 1,
+          "how": "compared",
+          "alert": false,
+          "replaced": [],
+          "versions": []
+        },
+        "record_limit": 1048576,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1043426,
+        "fits": true,
+        "pins": 5079
+      },
+      "server": "applied",
+      "clause": "A rotation or a trust record at the record limit"
+    },
+    {
+      "name": "one compared pin more",
+      "op": "trust_fit",
+      "row": "A rotation or a trust record at the record limit",
+      "input": {
+        "generated": {
+          "count": 5080,
+          "first_account": "019A0000-0000-7000-8000-000000000000",
+          "account_step": 1,
+          "ik": "KHrUN4yrfgXFBmRiq6XC-oNKUV4ZFj5d67bG88eNK00",
+          "av": 1,
+          "how": "compared",
+          "alert": false,
+          "replaced": [],
+          "versions": []
+        },
+        "record_limit": 1048576,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1048888,
+        "fits": false
+      },
+      "server": "too_large",
+      "clause": "A rotation or a trust record at the record limit"
+    }
+  ],
+  "team": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+}

@@ -28,12 +28,14 @@ use secrecy::SecretString;
 use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, LocalSocket,
-    NetworkOption, NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TlsMode, TransportClass, WorkspaceSettings,
-    is_local_socket_host,
+    AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, FileOpenMode,
+    LocalSocket, NetworkOption, NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TlsMode, TransportClass,
+    WorkspaceSettings, is_local_socket_host,
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
-use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave};
+use tablepro_session::{
+    ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave, RequestTarget,
+};
 use tablepro_storage::{ConnectionTag, CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
@@ -68,6 +70,8 @@ pub struct ConnectDialogInit {
     pub interaction: CredentialInteraction,
     pub tasks: Tasks,
     pub saved_connections: Arc<[SavedConnection]>,
+    // The active project, which a new connection lands in; an edit keeps its own.
+    pub new_project: Option<Uuid>,
     /// The tags the Appearance group offers.
     pub tags: Arc<[ConnectionTag]>,
     pub remembered_driver: String,
@@ -99,6 +103,7 @@ pub(crate) struct DialogServices {
     interaction: CredentialInteraction,
     tasks: Tasks,
     saved_connections: Arc<[SavedConnection]>,
+    new_project: Option<Uuid>,
     editor: SavedConnectionEditor,
     credentials: Rc<dyn CredentialSourceFactory>,
     hold: Rc<dyn ProcessHold>,
@@ -140,7 +145,7 @@ impl ConnectDialog {
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         let names: Vec<&str> = drivers.iter().map(|entry| entry.display_name.as_str()).collect();
         imp.driver_names.splice(0, imp.driver_names.n_items(), &names);
-        let levels: Vec<String> = SafeModeLevel::ALL
+        let levels: Vec<String> = SafeModeLevel::ENFORCED
             .into_iter()
             .map(crate::ui::safe_mode::label)
             .collect();
@@ -155,7 +160,10 @@ impl ConnectDialog {
         imp.external_access_names
             .splice(0, imp.external_access_names.n_items(), &access);
         crate::ui::combo_value::show_whole_value(&imp.external_access_row);
-        let policies: Vec<String> = AiPolicy::ALL.into_iter().map(crate::ui::ai_policy::label).collect();
+        let policies: Vec<String> = crate::ui::ai_policy::OFFERED
+            .into_iter()
+            .map(crate::ui::ai_policy::label)
+            .collect();
         let policies: Vec<&str> = policies.iter().map(String::as_str).collect();
         imp.ai_policy_names.splice(0, imp.ai_policy_names.n_items(), &policies);
         crate::ui::combo_value::show_whole_value(&imp.ai_policy_row);
@@ -166,6 +174,7 @@ impl ConnectDialog {
             interaction: init.interaction,
             tasks: init.tasks,
             saved_connections: init.saved_connections,
+            new_project: init.new_project,
             editor: init.editor,
             credentials: init.credentials,
             hold: init.hold,
@@ -644,7 +653,7 @@ impl ConnectDialog {
             password: SecretString::from(imp.password_row.text().to_string()),
             remember_password: imp.remember_row.is_active(),
             tls: imp.tls_section.form_state(),
-            safe_mode: SafeModeLevel::ALL
+            safe_mode: SafeModeLevel::ENFORCED
                 .get(imp.safe_mode_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
@@ -652,7 +661,7 @@ impl ConnectDialog {
                 .get(imp.external_access_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
-            ai_policy: AiPolicy::ALL
+            ai_policy: crate::ui::ai_policy::OFFERED
                 .get(imp.ai_policy_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
@@ -780,7 +789,7 @@ impl ConnectDialog {
             imp.password_row
                 .set_text(secrecy::ExposeSecret::expose_secret(&form.password));
         }
-        let level = SafeModeLevel::ALL
+        let level = SafeModeLevel::ENFORCED
             .iter()
             .position(|level| *level == form.safe_mode)
             .unwrap_or_default();
@@ -790,7 +799,7 @@ impl ConnectDialog {
             .position(|access| *access == form.external_access)
             .unwrap_or_default();
         imp.external_access_row.set_selected(access as u32);
-        let policy = AiPolicy::ALL
+        let policy = crate::ui::ai_policy::OFFERED
             .iter()
             .position(|policy| *policy == form.ai_policy)
             .unwrap_or_default();
@@ -1096,7 +1105,10 @@ impl ConnectDialog {
             .iter()
             .find(|saved| Some(saved.id) == reopened && saved.driver_id == entry.id);
         let id = existing.map_or_else(Uuid::new_v4, |saved| saved.id);
-        let connection = form.submitted_connection(caps, &valid, id, existing);
+        let mut connection = form.submitted_connection(caps, &valid, id, existing);
+        if existing.is_none() {
+            connection.project_id = self.services().and_then(|services| services.new_project);
+        }
         let request = connect_request(&entry, &form, &valid, &connection);
         let pending_save = PendingSave {
             secrets: form.secrets_to_store(&valid, &connection),
@@ -1236,6 +1248,11 @@ impl ConnectDialog {
         // A test entry is never saved, so it gets an id of its own.
         let mut request = request;
         request.metadata.id = Uuid::new_v4();
+        // A test of a new file makes it, so Connect then opens that file rather than refusing it.
+        let made = match &request.target {
+            RequestTarget::File(file) if file.mode() != FileOpenMode::OpenExisting => Some(file.clone()),
+            _ => None,
+        };
         let connector = services.connector.clone();
         let interaction = services.interaction.clone();
         let cancel = ticket.cancel().clone();
@@ -1269,7 +1286,14 @@ impl ConnectDialog {
             }
             dialog.stop_test();
             match outcome {
-                Ok(Ok(())) => dialog.show_toast(&crate::i18n::gettext("Connection works"), None),
+                Ok(Ok(())) => {
+                    if let Some(made) = made
+                        && imp.file_row.endpoint().as_ref() == Some(&made)
+                    {
+                        imp.file_row.set_endpoint(Some(made.for_reopen()));
+                    }
+                    dialog.show_toast(&crate::i18n::gettext("Connection works"), None);
+                }
                 Ok(Err(ConnectError::Cancelled)) => {}
                 Ok(Err(error)) => dialog.show_toast(
                     &crate::ui::error_text::connect_error_message(&error),

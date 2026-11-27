@@ -43,6 +43,76 @@ public sealed class HistoryListTests
     }
 
     [Fact]
+    public async Task TheEveryConnectionListKeepsToTheProjectAndReadsAgainOnASwitch()
+    {
+        var other = Guid.NewGuid();
+        var project = Guid.NewGuid();
+        _store.Entries.Insert(0, FakeHistoryStore.Entry(6, "select 6 from Album", other));
+        _store.Members[project] = [other];
+        var list = new HistoryList(_store, null, pageSize: 2, projectId: project);
+
+        await list.SearchAsync(string.Empty);
+        var scoped = Ids(list).ToList();
+        await list.RescopeAsync(null);
+        await list.LoadMoreAsync();
+
+        Assert.Equal<long>([6], scoped);
+        Assert.Null(list.ProjectId);
+        Assert.Equal<long>([6, 5, 4, 3], Ids(list));
+        Assert.Equal<Guid?>([project, null, null], _store.Projects);
+    }
+
+    [Fact]
+    public async Task AConnectionMovedIntoTheProjectIsListedOnceTheScopeIsReadAgain()
+    {
+        var (inside, moved) = (Guid.NewGuid(), Guid.NewGuid());
+        var project = Guid.NewGuid();
+        _store.Entries.Insert(0, FakeHistoryStore.Entry(6, "select 6 from Album", inside));
+        _store.Entries.Insert(0, FakeHistoryStore.Entry(7, "select 7 from Track", moved));
+        _store.Members[project] = [inside];
+        var list = new HistoryList(_store, null, pageSize: 5, projectId: project);
+        await list.SearchAsync("select");
+        var before = Ids(list).ToList();
+
+        _store.Members[project] = [inside, moved];
+        await list.RescopeAsync(project);
+        var after = Ids(list).ToList();
+        _store.Members[project] = [];
+        await list.RescopeAsync(project);
+
+        Assert.Equal<long>([6], before);
+        Assert.Equal<long>([7, 6], after);
+        Assert.Empty(list.Entries);
+        Assert.Equal("select", list.Text);
+        Assert.Equal(project, list.ProjectId);
+    }
+
+    [Fact]
+    public async Task APageReadBeforeTheScopeChangedIsDropped()
+    {
+        var (inside, moved) = (Guid.NewGuid(), Guid.NewGuid());
+        var project = Guid.NewGuid();
+        _store.Entries.Insert(0, FakeHistoryStore.Entry(6, "select 6 from Album", inside));
+        _store.Entries.Insert(0, FakeHistoryStore.Entry(7, "select 7 from Track", moved));
+        _store.Members[project] = [inside, moved];
+        var list = new HistoryList(_store, null, pageSize: 1, projectId: project);
+        await list.SearchAsync(string.Empty);
+        var paging = new Gate();
+        _store.Paging = paging;
+        var late = list.LoadMoreAsync();
+        await paging.Reached;
+
+        _store.Members[project] = [inside];
+        _store.Paging = null;
+        await list.RescopeAsync(project);
+        paging.Open();
+        await late;
+
+        Assert.Equal<long>([6], Ids(list));
+        Assert.False(list.IsLoading);
+    }
+
+    [Fact]
     public async Task ASearchIsLoadingFromItsStartToItsAnswer()
     {
         var list = new HistoryList(_store, Chinook);
@@ -219,10 +289,44 @@ public sealed class HistoryListTests
         Assert.Null(list.Failure);
     }
 
+    [Fact]
+    public async Task APinnedRunComesFirstAndAnUnpinnedOneGoesBack()
+    {
+        var list = new HistoryList(_store, Chinook);
+        await list.SearchAsync(string.Empty);
+
+        await list.SetPinnedAsync(list.Entries[3], pinned: true);
+
+        Assert.Equal<long>([2, 5, 4, 3, 1], Ids(list));
+        Assert.True(list.Entries[0].Pinned);
+        Assert.Equal((2L, true), Assert.Single(_store.Pins));
+
+        await list.SetPinnedAsync(list.Entries[0], pinned: false);
+
+        Assert.Equal<long>([5, 4, 3, 2, 1], Ids(list));
+        Assert.All(list.Entries, entry => Assert.False(entry.Pinned));
+        Assert.Null(list.Failure);
+    }
+
+    [Fact]
+    public async Task APinThatFailsKeepsTheRunsAndSaysWhy()
+    {
+        var list = new HistoryList(_store, Chinook);
+        await list.SearchAsync(string.Empty);
+        _store.Failure = Errors.Of("storage.not_found");
+
+        await list.SetPinnedAsync(list.Entries[3], pinned: true);
+
+        Assert.Equal("storage.not_found", list.Failure?.Code);
+        Assert.Equal<long>([5, 4, 3, 2, 1], Ids(list));
+        Assert.Empty(_store.Pins);
+        Assert.False(list.IsLoading);
+    }
+
     private static IEnumerable<long> Ids(HistoryList list) => list.Entries.Select(entry => entry.Id);
 }
 
-// Newest first, paged by offset behind a cursor only it reads back, as the core's store pages.
+// Pinned first, then newest, paged by offset behind a cursor only it reads back, as the core's store pages.
 internal sealed class FakeHistoryStore : IHistoryStore
 {
     private readonly Dictionary<HistoryCursor, int> _cursors = new(ReferenceEqualityComparer.Instance);
@@ -230,6 +334,11 @@ internal sealed class FakeHistoryStore : IHistoryStore
     public List<HistoryEntry> Entries { get; } = [];
 
     public List<(string Text, Guid? ConnectionId, int Offset, int Limit)> Searches { get; } = [];
+
+    public List<Guid?> Projects { get; } = [];
+
+    // The connections each project holds, as the core resolves a project the list names.
+    public Dictionary<Guid, Guid[]> Members { get; } = [];
 
     // Waited at by a first page searched for that text, once its runs are read, so a later delete misses them.
     public Dictionary<string, Gate> Searching { get; } = [];
@@ -242,6 +351,8 @@ internal sealed class FakeHistoryStore : IHistoryStore
     public List<IReadOnlyList<long>> Deleted { get; } = [];
 
     public int Clears { get; private set; }
+
+    public List<(long Id, bool Pinned)> Pins { get; } = [];
 
     public static HistoryEntry Entry(long id, string sql, Guid? connectionId) => new(
         id,
@@ -258,12 +369,15 @@ internal sealed class FakeHistoryStore : IHistoryStore
     public async Task<HistoryPage> SearchAsync(
         string text,
         Guid? connectionId,
+        Guid? projectId,
         HistoryCursor? after,
         int limit,
         CancellationToken cancellationToken)
     {
         var offset = after is null ? 0 : _cursors[after];
         Searches.Add((text, connectionId, offset, limit));
+        Projects.Add(projectId);
+        var members = projectId is { } project && Members.TryGetValue(project, out var held) ? held : null;
         if (Failure is { } failure)
         {
             throw new TableProException(failure);
@@ -271,7 +385,9 @@ internal sealed class FakeHistoryStore : IHistoryStore
 
         var found = Entries
             .Where(entry => connectionId is null || entry.ConnectionId == connectionId)
+            .Where(entry => members is null || (entry.ConnectionId is { } ran && members.Contains(ran)))
             .Where(entry => entry.Sql.Contains(text, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(entry => entry.Pinned)
             .ToList();
         var page = found.Skip(offset).Take(limit).ToList();
         HistoryCursor? next = null;
@@ -310,6 +426,23 @@ internal sealed class FakeHistoryStore : IHistoryStore
 
         Clears++;
         Entries.Clear();
+        return Task.CompletedTask;
+    }
+
+    public Task SetPinnedAsync(long id, bool pinned)
+    {
+        if (Failure is { } failure)
+        {
+            return Task.FromException(new TableProException(failure));
+        }
+
+        Pins.Add((id, pinned));
+        var at = Entries.FindIndex(entry => entry.Id == id);
+        if (at >= 0)
+        {
+            Entries[at] = Entries[at] with { Pinned = pinned };
+        }
+
         return Task.CompletedTask;
     }
 

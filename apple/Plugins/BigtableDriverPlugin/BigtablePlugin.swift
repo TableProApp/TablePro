@@ -12,6 +12,8 @@ final class BigtablePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Google Cloud Bigtable"
     static let iconName = "bigtable-icon"
     static let defaultPort = 0
+    // The instance belongs to the client, which no statement can change.
+    static let statementsCanSwitchDatabase = false
     static let isDownloadable = true
 
     static let connectionMode: ConnectionMode = .apiOnly

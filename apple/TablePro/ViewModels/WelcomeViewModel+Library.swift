@@ -26,14 +26,12 @@ internal enum WelcomeDeleteIntent: Equatable {
 internal struct WelcomeOrganizationState: Equatable {
     internal struct ConnectionPlacement: Equatable {
         internal let groupId: UUID?
+        internal let projectId: UUID?
         internal let sortOrder: Int
         internal let isFavorite: Bool
     }
 
-    internal struct GroupPlacement: Equatable {
-        internal let parentId: UUID?
-        internal let sortOrder: Int
-    }
+    internal typealias GroupPlacement = ConnectionGroupPlacement
 
     internal var connections: [UUID: ConnectionPlacement]
     internal var groups: [UUID: GroupPlacement]
@@ -216,13 +214,13 @@ extension WelcomeViewModel {
         let order = isFavorite
             ? LibraryOrdering.favoritesOrder(displayed, inserting: targets, before: sortMode == .manual ? before : nil)
             : LibraryOrdering.favoritesOrder(displayed, removing: Set(targets))
-        listPreferences.setFavoritesOrder(order)
+        saveFavoritesOrder(order, replacing: displayed)
     }
 
     func reorderFavorites(_ ids: [UUID], before: UUID?, undoManager: UndoManager?) {
         performUndoable(String(localized: "Reorder Favorites"), undoManager: undoManager) {
             let displayed = LibraryOutlineBuilder.favoriteIds(outlineRequest(query: LibraryQuery()))
-            listPreferences.setFavoritesOrder(LibraryOrdering.favoritesOrder(displayed, inserting: ids, before: before))
+            saveFavoritesOrder(LibraryOrdering.favoritesOrder(displayed, inserting: ids, before: before), replacing: displayed)
         }
     }
 
@@ -242,7 +240,7 @@ extension WelcomeViewModel {
                 ids,
                 toGroup: groupId,
                 before: before,
-                validGroupIds: Set(groups.map(\.id))
+                groups: groupStorage.loadGroups()
             ) else {
                 reportLibraryWriteFailure()
                 return
@@ -339,6 +337,7 @@ extension WelcomeViewModel {
                 storedConnections.map {
                     ($0.id, WelcomeOrganizationState.ConnectionPlacement(
                         groupId: $0.groupId,
+                        projectId: $0.projectId,
                         sortOrder: $0.sortOrder,
                         isFavorite: $0.isFavorite
                     ))
@@ -347,7 +346,11 @@ extension WelcomeViewModel {
             ),
             groups: Dictionary(
                 storedGroups.map {
-                    ($0.id, WelcomeOrganizationState.GroupPlacement(parentId: $0.parentId, sortOrder: $0.sortOrder))
+                    ($0.id, WelcomeOrganizationState.GroupPlacement(
+                        parentId: $0.parentId,
+                        projectId: $0.projectId,
+                        sortOrder: $0.sortOrder
+                    ))
                 },
                 uniquingKeysWith: { first, _ in first }
             ),
@@ -355,47 +358,50 @@ extension WelcomeViewModel {
         )
     }
 
-    func restoreOrganizationState(_ target: WelcomeOrganizationState) {
+    // False when the library could not take the state back, which is reported and leaves the groups as they were.
+    @discardableResult
+    func restoreOrganizationState(_ target: WelcomeOrganizationState) -> Bool {
         let current = captureOrganizationState()
+        let changedGroups = target.groups.filter { id, placement in
+            guard let now = current.groups[id] else { return false }
+            return now != placement
+        }
+        // Groups first: a refused group restore then leaves the connections where they are too.
+        do {
+            try groupStorage.restorePlacements(changedGroups)
+        } catch {
+            libraryErrorMessage = error.localizedDescription
+            loadConnections()
+            return false
+        }
+
         let changedConnections = target.connections.filter { id, placement in
             guard let now = current.connections[id] else { return false }
             return now != placement
         }
-        if !storage.mutateConnections(ids: Set(changedConnections.keys), { connection in
+        guard storage.mutateConnections(ids: Set(changedConnections.keys), { connection in
             guard let placement = changedConnections[connection.id] else { return }
             connection.groupId = placement.groupId
+            connection.projectId = placement.projectId
             connection.sortOrder = placement.sortOrder
             connection.isFavorite = placement.isFavorite
-        }) {
+        }) else {
+            try? groupStorage.restorePlacements(current.groups.filter { changedGroups[$0.key] != nil })
             reportLibraryWriteFailure()
-        }
-
-        var pendingGroups = target.groups.filter { id, placement in
-            guard let now = current.groups[id] else { return false }
-            return now != placement
-        }
-        for _ in 0..<max(1, pendingGroups.count) where !pendingGroups.isEmpty {
-            for (id, placement) in pendingGroups {
-                do {
-                    try groupStorage.mutateGroup(id: id) { group in
-                        group.parentId = placement.parentId
-                        group.sortOrder = placement.sortOrder
-                    }
-                    pendingGroups.removeValue(forKey: id)
-                } catch {
-                    continue
-                }
-            }
+            loadConnections()
+            return false
         }
 
         listPreferences.setFavoritesOrder(target.favoritesOrder)
         loadConnections()
+        return true
     }
 
     private func registerRestore(to target: WelcomeOrganizationState, actionName: String, undoManager: UndoManager) {
         undoManager.registerUndo(withTarget: self) { viewModel in
             let current = viewModel.captureOrganizationState()
-            viewModel.restoreOrganizationState(target)
+            // A restore that was refused changed nothing, so there is nothing to redo.
+            guard viewModel.restoreOrganizationState(target) else { return }
             viewModel.registerRestore(to: current, actionName: actionName, undoManager: undoManager)
         }
         undoManager.setActionName(actionName)
@@ -418,14 +424,16 @@ extension WelcomeViewModel {
             rows: rows,
             resolved: resolved,
             connections: connectionsById,
-            groups: groups,
+            groups: scopedGroups,
             linkedFolderConnectionIds: Set(presentableLinkedConnections.map(\.id)),
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
             isSyncEnabled: services.appSettings.sync.enabled,
+            isCompareSyncEnabled: AppModuleSettings.shared.isEnabled(.compareSync),
             canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
             teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrarySync.shared.writableTeams : [],
-            hasTeamLibraryConflicts: !TeamLibrarySync.shared.conflicts.isEmpty
+            hasTeamLibraryConflicts: !TeamLibrarySync.shared.conflicts.isEmpty,
+            projects: projects
         )
     }
 
@@ -513,6 +521,13 @@ extension WelcomeViewModel {
             importConnectionsFromAWS()
         case .openProjectFolder:
             openProjectFolder()
+        case .moveToProject(let connectionIds, let groupIds, let projectId):
+            moveToProject(
+                connectionIds: connectionIds,
+                groupIds: groupIds,
+                projectId: projectId,
+                undoManager: undoManager
+            )
         }
     }
 }

@@ -103,9 +103,11 @@ extension MainContentCoordinator {
             requestGridFocus()
         }
 
-        // In-place navigation would retarget the selected tab, and a pinned one is never retargeted.
-        let keepsPinnedTab = navigationModel == .inPlace && tabManager.selectedTab?.isPinned == true
-        if tabManager.tabs.isEmpty || keepsPinnedTab {
+        // In-place navigation would retarget the selected tab, so it keeps one that is pinned, named or holds work.
+        let keepsSelectedTab = navigationModel == .inPlace && tabManager.selectedTab.map { tab in
+            tab.isPinned || tab.isNamedByUser || selectedTabResistsRetarget(tab)
+        } == true
+        if tabManager.tabs.isEmpty || keepsSelectedTab {
             let didOpen = addFirstTableTab(
                 tableName: tableName,
                 currentDatabase: currentDatabase,
@@ -144,9 +146,9 @@ extension MainContentCoordinator {
                     databaseName: currentDatabase,
                     schemaName: resolvedSchema
                 )
-                if replaced {
+                if replaced, let tabId = tabManager.selectedTabId {
                     clearFilterState()
-                    discardRowsForRetarget()
+                    discardRowsForRetarget(ofTab: tabId)
                     restoreLastHiddenColumnsForTable()
                     restoreFiltersForSelectedTab()
                     if let dbIndex = Int(currentDatabase) {
@@ -357,9 +359,11 @@ extension MainContentCoordinator {
             return false
         }
         if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }
-        commitNavigationEntry(departing)
-        clearFilterState()
-        discardRowsForRetarget(resultsViewMode: showStructure ? .structure : .data)
+        if let tabId = tabManager.selectedTabId {
+            commitNavigationEntry(departing, inTab: tabId)
+            clearFilterState()
+            discardRowsForRetarget(ofTab: tabId, resultsViewMode: showStructure ? .structure : .data)
+        }
         restoreLastHiddenColumnsForTable()
         restoreFiltersForSelectedTab()
         if let tabId = tabManager.selectedTab?.id {
@@ -375,17 +379,13 @@ extension MainContentCoordinator {
         return true
     }
 
-    /// Drops the outgoing table's rows and says, in the same step, that a load is running.
-    ///
-    /// The two belong together. A cleared buffer that nothing has called a load is what the status
-    /// bar reads as "this tab has no result", and it removes every control that depends on one, so
-    /// the bar collapses and then refills as the fetch lands. The execution claim cannot stand in
-    /// for the flag: retargeting only schedules the load, so the claim arrives a main-actor turn
-    /// later and leaves a renderable frame in between.
-    func discardRowsForRetarget(resultsViewMode: ResultsViewMode? = nil) {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
-        setActiveTableRows(TableRows(), for: tab.id)
-        tabManager.mutate(at: tabIndex) { tab in
+    // Marks the load in the same step: a cleared buffer with no load is "no result" to the status bar, which collapses until the fetch lands.
+    func discardRowsForRetarget(ofTab tabId: UUID, resultsViewMode: ResultsViewMode? = nil) {
+        guard tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
+        cancelPhase2Work(forTab: tabId)
+        forgetCatalogPage(ofTab: tabId)
+        setActiveTableRows(TableRows(), for: tabId)
+        tabManager.mutate(tabId: tabId) { tab in
             if let resultsViewMode {
                 tab.display.resultsViewMode = resultsViewMode
             }
@@ -420,16 +420,19 @@ extension MainContentCoordinator {
     /// only be followed from a grid and the row the reader clicked is in that grid.
     var isActiveTabReusable: Bool {
         guard let tab = tabManager.selectedTab, !tab.isPinned else { return false }
-        if selectedTabHoldsProtectedContent { return false }
-        if selectedTabFilterState.hasAppliedFilters
-            || tab.hasUserActiveSort
-            || tab.display.hasPinnedResults {
-            return false
-        }
+        if selectedTabResistsRetarget(tab) { return false }
         if tab.tabType == .createTable { return true }
         if tab.isPreview { return true }
         if tab.tabType == .query { return true }
         return false
+    }
+
+    // Retargeting drops the tab's work, filters, sort and pinned results, so both reuse paths ask this first.
+    private func selectedTabResistsRetarget(_ tab: QueryTab) -> Bool {
+        selectedTabHoldsProtectedContent
+            || selectedTabFilterState.isFiltering
+            || tab.hasUserActiveSort
+            || tab.display.hasPinnedResults
     }
 
     func promotePreviewTab() {
@@ -468,7 +471,7 @@ extension MainContentCoordinator {
     /// Nil when the engine has no listing, which is when the sidebar leaves the command out.
     func allTablesListing() -> String? {
         let pluginListing = DatabaseManager.shared.driver(for: connectionId).flatMap { driver in
-            (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: allTablesContainer(driver))
+            driver.plugin?.allTablesMetadataSQL(schema: allTablesContainer(driver))
         }
         return AllTablesListing.statement(databaseType: connection.type, pluginListing: pluginListing)
     }
@@ -491,6 +494,16 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
+    private func keepsShownCatalog() -> Bool {
+        let schemaService = services.schemaService
+        guard schemaService.hasLoadedContent(for: connectionId),
+              schemaService.isCatalogCurrent(for: connectionId),
+              let scope = services.databaseManager.browseScope(for: connectionId),
+              schemaService.loadedScope(for: connectionId) == scope
+        else { return false }
+        return SchemaProviderRegistry.shared.isPopulated(scope)
+    }
+
     /// Moves the browse cursor: what the sidebar lists and which database a new tab
     /// opens in. It never retargets an open tab. Once it lands, the window shows that database's
     /// entry, unless a newer move from this window has been asked for since.
@@ -508,7 +521,11 @@ extension MainContentCoordinator {
 
             await SchemaService.shared.prepareForReload(connectionId: connectionId)
 
-            await refreshTables(currentDatabaseOnly: true)
+            if keepsShownCatalog() {
+                pruneStaleSidebarState()
+            } else {
+                await refreshTables(currentDatabaseOnly: true)
+            }
             syncSidebarObjectSelection()
             return true
         } catch {
@@ -770,10 +787,12 @@ extension MainContentCoordinator {
             }
             guard !Task.isCancelled else { return }
             toolbarState.currentDatabase = database
-            if let tabId, tabManager.selectedTabId != tabId {
-                declineTableLoad(for: tabId)
-            } else {
-                executeTableTabQueryDirectly(viewport: .firstRow)
+            if let tabId {
+                if tabManager.selectedTabId != tabId {
+                    declineTableLoad(for: tabId)
+                } else {
+                    executeTableTabQueryDirectly(onTab: tabId, viewport: .firstRow)
+                }
             }
 
             loadRedisKeyTree(databaseIndex: dbIndex)
@@ -827,6 +846,7 @@ extension MainContentCoordinator {
             initialQuery: RedisKeyTreeCommand.openKey(keyName, keyType: keyType, inDatabase: databaseIndex),
             title: keyName
         )
-        runQuery(viewport: .firstRow)
+        guard let tabId = tabManager.selectedTabId else { return }
+        runQuery(onTab: tabId, viewport: .firstRow)
     }
 }

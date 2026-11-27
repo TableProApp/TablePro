@@ -230,7 +230,7 @@ internal final class WindowManager {
     /// payload, so nothing re-opens or re-restores it, and the intent is `.openContent` because
     /// `.restoreOrDefault` would fill the new window with the whole saved set.
     @discardableResult
-    internal func openTabInNewWindow(connectionId: UUID, tabId: UUID) -> Bool {
+    internal func openTabInNewWindow(connectionId: UUID, tabId: UUID, droppedAt dropPoint: NSPoint? = nil) -> Bool {
         /// Resolved by which workspace actually holds the tab. After one detach the connection is
         /// hosted twice, and the singular lookup names an arbitrary one of them: asking it for a
         /// tab that lives in the other window fails a move the user did ask for.
@@ -238,9 +238,11 @@ internal final class WindowManager {
             workspace.sessionState?.tabManager.tabs.contains { $0.id == tabId } ?? false
         }),
             let sourceState = origin.sessionState,
-            let tab = sourceState.tabManager.tabs.first(where: { $0.id == tabId }),
             let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection
         else { return false }
+
+        let needsMetadataAndCount = sourceState.coordinator.abandonAutomaticTableReads(of: tabId)
+        guard let tab = sourceState.tabManager.tabs.first(where: { $0.id == tabId }) else { return false }
 
         let payload = EditorTabPayload(
             connectionId: connectionId,
@@ -270,7 +272,7 @@ internal final class WindowManager {
         /// The destination has to be told a tab arrived. Its coordinator was built with no payload
         /// and `selectedTabId` is set before anything observes the manager, so the switch that
         /// normally prepares an incoming tab never runs: `toolbarState.isTableTab` stayed false and
-        /// `changeManager` kept empty table, column and primary-key metadata, which leaves Find and
+        /// the tab's edits kept empty table, column and primary-key metadata, which leaves Find and
         /// Filter disabled and a later edit unable to name the row it is saving. This is that same
         /// preparation, with no outgoing tab to put away.
         state.coordinator.handleTabChange(from: nil, to: moved.id, tabs: [moved])
@@ -281,6 +283,8 @@ internal final class WindowManager {
             /// next window opened for this connection adopt a session state holding a tab that
             /// never left its old window.
             SessionStateFactory.removePending(for: payload.id)
+            sourceState.coordinator.lazyLoadCurrentTabIfNeeded()
+            if needsMetadataAndCount { sourceState.coordinator.resumeTableMetadataAndCount(of: tab) }
             return false
         }
 
@@ -289,6 +293,7 @@ internal final class WindowManager {
         /// neither prompts nor clears anything from disk.
         sourceState.coordinator.tabSessionRegistry.unregister(id: tabId)
         sourceState.tabManager.closeTab(id: tabId)
+        if needsMetadataAndCount { state.coordinator.resumeTableMetadataAndCount(of: moved) }
 
         (window.contentViewController as? MainSplitViewController)?.hostsDetachedTab = true
 
@@ -296,10 +301,47 @@ internal final class WindowManager {
         /// merge it straight back into the tab group it was asked to leave, which is the trap
         /// `openStandaloneWindow` already documents.
         window.tabbingMode = .disallowed
+        if let dropPoint {
+            window.setFrameTopLeftPoint(NSPoint(x: dropPoint.x - Self.droppedWindowInset.width, y: dropPoint.y + Self.droppedWindowInset.height))
+        }
         window.makeKeyAndOrderFront(nil)
         window.tabbingMode = .automatic
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         return true
+    }
+
+    // Puts the new window's titlebar under the pointer that dropped the tab.
+    private static let droppedWindowInset = NSSize(width: 120, height: 20)
+
+    // A tab dropped on another window of its connection. Both windows share the session, so only the tab moves.
+    @discardableResult
+    internal func moveTab(_ tabId: UUID, into target: ConnectionWorkspace, at index: Int) -> Bool {
+        guard let origin = workspaces(for: target.connectionId).first(where: { workspace in
+            workspace !== target && workspace.sessionState?.tabManager.tabs.contains { $0.id == tabId } == true
+        }),
+            let sourceState = origin.sessionState,
+            let targetState = target.sessionState
+        else { return false }
+
+        let needsMetadataAndCount = sourceState.coordinator.abandonAutomaticTableReads(of: tabId)
+        guard let tab = sourceState.tabManager.tabs.first(where: { $0.id == tabId }) else { return false }
+
+        let moved = sourceState.coordinator.enrichedForPersistence(tab)
+        if let liveSession = sourceState.coordinator.tabSessionRegistry.session(for: tabId) {
+            targetState.coordinator.tabSessionRegistry.register(liveSession)
+        }
+        sourceState.coordinator.tabSessionRegistry.unregister(id: tabId)
+        sourceState.tabManager.closeTab(id: tabId)
+
+        targetState.tabManager.adoptTab(moved, claimFocus: true)
+        targetState.tabManager.moveTab(id: moved.id, to: index)
+        if needsMetadataAndCount { targetState.coordinator.resumeTableMetadataAndCount(of: moved) }
+        host(containing: target)?.view.window?.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    private func host(containing workspace: ConnectionWorkspace) -> MainSplitViewController? {
+        hosts().first { $0.workspaces.workspace(for: workspace.connectionId) === workspace }
     }
 
     // MARK: - Move Tab to Connection

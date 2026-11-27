@@ -10,7 +10,7 @@ LINK=""
 case "$ENGINE" in
     libsql)
         FOLDER=LibSQLDriverPlugin
-        PRODUCTS="TableProSQLiteCore CSQLite"
+        PRODUCTS="TableProSQLiteCore CSQLite TableProWireIO"
         LINK="\"$ROOT/Libs/libsqlite3_vendored.a\""
         ;;
     beancount)
@@ -32,8 +32,12 @@ mkdir -p "$SOURCES"
 for source in "$ROOT/Plugins/$FOLDER/"*.swift; do
     ln -sf "$source" "$SOURCES/$(basename "$source")"
 done
-for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate; do
-    ln -sf "$ROOT/Plugins/Shared/$shared.swift" "$SOURCES/$shared.swift"
+if [ "$ENGINE" = libsql ]; then
+    ln -sf "$ROOT/Plugins/SharedSpill/PluginRowSpill.swift" "$SOURCES/PluginRowSpill.swift"
+fi
+for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate \
+    PluginNameSpellings PluginRowBatcher; do
+    [ -f "$ROOT/Plugins/Shared/$shared.swift" ] && ln -sf "$ROOT/Plugins/Shared/$shared.swift" "$SOURCES/$shared.swift"
 done
 ln -sf "$ROOT/scripts/probes/nul-text-drivers.swift" "$SOURCES/Probe.swift"
 

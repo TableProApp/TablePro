@@ -13,7 +13,7 @@ internal static class EditorHost
     private static Grid? s_host;
 
     // False when the editor drew no frame.
-    public static async Task<bool> ShowAsync(SqlEditor editor)
+    public static async Task<bool> ShowAsync(SqlEditor editor, UIElement? beside = null)
     {
         var presented = false;
         void OnFrame(object? sender, EditorFrame frame) => presented = true;
@@ -23,6 +23,10 @@ internal static class EditorHost
             var host = Host();
             host.Children.Clear();
             host.Children.Add(editor);
+            if (beside is not null)
+            {
+                host.Children.Add(beside);
+            }
             for (var i = 0; i < 300 && !presented; i++)
             {
                 await WinUiApp.NextFrameAsync();

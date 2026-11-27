@@ -1,4 +1,5 @@
 import Foundation
+import TableProConnectionLibrary
 
 /// Names match trimmed and lowercased; the first spelling, the first color and the first icon win.
 public struct ConnectionBundleBuilder: Sendable {
@@ -38,6 +39,31 @@ public struct ConnectionBundleBuilder: Sendable {
         }
     }
 
+    public struct ProjectSpec: Hashable, Sendable {
+        public let id: UUID?
+        public let name: String
+        public let color: String?
+        public let iconName: String?
+
+        public init(id: UUID? = nil, name: String, color: String? = nil, iconName: String? = nil) {
+            self.id = id
+            self.name = name
+            self.color = color
+            self.iconName = iconName
+        }
+    }
+
+    private enum ProjectKey: Hashable {
+        case id(UUID)
+        case name(String)
+    }
+
+    // Two projects can each hold a top-level group of one name, so the project is part of a path's identity.
+    private struct GroupPathKey: Hashable {
+        let project: BundleRef?
+        let names: [String]
+    }
+
     private struct FolderKey: Hashable {
         let name: String
         let connection: BundleRef?
@@ -49,7 +75,9 @@ public struct ConnectionBundleBuilder: Sendable {
     private var connectionRefs: Set<BundleRef> = []
     private var repeatedConnectionRef: BundleRef?
     private var groups: [BundleGroup] = []
-    private var groupPositionsByPath: [[String]: Int] = [:]
+    private var groupPositionsByPath: [GroupPathKey: Int] = [:]
+    private var projects: [BundleProject] = []
+    private var projectRefs: [ProjectKey: BundleRef] = [:]
     private var tags: [BundleTag] = []
     private var tagPositions: [String: Int] = [:]
     private var profiles: [BundleCredentialProfile] = []
@@ -72,7 +100,8 @@ public struct ConnectionBundleBuilder: Sendable {
         groupPath: [GroupComponent] = [],
         tags: [BundleTag] = [],
         credentialProfile: ProfileSpec? = nil,
-        credentials: ExportableCredentials? = nil
+        credentials: ExportableCredentials? = nil,
+        project: ProjectSpec? = nil
     ) {
         guard connectionRefs.insert(ref).inserted else {
             if repeatedConnectionRef == nil { repeatedConnectionRef = ref }
@@ -83,14 +112,16 @@ public struct ConnectionBundleBuilder: Sendable {
             guard let name = ensureTag(tag), !tagNames.contains(name) else { continue }
             tagNames.append(name)
         }
-        let groupRef = ensureGroupPath(groupPath)
+        let projectRef = project.flatMap { ensureProject($0) }
+        let groupRef = ensureGroupPath(groupPath, project: projectRef)
         let profileRef = credentialProfile.flatMap { ensureProfile($0) }
         connections.append(BundleConnection(
             ref: ref,
             settings: settings,
             groupRef: groupRef,
             tagNames: tagNames,
-            credentialProfileRef: profileRef
+            credentialProfileRef: profileRef,
+            projectRef: groupRef == nil ? projectRef : nil
         ))
         if let credentials, !credentials.isEmpty {
             self.credentials[ref] = credentials
@@ -151,17 +182,30 @@ public struct ConnectionBundleBuilder: Sendable {
             credentialProfiles: profiles,
             credentials: credentials,
             queryFolders: folders,
-            savedQueries: savedQueries
+            savedQueries: savedQueries,
+            projects: projects
         )
     }
 
-    private mutating func ensureGroupPath(_ path: [GroupComponent]) -> BundleRef? {
+    private mutating func ensureProject(_ spec: ProjectSpec) -> BundleRef? {
+        let name = Self.trimmed(spec.name)
+        guard !name.isEmpty else { return nil }
+        let key: ProjectKey = spec.id.map { .id($0) } ?? .name(LibraryProjectName.folded(name))
+        if let existing = projectRefs[key] { return existing }
+        let ref = BundleRef("j\(projects.count + 1)")
+        projects.append(BundleProject(ref: ref, id: spec.id, name: name, color: spec.color, iconName: spec.iconName))
+        projectRefs[key] = ref
+        return ref
+    }
+
+    private mutating func ensureGroupPath(_ path: [GroupComponent], project: BundleRef?) -> BundleRef? {
         var parent: BundleRef?
-        var key: [String] = []
+        var names: [String] = []
         for component in path {
             let name = Self.trimmed(component.name)
-            guard !name.isEmpty, key.count < BundleViolation.maximumNestingDepth else { continue }
-            key.append(name.lowercased())
+            guard !name.isEmpty, names.count < BundleViolation.maximumNestingDepth else { continue }
+            names.append(name.lowercased())
+            let key = GroupPathKey(project: project, names: names)
             if let position = groupPositionsByPath[key] {
                 if groups[position].color == nil {
                     groups[position].color = component.color
@@ -179,7 +223,8 @@ public struct ConnectionBundleBuilder: Sendable {
                 name: name,
                 color: component.color,
                 iconName: component.iconName,
-                parentRef: parent
+                parentRef: parent,
+                projectRef: parent == nil ? project : nil
             ))
             parent = ref
         }

@@ -6,7 +6,7 @@
 import Foundation
 import TableProTabularIO
 
-struct CSVImportText {
+nonisolated struct CSVImportText {
     let data: Data
     let encoding: TabularTextEncoding
     let firstUndecodableLine: Int?

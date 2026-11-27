@@ -33,8 +33,11 @@ impl SessionKey {
     /// its stored credentials.
     pub fn for_file(identity: &FileIdentity, saved: &[SavedConnection], is_file_driver: impl Fn(&str) -> bool) -> Self {
         if let Some(canonical) = identity.canonical_path.as_deref() {
+            // A file on the SSH host only shares the path with the one opened here.
             let matched = saved.iter().find(|connection| {
-                is_file_driver(&connection.driver_id) && resolves_to(&connection.database, canonical)
+                is_file_driver(&connection.driver_id)
+                    && !connection.ssh.as_ref().is_some_and(|ssh| ssh.opens_remote_file())
+                    && resolves_to(&connection.database, canonical)
             });
             if let Some(connection) = matched {
                 return Self::Saved(connection.id);
@@ -77,7 +80,7 @@ mod tests {
             database: database.to_owned(),
             username: String::new(),
             tls: tablepro_core::TlsConfig::disabled(),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
@@ -86,10 +89,14 @@ mod tests {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         }
     }
 

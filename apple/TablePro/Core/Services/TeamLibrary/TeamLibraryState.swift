@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import CryptoKit
 import Foundation
 import os
 import TableProCloudAPI
@@ -120,6 +121,16 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         items.values.filter { !$0.deleted }
     }
 
+    // What the read cache keeps: what the team holds, never an edit this Mac has not sent.
+    var cached: TeamLibraryTeamState {
+        var cached = self
+        cached.pending = []
+        cached.conflicts = []
+        cached.moves = []
+        cached.declined = [:]
+        return cached
+    }
+
     func declines(_ key: TeamLibraryKey, sending data: TeamLibraryData) -> Bool {
         declined[key] == data
     }
@@ -130,7 +141,138 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     }
 }
 
-// One JSON file per team under Application Support, plus the cache the /v1 library left behind.
+// Where Team Library keeps what it read, one folder per server and account, and the library 0.88 and earlier kept
+// (TeamLibrarySync has the rules).
+internal struct TeamLibraryStorage {
+    static let flatConsideredKey = "com.TablePro.teamLibrary.earlierLibraryConsidered"
+
+    // The library 0.88 and earlier kept: one file per team with its unsent edits, and the /v1 cache.
+    let flat: TeamLibraryStateStore
+    let cacheRoot: URL
+    let defaults: UserDefaults
+
+    static func live() -> TeamLibraryStorage {
+        let environment = AppStorageEnvironment.shared
+        let support = environment.supportDirectory
+        return TeamLibraryStorage(
+            flat: TeamLibraryStateStore(
+                directory: support.appendingPathComponent("TeamLibrary", isDirectory: true),
+                legacyFile: support.appendingPathComponent("team_library.json"),
+                defaults: environment.defaults
+            ),
+            cacheRoot: support.appendingPathComponent("TeamLibraryCache", isDirectory: true),
+            defaults: environment.defaults
+        )
+    }
+
+    func folder(server: URL, accountID: String) -> URL {
+        let digest = SHA256.hash(data: Data("\(server.absoluteString)\n\(accountID)".utf8))
+        return cacheRoot.appendingPathComponent(digest.map { String(format: "%02x", $0) }.joined(), isDirectory: true)
+    }
+
+    func cache(in folder: URL) -> TeamLibraryStateStore {
+        TeamLibraryStateStore(
+            directory: folder.appendingPathComponent("Teams", isDirectory: true),
+            legacyFile: folder.appendingPathComponent("team_library.json"),
+            defaults: defaults
+        )
+    }
+
+    // Best-effort: a folder left behind is never read, and goes at the next sign-out, switch or launch.
+    func removeFolders(except kept: URL?) {
+        let folders = (try? FileManager.default.contentsOfDirectory(at: cacheRoot, includingPropertiesForKeys: nil)) ?? []
+        for folder in folders where folder.lastPathComponent != kept?.lastPathComponent {
+            try? FileManager.default.removeItem(at: folder)
+        }
+    }
+
+    var hasFlat: Bool {
+        let teamFiles = (try? FileManager.default.contentsOfDirectory(atPath: flat.directory.path)) ?? []
+        return !teamFiles.isEmpty || FileManager.default.fileExists(atPath: flat.legacyFile.path)
+    }
+
+    var hasConsideredFlat: Bool {
+        defaults.bool(forKey: Self.flatConsideredKey)
+    }
+
+    // One shot: the flag is written and read back before the first read, so no later launch reads it, whoever that
+    // launch restores; a flag that did not stick reads nothing. A file that names an owner, as development builds of
+    // the account move wrote, is read only for that owner. Its read cache fills in what `cache` lacks, its files go,
+    // and its teams come back with the unsent edits they kept.
+    func takeFlat(into cache: TeamLibraryStateStore, server: URL, accountID: String) -> [TeamLibraryTeamState] {
+        guard !hasConsideredFlat, markFlatConsidered() else {
+            removeFlat()
+            return []
+        }
+        let restored = FlatOwnerRecord.Owner(server: server.absoluteString, accountID: accountID)
+        let files = (try? FileManager.default.contentsOfDirectory(at: flat.directory, includingPropertiesForKeys: nil)) ?? []
+        var kept: [TeamLibraryTeamState] = []
+        // Each file is read once: its owner is checked before its library is decoded from the same bytes.
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let record = try? JSONDecoder().decode(FlatOwnerRecord.self, from: data),
+                  record.owner == nil || record.owner == restored,
+                  let team = try? StoreCoding.plain.decode(TeamLibraryTeamState.self, from: data)
+            else { continue }
+            kept.append(team)
+        }
+        let cached = Set(cache.loadAll().map(\.teamID))
+        for team in kept where !cached.contains(team.teamID) {
+            cache.save(team)
+        }
+        let manager = FileManager.default
+        if manager.fileExists(atPath: flat.legacyFile.path), !manager.fileExists(atPath: cache.legacyFile.path) {
+            try? manager.createDirectory(at: cache.legacyFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? manager.copyItem(at: flat.legacyFile, to: cache.legacyFile)
+        }
+        removeFlat()
+        return kept
+    }
+
+    private struct FlatOwnerRecord: Decodable {
+        struct Owner: Decodable, Equatable {
+            let server: String
+            let accountID: String
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case owner
+        }
+
+        // Nil only when the file names no owner, as 0.88 and earlier wrote it; an owner that cannot be read fails.
+        let owner: Owner?
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            owner = container.contains(.owner) ? try container.decode(Owner.self, forKey: .owner) : nil
+        }
+    }
+
+    // Any sign-in but the restored tablepro.app one, or a company server: the library 0.88 kept is not theirs, and goes
+    // unread.
+    func discardFlat() {
+        if !hasConsideredFlat {
+            markFlatConsidered()
+        }
+        removeFlat()
+    }
+
+    // Best-effort: once considered, what is left is never read.
+    private func removeFlat() {
+        guard hasFlat else { return }
+        flat.removeAll()
+    }
+
+    // True once the flag is written and read back. False leaves it set for this launch only, so nothing reads the store.
+    @discardableResult
+    private func markFlatConsidered() -> Bool {
+        defaults.set(true, forKey: Self.flatConsideredKey)
+        // The flag reaches cfprefsd before the store is read, so a crash after the read cannot let a later launch read it.
+        return defaults.synchronize() && defaults.bool(forKey: Self.flatConsideredKey)
+    }
+}
+
+// One JSON file per team, plus the cache the /v1 library left behind.
 internal struct TeamLibraryStateStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryStateStore")
     static let legacyPullKey = "com.TablePro.teamLibrary.lastPullAt"
@@ -139,40 +281,29 @@ internal struct TeamLibraryStateStore {
     let legacyFile: URL
     let defaults: UserDefaults
 
-    static func live() -> TeamLibraryStateStore {
-        let environment = AppStorageEnvironment.shared
-        return TeamLibraryStateStore(
-            directory: environment.supportDirectory.appendingPathComponent("TeamLibrary", isDirectory: true),
-            legacyFile: environment.supportDirectory.appendingPathComponent("team_library.json"),
-            defaults: environment.defaults
-        )
-    }
-
     func loadAll() -> [TeamLibraryTeamState] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         return files.filter { $0.pathExtension == "json" }.compactMap { file in
-            guard let data = try? Data(contentsOf: file) else { return nil }
-            do {
-                return try JSONDecoder().decode(TeamLibraryTeamState.self, from: data)
-            } catch {
-                Self.logger.error("Dropping an unreadable team library file: \(error.publicLogShape, privacy: .public)")
-                try? FileManager.default.removeItem(at: file)
+            let store = JSONFileStore<TeamLibraryTeamState>(url: file)
+            switch store.read() {
+            case .value(let state):
+                return state
+            case .unreadable(let error) where error is DecodingError:
+                try? store.remove()
+                return nil
+            // A file that could not be read at all is kept for the next launch.
+            case .missing, .unreadable:
                 return nil
             }
         }
     }
 
     func save(_ state: TeamLibraryTeamState) {
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try JSONEncoder().encode(state).write(to: file(for: state.teamID), options: .atomic)
-        } catch {
-            Self.logger.error("Could not store the team library: \(error.publicLogShape, privacy: .public)")
-        }
+        try? teamFile(state.teamID).write(state.cached)
     }
 
     func remove(teamID: String) {
-        try? FileManager.default.removeItem(at: file(for: teamID))
+        try? teamFile(teamID).remove()
     }
 
     func removeAll() {
@@ -182,9 +313,9 @@ internal struct TeamLibraryStateStore {
 
     // What the last /v1 pull cached, keyed by client ID like a /v2 snapshot, so the first one matches it item by item.
     func loadLegacy(now: Date) -> TeamLibraryLegacyLibrary? {
-        guard let data = try? Data(contentsOf: legacyFile) else { return nil }
+        guard let cache = legacyCache.read().value else { return nil }
         do {
-            return try JSONDecoder().decode(TeamLibraryLegacyCache.self, from: data).library(at: now)
+            return try cache.library(at: now)
         } catch {
             Self.logger.error("The /v1 team library cache is unreadable: \(error.publicLogShape, privacy: .public)")
             return nil
@@ -192,13 +323,17 @@ internal struct TeamLibraryStateStore {
     }
 
     func removeLegacy() {
-        try? FileManager.default.removeItem(at: legacyFile)
+        try? legacyCache.remove()
         defaults.removeObject(forKey: Self.legacyPullKey)
     }
 
-    private func file(for teamID: String) -> URL {
+    private var legacyCache: JSONFileStore<TeamLibraryLegacyCache> {
+        JSONFileStore(url: legacyFile)
+    }
+
+    private func teamFile(_ teamID: String) -> JSONFileStore<TeamLibraryTeamState> {
         let name = String(teamID.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == "_" })
-        return directory.appendingPathComponent("\(name).json")
+        return JSONFileStore(url: directory.appendingPathComponent("\(name).json"))
     }
 }
 

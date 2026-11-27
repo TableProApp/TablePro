@@ -146,6 +146,33 @@ struct QueryClassifierLexicalTests {
         #expect(QueryClassifier.isDangerousQuery(bypass.sql, databaseType: bypass.engine))
     }
 
+    // Measured on 2026-11-13: MariaDB 13.0.2 stores each routine body whole and alone, psql 17.11 ran the statement
+    // after `'\'`, the NBSP being part of a name, and PostgreSQL 17.11 ran the DROP after the function in one query.
+    @Test("The statement after a MySQL SET or IF body, or after a string a non-ASCII space ends, is its own", arguments: [
+        (DatabaseType.mysql, "CREATE PROCEDURE p() SET @x = begin IS NULL; DROP TABLE users"),
+        (DatabaseType.mariadb, "CREATE PROCEDURE p() IF 1 THEN SELECT begin FROM t; END IF; DROP TABLE users"),
+        (DatabaseType.postgresql, "SELECT E'a'\u{A0}\n'\\'; DROP TABLE users; --'"),
+        (
+            DatabaseType.postgresql,
+            "CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin atomic FROM (SELECT 1 AS begin) s; END; "
+                + "DROP TABLE users; END"
+        ),
+        (DatabaseType(rawValue: "Nonesuch"), "IF @x = 1 SELECT 1; DROP TABLE users"),
+    ])
+    func statementAfterABodyIsItsOwn(engine: DatabaseType, sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: engine) == .destructive)
+        #expect(QueryClassifier.isMultiStatement(sql, databaseType: engine))
+        #expect(QueryClassifier.isDangerousQuery(sql, databaseType: engine))
+    }
+
+    @Test("A MySQL IF body is one statement for an external client, and one left open is several")
+    func mySQLIfBodyForExternalClients() {
+        let closed = "CREATE PROCEDURE p() IF 1 THEN SELECT begin FROM t; SELECT 2; END IF"
+        #expect(!QueryClassifier.isMultiStatement(closed, databaseType: .mysql))
+        #expect(QueryClassifier.classifyTier(closed, databaseType: .mysql) == .write)
+        #expect(QueryClassifier.isMultiStatement("CREATE PROCEDURE p() IF 1 THEN SELECT 1; DROP TABLE users", databaseType: .mysql))
+    }
+
     @Test("A COPY TO PROGRAM hidden after a literal backslash reaches the filesystem, measured on PostgreSQL 17")
     func hiddenCopyToProgramRunsCode() {
         let sql = "SELECT 'a\\'; COPY users TO PROGRAM 'touch /tmp/pwned'; --'"

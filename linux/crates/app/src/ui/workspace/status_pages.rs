@@ -69,6 +69,7 @@ impl WorkspaceModel {
             history: self.history.clone(),
             connections: self.storage.connections().clone(),
             preferred_connection: self.context.active.metadata().map(|metadata| metadata.id),
+            saved: self.saved_connections.clone(),
             revealer: self.file_revealer.clone(),
             tasks: self.tasks.clone(),
         });
@@ -90,6 +91,7 @@ impl WorkspaceModel {
         let dialog = SavedQueriesDialog::new(SavedQueriesDialogInit {
             store: self.history.store().map(|history| history.saved_queries()),
             active_connection: self.context.active.metadata().map(|metadata| metadata.id),
+            saved: self.saved_connections.clone(),
             tasks: self.tasks.clone(),
             hold: self.context.hold.clone(),
         });
@@ -207,7 +209,7 @@ impl WorkspaceModel {
         let new_query = tablepro_storage::saved_queries::NewSavedQuery {
             name,
             query,
-            connection_id: metadata.id,
+            connection_id: Some(metadata.id),
             connection_name: metadata.name,
         };
         self.save_named_query(new_query, false);
@@ -482,7 +484,7 @@ mod tests {
         let work = test
             .services
             .tasks
-            .spawn_task(async move { store.create(owner, "Monthly", Some(folder)).await });
+            .spawn_task(async move { store.create(Some(owner), "Monthly", Some(folder)).await });
         let child = finish_on_main(WAIT, work)
             .expect("created")
             .expect("task")

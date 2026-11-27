@@ -103,7 +103,7 @@ internal enum ObjectCopyIndexNames {
     /// Every drop runs before any create, so an index on a table the run drops first is gone by the
     /// time the copy's own `CREATE INDEX` runs. Counting it renamed a replaced table's indexes, and
     /// the next replace then found the new names free and put the old ones back.
-    internal static func kept(_ indexes: [String: [String]], droppingFirst dropped: Set<String>) -> Set<String> {
+    internal static func kept(_ indexes: [CatalogName: [String]], droppingFirst dropped: Set<CatalogName>) -> Set<String> {
         NewTableNaming.comparisonKeys(for: indexes.filter { !dropped.contains($0.key) }.values.joined())
     }
 

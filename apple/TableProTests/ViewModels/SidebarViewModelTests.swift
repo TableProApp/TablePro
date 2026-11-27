@@ -50,6 +50,63 @@ private func makeRef(_ name: String, database: String? = nil, schema: String? = 
 
 struct SidebarViewModelTests {
 
+    // SidebarView hands the bindings over on every evaluation of its parent, so a publish here redraws the sidebar.
+    @Test("Handing over new bindings publishes nothing, and reads go through the new ones")
+    @MainActor
+    func updateBindingsPublishesNothing() {
+        let (vm, _, _, _) = makeSUT()
+        var published = 0
+        let observation = vm.objectWillChange.sink { published += 1 }
+        let table = makeRef("users")
+        var truncates: Set<DatabaseTreeTableRef> = [table]
+        vm.updateBindings(
+            pendingTruncates: Binding(get: { truncates }, set: { truncates = $0 }),
+            pendingDeletes: .constant([]),
+            tableOperationOptions: .constant([:])
+        )
+        observation.cancel()
+        #expect(published == 0)
+        #expect(vm.pendingTruncates == [table])
+    }
+
+    @Test("A container's remembered verdict follows its query")
+    @MainActor
+    func containerBucketsMemoizeBySource() {
+        let (vm, _, _, _) = makeSUT()
+        let tables = [TestFixtures.makeTableInfo(name: "users"), TestFixtures.makeTableInfo(name: "orders")]
+        func source(_ rows: [TableInfo], _ query: String) -> DatabaseTreeBucketSource {
+            DatabaseTreeBucketSource(tables: rows, routines: [], triggers: [], userTypes: [], searchText: query, database: "db")
+        }
+        let first = vm.containerBuckets(database: "db", schema: nil, source: source(tables, "us"))
+        #expect(first.tables.values.flatMap { $0 }.map(\.name) == ["users"])
+        let again = vm.containerBuckets(database: "db", schema: nil, source: source(tables, "us"))
+        #expect(again.tables.values.flatMap { $0 }.map(\.name) == ["users"])
+        let narrowed = vm.containerBuckets(database: "db", schema: nil, source: source(tables, "ord"))
+        #expect(narrowed.tables.values.flatMap { $0 }.map(\.name) == ["orders"])
+    }
+
+    @Test("Clearing the search lets go of the rows a container's verdict held")
+    @MainActor
+    func clearingTheSearchReleasesContainerRows() {
+        let (vm, _, _, _) = makeSUT()
+        var tables = [TestFixtures.makeTableInfo(name: "users"), TestFixtures.makeTableInfo(name: "orders")]
+        vm.searchText = "us"
+        _ = vm.containerBuckets(
+            database: "db",
+            schema: nil,
+            source: DatabaseTreeBucketSource(
+                tables: tables, routines: [], triggers: [], userTypes: [], searchText: "us", database: "db"
+            )
+        )
+
+        vm.searchText = ""
+
+        // A write moves the buffer only while another holder shares it.
+        let shared = tables.withUnsafeBufferPointer { $0.baseAddress }
+        tables[0] = tables[0]
+        #expect(tables.withUnsafeBufferPointer { $0.baseAddress } == shared)
+    }
+
     // MARK: - Batch Toggle Truncate
 
     @Test("batchToggleTruncate asks the window for new tables")
@@ -201,7 +258,8 @@ private func makeViewModel(
     connectionId: UUID = UUID(),
     databaseType: DatabaseType = .postgresql,
     defaults: UserDefaults,
-    clock: any Clock<Duration> = ContinuousClock()
+    clock: any Clock<Duration> = ContinuousClock(),
+    turns: TurnEnds? = nil
 ) -> SidebarViewModel {
     var truncates: Set<DatabaseTreeTableRef> = []
     var deletes: Set<DatabaseTreeTableRef> = []
@@ -209,6 +267,12 @@ private func makeViewModel(
     let truncatesBinding = Binding(get: { truncates }, set: { truncates = $0 })
     let deletesBinding = Binding(get: { deletes }, set: { deletes = $0 })
     let optionsBinding = Binding(get: { options }, set: { options = $0 })
+    let onTurnEnd: @MainActor (@escaping @MainActor () -> Void) -> Void
+    if let turns {
+        onTurnEnd = { turns.schedule($0) }
+    } else {
+        onTurnEnd = RunLoopTurn.onEnd
+    }
     return SidebarViewModel(
         pendingTruncates: truncatesBinding,
         pendingDeletes: deletesBinding,
@@ -216,7 +280,8 @@ private func makeViewModel(
         databaseType: databaseType,
         connectionId: connectionId,
         defaults: defaults,
-        clock: clock
+        clock: clock,
+        onTurnEnd: onTurnEnd
     )
 }
 
@@ -293,6 +358,32 @@ struct SidebarViewModelMultiSectionTests {
 
         #expect(procs.map(\.name) == ["get_user_by_id"])
         #expect(funcs.map(\.name) == ["calculate_age"])
+    }
+
+    @Test("A side list replaced by as many rows is filtered again before the catalog generation moves")
+    func sameCountReplacementIsFilteredAgain() {
+        let vm = makeViewModel(defaults: suite.defaults)
+
+        #expect(vm.filteredRoutines(of: .function, from: [RoutineInfo(name: "old_total", kind: .function)]).map(\.name) == ["old_total"])
+        #expect(vm.filteredRoutines(of: .function, from: [RoutineInfo(name: "new_total", kind: .function)]).map(\.name) == ["new_total"])
+
+        let oldTrigger = TriggerInfo(name: "old_audit", timing: "BEFORE", event: "INSERT", statement: "")
+        let newTrigger = TriggerInfo(name: "new_audit", timing: "BEFORE", event: "INSERT", statement: "")
+        #expect(vm.filteredTriggers(from: [oldTrigger]).map(\.name) == ["old_audit"])
+        #expect(vm.filteredTriggers(from: [newTrigger]).map(\.name) == ["new_audit"])
+
+        #expect(vm.filteredUserTypes(from: [UserDefinedTypeInfo(name: "old_mood", kind: .enumeration)]).map(\.name) == ["old_mood"])
+        #expect(vm.filteredUserTypes(from: [UserDefinedTypeInfo(name: "new_mood", kind: .enumeration)]).map(\.name) == ["new_mood"])
+
+        let oldEvent = ServerObjectInfo(kindId: "event", name: "old_job")
+        let newEvent = ServerObjectInfo(kindId: "event", name: "new_job")
+        #expect(vm.filteredServerObjects(kindId: "event", from: [oldEvent]).map(\.name) == ["old_job"])
+        #expect(vm.filteredServerObjects(kindId: "event", from: [newEvent]).map(\.name) == ["new_job"])
+
+        let oldTable = TableInfo(name: "old_orders", type: .table, rowCount: nil)
+        let newTable = TableInfo(name: "new_orders", type: .table, rowCount: nil)
+        #expect(vm.filteredTables(of: .table, from: [oldTable]).map(\.name) == ["old_orders"])
+        #expect(vm.filteredTables(of: .table, from: [newTable]).map(\.name) == ["new_orders"])
     }
 
     @Test("Sidebar filter uses substring matching, not fuzzy abbreviations")
@@ -505,21 +596,56 @@ private final class DebouncedFilterQueries {
     }
 }
 
+/// Stands in for the end of the main run loop's turn, which a case ends by hand.
+@MainActor
+private final class TurnEnds {
+    private var bodies: [@MainActor () -> Void] = []
+
+    var pending: Int { bodies.count }
+
+    func schedule(_ body: @escaping @MainActor () -> Void) {
+        bodies.append(body)
+    }
+
+    func end() {
+        let due = bodies
+        bodies = []
+        for body in due { body() }
+    }
+}
+
 @MainActor
 struct SidebarViewModelSearchDebounceTests {
     private let suite: EphemeralDefaults
     private let clock = ManualClock()
+    private let turns = TurnEnds()
 
     init() throws {
         suite = try EphemeralDefaults()
     }
 
     private func makeDebouncingViewModel() -> SidebarViewModel {
-        makeViewModel(defaults: suite.defaults, clock: clock)
+        makeViewModel(defaults: suite.defaults, clock: clock, turns: turns)
     }
 
     private func debounceStarted() async throws {
         try await waitUntil { clock.pendingSleeperCount > 0 }
+    }
+
+    /// Types `query` into an empty field and reports that the outline's rebuild for it took `cost`,
+    /// ending at the clock's new time.
+    private func applyFirstKey(_ query: String, to vm: SidebarViewModel, costing cost: Duration) {
+        vm.searchText = query
+        vm.noteSearchRebuild(for: query)
+        clock.advance(by: cost)
+        turns.end()
+    }
+
+    /// The shared state's sink hops one run loop turn, so this waits for writes made before it.
+    private func deliverSharedStateChanges() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            RunLoop.main.perform { continuation.resume() }
+        }
     }
 
     @Test("filterQuery updates immediately on first non-empty input")
@@ -534,7 +660,7 @@ struct SidebarViewModelSearchDebounceTests {
     @Test("filterQuery clears immediately when search becomes empty")
     func filterQueryClearsImmediatelyOnEmpty() async throws {
         let vm = makeDebouncingViewModel()
-        vm.searchText = "user"
+        applyFirstKey("user", to: vm, costing: .milliseconds(400))
         vm.searchText = "users"
         try await debounceStarted()
 
@@ -543,10 +669,10 @@ struct SidebarViewModelSearchDebounceTests {
         #expect(vm.filterQuery == "")
     }
 
-    @Test("filterQuery stays at previous value during debounce window")
-    func filterQueryHoldsPreviousValueDuringDebounce() async throws {
+    @Test("filterQuery stays at previous value while a slow refresh's cost has not passed")
+    func filterQueryHoldsPreviousValueAfterSlowRefresh() async throws {
         let vm = makeDebouncingViewModel()
-        vm.searchText = "user"
+        applyFirstKey("user", to: vm, costing: .milliseconds(400))
         #expect(vm.filterQuery == "user")
 
         vm.searchText = "users"
@@ -555,24 +681,26 @@ struct SidebarViewModelSearchDebounceTests {
         #expect(vm.filterQuery == "user")
     }
 
-    @Test("filterQuery catches up after debounce window elapses")
-    func filterQueryCatchesUpAfterDebounce() async throws {
+    @Test("filterQuery catches up once a slow refresh's capped cost has passed")
+    func filterQueryCatchesUpAfterSlowRefresh() async throws {
         let vm = makeDebouncingViewModel()
-        vm.searchText = "user"
+        applyFirstKey("user", to: vm, costing: .milliseconds(400))
         let debounced = DebouncedFilterQueries(of: vm)
 
         vm.searchText = "users"
         try await debounceStarted()
-        clock.advance(by: .milliseconds(150))
+        clock.advance(by: .milliseconds(149))
+        #expect(vm.filterQuery == "user")
+        clock.advance(by: .milliseconds(1))
 
         #expect(await debounced.first() == "users")
         #expect(vm.filterQuery == "users")
     }
 
-    @Test("rapid consecutive keystrokes collapse to the final value")
+    @Test("rapid consecutive keystrokes after a slow refresh collapse to the final value")
     func rapidKeystrokesCollapseToFinalValue() async throws {
         let vm = makeDebouncingViewModel()
-        vm.searchText = "u"
+        applyFirstKey("u", to: vm, costing: .milliseconds(400))
 
         let debounced = DebouncedFilterQueries(of: vm)
 
@@ -597,12 +725,117 @@ struct SidebarViewModelSearchDebounceTests {
         let orders = TestFixtures.makeTableInfo(name: "orders", type: .table)
         let mixed = [users, userLog, orders]
 
-        vm.searchText = "user"
+        applyFirstKey("user", to: vm, costing: .milliseconds(400))
         vm.searchText = "users"
         try await debounceStarted()
 
         let matches = vm.filteredTables(of: .table, from: mixed)
 
         #expect(matches.map(\.name) == ["users", "user_log"])
+    }
+
+    @Test("After a fast refresh the next key applies in its own turn")
+    func fastRefreshAppliesNextKeyAtOnce() {
+        let vm = makeDebouncingViewModel()
+        applyFirstKey("user", to: vm, costing: .milliseconds(20))
+        clock.advance(by: .milliseconds(30))
+
+        vm.searchText = "users"
+
+        #expect(vm.filterQuery == "users")
+        #expect(clock.pendingSleeperCount == 0)
+    }
+
+    @Test("A key 10 ms after a 90 ms refresh applies 80 ms later")
+    func keyWaitsTheRestOfTheLastRefresh() async throws {
+        let vm = makeDebouncingViewModel()
+        applyFirstKey("user", to: vm, costing: .milliseconds(90))
+        clock.advance(by: .milliseconds(10))
+
+        vm.searchText = "users"
+        try await debounceStarted()
+        clock.advance(by: .milliseconds(79))
+        #expect(vm.filterQuery == "user")
+
+        let debounced = DebouncedFilterQueries(of: vm)
+        clock.advance(by: .milliseconds(1))
+        #expect(await debounced.first() == "users")
+    }
+
+    @Test("A shared state write while a key waits does not move the moment it applies")
+    func unrelatedSharedStateWriteKeepsTheWait() async throws {
+        let vm = makeDebouncingViewModel()
+        applyFirstKey("user", to: vm, costing: .milliseconds(90))
+        vm.searchText = "users"
+        try await debounceStarted()
+        clock.advance(by: .milliseconds(50))
+
+        vm.sharedState.favoritesSearchText = "unrelated"
+        await deliverSharedStateChanges()
+        #expect(clock.pendingSleeperCount == 1)
+
+        let debounced = DebouncedFilterQueries(of: vm)
+        clock.advance(by: .milliseconds(40))
+        #expect(await debounced.first() == "users")
+    }
+
+    @Test("Typing back to the shown query cancels the waiting key")
+    func typingBackCancelsTheWait() async throws {
+        let vm = makeDebouncingViewModel()
+        applyFirstKey("user", to: vm, costing: .milliseconds(400))
+        let debounced = DebouncedFilterQueries(of: vm)
+
+        vm.searchText = "users"
+        try await debounceStarted()
+        vm.searchText = "user"
+
+        try await waitUntil { clock.pendingSleeperCount == 0 }
+        clock.advance(by: .milliseconds(150))
+        await deliverSharedStateChanges()
+        #expect(debounced.published.isEmpty)
+        #expect(vm.filterQuery == "user")
+    }
+
+    @Test("Two outlines rebuilding for one query record one cost, timed from the write")
+    func twoOutlinesRecordOneCost() async throws {
+        let vm = makeDebouncingViewModel()
+        vm.searchText = "user"
+        vm.noteSearchRebuild(for: "user")
+        vm.noteSearchRebuild(for: "user")
+        #expect(turns.pending == 1)
+        clock.advance(by: .milliseconds(90))
+        turns.end()
+        clock.advance(by: .milliseconds(10))
+
+        vm.searchText = "users"
+        try await debounceStarted()
+        clock.advance(by: .milliseconds(79))
+        #expect(vm.filterQuery == "user")
+
+        let debounced = DebouncedFilterQueries(of: vm)
+        clock.advance(by: .milliseconds(1))
+        #expect(await debounced.first() == "users")
+    }
+
+    @Test("A rebuild in a later turn than the write is timed from the rebuild")
+    func laterRebuildIsTimedFromTheRebuild() async throws {
+        let vm = makeDebouncingViewModel()
+        vm.searchText = "user"
+        turns.end()
+        clock.advance(by: .milliseconds(500))
+
+        vm.noteSearchRebuild(for: "user")
+        clock.advance(by: .milliseconds(40))
+        turns.end()
+        clock.advance(by: .milliseconds(10))
+
+        vm.searchText = "users"
+        try await debounceStarted()
+        clock.advance(by: .milliseconds(29))
+        #expect(vm.filterQuery == "user")
+
+        let debounced = DebouncedFilterQueries(of: vm)
+        clock.advance(by: .milliseconds(1))
+        #expect(await debounced.first() == "users")
     }
 }

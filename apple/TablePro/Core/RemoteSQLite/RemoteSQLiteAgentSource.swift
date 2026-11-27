@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Compression
 import Foundation
 
 /// The Python program TablePro runs on the SSH server to open a SQLite database with the server's
@@ -19,27 +20,51 @@ enum RemoteSQLiteAgentSource {
     /// `platform-python` under `/usr/libexec` with no `python3` on `PATH`.
     private static let interpreters = ["python3", "/usr/bin/python3", "/usr/libexec/platform-python"]
 
+    /// The bootstrap each interpreter runs: decode and inflate the program from its first argument,
+    /// then run it. `COMPRESSION_ZLIB` emits raw DEFLATE, so `zlib.decompress` takes wbits `-15`.
+    static let interpreterBootstrap = "import base64,zlib,sys;exec(zlib.decompress(base64.b64decode(sys.argv[1]),-15))"
+
+    /// The program, raw-DEFLATE compressed then base64, as the launcher ships it. Compressed because
+    /// the exec request is one SSH packet, and libssh2 rejects an uncompressed payload at or above
+    /// `MAX_SSH_PACKET_LEN - 0x100` (34744) with `LIBSSH2_ERROR_INVAL`; the raw 24 KB base64, carried
+    /// once per interpreter, ran past that. 4.8 KB compressed leaves room as the program grows.
+    static let encodedProgram: String = {
+        let source = Data(python.utf8)
+        let capacity = source.count + 1_024
+        var deflated = Data(count: capacity)
+        let written = deflated.withUnsafeMutableBytes { destination -> Int in
+            source.withUnsafeBytes { input -> Int in
+                guard let destinationBase = destination.bindMemory(to: UInt8.self).baseAddress,
+                      let inputBase = input.bindMemory(to: UInt8.self).baseAddress else { return 0 }
+                return compression_encode_buffer(destinationBase, capacity, inputBase, source.count, nil, COMPRESSION_ZLIB)
+            }
+        }
+        // 0 means the output did not fit `capacity`; raw DEFLATE of this text never grows past it.
+        precondition(written > 0, "RemoteSQLiteAgentSource could not compress the agent program")
+        deflated.removeSubrange(written..<deflated.count)
+        return deflated.base64EncodedString()
+    }()
+
     /// The command handed to `libssh2_channel_process_startup("exec", …)`.
     ///
-    /// The whole string is a fixed literal but for the base64 of the program, which is drawn from
-    /// the base64 alphabet alone and is therefore safe as a bare shell word and inside single
-    /// quotes under sh, bash, zsh, fish and csh (measured). The server never sees a byte of user
-    /// data on this line: the database path and every value travel as framed protocol fields once
-    /// the program is running, never as shell text.
+    /// The whole string is a fixed literal but for the base64 blob, which is drawn from the base64
+    /// alphabet alone and is therefore safe as a bare shell word and inside single quotes under sh,
+    /// bash, zsh, fish and csh (measured). It is carried once, in `b`, rather than per interpreter.
+    /// The server never sees a byte of user data on this line: the database path and every value
+    /// travel as framed protocol fields once the program is running, never as shell text.
     ///
-    /// `-I` runs the interpreter isolated, so `PYTHON*` variables and the user site directory
-    /// cannot redirect it. When no interpreter is found the launcher prints the agent's own notice
-    /// on standard output, where it reaches the client as a launcher notice rather than being lost
-    /// on standard error, and exits cleanly.
+    /// `-I` runs the interpreter isolated, so `PYTHON*` variables and the user site directory cannot
+    /// redirect it. When no interpreter is found the launcher prints the agent's own notice on
+    /// standard output, where it reaches the client as a launcher notice rather than being lost on
+    /// standard error, and exits cleanly.
     static func launcherCommand() -> String {
-        let encoded = Data(python.utf8).base64EncodedString()
-        let loop = interpreters.map { interpreter -> String in
+        let branches = interpreters.map { interpreter -> String in
             let present = #"command -v "\#(interpreter)" >/dev/null 2>&1"#
-            let run = #"exec "\#(interpreter)" -I -S -c "import base64,sys;exec(base64.b64decode(sys.argv[1]))" \#(encoded)"#
+            let run = #"exec "\#(interpreter)" -I -S -c "\#(interpreterBootstrap)" "$b""#
             return "if \(present); then \(run); fi"
         }
         .joined(separator: "; ")
-        return "sh -c '" + loop + "; echo " + RemoteSQLiteWire.noPythonNotice + "; exit 0'"
+        return "sh -c 'b=" + encodedProgram + "; " + branches + "; echo " + RemoteSQLiteWire.noPythonNotice + "; exit 0'"
     }
 
     static let python = #"""
@@ -390,6 +415,8 @@ def execute(lib, db, sql, parameters, row_cap, must_read=False):
         send(OP_HEADER, header)
 
         total_changes_before = lib.sqlite3_total_changes(db)
+        # A statement that writes runs to its end: its changes and deferred constraint checks land only there.
+        stops_at_cap = lib.sqlite3_stmt_readonly(stmt) != 0
         batch = []
         batch_bytes = 0
         row_count = 0
@@ -398,9 +425,13 @@ def execute(lib, db, sql, parameters, row_cap, must_read=False):
             step = lib.sqlite3_step(stmt)
             if step != SQLITE_ROW:
                 break
+            if truncated:
+                continue
             if row_cap > 0 and row_count >= row_cap:
                 truncated = True
-                break
+                if stops_at_cap:
+                    break
+                continue
             row = read_row(lib, stmt, column_count)
             batch.append(row)
             row_count += 1
@@ -412,7 +443,7 @@ def execute(lib, db, sql, parameters, row_cap, must_read=False):
                 batch_bytes = 0
         if batch:
             send_rows(column_count, batch)
-        if step != SQLITE_ROW and step != SQLITE_DONE and not truncated:
+        if step != SQLITE_ROW and step != SQLITE_DONE:
             send(OP_ERROR, struct.pack(">I", step & 0xFFFFFFFF) + encode_str(lib.sqlite3_errmsg(db).decode("utf-8", "replace")))
             return
         # sqlite3_changes keeps the last write's count, so a statement that wrote nothing would repeat it.

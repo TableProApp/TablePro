@@ -29,7 +29,6 @@ mod nested_document;
 mod relay;
 mod rows;
 mod server_version;
-mod session_status;
 mod shell_command;
 mod shell_find;
 mod shell_write;

@@ -9,7 +9,7 @@ extension PluginMetadataRegistry {
             ("Firestore", PluginMetadataSnapshot(
                 displayName: "Cloud Firestore", iconName: "firebase-icon", defaultPort: 0,
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "firestore", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
                 brandColorHex: "#FFA000",
@@ -53,6 +53,7 @@ extension PluginMetadataRegistry {
     private func firebaseCapabilities(realtimeDatabase: Bool) -> PluginMetadataSnapshot.CapabilityFlags {
         PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: false,
+            statementsCanSwitchDatabase: false,
             supportsImport: false,
             supportsExport: true,
             supportsSSH: false,
@@ -75,7 +76,8 @@ extension PluginMetadataRegistry {
             exactRowCountIsFullScan: realtimeDatabase,
             supportsMatchAnyFilters: !realtimeDatabase,
             columnsAreSampled: true,
-            supportsPrincipalConnectionLimit: false
+            supportsPrincipalConnectionLimit: false,
+            dataCommands: realtimeDatabase ? realtimeDatabaseDataCommands : firestoreDataCommands
         )
     }
 
@@ -103,6 +105,12 @@ extension PluginMetadataRegistry {
         )
     }
 }
+
+// Firestore REST v1 as the driver sends it: createDocument on a collection, patch and delete on a document.
+private let firestoreDataCommands: Set<String> = ["POST /{collection}", "PATCH /{document}", "DELETE /{document}"]
+
+// Realtime Database REST reference: PUT, PATCH, POST and DELETE on a node.
+private let realtimeDatabaseDataCommands: Set<String> = ["PUT /{path}", "PATCH /{path}", "POST /{path}", "DELETE /{path}"]
 
 private let firebaseCompletions: [CompletionEntry] = [
     CompletionEntry(label: "GET collection", insertText: "GET users?pageSize=20"),

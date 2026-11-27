@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TablePro.DataGrid.Automation;
 using TablePro.DataGrid.Model;
+using TablePro.Graphics;
 using Windows.System;
 
 namespace TablePro.DataGrid;
@@ -23,7 +24,7 @@ public sealed partial class DataGridView
     private int _editSession;
     private bool _committing;
     private bool _isEditable;
-    private string _defaultText = "DEFAULT";
+    private string _defaultText = HostStrings.Get("GridDefaultText");
 
     public bool IsEditable
     {
@@ -39,6 +40,13 @@ public sealed partial class DataGridView
     }
 
     public bool IsEditing => _edit is not null;
+
+    // What a commit would send now, without one: null with no editor open or its text as it opened.
+    public (int Row, int Column, string Text)? PendingEdit =>
+        _editor is not null && _edit is { } edit && EditorText(_editor) is var text
+        && !string.Equals(text, _editText, StringComparison.Ordinal)
+            ? (edit.Row, edit.Column, text)
+            : null;
 
     public string DefaultText
     {
@@ -59,11 +67,11 @@ public sealed partial class DataGridView
         }
     }
 
-    public string EditedStatus { get; set; } = "edited";
+    public string EditedStatus { get; set; } = HostStrings.Get("GridEditedStatus");
 
-    public string NewRowStatus { get; set; } = "new row";
+    public string NewRowStatus { get; set; } = HostStrings.Get("GridNewRowStatus");
 
-    public string DeletedStatus { get; set; } = "marked for deletion";
+    public string DeletedStatus { get; set; } = HostStrings.Get("GridDeletedStatus");
 
     public event EventHandler<GridEditStartingEventArgs>? CellEditStarting;
 
@@ -71,11 +79,20 @@ public sealed partial class DataGridView
 
     public event EventHandler? DeleteRequested;
 
+    // The open editor's text changed, so what PendingEdit reads did too.
+    public event EventHandler? PendingEditChanged;
+
     internal TextBox? Editor => _editor;
 
     private bool EditorFocused => _editor is not null && _editor.FocusState != FocusState.Unfocused;
 
-    public void BeginEdit()
+    // Enter, F2 and a double-click, which the host may answer with an editor of its own.
+    public void BeginEdit() => BeginEdit(inPlace: false);
+
+    // The TextBox whatever the column holds, as Tab moving on opens it.
+    public void BeginTextEdit() => BeginEdit(inPlace: true);
+
+    private void BeginEdit(bool inPlace)
     {
         if (!IsEditable || (IsEditing && !Commit(EditorFocused)))
         {
@@ -86,7 +103,7 @@ public sealed partial class DataGridView
         {
             return;
         }
-        var args = new GridEditStartingEventArgs(row, column, _cache.ReadWhole(row, column) ?? string.Empty);
+        var args = new GridEditStartingEventArgs(row, column, _cache.ReadWhole(row, column) ?? string.Empty, inPlace);
         CellEditStarting?.Invoke(this, args);
         // A TextBox cannot hold NUL, so such a value would come back changed.
         if (args.Cancel || args.Text.Contains('\0', StringComparison.Ordinal) || IsEditing || !Contains(row, column))
@@ -106,6 +123,7 @@ public sealed partial class DataGridView
 
     public void EditsChanged()
     {
+        ClearCellTip();
         if (_data is null)
         {
             return;
@@ -123,8 +141,14 @@ public sealed partial class DataGridView
             }
         }
         _cache?.Dispose();
-        _cache = new CellCache(_data.OpenReader());
+        _cache = new CellCache(_data.OpenReader()) { KeepsLineBreaks = _wrapsText };
         var count = _data.RowCount;
+        // An edit may change any row's lines, so every wrapped row measures again around the first row in view.
+        (int Row, double Part)? anchor = _heights is null ? null : FirstRowAnchor();
+        if (_heights is not null)
+        {
+            _heights = NewHeights(count);
+        }
         if (count != RowCount)
         {
             var focus = (_selection.FocusRow, _selection.FocusColumn);
@@ -160,8 +184,13 @@ public sealed partial class DataGridView
             Cancel(EditorFocused);
         }
         _layoutVersion++;
+        var moved = anchor is { } held && PlaceFirstRow(held);
         InvalidateRows();
         Follow(_viewX, _viewY);
+        if (moved)
+        {
+            SyncScroller();
+        }
         RaiseStatusChanges();
     }
 
@@ -185,7 +214,7 @@ public sealed partial class DataGridView
                 if (Commit(refocus: true) && Contains(edit.Row, next))
                 {
                     SelectCell(edit.Row, next, extend: false);
-                    BeginEditAfterKey();
+                    BeginEditAfterKey(inPlace: true);
                 }
                 return true;
             default:
@@ -194,7 +223,7 @@ public sealed partial class DataGridView
     }
 
     // The key's character goes to whatever has focus once KeyDown returns, so the editor opens after it.
-    private void BeginEditAfterKey()
+    private void BeginEditAfterKey(bool inPlace)
     {
         var data = _data;
         var cell = (FocusedRow, FocusedColumn);
@@ -202,7 +231,7 @@ public sealed partial class DataGridView
         {
             if (!IsEditing && ReferenceEquals(data, _data) && cell == (FocusedRow, FocusedColumn))
             {
-                BeginEdit();
+                BeginEdit(inPlace);
             }
         });
     }
@@ -220,7 +249,7 @@ public sealed partial class DataGridView
         {
             RowMark.Deleted => DeletedStatus,
             RowMark.Inserted => NewRowStatus,
-            RowMark.Modified when _edited.Edits.TryGetCell(row, column, out _) => EditedStatus,
+            RowMark.Modified when _edited.IsCellEdited(row, column) => EditedStatus,
             _ => string.Empty,
         };
     }
@@ -315,16 +344,16 @@ public sealed partial class DataGridView
 
     private void OpenEditor(int row, int column, string text)
     {
-        var editor = _editor ??= CreateEditor();
-        var window = column < _columns.FrozenCount ? _frozenWindow : _window;
-        if (!ReferenceEquals(editor.Parent, window))
+        ClearCellTip();
+        // A TextBox animates its Height from the last size it showed and then sets it to NaN, so no edit reuses one.
+        if (_editor is { Parent: Panel pane } last)
         {
-            (editor.Parent as Panel)?.Children.Remove(editor);
-            window.Children.Add(editor);
+            pane.Children.Remove(last);
         }
+        var editor = _editor = CreateEditor();
+        (column < _columns.FrozenCount ? _frozenWindow : _window).Children.Add(editor);
         _editSession++;
         _edit = (row, column);
-        ClearEditError();
         // Before the text: a TextBox that takes no returns keeps only the first line.
         editor.AcceptsReturn = text.AsSpan().IndexOfAny('\r', '\n') >= 0;
         _newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n"
@@ -334,25 +363,17 @@ public sealed partial class DataGridView
         // What the TextBox holds, so a value with mixed line breaks opened and left is no change.
         _editText = EditorText(editor);
         AutomationProperties.SetName(editor, _names[column]);
-        editor.Visibility = Visibility.Visible;
         PlaceEditor();
-        if (editor.IsLoaded)
-        {
-            FocusEditor(editor);
-        }
-        else
-        {
-            editor.Loaded -= OnEditorLoaded;
-            editor.Loaded += OnEditorLoaded;
-        }
+        // Focus needs the box in the tree, not loaded, so keys typed right after F2 or Tab reach it, not the grid.
+        editor.ApplyTemplate();
+        FocusEditor(editor);
     }
 
-    // A new editor, or one moved to the other pane, takes focus once it is in the tree.
+    // A grid out of the tree could not focus the box; selecting again here would select over typed text.
     private void OnEditorLoaded(object sender, RoutedEventArgs e)
     {
-        var editor = (TextBox)sender;
-        editor.Loaded -= OnEditorLoaded;
-        if (IsEditing)
+        if (IsEditing && sender is TextBox editor && ReferenceEquals(editor, _editor)
+            && editor.FocusState == FocusState.Unfocused)
         {
             FocusEditor(editor);
         }
@@ -372,9 +393,18 @@ public sealed partial class DataGridView
             return;
         }
         Canvas.SetLeft(_editor, _columns.PaneX(edit.Column));
-        Canvas.SetTop(_editor, (edit.Row * _rowHeight) - _originY);
+        Canvas.SetTop(_editor, RowTop(edit.Row) - _originY);
         _editor.Width = _columns.Width(edit.Column);
-        if (_editor.AcceptsReturn)
+        _editor.TextWrapping = _heights is null ? TextWrapping.NoWrap : TextWrapping.Wrap;
+        if (_heights is not null)
+        {
+            // Over a wrapped cell the box wraps too and covers the row, however many lines the row shows.
+            var height = RowHeightOf(edit.Row);
+            _editor.Height = double.NaN;
+            _editor.MinHeight = height;
+            _editor.MaxHeight = Math.Max(height, _rowHeight * EditorMaxRows);
+        }
+        else if (_editor.AcceptsReturn)
         {
             _editor.Height = double.NaN;
             _editor.MinHeight = _rowHeight;
@@ -421,22 +451,34 @@ public sealed partial class DataGridView
     {
         var editor = new TextBox
         {
-            FontFamily = new FontFamily(Painter.FamilyName),
-            // TextBox scales its text with the text scale factor, as the painter's size already is.
-            FontSize = BaseFontSize,
             MinWidth = 0,
             MinHeight = 0,
             TextWrapping = TextWrapping.NoWrap,
-            Visibility = Visibility.Collapsed,
         };
+        ApplyEditorFont(editor);
+        editor.Loaded += OnEditorLoaded;
         editor.PreviewKeyDown += OnEditorKeyDown;
         // Arrows and paging the TextBox leaves would reach the ScrollViewer around it and scroll the grid.
         editor.KeyDown += (_, e) => e.Handled |= e.Key is VirtualKey.Up or VirtualKey.Down or VirtualKey.Left
             or VirtualKey.Right or VirtualKey.PageUp or VirtualKey.PageDown or VirtualKey.Home or VirtualKey.End;
         editor.LostFocus += OnEditorLostFocus;
+        editor.TextChanged += (sender, _) =>
+        {
+            if (IsEditing && ReferenceEquals(sender, _editor))
+            {
+                PendingEditChanged?.Invoke(this, EventArgs.Empty);
+            }
+        };
         // The grid has put the cell in view; for an editor in the frozen header the ScrollViewer would move too.
         editor.BringIntoViewRequested += (_, e) => e.Handled = true;
         return editor;
+    }
+
+    // TextBox scales its text with the text scale factor, as the painter's size already is.
+    private void ApplyEditorFont(TextBox editor)
+    {
+        editor.FontFamily = new FontFamily(Painter.FamilyName);
+        editor.FontSize = _cellFontSize;
     }
 
     private void OnEditorKeyDown(object sender, KeyRoutedEventArgs e)
@@ -447,10 +489,10 @@ public sealed partial class DataGridView
         }
     }
 
-    // Focus moving to the editor's own menus comes back.
+    // Focus moving to the editor's own menus comes back. The event comes late, so it may be from the last edit's box.
     private void OnEditorLostFocus(object sender, RoutedEventArgs e)
     {
-        if (_editor is null || !IsEditing || EditorFocused
+        if (_editor is null || !ReferenceEquals(sender, _editor) || !IsEditing || EditorFocused
             || _editor.ContextFlyout is { IsOpen: true } || _editor.SelectionFlyout is { IsOpen: true })
         {
             return;
@@ -489,11 +531,14 @@ public sealed partial class DataGridView
     }
 }
 
-public sealed class GridEditStartingEventArgs(int row, int column, string text) : EventArgs
+public sealed class GridEditStartingEventArgs(int row, int column, string text, bool inPlace) : EventArgs
 {
     public int Row { get; } = row;
 
     public int Column { get; } = column;
+
+    // True for Tab and BeginTextEdit, which want the TextBox; false for Enter, F2 and a double-click.
+    public bool InPlace { get; } = inPlace;
 
     // The editor's text: the cell's whole value until the host sets it.
     public string Text { get; set; } = text;

@@ -31,6 +31,126 @@ public sealed class DrawingTests
         Assert.Equal(14, grid.Painter.FontSize);
     });
 
+    // The host's size, as Settings sets it, takes the text scale's path: 21 px is 48 px rows, as 150% is.
+    [Fact]
+    public Task ALargerCellFontSizeGrowsTheTextAndTheRows() => WinUiHost.RunAsync(async () =>
+    {
+        var data = new SyntheticData();
+        var grid = await WinUiHost.ShowAsync(data);
+        grid.ApplyTextScale(1);
+        grid.CellFontSize = 21;
+        grid.UpdateLayout();
+        await WinUiHost.NextFrameAsync();
+        Assert.Equal(48, grid.RowHeight);
+        Assert.Equal(48, grid.HeaderHeight);
+        Assert.Equal(21, grid.Painter.FontSize);
+        var problems = GridChecks.Check(grid, data);
+        Assert.True(problems.None, problems.ToString());
+        grid.CellFontSize = 100;
+        Assert.Equal(36, grid.CellFontSize);
+        grid.CellFontSize = 14;
+        grid.UpdateLayout();
+        Assert.Equal(32, grid.RowHeight);
+        Assert.Equal(14, grid.Painter.FontSize);
+    });
+
+    [Fact]
+    public Task WithWrapOffEveryRowIsOnePitchAndALineBreakIsASpace() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new WrapData());
+
+        Assert.False(grid.WrapsText);
+        Assert.Equal(grid.RowCount * grid.RowHeight, grid.TotalHeight);
+        Assert.Equal(7 * grid.RowHeight, grid.RowTop(7));
+        Assert.Equal(grid.RowHeight, grid.RowHeightOf(7));
+        Assert.Equal(1, grid.RowLines(7));
+        Assert.Equal("first  second", grid.Cell(1, 1).Text.ToString());
+        foreach (var element in grid.RealizedRows.Values.Concat(grid.RealizedFrozenRows.Values))
+        {
+            Assert.Equal(grid.RowHeight, ((FrameworkElement)element).ActualHeight, 0.5);
+        }
+    });
+
+    [Fact]
+    public Task AWrappedRowIsAsTallAsItsTallestCellAndAShortRowStaysOneLine() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData(), frozen: 1);
+        var line = grid.Painter.WrapLineHeight;
+
+        var sentence = await WrapChecks.LinesAsync(grid, 0);
+        Assert.InRange(sentence, 2, 9);
+        Assert.Equal(2, await WrapChecks.LinesAsync(grid, 1));
+        Assert.Equal(1, await WrapChecks.LinesAsync(grid, 2));
+        Assert.Equal(DataGridView.MaximumWrapLines, await WrapChecks.LinesAsync(grid, 7));
+        Assert.Equal(10, DataGridView.MaximumWrapLines);
+        Assert.Equal("first\nsecond", grid.Cell(1, 1).Text.ToString());
+        Assert.Equal(grid.RowHeight, grid.RowHeightOf(2));
+        Assert.Equal(grid.RowHeight + line, grid.RowHeightOf(1));
+        Assert.Equal(grid.RowHeight + (9 * line), grid.RowHeightOf(7));
+        Assert.Equal(grid.RowTop(1) + grid.RowHeightOf(1), grid.RowTop(2));
+        Assert.Equal(grid.RowHeight, grid.HeaderHeight);
+        Assert.Equal(grid.TotalHeight, grid.RowTop(grid.RowCount));
+        WrapChecks.AssertPlaced(grid, "wrapped");
+    });
+
+    // A row lays out only the columns in view, so its height has to come from all of them.
+    [Fact]
+    public Task ARowsHeightComesFromColumnsOutOfViewAndStaysOnASidewaysScroll() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData(), frozen: 1);
+
+        var sentence = await WrapChecks.LinesAsync(grid, 0);
+        Assert.Equal(sentence, await WrapChecks.LinesAsync(grid, 3));
+        var height = grid.RowHeightOf(3);
+
+        await GridChecks.JumpAsync(grid, grid.Columns.PaneX(150), grid.VisibleArea().Top);
+        await WrapChecks.SettleAsync(grid);
+
+        Assert.Equal(height, grid.RowHeightOf(3));
+        WrapChecks.AssertPlaced(grid, "scrolled sideways");
+    });
+
+    [Fact]
+    public Task AValuePastTenLinesIsCutAtTheTenthAndAWordWiderThanTheColumnBreaksInside() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData());
+        var painter = grid.Painter;
+        painter.EnsureBrushes();
+        var words = string.Join(' ', Enumerable.Repeat("word", 400));
+        var hash = new string('a', 400);
+
+        Assert.Equal(1, painter.CountLines("short", CellState.None, 116));
+        Assert.Equal(2, painter.CountLines("a\nb", CellState.None, 116));
+        Assert.Equal(30, painter.CountLines(WrapData.ManyLines, CellState.None, 116));
+        Assert.True(painter.CountLines(hash, CellState.None, 116) > 10);
+        foreach (var text in new[] { WrapData.ManyLines, words, hash, words + "…" })
+        {
+            var (lines, height, width) = Wrapped(painter, text, DataGridView.MaximumWrapLines);
+            Assert.Equal(10, lines);
+            Assert.Equal(10 * painter.WrapLineHeight, height, 1f);
+            Assert.InRange(width, 1, 116.5);
+        }
+        var (blank, blankHeight, _) = Wrapped(painter, "a" + new string('\n', 12) + "b", DataGridView.MaximumWrapLines);
+        Assert.Equal(10, blank);
+        Assert.Equal(10 * painter.WrapLineHeight, blankHeight, 1f);
+        var (few, fewHeight, _) = Wrapped(painter, "a\nb\nc", DataGridView.MaximumWrapLines);
+        Assert.Equal(3, few);
+        Assert.Equal(3 * painter.WrapLineHeight, fewHeight, 1f);
+    });
+
+    [Fact]
+    public Task ACellFontFamilyThatIsNotInstalledKeepsTheGridsOwn() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+        var own = grid.Painter.FamilyName;
+        grid.CellFontFamily = "Consolas";
+        Assert.Equal("Consolas", grid.Painter.FamilyName);
+        grid.CellFontFamily = "No Such Family 7F3A";
+        Assert.Equal(own, grid.Painter.FamilyName);
+        grid.CellFontFamily = null;
+        Assert.Equal(own, grid.Painter.FamilyName);
+    });
+
     // A move to a monitor of another scale arrives as XamlRoot.Changed; the rows draw again at the new pixel size.
     [Fact]
     public Task ANewRasterizationScaleRedrawsAtThatScale() => WinUiHost.RunAsync(async () =>
@@ -154,5 +274,15 @@ public sealed class DrawingTests
         }
         layout->Release();
         return result;
+    }
+
+    // The lines, height and widest line of a cell's wrapped text as the rows lay it out.
+    private static unsafe (int Lines, float Height, float Width) Wrapped(CellPainter painter, string text, int maxLines)
+    {
+        var layout = painter.CreateWrapped(text, CellState.None, 116, maxLines, out _);
+        DWRITE_TEXT_METRICS metrics;
+        layout->GetMetrics(&metrics);
+        layout->Release();
+        return ((int)metrics.lineCount, metrics.height, metrics.width);
     }
 }

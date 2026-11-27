@@ -10,7 +10,7 @@ import TableProPluginKit
 ///
 /// The app's curated table is the authority for its gates; these are the same facts, held here because a plugin
 /// cannot link the app's package, and `SQLLexicalFeatureMappingTests` holds the two equal.
-enum MySQLLexicalFeatures {
+nonisolated enum MySQLLexicalFeatures {
     /// MySQL 8.4.11 and MariaDB 11.8.9, measured.
     static let mySQL: SQLLexicalFeatures = [
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .hashLineComments,

@@ -41,7 +41,7 @@ import TableProPluginKit
 ///
 /// An engine this does not name keeps `X''`, which is what the export has always written, so no
 /// engine's output changes except the three measured to have been wrong.
-internal enum SQLExportBinaryLiteral {
+nonisolated internal enum SQLExportBinaryLiteral {
     /// The most binary bytes Oracle can carry in one `HEXTORAW` literal: 4,000 characters of hex,
     /// two per byte. Measured, not inferred.
     internal static let oracleLiteralByteCeiling = 2_000
@@ -64,26 +64,18 @@ internal enum SQLExportBinaryLiteral {
         }
         switch SqlDialect.from(databaseTypeId: databaseTypeId) {
         case .postgres:
+            // KingbaseES documents `decode` only as Oracle's DECODE, and Redshift has no bytea and reads
+            // VARBYTE, so both reject `decode('<hex>','hex')`. Spellings measured in the app's
+            // CompareSQLLiteral.postgresFamilyBinaryLiteral.
+            if databaseTypeId == "KingbaseES" { return "'\\x\(hex)'::bytea" }
+            if databaseTypeId == "Redshift" { return "from_hex('\(hex)')" }
             return "decode('\(hex)', 'hex')"
         default:
             return "X'\(hex)'"
         }
     }
 
-    /// `String(format: "%02X", byte)` per byte costs 557 ms for one mebibyte against 3.07 ms for this
-    /// loop, measured with `swiftc -O` on arm64, and it allocates a `String` per byte plus the array
-    /// holding them before the join. The export's own byte budget has to measure whatever this
-    /// returns, and a binary column doubles its length here, so this is the hot path of exactly the
-    /// wide-row table the budget exists for.
-    private static let hexDigits: [UInt8] = Array("0123456789ABCDEF".utf8)
-
     internal static func hexString(_ data: Data) -> String {
-        var characters: [UInt8] = []
-        characters.reserveCapacity(data.count * 2)
-        for byte in data {
-            characters.append(hexDigits[Int(byte >> 4)])
-            characters.append(hexDigits[Int(byte & 0x0F)])
-        }
-        return String(decoding: characters, as: UTF8.self)
+        PluginHexText.uppercase(data)
     }
 }

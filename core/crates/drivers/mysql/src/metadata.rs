@@ -16,7 +16,7 @@ use tablepro_core::ddl::{
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
     EditorRefusal, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
-    RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::sql_syntax::{mysql_program_script, terminated};
 use tablepro_core::{DriverError, ForeignKeyInfo, UnsupportedFeature, Value};
@@ -556,6 +556,42 @@ pub(crate) async fn table_estimate(
     })
 }
 
+const TABLE_INFO_SQL: &str = "\
+SELECT TABLE_TYPE, TABLE_COMMENT, DATA_LENGTH, INDEX_LENGTH FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) AND TABLE_NAME = ?";
+
+pub(crate) async fn table_info(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+    table: &TableRef,
+) -> Result<TableInfo, DriverError> {
+    let rows = catalog_rows(connection, flavour, TABLE_INFO_SQL, "TABLES", &table_binds(table)).await?;
+    let Some(row) = rows.first() else {
+        return Ok(TableInfo::default());
+    };
+    Ok(table_info_of(
+        row.text(0)?.as_deref(),
+        row.text(1)?,
+        row.number(2)?,
+        row.number(3)?,
+    ))
+}
+
+// A view's TABLE_COMMENT is the word VIEW, not a comment, and it stores
+// nothing of its own.
+fn table_info_of(kind: Option<&str>, comment: Option<String>, data: Option<u64>, index: Option<u64>) -> TableInfo {
+    if kind.is_some_and(|kind| kind.ends_with("VIEW")) {
+        return TableInfo::default();
+    }
+    TableInfo {
+        data_bytes: data,
+        index_bytes: index,
+        total_bytes: data.zip(index).and_then(|(data, index)| data.checked_add(index)),
+        ..TableInfo::default()
+    }
+    .with_comment(comment)
+}
+
 pub(crate) async fn fetch_table_definition(
     connection: &mut MySqlConnection,
     dialect: &MySqlDialect,
@@ -969,5 +1005,29 @@ mod tests {
         assert_eq!(referential_action("NO ACTION"), Some(ReferentialAction::NoAction));
         assert_eq!(referential_action("RESTRICT"), Some(ReferentialAction::Restrict));
         assert_eq!(referential_action("SOMETHING NEW"), None);
+    }
+
+    #[test]
+    fn a_table_sums_data_and_indexes_and_a_view_reports_nothing() {
+        assert_eq!(
+            table_info_of(Some("BASE TABLE"), Some("orders".to_owned()), Some(16384), Some(32768)),
+            TableInfo {
+                comment: Some("orders".to_owned()),
+                data_bytes: Some(16384),
+                index_bytes: Some(32768),
+                total_bytes: Some(49152),
+            }
+        );
+        assert_eq!(
+            table_info_of(Some("BASE TABLE"), Some(String::new()), Some(16384), None),
+            TableInfo {
+                data_bytes: Some(16384),
+                ..TableInfo::default()
+            }
+        );
+        assert_eq!(
+            table_info_of(Some("VIEW"), Some("VIEW".to_owned()), None, None),
+            TableInfo::default()
+        );
     }
 }

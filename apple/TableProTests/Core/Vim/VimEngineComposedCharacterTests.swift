@@ -7,6 +7,7 @@ import Testing
 private let thumbsUp = "\u{1F44D}"
 private let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"
 private let accented = "e\u{301}"
+private let heart = "\u{2764}\u{FE0F}"
 private let composedCharacters = [thumbsUp, family, accented]
 
 private func units(_ text: String) -> Int {
@@ -574,6 +575,43 @@ extension GlobalStateSuites {
                 #expect(textView.string == "INSERT INTO notes VALUES ('ok ')")
                 #expect(adapter.selectedRange().location == 30)
             }
+        }
+
+        // MARK: - Word motions over a symbol with a variation selector
+
+        @Test
+        func wStepsOverASymbolWithAVariationSelector() {
+            let session = Session("\(heart) x\n", caret: 0)
+            session.press("w")
+            #expect(session.caret == units(heart) + 1)
+        }
+
+        @Test
+        func eStepsOverASymbolWithAVariationSelector() {
+            let session = Session("\(heart) xy\n", caret: 0)
+            session.press("e")
+            #expect(session.caret == units(heart) + 2)
+        }
+
+        @Test
+        func bStepsBackOverASymbolWithAVariationSelector() {
+            let session = Session("ab \(heart)\(heart) x\n", caret: 3 + 2 * units(heart) + 1)
+            session.press("b")
+            #expect(session.caret == 3)
+        }
+
+        @Test
+        func starFindsTheWordAfterASymbolWithAVariationSelector() {
+            let session = Session("\(heart)foo \(heart)foo\n", caret: units(heart))
+            session.press("*")
+            #expect(session.caret == 2 * units(heart) + 4)
+        }
+
+        @Test
+        func innerWordBesideASymbolWithAVariationSelectorLeavesTheSymbol() {
+            let session = Session("\(heart)x\n", caret: units(heart))
+            session.press("diw")
+            #expect(session.text == "\(heart)\n")
         }
     }
 }

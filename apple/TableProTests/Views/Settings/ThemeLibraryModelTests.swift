@@ -42,8 +42,7 @@ struct ThemeLibraryModelTests {
         #expect(fixture.editors.opened == [created.id])
     }
 
-    /// A copy of a default has no syntax colors of its own, so it keeps Xcode's Increase Contrast
-    /// palette instead of freezing the standard one into the file.
+    // A copy of a default has no syntax colors of its own, so it keeps Xcode's Increase Contrast palette.
     @Test("A duplicate of a default keeps the adaptive syntax palette")
     func duplicateOfDefaultKeepsAdaptiveSyntax() throws {
         let fixture = try Fixture()
@@ -70,7 +69,7 @@ struct ThemeLibraryModelTests {
         undoManager.groupsByEvent = false
 
         let confirmation = try #require(library.trashConfirmation(for: .theme("user.aaaa0002")))
-        #expect(confirmation.title == "Delete “Midnight”?")
+        #expect(confirmation.title == "Move “Midnight” to the Trash?")
         #expect(confirmation.message == "The file moves to the Trash. Dark windows switch to Default Dark.")
 
         undoManager.beginUndoGrouping()
@@ -166,9 +165,25 @@ struct ThemeLibraryModelTests {
         #expect(report.imported.allSatisfy { $0.id != "user.11111111" && $0.id != "user.22222222" })
         #expect(report.failures.map(\.fileName) == ["Monokai.json"])
         let alert = try #require(library.alert)
-        #expect(alert.title == "Imported 2 themes.")
+        #expect(alert.title == "Imported 2 Themes")
         #expect(alert.message.hasPrefix("Monokai.json could not be read: "))
         #expect(library.customThemes.map(\.name) == ["Ocean", "Paper"])
+    }
+
+    @Test("One imported theme beside a failure reads in the singular")
+    func importOneFileBesideAFailure() throws {
+        let fixture = try Fixture()
+        let library = fixture.makeLibrary()
+        let good = try fixture.writeIncoming(
+            "Ocean.json",
+            contents: ThemeFileFormat.encode(Fixture.theme("user.11111111", "Ocean"))
+        )
+        let broken = try fixture.writeIncoming("Monokai.json", contents: Data("not json".utf8))
+
+        let report = library.importThemes(from: [good, broken], undoManager: nil)
+
+        #expect(report.imported.count == 1)
+        #expect(library.alert?.title == "Imported 1 Theme")
     }
 
     @Test("A single file that fails names itself in the alert title")
@@ -305,8 +320,7 @@ struct ThemeLibraryModelTests {
         #expect(editor.alert == nil)
     }
 
-    /// The list shows the second of two "Ocean" themes as "Ocean 2". The rename field started from that
-    /// shown name, and committing it untouched reported a rename and left an Undo step that did nothing.
+    // The rename field used to start from the shown "Ocean 2", so an untouched commit left an empty Undo step.
     @Test("Renaming the second of two same-named themes starts from its stored name, with or without its editor")
     func renameOfADisambiguatedTheme() throws {
         let fixture = try Fixture()
@@ -334,8 +348,7 @@ struct ThemeLibraryModelTests {
         editor.close()
     }
 
-    /// Typed on purpose, the shown name becomes the file's name. It used to be a silent no-op without
-    /// an editor open and a write with one.
+    // It used to be a silent no-op without an editor open and a write with one.
     @Test("Typing the shown name renames the file the same way with or without its editor", arguments: [false, true])
     func typedShownNameRenamesTheFile(isEditorOpen: Bool) throws {
         let fixture = try Fixture()
@@ -378,4 +391,108 @@ struct ThemeLibraryModelTests {
         #expect(settings.releasing(themeId: "user.other") == settings)
         #expect(released.reclaiming(themeId: "user.aaaa0002", from: settings) == settings)
     }
+
+    @Test("One item list feeds both menus: the context menu leaves out what the pull-down dims")
+    func menuEntriesPerItem() throws {
+        let fixture = try Fixture()
+        try fixture.install(Fixture.theme("user.aaaa0002", "Midnight"))
+        try Data("{".utf8).write(to: fixture.themes.appendingPathComponent("Broken.json"))
+        fixture.catalog.reloadSynchronously()
+        let library = fixture.makeLibrary()
+        let broken = try #require(library.notLoaded.first)
+
+        let custom = library.menuEntries(for: .theme("user.aaaa0002"))
+        let customActions = custom.map { $0.action }
+        let allThemeActions: [ThemeLibraryAction] = [.edit, .duplicate, .rename, .export, .use(.dark), .showInFinder, .moveToTrash]
+        #expect(customActions == allThemeActions)
+        #expect(custom.allSatisfy { $0.isEnabled })
+
+        let builtIn = library.menuEntries(for: .theme(BuiltInThemes.defaultDarkId))
+        let builtInActions = builtIn.map { $0.action }
+        let builtInShown = builtIn.filter { $0.isEnabled }.map { $0.action }
+        let builtInExpected: [ThemeLibraryAction] = [.showInEditor, .duplicate, .rename, .export, .use(.dark), .showInFinder, .moveToTrash]
+        let builtInShownExpected: [ThemeLibraryAction] = [.showInEditor, .duplicate, .export]
+        #expect(builtInActions == builtInExpected)
+        #expect(builtInShown == builtInShownExpected)
+
+        let record = library.menuEntries(for: .notLoaded(path: broken.path))
+        let recordActions = record.map { $0.action }
+        let recordExpected: [ThemeLibraryAction] = [.showInFinder, .tryAgain, .moveToTrash]
+        #expect(recordActions == recordExpected)
+        #expect(record.allSatisfy { $0.isEnabled })
+
+        let nothing = library.menuEntries(for: nil)
+        #expect(nothing.allSatisfy { !$0.isEnabled })
+        let trash = try #require(nothing.last)
+        #expect(trash.action == .moveToTrash)
+        #expect(trash.startsGroup)
+    }
+
+    @Test("A theme the windows draw with says so under its name, resolved as the pop-up resolves it")
+    func inUseFollowsTheResolvedSlots() throws {
+        let fixture = try Fixture()
+        try fixture.install(Fixture.theme("user.aaaa0002", "Midnight"))
+        let library = fixture.makeLibrary()
+        #expect(library.inUseThemeIds == Set([BuiltInThemes.defaultLightId, BuiltInThemes.defaultDarkId]))
+
+        fixture.selection.themeSelection.preferredDarkThemeId = "user.aaaa0002"
+        #expect(library.inUseThemeIds == Set([BuiltInThemes.defaultLightId, "user.aaaa0002"]))
+
+        // A dark theme saved for the light slot draws the default light.
+        fixture.selection.themeSelection.preferredLightThemeId = "user.aaaa0002"
+        #expect(library.inUseThemeIds == Set([BuiltInThemes.defaultLightId, "user.aaaa0002"]))
+
+        fixture.selection.themeSelection.preferredDarkThemeId = "user.gone"
+        #expect(library.inUseThemeIds == Set([BuiltInThemes.defaultLightId, BuiltInThemes.defaultDarkId]))
+
+        #expect(ThemeLibraryModel.rowSubtitle(.dark, isInUse: true) == "Dark, in use")
+        #expect(ThemeLibraryModel.rowSubtitle(.light, isInUse: true) == "Light, in use")
+        #expect(ThemeLibraryModel.rowSubtitle(.light, isInUse: false) == "Light")
+    }
+
+    @Test("Each drag of a theme rewrites the one folder named for it")
+    func dragReusesOneFolderPerTheme() throws {
+        let fixture = try Fixture()
+        try fixture.install(Fixture.theme("user.aaaa0002", "Midnight"))
+        let library = fixture.makeLibrary()
+
+        let first = try library.dragExportURL(for: "user.aaaa0002")
+        #expect(first.deletingLastPathComponent().lastPathComponent == "user.aaaa0002")
+        #expect(library.rename("user.aaaa0002", to: "Night Owl", undoManager: nil) == .renamed("Night Owl"))
+        let second = try library.dragExportURL(for: "user.aaaa0002")
+        let folder = second.deletingLastPathComponent()
+
+        #expect(folder.standardizedFileURL.path == first.deletingLastPathComponent().standardizedFileURL.path)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["Night Owl.json"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.drags.path) == ["user.aaaa0002"])
+    }
+
+    @Test("Show in Finder reveals only a theme's file, and the folder item reveals the Themes folder")
+    func revealInFinder() throws {
+        let fixture = try Fixture()
+        let file = try fixture.install(Fixture.theme("user.aaaa0002", "Midnight"))
+        let recorder = RevealRecorder()
+        let library = ThemeLibraryModel(
+            catalog: fixture.catalog,
+            selection: fixture.selection,
+            editors: fixture.editors,
+            dragDirectory: fixture.drags,
+            revealInFinder: { recorder.revealed.append($0) }
+        )
+
+        #expect(library.hasFile(.theme("user.aaaa0002")))
+        #expect(!library.hasFile(.theme(BuiltInThemes.defaultDarkId)))
+        library.revealInFinder(.theme("user.aaaa0002"))
+        library.revealInFinder(.theme(BuiltInThemes.defaultDarkId))
+        library.revealThemesFolder()
+
+        let revealed = recorder.revealed.map { urls in urls.map { $0.resolvingSymlinksInPath().path } }
+        let expected = [[file.resolvingSymlinksInPath().path], [fixture.themes.resolvingSymlinksInPath().path]]
+        #expect(revealed == expected)
+    }
+}
+
+@MainActor
+private final class RevealRecorder {
+    var revealed: [[URL]] = []
 }

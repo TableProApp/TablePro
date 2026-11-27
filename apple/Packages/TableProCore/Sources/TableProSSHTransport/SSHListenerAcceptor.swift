@@ -92,7 +92,7 @@ public final class SSHListenerAcceptor: @unchecked Sendable {
                 }
             }
             let acceptedAt = Date()
-            // Darwin hands the listener's O_NONBLOCK to the accepted socket, and the relays block on it.
+            // Darwin hands the listener's O_NONBLOCK to the accepted socket, and the Remote SQLite admission read blocks on it.
             let flags = fcntl(descriptor, F_GETFL, 0)
             if flags >= 0 {
                 _ = fcntl(descriptor, F_SETFL, flags & ~O_NONBLOCK)

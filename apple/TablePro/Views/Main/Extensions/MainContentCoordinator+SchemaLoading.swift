@@ -113,14 +113,21 @@ extension MainContentCoordinator {
             )
             return
         }
+        // Read beside the catalog rather than after it, so the database switcher and completion's namespaces do not
+        // wait for every side kind first. It runs on, harmlessly, if the load fails.
+        let databaseType = connection.type
+        let databases = Task { [connectionId] in
+            await DatabaseTreeMetadataService.shared.loadDatabases(connectionId: connectionId, databaseType: databaseType)
+        }
         do {
-            try await services.databaseManager.withMetadataDriver(scope: scope) { [services, connectionId] driver in
-                await services.schemaService.load(
-                    connectionId: connectionId,
-                    driver: driver,
-                    connection: connection,
-                    scope: scope
-                )
+            // Completion takes the table list as soon as it lands, so the column seed does not wait for the rest.
+            try await services.schemaService.load(
+                connectionId: connectionId,
+                connection: connection,
+                scope: scope,
+                leasingFrom: services.databaseManager
+            ) { [services, connectionId] in
+                await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
             }
         } catch {
             switch SchemaLoadPolicy.disposition(for: error, hasLiveDriver: hasLiveDriver) {
@@ -139,11 +146,8 @@ extension MainContentCoordinator {
             }
             return
         }
-        await DatabaseTreeMetadataService.shared.loadDatabases(
-            connectionId: connectionId,
-            databaseType: connection.type
-        )
-        await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
+        await databases.value
+        await services.schemaRefreshService.syncAutocompleteNamespaces(connectionId: connectionId)
         pruneStaleSidebarState()
     }
 
@@ -173,10 +177,81 @@ extension MainContentCoordinator {
         _ tableName: String?,
         uncached: Bool,
         isView: Bool,
-        scope: DatabaseScope
+        scope: DatabaseScope,
+        rereadsDefinition: Bool = false,
+        knownColumns: [ColumnInfo]? = nil
     ) -> Task<FetchedTableSchema, Error>? {
         if let tableName, !tableName.isEmpty { prefetchForeignKeys(scope: scope) }
-        return QueryExecutor.schemaFetch(tableName: uncached ? tableName : nil, isView: isView, scope: scope)
+        guard uncached, let tableName else { return nil }
+        return QueryExecutor.schemaFetch(
+            tableName: tableName,
+            isView: isView,
+            isCataloged: catalogListsAsTable(tableName, in: scope),
+            scope: scope,
+            knownColumns: knownColumns,
+            listedForeignKeys: rereadsDefinition ? nil : listedForeignKeys(of: tableName, in: scope)
+        )
+    }
+
+    // The definition read takes the columns a catalog page's own read brings, instead of reading them again.
+    func startSchemaFetch(
+        _ tableName: String?,
+        uncached: Bool,
+        isView: Bool,
+        scope: DatabaseScope,
+        rereadsDefinition: Bool = false,
+        columnsFrom confirmation: Task<FirstLoadColumnRead?, Never>
+    ) -> Task<FetchedTableSchema, Error>? {
+        guard uncached, let tableName, !tableName.isEmpty else {
+            return startSchemaFetch(
+                tableName, uncached: uncached, isView: isView, scope: scope, rereadsDefinition: rereadsDefinition
+            )
+        }
+        prefetchForeignKeys(scope: scope)
+        let isCataloged = catalogListsAsTable(tableName, in: scope)
+        let listed = rereadsDefinition ? nil : listedForeignKeys(of: tableName, in: scope)
+        return Task {
+            let known = await confirmation.value?.columns
+            return try await QueryExecutor.fetchTableSchema(
+                scope: scope,
+                tableName: tableName,
+                isView: isView,
+                isCataloged: isCataloged,
+                knownColumns: known,
+                listedForeignKeys: listed
+            )
+        }
+    }
+
+    // Asked when the read reaches its keys. A definition change still being applied may not have reached the store,
+    // which a structure save invalidates only after it announces the table.
+    func listedForeignKeys(of tableName: String, in scope: DatabaseScope) -> @MainActor @Sendable () -> [ForeignKeyInfo]? {
+        { [weak self] in
+            guard let self, !services.catalogChangeService.isApplyingChange(for: connectionId) else { return nil }
+            return SchemaForeignKeyStore.shared.listedForeignKeys(
+                of: tableName, in: scope, nameIsCataloged: catalogListsAsTable(tableName, in: scope)
+            )
+        }
+    }
+
+    // The live catalog only: a restored tab's kind is last session's, and the relation may have become a view since.
+    // A catalog being refreshed or changed still shows the old list. Names compare by bytes, as the server keeps them.
+    func catalogListsAsTable(_ tableName: String, in scope: DatabaseScope) -> Bool {
+        let schemaService = services.schemaService
+        guard !scope.isSessionBound,
+              let loaded = schemaService.loadedScope(for: connectionId),
+              CatalogName(loaded.database) == CatalogName(scope.database),
+              loaded.schema.map({ CatalogName($0) }) == scope.schema.map({ CatalogName($0) }),
+              schemaService.isCatalogCurrent(for: connectionId),
+              !schemaService.isRefreshing(connectionId: connectionId),
+              !services.catalogChangeService.isApplyingChange(for: connectionId)
+        else { return false }
+        let name = CatalogName(tableName)
+        let schema = scope.schema.map { CatalogName($0) }
+        return schemaService.tables(for: connectionId).contains { table in
+            CatalogName(table.name) == name && table.type != .view && table.type != .materializedView
+                && (table.schema == nil || schema == nil || table.schema.map { CatalogName($0) } == schema)
+        }
     }
 
     /// The table a tab's Table Info describes, or nil on a tab with no table of its own, such as a

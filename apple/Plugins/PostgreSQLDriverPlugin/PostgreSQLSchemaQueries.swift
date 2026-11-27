@@ -11,13 +11,13 @@ import TableProPluginKit
 import TableProPostgreSQLCore
 import TableProSQLQuoting
 
-enum PostgreSQLSchemaProbe: Equatable {
+nonisolated enum PostgreSQLSchemaProbe: Equatable {
     case schema(String)
     case empty
     case failed
 }
 
-enum PostgreSQLSchemaQueries {
+nonisolated enum PostgreSQLSchemaQueries {
     /// Returns the first schema on the effective search path, or SQL NULL
     /// when the path is empty (neither `$user` nor `public` exists).
     static let currentSchema = "SELECT pg_catalog.current_schema()"
@@ -184,26 +184,52 @@ enum PostgreSQLSchemaQueries {
     private static let relkindsCreatedByTableDDL = "('r', 'p', 'f')"
 
     static func dependentEnumTypes(schema: String, table: String) -> String {
-        """
-        SELECT DISTINCT t.typname,
-               pg_catalog.array_agg(e.enumlabel ORDER BY e.enumsortorder)::text
-        FROM pg_catalog.pg_attribute a
-        JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+        dependentEnumTypesStatement(schema: schema, table: table)
+    }
+
+    // The per-table read with its relname predicate dropped and the table's name projected last.
+    static func schemaDependentEnumTypes(schema: String) -> String {
+        dependentEnumTypesStatement(schema: schema, table: nil)
+    }
+
+    // Each type once however many columns use it: aggregated per column, two columns of one enum wrote every label twice.
+    private static func dependentEnumTypesStatement(schema: String, table: String?) -> String {
+        let tablePredicate = table.map { "c.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))\n      AND " } ?? ""
+        let relation = table == nil ? ",\n       used.relname" : ""
+        let usedRelation = table == nil ? "c.relname, " : ""
+        let group = table == nil ? "used.relname, t.typname" : "t.typname"
+        return """
+        SELECT t.typname,
+               pg_catalog.array_agg(e.enumlabel ORDER BY e.enumsortorder)::text\(relation)
+        FROM (
+            SELECT DISTINCT \(usedRelation)a.atttypid
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE \(tablePredicate)n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+              AND c.relkind IN \(relkindsCreatedByTableDDL)
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+        ) used
+        JOIN pg_catalog.pg_type t ON t.oid = used.atttypid
         JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
-        WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
-          AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
-          AND c.relkind IN \(relkindsCreatedByTableDDL)
-          AND a.attnum > 0
-          AND NOT a.attisdropped
-        GROUP BY t.typname
-        ORDER BY t.typname
+        GROUP BY \(group)
+        ORDER BY \(group)
         """
     }
 
     static func setSearchPath(toSchema schema: String) -> String {
         "SET search_path TO \(quotedSchemaIdentifier(schema))"
+    }
+
+    // As `setSearchPath`, unless the session's current schema already is the one named, so a path that names more
+    // schemas than the first keeps them, as a host's `switchSchemaIfNeeded` keeps them. `false` makes it last the
+    // session, as a plain `SET` does.
+    static func setSearchPathUnlessCurrent(toSchema schema: String) -> String {
+        let path = PostgreSQLObjectQueries.quoteLiteral(quotedSchemaIdentifier(schema))
+        let name = PostgreSQLObjectQueries.quoteLiteral(schema)
+        return "SELECT pg_catalog.set_config('search_path', \(path), false) "
+            + "WHERE pg_catalog.current_schema() IS DISTINCT FROM \(name)"
     }
 
     private static func quotedSchemaIdentifier(_ schema: String) -> String {
@@ -514,8 +540,55 @@ enum PostgreSQLSchemaQueries {
             WHERE c.relname = \(tableLiteral)
               AND n.nspname = \(schemaLiteral)
               AND con.contype IN ('p', 'u', 'c', 'x')
-            ORDER BY
-              CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 ELSE 3 END
+            ORDER BY \(constraintOrder)
+            """
+    }
+
+    // The name breaks a tie between two constraints of one kind, so the per-table and schema-wide reads list them
+    // alike rather than in whatever order each plan returns them.
+    private static let constraintOrder = """
+        CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 ELSE 3 END, con.conname
+        """
+
+    /// The tables `allTablesDDL` renders: plain tables that are not partitions. A partitioned table, a partition and
+    /// every other kind keeps its own read, which reads the partition tree and the relkind it needs.
+    static func plainTablePredicate(capabilities: PostgreSQLCapabilities) -> String {
+        capabilities.hasDeclarativePartitioning ? "c.relkind = 'r' AND NOT c.relispartition" : "c.relkind = 'r'"
+    }
+
+    // `tableDDLConstraintsQuery` for every plain table of the schema, the table's name last.
+    static func allTablesDDLConstraintsQuery(schema: String, capabilities: PostgreSQLCapabilities) -> String {
+        """
+            SELECT
+                pg_catalog.pg_get_constraintdef(con.oid, true),
+                c.relname
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+              AND \(plainTablePredicate(capabilities: capabilities))
+              AND con.contype IN ('p', 'u', 'c', 'x')
+            ORDER BY c.relname, \(constraintOrder)
+            """
+    }
+
+    // `tableDDLColumnsQuery` for every plain table of the schema, with the persistence its shape reads and the
+    // table's name last.
+    static func allTablesDDLColumnsQuery(schema: String, capabilities: PostgreSQLCapabilities) -> String {
+        """
+            SELECT
+                \(columnDefinition(capabilities: capabilities)),
+                c.relpersistence::text,
+                c.relname
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+            WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+              AND \(plainTablePredicate(capabilities: capabilities))
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY c.relname, a.attnum
             """
     }
 
@@ -679,9 +752,8 @@ enum PostgreSQLSchemaQueries {
             """
     }
 
-    /// The order `PostgreSQLPluginDriver.mapPgColumnRow` reads the row in. It maps by position, so
-    /// this list is the contract between the two arms of `columnsQuery` and the mapper.
-    /// `ordinal_position` stays inside the derived table, named only by the outer `ORDER BY`.
+    // The order `PostgreSQLCatalogExport.column` reads the row in, by position: the contract between both arms of
+    // `columnsQuery` and the mapper. `ordinal_position` stays inside the derived table, named only by the `ORDER BY`.
     private static func columnsOuterProjection(includesTableName: Bool) -> String {
         let columns = (includesTableName ? ["cols.table_name"] : []) + [
             "cols.column_name",
@@ -743,14 +815,14 @@ enum PostgreSQLSchemaQueries {
     }
 }
 
-struct PostgreSQLColumnSpelling: Equatable {
+nonisolated struct PostgreSQLColumnSpelling: Equatable {
     let defaultValue: String?
     let generationExpression: String?
     let declaredType: String?
 }
 
 /// One column's clauses as the server spells them, read under a narrowed `search_path`.
-struct PostgreSQLCatalogColumnDDL: Equatable {
+nonisolated struct PostgreSQLCatalogColumnDDL: Equatable {
     let typeSpelling: String
     let defaultExpression: String?
     let generationExpression: String?

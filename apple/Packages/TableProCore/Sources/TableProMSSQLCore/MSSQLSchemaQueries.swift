@@ -239,6 +239,13 @@ public enum MSSQLSchemaQueries {
         return collation.flatMap(nonEmpty) ?? previous.flatMap(nonEmpty)
     }
 
+    // sp_rename reads its first argument as a multipart name, so each part is bracketed before the whole becomes a
+    // literal: unbracketed, a schema literally named `[dbo]` names dbo. The new name is one part and stays bare.
+    public static func renameColumnStatement(schema: String, table: String, column: String, to newName: String) -> String {
+        let path = [schema, table, column].map { SQLQuoting.identifier($0, quote: .bracket) }.joined(separator: ".")
+        return "EXEC sp_rename \(MSSQLStringLiteral.quoted(path)), \(MSSQLStringLiteral.quoted(newName)), 'COLUMN'"
+    }
+
     public static func alterColumnStatement(
         qualifiedTable: String,
         column: String,
@@ -600,6 +607,16 @@ public enum MSSQLSchemaQueries {
     public static func databaseCollation(forTable table: String) -> String {
         let database = namesTemporaryTable(table) ? "N'tempdb'" : "DB_NAME()"
         return "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(\(database), 'Collation'))"
+    }
+
+    // The heap or clustered index partitions only, so a row is not counted once per index.
+    public static func approximateRowCount(schema: String, table: String) -> String {
+        let object = MSSQLStringLiteral.quoted(bracketed(schema: schema, table: table))
+        return """
+            SELECT SUM(p.rows)
+            FROM sys.partitions p
+            WHERE p.object_id = OBJECT_ID(\(object)) AND p.index_id IN (0, 1)
+            """
     }
 
     private static func catalogObject(schema: String, table: String) -> (catalog: String, object: String) {

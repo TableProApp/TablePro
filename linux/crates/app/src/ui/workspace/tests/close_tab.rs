@@ -191,6 +191,9 @@ fn editor_on_file(test: &TestWindow, path: &std::path::Path) -> (Uuid, crate::ui
                 modified: true,
             }),
             database: None,
+            name: None,
+            ordinal: None,
+            untitled: false,
         })
     });
     let id = workspace.selected_tab().expect("the editor in front");
@@ -290,6 +293,9 @@ fn an_editor_asking_to_close_closes_its_own_tab_not_the_one_in_front() {
                 draft: None,
                 file: None,
                 database: None,
+                name: None,
+                ordinal: None,
+                untitled: false,
             })
         });
         let page = shell_of(&workspace)

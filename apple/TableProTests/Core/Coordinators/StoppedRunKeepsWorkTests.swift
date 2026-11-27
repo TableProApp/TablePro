@@ -135,7 +135,7 @@ struct StoppedRunKeepsWorkTests {
         let statements = SQLStatementScanner.executableStatements(
             in: Self.script, grammar: fixture.coordinator.lexicalGrammar
         )
-        fixture.coordinator.queryExecutionCoordinator.executeMultipleStatements(statements)
+        fixture.coordinator.queryExecutionCoordinator.executeMultipleStatements(statements, onTab: fixture.coordinator.commandTabId)
         let handle = try #require(fixture.coordinator.queryTasks.task(for: tab.id))
         return (tab.id, handle)
     }
@@ -235,13 +235,11 @@ private final class HeldStatementDriver: DatabaseDriver, @unchecked Sendable {
     func ping() async throws {}
     func applyQueryTimeout(_ seconds: Int) async throws {}
 
-    func fetchTables() async throws -> [TableInfo] { [] }
     func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] { [:] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]] { [:] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
     func fetchDatabases() async throws -> [String] { [] }
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         DatabaseMetadata(
@@ -255,8 +253,8 @@ private final class HeldStatementDriver: DatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName,
             dataSize: nil,
@@ -272,48 +270,8 @@ private final class HeldStatementDriver: DatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
-}
-
-@MainActor
-private extension AppServices {
-    func recordingHistory(in queryHistoryManager: QueryHistoryManager) -> AppServices {
-        AppServices(
-            appEvents: appEvents,
-            appSettings: appSettings,
-            appSettingsStorage: appSettingsStorage,
-            connectionStorage: connectionStorage,
-            databaseManager: databaseManager,
-            pluginManager: pluginManager,
-            schemaService: schemaService,
-            schemaRefreshService: schemaRefreshService,
-            schemaProviderRegistry: schemaProviderRegistry,
-            catalogChangeService: catalogChangeService,
-            sqlFavoriteManager: sqlFavoriteManager,
-            favoriteTablesStorage: favoriteTablesStorage,
-            favoriteDatabasesStorage: favoriteDatabasesStorage,
-            tableFolderStorage: tableFolderStorage,
-            aiChatStorage: aiChatStorage,
-            aiKeyStorage: aiKeyStorage,
-            aiAccessApprovals: aiAccessApprovals,
-            groupStorage: groupStorage,
-            tagStorage: tagStorage,
-            sshProfileStorage: sshProfileStorage,
-            credentialProfileStorage: credentialProfileStorage,
-            featureAccess: featureAccess,
-            syncMetadataStorage: syncMetadataStorage,
-            favoritesExpansionState: favoritesExpansionState,
-            linkedFolderWatcher: linkedFolderWatcher,
-            queryHistoryManager: queryHistoryManager,
-            dateFormattingService: dateFormattingService,
-            copilotService: copilotService,
-            mcpServerManager: mcpServerManager,
-            syncTracker: syncTracker,
-            welcomeRouter: welcomeRouter,
-            telemetry: telemetry
-        )
-    }
 }

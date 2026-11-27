@@ -26,7 +26,6 @@ struct SwitchContainerTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }

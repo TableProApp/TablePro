@@ -43,6 +43,10 @@ struct ParsedConnectionURL {
     let multiHost: String?
     let additionalFields: [String: String]
 
+    var environment: ConnectionEnvironment? {
+        envTag.flatMap(ConnectionURLParser.environment(named:))
+    }
+
     var localSocketPath: String? {
         MySQLLocalSocket.path(in: additionalFields)
     }
@@ -56,6 +60,11 @@ struct ParsedConnectionURL {
             return connectionName
         }
         let typeName = type.rawValue
+        if namesDatabaseFile {
+            // Named the way opening the file itself names it.
+            let stem = ((database as NSString).lastPathComponent as NSString).deletingPathExtension
+            return stem.isEmpty ? typeName : stem
+        }
         let displayHost = multiHost?.split(separator: ",").first.map(String.init) ?? host
         let displayDatabase = database.isEmpty ? (oracleServiceName ?? "") : database
         if !displayDatabase.isEmpty {
@@ -65,6 +74,11 @@ struct ParsedConnectionURL {
             return "\(typeName) \(displayHost)"
         }
         return typeName
+    }
+
+    // A quack:// URL always has a host; a duckdb:// file URL never does, nor does an md: MotherDuck string.
+    var namesDatabaseFile: Bool {
+        host.isEmpty && ConnectionURLParser.opensDatabaseFile(type) && additionalFields["duckdbMode"] != "motherduck"
     }
 }
 
@@ -106,6 +120,7 @@ struct ConnectionURLParser {
             return .failure(.emptyString)
         }
 
+        if let motherDuck = parseMotherDuck(trimmed) { return motherDuck }
         guard let schemeEnd = trimmed.range(of: "://") else {
             return .failure(.invalidURL)
         }
@@ -129,46 +144,8 @@ struct ConnectionURLParser {
 
         let isSrv = scheme == "mongodb+srv"
 
-        let isFileBased = dbType == .sqlite || (dbType == .duckdb && scheme == "duckdb")
-            || PluginMetadataRegistry.shared.snapshot(for: dbType)?.connectionMode == .fileBased
-        if isFileBased {
-            let path = String(trimmed[schemeEnd.upperBound...])
-            return .success(ParsedConnectionURL(
-                type: dbType,
-                host: "",
-                port: nil,
-                database: path,
-                username: "",
-                password: "",
-                sslMode: nil,
-                disablesTLS: false,
-                authSource: nil,
-                sshHost: nil,
-                sshPort: nil,
-                sshUsername: nil,
-                sshPassword: nil,
-                usePrivateKey: nil,
-                useSSHAgent: nil,
-                sshNoAuth: nil,
-                agentSocket: nil,
-                connectionName: nil,
-                redisDatabase: nil,
-                statusColor: nil,
-                envTag: nil,
-                schema: nil,
-                tableName: nil,
-                isView: false,
-                filterColumn: nil,
-                filterOperation: nil,
-                filterValue: nil,
-                filterCondition: nil,
-                oracleServiceName: nil,
-                safeModeLevel: nil,
-                useSrv: false,
-                mongoQueryParams: [:],
-                multiHost: nil,
-                additionalFields: [:]
-            ))
+        if opensDatabaseFile(dbType), dbType != .duckdb || scheme == "duckdb" {
+            return parseFileURL(String(trimmed[schemeEnd.upperBound...]), type: dbType)
         }
 
         if isSSH {
@@ -281,6 +258,65 @@ struct ConnectionURLParser {
             multiHost: nil,
             additionalFields: tls.additionalFields.merging(endpoint.socketFields) { _, socket in socket }
                 .merging(catalogPath.fields) { current, _ in current }
+                .merging(quackFields(type: dbType, host: endpoint.host, port: rawPort, alias: database)) { current, _ in current }
+        ))
+    }
+
+    static func opensDatabaseFile(_ type: DatabaseType) -> Bool {
+        type == .sqlite || type == .duckdb
+            || PluginMetadataRegistry.shared.snapshot(for: type)?.connectionMode == .fileBased
+    }
+
+    // The path ends at the first `?` as on any other scheme, so a file name's own `?` arrives as `%3F`.
+    private static func parseFileURL(
+        _ afterScheme: String,
+        type: DatabaseType
+    ) -> Result<ParsedConnectionURL, ConnectionURLParseError> {
+        let queryStart = afterScheme.firstIndex(of: "?")
+        let encodedPath = queryStart.map { String(afterScheme[..<$0]) } ?? afterScheme
+        let path = encodedPath.removingPercentEncoding ?? encodedPath
+        // The drivers open a C string, so a decoded NUL would open the path before it, not the one the alert shows.
+        // SQLite reads a `file:` name as a URI of its own and decodes it again, which reaches the same truncation.
+        guard !path.utf8.contains(0), !path.lowercased().hasPrefix("file:") else { return .failure(.invalidURL) }
+        let ext = parseQueryItems(
+            queryStart.map { queryItems(String(afterScheme[afterScheme.index(after: $0)...])) },
+            dbType: type
+        )
+        return .success(ParsedConnectionURL(
+            type: type,
+            host: "",
+            port: nil,
+            database: path,
+            username: "",
+            password: "",
+            sslMode: nil,
+            disablesTLS: false,
+            authSource: nil,
+            sshHost: nil,
+            sshPort: nil,
+            sshUsername: nil,
+            sshPassword: nil,
+            usePrivateKey: nil,
+            useSSHAgent: nil,
+            sshNoAuth: nil,
+            agentSocket: nil,
+            connectionName: ext.connectionName,
+            redisDatabase: nil,
+            statusColor: ext.statusColor,
+            envTag: ext.envTag,
+            schema: ext.schema,
+            tableName: ext.tableName,
+            isView: ext.isView,
+            filterColumn: ext.filterColumn,
+            filterOperation: ext.filterOperation,
+            filterValue: ext.filterValue,
+            filterCondition: ext.filterCondition,
+            oracleServiceName: nil,
+            safeModeLevel: ext.safeModeLevel,
+            useSrv: false,
+            mongoQueryParams: [:],
+            multiHost: nil,
+            additionalFields: [:]
         ))
     }
 
@@ -298,6 +334,24 @@ struct ConnectionURLParser {
         }
         let schema = decode(String(path[path.index(after: slash)...]))
         return (decode(String(path[..<slash])), schema.isEmpty ? [:] : ["trinoSchema": schema])
+    }
+
+    // Only quack:// reaches here for DuckDB. Its driver reads the server from these fields and never the built-in host
+    // or database, so a link opens the same server the form would; an alias left out is the one the form starts with.
+    // The port as the URL wrote it, the default included: a link that names 9494 must not match a row on 9500.
+    private static func quackFields(type: DatabaseType, host: String, port: Int?, alias: String) -> [String: String] {
+        guard type == .duckdb else { return [:] }
+        var fields = ["duckdbMode": "remote", "duckdbHost": host]
+        if let port {
+            fields["duckdbPort"] = String(port)
+        }
+        let defaultAlias = PluginMetadataRegistry.shared.snapshot(for: type)?.connection.additionalConnectionFields
+            .first { $0.id == "duckdbAlias" }?.defaultValue ?? ""
+        let resolvedAlias = alias.isEmpty ? defaultAlias : alias
+        if !resolvedAlias.isEmpty {
+            fields["duckdbAlias"] = resolvedAlias
+        }
+        return fields
     }
 
     private typealias Endpoint = (host: String, socketFields: [String: String], port: Int?)
@@ -551,6 +605,7 @@ struct ConnectionURLParser {
 
         let ext = parseSSHQueryString(queryString, dbType: dbType)
         let sslMode = ext.resolvedSSLMode(for: dbType, port: port ?? dbType.defaultPort)
+        let explicitPort = port
         port = significantPort(port, for: dbType, sslMode: sslMode)
         let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, sslFingerprint: ext.sslFingerprint, type: dbType)
         let catalogPath = databasePath(database, type: dbType, percentEncoded: true)
@@ -609,6 +664,7 @@ struct ConnectionURLParser {
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: nil,
             additionalFields: tls.additionalFields.merging(catalogPath.fields) { current, _ in current }
+                .merging(quackFields(type: dbType, host: host, port: explicitPort, alias: database)) { current, _ in current }
         ))
     }
 
@@ -663,15 +719,7 @@ struct ConnectionURLParser {
         let firstHost = String(hostParts[0]).removingPercentEncoding ?? String(hostParts[0])
         let firstPort: Int? = hostParts.count > 1 ? Int(hostParts[1]) : nil
 
-        var queryItems: [URLQueryItem]?
-        if let qs = queryString {
-            queryItems = qs.split(separator: "&").map { param in
-                let kv = param.split(separator: "=", maxSplits: 1)
-                return URLQueryItem(name: String(kv[0]), value: kv.count > 1 ? String(kv[1]) : "")
-            }
-        }
-
-        let ext = parseQueryItems(queryItems, dbType: dbType)
+        let ext = parseQueryItems(queryString.map { queryItems($0) }, dbType: dbType)
 
         return ParsedConnectionURL(
             type: dbType,
@@ -775,6 +823,14 @@ struct ConnectionURLParser {
                 self.disablesTLS = disablesTLS
                 self.additionalFields = [:]
             }
+        }
+    }
+
+    // Items stay percent-encoded. A bare `=` keeps its empty name instead of indexing past an empty split.
+    private static func queryItems(_ queryString: String) -> [URLQueryItem] {
+        queryString.split(separator: "&").map { param in
+            let pair = param.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            return URLQueryItem(name: String(pair[0]), value: pair.count > 1 ? String(pair[1]) : "")
         }
     }
 
@@ -1021,8 +1077,19 @@ struct ConnectionURLParser {
         return bestColor
     }
 
-    @MainActor internal static func tagId(fromEnvName name: String) -> UUID? {
-        let tags = TagStorage.shared.loadTags()
-        return tags.first(where: { $0.name.lowercased() == name.lowercased() })?.id
+    // `env=` names the connection's environment; a name that is none of them leaves it unset.
+    internal static func environment(named name: String) -> ConnectionEnvironment? {
+        switch name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "production", "prod":
+            return .production
+        case "staging", "stage":
+            return .staging
+        case "development", "dev":
+            return .development
+        case "local":
+            return .local
+        default:
+            return nil
+        }
     }
 }

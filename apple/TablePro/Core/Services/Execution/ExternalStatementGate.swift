@@ -32,9 +32,10 @@ internal enum ExternalStatementGate {
         internal let loadsExtensions: Bool
         internal let allowsDestructive: Bool
         internal let allowsMultiStatement: Bool
-        /// What this transport offers instead, appended to the destructive refusal. MCP has a tool
-        /// for it; AppleScript confirms interactively and never reaches the refusal.
+        // Appended to the destructive refusal: MCP has a tool for it, AppleScript confirms and never reaches it.
         internal let destructiveAlternative: String?
+        // The assistant's Edit mode: queries and row changes, no schema, privilege, session or transaction statement.
+        internal let allowsOnlyDataStatements: Bool
 
         internal init(
             sql: String,
@@ -44,7 +45,8 @@ internal enum ExternalStatementGate {
             loadsExtensions: Bool,
             allowsDestructive: Bool,
             allowsMultiStatement: Bool = false,
-            destructiveAlternative: String? = nil
+            destructiveAlternative: String? = nil,
+            allowsOnlyDataStatements: Bool = false
         ) {
             self.sql = sql
             self.connectionId = connectionId
@@ -54,6 +56,7 @@ internal enum ExternalStatementGate {
             self.allowsDestructive = allowsDestructive
             self.allowsMultiStatement = allowsMultiStatement
             self.destructiveAlternative = destructiveAlternative
+            self.allowsOnlyDataStatements = allowsOnlyDataStatements
         }
     }
 
@@ -102,6 +105,11 @@ internal enum ExternalStatementGate {
             )
         }
 
+        if statement.allowsOnlyDataStatements,
+           !QueryClassifier.isDataStatement(statement.sql, databaseType: statement.databaseType) {
+            throw ExternalStatementGateError.denied(dataStatementRefusal)
+        }
+
         return classification
     }
 
@@ -118,6 +126,14 @@ internal enum ExternalStatementGate {
 
     internal static let destructiveRefusal = String(
         localized: "This statement is destructive, like DROP, TRUNCATE or a DELETE with no WHERE."
+    )
+
+    internal static let dataStatementRefusal = String(
+        localized: """
+        Edit mode runs only queries and data changes, such as SELECT, INSERT, UPDATE, DELETE and MERGE. \
+        A schema, privilege, session or transaction statement, or a change to the database's own tables, \
+        needs Agent mode, or run it yourself in a query tab.
+        """
     )
 
     internal static let notDestructiveRefusal = String(
@@ -185,7 +201,8 @@ internal enum ExternalStatementGate {
         )
     }
 
-    private static let driverRequestMarkers = [
+    // Also read by QueryClassifier's browse-sentinel guard test, which pins every read marker to `.safe`.
+    internal static let driverRequestMarkers = [
         "BIGQUERY_BROWSE:", "BIGQUERY_COMBINED:", "BIGQUERY_FILTER:", "BIGQUERY_SEARCH:",
         "BIGTABLE_BROWSE:",
         "ELASTICSEARCH_EXPORT:", "ELASTICSEARCH_SEARCH:", "ELASTICSEARCH_WRITE:",
@@ -290,6 +307,8 @@ internal enum OperationUnit: Sendable, Equatable {
 // What a caller asks `ExternalStatementGate.approve` to let run: the statements in their scope, before anyone said yes.
 internal struct PendingOperation: Sendable {
     internal let scope: DatabaseScope
+    // The session's connect the scope was resolved on; a reconnect before the run refuses it.
+    internal let driverGeneration: UUID?
     internal let databaseType: DatabaseType
     internal let statements: [OperationStatement]
     internal let kind: OperationKind
@@ -304,6 +323,7 @@ internal struct PendingOperation: Sendable {
 
     internal init(
         scope: DatabaseScope,
+        driverGeneration: UUID?,
         databaseType: DatabaseType,
         statements: [OperationStatement],
         kind: OperationKind,
@@ -315,6 +335,7 @@ internal struct PendingOperation: Sendable {
         displayStatements: [String]? = nil
     ) {
         self.scope = scope
+        self.driverGeneration = driverGeneration
         self.databaseType = databaseType
         self.statements = statements
         self.kind = kind
@@ -331,6 +352,7 @@ internal struct PendingOperation: Sendable {
 // An operation Safe Mode approved, exactly as it runs. Only `ExternalStatementGate.approve` makes one.
 internal struct ApprovedOperation: Sendable {
     internal let scope: DatabaseScope
+    internal let driverGeneration: UUID?
     internal let databaseType: DatabaseType
     internal let statements: [OperationStatement]
     internal let kind: OperationKind
@@ -341,6 +363,7 @@ internal struct ApprovedOperation: Sendable {
 
     fileprivate init(_ pending: PendingOperation, receipt: OperationReceipt) {
         scope = pending.scope
+        driverGeneration = pending.driverGeneration
         databaseType = pending.databaseType
         statements = pending.statements
         kind = pending.kind

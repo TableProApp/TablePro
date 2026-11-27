@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
     /// Captured when the trace begins rather than read when it ends. `TableLoadTracer` is one
@@ -54,11 +55,13 @@ extension MainContentCoordinator {
         _ token: TableLoadTraceToken?,
         began: ContinuousClock.Instant,
         ended: ContinuousClock.Instant,
-        result: QueryFetchResult
+        result: QueryFetchResult,
+        lease: TableLoadLeaseTiming? = nil
     ) {
         guard let token else { return }
         let tracer = TableLoadTracer.shared
         tracer.stage(.driverFetchBegin, token: token, at: began)
+        traceLease(lease, firstRowAfter: result.timing?.firstRow, token: token)
         tracer.stage(
             .driverFetchEnd,
             token: token,
@@ -77,14 +80,27 @@ extension MainContentCoordinator {
     func traceFetchCancelled(
         _ token: TableLoadTraceToken?,
         began: ContinuousClock.Instant,
-        ended: ContinuousClock.Instant
+        ended: ContinuousClock.Instant,
+        lease: TableLoadLeaseTiming? = nil
     ) {
         guard let token else { return }
         let tracer = TableLoadTracer.shared
         tracer.stage(.driverFetchBegin, token: token, at: began)
+        traceLease(lease, firstRowAfter: nil, token: token)
         tracer.stage(.driverFetchEnd, token: token, at: ended)
         tracer.anomaly(.executionCancelled, token: token)
         tracer.finish(token: token, outcome: .cancelled)
+    }
+
+    // The first row is the driver's own measure, absent when it buffers the whole result before it sees a row.
+    private func traceLease(_ lease: TableLoadLeaseTiming?, firstRowAfter: TimeInterval?, token: TableLoadTraceToken) {
+        guard let instants = lease?.instants else { return }
+        let tracer = TableLoadTracer.shared
+        if let leaseAcquired = instants.leaseAcquired { tracer.stage(.leaseAcquired, token: token, at: leaseAcquired) }
+        if let pinFinished = instants.pinFinished { tracer.stage(.pinFinished, token: token, at: pinFinished) }
+        if let queryStarted = instants.queryStarted, let firstRowAfter {
+            tracer.stage(.firstRow, token: token, at: queryStarted.advanced(by: .seconds(firstRowAfter)))
+        }
     }
 
     func traceStaleResultDropped(_ token: TableLoadTraceToken?) {

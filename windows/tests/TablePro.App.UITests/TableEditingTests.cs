@@ -16,7 +16,7 @@ public sealed partial class ShellTests
         const string Added = "TablePro Test Artist";
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.Click(app.FindByName("Artist", app.Find("ObjectTree")), () => app.TryFind("TableStatus") is not null);
         AppSession.WaitForText(app.Find("TableStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal));
         var grid = app.Find("ResultsGrid");
@@ -70,7 +70,7 @@ public sealed partial class ShellTests
         app.Chord(() => app.TryFind("SqlEditor") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_1);
         var names = string.Join(", ", new[] { Renamed, Added, deleted }.Select(name => "'" + name.Replace("'", "''", StringComparison.Ordinal) + "'"));
         app.TypeInto("Query 1", $"SELECT COUNT(*) FROM Artist WHERE Name IN ({names});");
-        app.Chord(() => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
+        app.Chord(() => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
         Assert.Equal("2", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "2"));
     }

@@ -104,10 +104,14 @@ struct CredentialLeaseRoutingTests {
         let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
 
         let error = await #expect(throws: DatabaseError.self) {
-            try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .protectedWrite) { _ in }
+            try await manager.withScopedDriver(
+                scope: scope, route: .sessionDriver, cancellation: .protectedWrite, sessionWork: .statements
+            ) { _ in }
         }
         #expect(error?.localizedDescription.contains(DatabaseManager.parkedTransactionLostMessage(database: "app")) == true)
-        try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .protectedWrite) { _ in }
+        try await manager.withScopedDriver(
+            scope: scope, route: .sessionDriver, cancellation: .protectedWrite, sessionWork: .statements
+        ) { _ in }
     }
 
     @Test("A metadata read on the session driver leaves the lost transaction's report for the user's statement")
@@ -126,7 +130,9 @@ struct CredentialLeaseRoutingTests {
 
         #expect(manager.sessionLanes.hasLoss(database: "", for: connection.id))
         await #expect(throws: DatabaseError.self) {
-            try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .protectedWrite) { _ in }
+            try await manager.withScopedDriver(
+                scope: scope, route: .sessionDriver, cancellation: .protectedWrite, sessionWork: .statements
+            ) { _ in }
         }
         #expect(!manager.sessionLanes.hasLoss(database: "", for: connection.id))
     }

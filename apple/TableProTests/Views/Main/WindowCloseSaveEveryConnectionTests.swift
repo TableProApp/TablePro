@@ -45,11 +45,17 @@ struct WindowCloseSaveEveryConnectionTests {
         try harness.addSelectedTab(to: harness.foreground)
         try harness.addSelectedTab(to: harness.background)
 
-        var edited = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users")
-        edited.pendingChanges.insertedRowIDs = [.inserted(UUID())]
-        edited.pendingChanges.columns = ["id", "name"]
-        edited.pendingChanges.primaryKeyColumns = ["id"]
+        let edited = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users")
         back.tabManager.tabs.append(edited)
+        let edits = back.changeManager(forTab: edited.id)
+        edits.configureForTable(
+            tableName: "users",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id"],
+            databaseType: back.connection.type,
+            generatedColumns: []
+        )
+        edits.recordRowInsertion(rowID: .inserted(UUID()), values: [.null, .null])
         frontActions.confirmSaveChanges = { _, _ in .save }
 
         let outcome = await frontActions.closeWindowAwaiting()

@@ -31,7 +31,8 @@ struct IOSSyncActivationTests {
             isEnabled: { true },
             notificationCenter: NotificationCenter(),
             networkMonitor: nil,
-            activationClock: clock
+            activationClock: clock,
+            pushRegistrar: .inert
         )
         coordinator.getCurrentState = { ([], [], []) }
         coordinator.onConnectionsChanged = { _ in true }

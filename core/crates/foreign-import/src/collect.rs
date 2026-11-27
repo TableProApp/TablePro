@@ -9,7 +9,8 @@ use crate::{
 pub enum PasswordOutcome {
     NotRequested,
     Read,
-    // The user refused a keychain prompt, or the app's store was locked, so the rest were not read.
+    // The user refused a keychain prompt, the app's store was locked, or no key it holds opened them, so some were not
+    // read.
     Stopped,
     // The app keeps them in a keychain this platform does not let another app read.
     LeftInKeychain,

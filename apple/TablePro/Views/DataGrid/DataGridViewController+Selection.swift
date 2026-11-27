@@ -46,7 +46,7 @@ extension DataGridViewController {
     func mirrorSelection() {
         let rowCount = model.rowCount
         guard panes.allSatisfy({ $0.tableView.numberOfRows == rowCount }) else { return }
-        let rows = model.selection.affectedRows.filteredIndexSet { $0 >= 0 && $0 < rowCount }
+        let rows = model.selection.affectedRows.intersection(IndexSet(integersIn: 0..<rowCount))
         let wasMirroring = isMirroringSelection
         isMirroringSelection = true
         for pane in panes where pane.tableView.selectedRowIndexes != rows {
@@ -147,7 +147,7 @@ extension DataGridViewController {
             toggleForeignKeyPreview()
             return true
         }
-        return false
+        return handleValueEditorKey(event)
     }
 
     // MARK: - Checkboxes
@@ -182,6 +182,11 @@ extension DataGridViewController {
         guard row >= 0, row < table.numberOfRows else { return }
         revealingInGrid {
             table.scrollRowToVisible(row)
+            if wrapsText {
+                // The row was placed by an estimate until it was measured, which the scroll just did.
+                measureViewportRows()
+                table.scrollRowToVisible(row)
+            }
             if let displayColumn {
                 revealColumn(displayColumn)
             }
@@ -411,7 +416,8 @@ extension DataGridViewController {
         guard let rowModel = model.row(at: row), let column = model.columns.column(at: cell.displayColumn) else { return false }
         let columnRect = table.rect(ofColumn: tableColumn)
         let rowRect = table.rect(ofRow: row)
-        let cellRect = NSRect(x: columnRect.minX, y: rowRect.minY, width: columnRect.width, height: rowRect.height)
+        let wholeCell = NSRect(x: columnRect.minX, y: rowRect.minY, width: columnRect.width, height: rowRect.height)
+        let cellRect = wrapMetrics?.firstLine(of: wholeCell) ?? wholeCell
         if model.configuration.checkboxColumns.contains(column.dataIndex) {
             guard DataGridCheckboxMark.frame(in: cellRect).contains(point) else { return false }
             return toggleCheckbox(rowID: rowModel.id, column: column, displayRow: row)

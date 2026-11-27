@@ -1,12 +1,22 @@
 namespace TablePro.Interop;
 
-// Why no row of a table, or of a page, can be changed.
+// Why no row of a table, a page or a query result can be changed.
 public enum EditLock
 {
     ReadOnlyConnection,
     NoPrimaryKey,
     KeyUnreadable,
     ColumnsChanged,
+    // A query result's statement is not one SELECT.
+    NotOneSelect,
+    // A join, a subquery or a CTE.
+    MoreThanOneTable,
+    // DISTINCT, GROUP BY or a function in the select list.
+    Collapsed,
+    // No column traced to the statement's table: a view, a temporary table, or an engine that says nothing.
+    Untraced,
+    // The result leaves out part of the table's primary key.
+    KeyNotShown,
 }
 
 // An empty text means what the core's parse says for the column: the empty string, the server's default, or NULL.
@@ -47,7 +57,7 @@ public abstract record RowEdit
     public sealed record Delete(long Row) : RowEdit;
 }
 
-// A saved row's key and a column the server fills are locked; TakesDefault offers DEFAULT in a saved row.
+// A saved row's key and a server-filled column lock; Labels: an enum's or a SET's; NeedsOffset: typed times need one.
 public sealed record EditColumn(
     string Name,
     bool Editable,
@@ -56,7 +66,14 @@ public sealed record EditColumn(
     bool Nullable,
     bool PrimaryKey,
     bool TakesEmpty,
-    bool TakesDefault);
+    bool TakesDefault,
+    ValueKind Kind = ValueKind.Other,
+    IReadOnlyList<string>? Labels = null,
+    bool Multiple = false,
+    bool NeedsOffset = false)
+{
+    public IReadOnlyList<string> Labels { get; init; } = Labels ?? [];
+}
 
 public abstract record EditStart
 {

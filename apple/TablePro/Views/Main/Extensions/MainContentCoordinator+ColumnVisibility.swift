@@ -44,10 +44,11 @@ extension MainContentCoordinator {
 
     // Confirms like sort, pagination and the WHERE filter: re-running with a new column list drops unsaved edits (#2667).
     private func changeColumnScope(_ mutate: @escaping (inout Set<String>) -> Void) {
-        confirmDiscardRestoringRowsIfNeeded(action: .columnVisibility) { [weak self] confirmed in
+        guard let tabId = tabManager.selectedTabId else { return }
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .columnVisibility) { [weak self] confirmed in
             guard confirmed, let self else { return }
-            self.mutateSelectedTabHiddenColumns(mutate)
-            self.requeryWithColumnScope(debounced: true)
+            self.mutateHiddenColumns(ofTab: tabId, mutate)
+            self.requeryWithColumnScope(forTab: tabId, debounced: true)
         }
     }
 
@@ -96,14 +97,15 @@ extension MainContentCoordinator {
 
     // Clearing the hidden set re-queries, so reset confirms too; declining keeps the width reset, since widths cannot void edits.
     func resetColumns() {
-        confirmDiscardRestoringRowsIfNeeded(action: .columnVisibility) { [weak self] confirmed in
+        guard let tabId = tabManager.selectedTabId else { return }
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .columnVisibility) { [weak self] confirmed in
             guard confirmed, let self else { return }
-            self.applyColumnReset()
+            self.applyColumnReset(toTab: tabId)
         }
     }
 
-    private func applyColumnReset() {
-        guard let index = tabManager.selectedTabIndex else { return }
+    private func applyColumnReset(toTab tabId: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         let tab = tabManager.tabs[index]
         // Through the model, which rebuilds its columns: a query tab's requery reloads nothing, so it alone shows them again.
         if let entry = dataGridEntries[tab.id] {
@@ -114,7 +116,7 @@ extension MainContentCoordinator {
             FileColumnLayoutPersister.shared.clear(for: key)
         }
         tabManager.mutate(at: index) { $0.columnLayout = ColumnLayoutState() }
-        requeryWithColumnScope(debounced: false)
+        requeryWithColumnScope(forTab: tabId, debounced: false)
     }
 
     // A temporary table's layout is not kept: the key would be the permanent table's of the same name.
@@ -134,7 +136,7 @@ extension MainContentCoordinator {
         guard let tab = tabManager.selectedTab,
               !tab.columnLayout.hiddenColumns.isEmpty else { return }
 
-        await rebuildSelectedTableColumnScopedQuery()
+        await rebuildColumnScopedQuery(forTab: tab.id)
     }
 
     private func persistTabHiddenColumns(_ tab: QueryTab) {
@@ -143,7 +145,12 @@ extension MainContentCoordinator {
     }
 
     private func mutateSelectedTabHiddenColumns(persist: Bool = true, _ mutate: (inout Set<String>) -> Void) {
-        guard let index = tabManager.selectedTabIndex else { return }
+        guard let tabId = tabManager.selectedTabId else { return }
+        mutateHiddenColumns(ofTab: tabId, persist: persist, mutate)
+    }
+
+    private func mutateHiddenColumns(ofTab tabId: UUID, persist: Bool = true, _ mutate: (inout Set<String>) -> Void) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         var hidden = tabManager.tabs[index].columnLayout.hiddenColumns
         mutate(&hidden)
         guard hidden != tabManager.tabs[index].columnLayout.hiddenColumns else { return }

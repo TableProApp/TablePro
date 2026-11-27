@@ -24,7 +24,7 @@
   {
     "id": "duckdb",
     "name": "DuckDB",
-    "version": "v2.0.0",
+    "version": "v2.0.1",
     "spdx": "MIT",
     "copyrights": [
       "Copyright 2018-2026 Stichting DuckDB Foundation"
@@ -116,7 +116,7 @@
   {
     "id": "oracle-nio",
     "name": "OracleNIO",
-    "version": "rev:045a44674e9f9da3904e0f2b87995490a7cc88e4",
+    "version": "rev:28d9d83b9b88440598862f04e43ca527dcac1d7d",
     "spdx": "Apache-2.0",
     "copyrights": [
       "Copyright (c) 2023 Timo Zacherl"
@@ -287,5 +287,16 @@
     ],
     "homepageURL": "https://github.com/apple/swift-nio-ssl",
     "textFile": "texts/swift-nio-ssl.txt"
+  },
+  {
+    "id": "tablepro-core-crates",
+    "name": "TablePro core's Rust crates",
+    "version": "Cargo.lock",
+    "spdx": "MIT AND Apache-2.0 AND ISC AND BSD-3-Clause AND MPL-2.0 AND OpenSSL AND Unicode-3.0 AND Zlib",
+    "copyrights": [
+      "Each crate's own, in the license text that lists it"
+    ],
+    "homepageURL": "https://crates.io",
+    "textFile": "texts/tablepro-core-crates.txt"
   }
 ]

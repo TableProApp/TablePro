@@ -6,13 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-/// One partition as the catalog reports it, before it becomes a transfer type.
-///
-/// It takes plain values rather than `OraclePartitionRow` so this file compiles without
-/// `TableProOracleCore`, and therefore without OracleNIO. That matters: OracleNIO cannot be built
-/// with the current toolchain, so anything that imports it cannot be compile-checked or tested here
-/// at all. Keeping the shape of the list out of the driver is what lets it be.
-internal struct OracleCatalogPartition: Equatable {
+nonisolated internal struct OracleCatalogPartition: Equatable {
     internal let name: String
     internal let position: Int?
     internal let rowCount: Int?
@@ -26,12 +20,9 @@ internal struct OracleCatalogPartition: Equatable {
     }
 }
 
-/// An Oracle partition is a segment of one table rather than a relation of its own, so it carries no
-/// schema and cannot be opened, dropped or renamed by name.
-///
-/// It states no bound either: `ALL_TAB_PARTITIONS.HIGH_VALUE` is a `LONG` column, the datatype this
-/// driver already avoids because OracleNIO cannot decode it, so the row carries its position.
-internal enum OraclePartitionMapping {
+// A partition is a segment of one table, with no schema or name to open, drop or rename. It carries its position, not
+// its bound: `HIGH_VALUE` is a LONG, which OracleNIO cannot decode.
+nonisolated internal enum OraclePartitionMapping {
     internal static func partitions(from catalog: [OracleCatalogPartition]) -> [PluginPartitionInfo] {
         catalog.flatMap { partition -> [PluginPartitionInfo] in
             let parent = PluginPartitionInfo(

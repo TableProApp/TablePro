@@ -2,7 +2,7 @@ namespace TablePro.App.Model;
 
 public static class SessionTabs
 {
-    // Definition tabs are left out: an older build reads an unknown TabKind as a broken file and loses the session.
+    // Definition and key tabs are left out: an older build reads an unknown TabKind as a broken file and loses the session.
     public static (IReadOnlyList<SessionTab> Tabs, int Selected) Persisted(
         IReadOnlyList<SessionTab> tabs,
         int selected)
@@ -12,7 +12,7 @@ public static class SessionTabs
         var keptSelected = 0;
         for (var index = 0; index < tabs.Count; index++)
         {
-            if (tabs[index].Kind == TabKind.Definition)
+            if (tabs[index].Kind is TabKind.Definition or TabKind.Key)
             {
                 continue;
             }

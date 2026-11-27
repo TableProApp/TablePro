@@ -211,7 +211,7 @@ mod tests {
             database: "shop".to_owned(),
             username: "app".to_owned(),
             tls: TlsConfig::verify_full(),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
@@ -220,10 +220,14 @@ mod tests {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         }
     }
 
@@ -245,6 +249,7 @@ mod tests {
 
     fn ran(query: &str, connection: Uuid) -> NewEntry {
         NewEntry {
+            record_id: uuid::Uuid::new_v4(),
             query: query.to_owned(),
             driver_id: "postgres".to_owned(),
             connection_id: connection,
@@ -303,6 +308,9 @@ mod tests {
                             draft,
                             file: None,
                             database: None,
+                            name: None,
+                            ordinal: None,
+                            untitled: false,
                         }],
                     },
                 )
@@ -317,7 +325,7 @@ mod tests {
                 .save(NewSavedQuery {
                     name: "users".to_owned(),
                     query: "SELECT * FROM users".to_owned(),
-                    connection_id,
+                    connection_id: Some(connection_id),
                     connection_name: "Prod".to_owned(),
                 })
                 .await
@@ -442,6 +450,9 @@ mod tests {
                             draft,
                             file: None,
                             database: None,
+                            name: None,
+                            ordinal: None,
+                            untitled: false,
                         }],
                     },
                 )

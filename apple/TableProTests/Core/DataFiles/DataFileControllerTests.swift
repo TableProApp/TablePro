@@ -12,7 +12,7 @@ import TableProTabularIO
 import Testing
 
 @MainActor
-private enum DataFileFixture {
+enum DataFileFixture {
     static func open(data: Data, fileExtension: String, undoManager: UndoManager) async throws -> (DataFileController, URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("DataFileControllerTests-\(UUID().uuidString)")
@@ -125,7 +125,7 @@ struct DataFileControllerTests {
     func editUnderFilterTargetsTheVisibleRow() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Paris\n")
         controller.filterState.filters = [TableFilter(columnName: "city", filterOperator: .equal, value: "London")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         #expect(column(controller, 0) == ["B"])
         controller.setCell(pageRow: 0, column: 1, text: "Rome")
@@ -143,16 +143,16 @@ struct DataFileControllerTests {
             TableFilter.rawCondition("id > 5"),
         ]
 
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
 
-        #expect(controller.filterState.commit == nil)
+        #expect(controller.filterState.applied == nil)
         #expect(controller.statusMessage == String(localized: "This file cannot filter rows with these conditions."))
         #expect(column(controller, 0) == ["A", "B"])
 
         controller.filterState.filters = [TableFilter(columnName: "country", value: "VN")]
-        controller.applyAllFilters()
-        #expect(controller.filterState.commit == nil)
+        controller.applyCheckedFilters()
+        #expect(controller.filterState.applied == nil)
     }
 
     // Compared as text, "9" sorts after "50" and would be kept too.
@@ -508,7 +508,7 @@ struct DataFileControllerTests {
     func nullSemantics() async throws {
         let (controller, _) = try await loaded("a\n\nNULL\n")
         controller.filterState.filters = [TableFilter(columnName: "a", filterOperator: .isNull)]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         #expect(controller.visibleRowCount == 0)
     }
@@ -531,7 +531,7 @@ struct DataFileControllerTests {
     func exportFilteredRows() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Paris\n")
         controller.filterState.filters = [TableFilter(columnName: "city", filterOperator: .equal, value: "Paris")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         controller.updateSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .descending)]))
         await controller.waitForPendingWork()
@@ -753,7 +753,7 @@ struct DataFileControllerTests {
     func undoRenameRestoresFilter() async throws {
         let (controller, _) = try await loaded("amount\n5\n50\n")
         controller.filterState.filters = [TableFilter(columnName: "amount", filterOperator: .greaterThan, value: "10")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         controller.renameColumn(controller.columnNames.ids[0], to: "total")
         #expect(controller.filterState.filters.map(\.columnName) == ["total"])
@@ -768,7 +768,7 @@ struct DataFileControllerTests {
     func sortAfterRenameKeepsFilter() async throws {
         let (controller, _) = try await loaded("amount\n5\n50\n70\n")
         controller.filterState.filters = [TableFilter(columnName: "amount", filterOperator: .greaterThan, value: "10")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
 
         controller.renameColumn(controller.columnNames.ids[0], to: "total")
@@ -782,7 +782,7 @@ struct DataFileControllerTests {
     func deleteColumnOfRunningFilterReruns() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
         controller.filterState.filters = [TableFilter(columnName: "city", value: "London")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         #expect(column(controller, 0) == ["B"])
 
@@ -796,25 +796,107 @@ struct DataFileControllerTests {
         #expect(column(controller, 0) == ["B"])
     }
 
-    @Test("Filters on columns a header toggle renamed stop counting as applied")
-    func headerToggleDropsUnresolvableFilters() async throws {
+    @Test("Filters follow their column through a header toggle")
+    func headerToggleCarriesFilters() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
         controller.filterState.filters = [TableFilter(columnName: "city", value: "London")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
 
         controller.setUsesFirstRowAsHeader(false)
         await controller.waitForPendingWork()
 
-        #expect(controller.filterState.commit == nil)
-        #expect(controller.visibleRowCount == 3)
+        #expect(controller.filterState.filters.map(\.columnName) == ["Column 2"])
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["Column 2"])
+        #expect(column(controller, 0) == ["B"])
+    }
+
+    @Test("Deleting a column keeps filters, hidden columns and Display As on their own columns")
+    func deleteKeepsColumnStateOnItsColumn() async throws {
+        let (controller, _) = try await loaded("name,name,city\nA,x,Paris\nB,y,London\n")
+        #expect(controller.columnNames.displayNames == ["name", "name (2)", "city"])
+        controller.filterState.filters = [TableFilter(columnName: "name (2)", value: "y")]
+        controller.applyCheckedFilters()
+        await controller.waitForPendingWork()
+        controller.columnLayout.hiddenColumns = ["name (2)"]
+        controller.gridModel.store.displayFormats = [nil, nil, .json]
+
+        controller.deleteColumns([controller.columnNames.ids[0]])
+        await controller.waitForPendingWork()
+
+        #expect(controller.columnNames.displayNames == ["name", "city"])
+        #expect(controller.filterState.filters.map(\.columnName) == ["name"])
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["name"])
+        #expect(controller.columnLayout.hiddenColumns == ["name"])
+        #expect(controller.gridModel.store.displayFormats == [nil, .json])
+        #expect(column(controller, 1) == ["London"])
+
+        controller.undoManager?.undo()
+        await controller.waitForPendingWork()
+
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["name (2)"])
+        #expect(controller.columnLayout.hiddenColumns == ["name (2)"])
+        #expect(controller.gridModel.store.displayFormats == [nil, nil, .json])
+    }
+
+    @Test("Undoing a cell edit keeps the Display As and hidden columns chosen after it")
+    func undoKeepsLaterColumnChoices() async throws {
+        let (controller, _) = try await loaded("name,payload\nA,{}\nB,[]\n")
+        controller.setCell(pageRow: 0, column: 0, text: "Z")
+        controller.gridModel.store.displayFormats = [nil, .json]
+        controller.columnLayout.hiddenColumns = ["name"]
+
+        controller.undoManager?.undo()
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["A", "B"])
+        #expect(controller.gridModel.store.displayFormats == [nil, .json])
+        #expect(controller.columnLayout.hiddenColumns == ["name"])
+    }
+
+    @Test("Inserting a column with a taken name leaves a filter on the column it was set on")
+    func insertKeepsFilterOnItsColumn() async throws {
+        let (controller, _) = try await loaded("name,name\nA,x\nB,y\n")
+        controller.filterState.filters = [TableFilter(columnName: "name", value: "A")]
+        controller.applyCheckedFilters()
+        await controller.waitForPendingWork()
+
+        controller.insertColumn(named: "name", at: 0)
+        controller.applyCheckedFilters()
+        await controller.waitForPendingWork()
+
+        #expect(controller.columnNames.displayNames == ["name", "name (2)", "name (3)"])
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["name (2)"])
+        #expect(column(controller, 1) == ["A"])
+    }
+
+    @Test("Splitting a filtered column drops its filter, reruns, and undo brings the filter back")
+    func splitDropsFilterAndUndoRestoresIt() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris Nord\nB,London\n")
+        controller.filterState.filters = [TableFilter(columnName: "city", filterOperator: .contains, value: "Paris")]
+        controller.applyCheckedFilters()
+        await controller.waitForPendingWork()
+        #expect(controller.visibleRowCount == 1)
+
+        controller.splitColumn(controller.columnNames.ids[1], separator: .literal(" "))
+        await controller.waitForPendingWork()
+
+        #expect(controller.filterState.filters.isEmpty)
+        #expect(controller.filterState.applied == nil)
+        #expect(controller.visibleRowCount == 2)
+
+        controller.undoManager?.undo()
+        await controller.waitForPendingWork()
+
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["city"])
+        #expect(controller.visibleRowCount == 1)
     }
 
     @Test("Undoing a column delete brings back its filter and sort")
     func undoDeleteRestoresFilterAndSort() async throws {
         let (controller, _) = try await loaded("n,tag\n3,a\n1,b\n2,a\n")
         controller.filterState.filters = [TableFilter(columnName: "tag", filterOperator: .equal, value: "a")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         controller.updateSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)]))
         await controller.waitForPendingWork()

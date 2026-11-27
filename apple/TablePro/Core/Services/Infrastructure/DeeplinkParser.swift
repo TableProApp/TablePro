@@ -1,8 +1,3 @@
-//
-//  DeeplinkParser.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProImport
@@ -65,22 +60,33 @@ internal enum DeeplinkParser {
             return parseIntegrations(url)
         case "settings":
             return parseSettings(url)
+        case "share":
+            return parseSharedLink(url)
         default:
             return .failure(.unknownHost(host))
         }
     }
 
-    /// Never fails: an unknown id or extra segments open the last-used pane, so a link to a pane
-    /// or section added later still opens Settings on an older app.
+    private static func parseSharedLink(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        guard let token = items.first(where: { $0.name == "token" })?.value, !token.isEmpty else {
+            return .failure(.missingRequiredParam("token"))
+        }
+        guard ShareToken.isValid(token) else {
+            return .failure(.invalidParameter("token"))
+        }
+        return .success(.openSharedLink(token: token))
+    }
+
+    // Never fails, so a link to a pane or page added later still opens Settings on an older app.
+    // It only navigates: opening a page performs nothing and grants nothing.
     private static func parseSettings(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
-        guard let identifier = pathSegments(url).first else {
-            return .success(.openSettings(nil))
-        }
-        guard let pane = SettingsPane(urlIdentifier: identifier) else {
+        let segments = pathSegments(url)
+        let location = SettingsLocation(urlPathSegments: segments)
+        if location == nil, let identifier = segments.first {
             logger.notice("Unknown settings pane id \(identifier, privacy: .public), opening the last-used pane")
-            return .success(.openSettings(nil))
         }
-        return .success(.openSettings(pane))
+        return .success(.openSettings(location))
     }
 
     private static func parseConnect(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
@@ -243,11 +249,7 @@ internal enum DeeplinkParser {
             responseMode = .legacy
         }
 
-        /// Only an absent parameter means every connection. Naming the parameter and then handing
-        /// over something unreadable used to fall back to absent, which turned a request scoped to
-        /// one connection into a request for all of them with the sheet pre-ticked to All
-        /// Connections. So presence is the test, not a non-empty value, and an empty field is kept
-        /// rather than dropped so it has to answer the same guard. (#2930)
+        // Only an absent parameter means every connection; an empty or unreadable one must not widen to all (#2930).
         let connectionIds: Set<UUID>?
         if queryItems.contains(where: { $0.name == "connection-ids" }) {
             let csv = value("connection-ids") ?? ""

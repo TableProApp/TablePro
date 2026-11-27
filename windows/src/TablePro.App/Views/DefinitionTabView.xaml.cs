@@ -41,11 +41,19 @@ public sealed partial class DefinitionTabView : UserControl, ITabContent, IDefin
 
     public DataGridView? Grid => null;
 
+    public bool? WrapsText => null;
+
+    public void SetWrapsText(bool wraps)
+    {
+    }
+
     public bool GridIsTarget => false;
 
     public TextBox? MessagesTarget => DefinitionText.Visibility == Visibility.Visible ? DefinitionText : null;
 
     public bool Shows(ObjectEntry entry) => _model.Entry == entry;
+
+    internal ObjectEntry Entry => _model.Entry;
 
     public async void Load() => await _model.LoadAsync().ConfigureAwait(true);
 
@@ -70,6 +78,8 @@ public sealed partial class DefinitionTabView : UserControl, ITabContent, IDefin
     }
 
     public SessionTab Snapshot() => _model.Snapshot();
+
+    public SessionTab WithPendingWork(SessionTab snapshot) => _model.WithPendingWork(snapshot);
 
     public Task<bool> ConfirmCloseAsync(bool offerSave) => _model.ConfirmCloseAsync(offerSave);
 

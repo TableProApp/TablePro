@@ -5,6 +5,9 @@ The macOS app, its registry plugins, the static libraries and the manual iOS flo
 ## Channels
 
 - One EdDSA-signed appcast, `https://updates.tablepro.app/appcast.xml`, carries stable and beta items. The app takes betas only while Settings > General > Get beta updates is on.
+- Each version ships per arch: `TablePro-<ver>-arm64` and `-x86_64`, each a `.dmg`, a `.tar.xz` and a `-dSYMs.zip`. Earlier versions from 0.82.0 shipped one universal app as one item.
+- The feed carries two items per version: arm64 first, gated by `sparkle:hardwareRequirements`, then x86_64 ungated. Sparkle takes the first of two equal versions, and an Intel Mac skips the gated one. `generate_appcast` refuses two archives of one version, so `feed.py` runs it once per arch and puts the arm64 item before the x86_64 one.
+- `build.sh`/`package.sh` take an arch (none builds both) and `release.yml`'s App job is an `arm64`/`x86_64` matrix.
 - A stable rolls out in phases of 21600 s. A beta is not phased and is a GitHub prerelease.
 - Critical means a security fix or data loss, nothing else: ` [CRITICAL]` on the version's `CHANGELOG.md` heading, never on a beta. Later stables carry it forward.
 - The legacy `appcast.xml` on `main`, the feed of apps up to 0.81, ends at 0.82.0. No release writes it.
@@ -120,6 +123,31 @@ gh pr merge --auto --squash
 - A conflict on a fragment: `git rm` it. On `CHANGELOG.md`: keep both sections, in version order.
 - Once the release publishes, `python3 apple/scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/changelog.mdx` goes into a `docs(changelog): vX.Y.Z` PR in TableProApp/docs, merged by hand once green.
 
+## Homebrew
+
+- The `tablepro` cask is `Casks/t/tablepro.rb` in Homebrew/homebrew-cask. BrewTestBot bumps its `version` and `sha256` a few hours after a stable publishes. Betas never reach it.
+- The bump keeps the DMG name. The cask fetches the universal `TablePro-#{version}.dmg`, which no stable from a line whose `feed.py` has `ARCHES` ships, so the bump stops there until the cask names a DMG per arch.
+- Once such a stable publishes, this prints 0 while the change is still needed:
+
+  ```bash
+  gh api -H 'Accept: application/vnd.github.raw' repos/Homebrew/homebrew-cask/contents/Casks/t/tablepro.rb | grep -c '#{arch}'
+  gh release view vX.Y.Z --json assets -q '.assets[] | select(.name | endswith(".dmg")) | "\(.name) \(.digest)"'
+  ```
+
+- The change replaces the cask's `version`, `sha256` and `url` lines with these, taking each `sha256` from the second command without its `sha256:` prefix. The rest stays:
+
+  ```ruby
+    arch arm: "arm64", intel: "x86_64"
+
+    version "X.Y.Z"
+    sha256 arm:   "<TablePro-X.Y.Z-arm64.dmg>",
+           intel: "<TablePro-X.Y.Z-x86_64.dmg>"
+
+    url "https://github.com/TableProApp/TablePro/releases/download/v#{version}/TablePro-#{version}-#{arch}.dmg"
+  ```
+
+- Edit it in `"$(brew --repository homebrew/cask)"` with `HOMEBREW_NO_INSTALL_FROM_API=1`, run `brew style --fix tablepro`, `brew audit --cask --online --strict --arch=all tablepro` and `brew livecheck --cask tablepro` (prints X.Y.Z), and open a `tablepro X.Y.Z` PR with homebrew-cask's template. The template has its author answer review comments without AI, so the maintainer opens it. Later stables bump on their own, as they did up to 0.81.0.
+
 ## When a run fails
 
 Nothing reaches users before the `github-release` job of `release.yml`.
@@ -129,6 +157,7 @@ Nothing reaches users before the `github-release` job of `release.yml`.
 - An infrastructure failure (runner, network, notary service) is the same re-run, before or after publishing: each step skips what is done. A code failure is fixed on `main`, picked, and ships as the next number.
 - A stable that never published: the next release PR runs `git revert <its release commit>` before `assemble`, and its forward-port takes the revert to `main` and the newer line with the new section. `gh release delete vX.Y.Z --yes` removes a leftover draft.
 - A stable builds only on a GA Xcode (`setup-xcode` `require-release`). With none on the runner image, `app` and `plugins` fail, and a PR points `.github/actions/setup-xcode` at an image that has one. Betas still ship.
+- Only `pages` failed: `gh workflow run pages.yml --ref <tag>`, then check that `https://updates.tablepro.app/appcast.xml` lists the version. A re-run leaves the first attempt's `github-pages` artifact on the run, and `deploy-pages` refuses two.
 - `feed` fails with "no signature vouches for the published plugins/v3.json" on the first release that signs the manifest, or after a release line without signing published it. Check `plugins/v3.json` on `gh-pages`, run `gh variable set PLUGIN_MANIFEST_RESIGN --body true`, then `gh run rerun <release run> --failed`, then `gh variable delete PLUGIN_MANIFEST_RESIGN`.
 
 ## Withdrawing a release
@@ -166,7 +195,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 By hand, on a Mac with the team's signing identity.
 
 1. A PR raises `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `Configs/Version-iOS.xcconfig`. The build goes up on every upload.
-2. `apple/scripts/download-libs.sh && apple/scripts/generate-project.sh ios`, then archive the `TableProMobile` scheme for Any iOS Device in Xcode. `Configs/Secrets.xcconfig` sets `POSTHOG_PROJECT_KEY` to the repository secret of that name; without it the build sends no usage data.
+2. `apple/scripts/download-libs.sh && apple/scripts/build-core.sh ios && apple/scripts/generate-project.sh ios`, then archive the `TableProMobile` scheme for Any iOS Device in Xcode. `Configs/Secrets.xcconfig` sets `POSTHOG_PROJECT_KEY` to the repository secret of that name; without it the build sends no usage data.
 3. Organizer: Distribute App to App Store Connect. App Privacy in App Store Connect lists the data types `TableProMobile/TableProMobile/PrivacyInfo.xcprivacy` declares.
 4. TestFlight: test with internal testers.
 5. Submit for App Store review, and release once approved.

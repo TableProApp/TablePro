@@ -25,35 +25,66 @@ internal enum ConnectionTransactionActions {
     }
 
     // A COMMIT is a write, so it asks what a typed one asks: nothing at Silent, a confirmation at Alert, Touch ID at Safe Mode.
+    // False when the user cancelled that question.
+    @discardableResult
     static func commit(
         _ hold: SessionTransactionTracker.Hold,
         databaseManager: DatabaseManager = .shared,
         gate: any ExecutionGate = ExecutionGateProvider.shared
-    ) async throws {
-        guard let session = databaseManager.session(for: hold.connectionId) else { return }
-        let decision = await gate.authorize(
-            OperationRequest(
-                connectionId: hold.connectionId,
-                databaseType: session.connection.type,
-                sql: "COMMIT",
-                kind: .writeQuery,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: String(localized: "Commit the transaction")
-            )
-        )
-        switch decision {
-        case .authorized:
-            try await databaseManager.endTransaction(hold, committing: true)
-        case .denied(_, .cancelledByUser):
-            return
-        case .denied(let reason, .policy):
-            throw SessionTransactionDenial(reason: reason)
-        }
+    ) async throws -> Bool {
+        try await commitBeforeEnding([hold], databaseManager: databaseManager, gate: gate)
     }
 
-    static func offersCommit(_ hold: SessionTransactionTracker.Hold, safeModeLevel: SafeModeLevel) -> Bool {
-        hold.state == .open && !safeModeLevel.blocksAllWrites
+    // Every connection is asked before anything is sent, so a Cancel on any of them commits nothing.
+    static func commitBeforeEnding(
+        _ holds: [SessionTransactionTracker.Hold],
+        databaseManager: DatabaseManager = .shared,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
+    ) async throws -> Bool {
+        var connectionIds: [UUID] = []
+        for hold in holds where !connectionIds.contains(hold.connectionId) {
+            connectionIds.append(hold.connectionId)
+        }
+        for connectionId in connectionIds {
+            guard let session = databaseManager.session(for: connectionId) else { continue }
+            let decision = await gate.authorize(
+                OperationRequest(
+                    connectionId: connectionId,
+                    databaseType: session.connection.type,
+                    sql: "COMMIT",
+                    kind: .writeQuery,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: String(localized: "Commit the transaction")
+                )
+            )
+            switch decision {
+            case .authorized:
+                break
+            case .denied(_, .cancelledByUser):
+                return false
+            case .denied(let reason, .policy):
+                throw SessionTransactionDenial(reason: reason)
+            }
+        }
+        // A session that ended took its transaction with it.
+        for hold in holds where databaseManager.session(for: hold.connectionId) != nil {
+            try await databaseManager.endTransaction(hold, committing: true)
+        }
+        return true
+    }
+
+    // The bar, the menu and the close prompts all ask this. The level is the one the gate decides the COMMIT at, the
+    // managed floor included: the session's own level offered Commit under a managed Read-Only floor the gate then denied.
+    nonisolated static func offersCommit(_ state: SessionTransactionTracker.State, effectiveLevel: SafeModeLevel) -> Bool {
+        state == .open && !effectiveLevel.blocksAllWrites
+    }
+
+    static func offersCommit(_ hold: SessionTransactionTracker.Hold, databaseManager: DatabaseManager = .shared) -> Bool {
+        offersCommit(
+            hold.state,
+            effectiveLevel: ExecutionGateProvider.effectiveSafeModeLevel(for: hold.connectionId, in: databaseManager)
+        )
     }
 
     static func perform(window: NSWindow?, _ action: @MainActor () async throws -> Void) async {

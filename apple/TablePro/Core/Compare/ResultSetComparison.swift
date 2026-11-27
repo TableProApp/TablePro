@@ -12,6 +12,8 @@ internal struct ResultComparisonSide: Sendable {
     internal let columns: [String]
     internal let columnTypes: [ColumnType]
     internal let rows: ContiguousArray<Row>
+    // The fields each row has none of, by row id.
+    internal let absentColumns: [RowID: Set<Int>]
     internal let isTruncated: Bool
     internal let primaryKeyColumns: [String]
 
@@ -21,6 +23,7 @@ internal struct ResultComparisonSide: Sendable {
         columns: [String],
         columnTypes: [ColumnType] = [],
         rows: ContiguousArray<Row>,
+        absentColumns: [RowID: Set<Int>] = [:],
         isTruncated: Bool = false,
         primaryKeyColumns: [String] = []
     ) {
@@ -29,12 +32,17 @@ internal struct ResultComparisonSide: Sendable {
         self.columns = columns
         self.columnTypes = columnTypes
         self.rows = rows
+        self.absentColumns = absentColumns
         self.isTruncated = isTruncated
         self.primaryKeyColumns = primaryKeyColumns
     }
 
     internal func columnType(at index: Int) -> ColumnType? {
         columnTypes.indices.contains(index) ? columnTypes[index] : nil
+    }
+
+    internal func isAbsent(_ row: Row, column: Int) -> Bool {
+        absentColumns[row.id]?.contains(column) == true
     }
 }
 
@@ -182,7 +190,7 @@ internal enum ResultComparisonEngine {
         pairing: ResultColumnPairing,
         keyPairs: [Int]
     ) throws -> ResultComparison {
-        let kinds = valueKinds(pairing: pairing, left: left, right: right)
+        let columnReadings = readings(pairing: pairing, left: left, right: right)
         let keySet = Set(keyPairs)
         let compared = pairing.pairs.indices.filter { !keySet.contains($0) }
 
@@ -190,7 +198,7 @@ internal enum ResultComparisonEngine {
         rightByKey.reserveCapacity(right.rows.count)
         for index in right.rows.indices {
             try checkCancellation(at: index)
-            let key = keyPairs.map { token(right.rows[index], pairing.pairs[$0].right, kinds[$0]) }
+            let key = keyPairs.map { token(right.rows[index], pairing.pairs[$0].right, columnReadings[$0], in: right) }
             guard rightByKey.updateValue(index, forKey: key) == nil else {
                 throw duplicateKeyError(right.rows[index], keyPairs.map { pairing.pairs[$0].right }, onLeft: false)
             }
@@ -204,7 +212,7 @@ internal enum ResultComparisonEngine {
         for index in left.rows.indices {
             try checkCancellation(at: index)
             let leftRow = left.rows[index]
-            let key = keyPairs.map { token(leftRow, pairing.pairs[$0].left, kinds[$0]) }
+            let key = keyPairs.map { token(leftRow, pairing.pairs[$0].left, columnReadings[$0], in: left) }
             guard seenOnLeft.insert(key).inserted else {
                 throw duplicateKeyError(leftRow, keyPairs.map { pairing.pairs[$0].left }, onLeft: true)
             }
@@ -216,7 +224,7 @@ internal enum ResultComparisonEngine {
             let rightRow = right.rows[partner]
             let changed = compared.filter { pairIndex in
                 let pair = pairing.pairs[pairIndex]
-                return token(leftRow, pair.left, kinds[pairIndex]) != token(rightRow, pair.right, kinds[pairIndex])
+                return token(leftRow, pair.left, columnReadings[pairIndex], in: left) != token(rightRow, pair.right, columnReadings[pairIndex], in: right)
             }
             entries.append(ResultComparisonEntry(
                 kind: changed.isEmpty ? .same : .changed,
@@ -238,12 +246,12 @@ internal enum ResultComparisonEngine {
         right: ResultComparisonSide,
         pairing: ResultColumnPairing
     ) throws -> ResultComparison {
-        let kinds = valueKinds(pairing: pairing, left: left, right: right)
+        let columnReadings = readings(pairing: pairing, left: left, right: right)
 
         var rightByValues: [[CellToken]: [Int]] = [:]
         for index in right.rows.indices {
             try checkCancellation(at: index)
-            let values = pairing.pairs.indices.map { token(right.rows[index], pairing.pairs[$0].right, kinds[$0]) }
+            let values = pairing.pairs.indices.map { token(right.rows[index], pairing.pairs[$0].right, columnReadings[$0], in: right) }
             rightByValues[values, default: []].append(index)
         }
 
@@ -254,7 +262,7 @@ internal enum ResultComparisonEngine {
 
         for index in left.rows.indices {
             try checkCancellation(at: index)
-            let values = pairing.pairs.indices.map { token(left.rows[index], pairing.pairs[$0].left, kinds[$0]) }
+            let values = pairing.pairs.indices.map { token(left.rows[index], pairing.pairs[$0].left, columnReadings[$0], in: left) }
             let next = taken[values, default: 0]
             guard let bucket = rightByValues[values], next < bucket.count else {
                 entries.append(ResultComparisonEntry(kind: .onlyLeft, leftRow: index, rightRow: nil))
@@ -271,8 +279,8 @@ internal enum ResultComparisonEngine {
         return ResultComparison(entries: entries, keyPairs: [])
     }
 
-    // One equality for keys, whole rows and values, matching `CellValueComparator` at its default
-    // options: an absent field is not NULL, and two spellings of one instant agree to the microsecond.
+    // One key per value, so keys, whole rows and values share one equivalence: an absent field is not NULL, and two
+    // spellings of one instant agree to the microsecond.
     private enum CellToken: Hashable {
         case absent
         case null
@@ -281,41 +289,86 @@ internal enum ResultComparisonEngine {
         case instant(Int64)
     }
 
-    private static func token(_ row: Row, _ column: Int, _ kind: ValueComparisonKind) -> CellToken {
-        guard !row.isAbsent(column) else { return .absent }
+    private struct ColumnReading {
+        let kind: ValueComparisonKind
+        // One side's values all carry an offset and the other's none, so both are read on the wall clock.
+        let wallClock: Bool
+    }
+
+    private enum Zoning {
+        case empty
+        case zoned
+        case unzoned
+        case mixed
+    }
+
+    private static func token(
+        _ row: Row, _ column: Int, _ reading: ColumnReading, in side: ResultComparisonSide
+    ) -> CellToken {
+        guard !side.isAbsent(row, column: column) else { return .absent }
         switch row[column] {
         case .null:
             return .null
         case .bytes(let data):
             return .bytes(data)
         case .text(let text):
-            guard kind == .temporal || kind == .unknown, let microseconds = instantMicroseconds(text) else {
-                return .text(text)
-            }
+            guard reading.kind == .temporal || reading.kind == .unknown else { return .text(text) }
+            let wallClock = reading.wallClock ? Self.withoutOffset(text) : nil
+            guard let microseconds = instantMicroseconds(wallClock ?? text) else { return .text(text) }
             return .instant(microseconds)
         }
     }
 
+    private static func withoutOffset(_ text: String) -> String? {
+        CrossEngineValueCoercer.strippingTimeZoneOffset(text.trimmingCharacters(in: .whitespaces))
+    }
+
+    // Read from every value, so row order and NULLs decide nothing; a column holding both spellings is mixed.
+    private static func zoning(of side: ResultComparisonSide, column: Int) -> Zoning {
+        var zoning = Zoning.empty
+        for row in side.rows where !side.isAbsent(row, column: column) {
+            guard case .text(let text) = row[column], startsLikeATimestamp(text) else { continue }
+            switch (zoning, withoutOffset(text) != nil) {
+            case (.empty, true): zoning = .zoned
+            case (.empty, false): zoning = .unzoned
+            case (.zoned, false), (.unzoned, true): return .mixed
+            default: break
+            }
+        }
+        return zoning
+    }
+
     // Every pattern `TimestampValue` reads starts with `yyyy-`, so anything else skips the formatters.
-    private static func instantMicroseconds(_ text: String) -> Int64? {
+    private static func startsLikeATimestamp(_ text: String) -> Bool {
         let head = Array(text.utf8.drop { $0 == UInt8(ascii: " ") }.prefix(5))
-        guard head.count == 5, head[4] == UInt8(ascii: "-"),
-              head[0 ..< 4].allSatisfy({ $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") }),
-              let instant = TimestampValue.parse(text) else { return nil }
+        return head.count == 5 && head[4] == UInt8(ascii: "-")
+            && head[0 ..< 4].allSatisfy { $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") }
+    }
+
+    private static func instantMicroseconds(_ text: String) -> Int64? {
+        guard startsLikeATimestamp(text), let instant = TimestampValue.parse(text) else { return nil }
         let nanoseconds = instant.nanosecondsSinceEpoch
         let quotient = nanoseconds / 1_000
         return nanoseconds % 1_000 < 0 ? quotient - 1 : quotient
     }
 
-    private static func valueKinds(
+    private static func readings(
         pairing: ResultColumnPairing,
         left: ResultComparisonSide,
         right: ResultComparisonSide
-    ) -> [ValueComparisonKind] {
+    ) -> [ColumnReading] {
         pairing.pairs.map { pair in
             let leftKind = ValueComparisonKind(columnType: left.columnType(at: pair.left))
             let rightKind = ValueComparisonKind(columnType: right.columnType(at: pair.right))
-            return leftKind == rightKind ? leftKind : .unknown
+            let kind = leftKind == rightKind ? leftKind : .unknown
+            guard kind == .temporal || kind == .unknown else { return ColumnReading(kind: kind, wallClock: false) }
+            let zonings = (zoning(of: left, column: pair.left), zoning(of: right, column: pair.right))
+            switch zonings {
+            case (.zoned, .unzoned), (.unzoned, .zoned):
+                return ColumnReading(kind: kind, wallClock: true)
+            default:
+                return ColumnReading(kind: kind, wallClock: false)
+            }
         }
     }
 

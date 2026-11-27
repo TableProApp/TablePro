@@ -34,6 +34,34 @@ extension AIChatViewModel {
     struct ResolvedToolApprovals {
         let blocks: [ToolUseBlock]
         let explicitlyApproved: Set<String>
+        // The target each card named, by call id; an approved call runs there.
+        var shownTargets: [String: ChatRunTarget] = [:]
+    }
+
+    // Resolved when the card is drawn, with only the parts execution honors, so the card names where the call runs. A
+    // scope the statement cannot run in is refused here, so no card ever names it.
+    @MainActor
+    func cardState(
+        for block: ToolUseBlock,
+        initial: ToolApprovalState,
+        registry: ChatToolRegistry? = nil
+    ) -> (state: ToolApprovalState, shown: ChatRunTarget?) {
+        guard case .pending = initial, let connectionId = connection?.id,
+              (registry ?? ChatToolRegistry.shared).runsInScope(toolName: block.name)
+        else { return (initial, nil) }
+        do {
+            let scope = try DatabaseAccessBridge.scope(
+                database: ChatToolArgumentDecoder.optionalString(block.input, key: "database"),
+                schema: ChatToolArgumentDecoder.optionalString(block.input, key: "schema"),
+                for: connectionId,
+                use: .callerSQL,
+                manager: services.databaseManager
+            )
+            let generation = services.databaseManager.session(for: connectionId)?.driverGeneration
+            return (initial, ChatRunTarget(scope: scope, driverGeneration: generation))
+        } catch {
+            return (.denied(reason: error.localizedDescription), nil)
+        }
     }
 
     func resolveAndAwaitApprovals(
@@ -41,15 +69,19 @@ extension AIChatViewModel {
         assistantID: UUID,
         registry: ChatToolRegistry? = nil
     ) async -> ResolvedToolApprovals {
-        let initialBlocks = await MainActor.run { [weak self] () -> [ToolUseBlock] in
-            guard let self else { return assembledBlocks }
+        let (initialBlocks, shownTargets) = await MainActor.run { [weak self] () -> ([ToolUseBlock], [String: ChatRunTarget]) in
+            guard let self else { return (assembledBlocks, [:]) }
+            var shownTargets: [String: ChatRunTarget] = [:]
             let initial = assembledBlocks.map { block -> ToolUseBlock in
-                let state: ToolApprovalState
+                var state: ToolApprovalState
                 if case .denied = block.approvalState {
                     state = block.approvalState
                 } else {
                     state = self.computeInitialApprovalState(for: block.name, registry: registry)
                 }
+                let card = self.cardState(for: block, initial: state, registry: registry)
+                state = card.state
+                shownTargets[block.id] = card.shown
                 return ToolUseBlock(
                     id: block.id,
                     name: block.name,
@@ -58,15 +90,17 @@ extension AIChatViewModel {
                     providerMetadata: block.providerMetadata
                 )
             }
-            self.appendPendingToolUseBlocks(initial, assistantID: assistantID)
+            let waiting = initial.filter { block in
+                if case .pending = block.approvalState { return true }
+                return false
+            }
             ToolApprovalCenter.shared.expect(
                 sessionId: self.sessionId,
-                toolUseIds: initial.compactMap { block in
-                    guard case .pending = block.approvalState else { return nil }
-                    return block.id
-                }
+                toolUseIds: waiting.map(\.id),
+                shownScopes: shownTargets.mapValues(\.scope)
             )
-            return initial
+            self.appendPendingToolUseBlocks(initial, assistantID: assistantID)
+            return (initial, shownTargets)
         }
         let sessionId = await MainActor.run { self.sessionId }
         defer {
@@ -114,7 +148,11 @@ extension AIChatViewModel {
                 providerMetadata: block.providerMetadata
             ))
         }
-        return ResolvedToolApprovals(blocks: resolved, explicitlyApproved: explicitlyApproved)
+        return ResolvedToolApprovals(
+            blocks: resolved,
+            explicitlyApproved: explicitlyApproved,
+            shownTargets: shownTargets.filter { explicitlyApproved.contains($0.key) }
+        )
     }
 
     @MainActor
@@ -151,19 +189,26 @@ extension AIChatViewModel {
             return .pending
         }
 
+        // Read-Only comes first: an Always Allow grant is consent to the tool, not to a level that refuses writes.
+        if let connection, liveSafeModeLevel(for: connection).blocksAllWrites {
+            guard let level = SafeModeFloor.levelThatWrites(above: AgentModeSafeModeFloor.effectiveFloor(for: connection)?.level)
+            else {
+                return .denied(reason: String(
+                    localized: "TablePro's Safe Mode is held at Read-Only for this connection, so this tool cannot run."
+                ))
+            }
+            return .denied(reason: String(
+                format: String(
+                    localized: "TablePro's Safe Mode is set to Read-Only for this connection. Switch it to %@ to allow this tool."
+                ),
+                level.displayName
+            ))
+        }
         if let connection, alwaysAllowedTools(for: connection).contains(toolName) {
             return .approved
         }
-        if let connection {
-            let safeModeLevel = liveSafeModeLevel(for: connection)
-            if safeModeLevel.blocksAllWrites {
-                return .denied(reason: String(
-                    localized: "TablePro's Safe Mode is set to read-only for this connection. Set it to Confirm Writes or higher to allow this tool."
-                ))
-            }
-            if !safeModeLevel.requiresConfirmation {
-                return .approved
-            }
+        if let connection, !liveSafeModeLevel(for: connection).requiresConfirmation {
+            return .approved
         }
         return .pending
     }
@@ -249,6 +294,7 @@ extension AIChatViewModel {
             connectionId: connection?.id,
             bridge: ChatToolBootstrap.bridge,
             authPolicy: ChatToolBootstrap.authPolicy,
+            chatMode: mode,
             sessionId: sessionId
         )
         await handleCopilotToolInvocation(
@@ -264,7 +310,9 @@ extension AIChatViewModel {
         context: ChatToolContext,
         mode: AIChatMode
     ) async {
-        let initialState = computeInitialApprovalState(for: block.name)
+        let card = cardState(for: block, initial: computeInitialApprovalState(for: block.name))
+        let initialState = card.state
+        let shown = card.shown
         let pendingBlock = ToolUseBlock(
             id: block.id,
             name: block.name,
@@ -272,10 +320,14 @@ extension AIChatViewModel {
             approvalState: initialState,
             providerMetadata: block.providerMetadata
         )
-        appendPendingToolUseBlocks([pendingBlock], assistantID: assistantID)
         if case .pending = initialState {
-            ToolApprovalCenter.shared.expect(sessionId: sessionId, toolUseIds: [block.id])
+            ToolApprovalCenter.shared.expect(
+                sessionId: sessionId,
+                toolUseIds: [block.id],
+                shownScopes: shown.map { [block.id: $0.scope] } ?? [:]
+            )
         }
+        appendPendingToolUseBlocks([pendingBlock], assistantID: assistantID)
         defer { ToolApprovalCenter.shared.forget(sessionId: sessionId, toolUseIds: [block.id]) }
 
         let finalState: ToolApprovalState
@@ -302,7 +354,10 @@ extension AIChatViewModel {
         } else {
             finalState = initialState
         }
-        let callContext = context.carrying(approvalWasExplicit: approvalWasExplicit)
+        let callContext = context.carrying(
+            approvalWasExplicit: approvalWasExplicit,
+            shownTarget: approvalWasExplicit ? shown : nil
+        )
 
         let scope = ChatToolScope(sessionId: sessionId, connectionId: connection?.id, mode: mode)
         let result: ChatToolResult

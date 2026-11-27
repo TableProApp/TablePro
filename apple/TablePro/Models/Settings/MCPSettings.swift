@@ -87,4 +87,12 @@ struct MCPSettings: Codable, Equatable {
     var requestableRowLimitRange: ClosedRange<Int> {
         SettingsValidationRules.mcpRowLimitRange.lowerBound...validatedMaxRowLimit
     }
+
+    // One write, so a lowered maximum never leaves the default above it for a moment.
+    func withMaxRowLimit(_ newValue: Int) -> MCPSettings {
+        var next = self
+        next.maxRowLimit = newValue.clamped(to: SettingsValidationRules.mcpRowLimitRange)
+        next.defaultRowLimit = min(next.defaultRowLimit, next.maxRowLimit)
+        return next
+    }
 }

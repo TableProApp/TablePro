@@ -1,4 +1,5 @@
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Tools;
 
 namespace TablePro.App.UITests;
 
@@ -20,7 +21,7 @@ public sealed partial class ShellTests
         using (var app = AppSession.LaunchPackage(family, theme))
         {
             folder = app.DataFolder;
-            foreach (var card in new[] { "NewConnectionCard", "OpenFileCard", "ImportCard", "SampleCard" })
+            foreach (var card in new[] { "NewConnectionCard", "SetupGuideCard" })
             {
                 Assert.True(app.Find(card).IsEnabled, card);
             }
@@ -35,7 +36,45 @@ public sealed partial class ShellTests
                 Assert.EndsWith(" " + version, shown, StringComparison.Ordinal);
             }
 
+            // A runner cannot install from an App Installer file (ADR 0020), so the check reads the release channel's file.
+            var updateCard = app.Find("UpdateCard");
+            var checkedLine = Retry.WhileNull(
+                () => updateCard.FindAllDescendants().Select(element => AppSession.TextOf(element)).FirstOrDefault(text =>
+                    text.StartsWith("Last checked: ", StringComparison.Ordinal)
+                    || text.StartsWith("Couldn't check for updates: Response status code", StringComparison.Ordinal)
+                    || text.StartsWith("Couldn't check for updates: the update file", StringComparison.Ordinal)),
+                AppSession.Wait,
+                throwOnTimeout: false).Result;
+            Assert.NotNull(checkedLine);
             app.Screenshot("package-settings");
+
+            // The alias starts the console command with the package's identity, so it finds the same LocalState.
+            var alias = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Microsoft",
+                "WindowsApps",
+                "tablepro.exe");
+            var start = new System.Diagnostics.ProcessStartInfo(alias)
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            start.ArgumentList.Add("status");
+            start.ArgumentList.Add("--format");
+            start.ArgumentList.Add("json");
+            start.Environment.Remove("TABLEPRO_DATA_DIR");
+            var started = System.Diagnostics.Process.Start(start)
+                ?? throw new InvalidOperationException("The tablepro alias did not start.");
+            started.StandardInput.Close();
+            var status = Finish(started);
+            Assert.Contains("\"running\":true", status.Out, StringComparison.Ordinal);
+            if (!string.IsNullOrEmpty(version))
+            {
+                Assert.Contains($"\"version\":\"{version}\"", status.Out, StringComparison.Ordinal);
+            }
+
             app.Close();
         }
 

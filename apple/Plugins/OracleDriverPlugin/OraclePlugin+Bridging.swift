@@ -4,9 +4,9 @@ import OSLog
 import TableProOracleCore
 import TableProPluginKit
 
-private let bridgingLogger = Logger(subsystem: "com.TablePro.OracleDriver", category: "OracleBridging")
+nonisolated private let bridgingLogger = Logger(subsystem: "com.TablePro.OracleDriver", category: "OracleBridging")
 
-struct OraclePluginError: Error, PluginDriverError {
+nonisolated struct OraclePluginError: Error, PluginDriverError {
     let core: OracleCoreError
 
     var pluginErrorMessage: String {
@@ -14,7 +14,7 @@ struct OraclePluginError: Error, PluginDriverError {
     }
 }
 
-extension OracleCoreError {
+nonisolated extension OracleCoreError {
     var asPluginError: Error {
         if case .tlsHandshakeFailed(let kind, let serverMessage) = self {
             return kind.sslHandshakeError(serverMessage: serverMessage)
@@ -23,7 +23,7 @@ extension OracleCoreError {
     }
 }
 
-extension OracleTLSFailureKind {
+nonisolated extension OracleTLSFailureKind {
     func sslHandshakeError(serverMessage: String) -> SSLHandshakeError {
         switch self {
         case .clientCertRequired: return .clientCertRequired(serverMessage: serverMessage)
@@ -34,62 +34,7 @@ extension OracleTLSFailureKind {
     }
 }
 
-extension OracleRawCell {
-    var asPluginCell: PluginCellValue {
-        switch self {
-        case .null: return .null
-        case .string(let value): return .text(value)
-        case .bytes(let data): return .bytes(data)
-        }
-    }
-}
-
-extension PluginCellValue {
-    var oracleBindValue: OracleBindValue {
-        switch self {
-        case .null: return .null
-        case .text(let value): return .text(value)
-        case .bytes(let data): return .bytes(data)
-        }
-    }
-}
-
-extension OracleColumnRow {
-    var pluginColumnInfo: PluginColumnInfo {
-        PluginColumnInfo(
-            name: name,
-            dataType: displayType,
-            isNullable: isNullable,
-            isPrimaryKey: isPrimaryKey,
-            defaultValue: defaultValue,
-            extra: nil,
-            charset: nil,
-            collation: nil,
-            comment: nil,
-            identityKind: identityGeneration.map(\.identityKind),
-            isGenerated: isVirtual,
-            allowedValues: nil,
-            generationExpression: generationExpression,
-            generationKind: isVirtual ? .virtual : nil,
-            ddlSpelling: OracleTypeCatalog.ddlSpelling(forDeclaredType: displayType),
-            ddlDefault: nil,
-            ddlGenerationExpression: nil,
-            ddlCollation: nil,
-            classificationTypeName: classificationTypeName
-        )
-    }
-}
-
-extension OracleIdentityGeneration {
-    var identityKind: IdentityKind {
-        switch self {
-        case .always: return .always
-        case .byDefault: return .byDefault
-        }
-    }
-}
-
-extension OracleRawResult {
+nonisolated extension OracleRawResult {
     func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
         let names = columns.map(\.name)
         let typeNames = columns.map(\.typeName)
@@ -105,7 +50,7 @@ extension OracleRawResult {
     }
 }
 
-extension SSLConfiguration {
+nonisolated extension SSLConfiguration {
     func oracleTLSDescription(serverName: String?) -> OracleTLSDescription {
         OracleTLSDescription(
             mode: Self.oracleMode(for: mode),

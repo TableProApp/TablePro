@@ -101,15 +101,18 @@ struct SOCKSProxyModelTests {
         #expect(restored.socksProxyMode == connection.socksProxyMode)
     }
 
-    @Test("SOCKS form state builds the tunnel mode and loads it back")
-    func formStateRoundTrip() {
-        var state = SOCKSProxyFormState()
-        state.enabled = true
-        state.host = "  proxy.example.com  "
-        state.port = "9150"
-        state.username = "tester"
+    @Test("The editor's SOCKS draft writes the tunnel mode trimmed and loads it back")
+    @MainActor
+    func draftRoundTrip() {
+        let postgres = ConnectionTypeTraits.live(for: .postgresql, pluginManager: .shared)
+        var draft = ConnectionDraft.new(type: .postgresql, traits: postgres)
+        draft.selectTransport(.socksProxy)
+        draft.socksProxy.host = "  proxy.example.com  "
+        draft.socksProxy.port = "9150"
+        draft.socksProxy.username = "tester"
 
-        guard case .inline(let config) = state.buildTunnelMode() else {
+        let edits = ConnectionEditorEngine.edits(draft, postgres, originalTraits: nil, EditorContext())
+        guard case .inline(let config) = edits.socksProxyMode else {
             Issue.record("Expected an inline mode")
             return
         }
@@ -117,15 +120,18 @@ struct SOCKSProxyModelTests {
         #expect(config.port == 9_150)
         #expect(config.username == "tester")
 
-        var reloaded = SOCKSProxyFormState()
-        reloaded.load(from: DatabaseConnection(name: "P", type: .postgresql, socksProxyMode: .inline(config)))
-        #expect(reloaded.enabled)
-        #expect(reloaded.host == "proxy.example.com")
-        #expect(reloaded.port == "9150")
-        #expect(reloaded.username == "tester")
+        let reloaded = ConnectionDraft.loaded(
+            from: DatabaseConnection(name: "P", type: .postgresql, socksProxyMode: .inline(config)),
+            secrets: .none,
+            traits: postgres
+        )
+        #expect(reloaded.transport == .socksProxy)
+        #expect(reloaded.socksProxy.host == "proxy.example.com")
+        #expect(reloaded.socksProxy.port == "9150")
+        #expect(reloaded.socksProxy.username == "tester")
 
-        var disabled = SOCKSProxyFormState()
-        disabled.load(from: DatabaseConnection(name: "P", type: .postgresql))
-        #expect(!disabled.enabled)
+        let disabled = ConnectionDraft.loaded(from: DatabaseConnection(name: "P", type: .postgresql), secrets: .none, traits: postgres)
+        #expect(disabled.transport == nil)
+        #expect(ConnectionEditorEngine.edits(disabled, postgres, originalTraits: nil, EditorContext()).socksProxyMode == .disabled)
     }
 }

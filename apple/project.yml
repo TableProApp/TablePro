@@ -51,6 +51,10 @@ packages:
     path: Packages/TableProMacCore
   TableProOracle:
     path: Packages/TableProOracle
+  # The shared Rust core (core/docs/decisions/0010-macos-on-the-core.md). Its binary target comes from
+  # scripts/build-core.sh, which has to run before a package resolve or a build.
+  TableProFFI:
+    path: Packages/TableProFFI
   # Exact, because .github/actions/setup-sparkle installs the feed signing tools from this pin.
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
@@ -91,6 +95,8 @@ targetTemplates:
       - Plugins/Shared/PluginQueryTimeout.swift
       - Plugins/Shared/PluginURLSessionTaskBox.swift
       - Plugins/Shared/PluginRedirectRefusingDelegate.swift
+      - Plugins/Shared/PluginNameSpellings.swift
+      - Plugins/Shared/PluginRowBatcher.swift
     dependencies:
       - target: TableProPluginKit
         embed: false
@@ -128,6 +134,17 @@ targetTemplates:
       configs:
         Release:
           DEPLOYMENT_POSTPROCESSING: YES
+
+  # What every export format shares for writing its file.
+  ExportOutput:
+    sources:
+      - Plugins/Shared/PluginExportOutputBuffer.swift
+      - Plugins/Shared/PluginHexText.swift
+
+  # What an export that reads a schema at once shares for matching its names.
+  ExportGroupReads:
+    sources:
+      - Plugins/Shared/PluginExportSpelling.swift
 
   # A bundled plugin's folder compiled again with its tests and no host app. It links the same
   # TableProPluginKit framework the plugin does: a package product that depended on the package's
@@ -189,7 +206,7 @@ targetTemplates:
   PostgreSQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProCoreTypes, TableProGeometry, TableProKerberos, TableProLogRedaction, TableProPostgreSQLCore, TableProSQLVocabulary, TableProTLSClientIdentity]
+        products: [TableProCoreTypes, TableProGeometry, TableProKerberos, TableProLogRedaction, TableProPostgreSQLCore, TableProSQLGrammar, TableProSQLVocabulary, TableProTLSClientIdentity]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -246,9 +263,11 @@ targetTemplates:
   # Links its own SQLite (scripts/build-sqlite.sh), never -lsqlite3: macOS's library is built without
   # extension loading.
   SQLiteLinkage:
+    sources:
+      - Plugins/SharedSpill
     dependencies:
       - package: TableProCore
-        products: [CSQLite, TableProSQLGrammar, TableProSQLiteCore, TableProSQLVocabulary]
+        products: [CSQLite, TableProSQLGrammar, TableProSQLiteCore, TableProSQLVocabulary, TableProWireIO]
     settings:
       base:
         OTHER_LDFLAGS:
@@ -256,10 +275,13 @@ targetTemplates:
           - -force_load
           - $(SRCROOT)/Libs/libsqlite3_vendored.a
 
+  # An export spills what its reader has not taken yet, as SQLite's does.
   ClickHouseLinkage:
+    sources:
+      - Plugins/SharedSpill
     dependencies:
       - package: TableProCore
-        products: [TableProNumberFormatting, TableProSQLGrammar, TableProTLSClientIdentity]
+        products: [TableProNumberFormatting, TableProSQLGrammar, TableProTLSClientIdentity, TableProWireIO]
 
   # The SAP HANA driver runs go-hdb in tablepro-hana-helper, which scripts/build-hana.sh builds.
   # The plugin looks it up in Contents/MacOS, and the copy there signs it with the plugin's identity.
@@ -314,6 +336,15 @@ targets:
       # The MCP client catalog, one file the Linux app reads too.
       - path: ../core/crates/mcp/clients.json
         buildPhase: resources
+      # The AI model catalog, one file the Linux and Windows apps read too.
+      - path: ../core/crates/ai/ai-models.json
+        buildPhase: resources
+      # The sample database every app ships, one copy in the core.
+      - path: ../core/resources/Chinook.sqlite
+        buildPhase: resources
+      # The shortcut presets, one file the Linux and Windows apps read through the core.
+      - path: ../core/crates/core/keymaps.json
+        buildPhase: resources
       - path: TablePro/CLI/tablepro
         buildPhase:
           copyFiles:
@@ -322,6 +353,9 @@ targets:
       # The etcd plugin's own command parser, so the app tiers an etcd statement by the operation
       # the driver parses it into.
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
+      # The Kafka plugin's KafkaQL parser, so the app reads a KafkaQL statement as the driver does.
+      - Packages/TableProCore/Sources/TableProKafkaCore/KafkaQL.swift
+      - Packages/TableProCore/Sources/TableProKafkaCore/KafkaStatement.swift
       # The MySQL plugin's socket key and path rules, so the app writes and checks the socket path
       # exactly as the driver reads it.
       - Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
@@ -416,9 +450,10 @@ targets:
       - package: Yams
       - package: PostHog
       - package: TableProCore
-        products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTLSClientIdentity, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
+        products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProMemcachedCore, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLFile, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTLSClientIdentity, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
         products: [TableProCloudAPI, TableProMCP, TableProMCPClients, TableProSSHConfig, TableProUtilities]
+      - package: TableProFFI
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
     postCompileScripts:
       - name: Write WhatsNew.md
@@ -662,7 +697,7 @@ targets:
       principalClass: RedisPlugin
 
   CSVExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: CSVExportPlugin
       principalClass: CSVExportPlugin
@@ -671,7 +706,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.CSVExportPlugin
 
   JSONExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: JSONExportPlugin
       principalClass: JSONExportPlugin
@@ -680,7 +715,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.JSONExportPlugin
 
   MarkdownExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: MarkdownExportPlugin
       principalClass: MarkdownExportPlugin
@@ -689,7 +724,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MarkdownExportPlugin
 
   DataDictionaryExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportGroupReads]
     templateAttributes:
       folder: DataDictionaryExportPlugin
       principalClass: DataDictionaryExportPlugin
@@ -710,7 +745,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXImportPlugin
 
   ParquetExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: ParquetExportPlugin
       principalClass: ParquetExportPlugin
@@ -719,7 +754,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.ParquetExportPlugin
         # DuckDB does the Parquet encoding, so this links the same static library the
         # DuckDB driver does. That is why the plugin is registry-only rather than bundled:
-        # 149MB universal is not worth adding to every app download for one export format.
+        # 226MB universal is not worth adding to every app download for one export format.
+        # force_load is required: the static parquet and core_functions extensions register
+        # through an autoregister constructor nothing references, which a plain link drops.
         HEADER_SEARCH_PATHS:
           - $(inherited)
           - $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB/include
@@ -734,22 +771,25 @@ targets:
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB
 
   SQLExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput, ExportGroupReads]
     templateAttributes:
       folder: SQLExportPlugin
       principalClass: SQLExportPlugin
     dependencies:
       - package: TableProCore
-        product: TableProProcess
+        product: TableProGzip
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.SQLExportPlugin
 
   XLSXExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: XLSXExportPlugin
       principalClass: XLSXExportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProGzip
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXExportPlugin
@@ -836,14 +876,20 @@ targets:
       - path: Plugins/SQLExportPlugin
         excludes:
           - Info.plist
+      # The agent the app launches over SSH, so the agent backend's tests run the shipped program.
+      - TablePro/Core/RemoteSQLite/RemoteSQLiteAgentSource.swift
+      - TablePro/Core/RemoteSQLite/RemoteSQLiteWire.swift
     dependencies:
       - package: TableProCore
-        products: [TableProProcess, TableProSQLGrammar]
+        products: [TableProGzip, TableProSQLGrammar, TableProTestSupport]
 
   ClickHouseDriverTests:
     templates: [PluginTests, ClickHouseLinkage]
     templateAttributes:
       folder: ClickHouseDriverPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTestSupport
 
   # The eleven bundled format plugins in one bundle: none links a C library, and no two declare the
   # same top-level name. SQLiteLinkage is for the round-trip tests, which need the SQLite the driver ships.
@@ -885,12 +931,13 @@ targets:
       - path: Plugins/XLSXImportPlugin
         excludes:
           - Info.plist
+      - Plugins/ParquetExportPlugin/ParquetStaging.swift
       - Plugins/Shared
       - Plugins/FormatPluginTests
     dependencies:
       - target: TableProPluginKit
       - package: TableProCore
-        products: [TableProJavaScriptText, TableProNumberFormatting, TableProProcess, TableProTabularIO]
+        products: [TableProJavaScriptText, TableProGzip, TableProNumberFormatting, TableProTabularIO]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
@@ -1022,7 +1069,7 @@ targets:
       principalClass: DynamoDBPlugin
     dependencies:
       - package: TableProCore
-        product: TableProNumberFormatting
+        products: [TableProNumberFormatting, TableProWireIO]
 
   DamengDriver:
     templates: [DriverPlugin]
@@ -1066,6 +1113,8 @@ targets:
       folder: ElasticsearchDriverPlugin
       principalClass: ElasticsearchPlugin
     dependencies:
+      - package: TableProCore
+        product: TableProElasticsearchCore
       - package: TableProCore
         product: TableProNumberFormatting
       - package: TableProCore
@@ -1132,6 +1181,8 @@ targets:
     templateAttributes:
       folder: LibSQLDriverPlugin
       principalClass: LibSQLPlugin
+    sources:
+      - Plugins/SharedSpill
     dependencies:
       - package: TableProCore
         product: CSQLite
@@ -1139,6 +1190,8 @@ targets:
         product: TableProSQLGrammar
       - package: TableProCore
         product: TableProSQLiteCore
+      - package: TableProCore
+        product: TableProWireIO
     settings:
       base:
         OTHER_LDFLAGS:

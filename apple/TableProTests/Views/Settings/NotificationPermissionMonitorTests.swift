@@ -43,6 +43,18 @@ struct NotificationPermissionMonitorTests {
         try await waitUntil { monitor.status == .denied }
     }
 
+    @Test("A monitor built after a denied read shows the denied state before its own read")
+    func startsFromTheLastKnownStatus() async {
+        let presenter = StubPermissionPresenter()
+        presenter.status = .denied
+        let authorization = NotificationAuthorization(presenter: presenter)
+        await authorization.refresh()
+
+        let monitor = NotificationPermissionMonitor(authorization: authorization, center: NotificationCenter())
+
+        #expect(monitor.status == .denied)
+    }
+
     @Test("Reading the permission never asks for it")
     func neverRequests() async {
         let presenter = StubPermissionPresenter()

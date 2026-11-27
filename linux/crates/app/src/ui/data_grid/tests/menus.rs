@@ -67,7 +67,7 @@ fn every_header_action_is_in_the_cell_menus_column_submenu() {
     let in_cell = action_names(&menu);
     let header_actions = menu_actions(&header);
 
-    assert_eq!(header_actions.len(), 9, "{header_actions:?}");
+    assert_eq!(header_actions.len(), 10, "{header_actions:?}");
     for (action, column) in &header_actions {
         assert!(column.is_none_or(|column| column == 1), "{action} names another column");
         let counterpart = cell_menu_counterpart(action.as_str());
@@ -95,7 +95,7 @@ fn every_grid_menu_gives_each_item_its_own_access_key() {
     assert_access_keys(&cell_menu(&grid));
     assert_access_keys(&empty);
     assert_access_keys(&data_column(&grid, 1).header_menu().expect("the header's menu"));
-    assert_access_keys(&crate::ui::data_grid::grid_menu::row_numbers_header_menu());
+    assert_access_keys(&crate::ui::data_grid::grid_menu::row_numbers_header_menu(true));
 }
 
 #[gtk4::test]
@@ -165,6 +165,40 @@ fn the_cell_menu_shows_the_cell_keys() {
         Some(Some("<Primary><Shift>e".to_owned())),
         "Export does not show the window's Export Results key"
     );
+}
+
+#[gtk4::test]
+fn a_menu_built_before_a_preset_change_shows_the_keys_it_brings() {
+    let back = crate::application::keymap::BackToTablePro;
+    let grid = two_text_rows();
+    let menu = cell_menu(&grid);
+    let header = crate::ui::data_grid::grid_menu::row_numbers_header_menu(false);
+    assert_eq!(accel_of(&menu, "grid.insert-row"), Some(Some("<Primary>n".to_owned())));
+    assert_eq!(accel_of(&menu, "grid.duplicate-rows"), Some(None));
+
+    crate::application::keymap::apply(&gtk::Application::builder().build(), "dbeaver");
+
+    assert_eq!(
+        accel_of(&menu, "grid.insert-row"),
+        Some(Some("<Alt>Insert".to_owned())),
+        "the open grid still shows the old key"
+    );
+    assert_eq!(
+        accel_of(&menu, "grid.duplicate-rows"),
+        Some(Some("<Primary><Alt>Insert".to_owned()))
+    );
+    assert_eq!(
+        accel_of(&menu, "grid.export"),
+        Some(Some("<Primary><Shift>e".to_owned())),
+        "a key no preset moves went"
+    );
+    assert_eq!(
+        accel_of(header.upcast_ref(), "grid.select-all"),
+        Some(Some("<Primary>a".to_owned()))
+    );
+    drop(back);
+    assert_eq!(accel_of(&menu, "grid.insert-row"), Some(Some("<Primary>n".to_owned())));
+    assert_eq!(accel_of(&menu, "grid.duplicate-rows"), Some(None));
 }
 
 #[gtk4::test]
@@ -326,7 +360,10 @@ fn the_row_number_headers_menu_selects_every_row() {
 
     grid.activate("select-all");
 
-    assert_eq!(action_names(&header), ["grid.select-all", "grid.columns"]);
+    assert_eq!(
+        action_names(&header),
+        ["grid.select-all", "grid.columns", "grid.wrap-text"]
+    );
     assert_eq!(
         accel_of(&header, "grid.select-all"),
         Some(Some("<Primary>a".to_owned()))
@@ -401,5 +438,46 @@ fn the_grid_takes_its_menus_with_it() {
     assert!(
         menus.iter().all(|menu| menu.upgrade().is_none()),
         "a menu outlived its grid"
+    );
+}
+
+#[gtk4::test]
+fn a_grid_whose_host_shares_offers_share_result_with_the_columns_on_screen_in_their_order() {
+    let table = two_text_rows();
+    let shown = Grid::build(GridSpec::results(two_text_columns()), results(&two_text_values()));
+    shown.grid.set_column_visible(0, false);
+    drain_main_context();
+
+    assert!(!action_names(&cell_menu(&table)).contains(&"grid.share".to_owned()));
+    let actions = action_names(&cell_menu(&shown));
+    let export = actions.iter().position(|action| action == "grid.export");
+    let share = actions.iter().position(|action| action == "grid.share");
+    assert_eq!(
+        share,
+        export.map(|export| export + 1),
+        "Share Result follows Export: {actions:?}"
+    );
+    assert_access_keys(&cell_menu(&shown));
+    assert!(shown.is_enabled("share"));
+
+    shown.activate("share");
+
+    let shared = shown.take_requests().into_iter().find_map(|request| match request {
+        crate::ui::data_grid::GridRequest::Share(rows) => Some(rows),
+        _ => None,
+    });
+    let shared = shared.expect("the grid asked its host to share");
+    assert_eq!(
+        shared
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        ["name"]
+    );
+    assert_eq!(shared.total(), 2);
+    assert_eq!(
+        shared.rows.iter().map(|row| row.to_values()).collect::<Vec<_>>(),
+        [vec![Value::Text("A".into())], vec![Value::Text("B".into())]]
     );
 }

@@ -45,6 +45,8 @@ enum ResultsViewMode: String, CaseIterable, Equatable {
 struct QueryTab: Identifiable, Equatable {
     let id: UUID
     var title: String
+    // Non-nil once the user named the tab: the title an empty name goes back to, kept apart so a typed `Query 3` is never renumbered.
+    var automaticTitle: String?
     var tabType: TabType
     var isPreview: Bool
     var isPinned: Bool
@@ -54,7 +56,6 @@ struct QueryTab: Identifiable, Equatable {
     var tableContext: TabTableContext
     var display: TabDisplayState
 
-    var pendingChanges: TabChangeSnapshot
     // The grid's selection by row and column identity, carried when the tab moves to another window.
     var selectionSnapshot: GridSelectionSnapshot
 
@@ -63,12 +64,16 @@ struct QueryTab: Identifiable, Equatable {
     var columnLayout: ColumnLayoutState
     // On the tab, not the grid: JSON mode, the inspector and the Edit menu's row commands read the order unmounted (#2251).
     var valueFilter: GridValueFilterState
+    // Seeded from the Data Grid setting when the tab is made; a later change of the setting leaves it alone.
+    var wrapsText = false
     var sessionHighlightRules: [HighlightRule] = []
     // Set only by Reveal, after the user authenticated; never saved, so a reopened tab masks again.
     var revealsMaskedValues = false
     // Never saved: a relaunch must not start polling a server with nobody watching.
     var autoRefreshInterval: TableAutoRefreshInterval = .off
     var autoRefreshPause: TableAutoRefreshPause?
+    // Never saved: it describes rows this session read.
+    var outdatedPageNotice: OutdatedPageNotice?
     var pagination: PaginationState
     var chartConfiguration: ResultChartConfiguration
     var mapConfiguration: ResultMapConfiguration
@@ -146,7 +151,6 @@ struct QueryTab: Identifiable, Equatable {
         self.execution = TabExecutionState()
         self.tableContext = TabTableContext(tableName: tableName, isEditable: tabType == .table)
         self.display = TabDisplayState()
-        self.pendingChanges = TabChangeSnapshot()
         self.selectionSnapshot = .empty
         self.sortState = SortState()
         self.filterState = TabFilterState()
@@ -167,9 +171,14 @@ struct QueryTab: Identifiable, Equatable {
         self.restoredCursorLength = nil
     }
 
-    init(from persisted: PersistedTab, defaultPageSize: Int) {
+    init(from persisted: PersistedTab, defaultPageSize: Int, defaultWrapsText: Bool = false) {
         self.id = persisted.id
-        self.title = persisted.title
+        self.title = persisted.tabType.fixedTitle ?? persisted.title
+        // A file names its tab, and a blank fallback would leave an emptied name with no title.
+        let namable = persisted.tabType == .query && persisted.sourceFileURL == nil
+        self.automaticTitle = persisted.automaticTitle.flatMap { automatic in
+            namable && !automatic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? automatic : nil
+        }
         self.tabType = persisted.tabType
         self.isPreview = false
         self.isPinned = persisted.isPinned
@@ -194,7 +203,6 @@ struct QueryTab: Identifiable, Equatable {
             objectRef: persisted.objectRef,
             versionHistorySubject: persisted.versionHistorySubject
         )
-        self.pendingChanges = TabChangeSnapshot()
         self.selectionSnapshot = .empty
         // Seeding the source carries a saved empty sort (the user's Don't Sort) past wantsDefaultSort on the first load.
         self.sortState = (persisted.sortColumns?.isEmpty ?? true) && persisted.sortSource == .user
@@ -206,6 +214,7 @@ struct QueryTab: Identifiable, Equatable {
             columnContentWidths: persisted.columnContentWidths
         )
         self.valueFilter = GridValueFilterState()
+        self.wrapsText = persisted.wrapsText ?? defaultWrapsText
         self.pagination = PaginationState(pageSize: defaultPageSize)
         self.chartConfiguration = ResultChartConfiguration()
         self.mapConfiguration = ResultMapConfiguration()
@@ -337,6 +346,7 @@ struct QueryTab: Identifiable, Equatable {
         return PersistedTab(
             id: id,
             title: title,
+            automaticTitle: automaticTitle,
             query: persistedQuery,
             tabType: tabType,
             tableName: tableContext.tableName,
@@ -363,6 +373,7 @@ struct QueryTab: Identifiable, Equatable {
             collapsedFoldRanges: Self.foldBounds(collapsedFoldRanges, in: persistedQuery),
             columnWidths: widths,
             columnContentWidths: contentWidths,
+            wrapsText: wrapsText,
             isPinned: isPinned,
             isTemporary: tableContext.isTemporary
         )
@@ -371,6 +382,7 @@ struct QueryTab: Identifiable, Equatable {
     static func == (lhs: QueryTab, rhs: QueryTab) -> Bool {
         lhs.id == rhs.id
             && lhs.title == rhs.title
+            && lhs.automaticTitle == rhs.automaticTitle
             && lhs.execution == rhs.execution
             && lhs.schemaVersion == rhs.schemaVersion
             && lhs.paginationVersion == rhs.paginationVersion
@@ -380,6 +392,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.sessionHighlightRules == rhs.sessionHighlightRules
             && lhs.autoRefreshInterval == rhs.autoRefreshInterval
             && lhs.autoRefreshPause == rhs.autoRefreshPause
+            && lhs.outdatedPageNotice == rhs.outdatedPageNotice
             && lhs.chartConfiguration == rhs.chartConfiguration
             && lhs.mapConfiguration == rhs.mapConfiguration
             && lhs.display == rhs.display

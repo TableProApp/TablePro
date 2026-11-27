@@ -13,6 +13,7 @@ enum FileMenuBuilder {
     private static let agentSessionDelegate = AgentSessionMenuDelegate()
     private static let conversationHistoryDelegate = ConversationHistoryMenuDelegate()
     private static let revertToDelegate = QueryTabRevertMenuDelegate()
+    private static let projectDelegate = ProjectMenuDelegate()
 
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         let file = MenuItemFactory.menu(String(localized: "File"), items: [
@@ -39,6 +40,7 @@ enum FileMenuBuilder {
                 shortcut: .manageConnections,
                 keyboard: keyboard
             ),
+            projectSubmenu(),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Open File…"),
@@ -127,6 +129,19 @@ enum FileMenuBuilder {
             exportSubmenu(keyboard: keyboard),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "Share Query…"),
+                action: #selector(MainSplitViewController.shareQuery(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Share Result…"),
+                action: #selector(MainSplitViewController.shareQueryResult(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Manage Shared Links…"),
+                action: #selector(AppDelegate.manageSharedLinks(_:))
+            ),
+            sharingSeparator(),
+            MenuItemFactory.item(
                 String(localized: "Backup Dump…"),
                 action: #selector(MainSplitViewController.backupDatabase(_:))
             ),
@@ -137,6 +152,12 @@ enum FileMenuBuilder {
         ])
         file.submenu?.delegate = closeTitleDelegate
         return file
+    }
+
+    private static func sharingSeparator() -> NSMenuItem {
+        let separator = MenuItemFactory.separator
+        separator.identifier = SharingMenuGroup.separatorIdentifier
+        return separator
     }
 
     // A session and a conversation are things this window opens and closes. Each item leaves `target` nil, so the
@@ -184,6 +205,14 @@ enum FileMenuBuilder {
         ])
     }
 
+    // The scope the connection lists show. It sits with the connection commands, away from Import > Open
+    // Project Folder…, which scans a source folder.
+    private static func projectSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Project"), items: [])
+        container.submenu?.delegate = projectDelegate
+        return container
+    }
+
     // Filled when it opens; a list built with the menu bar would be frozen at launch.
     private static func recentSessionsSubmenu() -> NSMenuItem {
         let container = MenuItemFactory.submenu(String(localized: "Recent Sessions"), items: [])
@@ -206,29 +235,11 @@ enum FileMenuBuilder {
     }
 
     private static func importSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
-        let container = MenuItemFactory.submenu(String(localized: "Import"), items: [
-            MenuItemFactory.item(
-                String(localized: "Import Connections…"),
-                action: #selector(AppDelegate.importConnections(_:))
-            ),
-            MenuItemFactory.item(
-                String(localized: "Import from URL…"),
-                action: #selector(AppDelegate.importFromURL(_:))
-            ),
-            MenuItemFactory.item(
-                String(localized: "Import from Other App…"),
-                action: #selector(AppDelegate.importFromOtherApp(_:))
-            ),
-            MenuItemFactory.item(
-                String(localized: "Import from AWS…"),
-                action: #selector(AppDelegate.importFromAWS(_:))
-            ),
-            MenuItemFactory.separator,
-            MenuItemFactory.item(
-                String(localized: "Open Project Folder…"),
-                action: #selector(AppDelegate.openProjectFolder(_:))
-            )
-        ])
+        let commands: [NSMenuItem] = ImportCommand.allCases.flatMap { command -> [NSMenuItem] in
+            let item = MenuItemFactory.item(command.title, action: command.menuAction)
+            return command.startsGroup ? [MenuItemFactory.separator, item] : [item]
+        }
+        let container = MenuItemFactory.submenu(String(localized: "Import"), items: commands)
         container.submenu?.insertItem(.separator(), at: 0)
         container.submenu?.insertItem(importFormatsSubmenu(), at: 0)
         container.submenu?.insertItem(

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Fail when a plugin's TableProProvides* Info.plist keys differ from the ids its Swift class declares.
+"""Fail when a plugin's TableProProvides* Info.plist keys or CFBundleDisplayName differ from its Swift class.
 
 The app registers a plugin from these keys without loading its code, and loads a plugin that has
-none at launch. The first database type id is the plugin's primary one.
+none at launch. The first database type id is the plugin's primary one. CFBundleDisplayName is the
+class's pluginName, which Settings shows before the code loads.
 
 Usage:
     check-plugin-provides.py [--plugins <dir>]           # compare every Plugins/*/Info.plist
-    check-plugin-provides.py [--plugins <dir>] --write   # stamp the keys from the Swift ids
+    check-plugin-provides.py [--plugins <dir>] --write   # stamp the keys from the Swift ids and name
 """
 
 import argparse
@@ -21,11 +22,13 @@ DATABASE_KEY = "TableProProvidesDatabaseTypeIds"
 EXPORT_KEY = "TableProProvidesExportFormatIds"
 IMPORT_KEY = "TableProProvidesImportFormatIds"
 KEYS = (DATABASE_KEY, EXPORT_KEY, IMPORT_KEY)
+NAME_KEY = "CFBundleDisplayName"
 
 STATIC = r"^[ \t]*(?:[a-z]+[ \t]+)*static[ \t]+(?:let|var)[ \t]+"
 PRIMARY_ID = re.compile(STATIC + r"databaseTypeId(?:\s*:\s*String)?\s*=\s*\"([^\"]+)\"", re.M)
 EXTRA_IDS = re.compile(STATIC + r"additionalDatabaseTypeIds(?:\s*:\s*\[String\])?\s*=\s*\[([^\]]*)\]", re.M)
 FORMAT_ID = re.compile(STATIC + r"formatId(?:\s*:\s*String)?\s*=\s*\"([^\"]+)\"", re.M)
+PLUGIN_NAME = re.compile(STATIC + r"pluginName(?:\s*:\s*String)?\s*=\s*\"([^\"]+)\"", re.M)
 EXPORTER = re.compile(r"\b(?:class|struct|enum|actor)\s+\w+\s*:[^{]*\bExportFormatPlugin\b")
 IMPORTER = re.compile(r"\b(?:class|struct|enum|actor)\s+\w+\s*:[^{]*\bImportFormatPlugin\b")
 STRING = re.compile(r"\"([^\"]*)\"")
@@ -75,6 +78,13 @@ def provided_ids(directory):
     return expected
 
 
+# None when pluginName is not a string literal; the name is then left to the class.
+def plugin_name(directory):
+    sources = [(path, path.read_text(encoding="utf-8")) for path in sorted(directory.rglob("*.swift"))]
+    name = find_one(PLUGIN_NAME, sources, "pluginName")
+    return name.group(1) if name else None
+
+
 def read_plist(path):
     macros = {}
 
@@ -101,6 +111,7 @@ def write_plist(path, info, macros):
 
 def problems_in(directory, write=False):
     expected = provided_ids(directory)
+    name = plugin_name(directory)
     info, macros = read_plist(directory / "Info.plist")
 
     problems = []
@@ -116,10 +127,16 @@ def problems_in(directory, write=False):
         else:
             problems.append(f"{directory.name}: Info.plist has {key} {declared}, the class provides {wanted}")
 
+    declared_name = info.get(NAME_KEY)
+    if name is not None and declared_name != name:
+        problems.append(f"{directory.name}: Info.plist has {NAME_KEY} {declared_name!r}, the class's pluginName is {name!r}")
+
     if write and problems:
         for key in KEYS:
             info.pop(key, None)
         info.update(expected)
+        if name is not None:
+            info[NAME_KEY] = name
         write_plist(directory / "Info.plist", info, macros)
     return problems
 
@@ -127,7 +144,7 @@ def problems_in(directory, write=False):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--plugins", type=Path, default=PLUGINS_DIR)
-    parser.add_argument("--write", action="store_true", help="rewrite the keys from the Swift ids")
+    parser.add_argument("--write", action="store_true", help="rewrite the keys from the Swift ids and name")
     args = parser.parse_args(argv)
 
     directories = plugin_directories(args.plugins)
@@ -154,7 +171,7 @@ def main(argv=None):
         print(f"\n{len(errors)} problem(s).{hint}", file=sys.stderr)
         return 1
     if not args.write:
-        print(f"{len(directories)} plugin Info.plists declare the ids their classes provide")
+        print(f"{len(directories)} plugin Info.plists declare the ids and names their classes provide")
     return 0
 
 

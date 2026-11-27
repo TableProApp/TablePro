@@ -15,6 +15,7 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
     private let connections: ConnectionStorage
     private let groups: GroupStorage
     private let tags: TagStorage
+    private let projects: ProjectStorage
     private let profiles: CredentialProfileStorage
     private let sshProfiles: SSHProfileStorage
     private let favorites: SQLFavoriteManager
@@ -25,8 +26,10 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         tags: TagStorage = .shared,
         profiles: CredentialProfileStorage = .shared,
         sshProfiles: SSHProfileStorage = .shared,
-        favorites: SQLFavoriteManager = .shared
+        favorites: SQLFavoriteManager = .shared,
+        projects: ProjectStorage = .shared
     ) {
+        self.projects = projects
         self.connections = connections
         self.groups = groups
         self.tags = tags
@@ -68,6 +71,25 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         try groups.ensureGroupPaths(paths)
     }
 
+    func ensureProjects(_ planned: [PlannedProject]) throws -> [BundleRef: UUID] {
+        do {
+            return try projects.ensureProjects(planned)
+        } catch {
+            Self.logger.error("Projects were not imported: the project store refused the write")
+            throw ImportStoreError.unreadable
+        }
+    }
+
+    // Read from the whole library, since a replaced connection can sit outside the active project.
+    func projectIds(ofSavedConnections ids: Set<UUID>) -> [UUID: UUID?] {
+        let scope = LibraryProjectScope(groups: groups.loadGroups(), projectIds: projects.projectIds)
+        var projectIds: [UUID: UUID?] = [:]
+        for connection in connections.loadConnections() where ids.contains(connection.id) {
+            projectIds[connection.id] = scope.effectiveProjectId(of: connection)
+        }
+        return projectIds
+    }
+
     func ensureTags(_ planned: [PlannedTag]) throws -> [String: UUID] {
         try tags.ensureTags(planned)
     }
@@ -88,6 +110,7 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
             if case .profile(let profileId, _) = built.sshTunnelMode, let profile = sshProfiles.profile(for: profileId) {
                 built = profile.applied(to: built)
             }
+            built.projectId = connection.projectId
             switch connection.planned.write {
             case .add: adding.append(built)
             case .replace: replacing.append(built)
@@ -103,39 +126,51 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         return write
     }
 
+    // With the records this build cannot read, which keep their ids.
     func existingConnectionIds() -> Set<UUID> {
-        Set(connections.loadConnections().map(\.id))
+        Set(connections.loadConnections().map(\.id)).union(connections.unreadableConnectionIds)
     }
 
     // A file's credential is the secret itself: a key document given as a path would read a key file on this Mac.
-    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {
+    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) -> CredentialWriteResult {
+        var refused = 0
+        func keep(_ saved: Bool) {
+            if !saved {
+                refused += 1
+            }
+        }
         if let password = credentials.password {
-            connections.savePassword(password, for: connectionId)
+            keep(connections.savePassword(password, for: connectionId))
         }
         if let sshPassword = credentials.sshPassword {
-            connections.saveSSHPassword(sshPassword, for: connectionId)
+            keep(connections.saveSSHPassword(sshPassword, for: connectionId))
         }
         if let keyPassphrase = credentials.keyPassphrase {
-            connections.saveKeyPassphrase(keyPassphrase, for: connectionId)
+            keep(connections.saveKeyPassphrase(keyPassphrase, for: connectionId))
         }
         if let sslClientKeyPassphrase = credentials.sslClientKeyPassphrase {
-            connections.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: connectionId)
+            keep(connections.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: connectionId))
         }
         if let totpSecret = credentials.totpSecret {
-            connections.saveTOTPSecret(totpSecret, for: connectionId)
+            keep(connections.saveTOTPSecret(totpSecret, for: connectionId))
         }
         let pluginSecureFields = credentials.pluginSecureFields ?? [:]
-        guard !pluginSecureFields.isEmpty else { return }
-        // A file names any id it likes; the Keychain holds only the fields this connection's type declares secure.
-        let declared = connections.loadConnection(id: connectionId)
-            .map { Set(PluginManager.shared.secureConnectionFieldIds(for: $0.type)) } ?? []
-        for (fieldId, value) in pluginSecureFields where declared.contains(fieldId) {
-            if ConnectionFieldCatalog.keyDocumentFieldIds.contains(fieldId),
-               !ConnectionFieldCatalog.isInlineKeyDocument(value) {
-                continue
+        if !pluginSecureFields.isEmpty {
+            // A file names any id it likes; the Keychain holds only the fields this connection's type declares secure.
+            let declared = connections.loadConnection(id: connectionId)
+                .map { Set(PluginManager.shared.secureConnectionFieldIds(for: $0.type)) } ?? []
+            for (fieldId, value) in pluginSecureFields where declared.contains(fieldId) {
+                if ConnectionFieldCatalog.keyDocumentFieldIds.contains(fieldId),
+                   !ConnectionFieldCatalog.isInlineKeyDocument(value) {
+                    continue
+                }
+                keep(connections.savePluginSecureField(value, fieldId: fieldId, for: connectionId))
             }
-            connections.savePluginSecureField(value, fieldId: fieldId, for: connectionId)
         }
+        if refused > 0 {
+            Self.logger.error("The Keychain refused \(refused, privacy: .public) imported secrets")
+        }
+        return CredentialWriteResult(secretsNotKept: refused)
     }
 
     private func readLibrary() async throws -> (snapshot: ImportLibrarySnapshot, savedQueriesReadable: Bool) {
@@ -167,7 +202,8 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
             tags: tags,
             profiles: profiles,
             sshProfiles: sshProfiles,
-            favorites: favorites
+            favorites: favorites,
+            projects: projects
         )
         let snapshot = ImportLibrarySnapshot(
             connections: stored.map { connection in
@@ -202,8 +238,12 @@ internal enum MacImportEnvironment {
         var missingDriverNames: [String: String] = [:]
         for typeId in registeredTypeIds {
             let type = DatabaseType(rawValue: typeId)
-            guard case .notInstalled = pluginManager.driverUnavailability(for: type) else { continue }
-            missingDriverNames[typeId] = PluginManager.registryDisplayName(of: type)
+            switch pluginManager.driverUnavailability(for: type) {
+            case .notInstalled, .installManagedByOrganization:
+                missingDriverNames[typeId] = PluginManager.registryDisplayName(of: type)
+            case .unknownType, .failedToLoad, .outdated:
+                continue
+            }
         }
         return ImportEnvironment(
             rules: ImportRules(

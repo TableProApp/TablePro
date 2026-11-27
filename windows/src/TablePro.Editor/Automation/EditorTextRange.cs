@@ -53,7 +53,7 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
     public object? GetAttributeValue(int attributeId) => attributeId switch
     {
         IsReadOnlyAttribute => false,
-        FontNameAttribute => "Cascadia Mono",
+        FontNameAttribute => peer.Editor.FontFamilyInUse,
         _ => null,
     };
 
@@ -151,12 +151,7 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
     public void ScrollIntoView(bool alignToTop)
     {
         Clamp();
-        var line = Document.GetLineFromOffset(alignToTop ? _start : _end);
-        var (first, last) = peer.Editor.VisibleLines();
-        if (alignToTop || line < first || line > last)
-        {
-            peer.Editor.ScrollToLine(alignToTop ? line : Math.Max(0, line - (last - first) + 1));
-        }
+        peer.Editor.ScrollIntoView(alignToTop ? _start : _end, alignToTop);
     }
 
     public IRawElementProviderSimple[] GetChildren() => [];

@@ -18,6 +18,16 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]]
     var tableDDLIncludesForeignKeys: Bool { get }
 
+    // The group reads that answer each table as its own read does; any other is read table by table.
+    var bulkReads: PluginExportBulkReads { get }
+    func fetchAllIndexes(databaseName: String) async throws -> [String: [PluginIndexInfo]]
+    func fetchAllIndexDDL(databaseName: String) async throws -> [String: [String]]
+    func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]]
+    func fetchAllDependentSequences(databaseName: String) async throws -> [String: [PluginSequenceInfo]]
+    func fetchAllDependentTypes(databaseName: String) async throws -> [String: [PluginEnumTypeInfo]]
+    // `fetchTableDDL` for the tables of the schema the driver answers from one snapshot; a table left out is read alone.
+    func fetchAllTableDDL(databaseName: String) async throws -> [String: String]
+
     /// Mirrors `PluginDatabaseDriver.fetchIndexDDL` for the export side: the `CREATE INDEX`
     /// statements this table needs that `fetchTableDDL` does not already declare.
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String]
@@ -101,6 +111,14 @@ public extension PluginExportDataSource {
     /// `fetchTableDDL` already declares them, so a format that defers foreign keys must not add
     /// them a second time.
     var tableDDLIncludesForeignKeys: Bool { false }
+
+    var bulkReads: PluginExportBulkReads { [] }
+    func fetchAllIndexes(databaseName: String) async throws -> [String: [PluginIndexInfo]] { [:] }
+    func fetchAllIndexDDL(databaseName: String) async throws -> [String: [String]] { [:] }
+    func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]] { [:] }
+    func fetchAllDependentSequences(databaseName: String) async throws -> [String: [PluginSequenceInfo]] { [:] }
+    func fetchAllDependentTypes(databaseName: String) async throws -> [String: [PluginEnumTypeInfo]] { [:] }
+    func fetchAllTableDDL(databaseName: String) async throws -> [String: String] { [:] }
 
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] { [] }
 

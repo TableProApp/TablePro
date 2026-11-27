@@ -14,7 +14,12 @@ final class QueryTabGridStateStore: DataGridStateStore {
     private let persister: FileColumnLayoutPersister
 
     // Kept here rather than on the tab on every click: a tab write re-renders every view of the window.
-    var selectionSnapshot: GridSelectionSnapshot
+    var selectionSnapshot: GridSelectionSnapshot {
+        didSet {
+            guard selectionSnapshot != oldValue else { return }
+            coordinator?.tabManager.notePersistedStateChange()
+        }
+    }
 
     private var ephemeralFormats: (key: EphemeralFormatKey, formats: [ValueDisplayFormat?])?
     private var pendingLayout: (layout: ColumnLayoutState, key: ColumnLayoutTableKey)?
@@ -167,6 +172,17 @@ final class QueryTabGridStateStore: DataGridStateStore {
                 ValueDisplayFormatService.shared.setOverride(format, columnKey: storageKey, scope: scope)
             }
             coordinator.gridDisplayRevision &+= 1
+        }
+    }
+
+    // MARK: - Wrap
+
+    var wrapsText: Bool {
+        get { tab?.wrapsText ?? false }
+        set {
+            guard let coordinator, tab?.wrapsText != newValue else { return }
+            coordinator.tabManager.mutate(tabId: tabId) { $0.wrapsText = newValue }
+            coordinator.persistence.saveAggregated()
         }
     }
 

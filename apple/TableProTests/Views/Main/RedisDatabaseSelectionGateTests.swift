@@ -28,7 +28,6 @@ struct RedisDatabaseSelectionGateTests {
         MainContentCoordinator(
             connection: connection,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
     }

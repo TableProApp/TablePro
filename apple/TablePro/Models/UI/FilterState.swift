@@ -15,9 +15,78 @@ enum FilterLogicMode: String, Codable {
     }
 }
 
-enum FilterCommit: Codable, Equatable, Hashable {
-    case all
-    case solo(UUID)
+// What the grid's rows were fetched with: the one record a page turn, sort, count or share reruns.
+struct AppliedFilters: Codable, Equatable, Hashable {
+    let filters: [TableFilter]
+    let logicMode: FilterLogicMode
+    // The draft row applied on its own, whatever its checkbox says.
+    let aloneFilterID: UUID?
+
+    init?(filters: [TableFilter], logicMode: FilterLogicMode, aloneFilterID: UUID? = nil) {
+        guard !filters.isEmpty else { return nil }
+        self.filters = filters
+        self.logicMode = logicMode
+        self.aloneFilterID = aloneFilterID
+    }
+
+    static func checkedRows(of draft: [TableFilter], logicMode: FilterLogicMode) -> AppliedFilters? {
+        AppliedFilters(filters: draft.filter { $0.isEnabled && $0.isValid }, logicMode: logicMode)
+    }
+
+    static func alone(_ row: TableFilter, logicMode: FilterLogicMode) -> AppliedFilters? {
+        guard row.isValid else { return nil }
+        var running = row
+        running.isEnabled = true
+        return AppliedFilters(filters: [running], logicMode: logicMode, aloneFilterID: row.id)
+    }
+
+    func removing(_ id: UUID) -> AppliedFilters? {
+        guard aloneFilterID != id else { return nil }
+        return AppliedFilters(filters: filters.filter { $0.id != id }, logicMode: logicMode, aloneFilterID: aloneFilterID)
+    }
+
+    func withLogicMode(_ mode: FilterLogicMode) -> AppliedFilters {
+        AppliedFilters(filters: filters, logicMode: mode, aloneFilterID: aloneFilterID) ?? self
+    }
+
+    func mapFilters(_ transform: ([TableFilter]) -> [TableFilter]) -> AppliedFilters? {
+        AppliedFilters(filters: transform(filters), logicMode: logicMode, aloneFilterID: aloneFilterID)
+    }
+
+    // Order never changes which rows match, and with one condition neither does the logic mode.
+    func selectsSameRows(as other: AppliedFilters) -> Bool {
+        guard aloneFilterID == other.aloneFilterID, filters.count == other.filters.count else { return false }
+        if filters.count > 1, logicMode != other.logicMode { return false }
+        var unmatched = other.filters
+        for row in filters {
+            guard let index = unmatched.firstIndex(where: { $0.hasSameCondition(as: row) }) else { return false }
+            unmatched.remove(at: index)
+        }
+        return true
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case filters, logicMode, aloneFilterID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let filters = try container.decode([TableFilter].self, forKey: .filters)
+        guard !filters.isEmpty else {
+            throw DecodingError.dataCorruptedError(forKey: .filters, in: container, debugDescription: "No applied filters")
+        }
+        self.filters = filters
+        self.logicMode = try container.decodeIfPresent(FilterLogicMode.self, forKey: .logicMode) ?? .and
+        self.aloneFilterID = try container.decodeIfPresent(UUID.self, forKey: .aloneFilterID)
+    }
+}
+
+enum FilterPanelStatus: Equatable {
+    case empty
+    case notApplied
+    case applied
+    case appliedAlone
+    case changesNotApplied
 }
 
 struct BrowseSearchState: Codable, Equatable {
@@ -52,22 +121,24 @@ struct BrowseSearchState: Codable, Equatable {
 struct PersistedFilterState: Codable, Equatable {
     var filters: [TableFilter]
     var logicMode: FilterLogicMode
-    /// Whether the rows were running against the table when they were saved.
-    ///
-    /// A plain flag rather than the `FilterCommit` itself, because `persistedState` drops invalid
-    /// rows and nothing clears a `.solo` commit whose row became invalid: that id would survive to
-    /// disk pointing at a row no longer in the file, and restoring it resolves to nothing applied
-    /// while the panel shows rows. An applied set restores as `.all` over the rows that survived,
-    /// each keeping its own enabled flag.
-    ///
-    /// Absent in every file written before this existed, which decodes to `true`: only an applied
-    /// set was ever saved.
+    // Still written because the previous stable reads only this flag and restores the checked rows;
+    // absent in files from before it existed, where only an applied set was ever saved.
     var isApplied: Bool
+    // What the grid was showing, so a row applied alone or edited since it ran restores as it ran.
+    var applied: AppliedFilters?
+
+    init(filters: [TableFilter], logicMode: FilterLogicMode = .and, applied: AppliedFilters?) {
+        self.filters = filters
+        self.logicMode = logicMode
+        self.isApplied = applied != nil
+        self.applied = applied
+    }
 
     init(filters: [TableFilter], logicMode: FilterLogicMode = .and, isApplied: Bool = true) {
         self.filters = filters
         self.logicMode = logicMode
         self.isApplied = isApplied
+        self.applied = nil
     }
 
     init(from decoder: Decoder) throws {
@@ -76,27 +147,43 @@ struct PersistedFilterState: Codable, Equatable {
             self.filters = filters
             self.logicMode = (try? keyed.decode(FilterLogicMode.self, forKey: .logicMode)) ?? .and
             self.isApplied = (try? keyed.decode(Bool.self, forKey: .isApplied)) ?? true
+            self.applied = isApplied ? try? keyed.decode(AppliedFilters.self, forKey: .applied) : nil
             return
         }
         let single = try decoder.singleValueContainer()
         self.filters = try single.decode([TableFilter].self)
         self.logicMode = .and
         self.isApplied = true
+        self.applied = nil
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(filters, forKey: .filters)
+        try container.encode(logicMode, forKey: .logicMode)
+        try container.encode(isApplied, forKey: .isApplied)
+        try container.encodeIfPresent(applied, forKey: .applied)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case filters, logicMode, isApplied
+        case filters, logicMode, isApplied, applied
+    }
+
+    // A file from before `applied` was saved ran its checked rows.
+    var restoredApplication: AppliedFilters? {
+        guard isApplied else { return nil }
+        return applied ?? .checkedRows(of: filters, logicMode: logicMode)
     }
 }
 
 extension TabFilterState {
-    init(filters: [TableFilter], commit: FilterCommit?, isVisible: Bool, filterLogicMode: FilterLogicMode) {
-        self.filters = filters
-        self.commit = commit
-        self.isVisible = isVisible
-        self.filterLogicMode = filterLogicMode
-        self.keyPattern = ""
-        self.keyTypeScope = nil
+    // A tab opened already filtered by these rows, all of them checked and running.
+    static func applying(_ filters: [TableFilter], logicMode: FilterLogicMode) -> TabFilterState {
+        var state = TabFilterState(isVisible: true)
+        state.filters = filters
+        state.filterLogicMode = logicMode
+        state.applied = .checkedRows(of: filters, logicMode: logicMode)
+        return state
     }
 
     var browseSearch: BrowseSearchState {
@@ -117,9 +204,8 @@ extension TabFilterState {
         isSupported && hasActiveBrowseSearch ? browseSearch : nil
     }
 
-    /// Whether the tab lists fewer rows than its table holds, so the table's own size, which is
-    /// what an estimate measures, is not the total of what is on screen.
+    // An estimate measures the whole table, which is not the total of a narrowed list.
     func narrowsRows(browseSearchIsSupported: Bool) -> Bool {
-        hasAppliedFilters || activeBrowseSearch(isSupported: browseSearchIsSupported) != nil
+        isFiltering || activeBrowseSearch(isSupported: browseSearchIsSupported) != nil
     }
 }

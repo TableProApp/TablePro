@@ -38,13 +38,20 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsDropSchema: false,
+                    supportsAddColumn: false,
+                    supportsModifyColumn: false,
+                    supportsDropColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsModifyPrimaryKey: false,
                     defaultSSLMode: .disabled,
                     supportsOpportunisticTLS: false,
                     verifiesServerWithSystemTrust: true,
                     requestedTLSVerifiesIdentity: true,
                     supportsColumnSort: false,
                     supportsRawFilter: false,
-                    statementPolicyInDriver: true
+                    statementPolicyInDriver: true,
+                    dataCommands: kafkaDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -79,12 +86,22 @@ private let kafkaCompletions: [CompletionEntry] = [
     CompletionEntry(label: "CONSUME", insertText: "CONSUME \"topic\" FROM NEWEST LIMIT 100"),
     CompletionEntry(label: "CONSUME FROM OLDEST", insertText: "CONSUME \"topic\" FROM OLDEST LIMIT 100"),
     CompletionEntry(label: "CONSUME FROM OFFSET", insertText: "CONSUME \"topic\" FROM OFFSET 0 LIMIT 100"),
+    CompletionEntry(
+        label: "CONSUME FROM TIME",
+        insertText: "CONSUME \"topic\" FROM TIME \"2026-01-01T00:00:00Z\" LIMIT 100"
+    ),
+    CompletionEntry(label: "CONSUME PARTITION", insertText: "CONSUME \"topic\" PARTITION (0) FROM NEWEST LIMIT 100"),
     CompletionEntry(label: "PRODUCE", insertText: "PRODUCE INTO \"topic\" KEY \"k\" VALUE \"v\""),
     CompletionEntry(label: "SHOW TOPICS", insertText: "SHOW TOPICS"),
+    CompletionEntry(label: "SHOW BROKERS", insertText: "SHOW BROKERS"),
     CompletionEntry(label: "SHOW GROUPS", insertText: "SHOW GROUPS"),
+    CompletionEntry(label: "SHOW CLUSTER", insertText: "SHOW CLUSTER"),
     CompletionEntry(label: "DESCRIBE GROUP", insertText: "DESCRIBE GROUP \"group\""),
     CompletionEntry(label: "DESCRIBE TOPIC", insertText: "DESCRIBE TOPIC \"topic\"")
 ]
+
+// KafkaQL (`TableProKafkaCore/KafkaQL.swift`): CONSUME, SHOW and DESCRIBE read, DROP TOPIC drops the topic.
+private let kafkaDataCommands: Set<String> = ["PRODUCE"]
 
 private let kafkaColumnTypes: [String: [String]] = [
     "Message": ["TEXT", "BLOB", "JSON"],

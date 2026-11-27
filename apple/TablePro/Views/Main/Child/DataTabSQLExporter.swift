@@ -43,7 +43,7 @@ final class DataTabSQLExporter: DataGridSQLExporting {
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: coordinator.connection.type,
             connectionId: coordinator.connectionId,
-            changeManager: coordinator.changeManager,
+            changeManager: coordinator.changeManager(forTab: tabId),
             driver: coordinator.services.databaseManager.driver(for: coordinator.connectionId)
         )
     }
@@ -71,6 +71,7 @@ final class DataTabSQLExporter: DataGridSQLExporting {
                 primaryKeyColumns: target.primaryKeyColumns,
                 databaseType: target.databaseType,
                 unwritableColumns: unwritableColumns(in: rows, target: target),
+                identityColumns: Set(rows.columnIdentity.keys),
                 quoteIdentifier: target.driver?.quoteIdentifier,
                 escapeStringLiteral: target.driver?.escapeStringLiteral,
                 identifierSpelling: identifierSpelling(for: target)

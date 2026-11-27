@@ -21,6 +21,7 @@ pub mod storage;
 pub use services::{change_tracker, tab_tracker_handle, tracker_edit};
 // Public for the desktop entry's test, which claims each of them.
 pub use services::connection_link::LINK_SCHEMES;
+pub use services::share_link::SHARE_LINK_SCHEME;
 #[cfg(test)]
 mod test_support;
 mod ui;
@@ -194,7 +195,8 @@ mod tests {
         adw::init().expect("libadwaita initialises under the test backend");
         register_test_resources();
 
-        let builder = gtk4::Builder::from_resource(&format!("{}/shortcuts-dialog.ui", config::RESOURCE_BASE_PATH));
+        let builder =
+            gtk4::Builder::from_resource(&format!("{}/builder/shortcuts-dialog.ui", config::RESOURCE_BASE_PATH));
         let dialog = builder
             .object::<adw::ShortcutsDialog>("shortcuts_dialog")
             .expect("shortcuts_dialog is an AdwShortcutsDialog");

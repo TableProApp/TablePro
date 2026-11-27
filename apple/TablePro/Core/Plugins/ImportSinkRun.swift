@@ -100,6 +100,7 @@ internal final class ImportSinkRun: @unchecked Sendable {
         writes: Bool = false,
         deletes: Bool = false,
         statement: String? = nil,
+        interrupt: (@Sendable () -> Void)? = nil,
         operation: () async throws -> T
     ) async throws -> T {
         try await admitted(.data) {
@@ -111,7 +112,12 @@ internal final class ImportSinkRun: @unchecked Sendable {
             let before = self.run.snapshot.currentState
             let hadAuthority = self.lock.withLock { self.ownsTransaction }
             do {
-                let value = try await operation()
+                let value: T
+                if let interrupt {
+                    value = try await self.run.interruptible(by: interrupt, operation)
+                } else {
+                    value = try await operation()
+                }
                 if let index = self.fileIndex {
                     self.run.record {
                         $0.effects[index]?.submittedRows += rows
@@ -119,7 +125,7 @@ internal final class ImportSinkRun: @unchecked Sendable {
                         if deletes { $0.effects[index]?.deletedRows = true }
                     }
                 }
-                await self.observe()
+                if self.mayChangeTransactionState(statement, writes: writes, from: before) { await self.observe() }
                 if let statement { self.noteCompletedStatement(statement, before: before, wasOwned: hadAuthority) }
                 return value
             } catch {
@@ -132,6 +138,75 @@ internal final class ImportSinkRun: @unchecked Sendable {
             }
         }
     }
+
+    // One admission for statements sent together; each that ran is recorded as `data` records one. Nil when the driver
+    // declined them, and nothing was sent. Not interruptible: a Pause waits for the batch, as it waits for a statement.
+    internal func statements(
+        _ texts: [String],
+        operation: () async throws -> [BatchedStatementOutcome]?
+    ) async throws -> [BatchedStatementOutcome]? {
+        try await admitted(.data) {
+            if self.commitMode == .manual { try self.refuseWriteOutsideTransaction() }
+            let before = self.run.snapshot.currentState
+            let hadAuthority = self.lock.withLock { self.ownsTransaction }
+            let answered: [BatchedStatementOutcome]?
+            do {
+                answered = try await operation()
+            } catch {
+                // A driver that throws may have sent some of them, as `data` assumes of a write that throws.
+                self.run.record {
+                    $0.recordError(error)
+                    if let index = self.fileIndex {
+                        $0.effects[index]?.admittedWrite = true
+                        $0.effects[index]?.failedWrite = true
+                    }
+                }
+                await self.observe()
+                throw error
+            }
+            guard let outcomes = answered else { return nil }
+            if let index = self.fileIndex {
+                self.run.record { $0.effects[index]?.admittedWrite = true }
+            }
+            for (text, outcome) in zip(texts, outcomes) {
+                self.noteStatement(text)
+                switch outcome {
+                case .succeeded:
+                    if let index = self.fileIndex { self.run.record { $0.effects[index]?.statements += 1 } }
+                case .failed(let error):
+                    self.run.record {
+                        $0.recordError(error)
+                        if let index = self.fileIndex { $0.effects[index]?.failedWrite = true }
+                    }
+                }
+            }
+            let mayHaveMoved = outcomes.count < texts.count || outcomes.contains { !$0.succeeded }
+                || texts.contains { self.mayChangeTransactionState($0, writes: true, from: before) }
+            if mayHaveMoved { await self.observe() }
+            for (text, outcome) in zip(texts, outcomes) where outcome.succeeded {
+                self.noteCompletedStatement(text, before: before, wasOwned: hadAuthority)
+            }
+            return outcomes
+        }
+    }
+
+    // Reading the state is a round trip on SQL Server, so it is read after a call only when the call can have moved
+    // it. Inside a held transaction a row batch or a plain DML statement that succeeds can neither end it nor open
+    // another. Outside one it can open one: Oracle, MySQL with autocommit off and SQL Server's implicit transactions
+    // all start one at the first write. A failed call is read after, and so are the begin, the commit and the
+    // rollback. So is a catalog read, which can swallow its own error after PostgreSQL has aborted the transaction.
+    private func mayChangeTransactionState(_ statement: String?, writes: Bool, from before: ImportSessionState) -> Bool {
+        guard before.holdsTransaction else { return true }
+        guard let statement else { return !writes }
+        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+        let keyword = QueryClassifier.leadingKeyword(of: statement, grammar: grammar)
+        guard Self.plainDataKeywords.contains(keyword) else { return true }
+        return ImportTransactionWords.mayNameOne(statement)
+    }
+
+    private static let plainDataKeywords: Set<String> = [
+        "INSERT", "UPDATE", "DELETE", "SELECT", "WITH", "VALUES", "REPLACE", "COPY", "MERGE", "UPSERT", "TABLE"
+    ]
 
     // Decided at the first write, before a GO line resets the holder: outside a transaction each statement commits.
     private func refuseWriteOutsideTransaction() throws {
@@ -336,5 +411,41 @@ internal final class ImportSinkRun: @unchecked Sendable {
         guard try await run.admit(kind) == .proceed else { throw PluginImportCancellationError() }
         defer { run.release() }
         return try await operation()
+    }
+}
+
+// A unit led by DML can still hold more: T-SQL runs a batch with no `;` between its statements, and a procedure call
+// can commit. Any word that can end, open or hand off a transaction, anywhere in the text, literals included, counts.
+// PostgreSQL's END and ABORT end one too; an END that closes a CASE costs one extra read, never a missed one.
+nonisolated enum ImportTransactionWords {
+    private static let words: Set<String> = [
+        "TRAN", "TRANSACTION", "COMMIT", "ROLLBACK", "SAVE", "SAVEPOINT", "EXEC", "EXECUTE", "CALL", "GO", "END", "ABORT"
+    ]
+    private static let longest = words.map(\.utf8.count).max() ?? 0
+
+    static func mayNameOne(_ text: String) -> Bool {
+        var word: [UInt8] = []
+        word.reserveCapacity(longest)
+        var tooLong = false
+        func ends() -> Bool {
+            defer { word.removeAll(keepingCapacity: true); tooLong = false }
+            guard !tooLong, !word.isEmpty else { return false }
+            return words.contains(String(bytes: word, encoding: .ascii) ?? "")
+        }
+        for byte in text.utf8 {
+            let isLetter = (byte >= 0x41 && byte <= 0x5A) || (byte >= 0x61 && byte <= 0x7A)
+            let isWordByte = isLetter || byte == 0x5F || (byte >= 0x30 && byte <= 0x39) || byte >= 0x80
+            guard isWordByte else {
+                if ends() { return true }
+                continue
+            }
+            guard !tooLong else { continue }
+            if word.count == longest || !isLetter {
+                tooLong = true
+                continue
+            }
+            word.append(byte & 0xDF)
+        }
+        return ends()
     }
 }

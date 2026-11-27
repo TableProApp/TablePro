@@ -12,14 +12,15 @@ internal final class CompareSyncRunRegistry {
     private struct Entry {
         weak var session: CompareSyncSession?
         let windowId: UUID
+        let close: @MainActor () -> Void
     }
 
     private var entries: [ObjectIdentifier: Entry] = [:]
 
     internal init() {}
 
-    internal func track(_ session: CompareSyncSession, windowId: UUID) {
-        entries[ObjectIdentifier(session)] = Entry(session: session, windowId: windowId)
+    internal func track(_ session: CompareSyncSession, windowId: UUID, close: @escaping @MainActor () -> Void) {
+        entries[ObjectIdentifier(session)] = Entry(session: session, windowId: windowId, close: close)
     }
 
     internal func windowId(of session: CompareSyncSession) -> UUID? {
@@ -31,6 +32,15 @@ internal final class CompareSyncRunRegistry {
         return entries.values.compactMap { entry in
             guard let session = entry.session else { return nil }
             return Self.runningWork(for: session)
+        }
+    }
+
+    // The module was turned off: every run stops and every window closes, without the close prompt.
+    internal func endAll() {
+        entries = entries.filter { $0.value.session != nil }
+        for entry in entries.values {
+            entry.session?.cancelRunningWork()
+            entry.close()
         }
     }
 

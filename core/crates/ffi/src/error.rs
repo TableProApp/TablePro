@@ -1,9 +1,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use tablepro_account::AccountError;
+use tablepro_ai::AiError;
 use tablepro_core::{DriverError, ServerDiagnostics, SshFailure, TlsFailure, TransportError};
 use tablepro_session::{ConnectError, OperationError};
 
+use crate::ai::AiFailureInfo;
 use crate::host::SecretKindTag;
 
 /// Why a call produced no value. A cancel is its own variant, so a
@@ -33,6 +36,15 @@ pub struct ErrorInfo {
     pub secret: Option<SecretKindTag>,
     pub host_key: Option<HostKeyFailure>,
     pub tls_failure: Option<TlsFailureTag>,
+    // What an `ai.*` error is about; the provider's own words are in `server`.
+    #[uniffi(default = None)]
+    pub ai: Option<AiFailureInfo>,
+    // What a `sync.*` refusal carries beyond its code: a step-up challenge, a wait, a change's code, a lock.
+    #[uniffi(default = None)]
+    pub sync: Option<crate::sync::SyncFailureInfo>,
+    // The challenge `account.step_up_required` carries, which `AccountService::step_up` takes.
+    #[uniffi(default = None)]
+    pub step_up: Option<crate::account::StepUpChallengeInfo>,
 }
 
 // Error details stay off the stack while bindings keep the same record values.
@@ -97,6 +109,7 @@ pub struct ServerMessage {
     pub sqlstate: Option<String>,
     pub detail: Option<String>,
     pub hint: Option<String>,
+    // In characters from 1, from the start of the SQL the run was given.
     pub position: Option<u32>,
 }
 
@@ -112,6 +125,9 @@ impl CoreError {
                 secret: None,
                 host_key: None,
                 tls_failure: None,
+                ai: None,
+                sync: None,
+                step_up: None,
             }),
         }
     }
@@ -153,6 +169,9 @@ impl ErrorInfo {
                 DriverError::Tls { failure, .. } => Some((*failure).into()),
                 _ => None,
             },
+            ai: None,
+            sync: None,
+            step_up: None,
         }
     }
 
@@ -166,6 +185,9 @@ impl ErrorInfo {
             secret: None,
             host_key: None,
             tls_failure: None,
+            ai: None,
+            sync: None,
+            step_up: None,
         }
     }
 }
@@ -204,6 +226,7 @@ fn driver_codes(error: &DriverError, codes: &mut Vec<String>) {
             }
         }
         DriverError::Config(config) => codes.push(config.code().to_owned()),
+        DriverError::Unsupported { feature } => codes.push(feature.code().to_owned()),
         DriverError::RolledBack { source, .. }
         | DriverError::CommitOutcomeUnknown { source, .. }
         | DriverError::PartiallyApplied { source, .. } => driver_codes(source, codes),
@@ -247,6 +270,7 @@ fn file_path(error: &DriverError) -> Option<&Path> {
     match error {
         DriverError::FileNotFound { path }
         | DriverError::FileAccessDenied { path }
+        | DriverError::FileExists { path }
         | DriverError::NotADatabase { path }
         | DriverError::FileIo { path, .. } => Some(path),
         _ => None,
@@ -314,6 +338,68 @@ impl From<ConnectError> for CoreError {
             other => Self::Failed {
                 info: ErrorInfo::plain(&[other.code()], other.to_string()).into(),
             },
+        }
+    }
+}
+
+// A cancelled sign-in is a cancel. A problem the account service answered keeps its own code in `server`, and a
+// step-up its challenge in `step_up`.
+impl From<AccountError> for CoreError {
+    fn from(error: AccountError) -> Self {
+        let server = match &error {
+            AccountError::SignInCanceled => return Self::Cancelled,
+            AccountError::Refused { code, detail, .. } => Some(ServerMessage {
+                code: Some(code.clone()),
+                ..named_only(detail)
+            }),
+            _ => None,
+        };
+        let step_up = match &error {
+            AccountError::StepUpRequired(challenge) => Some(challenge.clone().into()),
+            _ => None,
+        };
+        Self::Failed {
+            info: Box::new(ErrorInfo {
+                server,
+                step_up,
+                ..ErrorInfo::plain(&[error.code()], error.to_string())
+            }),
+        }
+    }
+}
+
+// The host, status and provider are typed fields the app words; what the provider said goes in `server`.
+impl From<AiError> for CoreError {
+    fn from(error: AiError) -> Self {
+        let server = error.server_message().map(named_only);
+        let mut ai = AiFailureInfo::default();
+        match &error {
+            AiError::MissingKey(provider) => ai.provider = Some((*provider).into()),
+            AiError::Tls(detail) | AiError::Protocol(detail) => ai.detail = Some(detail.clone()),
+            AiError::Unreachable { host, detail } => {
+                ai.host = Some(host.clone());
+                ai.detail = Some(detail.clone());
+            }
+            AiError::TimedOut { host } | AiError::Unauthorized { host, .. } | AiError::RateLimited { host, .. } => {
+                ai.host = Some(host.clone());
+            }
+            AiError::Status { host, status, .. } => {
+                ai.host = Some(host.clone());
+                ai.status = Some(*status);
+            }
+            AiError::MissingModel
+            | AiError::InvalidAddress
+            | AiError::KeyOverPlainHttp
+            | AiError::InvalidKey
+            | AiError::Provider(_)
+            | AiError::TooLong => {}
+        }
+        Self::Failed {
+            info: Box::new(ErrorInfo {
+                server,
+                ai: Some(ai),
+                ..ErrorInfo::plain(&[error.code()], error.to_string())
+            }),
         }
     }
 }
@@ -471,6 +557,49 @@ mod tests {
         assert_eq!(server.message, "shopp");
         assert_eq!((server.code, server.sqlstate, server.detail), (None, None, None));
         assert!(info.path.is_none());
+    }
+
+    #[test]
+    fn an_account_error_keeps_its_code_and_a_refusal_the_server_s_own() {
+        let limited = info(AccountError::DeviceLimitReached { devices: Vec::new() }.into());
+        let refused = info(
+            AccountError::Refused {
+                status: 409,
+                code: "offline_file_active".to_owned(),
+                detail: "The device holds an offline file".to_owned(),
+            }
+            .into(),
+        );
+
+        assert_eq!(limited.codes, ["account.device_limit_reached"]);
+        assert_eq!(limited.server, None);
+        assert_eq!(refused.code, "account.refused");
+        let server = refused.server.expect("the server's problem");
+        assert_eq!(server.code.as_deref(), Some("offline_file_active"));
+        assert_eq!(server.message, "The device holds an offline file");
+        assert_eq!(CoreError::from(AccountError::SignInCanceled), CoreError::Cancelled);
+    }
+
+    #[test]
+    fn a_step_up_error_carries_its_challenge_for_the_step_up_call() {
+        let challenge = tablepro_account::StepUpChallenge {
+            acr_values: vec![
+                "urn:tablepro:acr:passkey".to_owned(),
+                "urn:tablepro:acr:email-code".to_owned(),
+            ],
+            max_age_secs: Some(300),
+        };
+
+        let required = info(AccountError::StepUpRequired(challenge.clone()).into());
+        let other = info(AccountError::StepUpOtherAccount.into());
+
+        assert_eq!(required.code, "account.step_up_required");
+        let carried = required.step_up.expect("the challenge");
+        assert_eq!(carried.acr_values, challenge.acr_values);
+        assert_eq!(carried.max_age_secs, Some(300));
+        assert_eq!(tablepro_account::StepUpChallenge::from(carried), challenge);
+        assert_eq!(other.code, "account.step_up_other_account");
+        assert_eq!(other.step_up, None);
     }
 
     #[test]

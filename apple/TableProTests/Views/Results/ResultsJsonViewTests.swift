@@ -1,8 +1,3 @@
-//
-//  ResultsJsonViewTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -275,5 +270,80 @@ struct ResultsJsonViewTests {
         if let first, let second {
             #expect(first.lowerBound < second.lowerBound)
         }
+    }
+
+    @Test("With no JSON column the serializer's text is already indented and is shown as it is")
+    func noJsonColumnSkipsTheReindent() {
+        let result = compute(selectedIndices: [])
+
+        #expect(result.pretty == result.json)
+        #expect(result.pretty == JsonReindenter.reindent(result.json))
+    }
+
+    @Test("A JSON column's value is still indented in the text view")
+    func jsonColumnIsIndented() {
+        let tableRows = TableRows(
+            rows: [Row(id: .existing(0), values: [.text("a"), .text(#"{"k":[1,2]}"#)])],
+            columns: ["name", "meta"],
+            columnTypes: [.text(rawType: nil), .json(rawType: "jsonb")]
+        )
+
+        let result = ResultsJsonView.computeJson(
+            tableRows: tableRows,
+            displayIDs: nil,
+            selectedIndices: [],
+            columnLayout: ColumnLayoutState()
+        )
+
+        #expect(result.json.contains(#""meta": {"k":[1,2]}"#))
+        #expect(result.pretty == JsonReindenter.reindent(result.json))
+        #expect(result.pretty.contains("\"meta\": {\n      \"k\": [\n        1,"))
+    }
+
+    @Test("With every column hidden each row shows as an empty object")
+    func everyColumnHiddenShowsEmptyObjects() {
+        var layout = ColumnLayoutState()
+        layout.hiddenColumns = ["status", "name"]
+
+        let result = compute(selectedIndices: [0, 1], columnLayout: layout)
+
+        #expect(result.pretty == "[\n  {},\n  {}\n]")
+    }
+
+    @Test("A result past the document's row cap counts only the rows the document holds")
+    func countsTheRowsTheDocumentHolds() {
+        let rows = ContiguousArray((0..<50_001).map { Row(id: .existing($0), values: [.text("r\($0)")]) })
+        let tableRows = TableRows(rows: rows, columns: ["name"], columnTypes: [.text(rawType: nil)])
+
+        let result = ResultsJsonView.computeJson(
+            tableRows: tableRows,
+            displayIDs: nil,
+            selectedIndices: [],
+            columnLayout: ColumnLayoutState()
+        )
+
+        #expect(result.resolvedCount == 50_000)
+        #expect(!result.json.contains("\"r50000\""))
+    }
+
+    @Test("A render whose task is cancelled returns early with nothing to show")
+    func cancelledRenderReturnsEarly() async {
+        let tableRows = makeTableRows()
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await ResultsJsonView.render(
+                tableRows: tableRows,
+                displayIDs: nil,
+                selectedIndices: [],
+                deletedRowIDs: [],
+                defaultedCells: [:],
+                columnLayout: ColumnLayoutState()
+            )
+        }
+
+        let result = await task.value
+
+        #expect(result.json.isEmpty)
+        #expect(result.resolvedCount == 0)
     }
 }

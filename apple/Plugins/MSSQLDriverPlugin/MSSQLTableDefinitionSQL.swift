@@ -11,7 +11,7 @@ import TableProMSSQLCore
 import TableProPluginKit
 import TableProSQLQuoting
 
-enum MSSQLTableDefinitionSQL {
+nonisolated enum MSSQLTableDefinitionSQL {
     static func createTable(_ definition: PluginCreateTableDefinition, schema: String) -> String? {
         guard let createTable = createTableStatement(definition, schema: schema) else { return nil }
         var sql = createTable + ";"

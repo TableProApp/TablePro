@@ -368,7 +368,7 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         case .database(let databaseID):
             return AnyView(
                 ExportTreeContainerRow(
-                    title: databases.first(where: { $0.id == databaseID })?.name ?? "",
+                    title: databases.first(where: { $0.id == databaseID })?.title ?? "",
                     iconName: "cylinder",
                     iconColor: .blue,
                     state: containerState(for: node),
@@ -379,8 +379,8 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         case .group(_, let objectKind):
             return AnyView(
                 ExportTreeContainerRow(
-                    title: ExportObjectKindPresentation.groupTitle(for: objectKind),
-                    iconName: ExportObjectKindPresentation.iconName(for: objectKind),
+                    title: ExportObjectKindLabel.title(for: objectKind),
+                    iconName: ExportObjectKindLabel.systemImage(for: objectKind),
                     iconColor: ExportObjectKindPresentation.iconColor(for: objectKind),
                     state: containerState(for: node),
                     toggle: { [weak self] in self?.toggleContainer(node) }
@@ -557,9 +557,9 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
     private func containerTitle(of node: ExportOutlineNode) -> String {
         switch node.kind {
         case .database(let databaseID):
-            return databases.first(where: { $0.id == databaseID })?.name ?? ""
+            return databases.first(where: { $0.id == databaseID })?.title ?? ""
         case .group(_, let objectKind):
-            return ExportObjectKindPresentation.groupTitle(for: objectKind)
+            return ExportObjectKindLabel.title(for: objectKind)
         case .object, .pending:
             return ""
         }

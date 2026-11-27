@@ -13,9 +13,10 @@ use crate::syntax;
 /// Cells are column by column: the cell of row `r` and column `c` is
 /// `(c - first_column) * row_count + (r - first_row)`. A cell's text is
 /// `text[offsets[cell]..offsets[cell + 1]]`, UTF-8, at most the fetch's
-/// `max_chars` characters on one line. `nulls` and `truncated` hold a
-/// bit per cell, lowest bit first. `column_kinds` and `cell_kinds` hold
-/// a `ValueKind` byte each, and a cell's kind says what its `raw` holds.
+/// `max_chars` characters, on one line unless the fetch keeps line
+/// breaks. `nulls` and `truncated` hold a bit per cell, lowest bit
+/// first. `column_kinds` and `cell_kinds` hold a `ValueKind` byte each,
+/// and a cell's kind says what its `raw` holds.
 #[repr(C)]
 pub struct TpWindow {
     pub first_row: u64,
@@ -72,6 +73,38 @@ pub unsafe extern "C" fn tablepro_cursor_fetch(
         cursor
             .cursor
             .fetch(first_row, row_count, first_column, column_count, max_chars)
+            .map_or(null(), |window| window as *const TpWindow)
+    }));
+    fetched.unwrap_or(null())
+}
+
+/// As `tablepro_cursor_fetch`, for a grid that wraps its cells: each line
+/// break in a cell's text, whatever its form (LF, CR LF, CR, VT, FF, NEL,
+/// U+2028, U+2029), is one `\n`. `max_chars` counts the value's
+/// characters, so a CR LF counts two. Every other control character is
+/// a space, as there.
+///
+/// # Safety
+///
+/// `cursor` is null or a cursor `ResultSet::open_cursor` returned and no
+/// one freed, used by one thread at a time.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tablepro_cursor_fetch_lines(
+    cursor: *mut TpCursor,
+    first_row: u64,
+    row_count: u32,
+    first_column: u32,
+    column_count: u32,
+    max_chars: u32,
+) -> *const TpWindow {
+    // SAFETY: the caller passes null or a live cursor no other thread uses.
+    let Some(cursor) = (unsafe { cursor.as_mut() }) else {
+        return null();
+    };
+    let fetched = catch_unwind(AssertUnwindSafe(|| {
+        cursor
+            .cursor
+            .fetch_lines(first_row, row_count, first_column, column_count, max_chars)
             .map_or(null(), |window| window as *const TpWindow)
     }));
     fetched.unwrap_or(null())
@@ -142,6 +175,64 @@ pub unsafe extern "C" fn tablepro_syntax_tokens(
     }));
     match written {
         Ok(Some(written)) => u32::try_from(written).unwrap_or(0),
+        Ok(None) | Err(_) => 0,
+    }
+}
+
+/// One statement of `tablepro_script_statements`: its text without the
+/// terminator, from `start` to `end` in UTF-16 code units from the start
+/// of the text split.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TpStatementSpan {
+    pub start: u32,
+    pub end: u32,
+}
+
+/// Splits `text_len` UTF-16 code units of SQL into statements as
+/// `grammar` reads them, the split the editor and the drivers run, and
+/// writes up to `capacity` of them, in order, to `spans`. Returns how
+/// many statements the text holds, which may pass `capacity`, so a
+/// caller can call again with that capacity. A null `spans` or a
+/// `capacity` of 0 writes nothing and only counts.
+///
+/// `grammar` and `backslash_escapes` are as `tablepro_syntax_tokens`
+/// reads them. A null `text`, a `text_len` of 0, an unknown grammar or a
+/// panic write nothing and return 0.
+///
+/// # Safety
+///
+/// `text` is null or points at `text_len` readable `u16`s, and `spans`
+/// is null or points at `capacity` writable `TpStatementSpan`s that do
+/// not overlap `text`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tablepro_script_statements(
+    grammar: u32,
+    backslash_escapes: u32,
+    text: *const u16,
+    text_len: u32,
+    spans: *mut TpStatementSpan,
+    capacity: u32,
+) -> u32 {
+    if text.is_null() || text_len == 0 {
+        return 0;
+    }
+    let (Ok(text_len), Ok(capacity)) = (usize::try_from(text_len), usize::try_from(capacity)) else {
+        return 0;
+    };
+    // SAFETY: the caller passes `text_len` readable units at `text`.
+    let units = unsafe { slice::from_raw_parts(text, text_len) };
+    let out: &mut [TpStatementSpan] = if spans.is_null() {
+        &mut []
+    } else {
+        // SAFETY: the caller passes `capacity` writable spans at `spans`, apart from `text`.
+        unsafe { slice::from_raw_parts_mut(spans, capacity) }
+    };
+    let counted = catch_unwind(AssertUnwindSafe(|| {
+        syntax::statements(grammar, backslash_escapes, units, out)
+    }));
+    match counted {
+        Ok(Some(counted)) => u32::try_from(counted).unwrap_or(0),
         Ok(None) | Err(_) => 0,
     }
 }

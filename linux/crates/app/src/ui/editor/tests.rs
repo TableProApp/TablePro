@@ -180,7 +180,7 @@ fn shown(harness: &Harness) -> crate::test_support::OwnedWindow<adw::Window> {
 fn confirm_writes_holds_an_update_for_an_answer_and_runs_a_select_at_once() {
     let harness = editor_with(answering(), "SELECT 1;");
     let session = harness.active.get().expect("the session");
-    assert!(session.set_safe_mode(tablepro_core::SafeModeLevel::ConfirmWrites));
+    assert!(session.set_safe_mode(tablepro_core::SafeModeLevel::Alert));
     let window = shown(&harness);
 
     run_and_wait(&harness);
@@ -1258,6 +1258,26 @@ fn editor_keys_that_the_view_binds_run_in_capture() {
             assert_eq!(phase, gtk4::PropagationPhase::Capture, "{}", entry.action);
         }
     }
+}
+
+// A shortcut preset leaves the keys it reads to the editor, so they are the editor view's own, its subclass included.
+#[gtk4::test]
+fn a_preset_reads_the_keys_the_editors_view_binds() {
+    use crate::test_support::shortcut_keys::{class_binding_keys, keystroke};
+    let harness = editor_with(answering(), "SELECT 1");
+    let view = harness.editor.imp().source_view.get();
+
+    let read = crate::application::keymap::editor_view_keys();
+
+    assert!(
+        read.contains(&keystroke("<Primary>space")),
+        "GtkSourceView's own were missed"
+    );
+    assert!(
+        read.contains(&keystroke("<Primary>period")),
+        "GtkTextView's own were missed"
+    );
+    assert_eq!(read, class_binding_keys(&view));
 }
 
 #[gtk4::test]
@@ -3447,4 +3467,83 @@ fn the_divider_keeps_the_editor_in_view() {
     wait_until(WAIT, || paned.position() > 0).expect("a short window keeps the editor visible");
     assert!(harness.editor.imp().source_view.height() >= 120);
     assert!(results.height() > 0);
+}
+
+fn shares(harness: &Harness) -> std::rc::Rc<std::cell::RefCell<Vec<ShareSubject>>> {
+    let heard: std::rc::Rc<std::cell::RefCell<Vec<ShareSubject>>> = std::rc::Rc::default();
+    let sink = heard.clone();
+    harness
+        .editor
+        .connect_share_requested(move |_, subject| sink.borrow_mut().push(subject));
+    heard
+}
+
+#[gtk4::test]
+fn share_query_takes_the_selection_else_the_whole_text() {
+    let harness = editor_with(answering(), "SELECT 1;\nSELECT 2;");
+    let heard = shares(&harness);
+    let buffer = harness.editor.buffer();
+    buffer.select_range(&buffer.iter_at_offset(10), &buffer.iter_at_offset(18));
+
+    harness.editor.share_query();
+    buffer.place_cursor(&buffer.start_iter());
+    harness.editor.share_query();
+
+    let heard = heard.borrow();
+    assert_eq!(
+        heard.iter().map(|subject| subject.sql.as_str()).collect::<Vec<_>>(),
+        ["SELECT 2", "SELECT 1;\nSELECT 2;"]
+    );
+    assert!(
+        heard
+            .iter()
+            .all(|subject| subject.rows.is_none() && subject.title.is_empty())
+    );
+    assert!(heard.iter().all(|subject| subject.dialect.is_some()));
+}
+
+#[gtk4::test]
+fn an_empty_editor_shares_nothing_and_says_so() {
+    let harness = editor_with(answering(), "  \n");
+    let heard = shares(&harness);
+    let toasts = SignalLog::connect(&harness.editor, "toast", |values| {
+        values[1].get::<String>().expect("a message")
+    });
+
+    harness.editor.share_query();
+    harness.editor.share_shown_result();
+
+    assert!(heard.borrow().is_empty());
+    assert_eq!(
+        toasts.take(),
+        [
+            "There is nothing in the editor to share.",
+            "Run a query that returns rows to share its result.",
+        ]
+    );
+}
+
+#[gtk4::test]
+fn share_result_shares_the_rows_and_the_statement_in_front() {
+    let mut runs = Replies::default();
+    runs.always(result_set(3, None, Truncation::Complete));
+    let harness = editor_with(runs, "SELECT n FROM numbers");
+    let heard = shares(&harness);
+    run_and_wait(&harness);
+
+    harness.editor.share_shown_result();
+
+    let heard = heard.borrow();
+    let [subject] = heard.as_slice() else {
+        panic!("one share asked for: {}", heard.len());
+    };
+    assert_eq!(subject.sql, "SELECT n FROM numbers");
+    assert_eq!(subject.title, "Result 1 (3)");
+    assert!(
+        !subject.title.contains("SELECT"),
+        "the title carries the SQL Hide SQL keeps back"
+    );
+    let rows = subject.rows.as_ref().expect("the result's rows");
+    assert_eq!(rows.total(), 3);
+    assert_eq!(rows.columns[0].name, "n");
 }

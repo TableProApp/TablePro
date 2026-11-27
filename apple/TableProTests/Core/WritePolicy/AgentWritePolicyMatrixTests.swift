@@ -189,6 +189,7 @@ extension GlobalStateSuites {
                     connectionId: rig.connection.id,
                     bridge: MCPConnectionBridge(),
                     authPolicy: rig.authPolicy,
+                    chatMode: .agent,
                     sessionId: UUID()
                 ),
                 explicitlyApproved: clicked ? [block.id] : [],

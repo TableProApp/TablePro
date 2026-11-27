@@ -52,7 +52,7 @@ struct BrowseSearchExactCountTests {
         let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .redis), pluginDriver: stub)
         let search = BrowseSearchState(pattern: "  session:* ", typeScope: "hash")
 
-        let count = try await adapter.fetchExactRowCount(table: "db0", browseFilters: search.pluginQueryFilters)
+        let count = try await adapter.fetchExactRowCount(table: "db0", schema: nil, browseFilters: search.pluginQueryFilters)
 
         #expect(count == 3)
         let received = try #require(stub.receivedFilters.first)
@@ -88,7 +88,7 @@ struct BrowseSearchExactCountTests {
         let stub = BrowseCountStubDriver(databaseSize: 1_000)
 
         let count = try await ExactRowCounter.countBrowseSearch(
-            on: adapter(stub), table: "db0", search: BrowseSearchState(pattern: "user:*"), tableSizeLimit: 100_000
+            on: adapter(stub), table: "db0", schema: nil, search: BrowseSearchState(pattern: "user:*"), tableSizeLimit: 100_000
         )
 
         #expect(count == 3)
@@ -104,7 +104,7 @@ struct BrowseSearchExactCountTests {
         let stub = BrowseCountStubDriver(databaseSize: 100_000)
 
         let count = try await ExactRowCounter.countBrowseSearch(
-            on: adapter(stub), table: "db0", search: BrowseSearchState(pattern: "user:*"), tableSizeLimit: 100_000
+            on: adapter(stub), table: "db0", schema: nil, search: BrowseSearchState(pattern: "user:*"), tableSizeLimit: 100_000
         )
 
         #expect(count == nil)
@@ -116,7 +116,7 @@ struct BrowseSearchExactCountTests {
         let stub = BrowseCountStubDriver(databaseSize: nil)
 
         let count = try await ExactRowCounter.countBrowseSearch(
-            on: adapter(stub), table: "db0", search: BrowseSearchState(typeScope: "hash"), tableSizeLimit: 100_000
+            on: adapter(stub), table: "db0", schema: nil, search: BrowseSearchState(typeScope: "hash"), tableSizeLimit: 100_000
         )
 
         #expect(count == nil)

@@ -2,14 +2,6 @@
 //  CompareSyncProfileStorage.swift
 //  TablePro
 //
-//  Named comparison setups, keyed by source scope, target scope, and mode.
-//
-//  The key used to be the pair of connection ids alone, which cannot tell two
-//  databases on one server apart. A profile saved under the old key is read back
-//  and adopted onto whatever database each connection currently points at, which
-//  is the same place it was saved from, so nothing is silently retargeted and
-//  nothing is thrown away.
-//
 
 import Foundation
 import os
@@ -26,8 +18,7 @@ internal struct CompareSyncProfile: Codable, Hashable, Identifiable {
     internal var selectedObjects: [String]
     internal var tableScopes: [String: DataTableScope]
 
-    /// The compared-column exclusions a profile saved before they became per table. Read so a
-    /// saved comparison keeps leaving out the columns it left out, never written back.
+    // Column exclusions saved before they became per table, so an old comparison keeps leaving them out.
     internal var legacyExcludedColumns: Set<String>
 
     internal init(
@@ -87,9 +78,7 @@ internal struct CompareSyncProfile: Codable, Hashable, Identifiable {
         dataOptions = try container.decodeIfPresent(DataCompareOptions.self, forKey: .dataOptions) ?? .default
         selectedObjects = try container.decodeIfPresent([String].self, forKey: .selectedObjects) ?? []
         tableScopes = try container.decodeIfPresent([String: DataTableScope].self, forKey: .tableScopes) ?? [:]
-        /// Kept on the profile once it has been read, because saving or deleting any comparison
-        /// rewrites the whole stored array, and a profile still waiting to be loaded would lose the
-        /// columns it was told to leave out.
+        // Carried once read: every save rewrites the whole array, and a profile not yet loaded would lose them.
         if let carried = try container.decodeIfPresent(Set<String>.self, forKey: .legacyExcludedColumns) {
             legacyExcludedColumns = carried
             return
@@ -132,8 +121,10 @@ internal final class CompareSyncProfileStorage {
     internal static let shared = CompareSyncProfileStorage()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "CompareSyncProfileStorage")
-    private static let defaultsKey = "compareSyncProfiles"
-    private static let lastSetupKey = "compareSyncLastSetup"
+    private static let profilesKey = JSONDefaultsKey<[CompareSyncProfile]>("compareSyncProfiles")
+    // The same entry as written when a profile was keyed by the connection pair alone.
+    private static let legacyProfilesKey = JSONDefaultsKey<[LegacyProfile]>("compareSyncProfiles")
+    private static let lastSetupKey = JSONDefaultsKey<CompareSyncProfile>("compareSyncLastSetup")
 
     private let defaults: UserDefaults
 
@@ -143,37 +134,22 @@ internal final class CompareSyncProfileStorage {
 
     // MARK: - Last setup
 
-    /// The pair, the mode and the options the window last held, so reopening it lands on the same
-    /// comparison rather than on two empty pickers. It carries no included objects: what to change
-    /// is a decision about one comparison's results, and re-arming it against a report that has not
-    /// run yet would put a stale choice behind an Apply button.
+    // Holds no included objects: re-arming them before the report runs would put a stale choice behind Apply.
     internal func lastSetup() -> CompareSyncProfile? {
-        guard let data = defaults.data(forKey: Self.lastSetupKey) else { return nil }
-        do {
-            return try JSONDecoder().decode(CompareSyncProfile.self, from: data)
-        } catch {
-            Self.logger.error("Failed to decode last setup: \(error.publicLogShape, privacy: .public)")
-            return nil
-        }
+        defaults.read(Self.lastSetupKey).value
     }
 
     internal func rememberSetup(_ profile: CompareSyncProfile) {
-        do {
-            defaults.set(try JSONEncoder().encode(profile), forKey: Self.lastSetupKey)
-        } catch {
-            Self.logger.error("Failed to persist last setup: \(error.publicLogShape, privacy: .public)")
-        }
+        try? defaults.write(profile, to: Self.lastSetupKey)
     }
 
     // MARK: - Saved comparisons
 
     internal func allProfiles() -> [CompareSyncProfile] {
-        guard let data = defaults.data(forKey: Self.defaultsKey) else { return [] }
-        do {
-            return try JSONDecoder().decode([CompareSyncProfile].self, from: data)
-        } catch {
-            Self.logger.error("Failed to decode profiles: \(error.publicLogShape, privacy: .public)")
-            return migrateLegacyProfiles(from: data)
+        switch defaults.read(Self.profilesKey) {
+        case .missing: return []
+        case .value(let profiles): return profiles
+        case .unreadable: return migrateLegacyProfiles()
         }
     }
 
@@ -192,21 +168,15 @@ internal final class CompareSyncProfileStorage {
     }
 
     private func persist(_ profiles: [CompareSyncProfile]) {
-        do {
-            defaults.set(try JSONEncoder().encode(profiles), forKey: Self.defaultsKey)
-        } catch {
-            Self.logger.error("Failed to persist profiles: \(error.publicLogShape, privacy: .public)")
-        }
+        try? defaults.write(profiles, to: Self.profilesKey)
     }
 
-    /// A profile written before an endpoint carried a database is adopted onto whichever database
-    /// its connections currently point at, which is where it was saved from. Discarding them
-    /// instead would lose setups the user had already named.
-    private func migrateLegacyProfiles(from data: Data) -> [CompareSyncProfile] {
-        guard let legacy = try? JSONDecoder().decode([LegacyProfile].self, from: data) else { return [] }
+    // Adopted onto the database each connection points at now, which is where it was saved from.
+    private func migrateLegacyProfiles() -> [CompareSyncProfile] {
+        guard let legacy = defaults.read(Self.legacyProfilesKey).value else { return [] }
         let connections = ConnectionStorage.shared.loadConnections()
         let databaseByConnection = Dictionary(
-            connections.map { ($0.id, $0.database ?? "") }, uniquingKeysWith: { first, _ in first }
+            connections.map { ($0.id, $0.database) }, uniquingKeysWith: { first, _ in first }
         )
         let migrated = legacy.map { entry in
             CompareSyncProfile(
@@ -244,8 +214,7 @@ internal final class CompareSyncProfileStorage {
         let structureOptions: StructureCompareOptions
         let dataOptions: DataCompareOptions
         let selectedTables: [String]
-        /// The compared-column exclusions this shape stored inside its options, read here because
-        /// `DataCompareOptions` no longer carries them and the migration is the last chance to.
+        // Stored inside the options, which no longer carry it, so the migration is the last chance to read it.
         let excludedColumns: Set<String>
 
         private enum CodingKeys: String, CodingKey {

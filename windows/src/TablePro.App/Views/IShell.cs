@@ -1,3 +1,4 @@
+using TablePro.App.Model;
 using TablePro.Interop;
 
 namespace TablePro.App.Views;
@@ -5,6 +6,9 @@ namespace TablePro.App.Views;
 internal interface IShell
 {
     void NewConnection();
+
+    // A new connection the form opens on, filled from a pasted URL.
+    void NewConnection(ConnectionDraft draft);
 
     void EditConnection(SavedConnection connection);
 
@@ -14,7 +18,12 @@ internal interface IShell
 
     Task ImportAsync();
 
+    Task ImportFromAppAsync();
+
     Task OpenSampleAsync();
 
     void ShowSettings();
+
+    // Asks what a close asks, then has Windows install the update the check found and restart the app.
+    Task InstallUpdateAsync();
 }

@@ -3,13 +3,14 @@ generate:
   - client
 accessModifier: public
 namingStrategy: idiomatic
-# The operations the app calls, and the schemas they reference. A new call adds its operation id here.
+# The operations the app calls, and the schemas they reference. A new call adds its operation id here. The account's
+# devices and entitlement are the core's (core/crates/account); get-me stays for Team Library's memberships.
 filter:
   operations:
     - get-me
-    - list-devices
-    - register-device
-    - delete-device
-    - issue-entitlement
     - list-library-changes
     - push-library-changes
+    - get-share-limits
+    - list-shares
+    - delete-share
+    - get-shared

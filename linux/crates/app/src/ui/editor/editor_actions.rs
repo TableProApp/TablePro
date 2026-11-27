@@ -32,6 +32,8 @@ impl SqlEditor {
             entry("run-statement", SqlEditor::run_at_cursor),
             entry("cancel", SqlEditor::close_popup_or_stop),
             entry("format", SqlEditor::format),
+            entry("share-query", SqlEditor::share_query),
+            entry("share-result", SqlEditor::share_shown_result),
             entry("toggle-comment", SqlEditor::toggle_comment),
             entry("find", |editor| editor.imp().find_bar.open(false)),
             entry("find-replace", |editor| editor.imp().find_bar.open(true)),

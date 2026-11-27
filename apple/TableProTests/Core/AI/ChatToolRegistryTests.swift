@@ -33,7 +33,8 @@ struct ChatToolRegistryTests {
     private static let stubContext = ChatToolContext(
         connectionId: nil,
         bridge: MCPConnectionBridge(),
-        authPolicy: MCPAuthPolicy()
+        authPolicy: MCPAuthPolicy(),
+        chatMode: .agent
     )
 
     @Test("Registered tool can be looked up by name")

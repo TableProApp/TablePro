@@ -521,6 +521,148 @@ extension SQLSessionStateClassifier {
     }
 }
 
+// MARK: - Current database
+
+extension SQLSessionStateClassifier {
+    // The MySQL statements that cannot leave a session in another database: reads and writes of rows, definitions, a
+    // plain variable assignment, transaction control, locks, table maintenance and privileges. Everything else may: a
+    // `USE`, `SET STATEMENT ... FOR`, `HANDLER`, `LOAD`, `DO`, code run by `EXECUTE` or `CALL`, a block, an unknown word.
+    private static let mySQLStayHeads: Set<String> = [
+        "SELECT", "WITH", "TABLE", "VALUES", "INSERT", "REPLACE", "UPDATE", "DELETE", "SHOW", "CREATE", "ALTER", "DROP",
+        "TRUNCATE", "RENAME", "SET", "START", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE", "XA", "LOCK", "UNLOCK",
+        "ANALYZE", "OPTIMIZE", "CHECK", "CHECKSUM", "REPAIR", "GRANT", "REVOKE", "FLUSH", "KILL", "HELP",
+    ]
+    private static let mySQLExplainHeads: Set<String> = ["EXPLAIN", "DESCRIBE", "DESC"]
+    private static let mySQLExplainModifiers: Set<String> = [
+        "ANALYZE", "EXTENDED", "PARTITIONS", "FORMAT", "JSON", "TREE", "TRADITIONAL",
+    ]
+    // An explained subject that opens a statement of its own rather than naming a table or a query.
+    private static let mySQLStatementWords: Set<String> = ["USE", "CALL", "EXECUTE", "DO", "HANDLER", "LOAD", "PREPARE"]
+
+    // T-SQL runs a batch's statements with no `;` between them, so these count anywhere in one as code. A batch that
+    // opens with a word not listed below calls a procedure by its name, or is read as one.
+    private static let sqlServerMoveWords: Set<String> = ["USE", "EXEC", "EXECUTE", "SP_EXECUTESQL"]
+    private static let sqlServerStayHeads: Set<String> = [
+        "SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE", "CREATE", "ALTER", "DROP", "TRUNCATE", "DECLARE", "SET",
+        "BEGIN", "COMMIT", "ROLLBACK", "SAVE", "PRINT", "IF", "ELSE", "WHILE", "RETURN", "GRANT", "REVOKE", "DENY",
+        "BACKUP", "RESTORE", "DBCC", "RAISERROR", "THROW", "WAITFOR", "OPEN", "FETCH", "CLOSE", "DEALLOCATE", "BULK",
+        "CHECKPOINT", "KILL", "GOTO", "BREAK", "CONTINUE", "END", "ENABLE", "DISABLE", "REVERT", "RECONFIGURE",
+    ]
+
+    // Whether the statements may leave the session in another database, which a host that pins its own driver cannot
+    // see. Only MySQL's and SQL Server's sessions move, and only a statement known to stay is ruled out. Text it cannot
+    // read whole, too long, with more executable-comment versions than the reader takes, or with a T-SQL move word
+    // behind a literal or comment that never closes, is not ruled out.
+    public static func mayChangeDatabase(
+        ofStatements statements: [String],
+        dialect: SQLSessionDialect,
+        grammar: SQLLexicalGrammar
+    ) -> Bool {
+        guard dialect == .mySQL || dialect == .sqlServer else { return false }
+        return statements.contains { text in
+            guard (text as NSString).length <= classifiedPrefixLength else { return true }
+            if dialect == .sqlServer {
+                // T-SQL reads a word glued to a number on its own, so `SELECT 1USE x` runs a USE: only its tokens say.
+                if holdsWord(of: sqlServerMoveWords, in: text), leavesSpanOpen(text, grammar: grammar) { return true }
+            } else if opensWithStayHead(text) {
+                return false
+            }
+            return SQLStatementClassifier.statements(of: text, grammar: grammar).contains { statement in
+                guard let readings = SQLExecutableCommentReadings.texts(of: statement, grammar: grammar) else { return true }
+                return Array(readings).contains { reading in
+                    SQLStatementClassifier.runnableStatements(of: reading, grammar: grammar).contains {
+                        mayMove($0, dialect: dialect, grammar: grammar)
+                    }
+                }
+            }
+        }
+    }
+
+    // One plain MySQL statement whose first word is known to stay, read without the grammar: no `;`, comment or
+    // backslash can hide a second statement. SET, BEGIN and the explain words need the word after them, so they take
+    // the full read, and so does a word MySQL reads on into a digit, `$` or a letter outside ASCII, as in `SELECT1`.
+    private static func opensWithStayHead(_ text: String) -> Bool {
+        guard !text.contains(";"), !text.contains("/*"), !text.contains("--"), !text.contains("#"), !text.contains("\\")
+        else { return false }
+        let opening = text.drop { $0.isWhitespace || $0 == "(" }
+        let head = opening.prefix { $0.isASCII && ($0.isLetter || $0 == "_") }
+        if let next = opening.dropFirst(head.count).first, next.isLetter || next.isNumber || next == "$" { return false }
+        let word = head.uppercased()
+        guard word != "SET", word != "BEGIN" else { return false }
+        return mySQLStayHeads.contains(word)
+    }
+
+    // The mysql client's `\u name` is a `USE`, should a driver pass it through. A label opens a block.
+    private static func mayMove(_ piece: String, dialect: SQLSessionDialect, grammar: SQLLexicalGrammar) -> Bool {
+        if piece.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("\\") { return true }
+        let code = StatementCode(piece, grammar: grammar)
+        guard let start = code.tokens.firstIndex(where: { $0.kind != .open }) else { return false }
+        guard let head = code.word(at: start), !code.isSymbol(colon, at: start + 1) else { return true }
+        guard dialect == .mySQL else {
+            return !sqlServerStayHeads.contains(head)
+                || code.tokens.contains { $0.word.map(sqlServerMoveWords.contains) == true }
+        }
+        switch head {
+        case "SET":
+            return code.word(at: start + 1) == "STATEMENT"
+        case "BEGIN":
+            return code.word(at: start + 1) == "NOT"
+        default:
+            guard mySQLExplainHeads.contains(head) else { return !mySQLStayHeads.contains(head) }
+            return explainedSubjectMoves(code, after: start)
+        }
+    }
+
+    // `EXPLAIN FORMAT=JSON SELECT ...` reads past its modifiers to the subject, and `DESCRIBE orders` names a table.
+    private static func explainedSubjectMoves(_ code: StatementCode, after start: Int) -> Bool {
+        var index = start + 1
+        while code.word(at: index).map(mySQLExplainModifiers.contains) == true || code.isSymbol(equals, at: index) {
+            index += 1
+        }
+        return code.word(at: index).map(mySQLStatementWords.contains) == true
+    }
+
+    // Runs of letters and `_`, so a number glued to a word, as in `1USE`, cannot hide it.
+    private static func holdsWord(of words: Set<String>, in text: String) -> Bool {
+        let units = text as NSString
+        let longest = words.map(\.utf16.count).max() ?? 0
+        var start = 0
+        var index = 0
+        while index <= units.length {
+            if index < units.length, isWordUnit(units.character(at: index)) {
+                index += 1
+                continue
+            }
+            let length = index - start
+            if length >= 2, length <= longest,
+               words.contains(units.substring(with: NSRange(location: start, length: length)).uppercased()) {
+                return true
+            }
+            index += 1
+            start = index
+        }
+        return false
+    }
+
+    private static func isWordUnit(_ unit: UInt16) -> Bool {
+        (0x41...0x5A).contains(unit) || (0x61...0x7A).contains(unit) || unit == 0x5F
+    }
+
+    private static func leavesSpanOpen(_ text: String, grammar: SQLLexicalGrammar) -> Bool {
+        let units = text as NSString
+        var index = 0
+        while index < units.length {
+            guard let span = SQLNonCodeSpan.span(at: index, in: units, grammar: grammar) else {
+                index += 1
+                continue
+            }
+            if !span.isTerminated { return true }
+            index = max(span.end, index + 1)
+        }
+        return false
+    }
+}
+
 // MARK: - Shared readings
 
 extension SQLSessionStateClassifier {

@@ -9,6 +9,22 @@ public sealed class StoreTests : IDisposable
     private string File(string name) => Path.Combine(_directory, name);
 
     [Fact]
+    public void TheActiveProjectIsKeptAndAFileWithoutOneShowsAllConnections()
+    {
+        var path = File("settings.json");
+        Assert.Null(new SettingsStore(path).Load().ActiveProjectId);
+        var project = Guid.NewGuid();
+
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { ActiveProjectId = project });
+
+        Assert.Equal(project, store.Load().ActiveProjectId);
+        Assert.Contains("\"activeProjectId\"", System.IO.File.ReadAllText(path), StringComparison.Ordinal);
+        store.Save(store.Load() with { ActiveProjectId = null });
+        Assert.Null(store.Load().ActiveProjectId);
+    }
+
+    [Fact]
     public void SettingsComeBackAsSaved()
     {
         var store = new SettingsStore(File("settings.json"));
@@ -17,6 +33,60 @@ public sealed class StoreTests : IDisposable
         store.Save(saved);
 
         Assert.Equal(saved, store.Load());
+    }
+
+    [Fact]
+    public void TheCountThresholdComesBackAsSavedAndAFileWithoutOneCountsBelowAHundredThousand()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark", "pageSize": 500 }""");
+        Assert.Equal(100_000, new SettingsStore(path).Load().CountRowsIfEstimateLessThan);
+
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { CountRowsIfEstimateLessThan = AppSettings.AlwaysCount });
+        Assert.Equal(AppSettings.AlwaysCount, store.Load().CountRowsIfEstimateLessThan);
+
+        System.IO.File.WriteAllText(path, """{ "countRowsIfEstimateLessThan": -5 }""");
+        Assert.Equal(0, new SettingsStore(path).Load().CountRowsIfEstimateLessThan);
+    }
+
+    [Fact]
+    public void ResultsKeptPerRunComeBackAsSavedAndAFileWithoutThemKeepsEveryResult()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark" }""");
+        Assert.Equal(0, new SettingsStore(path).Load().ResultSetsKeptPerRun);
+
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { ResultSetsKeptPerRun = 200 });
+        Assert.Equal(200, store.Load().ResultSetsKeptPerRun);
+        Assert.Contains("\"resultSetsKeptPerRun\": 200", System.IO.File.ReadAllText(path), StringComparison.Ordinal);
+
+        System.IO.File.WriteAllText(path, """{ "resultSetsKeptPerRun": -3 }""");
+        Assert.Equal(0, new SettingsStore(path).Load().ResultSetsKeptPerRun);
+    }
+
+    [Fact]
+    public void TheSetupGuideStartsUnseenOnTableProKeysAndBothComeBackAsSaved()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark" }""");
+        var before = new SettingsStore(path).Load();
+        Assert.False(before.SetupGuideSeen);
+        Assert.Null(before.ShortcutPreset);
+
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { SetupGuideSeen = true, ShortcutPreset = " dbeaver " });
+        var after = store.Load();
+
+        Assert.True(after.SetupGuideSeen);
+        Assert.Equal("dbeaver", after.ShortcutPreset);
+        var json = System.IO.File.ReadAllText(path);
+        Assert.Contains("\"setupGuideSeen\": true", json, StringComparison.Ordinal);
+        Assert.Contains("\"shortcutPreset\": \"dbeaver\"", json, StringComparison.Ordinal);
+
+        System.IO.File.WriteAllText(path, """{ "shortcutPreset": "   " }""");
+        Assert.Null(new SettingsStore(path).Load().ShortcutPreset);
     }
 
     [Fact]
@@ -58,6 +128,170 @@ public sealed class StoreTests : IDisposable
         Assert.Equal(36, settings.EditorFontSize);
         Assert.Equal(0, settings.QueryTimeoutSeconds);
         Assert.Equal(10, settings.PageSize);
+    }
+
+    [Fact]
+    public void DisplayAndHistorySettingsComeBackAsSavedAndStartAsMacOSStartsThem()
+    {
+        var path = File("settings.json");
+        var fresh = new SettingsStore(path).Load();
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings
+        {
+            EditorFontFamily = "Consolas",
+            GridFontFamily = "Segoe UI",
+            GridFontSize = 12,
+            NullDisplay = "(null)",
+            HistoryRetentionDays = 30,
+            HistoryMaxEntries = 1_000,
+        });
+        var saved = store.Load();
+
+        Assert.Null(fresh.EditorFontFamily);
+        Assert.Null(fresh.GridFontFamily);
+        Assert.Equal(14, fresh.GridFontSize);
+        Assert.Equal("NULL", fresh.NullDisplay);
+        Assert.Equal(90, fresh.HistoryRetentionDays);
+        Assert.Equal(10_000, fresh.HistoryMaxEntries);
+        Assert.Equal(("Consolas", "Segoe UI", 12.0), (saved.EditorFontFamily, saved.GridFontFamily, saved.GridFontSize));
+        Assert.Equal(("(null)", 30, 1_000), (saved.NullDisplay, saved.HistoryRetentionDays, saved.HistoryMaxEntries));
+    }
+
+    [Fact]
+    public void WrappingTextInCellsStartsOffAndComesBackAsSaved()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark" }""");
+        var store = new SettingsStore(path);
+        var older = store.Load();
+
+        store.Save(older with { GridWrapText = true });
+
+        Assert.False(new AppSettings().GridWrapText);
+        Assert.False(older.GridWrapText);
+        Assert.True(store.Load().GridWrapText);
+        Assert.False(store.Load().WordWrap);
+    }
+
+    [Fact]
+    public void ATabsWrapChoiceComesBackAndASessionWrittenBeforeItHasNone()
+    {
+        var path = File("session.json");
+        var store = new SessionStore(path);
+        store.Save(new SessionState
+        {
+            Connections =
+            [
+                new SessionConnection
+                {
+                    FilePath = @"C:\data\app.sqlite",
+                    Name = "app",
+                    EngineId = "sqlite",
+                    Tabs =
+                    [
+                        new SessionTab { Kind = TabKind.Query, Title = "Query 1", Sql = "SELECT 1", WrapText = true },
+                        new SessionTab { Kind = TabKind.Table, Title = "orders", Table = "orders", WrapText = false },
+                        new SessionTab { Kind = TabKind.Table, Title = "people", Table = "people" },
+                    ],
+                },
+            ],
+        });
+
+        var tabs = store.Load().Connections[0].Tabs;
+
+        Assert.True(tabs[0].WrapText);
+        Assert.False(tabs[1].WrapText);
+        Assert.Null(tabs[2].WrapText);
+        Assert.Equal(3, System.IO.File.ReadAllText(path).Split("wrapText").Length);
+    }
+
+    [Fact]
+    public void TheEditorSettingsStartAsMacOSStartsThemAndComeBackAsSaved()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark" }""");
+        var older = new SettingsStore(path).Load();
+        var store = new SettingsStore(path);
+        var saved = new AppSettings
+        {
+            WordWrap = true,
+            HighlightCurrentStatement = false,
+            CodeFolding = false,
+            VimMode = true,
+            EditorLightScheme = "tablepro.github-light",
+            EditorDarkScheme = "tablepro.dracula",
+        };
+
+        store.Save(saved);
+
+        foreach (var fresh in new[] { new AppSettings(), older })
+        {
+            Assert.False(fresh.WordWrap);
+            Assert.True(fresh.HighlightCurrentStatement);
+            Assert.True(fresh.CodeFolding);
+            Assert.False(fresh.VimMode);
+            Assert.Null(fresh.EditorLightScheme);
+            Assert.Null(fresh.EditorDarkScheme);
+        }
+
+        Assert.Equal(saved, store.Load());
+        var json = System.IO.File.ReadAllText(path);
+        Assert.Contains("\"wordWrap\": true", json, StringComparison.Ordinal);
+        Assert.Contains("\"vimMode\": true", json, StringComparison.Ordinal);
+        Assert.Contains("\"editorDarkScheme\": \"tablepro.dracula\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ABlankColorSchemeKeepsTheDefaultColorsAndANamedOneIsTrimmed()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "editorLightScheme": " ", "editorDarkScheme": " tablepro.dracula " }""");
+
+        var settings = new SettingsStore(path).Load();
+
+        Assert.Null(settings.EditorLightScheme);
+        Assert.Equal("tablepro.dracula", settings.EditorDarkScheme);
+        Assert.Null(new AppSettings { EditorDarkScheme = string.Empty }.Normalized().EditorDarkScheme);
+    }
+
+    [Fact]
+    public void ANullTextPastTwentyCharactersIsCutAndAnEmptyOneReadsAsNull()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(
+            path,
+            """{ "nullDisplay": "", "gridFontSize": 99, "editorFontFamily": "  ", "historyRetentionDays": -1 }""");
+
+        var settings = new SettingsStore(path).Load();
+        var cut = new AppSettings { NullDisplay = new string('x', 30) }.Normalized();
+
+        Assert.Equal("NULL", settings.NullDisplay);
+        Assert.Equal(36, settings.GridFontSize);
+        Assert.Null(settings.EditorFontFamily);
+        Assert.Equal(0, settings.HistoryRetentionDays);
+        Assert.Equal(20, cut.NullDisplay.Length);
+    }
+
+    // The tablepro command reads these two names from the file (core/crates/ffi/src/command_line/app_files.rs).
+    [Fact]
+    public void TheMcpServerStartsOffOnItsPortAndKeepsTheNamesTheCommandReads()
+    {
+        var path = File("settings.json");
+        var store = new SettingsStore(path);
+        var defaults = store.Load();
+
+        store.Save(new AppSettings { McpServerEnabled = true, McpServerPort = 24000 });
+        var written = System.IO.File.ReadAllText(path);
+        System.IO.File.WriteAllText(path, """{ "mcpServerPort": 80 }""");
+        var low = store.Load();
+        System.IO.File.WriteAllText(path, """{ "mcpServerPort": 70000 }""");
+
+        Assert.False(defaults.McpServerEnabled);
+        Assert.Equal(23508, defaults.McpServerPort);
+        Assert.Contains("\"mcpServerEnabled\": true", written, StringComparison.Ordinal);
+        Assert.Contains("\"mcpServerPort\": 24000", written, StringComparison.Ordinal);
+        Assert.Equal(1024, low.McpServerPort);
+        Assert.Equal(65535, store.Load().McpServerPort);
     }
 
     [Fact]

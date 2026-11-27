@@ -47,10 +47,15 @@ internal struct SourceObjectSyncBuilder {
                 for: targetDatabaseType, session: targetDriver.sessionLexicalState
             ).execution
         )
-        self.changeBuilder = SchemaSyncScriptBuilder(targetDriver: targetDriver, targetDatabaseType: targetDatabaseType)
+        self.changeBuilder = SchemaSyncScriptBuilder(
+            targetDriver: targetDriver, targetDatabaseType: targetDatabaseType, targetSchema: indexSchema
+        )
     }
 
     internal func build(for result: CompareObjectResult, action: TableSyncAction) throws -> [SyncStatement] {
+        if action != .skip, let refusal = result.scriptRefusal {
+            throw CompareSyncError.unsupportedOperation(refusal)
+        }
         switch action {
         case .skip:
             return []

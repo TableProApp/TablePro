@@ -33,6 +33,8 @@ public final class TeradataConnection: @unchecked Sendable {
     private var _sessionMode: TeradataTransactionMode
     private var _sessionModeSource: TeradataSessionModeSource
     private var _transaction: TeradataTransactionTracker
+    // Nil until a switch the connection made itself, and again once a request of the user's may have moved it.
+    private var _defaultDatabase: String?
 
     // 3110: "The transaction was aborted by the user."
     public static let userAbortCode = 3_110
@@ -170,6 +172,7 @@ public final class TeradataConnection: @unchecked Sendable {
             _sessionMode = mode
             _sessionModeSource = source
             _transaction = TeradataTransactionTracker(mode: mode)
+            _defaultDatabase = config.database.flatMap { $0.isEmpty ? nil : $0 }
         }
     }
 
@@ -223,10 +226,18 @@ public final class TeradataConnection: @unchecked Sendable {
 
     // After DATABASE inside a transaction only the closing statement is legal (ANSI counts it as DDL; Teradata mode
     // is not documented either way), so a switch never joins an open one, and in ANSI it is committed at once.
+    // The host re-sends the switch before every statement, so one to where the session already is sends nothing.
     public func switchDatabase(to database: String) throws {
-        let (mode, state) = socketLock.withLock { (_sessionMode, _transaction.state) }
-        guard state != .open else { throw TeradataWireError.openTransactionBlocksDatabaseSwitch }
+        let (mode, state, current) = socketLock.withLock { (_sessionMode, _transaction.state, _defaultDatabase) }
+        guard state != .open else {
+            // Teradata compares database names without regard to case.
+            guard let current, current.caseInsensitiveCompare(database) == .orderedSame else {
+                throw TeradataWireError.openTransactionBlocksDatabaseSwitch
+            }
+            return
+        }
         _ = try execute(TeradataSchemaQueries.setDatabase(database))
+        socketLock.withLock { _defaultDatabase = database }
         if mode == .ansi {
             _ = try execute(TeradataTransactionSQL.commit(.ansi))
         }
@@ -280,6 +291,7 @@ public final class TeradataConnection: @unchecked Sendable {
     ) throws -> Int {
         guard socket != nil else { throw TeradataWireError.connectionFailed("not connected") }
         let kinds = TeradataStatementKind.kinds(in: sql)
+        let movesDatabase = TeradataStatementKind.mayMoveDefaultDatabase(sql)
         let requestNumber = nextRequest()
         let body = TeradataMessages.optionsParcel(returnStatementInfo: false).encoded()
             + TeradataMessages.requestParcel(sql: sql).encoded()
@@ -303,7 +315,7 @@ public final class TeradataConnection: @unchecked Sendable {
         case .refused(let error):
             guard case .server(let code, _)? = error as? TeradataWireError else {
                 // Refused by its reader rather than the server, so the request ran.
-                socketLock.withLock { _transaction.ran(kinds) }
+                recordRan(kinds, movesDatabase: movesDatabase)
                 throw error
             }
             let abortRolledBack = socketLock.withLock { () -> Bool in
@@ -316,12 +328,19 @@ public final class TeradataConnection: @unchecked Sendable {
             }
             throw error
         case .outputEnded where stopped:
-            socketLock.withLock { _transaction.ran(kinds) }
+            recordRan(kinds, movesDatabase: movesDatabase)
             throw TeradataWireError.cancelled
         case .answered, .outputEnded:
-            socketLock.withLock { _transaction.ran(kinds) }
+            recordRan(kinds, movesDatabase: movesDatabase)
             try reader.finish(onColumns: onColumns)
             return reader.activityCount
+        }
+    }
+
+    private func recordRan(_ kinds: [TeradataStatementKind], movesDatabase: Bool) {
+        socketLock.withLock {
+            _transaction.ran(kinds)
+            if movesDatabase { _defaultDatabase = nil }
         }
     }
 

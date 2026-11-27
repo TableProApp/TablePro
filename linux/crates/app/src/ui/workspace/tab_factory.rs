@@ -101,7 +101,21 @@ impl TabFactory {
                 draft,
                 file,
                 database,
-            } => self.editor(id, initial_query, draft, file, database),
+                name,
+                ordinal,
+                untitled,
+            } => self.editor(
+                id,
+                EditorOpening {
+                    initial_query,
+                    draft,
+                    file,
+                    database,
+                    name,
+                    ordinal,
+                    untitled,
+                },
+            ),
             TabSpec::Table { table, page, filter } => self.table(
                 id,
                 TableOpening {
@@ -129,7 +143,7 @@ impl TabFactory {
     /// The overview's new-tab button needs its page back at once.
     pub(super) fn create_editor(&self) -> adw::TabPage {
         let id = Uuid::new_v4();
-        let slot = self.editor(id, None, None, None, None);
+        let slot = self.editor(id, EditorOpening::default());
         self.insert(id, slot)
     }
 
@@ -163,17 +177,19 @@ impl TabFactory {
         page
     }
 
-    fn editor(
-        &self,
-        id: Uuid,
-        initial_query: Option<String>,
-        draft: Option<DraftId>,
-        file: Option<EditorFileRecord>,
-        database: Option<String>,
-    ) -> WorkspaceTab {
+    fn editor(&self, id: Uuid, opening: EditorOpening) -> WorkspaceTab {
         let parts = &self.parts;
-        // Such a tab shows the editor's sample query, which names nothing.
-        let opened_empty = initial_query.is_none();
+        let EditorOpening {
+            initial_query,
+            draft,
+            file,
+            database,
+            name,
+            ordinal,
+            untitled,
+        } = opening;
+        // Such a tab shows the editor's sample query, which names nothing, and a restored one shows it again.
+        let opened_empty = initial_query.is_none() || untitled;
         let editor = SqlEditor::new(SqlEditorInit {
             initial_query,
             settings: parts.settings.clone(),
@@ -203,13 +219,16 @@ impl TabFactory {
         if let Some(file) = file {
             editor.restore_file(gio::File::for_uri(&file.uri), file.modified);
         }
-        let ordinal = self.free_ordinal();
+        let ordinal = ordinal
+            .filter(|kept| !self.ordinal_taken(*kept))
+            .unwrap_or_else(|| self.free_ordinal());
         let page = self.append(&editor, id, None);
         let label = match (opened_empty, editor.file()) {
             (_, Some(file)) => EditorLabel::file(&file),
             (true, None) => EditorLabel::Untitled(ordinal),
             (false, None) => EditorPreview::read(&editor.buffer()).label(ordinal),
         };
+        let name = name.filter(|_| editor.file().is_none());
         let draft = draft.unwrap_or_else(|| {
             // Text a new tab opens with is written even if the user
             // never types in it.
@@ -223,6 +242,7 @@ impl TabFactory {
             draft,
             ordinal,
             label,
+            name,
         })
     }
 
@@ -375,20 +395,40 @@ impl TabFactory {
 
     /// The lowest number no open editor tab has, so two never share one.
     fn free_ordinal(&self) -> usize {
-        let tabs = self.parts.tabs.borrow();
-        let taken: HashSet<usize> = tabs
-            .values()
-            .filter_map(|tab| match tab {
-                WorkspaceTab::Editor(slot) => Some(slot.ordinal),
-                _ => None,
-            })
-            .collect();
+        let taken = self.taken_ordinals();
         let mut ordinal = 1;
         while taken.contains(&ordinal) {
             ordinal += 1;
         }
         ordinal
     }
+
+    fn ordinal_taken(&self, ordinal: usize) -> bool {
+        self.taken_ordinals().contains(&ordinal)
+    }
+
+    fn taken_ordinals(&self) -> HashSet<usize> {
+        self.parts
+            .tabs
+            .borrow()
+            .values()
+            .filter_map(|tab| match tab {
+                WorkspaceTab::Editor(slot) => Some(slot.ordinal),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+#[derive(Default)]
+struct EditorOpening {
+    initial_query: Option<String>,
+    draft: Option<DraftId>,
+    file: Option<EditorFileRecord>,
+    database: Option<String>,
+    name: Option<String>,
+    ordinal: Option<usize>,
+    untitled: bool,
 }
 
 /// What a diagram tab opens on.
@@ -501,6 +541,13 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
             offer: Box::new(offer),
         });
     });
+    let share = input.clone();
+    browse.connect_share_requested(move |_, subject| {
+        share.deliver(WorkspaceInput::Share {
+            tab: Some(tab_id),
+            subject: Box::new(subject),
+        });
+    });
     let alert = input.clone();
     browse.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
     let toast = input.clone();
@@ -573,6 +620,13 @@ pub(super) fn connect_editor(
         export.deliver(WorkspaceInput::ExportResults {
             tab: tab_id,
             offer: Box::new(offer),
+        });
+    });
+    let share = input.clone();
+    editor.connect_share_requested(move |_, subject| {
+        share.deliver(WorkspaceInput::Share {
+            tab: Some(tab_id),
+            subject: Box::new(subject),
         });
     });
     // The overlay is an ancestor of the editor, so a strong capture

@@ -18,7 +18,6 @@ private final class SeedFixture {
         coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         let tab = QueryTab(title: "Query 1", query: "SELECT 3 AS third_col;", tabType: .query)
@@ -81,7 +80,6 @@ struct SeedBufferFromErrorResultTests {
 
         #expect(model.columns.isEmpty)
         #expect(model.rowCount == 0)
-        #expect(mount.changes.contains(.columnsChanged))
         #expect(mount.changes.last == .reload)
         withExtendedLifetime(mount) {}
     }

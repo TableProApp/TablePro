@@ -72,9 +72,9 @@ extension DamengPluginDriver {
         }
     }
 
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
         guard !definition.columns.isEmpty else { return nil }
-        let table = qualifiedName(schema: nil, object: definition.tableName)
+        let table = qualifiedName(schema: schema, object: definition.tableName)
         let primaryKeys = definition.columns.filter(\.isPrimaryKey)
         let inlinePrimaryKey = primaryKeys.count == 1
         var definitions = definition.columns.map { columnDefinition($0, inlinePrimaryKey: inlinePrimaryKey) }
@@ -88,8 +88,7 @@ extension DamengPluginDriver {
             guard let comment = column.comment, !comment.isEmpty else { return nil }
             return "COMMENT ON COLUMN \(table).\(quoteIdentifier(column.name)) IS \(stringLiteral(comment))"
         }
-        let statements = [createTable] + indexes + comments
-        return statements.joined(separator: ";\n") + ";"
+        return [createTable] + indexes + comments
     }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
@@ -104,16 +103,17 @@ extension DamengPluginDriver {
         foreignKeyDefinition(fk)
     }
 
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(qualifiedName(schema: nil, object: table)) ADD \(columnDefinition(column, inlinePrimaryKey: false))"
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
+        "ALTER TABLE \(qualifiedName(schema: schema, object: table)) ADD \(columnDefinition(column, inlinePrimaryKey: false))"
     }
 
     func generateModifyColumnSQL(
         table: String,
+        schema: String?,
         oldColumn: PluginColumnDefinition,
         newColumn: PluginColumnDefinition
     ) -> String? {
-        let qualifiedTable = qualifiedName(schema: nil, object: table)
+        let qualifiedTable = qualifiedName(schema: schema, object: table)
         var statements: [String] = []
         if oldColumn.name != newColumn.name {
             statements.append(
@@ -131,33 +131,34 @@ extension DamengPluginDriver {
         return statements.isEmpty ? nil : statements.joined(separator: ";\n")
     }
 
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(qualifiedName(schema: nil, object: table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
+        "ALTER TABLE \(qualifiedName(schema: schema, object: table)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
-    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        indexDefinition(index, table: qualifiedName(schema: nil, object: table))
+    func generateAddIndexSQL(table: String, schema: String?, index: PluginIndexDefinition) -> String? {
+        indexDefinition(index, table: qualifiedName(schema: schema, object: table))
     }
 
-    func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(qualifiedName(schema: nil, object: indexName))"
+    func generateDropIndexSQL(table: String, schema: String?, indexName: String) -> String? {
+        "DROP INDEX \(qualifiedName(schema: schema, object: indexName))"
     }
 
-    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(qualifiedName(schema: nil, object: table)) ADD \(foreignKeyDefinition(fk))"
+    func generateAddForeignKeySQL(table: String, schema: String?, fk: PluginForeignKeyDefinition) -> String? {
+        "ALTER TABLE \(qualifiedName(schema: schema, object: table)) ADD \(foreignKeyDefinition(fk))"
     }
 
-    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(qualifiedName(schema: nil, object: table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    func generateDropForeignKeySQL(table: String, schema: String?, constraintName: String) -> String? {
+        "ALTER TABLE \(qualifiedName(schema: schema, object: table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
     func generateModifyPrimaryKeySQL(
         table: String,
+        schema: String?,
         oldColumns: [String],
         newColumns: [String],
         constraintName: String?
     ) -> [String]? {
-        let qualifiedTable = qualifiedName(schema: nil, object: table)
+        let qualifiedTable = qualifiedName(schema: schema, object: table)
         var statements: [String] = []
         if !oldColumns.isEmpty {
             if let constraintName, !constraintName.isEmpty {

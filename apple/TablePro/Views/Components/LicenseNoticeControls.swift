@@ -1,8 +1,3 @@
-//
-//  LicenseNoticeControls.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 import TableProHTTP
@@ -21,8 +16,10 @@ struct LicenseNoticeActionButton: View {
         case .purchase, .upgrade, .renew:
             Link(action.title, destination: SupportLinks.pricing(referrer))
                 .countsUpgradeClicks(from: referrer)
-        case .openAccountSettings:
-            Button(action.title) { WindowOpener.shared.openSettings(tab: .account) }
+        case .openAccountSettings(let page):
+            Button(action.title) {
+                WindowOpener.shared.openSettings(page.map(SettingsLocation.init(page:)) ?? .root(.account))
+            }
         case .retryValidation:
             HStack(spacing: 6) {
                 Button(action.title) {
@@ -50,33 +47,25 @@ struct LicenseCheckFailureLine: View {
 
     var body: some View {
         if let failure = LicensePresentation.checkFailureMessage(featureAccess.state.refresh) {
-            Label {
-                Text(failure)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-            }
-            .font(.callout)
+            NoticeLabel(failure, severity: .warning)
+                .font(.subheadline)
         }
     }
 }
 
-// A control a plan unlocks says what it needs and offers the way there.
 struct LicenseGateRow: View {
     let feature: ProFeature
 
     @ObservedObject private var featureAccess = FeatureAccess.shared
 
     var body: some View {
-        if let notice = LicensePresentation.gate(for: feature, state: featureAccess.state, now: Date()) {
+        if let notice = LicensePresentation.gate(for: feature, state: featureAccess.state) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(notice.title)
 
                     Text(notice.message)
-                        .font(.callout)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -112,8 +101,8 @@ extension LicenseNoticeAction {
         case .purchase, .upgrade, .renew:
             Telemetry.shared.upgradeClicked(from: referrer)
             WebPageOpener.open(SupportLinks.pricing(referrer), scope: .https)
-        case .openAccountSettings:
-            WindowOpener.shared.openSettings(tab: .account)
+        case .openAccountSettings(let page):
+            WindowOpener.shared.openSettings(page.map(SettingsLocation.init(page:)) ?? .root(.account))
         case .retryValidation:
             WindowOpener.shared.openSettings(tab: .account)
             Task { await AccountServices.shared.checkNow() }
@@ -125,7 +114,7 @@ extension LicenseNoticeAction {
 internal enum LicenseGateAlert {
     // A sheet, never runModal: a UI test without a plan froze the app on it.
     static func present(for feature: ProFeature, in window: NSWindow?, access: FeatureAccess = .shared) {
-        guard let notice = LicensePresentation.gate(for: feature, state: access.state, now: Date()) else { return }
+        guard let notice = LicensePresentation.gate(for: feature, state: access.state) else { return }
         Telemetry.shared.featureGateShown(feature, access: access.check(feature))
         let actions = [notice.action, notice.alternative].compactMap { $0 }
         // A state with no way out of its own opens the pane that explains it.

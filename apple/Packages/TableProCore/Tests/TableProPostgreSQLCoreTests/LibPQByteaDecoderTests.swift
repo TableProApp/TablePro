@@ -152,3 +152,30 @@ struct LibPQByteaDecoderEncodeTests {
         #expect(LibPQByteaDecoder.decode(encoded) == original)
     }
 }
+
+struct LibPQByteaDecoderWireBytesTests {
+    private func decode(_ bytes: [UInt8]) -> Data? {
+        bytes.withUnsafeBytes { LibPQByteaDecoder.decode(bytes: $0) }
+    }
+
+    @Test("Wire bytes decode as the text form does", arguments: [
+        "", "\\x", "\\xdeadBEEF", "\\XFF", "plain", "a\\\\b", "\\000\\377", "\\xabc", "\\xZZ", "\\", "\\12", "\\400"
+    ])
+    func matchesTheTextForm(_ input: String) {
+        #expect(decode(Array(input.utf8)) == LibPQByteaDecoder.decode(input))
+    }
+
+    @Test("Every byte value round-trips through the hex form")
+    func everyByteRoundTrips() {
+        let bytes = Data(UInt8.min...UInt8.max)
+        let hex = "\\x" + bytes.map { String(format: "%02x", $0) }.joined()
+
+        #expect(decode(Array(hex.utf8)) == bytes)
+    }
+
+    @Test("A digit outside the hex alphabet anywhere in the value fails the decode")
+    func invalidDigitAnywhereFails() {
+        #expect(decode(Array("\\x00g0".utf8)) == nil)
+        #expect(decode(Array("\\x0g00".utf8)) == nil)
+    }
+}

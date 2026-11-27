@@ -87,21 +87,31 @@ internal struct CompareSyncRunResult {
     /// expects.
     internal let commitFailure: String?
 
+    // A run that had to roll back and could not, so the target is in neither state the user expects.
+    internal let rollbackFailure: String?
+
     /// Tables whose storage cannot roll back, so a rolled-back run still left their rows written.
     internal let nonTransactionalObjects: [String]
+
+    // Set when the run joined a transaction the session already held: that transaction's state once the run ended.
+    internal let joinedSessionTransaction: PluginSessionTransactionState?
 
     internal init(
         outcomes: [SyncStatementOutcome],
         rolledBack: Bool,
         cancelled: Bool,
         commitFailure: String? = nil,
-        nonTransactionalObjects: [String] = []
+        rollbackFailure: String? = nil,
+        nonTransactionalObjects: [String] = [],
+        joinedSessionTransaction: PluginSessionTransactionState? = nil
     ) {
         self.outcomes = outcomes
         self.rolledBack = rolledBack
         self.cancelled = cancelled
         self.commitFailure = commitFailure
+        self.rollbackFailure = rollbackFailure
         self.nonTransactionalObjects = nonTransactionalObjects
+        self.joinedSessionTransaction = joinedSessionTransaction
     }
 
     internal var executedCount: Int {
@@ -207,7 +217,9 @@ internal actor CompareSyncExecutor {
         progress: Progress,
         nonTransactionalObjects: Set<String>
     ) async throws -> CompareSyncRunResult {
-        let usesTransaction = settings.usesTransaction(for: mode, driver: driver)
+        let owner = await Self.transactionOwner(of: driver)
+        let usesTransaction = owner.sendsBegin && owner.commitsAtEnd
+            && settings.usesTransaction(for: mode, driver: driver)
         if usesTransaction {
             try await driver.beginTransaction()
         }
@@ -264,16 +276,24 @@ internal actor CompareSyncExecutor {
 
         await closeSessionScopes(openScopes, on: driver)
 
-        let shouldRollback = usesTransaction
+        var shouldRollback = usesTransaction
             && (cancelled || (stopped && settings.errorHandling == .stopAndRollback))
+        // PostgreSQL answers a COMMIT in an aborted transaction with ROLLBACK and no error, so Stop and keep what ran kept nothing.
+        if usesTransaction, !shouldRollback, await driver.sessionTransactionState() == .abortedTransaction {
+            shouldRollback = true
+        }
         var commitFailure: String?
+        var rollbackFailure: String?
         if usesTransaction {
             if shouldRollback {
-                try? await driver.rollbackTransaction()
+                do {
+                    try await driver.rollbackTransaction()
+                } catch {
+                    Self.logger.error("Sync rollback failed: \(error.publicLogShape, privacy: .public)")
+                    rollbackFailure = error.localizedDescription
+                }
             } else {
-                /// A commit that throws used to propagate past the whole run, so the result was
-                /// discarded and the user got an error with no record of which statements had
-                /// already executed. The failure belongs in the result, not instead of it.
+                // The failure belongs in the result, not instead of it: the outcomes say what already ran.
                 do {
                     try await driver.commitTransaction()
                 } catch {
@@ -282,16 +302,35 @@ internal actor CompareSyncExecutor {
                 }
             }
         }
+        let joined: PluginSessionTransactionState? = owner == .session
+            ? await driver.sessionTransactionState()
+            : nil
 
         /// Named from what ran, not from what the script mentioned: a table whose statements never
         /// reached the target has nothing left in it to warn about.
         let written = Set(outcomes.filter { $0.didExecute }.map { $0.statement.objectName })
         return CompareSyncRunResult(
             outcomes: outcomes,
-            rolledBack: shouldRollback,
+            rolledBack: shouldRollback && rollbackFailure == nil,
             cancelled: cancelled,
             commitFailure: commitFailure,
-            nonTransactionalObjects: nonTransactionalObjects.intersection(written).sorted()
+            rollbackFailure: rollbackFailure,
+            nonTransactionalObjects: nonTransactionalObjects.intersection(written).sorted(),
+            joinedSessionTransaction: joined
+        )
+    }
+
+    // Asked inside the target's lease, which on DuckDB and PGlite is the session the user's own transaction may be open
+    // on: a BEGIN of the run's own aborts it on DuckDB, and its COMMIT commits their pending work on PGlite.
+    private static func transactionOwner(of driver: any PluginDatabaseDriver) async -> WriteTransactionOwner {
+        let state: PluginSessionTransactionState = driver.supportsTransactions
+            ? await driver.sessionTransactionState()
+            : .unknown
+        // `.automatic`: a pooled lease is closed while idle, which would roll a held run back after it reported success.
+        return WriteTransactionOwner.resolve(
+            supportsTransactions: driver.supportsTransactions,
+            sessionState: state,
+            commitMode: .automatic
         )
     }
 

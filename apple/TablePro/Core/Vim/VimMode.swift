@@ -1,11 +1,3 @@
-//
-//  VimMode.swift
-//  TablePro
-//
-//  Vim editing modes for the SQL editor
-//
-
-/// Vim editing modes
 enum VimMode: Equatable {
     case normal
     case insert
@@ -13,7 +5,6 @@ enum VimMode: Equatable {
     case visual(linewise: Bool)
     case commandLine(buffer: String)
 
-    /// Display label for the mode indicator
     var displayLabel: String {
         switch self {
         case .normal: return "NORMAL"
@@ -24,7 +15,7 @@ enum VimMode: Equatable {
         }
     }
 
-    /// Whether this mode passes text input through to the text view (insert or replace)
+    // Insert and Replace leave typed text to the text view.
     var isInsert: Bool {
         switch self {
         case .insert, .replace: return true
@@ -32,9 +23,13 @@ enum VimMode: Equatable {
         }
     }
 
-    /// Whether this mode is a visual selection mode
     var isVisual: Bool {
         if case .visual = self { return true }
+        return false
+    }
+
+    var isVisualLinewise: Bool {
+        if case .visual(let linewise) = self { return linewise }
         return false
     }
 

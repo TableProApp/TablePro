@@ -32,11 +32,16 @@ extension DataGridViewController: NSTableViewDataSource, NSTableViewDelegate {
         if let editing = editingCellView(in: pane, tableColumn: tableColumn, row: row) {
             return editing
         }
-        guard pane.isMain, DataGridAccessibility.isActive, mountsAccessibilityCell(forRow: row) else { return nil }
+        guard pane.isMain, DataGridAccessibility.isActive, mountsAccessibilityCell(forRow: row, tableColumn: tableColumn) else { return nil }
         return accessibilityCellView(for: tableColumn, row: row)
     }
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("DataGridRowView")
+
+    // Asked only while the grid wraps (see responds(to:)). A row not measured yet stands one line tall.
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        rowHeight(forRow: row, in: tableView)
+    }
 
     // Answers from the active column only, so type-select matches what the reader is looking at.
     func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {

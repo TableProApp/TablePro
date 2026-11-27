@@ -1,8 +1,3 @@
-//
-//  GeneralSettings.swift
-//  TablePro
-//
-
 import Foundation
 
 enum StartupBehavior: String, Codable, CaseIterable, Identifiable {
@@ -118,6 +113,7 @@ struct GeneralSettings: Codable, Equatable {
         startupBehavior = container.decodeSetting(.startupBehavior, default: fallback.startupBehavior)
         language = container.decodeSetting(.language, default: fallback.language)
         queryTimeoutSeconds = container.decodeSetting(.queryTimeoutSeconds, default: fallback.queryTimeoutSeconds)
+            .clamped(to: DatabaseConnection.queryTimeoutSecondsRange)
         shareAnalytics = container.decodeSetting(.shareAnalytics, default: fallback.shareAnalytics)
         showRecentTables = container.decodeSetting(.showRecentTables, default: fallback.showRecentTables)
         showObjectComments = container.decodeSetting(.showObjectComments, default: fallback.showObjectComments)
@@ -127,5 +123,19 @@ struct GeneralSettings: Codable, Equatable {
         showWorkspaceRail = container.decodeSetting(.showWorkspaceRail, default: fallback.showWorkspaceRail)
         sidebarRowSize = container.decodeSetting(.sidebarRowSize, default: fallback.sidebarRowSize)
         connectionHealthCheck = container.decodeSetting(.connectionHealthCheck, default: fallback.connectionHealthCheck)
+    }
+}
+
+extension GeneralSettings {
+    static let standardQueryTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
+
+    // A stored value off the standard list gets its own item, so the pop-up never draws blank.
+    static func queryTimeoutChoices(including current: Int) -> [Int] {
+        guard current > 0, !standardQueryTimeouts.contains(current) else { return standardQueryTimeouts }
+        return (standardQueryTimeouts + [current]).sorted()
+    }
+
+    static func queryTimeoutTitle(_ seconds: Int, locale: Locale = .autoupdatingCurrent) -> String {
+        SettingsFormat.duration(seconds: seconds, locale: locale)
     }
 }

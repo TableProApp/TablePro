@@ -16,9 +16,9 @@ use crate::apps::jetbrains::{CredentialStore, Lookup};
 use crate::apps::{jdbc, resolve_key_path};
 use crate::collect::{PasswordOutcome, assemble};
 use crate::{
-    CollectedImport, ForeignApp, ForeignAppDirs, ForeignConnection, ForeignConnectionRecord, ForeignCredentials,
-    ForeignImportError, ForeignKeychain, ForeignPlatform, ForeignSsh, ForeignSshAuth, ForeignSsl, ForeignSslMode,
-    ImportRequest, Inventory, engine,
+    CollectedImport, DataProtection, ForeignApp, ForeignAppDirs, ForeignConnection, ForeignConnectionRecord,
+    ForeignCredentials, ForeignImportError, ForeignKeychain, ForeignPlatform, ForeignSsh, ForeignSshAuth, ForeignSsl,
+    ForeignSslMode, ImportRequest, Inventory, engine,
 };
 
 pub(crate) struct DataGrip {
@@ -26,6 +26,7 @@ pub(crate) struct DataGrip {
     home: PathBuf,
     platform: ForeignPlatform,
     keychain: Option<Arc<dyn ForeignKeychain>>,
+    protection: Option<Arc<dyn DataProtection>>,
 }
 
 struct ScannedSource {
@@ -51,21 +52,28 @@ impl DataGrip {
         home: PathBuf,
         platform: ForeignPlatform,
         keychain: Option<Arc<dyn ForeignKeychain>>,
+        protection: Option<Arc<dyn DataProtection>>,
     ) -> Self {
         Self {
             roots,
             home,
             platform,
             keychain,
+            protection,
         }
     }
 
-    pub(crate) fn locate(dirs: &ForeignAppDirs, keychain: Option<Arc<dyn ForeignKeychain>>) -> Self {
+    pub(crate) fn locate(
+        dirs: &ForeignAppDirs,
+        keychain: Option<Arc<dyn ForeignKeychain>>,
+        protection: Option<Arc<dyn DataProtection>>,
+    ) -> Self {
         Self::new(
             locations::jetbrains_roots(dirs),
             dirs.home.clone(),
             dirs.platform,
             keychain,
+            protection,
         )
     }
 
@@ -126,6 +134,7 @@ impl DataGrip {
 
     fn credential_store(&self, config_dir: &Path) -> CredentialStore {
         CredentialStore::new(config_dir.to_path_buf(), self.platform, self.keychain.clone())
+            .with_data_protection(self.protection.clone())
     }
 
     fn password_outcome(
@@ -151,13 +160,17 @@ impl AppReader for DataGrip {
         !locations::locations(&self.config_dirs(), &self.home).is_empty()
     }
 
-    fn inventory(&self) -> Inventory {
+    fn inventory(&self) -> Result<Inventory, ForeignImportError> {
         let config_dirs = self.config_dirs();
-        let scan = self.scan(&locations::locations(&config_dirs, &self.home));
-        Inventory {
+        let locations = locations::locations(&config_dirs, &self.home);
+        if let Some(error) = none_readable(&locations) {
+            return Err(error);
+        }
+        let scan = self.scan(&locations);
+        Ok(Inventory {
             connections: scan.sources.len(),
             saved_queries: consoles::count(&scan.console_sources, &config_dirs),
-        }
+        })
     }
 
     fn collect(
@@ -217,6 +230,24 @@ impl AppReader for DataGrip {
         let passwords = self.password_outcome(request, stopped, &stores);
         assemble(ForeignApp::DataGrip, records, saved_queries, passwords)
     }
+}
+
+// A data sources file that cannot be opened is skipped like a broken one, so only when no file opens is the count
+// unknown rather than zero.
+fn none_readable(locations: &[Location]) -> Option<ForeignImportError> {
+    let mut first = None;
+    for location in locations {
+        match std::fs::File::open(&location.data_sources) {
+            Ok(_) => return None,
+            Err(source) => {
+                first.get_or_insert(ForeignImportError::Unreadable {
+                    path: location.data_sources.clone(),
+                    source,
+                });
+            }
+        }
+    }
+    first
 }
 
 // The shared file carries the driver and URL, the local file the user name, SSH and SSL; per field the

@@ -166,6 +166,31 @@ struct ConnectionURLFormatterTests {
         #expect(url == "sqlite://data.db")
     }
 
+    @Test("A file name with a space, a ? or a % copies encoded and opens the same file")
+    func testSQLitePathRoundTrips() throws {
+        let conn = DatabaseConnection(
+            name: "", host: "", port: 0, database: "/Users/me/My Shop?%.db",
+            username: "", type: .sqlite
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "sqlite:///Users/me/My%20Shop%3F%25.db")
+        #expect(try ConnectionURLParser.parse(url).get().database == "/Users/me/My Shop?%.db")
+    }
+
+    @Test("A file connection's name and color copy with it, as on every other scheme", arguments: [
+        (DatabaseType.sqlite, "/Users/me/shop.sqlite", "sqlite:///Users/me/shop.sqlite?name=Shop+DB&statusColor=FF3B30"),
+        (DatabaseType.beancount, "/Users/me/ledger.beancount",
+         "beancount:///Users/me/ledger.beancount?name=Shop+DB&statusColor=FF3B30")
+    ])
+    func testFileConnectionCarriesItsName(type: DatabaseType, path: String, expected: String) throws {
+        let conn = DatabaseConnection(name: "Shop DB", database: path, type: type, color: .red)
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == expected)
+        let parsed = try ConnectionURLParser.parse(url).get()
+        #expect(parsed.database == path)
+        #expect(parsed.connectionName == "Shop DB")
+    }
+
     // MARK: - SSH Tunnel
 
     @Test("SSH tunnel URL")
@@ -961,6 +986,25 @@ struct ConnectionURLFormatterTests {
             additionalFields: ["duckdbMode": "local", "duckdbFilePath": "/Users/me/analytics.duckdb"]
         )
         #expect(ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil) == "duckdb:///Users/me/analytics.duckdb")
+    }
+
+    @Test("A MotherDuck row copies as MotherDuck's own connection string, never its token or its hidden file", arguments: [
+        ("my_db", "md:my_db"), ("", "md:"), ("  sample_data ", "md:sample_data")
+    ])
+    func motherDuckCopiesItsConnectionString(database: String, expected: String) {
+        let conn = DatabaseConnection(
+            name: "", database: "", type: .duckdb,
+            additionalFields: [
+                "duckdbMode": "motherduck",
+                "duckdbMotherDuckDatabase": database,
+                "duckdbMotherDuckToken": "md-token-123",
+                "duckdbFilePath": "/Users/me/analytics.duckdb"
+            ]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pw", sshPassword: nil)
+        #expect(url == expected)
+        #expect(!url.contains("md-token-123"))
+        #expect(!url.contains("analytics"))
     }
 
     // MARK: - Unix socket

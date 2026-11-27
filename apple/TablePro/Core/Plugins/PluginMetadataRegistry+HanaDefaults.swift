@@ -20,6 +20,7 @@ extension PluginMetadataRegistry {
                 structureEditing: SchemaEditingSupport(),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: false,

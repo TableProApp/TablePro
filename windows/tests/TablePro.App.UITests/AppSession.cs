@@ -1,8 +1,11 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Capturing;
 using FlaUI.Core.Definitions;
+using FlaUI.Core.Exceptions;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
@@ -14,6 +17,7 @@ namespace TablePro.App.UITests;
 internal sealed class AppSession : IDisposable
 {
     public static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
+    private const int ElementNotAvailable = unchecked((int)0x80040201);
     private static readonly PackageTestState _packageState = new();
 
     private readonly UIA3Automation _automation = new();
@@ -43,17 +47,28 @@ internal sealed class AppSession : IDisposable
 
     public Window Window { get; }
 
-    public static string NewDataFolder(string theme)
+    // Seen by default, so a test that starts with an empty library lands on the Connections page, not the setup guide.
+    public static string NewDataFolder(string theme, bool setupGuideSeen = true)
     {
         var folder = Directory.CreateTempSubdirectory("tablepro-ui-").FullName;
-        WriteSettings(folder, theme);
+        WriteSettings(folder, theme, setupGuideSeen);
         return folder;
     }
 
-    public static AppSession Launch(string theme) => Relaunch(NewDataFolder(theme), theme);
+    public static AppSession Launch(string theme, bool setupGuideSeen = true) =>
+        Relaunch(NewDataFolder(theme, setupGuideSeen), theme);
 
     public static AppSession Relaunch(string dataFolder, string theme, bool maximize = true) =>
-        new(dataFolder, theme, () => LaunchBuild(dataFolder), maximize);
+        new(dataFolder, theme, () => LaunchBuild(dataFolder, []), maximize);
+
+    // With variables the app reads besides the data folder, such as the license ask's quiet period.
+    public static AppSession LaunchWithEnvironment(
+        string dataFolder, string theme, IReadOnlyDictionary<string, string> environment) =>
+        new(dataFolder, theme, () => Application.Launch(StartInfo(dataFolder, [], environment)));
+
+    // Started as Explorer or a browser starts it, with files or links on its command line.
+    public static AppSession LaunchWith(string dataFolder, string theme, params string[] arguments) =>
+        new(dataFolder, theme, () => LaunchBuild(dataFolder, arguments));
 
     // The installed MSIX, started as the Start menu starts it, so it keeps its files in the package's LocalState.
     public static AppSession LaunchPackage(string familyName, string theme)
@@ -68,14 +83,30 @@ internal sealed class AppSession : IDisposable
         var packages = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages");
         var folder = Path.Combine(packages, familyName, "LocalState");
         _packageState.Prepare(folder);
-        WriteSettings(folder, theme);
+        WriteSettings(folder, theme, setupGuideSeen: true);
         return new(folder, theme, () => Application.LaunchStoreApp(familyName + "!App"));
     }
 
-    private static void WriteSettings(string folder, string theme) =>
-        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}" }""");
+    private static void WriteSettings(string folder, string theme, bool setupGuideSeen)
+    {
+        var seen = setupGuideSeen ? "true" : "false";
+        File.WriteAllText(
+            Path.Combine(folder, "settings.json"),
+            $$"""{ "theme": "{{theme}}", "setupGuideSeen": {{seen}} }""");
+    }
 
-    private static Application LaunchBuild(string dataFolder)
+    // Help > Open the sample database, which works from any page, the setup guide's included.
+    public void OpenSampleFromHelp()
+    {
+        Click(Find("HelpMenu"), () => TryFind("MenuSample") is { IsEnabled: true });
+        Click(Find("MenuSample"), () => TryFind("Rail_Chinook (Sample)") is not null);
+    }
+
+    private static Application LaunchBuild(string dataFolder, IReadOnlyList<string> arguments) =>
+        Application.Launch(StartInfo(dataFolder, arguments));
+
+    private static ProcessStartInfo StartInfo(
+        string dataFolder, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? environment = null)
     {
         var path = Environment.GetEnvironmentVariable("TABLEPRO_APP");
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
@@ -84,8 +115,39 @@ internal sealed class AppSession : IDisposable
         }
 
         var start = new ProcessStartInfo(path) { UseShellExecute = false };
+        foreach (var argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
         start.Environment["TABLEPRO_DATA_DIR"] = dataFolder;
-        return Application.Launch(start);
+        foreach (var (name, value) in environment ?? ReadOnlyDictionary<string, string>.Empty)
+        {
+            start.Environment[name] = value;
+        }
+
+        return start;
+    }
+
+    // A second launch on this data folder hands its files and links to this app and exits without a window.
+    public void HandOver(params string[] arguments) => HandOverFrom(null, arguments);
+
+    // As a terminal in that folder starts it, so a relative path names a file there.
+    public void HandOverFrom(string? workingDirectory, params string[] arguments)
+    {
+        var start = StartInfo(DataFolder, arguments);
+        if (workingDirectory is not null)
+        {
+            start.WorkingDirectory = workingDirectory;
+        }
+
+        using var process = Process.Start(start)
+            ?? throw new InvalidOperationException("The second launch did not start.");
+        if (!process.WaitForExit(Wait))
+        {
+            process.Kill();
+            throw Failure("The second launch did not hand over.", screen: true);
+        }
     }
 
     public static string LibraryFile(string folder) =>
@@ -95,7 +157,7 @@ internal sealed class AppSession : IDisposable
     public void Drag(AutomationElement from, AutomationElement to)
     {
         Front();
-        Drag(from.GetClickablePoint(), to.GetClickablePoint());
+        Drag(PointOf(from), PointOf(to));
     }
 
     // The Arm64 runner's own windows take keys and drags now and then, so each goes again until it lands.
@@ -142,7 +204,26 @@ internal sealed class AppSession : IDisposable
     }
 
     public void RightClick(AutomationElement element, Func<bool> landed) =>
-        Again(() => element.RightClick(), landed, "The right-click");
+        Again(() => RightClick(element), landed, "The right-click");
+
+    public void RightClick(AutomationElement element)
+    {
+        var point = PointOf(element);
+        Front();
+        Mouse.RightClick(point);
+        FlaUI.Core.Input.Wait.UntilInputIsProcessed();
+    }
+
+    public void DoubleClick(AutomationElement element, Func<bool> landed, Window? window = null) =>
+        Again(() => DoubleClick(element, window), landed, "The double-click", window);
+
+    public void DoubleClick(AutomationElement element, Window? window = null)
+    {
+        var point = PointOf(element);
+        Front(window);
+        Mouse.DoubleClick(point);
+        FlaUI.Core.Input.Wait.UntilInputIsProcessed();
+    }
 
     public void Chord(Func<bool> landed, params VirtualKeyShort[] keys) =>
         Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys));
@@ -151,6 +232,7 @@ internal sealed class AppSession : IDisposable
     public void Chord(Window window, Func<bool> landed, params VirtualKeyShort[] keys) =>
         Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys), window);
 
+    // Keyboard.Type sends '\n' as Ctrl+Enter, which runs the query, so a line break is typed as '\r': Enter.
     public void TypeInto(string title, string text) =>
         Again(
             () =>
@@ -168,7 +250,7 @@ internal sealed class AppSession : IDisposable
                 Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
                 Keyboard.Type(text);
             },
-            () => EditorText(FindEditor(title)).TrimEnd('\r', '\n') == text,
+            () => EditorText(FindEditor(title)).TrimEnd('\r', '\n') == text.Replace('\r', '\n'),
             $"Typing {text}");
 
     public AutomationElement FindEditor(string title) =>
@@ -245,7 +327,7 @@ internal sealed class AppSession : IDisposable
         {
             if (box.AsCheckBox().IsChecked != isChecked)
             {
-                box.Click();
+                Click(box);
             }
 
             return;
@@ -265,14 +347,16 @@ internal sealed class AppSession : IDisposable
             return;
         }
 
-        row.Click();
+        Click(row);
     }
 
-    // The ContentDialog template names its primary button PrimaryButton.
-    public void PressDialogButton()
+    // The ContentDialog template names its primary button PrimaryButton; a name tells it from a dialog still closing.
+    public void PressDialogButton(string? name = null)
     {
         var button = Retry.WhileNull(
-                () => Window.FindFirstDescendant(condition => condition.ByAutomationId("PrimaryButton")),
+                () => Window.FindFirstDescendant(condition => name is null
+                    ? condition.ByAutomationId("PrimaryButton")
+                    : condition.ByAutomationId("PrimaryButton").And(condition.ByName(name))),
                 Wait,
                 throwOnTimeout: false).Result
             ?? throw Failure("No dialog opened.", screen: true);
@@ -351,19 +435,47 @@ internal sealed class AppSession : IDisposable
 
     public AutomationElement FindByNamePrefix(string prefix, AutomationElement scope) =>
         Retry.WhileNull(
-                () => scope.FindAllDescendants().FirstOrDefault(element =>
-                    element.Properties.Name.TryGetValue(out var name) && name.StartsWith(prefix, StringComparison.Ordinal)),
+                () => scope.FindAllDescendants().FirstOrDefault(element => Holds(() =>
+                    element.Properties.Name.TryGetValue(out var name) && name.StartsWith(prefix, StringComparison.Ordinal))),
                 Wait,
                 throwOnTimeout: false).Result
             ?? throw Failure($"No element named {prefix}... appeared.");
+
+    // A list built again after a change drops the row just found, which WinUI then reports gone or, for a tree row's state, not supported.
+    public static bool Holds(Func<bool> check)
+    {
+        try
+        {
+            return check();
+        }
+        catch (Exception exception) when (exception is PropertyNotSupportedException or ElementNotAvailableException
+            || exception is COMException { HResult: ElementNotAvailable })
+        {
+            return false;
+        }
+    }
 
     // Mouse and keys reach the foreground window, and the Arm64 runner opens windows of its own over the app.
     public void Front(Window? window = null) => (window ?? Window).SetForeground();
 
     public void Click(AutomationElement element, Window? window = null)
     {
+        var point = PointOf(element);
         Front(window);
-        element.Click();
+        Mouse.Click(point);
+        FlaUI.Core.Input.Wait.UntilInputIsProcessed();
+    }
+
+    // FlaUI's own click gives up on the first failed read, and a live element's point can fail to read for a moment.
+    public System.Drawing.Point PointOf(AutomationElement element)
+    {
+        var point = System.Drawing.Point.Empty;
+        if (!Retry.WhileFalse(() => element.TryGetClickablePoint(out point), TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
+        {
+            throw Failure("The element to click has no clickable point.", screen: true);
+        }
+
+        return point;
     }
 
     // A window the runner opens for a moment can take a click, so it goes again until the app shows it landed.
@@ -472,14 +584,16 @@ internal sealed class AppSession : IDisposable
         return new InvalidOperationException(message + exited + log);
     }
 
+    // A status has no UIA Name while its text is empty, and FlaUI's Name throws for it then.
+    public static string TextOf(AutomationElement element) => element.Properties.Name.ValueOrDefault ?? string.Empty;
+
     public static string WaitForText(AutomationElement element, Func<string, bool> done)
     {
         var text = string.Empty;
         Retry.WhileFalse(
             () =>
             {
-                // A status may have no UIA Name until its asynchronous result arrives.
-                text = element.Properties.Name.ValueOrDefault ?? string.Empty;
+                text = TextOf(element);
                 return done(text);
             },
             Wait,

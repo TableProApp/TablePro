@@ -11,7 +11,8 @@ import TableProPluginKit
 struct QueryResult {
     let columns: [String]
     let columnTypes: [ColumnType]
-    let rows: [[PluginCellValue]]
+    // Mutable so a fold can cut the trailing columns off each row in place.
+    var rows: [[PluginCellValue]]
     let rowsAffected: Int
     let executionTime: TimeInterval
     let error: DatabaseError?
@@ -246,14 +247,16 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         self.isTemporary = isTemporary
     }
 
+    // Names compare by bytes: a server keeps apart two tables whose names Swift's String equates.
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {
-        lhs.name == rhs.name && lhs.type == rhs.type && lhs.schema == rhs.schema && lhs.isTemporary == rhs.isTemporary
+        CatalogName.same(lhs.name, rhs.name) && lhs.type == rhs.type && CatalogName.same(lhs.schema, rhs.schema)
+            && lhs.isTemporary == rhs.isTemporary
     }
 
     func hash(into hasher: inout Hasher) {
-        hasher.combine(name)
+        CatalogName.hash(name, into: &hasher)
         hasher.combine(type)
-        hasher.combine(schema)
+        CatalogName.hash(schema, into: &hasher)
         hasher.combine(isTemporary)
     }
 }

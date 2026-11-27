@@ -112,6 +112,9 @@ mod tests {
                     draft: DraftId::new(),
                     file: None,
                     database: None,
+                    name: None,
+                    ordinal: None,
+                    untitled: false,
                 },
                 TabRecord::Diagram {
                     schema: Some("sales".to_owned()),
@@ -168,6 +171,9 @@ mod tests {
                         draft: DraftId::from_uuid(draft),
                         file: None,
                         database: None,
+                        name: None,
+                        ordinal: None,
+                        untitled: false,
                     },
                     TabRecord::Structure {
                         schema: Some("sales".to_owned()),
@@ -200,6 +206,9 @@ mod tests {
                         draft: DraftId::new(),
                         file: None,
                         database: None,
+                        name: None,
+                        ordinal: None,
+                        untitled: false,
                     },
                     _ => table(&format!("t{index}")),
                 })
@@ -283,5 +292,49 @@ mod tests {
             })
             .collect();
         assert_eq!(kept, [0, 3, usize::MAX], "only the largest is left out");
+    }
+
+    #[test]
+    fn tab_names_past_the_file_cap_are_left_out_and_the_shrink_ends() {
+        let long = "n".repeat(200_000);
+        let mut record = WorkspaceRecord {
+            active_tab: Some(0),
+            tabs: (0..8)
+                .map(|at| TabRecord::Editor {
+                    draft: DraftId::new(),
+                    file: None,
+                    database: None,
+                    name: Some(if at == 7 { "Revenue".to_owned() } else { long.clone() }),
+                    ordinal: Some(at + 1),
+                    untitled: true,
+                })
+                .collect(),
+        };
+
+        record.shrink_to_fit();
+
+        let bytes = encode_document(&record).expect("encode");
+        assert!(bytes.len() as u64 <= super::super::workspace_store::MAX_FILE_BYTES);
+        let names: Vec<Option<usize>> = record
+            .tabs
+            .iter()
+            .map(|tab| match tab {
+                TabRecord::Editor { name, .. } => name.as_ref().map(String::len),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names.last(), Some(&Some("Revenue".len())), "a short name was left out");
+        assert!(names.iter().any(Option::is_none), "{names:?}");
+        assert!(
+            record.tabs.iter().all(|tab| matches!(
+                tab,
+                TabRecord::Editor {
+                    untitled: true,
+                    ordinal: Some(_),
+                    ..
+                }
+            )),
+            "the shrink left out more than the names"
+        );
     }
 }

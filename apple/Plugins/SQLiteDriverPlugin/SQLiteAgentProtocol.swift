@@ -212,9 +212,10 @@ struct SQLiteAgentFrameReader {
     private var readIndex = 0
     private var expectsLauncherNotice = true
 
+    // A read rarely ends on a frame boundary, so waiting for an empty buffer kept every byte of a long result.
     mutating func append(_ data: Data) {
-        if readIndex > 0, readIndex == buffer.count {
-            buffer.removeAll(keepingCapacity: true)
+        if readIndex > 0, readIndex >= buffer.count - readIndex {
+            buffer.removeSubrange(0..<readIndex)
             readIndex = 0
         }
         buffer.append(contentsOf: data)

@@ -162,4 +162,45 @@ struct QueryHistoryFingerprintMigrationTests {
         #expect(snapshot.totals.distinctShapeCount == 1)
         #expect(snapshot.mostRun.first?.callCount == 2)
     }
+
+    @Test("Rows the previous stable wrote get their shape, and a new row keeps that release's fingerprint")
+    func shapeColumnLeavesThePreviousStableItsFingerprint() async {
+        let connectionId = UUID()
+        let url = makeVersion3Database(
+            queries: ["SELECT 'C:\\' AS p, a FROM t", "SELECT 'D:\\' AS p, a FROM t"],
+            connectionId: connectionId
+        )
+        let storage = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        _ = await storage.record(QueryHistoryEntry(
+            query: "SELECT 'E:\\' AS p, a FROM t",
+            connectionId: connectionId,
+            databaseName: "legacydb",
+            databaseType: .postgresql,
+            source: .editor,
+            executionTime: 0.25,
+            rowCount: 7,
+            wasSuccessful: true
+        ))
+
+        let snapshot = await storage.insights(
+            QueryInsightsRequest(scope: .connection(connectionId)),
+            slowestRanking: .totalTime
+        )
+        #expect(snapshot.totals.distinctShapeCount == 1)
+        #expect(snapshot.mostRun.first?.callCount == 3)
+        #expect(snapshot.mostRun.first?.normalizedQuery == "SELECT ? AS p, a FROM t")
+
+        // The previous stable groups and matches by `fingerprint_hash`, so a new row carries that release's reading.
+        var db: OpaquePointer?
+        guard sqlite3_open(url.path(percentEncoded: false), &db) == SQLITE_OK else { return }
+        defer { sqlite3_close_v2(db) }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        let sql = "SELECT fingerprint_hash, shape_hash FROM history WHERE query LIKE '%E:%';"
+        #expect(sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK)
+        #expect(sqlite3_step(statement) == SQLITE_ROW)
+        let query = "SELECT 'E:\\' AS p, a FROM t"
+        #expect(sqlite3_column_int64(statement, 0) == SQLLegacyFingerprint.hash(query, databaseType: .postgresql))
+        #expect(sqlite3_column_int64(statement, 1) == SQLQueryFingerprint.hash(query, databaseType: .postgresql))
+    }
 }

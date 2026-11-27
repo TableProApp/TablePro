@@ -15,7 +15,7 @@ public sealed partial class EngineChoice(DatabaseEngine engine, string detail)
     // A recycled container binds again and gets an icon of its own.
     public IconElement Icon => EngineIcons.Glyph(Engine.Id);
 
-    public string AccessibleName => $"{Name}, {Detail}";
+    public string AccessibleName => Strings.List([Name, Detail]);
 }
 
 // CollectionViewSource reads Items by name, which a trimmed AOT app keeps only through this attribute.

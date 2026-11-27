@@ -2,7 +2,7 @@
 //! views, a table's key, and the CREATE statements the server's schema
 //! tables describe.
 
-use tablepro_core::meta::{ObjectKind, ObjectScope, RowIdentity};
+use tablepro_core::meta::{ObjectKind, ObjectScope, RowIdentity, TableInfo};
 use tablepro_core::{Connection, TlsConfig, Value, WorkspaceSettings};
 use tablepro_test_fixtures::CassandraFlavour;
 use tablepro_test_support::conformance::test_liveness;
@@ -99,6 +99,48 @@ async fn a_table_is_keyed_by_its_primary_key_and_a_view_is_read_only<S: Server>(
         "{view_columns:?}"
     );
     assert_eq!(view_identity, RowIdentity::Unordered);
+}
+
+async fn a_table_and_a_view_report_their_comment_alone<S: Server>() {
+    let fixture = start::<S>().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            ORDERS,
+            NOTE_INDEX,
+            "ALTER TABLE tablepro.orders WITH comment = 'the orders'",
+            "INSERT INTO tablepro.orders (customer, placed, total) VALUES (1, '2024-01-01', 1.5)",
+            "CREATE MATERIALIZED VIEW tablepro.orders_by_total AS SELECT * FROM tablepro.orders \
+             WHERE customer IS NOT NULL AND placed IS NOT NULL AND total IS NOT NULL \
+             PRIMARY KEY (total, customer, placed) WITH comment = 'by total'",
+            "CREATE TABLE tablepro.plain (id int PRIMARY KEY)",
+        ],
+    )
+    .await;
+
+    let orders = connection
+        .table_info(&table("orders"), within(CALL))
+        .await
+        .expect("the table's info");
+    let view = connection
+        .table_info(&table("orders_by_total"), within(CALL))
+        .await
+        .expect("the view's info");
+    let plain = connection
+        .table_info(&table("plain"), within(CALL))
+        .await
+        .expect("the plain table's info");
+
+    assert_eq!(
+        orders,
+        TableInfo {
+            comment: Some("the orders".to_owned()),
+            ..TableInfo::default()
+        }
+    );
+    assert_eq!(view.comment.as_deref(), Some("by total"));
+    assert_eq!(plain, TableInfo::default());
 }
 
 async fn the_create_script_rebuilds_the_table_it_was_read_from<S: Server>() {
@@ -262,4 +304,16 @@ async fn cassandra_create_script_rebuilds_the_table() {
 #[ignore = "requires docker"]
 async fn scylla_create_script_rebuilds_the_table() {
     the_create_script_rebuilds_the_table_it_was_read_from::<ScyllaServer>().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn cassandra_table_info_is_the_comment() {
+    a_table_and_a_view_report_their_comment_alone::<CassandraServer>().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn scylla_table_info_is_the_comment() {
+    a_table_and_a_view_report_their_comment_alone::<ScyllaServer>().await;
 }

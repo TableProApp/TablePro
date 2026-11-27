@@ -105,15 +105,12 @@ struct FieldAbsencePendingChangesTests {
         #expect(pending.insertedRowData[inserted] == ["__DEFAULT__", "Ada", .null])
     }
 
-    @Test("A snapshot carries the fields a deleted row did not have")
-    func snapshotKeepsDeletedRowAbsence() {
+    @Test("A deleted row's change carries the fields it did not have")
+    func deletedRowKeepsItsAbsence() {
         var pending = PendingChanges()
         pending.recordRowDeletion(rowID: row, originalRow: ["1", .null], absentColumns: [1])
 
-        var restored = PendingChanges()
-        restored.restore(from: pending.snapshot(primaryKeyColumns: ["_id"], columns: ["_id", "nick"]))
-
-        #expect(restored.change(forRow: row, type: .delete)?.absentColumns == [1])
+        #expect(pending.change(forRow: row, type: .delete)?.absentColumns == [1])
     }
 }
 
@@ -133,7 +130,7 @@ struct FieldAbsenceTableRowsTests {
 
         #expect(tableRows.isAbsent(row: 0, column: 1))
         #expect(!tableRows.isAbsent(row: 1, column: 1))
-        #expect(tableRows.rows[1].absentColumns == [2])
+        #expect(tableRows.absentColumns(of: tableRows.rows[1].id) == [2])
     }
 
     @Test("A value written into a missing field brings the field back, and removal takes it out")
@@ -241,7 +238,7 @@ struct FieldAbsenceUndoTests {
         undoManager.redo()
         _ = operations.applyUndoResult(try #require(captured), tableRows: &tableRows)
         #expect(manager.pending.insertedAbsentColumns(forRow: added.rowID) == missing)
-        #expect(tableRows.row(withID: added.rowID)?.absentColumns == missing)
+        #expect(tableRows.absentColumns(of: added.rowID) == missing)
         #expect(manager.pending.insertedRowData[added.rowID] == added.values)
     }
 

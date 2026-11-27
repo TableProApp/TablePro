@@ -12,6 +12,8 @@ namespace TablePro.Testing;
 internal static class WinUiApp
 {
     private static readonly Lazy<Task<DispatcherQueue>> s_queue = new(StartAsync);
+    private static readonly TaskCompletionSource s_desktopTaken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private static Mutex? s_desktop;
 
     public static Window Window { get; private set; } = null!;
 
@@ -20,7 +22,10 @@ internal static class WinUiApp
 
     public static async Task RunAsync(Func<Task> body)
     {
-        var queue = await s_queue.Value.WaitAsync(TimeSpan.FromSeconds(90));
+        var started = s_queue.Value;
+        // Waiting for the other WinUI test process to end is not a WinUI start that hung.
+        await s_desktopTaken.Task.WaitAsync(TimeSpan.FromMinutes(5));
+        var queue = await started.WaitAsync(TimeSpan.FromSeconds(90));
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         queue.TryEnqueue(async () =>
         {
@@ -62,6 +67,8 @@ internal static class WinUiApp
         {
             try
             {
+                TakeDesktop();
+                s_desktopTaken.TrySetResult();
                 WinRT.ComWrappersSupport.InitializeComWrappers();
                 Application.Start(callback =>
                 {
@@ -76,6 +83,7 @@ internal static class WinUiApp
             }
             catch (Exception ex)
             {
+                s_desktopTaken.TrySetResult();
                 ready.TrySetException(ex);
             }
         })
@@ -86,6 +94,20 @@ internal static class WinUiApp
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         return ready.Task;
+    }
+
+    // dotnet test runs the editor and grid test processes at once, and each window took the other's activation.
+    private static void TakeDesktop()
+    {
+        s_desktop = new Mutex(false, @"Local\TablePro.WinUiTests");
+        try
+        {
+            s_desktop.WaitOne();
+        }
+        catch (AbandonedMutexException)
+        {
+            // The process that held it ended, which hands it to this one.
+        }
     }
 }
 

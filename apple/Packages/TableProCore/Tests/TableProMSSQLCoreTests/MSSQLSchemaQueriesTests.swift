@@ -462,4 +462,25 @@ struct MSSQLSchemaQueriesTests {
         #expect(MSSQLSchemaQueries.columns(schema: "dbo", table: "t").contains("= 'PRIMARY KEY'"))
         #expect(MSSQLSchemaQueries.schemas.contains("'information_schema'"))
     }
+
+    @Test("The row estimate reads the heap or clustered partitions of the bracketed object")
+    func approximateRowCountQuery() {
+        #expect(MSSQLSchemaQueries.approximateRowCount(schema: "sales", table: "O'rders]") == """
+            SELECT SUM(p.rows)
+            FROM sys.partitions p
+            WHERE p.object_id = OBJECT_ID(N'[sales].[O''rders]]]') AND p.index_id IN (0, 1)
+            """)
+    }
+
+    @Test("A rename brackets each part of the column it names, so a schema called [dbo] is not dbo")
+    func renameColumnBracketsEachPart() {
+        #expect(
+            MSSQLSchemaQueries.renameColumnStatement(schema: "sales", table: "orders", column: "id", to: "order_id")
+                == "EXEC sp_rename N'[sales].[orders].[id]', N'order_id', 'COLUMN'"
+        )
+        #expect(
+            MSSQLSchemaQueries.renameColumnStatement(schema: "[dbo]", table: "o'rders", column: "a.b", to: "c")
+                == "EXEC sp_rename N'[[dbo]]].[o''rders].[a.b]', N'c', 'COLUMN'"
+        )
+    }
 }

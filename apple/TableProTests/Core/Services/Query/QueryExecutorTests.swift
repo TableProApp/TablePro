@@ -159,6 +159,39 @@ struct QueryExecutorTests {
         #expect(values == nil)
     }
 
+    @Test("A numeric CHECK list offers no picker")
+    func parseSQLiteCheckNumericList() {
+        let ddl = "CREATE TABLE t (level INTEGER CHECK (level IN (1, 2, 3)))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "level") == nil)
+    }
+
+    @Test("A list mixing strings and numbers offers no picker")
+    func parseSQLiteCheckMixedList() {
+        let ddl = "CREATE TABLE t (level TEXT CHECK (level IN ('a', 2)))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "level") == nil)
+    }
+
+    @Test("A bare NULL in the list is skipped", arguments: [
+        "CHECK (status IN ('a', 'b', NULL))",
+        "CHECK (status IN (NULL, 'a', 'b'))",
+    ])
+    func parseSQLiteCheckSkipsNull(check: String) {
+        let ddl = "CREATE TABLE t (status TEXT \(check))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "status") == ["a", "b"])
+    }
+
+    @Test("A cast after each literal still reads, as CockroachDB stores the list")
+    func parseSQLiteCheckCastLiterals() {
+        let ddl = "CREATE TABLE t (status STRING CHECK (status IN ('a':::STRING, 'b':::STRING)))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "status") == ["a", "b"])
+    }
+
+    @Test("A doubled quote is one quote in the value")
+    func parseSQLiteCheckDoubledQuote() {
+        let ddl = "CREATE TABLE t (name TEXT CHECK (name IN ('it''s', 'b')))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "name") == ["it's", "b"])
+    }
+
     // MARK: - DDL detection
 
     @Test("isDDLStatement recognizes CREATE/DROP/ALTER/TRUNCATE/RENAME")
@@ -473,7 +506,7 @@ struct QueryExecutorTests {
                 referencedTable: "roles", referencedColumn: "id"
             )
         ]
-        let schema = FetchedTableSchema(columns: columns, foreignKeys: fks, approximateRowCount: 1_234)
+        let schema = FetchedTableSchema(columns: columns, foreignKeys: fks)
 
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
 
@@ -483,7 +516,6 @@ struct QueryExecutorTests {
         #expect(parsed.columnNullable["id"] == false)
         #expect(parsed.columnNullable["name"] == true)
         #expect(parsed.columnForeignKeys?["role_id"]?.referencedTable == "roles")
-        #expect(parsed.approximateRowCount == 1_234)
     }
 
     @Test("parseSchemaMetadata extracts MySQL-style ENUM values")
@@ -496,7 +528,7 @@ struct QueryExecutorTests {
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
             )
         ]
-        let schema = FetchedTableSchema(columns: columns, foreignKeys: [], approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: columns, foreignKeys: [])
 
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
 
@@ -506,21 +538,20 @@ struct QueryExecutorTests {
 
     @Test("parseSchemaMetadata keeps a failed foreign key fetch distinguishable from zero foreign keys")
     func parseSchemaMetadataNilForeignKeys() {
-        let schema = FetchedTableSchema(columns: [], foreignKeys: nil, approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: [], foreignKeys: nil)
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.columnForeignKeys == nil)
     }
 
     @Test("parseSchemaMetadata returns empty containers when input is empty")
     func parseSchemaMetadataEmpty() {
-        let schema = FetchedTableSchema(columns: [], foreignKeys: [], approximateRowCount: nil)
+        let schema = FetchedTableSchema(columns: [], foreignKeys: [])
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.primaryKeyColumns.isEmpty)
         #expect(parsed.columnDefaults.isEmpty)
         #expect(parsed.columnNullable.isEmpty)
         #expect(parsed.columnForeignKeys?.isEmpty == true)
         #expect(parsed.columnEnumValues.isEmpty)
-        #expect(parsed.approximateRowCount == nil)
     }
 
     // MARK: - Inline result-set metadata
@@ -537,7 +568,6 @@ struct QueryExecutorTests {
         #expect(parsed.columnNullable["name"] == true)
         #expect(parsed.columnDefaults.isEmpty)
         #expect(parsed.columnForeignKeys == nil)
-        #expect(parsed.approximateRowCount == nil)
     }
 
     @Test("inlineMetadata reports a composite primary key in column order")

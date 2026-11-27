@@ -25,7 +25,15 @@ engines = [
     "dep:tablepro-driver-sqlite",
 ]
 
+[[bin]]
+# The Windows package's tablepro command, beside TablePro.exe (src/command_line/mod.rs).
+name = "tablepro-cli"
+path = "src/bin/tablepro-cli.rs"
+
 [dependencies]
+tablepro-account.workspace = true
+tablepro-ai.workspace = true
+tablepro-cli.workspace = true
 tablepro-core.workspace = true
 tablepro-driver-cassandra = { workspace = true, optional = true }
 tablepro-driver-clickhouse = { workspace = true, optional = true }
@@ -36,24 +44,37 @@ tablepro-driver-mysql = { workspace = true, optional = true }
 tablepro-driver-postgres = { workspace = true, optional = true }
 tablepro-driver-redis = { workspace = true, optional = true }
 tablepro-driver-sqlite = { workspace = true, optional = true }
+tablepro-foreign-import.workspace = true
+tablepro-mcp.workspace = true
+tablepro-net.workspace = true
 tablepro-session = { workspace = true, features = ["in-process-ssh"] }
 tablepro-ssh = { workspace = true, features = ["in-process"] }
+tablepro-records.workspace = true
 tablepro-storage.workspace = true
+tablepro-sync.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
 secrecy.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tokio-util.workspace = true
 tracing.workspace = true
 uniffi.workspace = true
 uuid.workspace = true
+zeroize.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
 
 [dev-dependencies]
+tablepro-account = { workspace = true, features = ["fakes"] }
+tablepro-session = { workspace = true, features = ["fakes", "in-process-ssh"] }
+tablepro-keys.workspace = true
+tablepro-sync-testing.workspace = true
+tablepro-test-support.workspace = true
 csbindgen.workspace = true
 russh.workspace = true
 tempfile.workspace = true

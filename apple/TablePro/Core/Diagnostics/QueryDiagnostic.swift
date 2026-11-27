@@ -56,16 +56,17 @@ enum QueryDiagnosticsFactory {
         case .javascript:
             return ConsoleRequestDiagnosticsProducer()
         case .sql:
+            let grammar = grammar ?? resolvedType.lexicalGrammar
             return CombinedQueryDiagnosticsProducer(producers: [
-                SQLDiagnosticsProducer(),
-                SQLConfusableCharacterDiagnosticsProducer(grammar: grammar ?? resolvedType.lexicalGrammar)
+                SQLDiagnosticsProducer(grammar: grammar),
+                SQLConfusableCharacterDiagnosticsProducer(grammar: grammar)
             ])
         case .bash:
             // A command line's arguments are plain text, so `SET smile :)` holds a bracket that closes
             // nothing and is still a valid command. There is no structure to check.
             return CombinedQueryDiagnosticsProducer(producers: [])
         case .custom:
-            return SQLDiagnosticsProducer()
+            return SQLDiagnosticsProducer(grammar: grammar ?? resolvedType.lexicalGrammar)
         }
     }
 }

@@ -43,6 +43,7 @@ internal final class ImportRun: @unchecked Sendable {
     private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     private var ledger = ImportLedger()
     private var onChange: (@Sendable () -> Void)?
+    private var interrupt: (@Sendable () -> Void)?
 
     internal var currentPhase: ImportRunPhase {
         lock.withLock { phase }
@@ -107,11 +108,15 @@ internal final class ImportRun: @unchecked Sendable {
         if changed { notify() }
     }
 
+    // A COPY streams its whole block as one call, so a pause would wait for all of it. While one runs, Stop ends it
+    // and the run, as any failure would: its rows cannot be resumed, and an owned transaction can only roll back.
     @discardableResult
     internal func requestPause() -> Bool {
-        let changed = lock.withLock { () -> Bool in
+        transition { phase in
             guard phase == .running else { return false }
-            if inFlight == 0 {
+            if interrupt != nil {
+                phase = .stopping(.rollBack)
+            } else if inFlight == 0 {
                 generation += 1
                 phase = .paused(generation: generation)
             } else {
@@ -119,8 +124,25 @@ internal final class ImportRun: @unchecked Sendable {
             }
             return true
         }
-        if changed { notify() }
-        return changed
+    }
+
+    // `interrupt` ends the call early; it runs when the run stops while the call is in flight. A Stop that came after
+    // the call was admitted stops it here, before it starts.
+    internal func interruptible<T>(
+        by interrupt: @escaping @Sendable () -> Void,
+        _ body: () async throws -> T
+    ) async throws -> T {
+        let starts = lock.withLock { () -> Bool in
+            guard phase == .running else { return false }
+            self.interrupt = interrupt
+            return true
+        }
+        guard starts else {
+            stop(.rollBack)
+            throw PluginImportCancellationError()
+        }
+        defer { lock.withLock { self.interrupt = nil } }
+        return try await body()
     }
 
     // An answer to a question asked at `generation`: ignored once that pause has ended.
@@ -278,7 +300,11 @@ internal final class ImportRun: @unchecked Sendable {
     private func transition(_ change: (inout ImportRunPhase) -> Bool) -> Bool {
         let wakes = lock.withLock { () -> [CheckedContinuation<Void, Never>]? in
             guard change(&phase) else { return nil }
-            if case .stopping(let choice) = phase { chosenStop = choice }
+            if case .stopping(let choice) = phase {
+                chosenStop = choice
+                // Under the lock: the interrupted call cannot return and let the next statement start meanwhile.
+                interrupt?()
+            }
             switch phase {
             case .pausing, .paused:
                 return []

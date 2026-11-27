@@ -8,14 +8,6 @@ import SwiftUI
 struct SQLExportOptionsView: View {
     @ObservedObject var plugin: SQLExportPlugin
 
-    private static let batchSizeOptions = [1, 100, 500, 1_000]
-
-    private static let splitSizeOptions = [0, 8, 32, 128, 512]
-
-    /// Every value but the first is a `max_allowed_packet` default some MySQL or MariaDB release has
-    /// shipped with, so a dump restores into an untuned server of that generation.
-    private static let statementSizeOptions = [0, 262_144, 1_048_576, 4_194_304, 16_777_216, 67_108_864]
-
     private static let statementSizeHelp = String(
         localized: """
             Closes the INSERT at this size or the row count, whichever comes first. MySQL and MariaDB \
@@ -24,14 +16,6 @@ struct SQLExportOptionsView: View {
             """,
         bundle: .main
     )
-
-    private static func statementSizeLabel(_ bytes: Int) -> String {
-        guard bytes > 0 else { return String(localized: "No limit", bundle: .main) }
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .binary
-        formatter.allowedUnits = [.useKB, .useMB]
-        return formatter.string(fromByteCount: Int64(bytes))
-    }
 
     private static let insertModeHelp = String(
         localized: """
@@ -81,7 +65,7 @@ struct SQLExportOptionsView: View {
                 Spacer()
 
                 Picker(String(localized: "Rows per INSERT", bundle: .main), selection: $plugin.settings.batchSize) {
-                    ForEach(Self.batchSizeOptions, id: \.self) { size in
+                    ForEach(SQLExportOptions.batchSizeChoices, id: \.self) { size in
                         Text(size == 1 ? String(localized: "1 (no batching)", bundle: .main) : "\(size)")
                             .tag(size)
                     }
@@ -102,8 +86,8 @@ struct SQLExportOptionsView: View {
                     String(localized: "Max INSERT size", bundle: .main),
                     selection: $plugin.settings.maxStatementBytes
                 ) {
-                    ForEach(Self.statementSizeOptions, id: \.self) { size in
-                        Text(Self.statementSizeLabel(size)).tag(size)
+                    ForEach(SQLExportOptions.statementSizeChoices, id: \.self) { size in
+                        Text(SQLExportOptions.statementSizeLabel(size)).tag(size)
                     }
                 }
                 .pickerStyle(.menu)
@@ -136,7 +120,7 @@ struct SQLExportOptionsView: View {
                 Spacer()
 
                 Picker(String(localized: "Split every", bundle: .main), selection: $plugin.settings.splitSizeMegabytes) {
-                    ForEach(Self.splitSizeOptions, id: \.self) { size in
+                    ForEach(SQLExportOptions.splitSizeChoices, id: \.self) { size in
                         Text(size == 0 ? String(localized: "One file", bundle: .main) : "\(size) MB")
                             .tag(size)
                     }
@@ -166,5 +150,12 @@ struct SQLExportOptionsView: View {
                 .toggleStyle(.checkbox)
                 .font(.system(size: 13))
         }
+    }
+}
+
+extension SQLExportPlugin {
+    @MainActor
+    func settingsView() -> AnyView? {
+        AnyView(SQLExportOptionsView(plugin: self))
     }
 }

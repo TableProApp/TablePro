@@ -19,6 +19,10 @@ internal enum MultiStatementFailure: Equatable, Sendable {
     /// and committed its row once the lock was released. Nothing here can say whether the
     /// transaction took, so nothing here may report a rollback.
     case commitOutcomeUnknown
+    // Stopped after `sql`, which takes nothing after it but the transaction's end; `databaseMove` is an earlier move that ran.
+    case awaitsCommit(sql: String, databaseMove: String? = nil)
+    // Stopped before `sql`, a database move, because the session holds a transaction the move cannot join.
+    case databaseMoveAwaitsCommit(sql: String)
 
     func ranStatementCount(executedCount: Int, totalCount: Int) -> Int {
         switch self {
@@ -26,7 +30,7 @@ internal enum MultiStatementFailure: Equatable, Sendable {
             return 0
         case .statement:
             return min(executedCount + 1, totalCount)
-        case .batch, .commit, .commitOutcomeUnknown:
+        case .batch, .commit, .commitOutcomeUnknown, .awaitsCommit, .databaseMoveAwaitsCommit:
             return executedCount
         }
     }
@@ -80,7 +84,100 @@ internal struct MultiStatementFailureContext: Equatable, Sendable {
             )
         case .commitOutcomeUnknown:
             return unknownCommitReport()
+        case .awaitsCommit(_, let databaseMove):
+            return awaitsCommitReport(databaseMove: databaseMove)
+        case .databaseMoveAwaitsCommit:
+            return databaseMoveReport()
         }
+    }
+
+    // The bar's Commit, as a typed COMMIT is refused after a DATABASE; a move is redone, as a new run is pinned to the tab's database.
+    private func awaitsCommitReport(databaseMove: String?) -> MultiStatementFailureReport {
+        let next = executedCount + 1
+        let message: String
+        if plan == .scriptTransaction {
+            // The rest has to open its own BT again, or the script's ET ends a block the app opened for it.
+            let opening = databaseMove.map { "\(Self.statementText($0)); BT" } ?? "BT"
+            message = String(
+                format: String(
+                    localized: """
+                        Statement %1$d/%2$d is a DDL statement, and the session takes nothing after it but COMMIT \
+                        or ROLLBACK. The run stopped before statement %3$d. Click Commit on the Transaction Open \
+                        bar, then begin the rest with “%4$@”.
+                        """
+                ),
+                executedCount, totalCount, next, opening
+            )
+        } else if let databaseMove {
+            message = String(
+                format: String(
+                    localized: """
+                        Statement %1$d/%2$d is a DDL statement, and the session takes nothing after it but COMMIT \
+                        or ROLLBACK. The run stopped before statement %3$d. Click Commit on the Transaction Open \
+                        bar. A new run starts in the tab's database, so begin the rest with “%4$@”.
+                        """
+                ),
+                executedCount, totalCount, next, Self.statementText(databaseMove)
+            )
+        } else {
+            message = String(
+                format: String(
+                    localized: """
+                        Statement %1$d/%2$d is a DDL statement, and the session takes nothing after it but COMMIT \
+                        or ROLLBACK. The run stopped before statement %3$d. Click Commit on the Transaction Open \
+                        bar, then run the rest.
+                        """
+                ),
+                executedCount, totalCount, next
+            )
+        }
+        return MultiStatementFailureReport(
+            message: message,
+            resultLabel: String(localized: "Stopped"),
+            failedStatementIndex: next <= totalCount ? executedCount : nil,
+            failedSQL: nil
+        )
+    }
+
+    // Run again from the move itself: a new run is pinned to the tab's database until the move runs.
+    private func databaseMoveReport() -> MultiStatementFailureReport {
+        let position = executedCount + 1
+        let message: String
+        if plan == .scriptTransaction {
+            // A rerun from the move would leave the script's BT behind, and what ran before the BT is already committed.
+            message = String(
+                format: String(
+                    localized: """
+                        Statement %1$d/%2$d moves the session to another database, which this session takes only \
+                        outside a transaction. The run stopped before it. Click Roll Back on the Transaction Open \
+                        bar, move the statement above the script's BT, then run the script again from there.
+                        """
+                ),
+                position, totalCount
+            )
+        } else {
+            message = String(
+                format: String(
+                    localized: """
+                        Statement %1$d/%2$d moves the session to another database, which this session takes only \
+                        outside a transaction. The run stopped before it. Click Commit or Roll Back on the \
+                        Transaction Open bar, then run the script again from statement %1$d.
+                        """
+                ),
+                position, totalCount
+            )
+        }
+        return MultiStatementFailureReport(
+            message: message,
+            resultLabel: String(localized: "Stopped"),
+            failedStatementIndex: position <= totalCount ? executedCount : nil,
+            failedSQL: nil
+        )
+    }
+
+    private static func statementText(_ sql: String) -> String {
+        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasSuffix(";") ? String(trimmed.dropLast()) : trimmed
     }
 
     /// Worded without a rollback in it. The app sent the commit, the connection went before the

@@ -15,6 +15,13 @@ final class DataGridEditingCellView: NSTableCellView {
 
     let field = DataGridEditingTextField(frame: .zero)
     private var scope: ThemeScope = .live
+    // Set while the grid wraps: the field then sits on the row's first line, where the value's text starts.
+    var firstLineHeight: CGFloat? {
+        didSet {
+            guard firstLineHeight != oldValue else { return }
+            needsLayout = true
+        }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -50,10 +57,11 @@ final class DataGridEditingCellView: NSTableCellView {
     func layoutField() {
         let inset = Self.borderWidth
         let lineHeight = field.font.map { ($0.ascender - $0.descender + $0.leading).rounded(.up) } ?? bounds.height
-        let height = min(lineHeight + 2, max(0, bounds.height - 2 * inset))
+        let band = firstLineHeight.map { min($0, bounds.height) } ?? bounds.height
+        let height = min(lineHeight + 2, max(0, band - 2 * inset))
         let frame = NSRect(
             x: inset,
-            y: ((bounds.height - height) / 2).rounded(),
+            y: ((band - height) / 2).rounded(),
             width: max(0, bounds.width - 2 * inset),
             height: height
         )
@@ -72,7 +80,7 @@ final class DataGridEditingCellView: NSTableCellView {
         layoutField()
     }
 
-    override var isFlipped: Bool { true }
+    override nonisolated var isFlipped: Bool { true }
 
     // A selected row's emphasized style would turn the text white on the field's own white background.
     override var backgroundStyle: NSView.BackgroundStyle {

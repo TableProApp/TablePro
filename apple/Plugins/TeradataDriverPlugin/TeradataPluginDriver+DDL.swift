@@ -105,6 +105,11 @@ extension TeradataPluginDriver {
         )
     }
 
+    // Teradata has no TRUNCATE; DELETE ... ALL is its documented way to empty a table, and it has no CASCADE.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        ["DELETE FROM \(TeradataSchemaQueries.qualifiedName(database: effectiveDatabase(schema), table: table)) ALL"]
+    }
+
     func createViewTemplate() -> String? {
         "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
     }

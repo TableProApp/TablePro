@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 @testable import TablePro
 import TableProSyncTransport
 import Testing
@@ -9,6 +10,11 @@ private struct KeyOnlySource: IntegrityKeySource {
     let source: StoredIntegrityKeySource
 
     func key() -> SymmetricKey? { source.key() }
+}
+
+private struct StampedRow: Codable, Equatable {
+    let id: Int
+    let name: String
 }
 
 @MainActor
@@ -118,5 +124,242 @@ struct ConnectionStoreTagRemovalTests {
 
         #expect(storage.loadConnections().count == 1)
         #expect(storage.storeIsTrusted)
+    }
+
+    private func makeStore(at fileURL: URL) -> IntegrityStampedFileStore<StampedRow> {
+        IntegrityStampedFileStore(
+            fileURL: fileURL,
+            label: "rows.json",
+            logger: Logger(subsystem: "com.TablePro", category: "ConnectionStoreTagRemovalTests"),
+            userSaveEstablishesTrust: true,
+            integrity: integrity
+        )
+    }
+
+    private func saveTwice(_ store: IntegrityStampedFileStore<StampedRow>) {
+        #expect(store.load()?.isEmpty == true)
+        #expect(store.save([StampedRow(id: 1, name: "One")]))
+        #expect(store.save([StampedRow(id: 1, name: "One"), StampedRow(id: 2, name: "Two")]))
+    }
+
+    @Test("A record that does not decode is skipped and written back unchanged by the next save")
+    func undecodableRecordSurvivesASave() throws {
+        let fileURL = try makeFileURL()
+        let unreadable = #"{"id":"seven","port":5432,"ratio":0.25,"flags":[true,null],"nested":{"big":9007199254740993}}"#
+        try Data(#"[{"id":1,"name":"One"},\#(unreadable),{"id":2,"name":"Two"}]"#.utf8).write(to: fileURL)
+        let store = makeStore(at: fileURL)
+
+        #expect(store.load() == [StampedRow(id: 1, name: "One"), StampedRow(id: 2, name: "Two")])
+        #expect(store.save([StampedRow(id: 1, name: "One")]))
+
+        let written = try Data(contentsOf: fileURL)
+        let rows = try #require(try JSONSerialization.jsonObject(with: written) as? [NSDictionary])
+        let original = try #require(try JSONSerialization.jsonObject(with: Data(unreadable.utf8)) as? NSDictionary)
+        #expect(rows.count == 2)
+        #expect(rows.last == original)
+        let text = try #require(String(bytes: written, encoding: .utf8))
+        #expect(text.contains("9007199254740993"))
+        #expect(makeStore(at: fileURL).load() == [StampedRow(id: 1, name: "One")])
+    }
+
+    @Test("One connection that does not decode keeps the rest of connections.json")
+    func undecodableConnectionKeepsTheLibrary() throws {
+        let fileURL = try makeFileURL()
+        let suite = try EphemeralDefaults()
+        let connection = TestFixtures.makeConnection(name: "Kept")
+        let stored = try #require(String(bytes: JSONEncoder().encode(StoredConnection(from: connection)), encoding: .utf8))
+        let unreadable = #"{"id":"not-a-uuid","name":"From a newer build"}"#
+        try Data("[\(stored),\(unreadable)]".utf8).write(to: fileURL)
+        let storage = ConnectionStorage(
+            fileURL: fileURL,
+            userDefaults: suite.defaults,
+            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults)),
+            keychain: keychain,
+            integrity: integrity
+        )
+
+        #expect(storage.loadConnections().map { $0.name } == ["Kept"])
+        #expect(!storage.lastLoadFailed)
+
+        var renamed = connection
+        renamed.name = "Renamed"
+        #expect(storage.saveConnections([renamed]))
+
+        let rows = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [NSDictionary])
+        #expect(rows.count == 2)
+        #expect(rows.last?["name"] as? String == "From a newer build")
+    }
+
+    @Test("A save leaves a copy of what it wrote, with its tag, as the backup")
+    func saveMirrorsTheFileAsTheBackup() throws {
+        let fileURL = try makeFileURL()
+        let store = makeStore(at: fileURL)
+        #expect(store.load()?.isEmpty == true)
+        #expect(store.save([StampedRow(id: 1, name: "One")]))
+        #expect(try Data(contentsOf: store.backupURL) == Data(contentsOf: fileURL))
+
+        #expect(store.save([StampedRow(id: 2, name: "Two")]))
+
+        #expect(try Data(contentsOf: store.backupURL) == Data(contentsOf: fileURL))
+        #expect(
+            try Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: store.backupURL))
+                == Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: fileURL))
+        )
+    }
+
+    @Test("A file that no longer parses is restored as last saved, and the backup keeps its own trust")
+    func damagedFileIsRestoredFromBackup() throws {
+        let fileURL = try makeFileURL()
+        saveTwice(makeStore(at: fileURL))
+        let damaged = Data(#"[{"id":1,"name":"One"},{"id":2"#.utf8)
+        try damaged.write(to: fileURL)
+
+        let store = makeStore(at: fileURL)
+
+        #expect(store.load() == [StampedRow(id: 1, name: "One"), StampedRow(id: 2, name: "Two")])
+        #expect(store.isTrusted)
+        let backup = try Data(contentsOf: store.backupURL)
+        #expect(try Data(contentsOf: store.unreadableURL) == damaged)
+        #expect(try Data(contentsOf: fileURL) == backup)
+    }
+
+    @Test("A save that takes secrets out of the file leaves no older copy in the backup")
+    func secretRemovingSaveLeavesNoOlderBackup() throws {
+        let fileURL = try makeFileURL()
+        let store = makeStore(at: fileURL)
+        #expect(store.load()?.isEmpty == true)
+        #expect(store.save([StampedRow(id: 1, name: "secret")]))
+        #expect(store.save([StampedRow(id: 1, name: "secret"), StampedRow(id: 2, name: "Two")]))
+
+        try Data("secret".utf8).write(to: store.unreadableURL)
+        #expect(store.save([StampedRow(id: 1, name: "moved"), StampedRow(id: 2, name: "Two")], removingSecrets: true))
+        #expect(!FileManager.default.fileExists(atPath: store.unreadableURL.path))
+
+        let backup = try Data(contentsOf: store.backupURL)
+        let current = try Data(contentsOf: fileURL)
+        #expect(backup == current)
+        #expect(!String(decoding: backup, as: UTF8.self).contains("secret"))
+        #expect(
+            try Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: store.backupURL))
+                == Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: fileURL))
+        )
+    }
+
+    @Test("A file that no longer parses never becomes the backup")
+    func damagedFileNeverBecomesTheBackup() throws {
+        let fileURL = try makeFileURL()
+        let store = makeStore(at: fileURL)
+        saveTwice(store)
+        try Data("not json".utf8).write(to: fileURL)
+
+        #expect(store.save([StampedRow(id: 3, name: "Three")]))
+
+        #expect(try Data(contentsOf: store.backupURL) == Data(contentsOf: fileURL))
+        #expect(try JSONDecoder().decode([StampedRow].self, from: Data(contentsOf: store.backupURL)) == [StampedRow(id: 3, name: "Three")])
+    }
+
+    @Test("A save that takes secrets out writes nothing while the old backup cannot be dropped")
+    func secretRemovingSaveNeedsTheBackupGone() throws {
+        let fileURL = try makeFileURL()
+        let store = makeStore(at: fileURL)
+        #expect(store.load()?.isEmpty == true)
+        #expect(store.save([StampedRow(id: 1, name: "secret")]))
+        let before = try Data(contentsOf: fileURL)
+        try FileManager.default.removeItem(at: store.backupURL)
+        try FileManager.default.createDirectory(at: store.backupURL, withIntermediateDirectories: true)
+        let pinned = store.backupURL.appendingPathComponent("pinned")
+        try Data("secret".utf8).write(to: pinned)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: pinned.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: pinned.path) }
+
+        #expect(!store.save([StampedRow(id: 1, name: "moved")], removingSecrets: true))
+
+        #expect(try Data(contentsOf: fileURL) == before)
+    }
+
+    @Test("A backup with no tag is restored untrusted, even on a store never tagged")
+    func untaggedBackupIsRestoredUntrusted() throws {
+        let stampedURL = try makeFileURL()
+        let stamped = makeStore(at: stampedURL)
+        saveTwice(stamped)
+        try FileManager.default.removeItem(at: ConnectionStoreIntegrity.tagURL(for: stamped.backupURL))
+        try Data().write(to: stampedURL)
+
+        let reloaded = makeStore(at: stampedURL)
+        #expect(reloaded.load() == [StampedRow(id: 1, name: "One"), StampedRow(id: 2, name: "Two")])
+        #expect(!reloaded.isTrusted)
+
+        let neverTaggedURL = try makeFileURL()
+        let neverTagged = makeStore(at: neverTaggedURL)
+        try JSONEncoder().encode([StampedRow(id: 1, name: "Planted")]).write(to: neverTagged.backupURL)
+        try Data("not json".utf8).write(to: neverTaggedURL)
+
+        #expect(neverTagged.load() == [StampedRow(id: 1, name: "Planted")])
+        #expect(!neverTagged.isTrusted)
+        #expect(!FileManager.default.fileExists(atPath: ConnectionStoreIntegrity.tagURL(for: neverTaggedURL).path))
+
+        let loadedAgain = makeStore(at: neverTaggedURL)
+        #expect(loadedAgain.load() == [StampedRow(id: 1, name: "Planted")])
+        #expect(!loadedAgain.isTrusted)
+    }
+
+    @Test("A store changed outside TablePro sets its unreadable records aside, so a save never signs them")
+    func untrustedStoreSetsUnreadableRecordsAside() throws {
+        let fileURL = try makeFileURL()
+        let store = makeStore(at: fileURL)
+        #expect(store.load()?.isEmpty == true)
+        #expect(store.save([StampedRow(id: 1, name: "One")]))
+        let unreadable = #"{"id":"planted","command":"curl"}"#
+        try Data(#"[{"id":1,"name":"One"},\#(unreadable)]"#.utf8).write(to: fileURL)
+
+        let reloaded = makeStore(at: fileURL)
+        #expect(reloaded.load() == [StampedRow(id: 1, name: "One")])
+        #expect(!reloaded.isTrusted)
+        #expect(reloaded.save([StampedRow(id: 1, name: "One")]))
+
+        let rows = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [NSDictionary])
+        #expect(rows.count == 1)
+        let setAside = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: reloaded.unreadableRecordsURL)) as? [NSDictionary]
+        )
+        #expect(setAside.first?["id"] as? String == "planted")
+    }
+
+    @Test("Loading the same changed file again sets its unreadable records aside once")
+    func settingAsideTwiceKeepsOneCopy() throws {
+        let fileURL = try makeFileURL()
+        let store = makeStore(at: fileURL)
+        #expect(store.load()?.isEmpty == true)
+        #expect(store.save([StampedRow(id: 1, name: "One")]))
+        try Data(#"[{"id":1,"name":"One"},{"id":"planted"}]"#.utf8).write(to: fileURL)
+
+        _ = makeStore(at: fileURL).load()
+        _ = makeStore(at: fileURL).load()
+
+        let setAside = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: store.unreadableRecordsURL)) as? [NSDictionary]
+        )
+        #expect(setAside.count == 1)
+    }
+
+    @Test("Unreadable records that cannot be set aside are written back and never signed")
+    func recordsThatCannotBeSetAsideStayUnsigned() throws {
+        let fileURL = try makeFileURL()
+        let store = makeStore(at: fileURL)
+        #expect(store.load()?.isEmpty == true)
+        #expect(store.save([StampedRow(id: 1, name: "One")]))
+        try Data(#"[{"id":1,"name":"One"},{"id":"planted"}]"#.utf8).write(to: fileURL)
+        try FileManager.default.createDirectory(at: store.unreadableRecordsURL, withIntermediateDirectories: true)
+
+        let reloaded = makeStore(at: fileURL)
+        #expect(reloaded.load() == [StampedRow(id: 1, name: "One")])
+        #expect(reloaded.save([StampedRow(id: 1, name: "One")]))
+
+        #expect(!reloaded.isTrusted)
+        let rows = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [NSDictionary])
+        #expect(rows.count == 2)
+        let again = makeStore(at: fileURL)
+        _ = again.load()
+        #expect(!again.isTrusted)
     }
 }

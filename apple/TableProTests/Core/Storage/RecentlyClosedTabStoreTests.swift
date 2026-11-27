@@ -58,6 +58,29 @@ struct RecentlyClosedTabStoreTests {
         #expect(store.entries.isEmpty)
     }
 
+    @Test("A named tab with no text is kept for reopening, under its name")
+    func namedBlankTabIsStored() throws {
+        let (store, _) = try makeStore()
+        var tab = QueryTab(title: "Monthly report", query: "")
+        tab.automaticTitle = "Query 2"
+        store.push(tab: tab, connection: TestFixtures.makeConnection(name: "Shop"))
+
+        let entry = try #require(store.mostRecentEntry)
+        #expect(entry.tab.title == "Monthly report")
+        #expect(entry.tab.automaticTitle == "Query 2")
+    }
+
+    @Test("A named tab is listed by its name, not its first line")
+    func namedTabIsListedByName() throws {
+        let (store, _) = try makeStore()
+        var tab = QueryTab(title: "Monthly report", query: "SELECT 1")
+        tab.automaticTitle = "Query 2"
+        store.push(tab: tab, connection: TestFixtures.makeConnection(name: "Shop"))
+
+        let entry = try #require(store.mostRecentEntry)
+        #expect(entry.displayTitle.hasPrefix("Monthly report"))
+    }
+
     @Test("A table tab is stored with its browse context")
     func tableTabIsStored() throws {
         let (store, _) = try makeStore()

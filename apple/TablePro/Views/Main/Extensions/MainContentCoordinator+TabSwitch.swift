@@ -25,32 +25,21 @@ extension MainContentCoordinator {
             "[switch] handleTabChange start from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) connId=\(self.connectionId, privacy: .public) tabsCount=\(self.tabManager.tabs.count)"
         )
         isHandlingTabSwitch = true
-        // The change manager holds the outgoing tab's edits until the restore below, so an open cell editor commits there (H2).
-        tabSwitchOutgoingTabId = oldTabId
         if let oldTabId {
             commitGridEdit(ofTab: oldTabId)
+            // A typed run left open would swallow the tab's next step when it comes back.
+            existingChangeManager(forTab: oldTabId)?.endCoalescedUndoRun()
         }
         defer {
-            tabSwitchOutgoingTabId = nil
             isHandlingTabSwitch = false
             Self.lifecycleLogger.debug(
                 "[switch] handleTabChange done to=\(newTabId?.uuidString ?? "nil", privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
             )
         }
 
-        let saveStart = Date()
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
-            // Also checks the tab's snapshot: on `hasChanges` alone an undo kept a stale snapshot that restored the undone edit on return.
-            // Only on the switch the result landed in: a mark left by a reselect this handler never saw is dropped.
-            if let selectedAtLanding = tabsGivenResultOffScreen.removeValue(forKey: oldId), selectedAtLanding == newTabId {
-                tabManager.mutate(at: oldIndex) { $0.pendingChanges = TabChangeSnapshot() }
-            } else if changeManager.hasChanges || tabManager.tabs[oldIndex].pendingChanges.hasChanges {
-                var savedState = changeManager.saveState()
-                savedState.resultSetId = tabManager.tabs[oldIndex].display.activeResultSetId
-                tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
-            }
             // One editor serves every query tab with no `.id(tab.id)`, so write only once this tab's restored caret has been consumed.
             let outgoing = tabManager.tabs[oldIndex]
             if outgoing.tabType == .query,
@@ -64,7 +53,6 @@ extension MainContentCoordinator {
             }
             filterCoordinator.saveLastFilters(of: tabManager.tabs[oldIndex])
         }
-        let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
         // Deferred a tick: releasing a large formatted cache is not work the switch should wait on.
         Task { @MainActor [weak self] in
@@ -75,52 +63,19 @@ extension MainContentCoordinator {
         if let newId = newTabId,
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
             let newTab = tabManager.tabs[newIndex]
-            let newRows = tabSessionRegistry.tableRows(for: newId)
-            tabsGivenResultOffScreen.removeValue(forKey: newId)
 
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
             syncQueryToolbarState(for: newTab)
 
-            // Consumed once restored: a copy left on the tab went stale with the first undo and kept reporting undone edits.
-            var pendingState = newTab.pendingChanges
-            if pendingState.hasChanges, pendingState.resultSetId != newTab.display.activeResultSetId {
-                pendingState = TabChangeSnapshot()
-                tabManager.mutate(at: newIndex) { $0.pendingChanges = pendingState }
-            }
-            if pendingState.hasChanges {
-                changeManager.restoreState(
-                    from: pendingState,
-                    tableName: newTab.tableContext.tableName ?? "",
-                    schemaName: newTab.tableContext.schemaName,
-                    databaseType: connection.type,
-                    generatedColumns: newRows.generatedColumns,
-                    rowMatchPolicy: newRows.rowMatchPolicy,
-                    columnTypeNames: newRows.columnTypeNames
-                )
-                tabManager.mutate(at: newIndex) { $0.pendingChanges = TabChangeSnapshot() }
-                tabSwitchOutgoingTabId = nil
-            } else {
-                changeManager.configureForTable(
-                    tableName: newTab.tableContext.tableName ?? "",
-                    schemaName: newTab.tableContext.schemaName,
-                    columns: newRows.columns,
-                    primaryKeyColumns: newTab.tableContext.primaryKeyColumns,
-                    databaseType: connection.type,
-                    generatedColumns: newRows.generatedColumns,
-                    rowMatchPolicy: newRows.rowMatchPolicy,
-                    columnTypeNames: newRows.columnTypeNames,
-                    triggerReload: false
-                )
-                tabSwitchOutgoingTabId = nil
-            }
-
-            let restoreMs = Int(Date().timeIntervalSince(restoreStart) * 1_000)
+            // Each tab keeps its own edits and undo history, so arriving only points the window at them.
+            describeCurrentResult(ofTab: newId)
+            selectedTabEdits.follow(changeManager(forTab: newId))
             Self.lifecycleLogger.debug(
-                "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms restoreIncoming=\(restoreMs)ms"
+                "[switch] handleTabChange restoreIncoming=\(Int(Date().timeIntervalSince(restoreStart) * 1_000))ms"
             )
 
-            // No `reloadVersion` bump: it is window-wide, and bumping it on a switch re-formatted the incoming grid's whole result (#2424).
+            // No `reloadVersion` bump: bumping it on a switch re-formatted the incoming grid's whole result (#2424).
             let isStale = tabSessionRegistry.isStale(newId)
             lazyLoadCurrentTabIfNeeded()
             TabSwitchTracer.shared.selectionApplied(
@@ -130,36 +85,12 @@ extension MainContentCoordinator {
                 isShowing: { [weak manager = tabManager] in manager?.isShowing(newId) ?? false }
             )
         } else {
-            // No tab selected: drop the live copy, or a Save would write the outgoing tab's rows against the database now on screen.
-            changeManager.configureForTable(
-                tableName: "",
-                columns: [],
-                primaryKeyColumns: [],
-                databaseType: connection.type,
-                generatedColumns: [],
-                triggerReload: false
-            )
+            selectedTabEdits.follow(idleChangeManager)
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false
             toolbarState.isQueryTab = false
             toolbarState.hasQueryText = false
         }
-    }
-
-    // Edits parked on a background tab name rows of the result it held; a result installed meanwhile makes them
-    // another table's on return.
-    func dropParkedEdits(ofBackgroundTab tabId: UUID) {
-        guard tabManager.selectedTabId != tabId else { return }
-        tabsGivenResultOffScreen[tabId] = .some(tabManager.selectedTabId)
-        tabManager.mutate(tabId: tabId) { tab in
-            if tab.pendingChanges.hasChanges { tab.pendingChanges = TabChangeSnapshot() }
-        }
-    }
-
-    // The selected tab's change manager now describes the result on screen.
-    func changeManagerMatchesSelectedResult() {
-        guard let selected = tabManager.selectedTabId else { return }
-        tabsGivenResultOffScreen.removeValue(forKey: selected)
     }
 
     private func commitGridEdit(ofTab tabId: UUID) {

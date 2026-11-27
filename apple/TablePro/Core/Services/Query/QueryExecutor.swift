@@ -8,7 +8,8 @@ private let queryExecutorLog = Logger(subsystem: "com.TablePro", category: "Quer
 struct QueryFetchResult {
     let columns: [String]
     let columnTypes: [ColumnType]
-    let rows: [[PluginCellValue]]
+    // Mutable so a fold can cut the trailing columns off each row in place.
+    var rows: [[PluginCellValue]]
     let executionTime: TimeInterval
     let rowsAffected: Int
     let statusMessage: String?
@@ -35,10 +36,10 @@ struct QueryFetchResult {
     }
 }
 
+// Columns, view answer and keys only: the row estimate is the count's read, so keys never wait for it.
 struct FetchedTableSchema {
     let columns: [ColumnInfo]
     let foreignKeys: [ForeignKeyInfo]?
-    let approximateRowCount: Int?
     var viewRowEditing: PluginViewRowEditing?
 }
 
@@ -53,7 +54,6 @@ struct ParsedSchemaMetadata {
     /// engine rejects both an explicit INSERT value and an UPDATE of one.
     let generatedColumns: Set<String>
     let columnIdentity: [String: IdentityKind]
-    let approximateRowCount: Int?
     let columnEnumValues: [String: [String]]
     let columnComments: [String: String]
     /// Whether this came from the table's own schema, rather than from what the result set happened
@@ -79,7 +79,6 @@ struct ParsedSchemaMetadata {
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: rows.generatedColumns,
             columnIdentity: rows.columnIdentity,
-            approximateRowCount: nil,
             columnEnumValues: rows.columnEnumValues,
             columnComments: rows.columnComments,
             isAuthoritative: rows.hasAuthoritativeSchema,
@@ -150,12 +149,15 @@ final class QueryExecutor {
         )
     }
 
-    // MARK: - Driver fetch (nonisolated, runs on background)
+    // MARK: - Driver fetch
 
+    // `@concurrent` is what moves these off the main actor: a plain nonisolated async function runs on its caller's
+    // actor under NonisolatedNonsendingByDefault (SE-0461), and every caller here is on the main actor.
     /// Bounding a fetch abandons the rest of it, which for some drivers cancels the statement on the
     /// server, so it is only ever offered a cap that `resolveRowCap` produced. That gate excludes
     /// writes and DDL; a caller computing its own cap (the MCP bridge caps a write that RETURNs)
     /// must not route here.
+    @concurrent
     nonisolated static func fetchBoundedQueryData(
         driver: DatabaseDriver,
         sql: String,
@@ -194,6 +196,7 @@ final class QueryExecutor {
         )
     }
 
+    @concurrent
     nonisolated static func fetchExplainPlan(
         driver: DatabaseDriver,
         statement: String,
@@ -214,6 +217,7 @@ final class QueryExecutor {
     }
 
     // A non-nil context is Read-Only's, which the bounded read and its fallback both carry.
+    @concurrent
     nonisolated static func fetchQueryData(
         driver: DatabaseDriver,
         sql: String,
@@ -250,6 +254,8 @@ final class QueryExecutor {
         )
     }
 
+    // `[Any?]` is not Sendable, so this one stays on its caller's actor; the driver call it makes leaves it at
+    // `PluginDriverAdapter`, which converts the parameters first.
     nonisolated static func fetchQueryDataParameterized(
         driver: DatabaseDriver,
         sql: String,
@@ -287,41 +293,70 @@ final class QueryExecutor {
     // MARK: - Schema fetch + parse
 
     /// The schema read that runs beside a load's rows, when the load needs one.
-    static func schemaFetch(tableName: String?, isView: Bool, scope: DatabaseScope) -> Task<FetchedTableSchema, Error>? {
+    static func schemaFetch(
+        tableName: String?,
+        isView: Bool,
+        isCataloged: Bool = false,
+        scope: DatabaseScope,
+        knownColumns: [ColumnInfo]? = nil,
+        listedForeignKeys: (@MainActor @Sendable () -> [ForeignKeyInfo]?)? = nil
+    ) -> Task<FetchedTableSchema, Error>? {
         guard let tableName else { return nil }
-        return Task { try await fetchTableSchema(scope: scope, tableName: tableName, isView: isView) }
+        return Task {
+            try await fetchTableSchema(
+                scope: scope,
+                tableName: tableName,
+                isView: isView,
+                isCataloged: isCataloged,
+                knownColumns: knownColumns,
+                listedForeignKeys: listedForeignKeys
+            )
+        }
     }
 
+    // A cancel lands between reads, never on the wire: a late server cancel can reach the next statement on that connection.
+    // `isCataloged`: the live catalog lists the name as a table, so a missing key does not make it a view to ask about.
+    // `listedForeignKeys` answers from the schema's own read once it landed, asked after the columns so a first open
+    // whose bulk read is still running reads the table's keys itself.
     static func fetchTableSchema(
         scope: DatabaseScope,
         tableName: String,
-        isView: Bool
+        isView: Bool,
+        isCataloged: Bool = false,
+        knownColumns: [ColumnInfo]? = nil,
+        listedForeignKeys: (@MainActor @Sendable () -> [ForeignKeyInfo]?)? = nil
     ) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
             "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .private(mask: .hash)) schema=\(scope.schema ?? "default", privacy: .private(mask: .hash))"
         )
-        let (columns, approximateRowCount, viewRowEditing) = try await DatabaseManager.shared.withMetadataDriver(
+        let (columns, viewRowEditing) = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope
         ) { driver in
-            let columns = try await driver.fetchColumns(table: tableName, schema: scope.schema)
-            let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
-            // A view has no key of its own; a tab that does not know its kind asks whenever none shows.
-            let asksView = isView || !columns.contains { $0.isPrimaryKey }
+            let columns: [ColumnInfo]
+            if let knownColumns {
+                columns = knownColumns
+            } else {
+                columns = try await driver.fetchColumns(table: tableName, schema: scope.schema)
+            }
+            try Task.checkCancellation()
+            // A view has no key of its own; a relation not known as a table asks whenever none shows.
+            let asksView = isView || (!isCataloged && !columns.contains { $0.isPrimaryKey })
             let viewRowEditing = asksView
                 ? await fetchViewRowEditing(viewName: tableName, isKnownView: isView, scope: scope, on: driver)
                 : nil
-            return (columns, approximateRowCount, viewRowEditing)
+            return (columns, viewRowEditing)
         }
-        let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
+        try Task.checkCancellation()
+        let foreignKeys: [ForeignKeyInfo]?
+        if let listed = listedForeignKeys?() {
+            foreignKeys = listed
+        } else {
+            foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
+        }
         queryExecutorLog.info(
             "[fk] schema fetch done table=\(tableName, privacy: .private(mask: .hash)) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
         )
-        return FetchedTableSchema(
-            columns: columns,
-            foreignKeys: foreignKeys,
-            approximateRowCount: approximateRowCount,
-            viewRowEditing: viewRowEditing
-        )
+        return FetchedTableSchema(columns: columns, foreignKeys: foreignKeys, viewRowEditing: viewRowEditing)
     }
 
     // A failed check keeps a known view read-only; a relation not known as one stays what it was.
@@ -404,7 +439,6 @@ final class QueryExecutor {
                     .map(\.name)
             ).union(viewTarget?.readOnlyColumns ?? []),
             columnIdentity: identity,
-            approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues,
             columnComments: comments,
             isAuthoritative: true,
@@ -464,7 +498,6 @@ final class QueryExecutor {
             primaryKeyColumns: primaryKeys,
             generatedColumns: [],
             columnIdentity: identity,
-            approximateRowCount: nil,
             columnEnumValues: [:],
             columnComments: [:],
             isAuthoritative: false

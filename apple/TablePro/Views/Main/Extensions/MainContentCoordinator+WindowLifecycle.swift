@@ -25,7 +25,7 @@ extension MainContentCoordinator {
         refreshSourceFileDiskChanges()
 
         browseCursorCoordinator.followVisibleContainerOnActivation()
-        syncSidebarObjectSelection()
+        refreshSidebarObjectSelectionOnKey()
         announceActiveTabToVoiceOver()
 
         Self.lifecycleLogger.debug(
@@ -96,15 +96,41 @@ extension MainContentCoordinator {
 
     // Every input the mark depends on (tab, container, objects, key window) calls this; skipping one left a stale mark (#2217).
     func syncSidebarObjectSelection() {
+        guard case .mark(let target) = resolvedSidebarObjectSelection() else { return }
+        applySidebarMark(target)
+    }
+
+    // A mark missed while the window was in the background (a tab change, a retarget under Open Quickly) is caught up
+    // here. Re-marking an unchanged target would replace a pick the user made in the sidebar since.
+    private func refreshSidebarObjectSelectionOnKey() {
+        guard case .mark(let target) = resolvedSidebarObjectSelection(), target != lastSidebarMark else { return }
+        applySidebarMark(target)
+    }
+
+    // Back, Forward and a reused preview tab change the table a tab shows without changing the tab, so the mark follows.
+    // A query tab adopting its result's table is not navigation: the sidebar keeps the user's pick, now and at next key.
+    func selectedTabDidRetarget() {
+        guard tabManager.selectedTab?.tabType == .table else {
+            if case .mark(let target) = resolvedSidebarObjectSelection() { lastSidebarMark = target }
+            return
+        }
+        guard isKeyWindow else { return }
+        syncSidebarObjectSelection()
+    }
+
+    private func resolvedSidebarObjectSelection() -> SidebarObjectSelection {
         let selectedTab = tabManager.selectedTab
-        let selection = SidebarObjectSelection.resolve(
+        return SidebarObjectSelection.resolve(
             tabTableName: selectedTab?.tableContext.tableName,
             tabScope: selectedTab.flatMap { scope(for: $0) },
             browseScope: browseScope,
             tables: services.databaseManager.session(for: connectionId)?.tables ?? []
         )
-        guard case .mark(let target) = selection,
-              windowSidebarState.selectedTables != target else { return }
+    }
+
+    private func applySidebarMark(_ target: Set<DatabaseTreeTableRef>) {
+        lastSidebarMark = target
+        guard windowSidebarState.selectedTables != target else { return }
         windowSidebarState.selectTables(target)
     }
 
@@ -210,11 +236,13 @@ extension MainContentCoordinator {
         guard tab.execution.errorMessage == nil else { return false }
         guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
 
-        let hasLoaded = tab.execution.lastExecutedAt != nil
-            || !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
-        guard !hasLoaded || tabSessionRegistry.isStale(tab.id) else { return false }
+        guard !hasLoadedTableRows(tab) || tabSessionRegistry.isStale(tab.id) else { return false }
 
         return !holdsUnsavedWork(tab)
+    }
+
+    func hasLoadedTableRows(_ tab: QueryTab) -> Bool {
+        tab.execution.lastExecutedAt != nil || !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
     }
 
     private func clearAbandonedExecutingFlagIfNeeded(for tab: QueryTab) {

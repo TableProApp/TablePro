@@ -12,6 +12,7 @@ enum DataGridCommand: Hashable, CaseIterable {
     case hideColumns
     case showRowsAsJSON
     case exportResults
+    case shareResult
     case clearResults
     case searchAllRows
     case navigateForeignKey
@@ -21,6 +22,7 @@ enum DataGridCommand: Hashable, CaseIterable {
     case valueFilter
     case copyAsSQL
     case loadUnloadedValues
+    case wrapText
 }
 
 enum DataGridLayoutScope: Equatable {
@@ -95,6 +97,7 @@ protocol DataGridActions: AnyObject {
     func gridNavigateForeignKey(value: String, info: ForeignKeyInfo, intent: ReferenceOpenIntent)
     func gridShowRowsAsJSON(_ rowIDs: [RowID])
     func gridExportResults()
+    func gridShareResult()
     func gridClearResults()
     func gridSearchAllRows(term: String)
     func gridSetCheckbox(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn)
@@ -127,6 +130,7 @@ extension DataGridActions {
     func gridNavigateForeignKey(value: String, info: ForeignKeyInfo, intent: ReferenceOpenIntent) {}
     func gridShowRowsAsJSON(_ rowIDs: [RowID]) {}
     func gridExportResults() {}
+    func gridShareResult() {}
     func gridClearResults() {}
     func gridSearchAllRows(term: String) {}
     func gridSetCheckbox(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn) {}
@@ -158,6 +162,7 @@ protocol DataGridStateStore: AnyObject {
     var displayFormats: [ValueDisplayFormat?] { get set }
     var selectionSnapshot: GridSelectionSnapshot { get set }
     var viewportAnchor: GridViewportPlacement? { get set }
+    var wrapsText: Bool { get set }
     var layoutScope: DataGridLayoutScope { get }
 }
 
@@ -169,6 +174,7 @@ final class InMemoryDataGridStateStore: DataGridStateStore {
     var displayFormats: [ValueDisplayFormat?] = []
     var selectionSnapshot = GridSelectionSnapshot.empty
     var viewportAnchor: GridViewportPlacement?
+    var wrapsText = false
     let layoutScope: DataGridLayoutScope = .ephemeral
 
     init(columnLayout: ColumnLayoutState = ColumnLayoutState(), sortState: SortState = SortState()) {

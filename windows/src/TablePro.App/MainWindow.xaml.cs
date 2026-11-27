@@ -5,12 +5,14 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Windows.Storage.Pickers;
 using TablePro.App.ConnectionForm;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.App.Views;
+using TablePro.Editor.Model;
 using TablePro.Interop;
 using Windows.Graphics;
 using Windows.System;
@@ -34,6 +36,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private readonly MainWindow _primary;
     private readonly HomeView? _home;
     private readonly List<OpenConnection> _open = [];
+
+    // .sql files opened while no connection was connected, which the next workspace to connect opens.
+    private readonly List<string> _waitingFiles = [];
     private readonly Dictionary<string, ConnectionFormWindow> _forms = [];
     private readonly List<MainWindow> _tabWindows = [];
     // Native AOT trims OverlappedPresenter's wrapper, so AppWindow.Presenter reads back as its base type.
@@ -49,6 +54,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private SettingsView? _settings;
     private OpenConnection? _front;
 
+    // The connection whose cue the title bar shows, painted again when the theme changes.
+    private OpenConnection? _cue;
+
+    // The setup guide while it is the page in front; leaving it by any route ends it (core 0057).
+    private SetupView? _setup;
+    private bool _launchGateAsked;
+    private bool _choosingRail;
+    private EffectiveKeymap? _keysShown;
+
     // A tab window that has not taken a tab yet, kept hidden for the next drag out of a strip.
     private MainWindow? _spare;
     private bool _isSpare;
@@ -61,7 +75,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         _primary = this;
         InitializeComponent();
         Prepare();
-        Title = "TablePro";
+        Title = Strings.Get("AppDisplayName");
+        AppTitleBar.Title = Title;
         _saves = new SessionWriter(workbench.Sessions);
         _saveTimer = DispatcherQueue.CreateTimer();
         _saveTimer.Interval = SaveDelay;
@@ -84,17 +99,19 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         workbench.ObjectPaneWidth = session.ObjectPaneWidth ?? ObjectPane.DefaultWidth;
+        workbench.LoadRecentFiles(session.RecentFiles);
         _home = new HomeView(workbench, this);
+        _home.LibraryRead += OnLibraryRead;
+        _home.SetupGuideRequested += (_, _) => ShowSetupGuide();
         Rail.Content = _home;
         Rail.SelectedItem = HomeItem;
         Closed += (_, _) => _home.WindowClosed();
         UpdateRail();
-        if (workbench.Settings.ReopenSession)
-        {
-            Restore(session);
-            _restoreWindows = session.TabWindows;
-            _ = RefreshMarksAsync();
-        }
+        // What the app ended holding without a close comes back even with Reopen at startup off.
+        var reopened = workbench.Settings.ReopenSession ? session : session.Recovered();
+        Restore(reopened);
+        _restoreWindows = reopened.TabWindows;
+        _ = RefreshMarksAsync();
     }
 
     private MainWindow(
@@ -122,10 +139,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         Show(connection);
     }
 
+    private static readonly string[] SqlSuffixes = [".sql", ".psql", ".pgsql"];
+
     // Raised once the last session is written, before the connections close, so a new launch may own the data folder.
     internal event EventHandler? SessionSaved;
 
     public bool IsPrimary => ReferenceEquals(_primary, this);
+
+    // Shut down, with its windows hidden, until the process ends or an update's restart replaces it.
+    internal bool IsEnding => _primary._closing;
 
     public bool CanMoveTabs => !_primary._checkingClose && !_closing;
 
@@ -162,6 +184,18 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         ShowForm(null);
     }
 
+    public void NewConnection(ConnectionDraft draft)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        if (!IsPrimary)
+        {
+            _primary.NewConnection(draft);
+            return;
+        }
+
+        ShowForm(null, draft);
+    }
+
     public void EditConnection(SavedConnection connection)
     {
         ArgumentNullException.ThrowIfNull(connection);
@@ -178,6 +212,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
+        ConnectSaved(connection);
+    }
+
+    private OpenConnection ConnectSaved(SavedConnection connection)
+    {
         var open = Open(new SessionConnection
         {
             ConnectionId = connection.Id,
@@ -185,28 +224,193 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             EngineId = connection.EngineId,
         });
         open.Mark(connection.EngineId, connection.Color);
+        open.SetAiPolicy(connection.AiPolicy ?? AiPolicy.Ask);
+        // The tags come from the library's snapshot, which names each one.
+        _ = RefreshMarksAsync();
+        return open;
     }
 
+    // A tab window picks too: a .sql file opens on its own connection, a database file in the primary window.
     public async Task OpenFileAsync()
     {
-        if (!IsPrimary)
-        {
-            await _primary.OpenFileAsync();
-            return;
-        }
-
         var picker = new FileOpenPicker(AppWindow.Id) { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
         foreach (var suffix in _workbench.Engines.SelectMany(engine => engine.FileSuffixes).Distinct())
         {
             picker.FileTypeFilter.Add("." + suffix);
         }
 
+        foreach (var suffix in SqlSuffixes)
+        {
+            picker.FileTypeFilter.Add(suffix);
+        }
+
         picker.FileTypeFilter.Add("*");
         var result = await picker.PickSingleFileAsync();
         if (result is not null)
         {
-            OpenFile(result.Path);
+            await OpenAnyFileAsync(result.Path);
         }
+    }
+
+    // As macOS's Open File: a .sql file goes to a query tab, any other file opens as a database.
+    internal async Task OpenAnyFileAsync(string path)
+    {
+        if (SqlSuffixes.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+        {
+            await OpenSqlFileAsync(path);
+        }
+        else if (!IsPrimary)
+        {
+            _primary.Activate();
+            _primary.OpenFile(path);
+        }
+        else
+        {
+            OpenFile(path);
+        }
+    }
+
+    // The front connection's workspace takes the file; with none connected, it waits for the next one to connect.
+    internal async Task OpenSqlFileAsync(string path)
+    {
+        if (!IsPrimary && Workspace is not { IsConnected: true })
+        {
+            _primary.Activate();
+            await _primary.OpenSqlFileAsync(path);
+            return;
+        }
+
+        var target = Rail.Content is WorkspaceView { IsConnected: true } shown
+            ? shown
+            : _front?.View is { IsConnected: true } front ? front : null;
+        if (target is not null)
+        {
+            if (_front is { } open && ReferenceEquals(open.View, target) && !ReferenceEquals(Rail.Content, target))
+            {
+                Select(open);
+            }
+
+            await target.OpenSqlFileAsync(path);
+            return;
+        }
+
+        if (!_waitingFiles.Contains(path, StringComparer.OrdinalIgnoreCase))
+        {
+            _waitingFiles.Add(path);
+        }
+
+        ShowHome();
+        _home?.ShowMessage(Strings.Format("SqlFileWaits", Path.GetFileName(path)), InfoBarSeverity.Informational);
+    }
+
+    private async Task OpenWaitingFilesAsync(OpenConnection open)
+    {
+        if (_waitingFiles.Count == 0 || !open.View.IsConnected)
+        {
+            return;
+        }
+
+        var files = _waitingFiles.ToList();
+        _waitingFiles.Clear();
+        foreach (var file in files)
+        {
+            await open.View.OpenSqlFileAsync(file);
+        }
+    }
+
+    // session.json keeps the list, so a change is written as any other session change is.
+    private void OnRecentFilesChanged(object? sender, EventArgs e)
+    {
+        ShowRecentFiles();
+        if (IsPrimary)
+        {
+            SessionChanged();
+        }
+    }
+
+    // Built again when the list changes, in each window's own menu bar.
+    private void ShowRecentFiles()
+    {
+        MenuOpenRecent.Items.Clear();
+        foreach (var path in _workbench.RecentFiles.Paths)
+        {
+            var item = new MenuFlyoutItem { Text = path };
+            ToolTipService.SetToolTip(item, path);
+            item.Click += async (_, _) =>
+            {
+                if (File.Exists(path))
+                {
+                    await OpenSqlFileAsync(path);
+                }
+                else
+                {
+                    _workbench.ForgetFile(path);
+                }
+            };
+            MenuOpenRecent.Items.Add(item);
+        }
+
+        if (MenuOpenRecent.Items.Count > 0)
+        {
+            MenuOpenRecent.Items.Add(new MenuFlyoutSeparator());
+        }
+
+        var clear = new MenuFlyoutItem
+        {
+            Text = Strings.Get("MenuClearRecent"),
+            IsEnabled = _workbench.RecentFiles.Paths.Count > 0,
+        };
+        clear.Click += (_, _) => _workbench.ClearRecentFiles();
+        MenuOpenRecent.Items.Add(clear);
+    }
+
+    // Built again when the projects or the scope change, in each window's own menu bar.
+    private void ShowProjects()
+    {
+        ProjectMenus.Fill(
+            MenuProject.Items,
+            _workbench,
+            "Menu",
+            async () => await NewProjectAsync(),
+            async () => await ManageProjectsAsync());
+        if (_home is not null && ReferenceEquals(Rail.Content, _home))
+        {
+            AppTitleBar.Subtitle = ProjectSubtitle();
+        }
+    }
+
+    private void OnProjectChanged(object? sender, EventArgs e) => ShowProjects();
+
+    // The item clicked checked itself; the menu goes back to the project the lists show.
+    private void OnScopeReadFailed(object? sender, ScopeReadFailedEventArgs e) => ShowProjects();
+
+    // All connections adds nothing to the title, so a library with no project looks as it did.
+    private string ProjectSubtitle() => _workbench.ActiveProjectRecord?.Name ?? string.Empty;
+
+    private async Task NewProjectAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.NewProjectAsync();
+            return;
+        }
+
+        ShowHome();
+        await _home.NewProjectAsync();
+    }
+
+    private async Task ManageProjectsAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.ManageProjectsAsync();
+            return;
+        }
+
+        ShowHome();
+        await _home.ManageProjectsAsync();
     }
 
     public async Task ImportAsync()
@@ -229,14 +433,186 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         ShowHome();
         try
         {
-            var summary = await _workbench.Library.ImportAsync(result.Path);
+            var summary = await _workbench.Library.ImportAsync(result.Path, _workbench.ActiveProject);
             _workbench.NotifyLibraryChanged();
             _home.ShowMessage(Strings.Format("ImportDone", summary.Added, summary.Updated), InfoBarSeverity.Success);
+            await HandOffAsync(SetupGuide.Handoff(summary.ConnectionIds, ImportSource.FileOrLink));
         }
         catch (TableProException exception)
         {
             _home.ShowMessage(Strings.Error(exception.Error), InfoBarSeverity.Error);
         }
+    }
+
+    // The outcome lands in the Connections page's bar, as a file import's does.
+    public async Task ImportFromAppAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.ImportFromAppAsync();
+            return;
+        }
+
+        ShowHome();
+        if (await ImportFromAppDialog.RunAsync(Root, _workbench) is not { } ending)
+        {
+            return;
+        }
+
+        if (ending.Wrote)
+        {
+            _workbench.NotifyLibraryChanged();
+        }
+
+        if (ending.Outcome is { QueriesAdded: > 0 })
+        {
+            _workbench.NotifySavedQueriesChanged();
+        }
+
+        _home.ShowMessage(ImportFromAppPanel.Describe(ending), ImportFromAppPanel.Severity(ending));
+        await HandOffAsync(SetupGuide.Handoff(ending.ConnectionIds, ending.Source));
+    }
+
+    // Help > Setup Guide and the Connections page's card open it whatever the library holds (core 0057, G6).
+    public void ShowSetupGuide()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            _primary.ShowSetupGuide();
+            return;
+        }
+
+        if (_setup is { } shown)
+        {
+            Show(shown);
+            return;
+        }
+
+        var importer = new CoreForeignImporter(_workbench.Core, ForeignAppDirs.ForCurrentUser());
+        var guide = new SetupGuide(importer);
+        var setup = new SetupView(_workbench, this, importer, guide);
+        setup.Ended += async (_, ending) => await FinishSetupAsync(setup, ending);
+        setup.BackChanged += (_, _) => ShowSetupBack();
+        _setup = setup;
+        if (Rail.IsPaneVisible)
+        {
+            // Nothing on the rail stays selected, so Connections leaves the guide as any other item does.
+            _choosingRail = true;
+            Rail.SelectedItem = null;
+            _choosingRail = false;
+        }
+
+        Show(setup);
+        _ = guide.ProbeAsync(SetupGuide.ProbeLimit);
+    }
+
+    // The launch's first read of the library decides whether the guide shows, while the Connections page is in front.
+    private async void OnLibraryRead(object? sender, LibrarySnapshot snapshot)
+    {
+        if (_launchGateAsked)
+        {
+            return;
+        }
+
+        _launchGateAsked = true;
+        // A snapshot narrowed to a project counts that project; the guide is for a library with nothing anywhere.
+        var connections = snapshot.Connections.Count;
+        if (connections == 0 && snapshot.Scope is not null)
+        {
+            try
+            {
+                connections = (await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true)).Connections.Count;
+            }
+            catch (TableProException)
+            {
+                return;
+            }
+        }
+
+        var gate = new SetupGate(
+            false, true, connections, _workbench.Settings.SetupGuideSeen, LaunchWork: _waitingFiles.Count > 0);
+        if (ReferenceEquals(Rail.Content, _home) && SetupGuide.ShouldShow(gate))
+        {
+            ShowSetupGuide();
+        }
+    }
+
+    // Finish and Skip: seen first, then the recorded connection, else what the guide's imports wrote.
+    private async Task FinishSetupAsync(SetupView setup, SetupEnding ending)
+    {
+        if (!ReferenceEquals(_setup, setup))
+        {
+            return;
+        }
+
+        _setup = null;
+        _workbench.UpdateSettings(settings => settings with { SetupGuideSeen = true });
+        setup.Dispose();
+        switch (ending)
+        {
+            case SetupEnding.NewConnection:
+                ShowHome();
+                NewConnection();
+                break;
+            case SetupEnding.Sample:
+                await OpenSampleAsync();
+                break;
+            default:
+                ShowHome();
+                await HandOffAsync(ending);
+                break;
+        }
+    }
+
+    // Open connects, a selection shows checked on the Connections page, none leaves the page as it is.
+    private async Task HandOffAsync(SetupEnding ending)
+    {
+        switch (ending)
+        {
+            case SetupEnding.Open open:
+                try
+                {
+                    var snapshot = await _workbench.Library.GetSnapshotAsync();
+                    if (snapshot.Connections.FirstOrDefault(saved => saved.Id == open.Id) is { } connection)
+                    {
+                        Connect(connection);
+                    }
+                }
+                catch (TableProException exception)
+                {
+                    _home?.ShowMessage(Strings.Error(exception.Error), InfoBarSeverity.Error);
+                }
+
+                break;
+            case SetupEnding.SelectInLibrary select:
+                _home?.SelectConnections(select.Ids);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void ShowSetupBack()
+    {
+        if (_setup is { } setup && ReferenceEquals(Rail.Content, setup))
+        {
+            AppTitleBar.IsBackButtonVisible = setup.CanGoBack;
+        }
+    }
+
+    public async Task ExportConnectionsAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.ExportConnectionsAsync();
+            return;
+        }
+
+        ShowHome();
+        await _home.ExportConnectionsAsync();
     }
 
     public async Task OpenSampleAsync()
@@ -284,9 +660,19 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     void IWorkspaceHost.MoveToNewWindow(TabViewItem tab) => _primary.MoveOut(tab);
 
-    internal void OpenFile(string path)
+    void IWorkspaceHost.WriteSessionNow() => _primary.WriteSessionBeforeSave();
+
+    // The front connection alone would miss the primary strip while another rail item is in front.
+    IEnumerable<WorkspaceView> IWorkspaceHost.WorkspacesOf(DatabaseSession session) =>
+        _primary.AllWindows
+            .SelectMany(window => window._open)
+            .Where(open => ReferenceEquals(open.Session, session))
+            .Select(open => open.View);
+
+    // No engine lets the core tell SQLite from DuckDB by the file's header.
+    internal void OpenFile(string path, string? engineId = null)
     {
-        Open(new SessionConnection { FilePath = path, Name = Path.GetFileName(path) });
+        Open(new SessionConnection { FilePath = path, Name = Path.GetFileName(path), EngineId = engineId ?? string.Empty });
     }
 
     // Each press on a tab asks for a window before any drag, so one is kept hidden for the same connection.
@@ -364,7 +750,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         AppWindow.SetPresenter(_presenter);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        var tabContextMenu = new WindowContextMenu(this, point => Workspace?.ShowTabContextMenu(point) == true);
+        var tabContextMenu = new WindowContextMenu(
+            this,
+            point => Workspace?.ShowTabContextMenu(point) == true,
+            point => Workspace?.TabPressed(point),
+            point => Workspace?.RenameTabAt(point) == true);
         Closed += (_, _) => tabContextMenu.Dispose();
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         if (MicaController.IsSupported())
@@ -381,10 +771,35 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             width,
             height));
         Themes.Apply(this, _workbench.Settings.Theme);
+        Root.ActualThemeChanged += (_, _) => ShowCue(_cue);
+        // Another program may have changed an open .sql file while the window was in the background.
+        Activated += async (_, args) =>
+        {
+            _primary.NoteActivation(this, args.WindowActivationState != WindowActivationState.Deactivated);
+            // Notifications may have been turned on in Windows Settings while this window was in the back.
+            if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                _settings?.ShowNotificationState();
+            }
+
+            if (args.WindowActivationState != WindowActivationState.Deactivated && Workspace is { } workspace)
+            {
+                await workspace.CheckFileAsync();
+            }
+        };
+        ShowKeys();
+        ShowRecentFiles();
+        ShowProjects();
+        WatchUpdates();
+        _workbench.RecentFilesChanged += OnRecentFilesChanged;
+        _workbench.ProjectChanged += OnProjectChanged;
+        _workbench.ScopeChanged += OnProjectChanged;
+        _workbench.ScopeReadFailed += OnScopeReadFailed;
         _workbench.SettingsChanged += OnSettingsChanged;
         _workbench.LibraryChanged += OnLibraryChanged;
         AppWindow.Closing += OnClosing;
         Closed += OnClosed;
+        Closed += (_, _) => _primary.NoteActivation(this, active: false);
     }
 
     private MainWindow OpenTabWindow(OpenConnection connection, WindowPlacement? placement)
@@ -421,7 +836,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         Close();
     }
 
-    private SettingsView Settings() => _settings ??= new SettingsView(_workbench);
+    private SettingsView Settings() => _settings ??= new SettingsView(_workbench, this);
 
     private void Restore(SessionState state)
     {
@@ -438,7 +853,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private OpenConnection Open(SessionConnection origin)
     {
-        var open = _open.FirstOrDefault(item => item.Matches(origin.ConnectionId, origin.FilePath)) ?? Add(origin);
+        var open = _open.FirstOrDefault(item => item.IsSame(origin)) ?? Add(origin);
         Select(open);
         if (open.State == ConnectionState.Failed)
         {
@@ -448,9 +863,127 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         return open;
     }
 
+    // Another database of a server whose databases hold their own schemas opens as its own rail item, as Linux opens
+    // it beside the connection; one already open, the connection's own included, is brought forward.
+    private OpenConnection? OpenDatabase(OpenConnection from, string database)
+    {
+        if (!IsPrimary)
+        {
+            _primary.Activate();
+            return _primary.OpenDatabase(from, database);
+        }
+
+        if (from.ConnectionId is not { } id)
+        {
+            return null;
+        }
+
+        var own = _open.FirstOrDefault(item => item.Matches(id, null) && item.Database is null);
+        if (own is not null && own.View.OwnDatabase == database)
+        {
+            Select(own);
+            return own;
+        }
+
+        var open = Open(new SessionConnection
+        {
+            ConnectionId = id,
+            Name = from.Name,
+            EngineId = from.Origin.EngineId,
+            Database = database,
+        });
+        open.Mark(from.Origin.EngineId, from.Color);
+        open.SetAiPolicy(from.AiPolicy);
+        open.SetTags(from.Tags);
+        ShowCue(open);
+        return open;
+    }
+
     private async void OnLibraryChanged(object? sender, EventArgs e) => await RefreshMarksAsync();
 
-    private void OnSettingsChanged(object? sender, EventArgs e) => Themes.Apply(this, _workbench.Settings.Theme);
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        Themes.Apply(this, _workbench.Settings.Theme);
+        ShowKeys();
+    }
+
+    // An accelerator sits on one element, so each window sets its own; every keyed item gets a label, a space for none.
+    private void ShowKeys()
+    {
+        var keymap = DisplaySettings.Keymap;
+        if (ReferenceEquals(_keysShown, keymap))
+        {
+            return;
+        }
+
+        _keysShown = keymap;
+        foreach (var (item, action) in KeyedItems())
+        {
+            item.KeyboardAcceleratorTextOverride = DisplaySettings.KeyLabel(action);
+        }
+
+        foreach (var (item, action) in AcceleratedItems())
+        {
+            item.KeyboardAccelerators.Clear();
+            foreach (var chord in keymap.KeysOf(action))
+            {
+                if (EditorKey.VirtualKeyOf(chord.Key) is { } code)
+                {
+                    item.KeyboardAccelerators.Add(new KeyboardAccelerator
+                    {
+                        Key = (VirtualKey)code,
+                        Modifiers = (chord.Control ? VirtualKeyModifiers.Control : VirtualKeyModifiers.None)
+                            | (chord.Alt ? VirtualKeyModifiers.Menu : VirtualKeyModifiers.None)
+                            | (chord.Shift ? VirtualKeyModifiers.Shift : VirtualKeyModifiers.None),
+                    });
+                }
+            }
+        }
+    }
+
+    // The menu items whose keys the keymap sets; MenuDocumentation keeps F1, which no preset moves.
+    private (MenuFlyoutItem Item, string Action)[] AcceleratedItems() =>
+    [
+        (MenuNewConnection, "newConnection"),
+        (MenuOpenFile, "openFile"),
+        (MenuNewQueryTab, "newTab"),
+        (MenuCloseTab, "closeTab"),
+        (MenuReopenTab, "reopenClosedTab"),
+        (MenuSaveChanges, "saveChanges"),
+        (MenuSaveAs, "saveAs"),
+        (MenuDiscardChanges, "discardChanges"),
+        (MenuExportResults, "exportResults"),
+        (MenuSettings, "showSettings"),
+        (MenuAddRow, "addRow"),
+        (MenuDuplicateRow, "duplicateRow"),
+        (MenuPreviewSql, "previewSQL"),
+        (MenuShowConnections, "manageConnections"),
+        (MenuShowObjects, "toggleTableBrowser"),
+        (MenuFilterObjects, "focusSidebarSearch"),
+        (MenuShowHistory, "toggleHistory"),
+        (MenuRefresh, "refresh"),
+        (MenuSwitchDatabase, "openDatabase"),
+        (MenuRun, "executeAllStatements"),
+        (MenuRunStatement, "executeQuery"),
+        (MenuStop, "cancelQuery"),
+        (MenuFilterRows, "toggleFilters"),
+    ];
+
+    // The editor, the grid and Windows answer these keys themselves, so their items only name them.
+    private (MenuFlyoutItem Item, string Action)[] KeyedItems() =>
+    [
+        .. AcceleratedItems(),
+        (MenuUndo, "undo"),
+        (MenuRedo, "redo"),
+        (MenuCut, "cut"),
+        (MenuCopy, "copy"),
+        (MenuPaste, "paste"),
+        (MenuSelectAll, "selectAll"),
+        (MenuFind, "find"),
+        (MenuReplace, "findAndReplace"),
+        (MenuFormatQuery, "formatQuery"),
+        (MenuDeleteRows, "delete"),
+    ];
 
     private async Task RefreshMarksAsync()
     {
@@ -467,6 +1000,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
                 if (snapshot.Connections.FirstOrDefault(saved => saved.Id == open.ConnectionId) is { } saved)
                 {
                     open.Mark(saved.EngineId, saved.Color);
+                    open.SetAiPolicy(saved.AiPolicy ?? AiPolicy.Ask);
+                    open.SetTags([.. saved.Tags
+                        .Select(id => snapshot.Tags.FirstOrDefault(tag => tag.Id == id))
+                        .OfType<ConnectionTag>()]);
+                    if (ReferenceEquals(_front, open) && ReferenceEquals(Rail.Content, open.View))
+                    {
+                        ShowCue(open);
+                    }
+
                     if (saved.Name != open.Name)
                     {
                         open.Rename(saved.Name);
@@ -494,6 +1036,17 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         open.View.CommandsChanged += (_, _) => UpdateCommands();
         open.View.SessionChanged += (_, _) => SessionChanged();
         open.View.EditRequested += async (_, _) => await EditAsync(open);
+        open.View.DatabaseRequested += (_, database) => OpenDatabase(open, database);
+        open.View.FileUsed += (_, path) => _workbench.UseFile(path);
+        open.View.OpenFilesRequested += async (_, paths) =>
+        {
+            foreach (var path in paths)
+            {
+                await OpenAnyFileAsync(path);
+            }
+        };
+        open.View.CommandsChanged += async (_, _) => await OpenWaitingFilesAsync(open);
+        open.View.CommandsChanged += async (_, _) => await OpenLinkTargetAsync(open);
         open.View.Host = this;
         _open.Add(open);
         SessionChanged();
@@ -542,9 +1095,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void Show(UIElement page)
     {
         SetContent(page);
-        AppTitleBar.Subtitle = string.Empty;
+        AppTitleBar.Subtitle = ReferenceEquals(page, _home) ? ProjectSubtitle() : string.Empty;
+        ShowCue(null);
         // While the rail is hidden, Settings is reached from the Connections page, so the title bar leads back.
-        AppTitleBar.IsBackButtonVisible = !Rail.IsPaneVisible && ReferenceEquals(page, _settings);
+        AppTitleBar.IsBackButtonVisible = page is SetupView setup
+            ? setup.CanGoBack
+            : !Rail.IsPaneVisible && ReferenceEquals(page, _settings);
         UpdateCommands();
     }
 
@@ -555,17 +1111,38 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             shown.Leave();
         }
 
+        // Any route away from the guide ends it, with nothing run; closing the window is quitting and writes nothing.
+        if (_setup is { } setup && ReferenceEquals(Rail.Content, setup) && !ReferenceEquals(page, setup))
+        {
+            _setup = null;
+            setup.Leave();
+            setup.Dispose();
+            _workbench.UpdateSettings(settings => settings with { SetupGuideSeen = true });
+        }
+
         Rail.Content = page;
     }
 
     // A tab window is named for its connection in the taskbar and in Alt+Tab, once it shows.
     private void ShowName(OpenConnection open)
     {
-        AppTitleBar.Subtitle = IsPrimary || _isSpare ? open.Name : string.Empty;
+        AppTitleBar.Subtitle = IsPrimary || _isSpare ? open.Title : string.Empty;
+        ShowCue(open);
         if (!IsPrimary && !_isSpare)
         {
-            AppTitleBar.Title = Strings.Format("TabWindowTitle", open.Name);
+            AppTitleBar.Title = Strings.Format("TabWindowTitle", open.Title);
         }
+    }
+
+    // The connection in front tints the title bar and the menu bar, and the title bar names its tags.
+    private void ShowCue(OpenConnection? open)
+    {
+        _cue = open;
+        var theme = Root.ActualTheme;
+        var tint = open is null ? null : ConnectionCue.Tint(theme, open.Color);
+        ConnectionCue.Paint(AppTitleBar, tint);
+        ConnectionCue.Paint(AppMenuBar, tint);
+        AppTitleBar.RightHeader = open is null ? null : ConnectionCue.Label(open.Tags, theme);
     }
 
     private void ShowHome()
@@ -627,6 +1204,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
         await open.DisconnectAsync();
         _open.Remove(open);
+        _linkTargets.Remove(open);
+        _drainingLinks.Remove(open);
         Rail.MenuItems.Remove(open.RailItem);
         if (ReferenceEquals(_front, open))
         {
@@ -662,22 +1241,28 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
-    private void ShowForm(SavedConnection? existing)
+    // A draft from a URL goes to the new connection's form, open or not, which then shows what the URL names.
+    private void ShowForm(SavedConnection? existing, ConnectionDraft? draft = null)
     {
         if (!IsPrimary)
         {
-            _primary.ShowForm(existing);
+            _primary.ShowForm(existing, draft);
             return;
         }
 
         var key = ConnectionFormWindow.Keys(existing?.Id);
         if (_forms.TryGetValue(key, out var shown))
         {
+            if (draft is not null)
+            {
+                shown.ShowDraft(draft);
+            }
+
             shown.Activate();
             return;
         }
 
-        var form = new ConnectionFormWindow(_workbench, this, existing);
+        var form = new ConnectionFormWindow(_workbench, this, existing, draft);
         _forms[key] = form;
         form.Closed += (_, _) => _forms.Remove(key);
         form.Completed += async (_, result) => await OnFormCompletedAsync(result);
@@ -686,11 +1271,13 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private async Task OnFormCompletedAsync(FormResult result)
     {
-        var open = _open.FirstOrDefault(item => item.Matches(result.Saved.Id, null));
-        if (open is not null)
+        // Each database the connection is open in takes the new name, and with Connect each connects again.
+        foreach (var each in _open.Where(item => item.Matches(result.Saved.Id, null)))
         {
-            open.Rename(result.Saved.Name);
+            each.Rename(result.Saved.Name);
         }
+
+        var open = _open.FirstOrDefault(item => item.Matches(result.Saved.Id, null) && item.Database is null);
 
         // An edited connection that is open connects again with what was saved, and keeps its tabs.
         var reconnecting = result.Connect && open is { State: ConnectionState.Connected or ConnectionState.Failed }
@@ -720,6 +1307,36 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         Connect(result.Saved);
+        await ReconnectDatabasesAsync(result.Saved);
+    }
+
+    // The connection's other databases connect again with what was saved too, each keeping its database and its tabs.
+    private async Task ReconnectDatabasesAsync(SavedConnection saved)
+    {
+        var databases = _open
+            .Where(item => item.Matches(saved.Id, null)
+                && item.Database is not null
+                && item.State is ConnectionState.Connected or ConnectionState.Failed)
+            .ToList();
+        foreach (var each in databases)
+        {
+            if (!await ConfirmDisconnectAsync(each, offerSave: saved.SafeMode != SafeMode.ReadOnly))
+            {
+                ShowChangesOnConnect(each, saved);
+                continue;
+            }
+
+            DropSpare();
+            await each.DisconnectAsync(keepTabs: true);
+            await each.ConnectAsync();
+        }
+
+        // A question above brought a database forward; the connection the user connected comes back to the front.
+        if (databases.Count > 0
+            && _open.FirstOrDefault(item => item.Matches(saved.Id, null) && item.Database is null) is { } own)
+        {
+            Select(own);
+        }
     }
 
     // The core read the saved connection as each connect under way began, in every window.
@@ -817,7 +1434,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnRailSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (_home is null)
+        if (_home is null || _choosingRail)
         {
             return;
         }
@@ -838,6 +1455,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnBackRequested(TitleBar sender, object args)
     {
+        if (Rail.Content is SetupView setup)
+        {
+            setup.Back();
+            return;
+        }
+
         if (_home is not null)
         {
             Show(_home);
@@ -860,7 +1483,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
-    private async Task RequestCloseAsync(bool askAboutRunning = true)
+    // afterShutDown runs once the session is saved and every connection closed, before the primary window closes.
+    private async Task RequestCloseAsync(bool askAboutRunning = true, Func<Task>? afterShutDown = null)
     {
         if (_primary._checkingClose || _closing)
         {
@@ -904,7 +1528,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
             if (IsPrimary)
             {
-                await ShutDownAsync();
+                await ShutDownAsync(keepFolder: afterShutDown is not null);
+                if (afterShutDown is not null)
+                {
+                    await afterShutDown();
+                }
             }
             else
             {
@@ -955,17 +1583,16 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         [.. windows.SelectMany(window => window._open)
             .SelectMany(open => open.View.RunningQueries()
                 .Where(tab => !confirmed.Contains(tab) && !stopped.Contains(tab))
-                .Select(tab => (Connection: open.Name, Tab: tab)))];
+                .Select(tab => (Connection: open.Title, Tab: tab)))];
 
     // One question for every query still running, as the macOS app asks before it quits; Cancel keeps every window.
     private async Task<bool> ConfirmStopRunningAsync(List<(string Connection, IWorkspaceTab Tab)> running)
     {
         Activate();
-        var one = running.Count == 1;
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock
         {
-            Text = Strings.Get(one ? "CloseRunningRollsBackOne" : "CloseRunningRollsBackMany"),
+            Text = Strings.Plural("CloseRunningRollsBack", running.Count, running.Count),
             TextWrapping = TextWrapping.Wrap,
         });
         var tabs = new TextBlock
@@ -979,7 +1606,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         {
             XamlRoot = Root.XamlRoot,
             RequestedTheme = Root.ActualTheme,
-            Title = one ? Strings.Get("CloseRunningTitleOne") : Strings.Format("CloseRunningTitleMany", running.Count),
+            Title = Strings.Plural("CloseRunningTitle", running.Count, running.Count),
             Content = content,
             PrimaryButtonText = Strings.Get("CloseRunningButton"),
             CloseButtonText = Strings.Get("Cancel"),
@@ -995,7 +1622,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         {
             var tabs = open.Snapshot().Tabs;
             if (tabs.Count > 0
-                && _primary._open.FirstOrDefault(each => each.Matches(open.ConnectionId, open.Origin.FilePath)) is { } home)
+                && _primary._open.FirstOrDefault(each => each.IsSame(open.Origin)) is { } home)
             {
                 home.View.KeepClosed(tabs);
             }
@@ -1016,7 +1643,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     // Window.Close raises no AppWindow.Closing, so Exit runs this itself before it closes the primary.
-    private async Task ShutDownAsync()
+    // keepFolder holds the data folder past the shutdown, so a launch meanwhile hands over to this ending app.
+    private async Task ShutDownAsync(bool keepFolder = false)
     {
         if (_closing)
         {
@@ -1030,10 +1658,14 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             form.Close();
         }
 
-        // Before any tab closes, since a closed tab is no longer in what the session lists.
-        _ = _saves?.Save(SessionSnapshot(), last: true);
+        // Before any tab closes, since a closed tab is no longer in what the session lists; its work was asked about.
+        _ = _saves?.Save(SessionSnapshot(withWork: false), last: true);
         _workbench.SaveUnsavedSettings();
-        SessionSaved?.Invoke(this, EventArgs.Empty);
+        if (!keepFolder)
+        {
+            SessionSaved?.Invoke(this, EventArgs.Empty);
+        }
+
         DropSpare();
         var windows = AllWindows.ToList();
         foreach (var window in windows)
@@ -1070,6 +1702,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     {
         _workbench.SettingsChanged -= OnSettingsChanged;
         _workbench.LibraryChanged -= OnLibraryChanged;
+        _workbench.ProjectChanged -= OnProjectChanged;
+        _workbench.ScopeChanged -= OnProjectChanged;
+        _workbench.ScopeReadFailed -= OnScopeReadFailed;
+        _workbench.RecentFilesChanged -= OnRecentFilesChanged;
         if (IsPrimary)
         {
             return;
@@ -1118,7 +1754,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        var saved = await _saves.SaveInBackgroundAsync(SessionSnapshot());
+        var saved = await _saves.SaveInBackgroundAsync(SessionSnapshot(withWork: true));
         if (saved == SessionSave.Written)
         {
             _nextRetry = SaveDelay;
@@ -1147,7 +1783,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         try
         {
             _saveTimer?.Stop();
-            _ = _saves.Save(SessionSnapshot(), last: true);
+            _ = _saves.Save(SessionSnapshot(withWork: true), last: true);
         }
         catch (Exception exception)
         {
@@ -1164,7 +1800,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         _saveTimer?.Stop();
-        _ = _saves.Save(SessionSnapshot(), last: true);
+        _ = _saves.Save(SessionSnapshot(withWork: true), last: true);
         _workbench.SaveUnsavedSettings();
         // Restart Manager asks the app to end itself; at a sign-out the process may be gone before this runs.
         DispatcherQueue.TryEnqueue(async () =>
@@ -1172,6 +1808,28 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             await ShutDownAsync();
             CloseForGood();
         });
+    }
+
+    // The saving tab's edits go in uncertain, so an end before its answer leaves Save blocked; a failure is logged.
+    private void WriteSessionBeforeSave()
+    {
+        if (_closing || _saves is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_saves.Save(SessionSnapshot(withWork: true)) == SessionSave.Refused)
+            {
+                CrashLog.Write(new IOException("The session file refused the write made before a table save."));
+                SessionChanged();
+            }
+        }
+        catch (Exception exception)
+        {
+            CrashLog.Write(exception);
+        }
     }
 
     // A forced Restart Manager close ends the app with no WM_ENDSESSION after a FALSE, so the session is written first.
@@ -1182,7 +1840,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        _ = _saves.Save(SessionSnapshot());
+        _ = _saves.Save(SessionSnapshot(withWork: true));
         _workbench.SaveUnsavedSettings();
     }
 
@@ -1206,15 +1864,16 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         };
     }
 
-    private SessionState SessionSnapshot()
+    // withWork keeps the pending edits and held transactions a forced end would lose, for the relaunch to bring back.
+    private SessionState SessionSnapshot(bool withWork)
     {
-        var connections = _open.Select(open => Persisted(open.Snapshot())).ToList();
+        var connections = _open.Select(open => Persisted(open.Snapshot(withWork))).ToList();
         var front = _front is null ? (connections.Count > 0 ? 0 : -1) : _open.IndexOf(_front);
         var windows = _tabWindows
             .Where(window => window._front is not null)
             .Select(window => new TabWindowState
             {
-                Connection = Persisted(window._front!.Snapshot()),
+                Connection = Persisted(window._front!.Snapshot(withWork)),
                 Placement = WindowInterop.Placement(window),
             })
             .Where(window => window.Connection.Tabs.Count > 0)
@@ -1226,6 +1885,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             Window = WindowInterop.Placement(this),
             ObjectPaneWidth = _workbench.ObjectPaneWidth,
             TabWindows = windows,
+            RecentFiles = _workbench.RecentFiles.Paths,
         };
     }
 
@@ -1250,7 +1910,20 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuFilterObjects.IsEnabled = workspace is not null;
         MenuShowHistory.IsEnabled = workspace is not null;
         MenuShowHistory.IsChecked = workspace?.HistoryVisible ?? false;
+        MenuShowSavedQueries.IsEnabled = workspace?.CanShowSavedQueries ?? false;
+        MenuShowSavedQueries.IsChecked = workspace?.SavedQueriesVisible ?? false;
+        MenuShowAssistant.IsEnabled = workspace?.CanShowAssistant ?? false;
+        MenuShowAssistant.IsChecked = workspace?.AssistantVisible ?? false;
+        MenuWrapText.IsEnabled = tab?.WrapsText is not null;
+        MenuWrapText.IsChecked = tab?.WrapsText ?? false;
+        var canAsk = workspace?.CanAskAssistant ?? false;
+        MenuAiReview.IsEnabled = canAsk;
+        MenuAiExplain.IsEnabled = canAsk;
+        MenuAiOptimize.IsEnabled = canAsk;
+        MenuSaveQuery.IsEnabled = workspace?.CanSaveQuery ?? false;
         MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
+        MenuShareResult.IsEnabled = workspace?.CanShareResult ?? false;
+        MenuShareQuery.IsEnabled = workspace?.CanShareQuery ?? false;
         MenuRefresh.IsEnabled = workspace is not null;
         MenuEditConnection.IsEnabled = front?.ConnectionId is not null;
         MenuReconnect.IsEnabled = front is { State: ConnectionState.Connected or ConnectionState.Failed };
@@ -1258,24 +1931,31 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         // A definition tab reads its text with Reload, not Run, and has nothing to stop.
         MenuRun.IsEnabled = tab is QueryTabView { IsRunning: false } or TableTabView { IsRunning: false };
         MenuRunStatement.IsEnabled = tab is QueryTabView { IsRunning: false };
-        MenuStop.IsEnabled = tab is QueryTabView { IsRunning: true } or TableTabView { IsRunning: true };
+        MenuFormatQuery.IsEnabled = tab?.Editor is { CanFormat: true };
+        MenuStop.IsEnabled = tab is QueryTabView { IsRunning: true } or TableTabView { IsRunning: true }
+            or KeyTabView { IsRunning: true };
         var editor = tab?.Editor is not null;
-        foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuPaste, MenuFind })
+        MenuSwitchDatabase.IsEnabled = workspace?.CanSwitchDatabase ?? false;
+        MenuNewDatabase.IsEnabled = workspace?.CanCreateDatabase ?? false;
+        MenuNewSchema.IsEnabled = workspace?.CanCreateSchema ?? false;
+        foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuPaste, MenuFind, MenuReplace })
         {
             item.IsEnabled = editor;
         }
 
         MenuCopy.IsEnabled = tab is not null;
         MenuSelectAll.IsEnabled = tab is not null;
-        // A query tab never edits; a table tab says what its page can do now.
+        // A table tab says what its page can do now, a query tab what its result can.
         var table = tab as TableTabView;
+        var query = tab as QueryTabView;
         MenuFilterRows.IsEnabled = table is not null;
-        MenuSaveChanges.IsEnabled = table is { CanSave: true };
-        MenuDiscardChanges.IsEnabled = table is { CanDiscard: true };
-        MenuPreviewSql.IsEnabled = table is { CanPreview: true };
-        MenuAddRow.IsEnabled = table is { CanAddRow: true };
-        MenuDuplicateRow.IsEnabled = table is { CanChangeRows: true };
-        MenuDeleteRows.IsEnabled = table is { CanChangeRows: true };
+        MenuSaveChanges.IsEnabled = table is { CanSave: true } || query is not null;
+        MenuSaveAs.IsEnabled = query is not null;
+        MenuDiscardChanges.IsEnabled = table is { CanDiscard: true } || query is { CanDiscardRows: true };
+        MenuPreviewSql.IsEnabled = table is { CanPreview: true } || query is { CanPreviewRows: true };
+        MenuAddRow.IsEnabled = table is { CanAddRow: true } || query is { CanAddRow: true };
+        MenuDuplicateRow.IsEnabled = table is { CanChangeRows: true } || query is { CanChangeRows: true };
+        MenuDeleteRows.IsEnabled = table is { CanChangeRows: true } || query is { CanChangeRows: true };
         _primary._sessionEnd?.Update();
     }
 
@@ -1284,6 +1964,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private async void OnOpenFile(object sender, RoutedEventArgs e) => await OpenFileAsync();
 
     private async void OnImport(object sender, RoutedEventArgs e) => await ImportAsync();
+
+    private async void OnImportFromApp(object sender, RoutedEventArgs e) => await ImportFromAppAsync();
+
+    private async void OnExportConnections(object sender, RoutedEventArgs e) => await ExportConnectionsAsync();
 
     private void OnNewQueryTab(object sender, RoutedEventArgs e) => Workspace?.NewQueryTab();
 
@@ -1298,9 +1982,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     // Exit ends the app from any window; the primary saves every window as it closes.
     private async void OnExit(object sender, RoutedEventArgs e) => await _primary.RequestCloseAsync();
 
-    private void OnUndo(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.Z);
+    private void OnUndo(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Undo);
 
-    private void OnRedo(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.Y);
+    private void OnRedo(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Redo);
 
     private void OnCut(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Editor?.Cut();
 
@@ -1346,18 +2030,42 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        EditorKey(VirtualKey.A);
+        RunEditorCommand(EditorCommand.SelectAll);
     }
 
-    private void OnFind(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.F);
+    private void OnFind(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Find);
 
-    // The menu sends the editor the key it already answers, so a menu command and its shortcut cannot differ.
-    private void EditorKey(VirtualKey key)
+    private void OnReplace(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Replace);
+
+    private void OnSwitchDatabase(object sender, RoutedEventArgs e) => Workspace?.OpenDatabaseMenu();
+
+    private async void OnNewDatabase(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.NewDatabaseAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async void OnNewSchema(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.NewSchemaAsync().ConfigureAwait(true);
+        }
+    }
+
+    // The command itself, not its key: under a preset the key may run something else (docs/decisions/0025).
+    private void RunEditorCommand(EditorCommand command)
     {
         if (Workspace?.ActiveTab?.Editor is { } editor)
         {
-            editor.HandleKey(key, control: true, shift: false, alt: false);
-            editor.Focus(FocusState.Programmatic);
+            editor.Run(command);
+            // Find and Replace put the keyboard in the find bar's box, which a focus on the editor would take back.
+            if (command is not (EditorCommand.Find or EditorCommand.Replace))
+            {
+                editor.Focus(FocusState.Programmatic);
+            }
         }
     }
 
@@ -1382,6 +2090,16 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnFilterObjects(object sender, RoutedEventArgs e) => Workspace?.FocusFilter();
 
+    private void OnToggleWrapText(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is { WrapsText: { } wraps } tab)
+        {
+            tab.SetWrapsText(!wraps);
+        }
+
+        UpdateCommands();
+    }
+
     private async void OnToggleHistory(object sender, RoutedEventArgs e)
     {
         if (Workspace is { } workspace)
@@ -1390,6 +2108,36 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         UpdateCommands();
+    }
+
+    private async void OnToggleSavedQueries(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ToggleSavedQueriesAsync();
+        }
+
+        UpdateCommands();
+    }
+
+    private void OnToggleAssistant(object sender, RoutedEventArgs e)
+    {
+        Workspace?.ToggleAssistant();
+        UpdateCommands();
+    }
+
+    private void OnAiReview(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Review);
+
+    private void OnAiExplain(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Explain);
+
+    private void OnAiOptimize(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Optimize);
+
+    private async void OnSaveQuery(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.SaveQueryAsync();
+        }
     }
 
     private async void OnExportResults(object sender, RoutedEventArgs e)
@@ -1442,35 +2190,113 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnStop(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Stop();
 
+    private async void OnFormatQuery(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab?.Editor is { } editor)
+        {
+            editor.Focus(FocusState.Programmatic);
+            await editor.FormatAsync().ConfigureAwait(true);
+        }
+    }
+
+    // A table tab saves its pending changes, a query tab its .sql file, through Save As when it has none.
     private async void OnSaveChanges(object sender, RoutedEventArgs e)
     {
-        if (Workspace?.ActiveTab is TableTabView table)
+        switch (Workspace?.ActiveTab)
         {
-            await table.SaveAsync();
+            case TableTabView table:
+                await table.SaveAsync();
+                break;
+            case QueryTabView query:
+                await query.SaveAsync();
+                break;
+            default:
+                break;
+        }
+    }
+
+    private async void OnSaveAs(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is QueryTabView query)
+        {
+            await query.SaveAsAsync();
         }
     }
 
     private async void OnDiscardChanges(object sender, RoutedEventArgs e)
     {
-        if (Workspace?.ActiveTab is TableTabView table)
+        switch (Workspace?.ActiveTab)
         {
-            await table.DiscardAsync();
+            case TableTabView table:
+                await table.DiscardAsync();
+                break;
+            case QueryTabView query:
+                await query.DiscardRowsAsync();
+                break;
+            default:
+                break;
         }
     }
 
     private async void OnPreviewSql(object sender, RoutedEventArgs e)
     {
-        if (Workspace?.ActiveTab is TableTabView table)
+        switch (Workspace?.ActiveTab)
         {
-            await table.PreviewAsync();
+            case TableTabView table:
+                await table.PreviewAsync();
+                break;
+            case QueryTabView query:
+                await query.PreviewRowsAsync();
+                break;
+            default:
+                break;
         }
     }
 
-    private void OnAddRow(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.AddRow();
+    private void OnAddRow(object sender, RoutedEventArgs e)
+    {
+        switch (Workspace?.ActiveTab)
+        {
+            case TableTabView table:
+                table.AddRow();
+                break;
+            case QueryTabView query:
+                query.AddRow();
+                break;
+            default:
+                break;
+        }
+    }
 
-    private void OnDuplicateRow(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.DuplicateRows();
+    private void OnDuplicateRow(object sender, RoutedEventArgs e)
+    {
+        switch (Workspace?.ActiveTab)
+        {
+            case TableTabView table:
+                table.DuplicateRows();
+                break;
+            case QueryTabView query:
+                query.DuplicateRows();
+                break;
+            default:
+                break;
+        }
+    }
 
-    private void OnDeleteRows(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.DeleteRows();
+    private void OnDeleteRows(object sender, RoutedEventArgs e)
+    {
+        switch (Workspace?.ActiveTab)
+        {
+            case TableTabView table:
+                table.DeleteRows();
+                break;
+            case QueryTabView query:
+                query.DeleteRows();
+                break;
+            default:
+                break;
+        }
+    }
 
     private async void OnDocumentation(object sender, RoutedEventArgs e) =>
         await Launcher.LaunchUriAsync(SettingsView.DocumentationUri);
@@ -1479,6 +2305,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         await Launcher.LaunchUriAsync(SettingsView.IssuesUri);
 
     private async void OnOpenSample(object sender, RoutedEventArgs e) => await OpenSampleAsync();
+
+    private void OnSetupGuide(object sender, RoutedEventArgs e) => ShowSetupGuide();
 
     private void OnAbout(object sender, RoutedEventArgs e)
     {

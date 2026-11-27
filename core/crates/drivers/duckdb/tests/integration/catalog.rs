@@ -1,7 +1,8 @@
 //! What the catalogue reads report for a DuckDB file.
 
 use tablepro_core::column::ColumnDefault;
-use tablepro_core::meta::{IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef};
+use tablepro_core::dump::DumpScope;
+use tablepro_core::meta::{IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableInfo, TableRef};
 use tablepro_core::{RunEnd, Value};
 
 use crate::support::{TestFile, apply, call, query, run, session};
@@ -387,6 +388,55 @@ async fn the_estimate_is_the_storage_count() {
     connection.close().await.unwrap();
 }
 
+/// DuckDB keeps a table's or a view's comment and no sizes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn table_info_is_the_comment_alone() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE t (a INTEGER)",
+            "CREATE INDEX t_a ON t (a)",
+            "INSERT INTO t SELECT range FROM range(100)",
+            "COMMENT ON TABLE t IS 'the table'",
+            "CREATE VIEW v AS SELECT a FROM t",
+            "COMMENT ON VIEW v IS 'the view'",
+            "CREATE TABLE plain (a INTEGER)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let table = connection
+        .table_info(&TableRef::unqualified("t"), call())
+        .await
+        .unwrap();
+    let view = connection
+        .table_info(&TableRef::unqualified("v"), call())
+        .await
+        .unwrap();
+    let plain = connection
+        .table_info(&TableRef::unqualified("plain"), call())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        table,
+        TableInfo {
+            comment: Some("the table".to_owned()),
+            ..TableInfo::default()
+        }
+    );
+    assert_eq!(view.comment.as_deref(), Some("the view"));
+    assert_eq!(
+        (view.data_bytes, view.index_bytes, view.total_bytes),
+        (None, None, None)
+    );
+    assert_eq!(plain, TableInfo::default());
+    connection.close().await.unwrap();
+}
+
 /// A schema can share its name with the file's catalogue, and DuckDB
 /// refuses `"test"."t"` as ambiguous then, so the app names a table with
 /// the catalogue as well, and its structure changes run.
@@ -432,5 +482,33 @@ async fn a_schema_named_like_the_file_is_read_and_changed() {
     assert_eq!(read.rows, vec![vec![Value::Int(2)]]);
     assert_eq!(columns.len(), 3);
     assert_eq!(dialect.portable_name(&table), "\"test\".\"t\"");
+    connection.close().await.unwrap();
+}
+
+// A dump reads each child's parents as one list, which a separator character inside a quoted name cannot split.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dump_orders_a_child_after_each_parent_it_names() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE \"z\u{1f}parent\" (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE other (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE achild (a INTEGER REFERENCES \"z\u{1f}parent\" (id), b INTEGER REFERENCES other (id), \
+             c INTEGER REFERENCES \"Z\u{1f}PARENT\" (id))",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let dump = connection
+        .read_dump_catalog(&DumpScope::Database, call())
+        .await
+        .unwrap();
+
+    let child = dump.tables.iter().find(|table| table.table.name == "achild").unwrap();
+    let parents: Vec<&str> = child.references.iter().map(|parent| parent.name.as_str()).collect();
+    assert_eq!(parents, ["z\u{1f}parent", "other"]);
     connection.close().await.unwrap();
 }

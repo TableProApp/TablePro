@@ -1,11 +1,3 @@
-//
-//  MainEditorContentView.swift
-//  TablePro
-//
-//  Main editor content view containing tab bar and tab content.
-//  Extracted from MainContentView for better separation.
-//
-
 import AppKit
 import SwiftUI
 import TableProEditorKit
@@ -23,25 +15,22 @@ internal enum ContainerChangeRerunPolicy {
 }
 
 struct MainEditorContentView: View {
-    @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var featureAccess = FeatureAccess.shared
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var keyboard = AppSettingsManager.shared.keyboardSlice
     // Must clear the nested editor/results split's required minimums, or dragging the drawer asks AppKit for an unreachable height.
     static let tabContentMinimumHeight = CollapsibleSplitController.combinedMinimumThickness
-
-    // MARK: - Dependencies
 
     @ObservedObject var tabManager: QueryTabManager
     @ObservedObject var coordinator: MainContentCoordinator
 
     // Handed in, not resolved in `body` where nothing would observe it: the drawer state is a per-connection singleton.
     @ObservedObject var historyState: HistoryPanelState
-    @ObservedObject var changeManager: DataChangeManager
+    @ObservedObject var selectedEdits: SelectedTabEdits
+    @ObservedObject var catalogSnapshot: ConnectionCatalogSnapshot
+    private var changeManager: DataChangeManager { selectedEdits.manager }
     let connection: DatabaseConnection
     let windowId: UUID
     let connectionId: UUID
-
-    // MARK: - Callbacks
 
     let onFirstPage: () -> Void
     let onPreviousPage: () -> Void
@@ -57,7 +46,6 @@ struct MainEditorContentView: View {
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
     @State private var tableListingModels = TableListingModelStore()
 
-    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
     // Table highlight rules live here, not on the tab; unobserved, Add Rule on a table tab changed nothing on screen.
     @ObservedObject private var highlightRuleStorage = HighlightRuleStorage.shared
 
@@ -66,8 +54,6 @@ struct MainEditorContentView: View {
         let historyState = HistoryPanelState.forConnection(connectionId)
         return !historyState.isVisible && !historyState.isCapturePaused
     }
-
-    // MARK: - Body
 
     var body: some View {
         EditorAreaHost(input: EditorAreaInput(
@@ -168,8 +154,6 @@ struct MainEditorContentView: View {
         }
     }
 
-    // MARK: - Tab Content
-
     private var selectedQueryTab: QueryTab? {
         guard let tab = tabManager.selectedTab, tab.tabType == .query else { return nil }
         return tab
@@ -221,8 +205,6 @@ struct MainEditorContentView: View {
         }
     }
 
-    // MARK: - Table Listing Tab Content
-
     private func tableListingContent(tab: QueryTab) -> some View {
         let model = tableListingModels.model(forTab: tab.id) {
             TableListingViewModel(
@@ -241,8 +223,6 @@ struct MainEditorContentView: View {
         return TableListingTabView(model: model, databaseType: connection.type)
             .id(tab.id)
     }
-
-    // MARK: - Version History Tab Content
 
     @ViewBuilder
     private func versionHistoryContent(tab: QueryTab) -> some View {
@@ -274,8 +254,6 @@ struct MainEditorContentView: View {
         }
     }
 
-    // MARK: - Object Source Tab Content
-
     @ViewBuilder
     private func objectSourceContent(tab: QueryTab) -> some View {
         if let objectRef = tab.display.objectRef, objectRef.kind == .userType {
@@ -298,8 +276,6 @@ struct MainEditorContentView: View {
             )
         }
     }
-
-    // MARK: - Query Insights Tab Content
 
     private func queryInsightsContent(tab: QueryTab) -> some View {
         Group {
@@ -325,8 +301,6 @@ struct MainEditorContentView: View {
         .id(tab.id)
     }
 
-    // MARK: - Table Health Tab Content
-
     private func tableHealthContent(tab: QueryTab) -> some View {
         Group {
             if let model = coordinator.tableHealthModels[tab.id] {
@@ -344,8 +318,6 @@ struct MainEditorContentView: View {
         }
         .id(tab.id)
     }
-
-    // MARK: - Users & Roles Tab Content
 
     @ViewBuilder
     private func usersRolesContent(tab: QueryTab) -> some View {
@@ -367,8 +339,6 @@ struct MainEditorContentView: View {
         }
         .id(tab.id)
     }
-
-    // MARK: - Server Dashboard Tab Content
 
     @ViewBuilder
     private func serverDashboardContent(tab: QueryTab) -> some View {
@@ -395,8 +365,6 @@ struct MainEditorContentView: View {
         .id(tab.id)
     }
 
-    // MARK: - ER Diagram Tab Content
-
     @ViewBuilder
     private func erDiagramContent(tab: QueryTab) -> some View {
         Group {
@@ -407,12 +375,7 @@ struct MainEditorContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
                         guard coordinator.erDiagramModels[tab.id] == nil else { return }
-                        let vm = ERDiagramViewModel(
-                            connectionId: connection.id,
-                            databaseName: tab.tableContext.databaseName,
-                            schemaKey: tab.display.erDiagramSchemaKey ?? tab.tableContext.databaseName,
-                            connection: connection
-                        )
+                        let vm = ERDiagramViewModel(tab: tab, connection: connection)
                         vm.coordinator = coordinator
                         vm.tabId = tab.id
                         coordinator.erDiagramModels[tab.id] = vm
@@ -426,11 +389,13 @@ struct MainEditorContentView: View {
         guard coordinator.canBuildJoinQuery else { return nil }
         let coordinator = coordinator
         return { tables in
-            coordinator.openJoinBuilder(database: diagram.databaseName, schema: diagram.schemaName, tables: tables)
+            coordinator.openJoinBuilder(
+                database: diagram.scope?.database ?? diagram.databaseName,
+                schema: diagram.scope?.schema ?? diagram.schemaName,
+                tables: tables
+            )
         }
     }
-
-    // MARK: - Per-tab container picker
 
     private var containerSwitchTarget: ContainerSwitchTarget? {
         PluginManager.shared.containerSwitchTarget(for: connection.type)
@@ -440,12 +405,12 @@ struct MainEditorContentView: View {
         switch containerSwitchTarget {
         case .database:
             return DatabaseSwitchList.sections(
-                databases: treeService.databases(for: connectionId),
+                databases: catalogSnapshot.databases,
                 selected: SharedSidebarState.forConnection(connectionId).databaseFilterSelected,
                 activeDatabase: containerName(for: tab)
             ).all
         case .schema:
-            return schemaService.schemas(for: connectionId).map { DatabaseMetadata.minimal(name: $0) }
+            return catalogSnapshot.schemas.map { DatabaseMetadata.minimal(name: $0) }
         case nil:
             return []
         }
@@ -499,26 +464,31 @@ struct MainEditorContentView: View {
             },
             set: { newValue in
                 // By ID: mid-switch, flushTextUpdate() fires for the old tab while selectedTabIndex already points to the new one.
-                guard tabManager.mutate(tabId: tabId, { $0.content.query = newValue }) else { return }
+                guard tabManager.setEditorText(newValue, ofTab: tabId) else { return }
 
                 coordinator.scheduleDraftSave(editedTab: tabId)
 
                 // Scratch tabs dirty too. Only this tab's window: a background window tab's editor stays mounted and can fire here.
                 guard tabId == tabManager.selectedTabId,
-                      let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+                      let tab = tabManager.tabs.first(where: { $0.id == tabId }),
                       let window = coordinator.contentWindow else { return }
-                let showsIndicator = coordinator.showsUnsavedIndicator(for: tabManager.tabs[index])
+                let showsIndicator = coordinator.showsUnsavedIndicator(for: tab)
                 Task { @MainActor in
+                    guard window.isDocumentEdited != showsIndicator else { return }
                     window.isDocumentEdited = showsIndicator
                 }
             }
         )
     }
 
-    private func parameterBinding(for tab: QueryTab) -> Binding<[QueryParameter]> {
+    // Reads the live tab: from the render-time copy, each write in a row started from the array as first drawn.
+    static func parameterBinding(for tab: QueryTab, in tabManager: QueryTabManager) -> Binding<[QueryParameter]> {
         let tabId = tab.id
+        let fallbackParameters = tab.content.queryParameters
         return Binding(
-            get: { tab.content.queryParameters },
+            get: {
+                tabManager.tabs.first(where: { $0.id == tabId })?.content.queryParameters ?? fallbackParameters
+            },
             set: { newValue in
                 tabManager.mutate(tabId: tabId) { $0.content.queryParameters = newValue }
             }
@@ -535,8 +505,6 @@ struct MainEditorContentView: View {
         )
     }
 
-    // MARK: - Table Tab Content
-
     @ViewBuilder
     private func tableTabContent(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
@@ -547,15 +515,13 @@ struct MainEditorContentView: View {
         }
     }
 
-    // MARK: - Results Section
-
     @ViewBuilder
     private func executionErrorBanner(tab: QueryTab) -> some View {
         if let error = tab.shownError {
             InlineErrorBanner(
                 message: error.message,
                 onFixWithAI: coordinator.aiQueryActionAvailability(for: tab).isVisible
-                    ? { coordinator.fixErrorWithAI(query: error.query ?? tab.content.query, error: error.message) }
+                    ? { fixWithAI(error, inTab: tab) }
                     : nil,
                 onDismiss: error.isDismissible
                     ? {
@@ -568,6 +534,12 @@ struct MainEditorContentView: View {
             )
             Divider()
         }
+    }
+
+    // Read at click time: typing does not rebuild this view, so the captured tab's text can be stale.
+    private func fixWithAI(_ error: QueryTabError, inTab tab: QueryTab) {
+        let current = tabManager.tabs.first(where: { $0.id == tab.id }) ?? tab
+        coordinator.fixErrorWithAI(query: error.query ?? current.content.query, error: error.message)
     }
 
     private func structureScope(for tab: QueryTab) -> DatabaseScope? {
@@ -641,6 +613,15 @@ struct MainEditorContentView: View {
 
             if presentation.showsErrorBanner {
                 executionErrorBanner(tab: tab)
+            }
+
+            if let notice = tab.shownOutdatedPageNotice {
+                OutdatedPageNoticeBar(
+                    tableName: notice.tableName,
+                    onReload: { coordinator.reloadOutdatedPage(tabId: tab.id) },
+                    onDismiss: { coordinator.dismissOutdatedPageNotice(tabId: tab.id) }
+                )
+                Divider()
             }
 
             if presentation.showsFilterChrome {
@@ -784,7 +765,7 @@ struct MainEditorContentView: View {
         inputs.executionRowsAffected = tab.execution.rowsAffected
         inputs.executionTime = tab.execution.executionTime
         inputs.executionStatusMessage = tab.execution.statusMessage
-        inputs.hasAppliedFilters = tab.filterState.hasAppliedFilters
+        inputs.isFiltering = tab.filterState.isFiltering
         inputs.isFilterPanelVisible = tab.filterState.isVisible
         return QueryResultPresentation(inputs: inputs)
     }
@@ -801,7 +782,8 @@ struct MainEditorContentView: View {
                 QueryTabFilterPanel(
                     coordinator: coordinator,
                     tabManager: tabManager,
-                    columns: rows.columns,
+                    // Hidden columns leave the SELECT, not the table, so a row can still filter on one.
+                    columns: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: rows.columns),
                     primaryKeyColumn: changeManager.primaryKeyColumn,
                     databaseType: connection.type,
                     enumValuesByColumn: rows.filterPickerValues
@@ -846,38 +828,18 @@ struct MainEditorContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // Configuration is applied outside the update pass: the model publishes when it changes.
-    @ViewBuilder
     private func dataGridView(tab: QueryTab) -> some View {
-        let model = displayedGridModel(for: tab)
-        let configuration = coordinator.gridConfiguration(for: tab)
-        let highlightRules = coordinator.highlightRules(for: tab)
-        DataGridView(model: model)
-            .id(tab.id)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .onAppear {
-                model.configuration = configuration
-                focusGridIfRequested(model)
-            }
-            .onChange(of: configuration) { model.configuration = $0 }
-            .onChange(of: highlightRules) { _ in
-                model.display.cache.clearHighlights()
-                model.repaintAllRows()
-            }
+        DataTabGrid(
+            coordinator: coordinator,
+            model: displayedGridModel(for: tab),
+            presentation: coordinator.gridPresentation(for: tab)
+        )
     }
 
     private func displayedGridModel(for tab: QueryTab) -> DataGridModel {
         let model = coordinator.gridModel(forTab: tab.id)
         coordinator.prepareGridModelForDisplay(forTab: tab.id)
         return model
-    }
-
-    // An explicit open asks for the keyboard; the grid is in its window once this turn ends.
-    private func focusGridIfRequested(_ model: DataGridModel) {
-        guard coordinator.consumePendingGridFocus() else { return }
-        Task { @MainActor in
-            model.focus()
-        }
     }
 
     private func resolvedTableRows(for tab: QueryTab) -> TableRows {
@@ -906,8 +868,6 @@ struct MainEditorContentView: View {
             }
         )
     }
-
-    // MARK: - Status Bar
 
     private func statusBar(tab: QueryTab, selectedRowCount: Int) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
@@ -971,7 +931,7 @@ struct MainEditorContentView: View {
                 onCancel: { coordinator.stopExecution(for: tab.id) }
             ),
             selectionSummary: coordinator.selectionSummary,
-            isRefreshingSchema: schemaService.isRefreshing(connectionId: connectionId),
+            isRefreshingSchema: catalogSnapshot.isRefreshing,
             viewMode: resultsViewModeBinding(for: tab),
             resultSetMenu: resultSetMenuModel(for: tab, placedIn: .statusBar),
             resultSetActions: resultSetActions(for: tab),
@@ -1042,8 +1002,6 @@ struct MainEditorContentView: View {
             }
         )
     }
-
-    // MARK: - Empty State
 
     private var emptyStateView: some View {
         VStack(spacing: 20) {
@@ -1120,7 +1078,7 @@ extension MainEditorContentView {
             supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
             aiActions: coordinator.aiQueryActionAvailability(for: tab),
             shortcutHint: { label, action in
-                settingsManager.keyboard.shortcutHint(label, for: action)
+                keyboard.value.shortcutHint(label, for: action)
             }
         )
     }
@@ -1158,8 +1116,6 @@ fileprivate extension MainEditorContentView {
     }
 }
 
-// MARK: - Query Tab Content
-
 extension MainEditorContentView {
     private func queryTabInput(tab: QueryTab) -> QueryTabInput {
         let claimFocus = coordinator.tabManager.pendingFocusTabId == tab.id
@@ -1168,7 +1124,7 @@ extension MainEditorContentView {
         let commands = commandAvailability(for: tab)
         let isExecuting = coordinator.tabExecution.isExecuting(tab.id)
         let showsHistoryTip = showsHistoryTip
-        let parameters = parameterBinding(for: tab)
+        let parameters = Self.parameterBinding(for: tab, in: tabManager)
         let isParameterPanelVisible = parameterVisibilityBinding(for: tab)
         let header: (VimMode?) -> AnyView = { vimMode in
             AnyView(VStack(alignment: .leading, spacing: 0) {
@@ -1190,11 +1146,11 @@ extension MainEditorContentView {
                     vimMode: vimMode,
                     showsHistoryTip: showsHistoryTip,
                     onAIAction: { action in coordinator.runAIQueryAction(action, target: .selectionOrStatementAtCursor) },
-                    onRun: { coordinator.runQuery(viewport: .firstRow) },
-                    onRunAllStatements: { coordinator.runAllStatements() },
-                    onRunWithoutLimit: { coordinator.runQuery(viewport: .firstRow, bypassRowLimit: true) },
+                    onRun: { coordinator.runQuery(onTab: tab.id, viewport: .firstRow) },
+                    onRunAllStatements: { coordinator.runAllStatements(onTab: tab.id) },
+                    onRunWithoutLimit: { coordinator.runQuery(onTab: tab.id, viewport: .firstRow, bypassRowLimit: true) },
                     onStop: { coordinator.stopExecution(for: tab.id) },
-                    onExplain: { variant in coordinator.runExplain(variant: variant) },
+                    onExplain: { variant in coordinator.runExplain(onTab: tab.id, variant: variant) },
                     onFormat: { EditorEventRouter.shared.performFormatSQLForKeyWindow() },
                     onSaveAsFavorite: { coordinator.saveCurrentQueryAsFavorite() },
                     onClearQuery: { coordinator.commandActions?.clearQuery() },
@@ -1237,17 +1193,20 @@ extension MainEditorContentView {
             onCloseTab: {
                 coordinator.commandActions?.closeTab()
             },
-            onExecuteQuery: { coordinator.runQuery(viewport: .firstRow) },
+            onExecuteQuery: { coordinator.runQuery(onTab: tab.id, viewport: .firstRow) },
             onSelectTab: { number in coordinator.commandActions?.selectTab(number: number) },
             onSelectAdjacentTab: { offset in coordinator.commandActions?.selectTab(offsetBy: offset) },
             tabCount: { coordinator.tabManager.visibleTabs.count },
-            onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
+            onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset, onTab: tab.id) },
             isExecuting: isExecuting,
             currentAIAvailability: { coordinator.aiQueryActionAvailability },
             onAIAction: { action, target in coordinator.runAIQueryAction(action, target: target) },
             onSaveAsFavorite: { text in
                 guard !text.isEmpty else { return }
                 coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
+            },
+            onShareQuery: { text in
+                coordinator.presentShareQuery(text, title: tab.title)
             }
         )
         return QueryTabInput(

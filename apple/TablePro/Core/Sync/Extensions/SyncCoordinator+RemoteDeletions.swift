@@ -1,12 +1,14 @@
 import CloudKit
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProSyncTransport
 
 struct SyncPendingDeletions: Equatable {
     var connections: Set<UUID> = []
     var groups: Set<UUID> = []
     var tags: Set<UUID> = []
+    var projects: Set<UUID> = []
     var sshProfiles: Set<UUID> = []
     var credentialProfiles: Set<UUID> = []
     var tableFavorites: Set<String> = []
@@ -17,10 +19,16 @@ struct SyncPendingDeletions: Equatable {
     var tableFolders: Set<UUID> = []
     var tableFolderItems: Set<String> = []
 
-    static func parse(_ recordIDs: [CKRecord.ID], settings: SyncSettings) -> SyncPendingDeletions {
+    // `readsProjects` false leaves a project alone: until the type syncs, this Mac's projects are its own.
+    static func parse(
+        _ recordIDs: [CKRecord.ID],
+        settings: SyncSettings,
+        readsProjects: Bool = SyncSchemaGate.isProjectSyncWritable
+    ) -> SyncPendingDeletions {
         var pending = SyncPendingDeletions()
         for recordID in recordIDs {
             guard let parsed = SyncRecordType.parse(recordName: recordID.recordName) else { continue }
+            if parsed.type == .project, !readsProjects { continue }
             pending.insert(parsed.id, of: parsed.type, settings: settings)
         }
         return pending
@@ -54,8 +62,19 @@ struct SyncPendingDeletions: Equatable {
             if let uuid { tableFolders.insert(uuid) }
         case .tableFolderItem:
             tableFolderItems.insert(id)
+        case .project:
+            if let uuid { projects.insert(uuid) }
         }
     }
+}
+
+// The library as it stood before a pull, read only when the pull deletes a group.
+struct SyncMembershipBeforePull {
+    let connections: [DatabaseConnection]
+    let groups: [ConnectionGroup]
+    // The records whose own project this pull set, which a group's deletion leaves as sent.
+    let connectionsWithOwnProject: Set<UUID>
+    let groupsWithOwnProject: Set<UUID>
 }
 
 struct SyncRemoteDeletionEffects {
@@ -68,11 +87,12 @@ struct SyncRemoteDeletionEffects {
 extension SyncCoordinator {
     func applyRemoteDeletions(
         _ pending: SyncPendingDeletions,
-        alongside tableFavorites: [FavoriteTablesStorage.FavoriteEntry]
+        alongside tableFavorites: [FavoriteTablesStorage.FavoriteEntry],
+        membershipBefore: SyncMembershipBeforePull? = nil
     ) -> SyncRemoteDeletionEffects {
         var effects = SyncRemoteDeletionEffects()
         effects.connectionsChanged = !pending.connections.isEmpty
-        effects.groupsOrTagsChanged = !pending.groups.isEmpty || !pending.tags.isEmpty
+        effects.groupsOrTagsChanged = !pending.groups.isEmpty || !pending.tags.isEmpty || !pending.projects.isEmpty
         effects.tableFavoriteIdsToRetire = services.favoriteTablesStorage.applyRemote(
             saved: tableFavorites,
             deletedIds: pending.tableFavorites
@@ -81,8 +101,9 @@ extension SyncCoordinator {
 
         let persisted = [
             applyRemoteConnectionDeletions(pending.connections),
-            applyRemoteGroupDeletions(pending.groups),
+            applyRemoteGroupDeletions(pending.groups, membershipBefore: membershipBefore),
             applyRemoteTagDeletions(pending.tags),
+            applyRemoteProjectDeletions(pending.projects),
             applyRemoteSSHProfileDeletions(pending.sshProfiles),
             applyRemoteCredentialProfileDeletions(pending.credentialProfiles),
             applyRemoteColumnLayoutDeletions(pending.settingsRecordNames),
@@ -93,19 +114,31 @@ extension SyncCoordinator {
         return effects
     }
 
+    // A deletion applies by id: a copy this Mac cannot read goes when its standing says it syncs, never when Local only.
     private func applyRemoteConnectionDeletions(_ ids: Set<UUID>) -> Bool {
         guard !ids.isEmpty else { return true }
         var connections = services.connectionStorage.loadConnections()
-        let deletedIds = ids.subtracting(connections.filter(\.localOnly).map(\.id))
+        let unreadable = ids.intersection(services.connectionStorage.unreadableConnectionIds)
+        let removedUnreadable = metadataStorage.unreadableConnectionsRemoved(byDeletionOf: unreadable)
+        let deletedIds = ids
+            .subtracting(connections.filter(\.localOnly).map(\.id))
+            .subtracting(unreadable)
+            .union(removedUnreadable)
         guard !deletedIds.isEmpty else { return true }
         let removed = connections.filter { deletedIds.contains($0.id) }
         connections.removeAll { deletedIds.contains($0.id) }
-        guard services.connectionStorage.saveConnections(connections, byUser: false) else {
+        guard services.connectionStorage.saveConnections(
+            connections,
+            byUser: false,
+            removingUnreadable: removedUnreadable
+        ) else {
             Self.logger.error("Failed to apply remote connection deletions: persistence error")
             return false
         }
         changeTracker.discardDirty(.connection, ids: deletedIds.map(\.uuidString))
+        forgetHeldChanges(ofConnections: removedUnreadable)
         services.connectionStorage.deleteSecrets(of: removed, origin: .remote)
+        services.connectionStorage.deleteSecrets(ofUnreadable: removedUnreadable)
         ConnectionLocalState.purge(
             connectionIds: deletedIds,
             origin: .remote,
@@ -123,31 +156,68 @@ extension SyncCoordinator {
         return persister.removeWithoutSync(storageKeys: persister.storageKeys(forSyncRecordNames: recordNames))
     }
 
-    private func applyRemoteGroupDeletions(_ ids: Set<UUID>) -> Bool {
+    func membershipBeforePull(bringing records: [CKRecord], readsProjects: Bool) -> SyncMembershipBeforePull {
+        func ids(of type: SyncRecordType) -> Set<UUID> {
+            guard readsProjects else { return [] }
+            return Set(records.lazy.filter { $0.recordType == type.rawValue }.compactMap { record in
+                SyncRecordType.parse(recordName: record.recordID.recordName).flatMap { UUID(uuidString: $0.id) }
+            })
+        }
+        return SyncMembershipBeforePull(
+            connections: services.connectionStorage.loadConnections(),
+            groups: services.groupStorage.loadGroups(),
+            connectionsWithOwnProject: ids(of: .connection),
+            groupsWithOwnProject: ids(of: .group)
+        )
+    }
+
+    private func applyRemoteGroupDeletions(_ ids: Set<UUID>, membershipBefore: SyncMembershipBeforePull?) -> Bool {
         guard !ids.isEmpty else { return true }
-        var groups = services.groupStorage.loadGroups()
-        groups.removeAll { ids.contains($0.id) }
-        guard services.groupStorage.saveGroups(groups) else { return false }
+        guard services.groupStorage.applyRemoteDeletions(ids) else { return false }
         changeTracker.discardDirty(.group, ids: ids.map(\.uuidString))
+        forgetHeldChanges(of: .group, ids: ids)
+        return keepProjects(ofMembersReleasedFrom: ids, membershipBefore)
+    }
+
+    // The store hands a deleted group's project to what still names the group. A member this pull already took
+    // out of it names nothing by then, so its project is read from the library as it stood before the pull.
+    private func keepProjects(ofMembersReleasedFrom ids: Set<UUID>, _ before: SyncMembershipBeforePull?) -> Bool {
+        guard let before else { return true }
+        let changes = LibraryPullMembership.keptByReleasedMembers(
+            ofGroups: ids,
+            connectionsBefore: before.connections,
+            groupsBefore: before.groups,
+            connections: services.connectionStorage.loadConnections(),
+            groups: services.groupStorage.loadGroups(),
+            connectionsWithOwnProject: before.connectionsWithOwnProject,
+            groupsWithOwnProject: before.groupsWithOwnProject
+        )
+        guard !changes.isEmpty else { return true }
+        let connectionsSaved = changes.connections.isEmpty
+            || services.connectionStorage.rewriteMembership(byUser: false) { connection in
+                connection.projectId = changes.connectionProjectId(connection.id, current: connection.projectId)
+            }
+        return connectionsSaved && services.groupStorage.applyProjectChanges(changes.groups)
+    }
+
+    private func applyRemoteProjectDeletions(_ ids: Set<UUID>) -> Bool {
+        guard !ids.isEmpty else { return true }
+        guard services.projectStorage.applyRemoteDeletions(ids) else { return false }
+        changeTracker.discardDirty(.project, ids: ids.map(\.uuidString))
+        forgetHeldChanges(of: .project, ids: ids)
         return true
     }
 
     private func applyRemoteTagDeletions(_ ids: Set<UUID>) -> Bool {
         guard !ids.isEmpty else { return true }
-        var tags = services.tagStorage.loadTags()
-        tags.removeAll { ids.contains($0.id) }
-        guard services.tagStorage.saveTags(tags) else { return false }
+        guard services.tagStorage.applyRemoteDeletions(ids) else { return false }
         changeTracker.discardDirty(.tag, ids: ids.map(\.uuidString))
+        forgetHeldChanges(of: .tag, ids: ids)
         return true
     }
 
-    /// Unlinking reads a profile's secrets, so it runs while they still exist. Dropping the record
-    /// alone left every connection using it addressing a profile id that no longer resolved, and
-    /// left its keychain items with nothing able to name them.
-    ///
-    /// Returns false when a conversion could not be persisted, which withholds the pull token: the
-    /// alternative is acknowledging a delete whose connections still point at the profile, with the
-    /// conversion lost and no tombstone left to replay it.
+    // Unlinking reads the profile's secrets, so it runs while they still exist. False withholds the pull token:
+    // acknowledging the delete would leave connections pointing at the profile with nothing left to replay it.
     private func applyRemoteSSHProfileDeletions(_ profileIds: Set<UUID>) -> Bool {
         guard !profileIds.isEmpty else { return true }
 
@@ -155,7 +225,7 @@ extension SyncCoordinator {
         let deleted = profiles.filter { profileIds.contains($0.id) }
         profiles.removeAll { profileIds.contains($0.id) }
 
-        for profile in deleted where !services.sshProfileStorage.unlinkConnections(fromProfile: profile) {
+        for profile in deleted where !services.sshProfileStorage.unlinkConnections(fromProfile: profile, byUser: false) {
             Self.logger.error(
                 "Kept SSH profile \(profile.id.uuidString, privacy: .public): its connections could not be converted"
             )
@@ -169,23 +239,30 @@ extension SyncCoordinator {
         return true
     }
 
-    /// A profile deleted on another Mac hands its credentials to the connections using it here
-    /// too, so they keep connecting rather than losing the password the link took away.
+    // A profile deleted on another Mac hands its credentials to the connections using it here, so they keep connecting.
     private func applyRemoteCredentialProfileDeletions(_ profileIds: Set<UUID>) -> Bool {
         guard !profileIds.isEmpty else { return true }
 
         var profiles = services.credentialProfileStorage.loadProfiles()
+        // Unlinking needs the profile, so the deletion of one this Mac cannot read waits for a build that reads it.
+        let unreadable = profileIds.intersection(services.credentialProfileStorage.unreadableProfileIds)
+        if !unreadable.isEmpty {
+            metadataStorage.deletionsHeldForUnreadableCopies.formUnion(
+                unreadable.map { SyncRecordType.credentialProfile.recordName(for: $0.uuidString) }
+            )
+        }
         let deleted = profiles.filter { profileIds.contains($0.id) }
         profiles.removeAll { profileIds.contains($0.id) }
 
-        for profile in deleted where !services.credentialProfileStorage.unlinkConnections(from: profile) {
+        for profile in deleted where !services.credentialProfileStorage.unlinkConnections(from: profile, byUser: false) {
             Self.logger.error(
                 "Kept credential profile \(profile.id.uuidString, privacy: .public): its connections could not be converted"
             )
             return false
         }
         guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
-        changeTracker.discardDirty(.credentialProfile, ids: profileIds.map(\.uuidString))
+        // A held deletion keeps the mark, so the edit made here still counts when the copy reads.
+        changeTracker.discardDirty(.credentialProfile, ids: profileIds.subtracting(unreadable).map(\.uuidString))
         for profile in deleted {
             services.credentialProfileStorage.deleteSecrets(for: profile)
         }

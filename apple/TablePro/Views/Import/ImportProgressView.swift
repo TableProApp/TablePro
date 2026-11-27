@@ -9,39 +9,40 @@ struct ImportProgressView: View {
     @ObservedObject var service: ImportService
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TransferProgressView(progress: service.state.transferProgress)
-            HStack {
-                Spacer()
-                Button(buttonTitle) { service.requestStop() }
-                    .disabled(service.stopPhase != .running)
-                    .keyboardShortcut(.cancelAction)
-            }
+        TransferProgressSheet(progress: service.state.transferProgress) {
+            ImportStopButton(service: service)
         }
-        .controlSize(.regular)
-        .padding(20)
-        .frame(width: TransferProgressSheet.width)
-        .interactiveDismissDisabled()
-        .alert(String(localized: "Stop Import?"), isPresented: questionPresented, presenting: service.stopQuestion) { question in
-            if question.ledger.canChooseCommit {
-                Button(String(localized: "Stop and Rollback"), role: .destructive) {
-                    service.answerStop(.rollBack, generation: question.generation)
+    }
+}
+
+// An import pauses before it asks, since whether it can still commit depends on where the pause landed.
+struct ImportStopButton: View {
+    @ObservedObject var service: ImportService
+
+    var body: some View {
+        Button(buttonTitle) { service.requestStop() }
+            .disabled(service.stopPhase != .running)
+            .keyboardShortcut(.cancelAction)
+            .alert(String(localized: "Stop Import?"), isPresented: questionPresented, presenting: service.stopQuestion) { question in
+                if question.ledger.canChooseCommit {
+                    Button(String(localized: "Stop and Rollback"), role: .destructive) {
+                        service.answerStop(.rollBack, generation: question.generation)
+                    }
+                    Button(String(localized: "Stop and Commit")) {
+                        service.answerStop(.commit, generation: question.generation)
+                    }
+                } else {
+                    Button(String(localized: "Stop Import"), role: .destructive) {
+                        service.answerStop(.rollBack, generation: question.generation)
+                    }
                 }
-                Button(String(localized: "Stop and Commit")) {
-                    service.answerStop(.commit, generation: question.generation)
+                Button(String(localized: "Continue"), role: .cancel) {
+                    service.answerStop(nil, generation: question.generation)
                 }
-            } else {
-                Button(String(localized: "Stop Import"), role: .destructive) {
-                    service.answerStop(.rollBack, generation: question.generation)
-                }
+            } message: { question in
+                Text(question.ledger.question)
             }
-            Button(String(localized: "Continue"), role: .cancel) {
-                service.answerStop(nil, generation: question.generation)
-            }
-        } message: { question in
-            Text(question.ledger.question)
-        }
-        .onDisappear { service.stopUnansweredQuestion() }
+            .onDisappear { service.stopUnansweredQuestion() }
     }
 
     private var questionPresented: Binding<Bool> {
@@ -67,7 +68,8 @@ extension ImportState {
             total: Int64(estimatedTotalStatements),
             unit: countsRows ? .rows : .statements,
             isEstimate: totalIsEstimate,
-            note: statusMessage
+            note: statusMessage,
+            fileFraction: !countsRows && fileBytes > 0 ? Double(fileBytesRead) / Double(fileBytes) : nil
         )
     }
 }

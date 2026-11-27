@@ -22,9 +22,15 @@ pub fn install_app_actions(app: &TableProApplication) {
     let about = gio::ActionEntry::builder("about")
         .activate(|app: &TableProApplication, _, _| present_about(app))
         .build();
+    let shortcuts = gio::ActionEntry::builder("shortcuts")
+        .activate(|app: &TableProApplication, _, _| present_shortcuts(app))
+        .build();
     // The license ask's Buy a License.
     let buy_license = gio::ActionEntry::builder("buy-license")
         .activate(|app: &TableProApplication, _, _| open_pricing(app))
+        .build();
+    let shared_links = gio::ActionEntry::builder("manage-shared-links")
+        .activate(|app: &TableProApplication, _, _| open_shared_links(app))
         .build();
     // A notification's default action, with the window and the tab it
     // is about.
@@ -32,7 +38,16 @@ pub fn install_app_actions(app: &TableProApplication) {
         .parameter_type(Some(&<(u32, String)>::static_variant_type()))
         .activate(|app: &TableProApplication, _, target| focus_tab(app, target))
         .build();
-    app.add_action_entries([new_window, quit, preferences, about, buy_license, focus_tab]);
+    app.add_action_entries([
+        new_window,
+        quit,
+        preferences,
+        about,
+        shortcuts,
+        buy_license,
+        shared_links,
+        focus_tab,
+    ]);
 }
 
 /// Bring the tab forward in its window. A notification can outlive both,
@@ -93,9 +108,57 @@ fn open_pricing(app: &TableProApplication) {
     );
 }
 
+// The account portal the build signs in to keeps the list of links.
+fn shared_links_page(portal: &str) -> String {
+    format!("{}/shared-links", portal.trim_end_matches('/'))
+}
+
+fn open_shared_links(app: &TableProApplication) {
+    let Some(services) = app.services() else {
+        return;
+    };
+    let page = shared_links_page(&services.account().portal);
+    gtk4::UriLauncher::new(&page).launch(app.active_window().as_ref(), gio::Cancellable::NONE, |launched| {
+        if let Err(error) = launched {
+            tracing::warn!(%error, "the shared links page was not opened");
+        }
+    });
+}
+
+// Built again on each activation, so it shows the keys of the preset chosen since.
+fn present_shortcuts(app: &TableProApplication) {
+    let builder = gtk4::Builder::from_resource(&format!(
+        "{}/builder/shortcuts-dialog.ui",
+        crate::config::RESOURCE_BASE_PATH
+    ));
+    let Some(dialog) = builder.object::<libadwaita::ShortcutsDialog>("shortcuts_dialog") else {
+        tracing::error!("the keyboard shortcuts dialog is not in the resources");
+        return;
+    };
+    super::keymap::fill_shortcuts_dialog(&builder);
+    dialog.present(app.active_window().as_ref());
+}
+
 fn present_about(app: &TableProApplication) {
     let Some(services) = app.services() else {
         return;
     };
     build_about_dialog(&services.drivers).present(app.active_window().as_ref());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_shared_links_page_is_on_the_portal_the_build_signs_in_to() {
+        assert_eq!(
+            shared_links_page("https://account.tablepro.app"),
+            "https://account.tablepro.app/shared-links"
+        );
+        assert_eq!(
+            shared_links_page("http://account.localhost:5284/"),
+            "http://account.localhost:5284/shared-links"
+        );
+    }
 }

@@ -4,13 +4,14 @@ import Testing
 
 @MainActor
 struct AppModuleSettingsTests {
-    @Test("Every module starts off on a Mac that never turned it on")
+    @Test("Every module starts off on a new install")
     func modulesStartOff() throws {
         let suite = try EphemeralDefaults()
+        AppModule.recordDefaults(in: suite.defaults, isExistingInstall: false)
         let settings = AppModuleSettings(defaults: suite.defaults, notificationCenter: NotificationCenter())
 
         for module in AppModule.allCases {
-            #expect(module.defaultEnabled == false, "\(module.rawValue)")
+            #expect(!settings.defaultEnabled(module), "\(module.rawValue)")
             #expect(!settings.isEnabled(module), "\(module.rawValue)")
         }
         #expect(settings.enabledModules.isEmpty)
@@ -42,7 +43,7 @@ struct AppModuleSettingsTests {
         AppModuleActivation.resetToDefaults(settings: settings)
 
         for module in AppModule.allCases {
-            #expect(settings.isEnabled(module) == module.defaultEnabled, "\(module.rawValue)")
+            #expect(settings.isEnabled(module) == settings.defaultEnabled(module), "\(module.rawValue)")
         }
     }
 
@@ -87,9 +88,9 @@ struct AppModuleSettingsTests {
         #expect(suite.defaults.object(forKey: AppModule.routineDebugger.defaultsKey) == nil)
     }
 
-    @Test("The key is namespaced and per module")
+    @Test("The keys are namespaced and per module")
     func keysAreNamespaced() {
-        let keys = AppModule.allCases.map { $0.defaultsKey }
+        let keys = AppModule.allCases.flatMap { [$0.defaultsKey, $0.recordedDefaultKey] }
         #expect(Set(keys).count == keys.count)
         for key in keys {
             #expect(key.hasPrefix("com.TablePro.modules."), "\(key)")

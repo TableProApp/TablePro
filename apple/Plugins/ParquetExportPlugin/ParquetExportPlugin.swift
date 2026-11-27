@@ -32,8 +32,9 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
     typealias Settings = ParquetExportOptions
     static let settingsStorageId = "parquet"
 
-    // Bounds how many rows are held in Swift between appender flushes.
+    // Bounds how many rows, and how many bytes of them, are held in Swift between appender flushes.
     private static let stagingBatchSize = 2_000
+    private static let stagingBatchBytes = 8 << 20
 
     @Published var settings = ParquetExportOptions() {
         didSet { saveSettings() }
@@ -88,9 +89,11 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
         let declaredTypes = Dictionary(
             columnInfo.map { ($0.name, $0.typeNameForClassification) }, uniquingKeysWith: { first, _ in first })
 
-        let staging = try DuckDBStagingDatabase()
+        let staging = try DuckDBStagingDatabase(
+            memoryLimit: ParquetStaging.memoryLimit(physicalMemory: ProcessInfo.processInfo.physicalMemory))
         var columns: [String] = []
-        var batch: [[PluginCellValue]] = []
+        // Cut by bytes too: the appender holds a batch before it reaches the staged table.
+        var batch = PluginRowBatcher(rowLimit: Self.stagingBatchSize, byteLimit: Self.stagingBatchBytes)
         var created = false
 
         for try await element in dataSource.streamRows(for: table) {
@@ -108,11 +111,10 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
             case .rows(let rows):
                 guard created else { continue }
                 for row in rows {
-                    batch.append(row)
                     progress.incrementRow()
-                    guard batch.count >= Self.stagingBatchSize else { continue }
-                    try staging.insert(rows: batch)
-                    batch.removeAll(keepingCapacity: true)
+                    guard batch.append(row) else { continue }
+                    try staging.insert(rows: batch.rows)
+                    batch.removeAll()
                 }
             }
         }
@@ -122,7 +124,7 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
                 String(format: String(localized: "%@ returned no columns."), table.name))
         }
         if !batch.isEmpty {
-            try staging.insert(rows: batch)
+            try staging.insert(rows: batch.rows)
         }
         let fallbacks = try staging.copyToParquet(
             fileURL: fileURL,

@@ -1,4 +1,5 @@
 import AppKit
+import TableProHTTP
 
 /// Commands that belong to the app rather than to any one window. They sit on the
 /// app delegate because it is the last link in the responder chain, so they stay
@@ -16,12 +17,17 @@ extension AppDelegate: NSMenuItemValidation {
         SupportWindowController.present()
     }
 
-    @objc func showWelcomeSheet(_ sender: Any?) {
-        WelcomeRouter.shared.route(.showWelcomeSheet)
+    @objc func showSetupGuide(_ sender: Any?) {
+        SetupGuidePresenter.shared.presentFromMenu()
     }
 
     @objc func checkForUpdates(_ sender: Any?) {
         UpdateCenter.shared.performPrimaryAction()
+    }
+
+    @objc func manageSharedLinks(_ sender: Any?) {
+        guard ShareAvailability.isAvailable else { return }
+        _ = WebPageOpener.open(AccountServices.shared.portal.portalSharedLinks, scope: .httpsOrLoopbackHTTP)
     }
 
     @objc func openMCPActivity(_ sender: Any?) {
@@ -84,6 +90,19 @@ extension AppDelegate: NSMenuItemValidation {
         WelcomeRouter.shared.route(.openProjectFolder)
     }
 
+    // The sender names its project in `representedObject`; All Connections carries none.
+    @objc func selectConnectionProject(_ sender: NSMenuItem) {
+        ConnectionScope.shared.setActiveProject(sender.representedObject as? UUID)
+    }
+
+    @objc func newConnectionProject(_ sender: Any?) {
+        WelcomeRouter.shared.route(.newProject)
+    }
+
+    @objc func manageConnectionProjects(_ sender: Any?) {
+        WelcomeRouter.shared.route(.manageProjects)
+    }
+
     @objc func openSampleDatabase(_ sender: Any?) {
         SampleDatabaseLauncher.open()
     }
@@ -142,6 +161,8 @@ extension AppDelegate: NSMenuItemValidation {
             return UpdateCenter.shared.isPrimaryActionEnabled
         case #selector(reopenClosedTab(_:)):
             return !RecentlyClosedTabStore.shared.entries.isEmpty
+        case #selector(manageSharedLinks(_:)):
+            return ShareAvailability.isAvailable
         default:
             return true
         }

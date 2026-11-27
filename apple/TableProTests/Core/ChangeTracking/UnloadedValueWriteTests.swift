@@ -79,6 +79,50 @@ struct UnloadedValueWriteTests {
         #expect(build.operations.first?.refusal == nil)
     }
 
+    private static func cutTextPage() -> TableRows {
+        TableRows.from(
+            queryRows: [["1", "a", "lorem ipsum"]],
+            columns: columns,
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "VARCHAR"), .text(rawType: "LONGTEXT")],
+            unloadedCells: [0: [2: 5_242_880]]
+        )
+    }
+
+    @Test("An edit beside a cut text writes only the edited column, and the text's load completes the pre-image")
+    func editBesideCutText() throws {
+        let row = Self.cutTextPage().rows[0]
+        let manager = Self.manager()
+        manager.recordCellChange(
+            rowID: row.id,
+            columnIndex: 1,
+            columnName: "name",
+            oldValue: "a",
+            newValue: "b",
+            originalRow: Array(row.values)
+        )
+
+        let statements = try manager.generateSQL()
+        #expect(statements.map(\.sql) == ["UPDATE `files` SET `name` = ? WHERE `id` = ?"])
+
+        let full = PluginCellValue.text("lorem ipsum dolor sit amet")
+        manager.adoptLoadedValues([row.id: [2: full]])
+        let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
+        #expect(build.operations.first?.preImage?[2] == full)
+    }
+
+    @Test("A cut text's first characters never stand in for it in a deletion's pre-image")
+    func cutTextLoadedAfterDelete() throws {
+        let row = Self.cutTextPage().rows[0]
+        let manager = Self.manager()
+        manager.recordRowDeletion(rowID: row.id, originalRow: Array(row.values))
+        #expect(row.values[2] == .null)
+        let full = PluginCellValue.text("lorem ipsum dolor sit amet")
+        manager.adoptLoadedValues([row.id: [2: full]])
+
+        let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
+        #expect(build.operations.first?.preImage?[2] == full)
+    }
+
     @Test("A value loaded while a deletion was undone completes the image its redo records")
     func redoAfterLoadKeepsLoadedValue() throws {
         let row = Self.page().rows[0]
@@ -94,14 +138,5 @@ struct UnloadedValueWriteTests {
 
         let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
         #expect(build.operations.first?.preImage?[2] == .bytes(Data([5])))
-    }
-
-    @Test("A value loaded for a tab in the background completes that tab's saved deletion")
-    func backgroundTabSnapshotTakesLoadedValue() {
-        let row = Self.page().rows[0]
-        var snapshot = TabChangeSnapshot()
-        snapshot.changes = [RowChange(rowID: row.id, type: .delete, originalRow: Array(row.values))]
-        snapshot.adoptLoadedValues([row.id: [2: .bytes(Data([5]))]])
-        #expect(snapshot.changes.first?.originalRow?[2] == .bytes(Data([5])))
     }
 }

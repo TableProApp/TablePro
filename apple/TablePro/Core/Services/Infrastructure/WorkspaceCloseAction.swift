@@ -75,9 +75,7 @@ internal enum WorkspaceCloseAction {
             await ConnectionCloseAction.close(connectionId: workspace.connectionId)
             return
         }
-        /// Every window hosting the connection. A tab torn off into its own window can be the
-        /// container's only remaining tab, and closing the entry from the window that happens to
-        /// answer first would leave that tab open under an entry the user just closed.
+        // Every window hosting the connection: a torn-off tab can be the container's only one.
         let hostedWorkspaces = WindowManager.shared.workspaces(for: workspace.connectionId)
         guard let hosted = hostedWorkspaces.first else {
             Self.logger.error("close has no hosted workspace container=\(workspace.container, privacy: .private(mask: .hash))")
@@ -86,16 +84,9 @@ internal enum WorkspaceCloseAction {
 
         let coordinators = hostedWorkspaces.compactMap { $0.sessionState?.coordinator }
         let coordinator = coordinators.first
-        /// Where the user was before the alert. Confirming reveals the work at risk, which switches
-        /// the window to that connection and selects one of the tabs, and an answer that closes
-        /// nothing has to put all of that back: leaving the user on a connection they did not ask
-        /// for, with the entry still listed, is a close that reads as a switch.
+        // Asking reveals the work at risk, so an answer that closes nothing puts the window back here.
         let wasShowing = WindowManager.shared.shownConnection(besides: workspace.connectionId)
-        guard await confirmEndingTransaction(in: workspace) else {
-            Self.logger.info("close cancelled at the transaction prompt container=\(workspace.container, privacy: .private(mask: .hash))")
-            return
-        }
-        // Taken after the transaction prompt: the tabs stay editable while it is answered.
+        // Running work, then unsaved work, then the transaction, read after the save: Save under Manual Commit lands in one.
         let victims = committedTabs(in: workspace.container, across: coordinators)
         // Closing a tab stops its query, so a yes needs no cancel of its own.
         let running = RunningWorkRegistry.shared.items(in: .tabs(Set(victims.map(\.id))))
@@ -115,16 +106,15 @@ internal enum WorkspaceCloseAction {
                 return
             }
         }
-        guard let closable = await confirm(
+        guard let confirmed = await confirm(
             victims, across: coordinators, revealing: workspace, alsoStopping: holdsUnsavedWork ? running : []
         ) else {
             WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
             Self.logger.info("close cancelled at the save prompt container=\(workspace.container, privacy: .private(mask: .hash))")
             return
         }
-        /// A tab whose work the save could not take keeps the container open, because it is still
-        /// work in it. Closing the entry regardless would destroy exactly what the alert said would
-        /// stay, which is the promise the wording makes.
+        let closable = confirmed.closable
+        // A tab whose work the save could not take keeps the container open: the alert promised it would stay.
         guard closable.isSuperset(of: Set(victims.map(\.id))) else {
             closeTabs(victims.map(\.id).filter { closable.contains($0) }, across: coordinators)
             WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
@@ -136,11 +126,29 @@ internal enum WorkspaceCloseAction {
             )
             return
         }
-        /// The entry goes now, before the connection leaves the container, because leaving it is a
-        /// schema reload, and on an engine that can neither change database on a live connection nor
-        /// open a second one, a reconnect: waiting for that left the row the user just closed sitting
-        /// there for seconds while the window loaded somewhere else. `beginClosing` is what lets the strip drop the
-        /// browse cursor's own row early, and the cursor follows underneath.
+        // Before anything closes, so a Cancel or a failed commit leaves the entry as it was.
+        guard await resolveTransaction(in: workspace) else {
+            confirmed.restoreRevealed()
+            WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
+            Self.logger.info("close cancelled at the transaction prompt container=\(workspace.container, privacy: .private(mask: .hash))")
+            return
+        }
+        // One session serves every entry, so its transaction outlives the close, and an engine that cannot switch
+        // database inside one refuses the move: moving first means a refusal closes nothing.
+        let movesFirst = await holdsSessionWideTransaction(workspace.connectionId)
+        if movesFirst {
+            guard await browseAway(from: workspace, among: containers, coordinator: coordinator) else {
+                confirmed.restoreRevealed()
+                WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
+                Self.logger.error(
+                    "close could not leave container=\(workspace.container, privacy: .private(mask: .hash))"
+                )
+                return
+            }
+        }
+        // Otherwise the entry goes before the connection leaves the container: leaving can be a reconnect, and
+        // waiting for it left the closed row on the strip for seconds. `beginClosing` lets the strip drop the
+        // browse cursor's own row early, and the cursor follows underneath.
         if !victims.isEmpty {
             closeTabs(victims.map(\.id), across: coordinators)
         }
@@ -158,7 +166,10 @@ internal enum WorkspaceCloseAction {
             """
         )
 
-        let left = await browseAway(from: workspace, among: containers, coordinator: coordinator)
+        var left = true
+        if !movesFirst {
+            left = await browseAway(from: workspace, among: containers, coordinator: coordinator)
+        }
         if left {
             leave(workspace, in: coordinators)
         }
@@ -166,9 +177,7 @@ internal enum WorkspaceCloseAction {
             hostedWorkspace.endClosing()
         }
         guard left else {
-            /// The connection never left, so the container is open again: it is where the next tab
-            /// still opens, and a strip that did not list it would be lying about where the user is.
-            /// The driver's own error is already on screen.
+            // The connection never left, so the next tab still opens there; the driver's error is already on screen.
             for hostedWorkspace in hostedWorkspaces {
                 hostedWorkspace.openContainer(workspace.container)
             }
@@ -179,9 +188,7 @@ internal enum WorkspaceCloseAction {
             return
         }
 
-        /// Read again rather than reusing the list from before the switch: a table opened while the
-        /// reconnect ran anchors the container all over again, and the entry would come back with
-        /// one stray tab under it. A tab that new has nothing to lose.
+        // Read again: a table opened while the switch ran anchors the container anew, and has nothing to lose.
         let opened = coordinators.flatMap { tabs(in: workspace.container, of: $0) }
         if !opened.isEmpty {
             closeTabs(opened.map(\.id), across: coordinators)
@@ -189,43 +196,27 @@ internal enum WorkspaceCloseAction {
                 hostedWorkspace.closeContainer(workspace.container)
             }
         }
-        /// The database keeps its own connection and its catalog while its entry is listed; closing the
-        /// entry is what ends them, and the connection has already moved off it above.
+        // Closing the entry ends the database's own connection and catalog; the browse cursor moved off it above.
         DatabaseManager.shared.sessionLanes.close(database: workspace.container, for: workspace.connectionId)
         SchemaService.shared.forget(database: workspace.container, connectionId: workspace.connectionId)
     }
 
-    /// Shown, then asked, for the same reason a connection close reveals itself first: an alert
-    /// about work the user cannot see names tabs they have no way to look at before answering.
-    /// Selecting one of the victims is also what makes Save save a victim. It runs only when there
-    /// is something to confirm, because raising a background connection's window and moving its tab
-    /// selection is a side effect no one asked for when the close has nothing to lose.
-    /// nil when the user cancelled; otherwise the victims that may now be closed, which is every one
-    /// of them unless Save could not reach some.
-    /// Asked of the window that owns each tab.
-    ///
-    /// A tab's live grid and structure edits exist only in its own coordinator: a background
-    /// snapshot of a tab in another window reads as clean whatever is staged in it. Once a
-    /// connection can be hosted twice, a container's tabs span both windows, and putting all of
-    /// them to the coordinator that answered first reported the foreign ones as safe and closed
-    /// over the edits without a prompt.
-    ///
-    /// Cancel anywhere cancels everything, because the entry either closes or it does not.
+    // nil when the user cancelled; otherwise the victims that may close (all, unless Save could not reach some) and
+    // the windows revealed to ask, for a later Cancel to put back. Each tab is asked of the window that owns it,
+    // since its live edits exist only in its own coordinator, and only when it holds unsaved work: revealing a
+    // background window is a side effect no one asked for when nothing is lost. Cancel anywhere cancels everything.
     private static func confirm(
         _ victims: [QueryTab],
         across coordinators: [MainContentCoordinator],
         revealing workspace: WorkspaceID,
         alsoStopping running: [RunningWork]
-    ) async -> Set<UUID>? {
+    ) async -> Confirmation? {
         var running = running
         let everything = Set(victims.map(\.id))
-        guard !victims.isEmpty else { return everything }
+        guard !victims.isEmpty else { return Confirmation(closable: everything, revealed: []) }
 
         var closable: Set<UUID> = []
-        /// What each window was showing before it was brought forward to ask, the entry and its tab
-        /// as well as the connection. A dirty split connection reveals more than one of them, and
-        /// the caller can only put one back, so an abandoned close left the others switched to a
-        /// connection the user never chose.
+        // A dirty split connection reveals more than one window, and the caller can only put one back.
         var revealed: [RevealedWindow] = []
         func restoreRevealed() {
             for window in revealed {
@@ -259,12 +250,24 @@ internal enum WorkspaceCloseAction {
                 closable.formUnion(resolved)
             }
         }
-        /// A victim no window claims is already gone, so nothing is holding work for it.
+        // A victim no window claims is already gone, so nothing is holding work for it.
         let unclaimed = victims.map(\.id).filter { id in
             !coordinators.contains { coordinator in coordinator.tabManager.tabs.contains { $0.id == id } }
         }
         closable.formUnion(unclaimed)
-        return closable
+        return Confirmation(closable: closable, revealed: revealed)
+    }
+
+    @MainActor
+    private struct Confirmation {
+        let closable: Set<UUID>
+        let revealed: [RevealedWindow]
+
+        func restoreRevealed() {
+            for window in revealed {
+                window.restore()
+            }
+        }
     }
 
     /// A window as it was before it was brought forward to ask: the connection it showed, and that
@@ -294,27 +297,27 @@ internal enum WorkspaceCloseAction {
         }
     }
 
-    /// Asked before the unsaved-work prompt, whose Save writes at once, so a Cancel here leaves
-    /// everything as it was. Nothing is revealed: the alert names the database, and the transaction
-    /// is not in any one tab. Only a database with its own connection loses a transaction on close.
-    private static func confirmEndingTransaction(in workspace: WorkspaceID) async -> Bool {
+    // Only a database with its own connection loses a transaction when its entry closes. Nothing is revealed: the
+    // alert names the database, and the transaction is in no one tab.
+    private static func resolveTransaction(in workspace: WorkspaceID) async -> Bool {
         let manager = DatabaseManager.shared
         guard let session = manager.session(for: workspace.connectionId),
               manager.usesDatabaseLanes(session)
         else { return true }
-        let holding = await manager.databasesHoldingTransaction(
-            for: workspace.connectionId,
-            among: [workspace.container]
+        let outcome = await TransactionEndingFlow.resolve(
+            connectionId: workspace.connectionId,
+            action: .closeEntry(database: workspace.container),
+            among: [workspace.container],
+            window: { WindowManager.shared.window(for: workspace.connectionId) }
         )
-        guard !holding.isEmpty else { return true }
-        return await AlertHelper.confirmDestructive(
-            title: String(format: String(localized: "Close the database “%@”?"), workspace.container),
-            message: String(
-                localized: "This database has an open transaction. Closing it rolls the transaction back and discards its uncommitted changes."
-            ),
-            confirmButton: String(localized: "Close"),
-            window: WindowManager.shared.window(for: workspace.connectionId)
-        )
+        return outcome != .cancelled
+    }
+
+    private static func holdsSessionWideTransaction(_ connectionId: UUID) async -> Bool {
+        let manager = DatabaseManager.shared
+        guard let session = manager.session(for: connectionId), !manager.usesDatabaseLanes(session) else { return false }
+        let holding = await manager.databasesHoldingTransaction(for: connectionId)
+        return !holding.isEmpty
     }
 
     /// Leaves the container before it stops being listed, and only when it is the one being browsed.

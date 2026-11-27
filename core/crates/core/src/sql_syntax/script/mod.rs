@@ -19,6 +19,7 @@ pub mod text_offsets;
 pub mod unicode_spaces;
 
 pub use batch_error_policy::BatchErrorPolicy;
+pub(crate) use copy_rows::copies_from_stdin;
 pub use lexical_settings::LexicalSettings;
 pub use open_construct::OpenConstruct;
 pub use script_batch::ScriptBatch;

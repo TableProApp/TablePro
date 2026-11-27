@@ -45,6 +45,7 @@ private struct ForeignKeyPreviewModifier: ViewModifier {
                     databaseType: databaseType,
                     currentSchema: currentSchema,
                     allowsOpen: allowsOpen && coordinator != nil,
+                    trackRead: sessionCoordinator.trackPageRead(failed: { false }),
                     refreshTransaction: { [sessionCoordinator] in await sessionCoordinator.refreshTransaction() },
                     onOpen: { requestedOpen = $0 }
                 )

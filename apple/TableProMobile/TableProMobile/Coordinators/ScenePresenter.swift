@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TableProImport
 import TableProModels
 
 enum SceneSheet: Identifiable {
@@ -11,9 +12,11 @@ enum SceneSheet: Identifiable {
     case newGroup(parentId: UUID?)
     case editGroup(ConnectionGroup)
     case tags
+    case projects
     case settings
     case importFile(URL)
     case export
+    case importData(URL)
 
     var id: String {
         switch self {
@@ -25,9 +28,11 @@ enum SceneSheet: Identifiable {
         case .newGroup(let parentId): "newGroup-\(parentId?.uuidString ?? "root")"
         case .editGroup(let group): "editGroup-\(group.id.uuidString)"
         case .tags: "tags"
+        case .projects: "projects"
         case .settings: "settings"
         case .importFile(let url): "importFile-\(url.absoluteString)"
         case .export: "export"
+        case .importData(let url): "importData-\(url.absoluteString)"
         }
     }
 
@@ -42,6 +47,16 @@ enum SceneSheet: Identifiable {
 nonisolated struct PendingTableRequest: Hashable, Sendable {
     let connectionId: UUID
     let tableName: String
+}
+
+nonisolated struct PendingDataImport: Hashable, Sendable {
+    let connectionId: UUID
+    let fileURL: URL
+}
+
+nonisolated enum SheetHandoff: Hashable, Sendable {
+    case open(UUID)
+    case reveal([UUID])
 }
 
 @MainActor @Observable
@@ -60,6 +75,7 @@ final class ScenePresenter {
     private(set) var editingConnectionId: UUID?
     private(set) var pendingIntent: SceneIntent?
     private(set) var pendingTable: PendingTableRequest?
+    private(set) var pendingDataImport: PendingDataImport?
     private(set) var restoreHolds: Set<RestoreHold> = []
     private(set) var editorHolds: Set<UUID> = []
     private(set) var heldImportFile: URL?
@@ -73,6 +89,10 @@ final class ScenePresenter {
     @ObservationIgnored private var hasBegunLaunch = false
     @ObservationIgnored private var presentedLaunchSheet = false
     @ObservationIgnored private var presentedFirstRunPages: [FirstRunPage] = []
+    // Run after the first run closes: one sheet at a time, so the form or the import review never opens over it.
+    @ObservationIgnored private(set) var recordedStartAction: LibraryStartAction?
+    // Run once the sheet that saved or imported them has gone: a cover cannot come up over a sheet, and a link that came in meanwhile wins.
+    @ObservationIgnored private var handoffAfterSheet: SheetHandoff?
 
     init(isLockedAtLaunch: Bool = false) {
         guard isLockedAtLaunch else { return }
@@ -104,13 +124,49 @@ final class ScenePresenter {
         }
     }
 
-    func sheetDidDismiss(appState: AppState) {
-        guard presentedLaunchSheet, sheet == nil else { return }
+    @discardableResult
+    func sheetDidDismiss(appState: AppState) -> LibraryStartAction? {
+        guard presentedLaunchSheet, sheet == nil else { return nil }
         presentedLaunchSheet = false
         restoreHolds.remove(.firstRun)
         appState.finishFirstRun(pages: presentedFirstRunPages)
         presentedFirstRunPages = []
         appState.releaseLaunchPresentation(for: sceneId)
+        let action = recordedStartAction
+        recordedStartAction = nil
+        // A file or link the app was opened with already says what to do.
+        return pendingIntent == nil ? action : nil
+    }
+
+    func recordStartAction(_ action: LibraryStartAction) {
+        recordedStartAction = action
+    }
+
+    func openAfterSheet(_ connectionId: UUID) {
+        handoffAfterSheet = .open(connectionId)
+    }
+
+    // Opens only what the handoff opens from a clean import; anything else stays on the list, shows what it wrote and says what happened.
+    func finishImport(_ outcome: ImportOutcome, from origin: ImportOrigin) -> MobileImportOutcomeMessage? {
+        let keptEverything = outcome.failure == nil && outcome.passwordsNotKept == 0 && outcome.savedQueriesNotImported == 0
+        if case .open(let connectionId) = outcome.handoff(from: origin), keptEverything {
+            handoffAfterSheet = .open(connectionId)
+            return nil
+        }
+        handoffAfterSheet = outcome.connectionIds.isEmpty ? nil : .reveal(outcome.connectionIds)
+        return MobileImportOutcomeMessage(outcome)
+    }
+
+    // A link or file that came in while the sheet was up owns its dismissal, the same as for the start action.
+    func takeHandoffAfterSheet() -> SheetHandoff? {
+        let handoff = handoffAfterSheet
+        handoffAfterSheet = nil
+        return pendingIntent == nil ? handoff : nil
+    }
+
+    func presentSetupGuide() {
+        presentedFirstRunPages = [.origin]
+        present(.firstRun([.origin]))
     }
 
     func releaseLaunchClaim(appState: AppState) {
@@ -203,6 +259,9 @@ final class ScenePresenter {
         }
         self.pendingIntent = nil
         restoreHolds.remove(.pendingIntent)
+        // Delivered between the save and the sheet's dismissal, the link still owns that dismissal.
+        handoffAfterSheet = nil
+        recordedStartAction = nil
         return pendingIntent
     }
 
@@ -214,5 +273,31 @@ final class ScenePresenter {
         guard let pendingTable, pendingTable.connectionId == connectionId else { return nil }
         self.pendingTable = nil
         return pendingTable.tableName
+    }
+
+    // An opened file goes to the connection on screen, which keeps its session; the import sheet over it asks for
+    // the table and offers another connection.
+    func requestDataImport(_ url: URL, in connectionId: UUID) {
+        pendingDataImport = PendingDataImport(connectionId: connectionId, fileURL: url)
+    }
+
+    func takeDataImport(for connectionId: UUID) -> URL? {
+        guard let pendingDataImport, pendingDataImport.connectionId == connectionId else { return nil }
+        self.pendingDataImport = nil
+        return pendingDataImport.fileURL
+    }
+
+    // A file waiting for a connection that is no longer the one on screen was never asked about, so it is dropped
+    // rather than shown the next time that connection opens.
+    func discardDataImport(unlessFor connectionId: UUID?) {
+        guard let pendingDataImport, pendingDataImport.connectionId != connectionId else { return }
+        self.pendingDataImport = nil
+    }
+
+    // Choosing another connection for an opened file: the file waits for that connection, which opens the way a
+    // link to it does.
+    func moveDataImport(_ url: URL, to connectionId: UUID) {
+        requestDataImport(url, in: connectionId)
+        receive(.openConnection(connectionId, table: nil))
     }
 }

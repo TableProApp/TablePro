@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Model;
+using TablePro.App.Services;
 using TablePro.Interop;
 
 namespace TablePro.App.Views;
@@ -47,7 +48,7 @@ public sealed partial class ObjectNode : INotifyPropertyChanged
 
     public bool StartsExpanded { get; set; }
 
-    public string AccessibleName => string.IsNullOrEmpty(Detail) ? Title : $"{Title}, {Detail}";
+    public string AccessibleName => string.IsNullOrEmpty(Detail) ? Title : Strings.List([Title, Detail]);
 
     public bool HasUnrealizedChildren
     {

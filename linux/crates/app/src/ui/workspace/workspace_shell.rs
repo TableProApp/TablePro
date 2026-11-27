@@ -263,6 +263,25 @@ impl WorkspaceShell {
         group.add_action(&menu_action("close-others", |view, page| view.close_other_pages(page)));
         group.add_action(&menu_action("close-after", |view, page| view.close_pages_after(page)));
         group.add_action(&menu_action("close", |view, page| view.close_page(page)));
+        let rename = gio::SimpleAction::new("rename", None);
+        let shell = self.downgrade();
+        rename.connect_activate(move |_, _| {
+            // libadwaita clears the menu's target from an idle once the menu hides.
+            let page = shell
+                .upgrade()
+                .and_then(|shell| shell.imp().menu_target.borrow().clone());
+            let Some(page) = page else {
+                return;
+            };
+            // After the menu has closed, so it does not take the focus back from the field.
+            let shell = shell.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(shell) = shell.upgrade() {
+                    shell.start_rename(&page);
+                }
+            });
+        });
+        group.add_action(&rename);
         // The bar and the overview parent the menu's popover, and the view
         // is an ancestor of neither.
         self.insert_action_group("tab", Some(&group));
@@ -278,6 +297,7 @@ impl WorkspaceShell {
             }
         });
         imp.tab_view.set_menu_model(Some(&tab_menu()));
+        self.connect_rename();
     }
 
     /// Dim what would close nothing for `page`, whose menu opens.
@@ -287,6 +307,7 @@ impl WorkspaceShell {
         };
         let last = view.n_pages() - 1;
         for (name, enabled) in [
+            ("rename", self.can_rename(page)),
             ("close-others", last > 0),
             ("close-after", view.page_position(page) < last),
         ] {
@@ -603,6 +624,7 @@ impl WorkspaceShell {
     /// no tab the front stays where it was.
     pub(super) fn follow_selected_page(&self) {
         self.refresh_save_changes();
+        self.refresh_rename_action();
         let Some(page) = self.imp().tab_view.selected_page() else {
             return;
         };
@@ -707,11 +729,10 @@ impl WorkspaceShell {
         let Some(level) = level else {
             return;
         };
-        button.set_icon_name(match level {
-            tablepro_core::SafeModeLevel::Off => crate::ui::icons::CHANGES_ALLOW,
-            tablepro_core::SafeModeLevel::ConfirmWrites | tablepro_core::SafeModeLevel::ReadOnly => {
-                crate::ui::icons::CHANGES_PREVENT
-            }
+        button.set_icon_name(if level == tablepro_core::SafeModeLevel::Silent {
+            crate::ui::icons::CHANGES_ALLOW
+        } else {
+            crate::ui::icons::CHANGES_PREVENT
         });
         let said = gettext_f("Safe Mode: {level}", &[("level", &crate::ui::safe_mode::label(level))]);
         describe_icon_button(&button, &said, None);
@@ -852,6 +873,18 @@ impl WorkspaceShell {
             FavoriteAction::Rename(favorite) => self.ask_favorite_name(favorite),
             FavoriteAction::Delete(favorite) => self.ask_favorite_deletion(favorite),
             FavoriteAction::MoveTo(favorite) => self.ask_folder_for(favorite),
+            FavoriteAction::Share(favorite) => {
+                if let Some(sender) = self.front().and_then(|front| front.sender()) {
+                    sender.deliver(super::WorkspaceInput::Share {
+                        tab: None,
+                        subject: Box::new(crate::services::share_subject::ShareSubject::query(
+                            favorite.name,
+                            favorite.query,
+                            None,
+                        )),
+                    });
+                }
+            }
             FavoriteAction::NewFolder(parent) => self.ask_folder_name(parent, None),
             FavoriteAction::RenameFolder(folder) => self.ask_folder_name(None, Some(folder)),
             FavoriteAction::DeleteFolder(folder) => self.ask_folder_deletion(folder),
@@ -907,14 +940,14 @@ impl WorkspaceShell {
         dialog.present(self.imp().window.upgrade().as_ref());
     }
 
-    pub(crate) fn rename_favorite(&self, id: i64, name: String) {
+    pub(crate) fn rename_favorite(&self, id: Uuid, name: String) {
         self.change_favorites(
             async move |history| history.saved_queries().rename(id, &name).await,
             gettext("Could not rename that saved query."),
         );
     }
 
-    pub(crate) fn delete_favorite(&self, id: i64) {
+    pub(crate) fn delete_favorite(&self, id: Uuid) {
         self.change_favorites(
             async move |history| history.saved_queries().delete(id).await,
             gettext("Could not delete that saved query."),
@@ -1118,6 +1151,7 @@ impl WorkspaceShell {
     /// names itself again from here on.
     pub(crate) fn shutdown(&self) {
         let imp = self.imp();
+        self.end_rename(true);
         self.forget_table_view();
         if let Some(binding) = imp.save_changes_binding.take() {
             binding.unbind();
@@ -1208,20 +1242,27 @@ fn assistant_action(shell: &WorkspaceShell) -> gio::SimpleAction {
 }
 
 fn tab_menu() -> gio::Menu {
+    let rename = gio::Menu::new();
+    let item = gio::MenuItem::new(Some(&gettext("_Rename Tab…")), Some("tab.rename"));
+    // F2 is the shell's own key, which GtkPopoverMenu does not show by itself.
+    crate::application::keymap::show_key_of(&item, &format!("win.{}", super::tab_rename::RENAME_TAB));
+    rename.append_item(&item);
     let others = gio::Menu::new();
     others.append(Some(&gettext("Close _Other Tabs")), Some("tab.close-others"));
     others.append(Some(&gettext("Close Tabs _After This One")), Some("tab.close-after"));
     let close = gio::Menu::new();
     close.append(Some(&gettext("_Close")), Some("tab.close"));
     let menu = gio::Menu::new();
+    menu.append_section(None, &rename);
     menu.append_section(None, &others);
     menu.append_section(None, &close);
+    crate::application::keymap::follow_menu(&menu);
     menu
 }
 
 fn safe_mode_levels() -> gio::Menu {
     let levels = gio::Menu::new();
-    for level in tablepro_core::SafeModeLevel::ALL {
+    for level in tablepro_core::SafeModeLevel::ENFORCED {
         let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::menu_label(level)), None);
         item.set_action_and_target_value(
             Some("win.safe-mode"),
@@ -1390,10 +1431,10 @@ mod tests {
         shell.reload_favorites();
         let current = shell.imp().favorites_generation.get();
         let saved = SavedQuery {
-            id: 1,
+            id: Uuid::from_u128(1),
             name: "Current".to_owned(),
             query: "SELECT 1".to_owned(),
-            connection_id: connection,
+            connection_id: Some(connection),
             connection_name: "Database".to_owned(),
             keyword: None,
             folder_id: None,

@@ -25,15 +25,27 @@ private extension MSSQLRawCell {
 }
 
 private extension MSSQLRawResult {
-    func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
-        PluginQueryResult(
+    // Each read row is let go once it is converted, so a buffered result is never held twice at the hand-off.
+    consuming func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
+        let columns = columns
+        let affectedRows = affectedRows
+        let isTruncated = isTruncated
+        let note = resultSetsNotShownNote
+        var source = (consume self).rows
+        var rows: [[PluginCellValue]] = []
+        rows.reserveCapacity(source.count)
+        for index in source.indices {
+            rows.append(source[index].map(\.asPluginCell))
+            source[index] = []
+        }
+        return PluginQueryResult(
             columns: columns.map { $0.name },
             columnTypeNames: columns.map { $0.type.canonicalName },
-            rows: rows.map { row in row.map { $0.asPluginCell } },
+            rows: rows,
             rowsAffected: affectedRows,
             executionTime: executionTime,
             isTruncated: isTruncated,
-            statusMessage: resultSetsNotShownNote
+            statusMessage: note
         )
     }
 
@@ -51,14 +63,25 @@ private extension MSSQLRawResult {
 }
 
 private extension MSSQLBatchReadout {
-    func toPluginBatchResult(
+    consuming func toPluginBatchResult(
         executionTime: TimeInterval,
         binding: MSSQLParameterBatch.BoundBatch?
     ) -> PluginBatchResult {
-        PluginBatchResult(
-            resultSets: resultSets.map { $0.toPluginResult(executionTime: 0) },
+        let rowsAffected = rowsAffected
+        let errors = errors.map { $0.pluginBatchError(binding: binding) } + [errorsNotKeptNotice].compactMap { $0 }
+        let resultSetsReadPast = resultSetsReadPast
+        var sets = (consume self).resultSets
+        var converted: [PluginQueryResult] = []
+        converted.reserveCapacity(sets.count)
+        for index in sets.indices {
+            let set = sets[index]
+            sets[index] = MSSQLRawResult(columns: [], rows: [], affectedRows: 0, isTruncated: false)
+            converted.append((consume set).toPluginResult(executionTime: 0))
+        }
+        return PluginBatchResult(
+            resultSets: converted,
             rowsAffected: rowsAffected,
-            errors: errors.map { $0.pluginBatchError(binding: binding) } + [errorsNotKeptNotice].compactMap { $0 },
+            errors: errors,
             discardedResultSetCount: resultSetsReadPast,
             executionTime: executionTime
         )
@@ -187,6 +210,9 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     // MARK: - UI/Capability Metadata
 
     static let supportsSchemaSwitching = true
+    // The server resolves an unqualified name through the login's default schema, whatever the browsed one is.
+    static let schemaSwitchScopesUnqualifiedNames = false
+    static let urlSchemes: [String] = ["sqlserver", "mssql"]
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession, .selectSchemaFromLastSession]
     static let brandColorHex = "#E34517"
     static let systemDatabaseNames: [String] = ["master", "tempdb", "model", "msdb"]
@@ -520,8 +546,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let startTime = Date()
         do {
-            let raw = try await conn.executeQuery(query)
-            return raw.toPluginResult(executionTime: Date().timeIntervalSince(startTime))
+            return try await conn.executeQuery(query).toPluginResult(executionTime: Date().timeIntervalSince(startTime))
         } catch let error as MSSQLCoreError {
             throw MSSQLPluginError(coreError: error)
         }
@@ -660,8 +685,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let startTime = Date()
         do {
-            let raw = try await conn.executeQuery(query, rowCap: rowCap)
-            return raw.toPluginResult(executionTime: Date().timeIntervalSince(startTime))
+            return try await conn.executeQuery(query, rowCap: rowCap)
+                .toPluginResult(executionTime: Date().timeIntervalSince(startTime))
         } catch let error as MSSQLCoreError {
             throw MSSQLPluginError(coreError: error)
         }
@@ -676,12 +701,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let startTime = Date()
         do {
-            let readout = try await conn.executeBatch(
+            return try await conn.executeBatch(
                 binding?.text ?? query,
                 rowCap: rowCap,
                 countsToSkip: binding?.prependedStatementCount ?? 0
             )
-            return readout.toPluginBatchResult(executionTime: Date().timeIntervalSince(startTime), binding: binding)
+            .toPluginBatchResult(executionTime: Date().timeIntervalSince(startTime), binding: binding)
         } catch let error as MSSQLCoreError {
             throw MSSQLPluginError(coreError: error)
         }
@@ -790,18 +815,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let objectLiteral = MSSQLStringLiteral.quoted(
-            MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
-        let sql = """
-            SELECT SUM(p.rows)
-            FROM sys.partitions p
-            WHERE p.object_id = OBJECT_ID(\(objectLiteral)) AND p.index_id IN (0, 1)
-            """
-        let result = try await execute(query: sql)
-        if let row = result.rows.first, let cell = row.first, let str = cell.asText {
-            return Int(str)
-        }
-        return nil
+        try await exportCatalog.fetchApproximateRowCount(table: table, schema: schema)
     }
 
     // MARK: - Query Building
@@ -959,9 +973,16 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         MSSQLStringLiteral.escaped(value)
     }
 
+    var exportCatalog: MSSQLExportCatalog {
+        MSSQLExportCatalog(
+            run: { [self] query in try await execute(query: query) },
+            currentSchema: currentSchemaName,
+            principalState: principalState
+        )
+    }
+
     func effectiveSchema(_ schema: String?) -> String {
-        guard let schema, !schema.isEmpty else { return currentSchemaName }
-        return schema
+        MSSQLExportCatalog.effectiveSchema(schema, current: currentSchemaName)
     }
 
     func effectiveSchemaQuoted(_ schema: String?) -> String {
@@ -995,12 +1016,6 @@ enum MSSQLPluginError: Error {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)
-}
-
-extension MSSQLPluginError {
-    init(_ refusal: MSSQLDefinitionRefusal) {
-        self = .queryFailed(refusal.reason)
-    }
 }
 
 extension MSSQLPluginError: PluginDriverError {

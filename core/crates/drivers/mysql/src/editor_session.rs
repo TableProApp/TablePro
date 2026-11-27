@@ -9,6 +9,7 @@ use tablepro_core::sql_syntax::{SqlGrammar, may_change_database};
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LivenessPolicy,
     LossPhase, ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql, Value,
+    deadline_elapsed,
 };
 use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
@@ -79,7 +80,10 @@ impl MysqlEditorSession {
         Ok(Arc::new(Self {
             id: EditorSessionId::new(),
             shared: Arc::new(Shared {
-                held: Arc::new(tokio::sync::Mutex::new(Some(EditorLink::new(physical.connection)))),
+                held: Arc::new(tokio::sync::Mutex::new(Some(EditorLink::new(
+                    physical.connection,
+                    limits.read_only,
+                )))),
                 connection_id: physical.connection_id,
                 flavour: physical.flavour,
                 control: ControlLink::new(endpoint),
@@ -218,7 +222,7 @@ impl Shared {
             () = options.cancel.cancelled() => Stop::Cancelled,
             () = self.closing.cancelled() => Stop::Cancelled,
             () = stopped.cancelled() => Stop::Cancelled,
-            () = elapsed(deadline) => Stop::DeadlineElapsed,
+            () = deadline_elapsed(deadline) => Stop::DeadlineElapsed,
         };
         stopped.cancel();
         let until = Instant::now() + self.liveness.cancel_grace;
@@ -317,13 +321,6 @@ fn finished(outcome: Result<RunOutcome, DriverError>) -> Result<RunEnd, DriverEr
     }
 }
 
-async fn elapsed(deadline: Option<Instant>) {
-    match deadline {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
-    }
-}
-
 #[async_trait]
 impl EditorSession for MysqlEditorSession {
     fn id(&self) -> EditorSessionId {
@@ -380,7 +377,7 @@ impl EditorSession for MysqlEditorSession {
         let mut guard = tokio::select! {
             biased;
             () = options.cancel().cancelled() => return Err(stopped()),
-            () = elapsed(options.deadline()) => return Err(stopped()),
+            () = deadline_elapsed(options.deadline()) => return Err(stopped()),
             guard = shared.held.lock() => guard,
         };
         let Some(held) = guard.as_mut().filter(|_| !shared.lost.load(Ordering::SeqCst)) else {
@@ -393,7 +390,7 @@ impl EditorSession for MysqlEditorSession {
         let used = tokio::select! {
             biased;
             () = options.cancel().cancelled() => None,
-            () = elapsed(options.deadline()) => None,
+            () = deadline_elapsed(options.deadline()) => None,
             used = using => Some(used),
         };
         match used {
@@ -433,7 +430,7 @@ impl EditorSession for MysqlEditorSession {
         tokio::select! {
             biased;
             () = options.cancel().cancelled() => Err(DriverError::Cancelled),
-            () = elapsed(options.deadline()) => Err(DriverError::Timeout {
+            () = deadline_elapsed(options.deadline()) => Err(DriverError::Timeout {
                 phase: TimeoutPhase::Statement,
                 server_cancelled: false,
             }),

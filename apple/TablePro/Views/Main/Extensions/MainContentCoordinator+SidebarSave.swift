@@ -11,7 +11,7 @@ extension MainContentCoordinator {
         editState: MultiRowEditState
     ) async throws {
         let changes = sidebarEditChanges(editedFields: editState.getEditedFields())
-        guard !changes.isEmpty else { return }
+        guard !changes.isEmpty, let tabId = tabManager.selectedTab?.id else { return }
         // Held to its row counts as a grid save is, so a write that found no row fails instead of saving nothing.
         let viewTarget = activeViewWriteTarget
         var factory = try sidebarStatementFactory()
@@ -20,7 +20,7 @@ extension MainContentCoordinator {
         guard !steps.isEmpty else { return }
         try await executeSidebarChanges(steps: steps, viewTarget: viewTarget)
 
-        reloadActiveResult()
+        reloadActiveResult(onTab: tabId)
     }
 
     func sidebarEditStatements(
@@ -69,13 +69,13 @@ extension MainContentCoordinator {
                         columnName: field.columnName,
                         oldValue: oldValue,
                         newValue: write.value,
-                        oldIsAbsent: resolvedRow.isAbsent(field.columnIndex),
+                        oldIsAbsent: tableRows.isAbsent(resolvedRow.id, column: field.columnIndex),
                         newIsAbsent: field.removesField,
                         newIsExpression: write.isExpression
                     )
                 },
                 originalRow: originalRow,
-                absentColumns: resolvedRow.absentColumns
+                absentColumns: tableRows.absentColumns(of: resolvedRow.id)
             )
         }
     }

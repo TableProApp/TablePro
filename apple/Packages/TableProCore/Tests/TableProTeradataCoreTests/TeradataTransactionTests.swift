@@ -459,6 +459,65 @@ struct TeradataTransactionStatementTests {
         #expect(throws: TeradataWireError.self) { try tera.switchDatabase(to: "hr") }
         #expect(try TeradataWire.sentSQL(teraTransport) == [TeradataSchemaQueries.setDatabase("sales"), "BEGIN TRANSACTION"])
     }
+
+    @Test("Inside an open transaction a switch to the database the session is on sends nothing")
+    func switchToTheCurrentDatabaseInsideATransaction() throws {
+        let (ansi, ansiTransport) = TeradataWire.connection(
+            [TeradataWire.finished, TeradataWire.finished, TeradataWire.finished], mode: .ansi
+        )
+        try ansi.switchDatabase(to: "sales")
+        _ = try ansi.execute("UPDATE sales.t SET a = 1")
+
+        try ansi.switchDatabase(to: "SALES")
+
+        #expect(try TeradataWire.sentSQL(ansiTransport) == [
+            TeradataSchemaQueries.setDatabase("sales"), "COMMIT WORK", "UPDATE sales.t SET a = 1",
+        ])
+        #expect(ansi.transactionState == .open)
+
+        let (tera, teraTransport) = TeradataWire.connection([TeradataWire.finished, TeradataWire.finished], mode: .tera)
+        try tera.switchDatabase(to: "sales")
+        try tera.beginTransaction()
+        try tera.switchDatabase(to: "sales")
+        #expect(try TeradataWire.sentSQL(teraTransport) == [TeradataSchemaQueries.setDatabase("sales"), "BEGIN TRANSACTION"])
+    }
+
+    @Test(
+        "A request that moves the default database leaves the next switch inside a transaction refused",
+        arguments: ["DATABASE hr", "SET SESSION DATABASE hr", "SS DATABASE hr", "EXEC sales.refresh", "CALL sales.load()"]
+    )
+    func userMovedDatabaseIsNotTrusted(_ statement: String) throws {
+        let (ansi, ansiTransport) = TeradataWire.connection(
+            [TeradataWire.finished, TeradataWire.finished, TeradataWire.finished], mode: .ansi
+        )
+        try ansi.switchDatabase(to: "sales")
+        _ = try ansi.execute(statement)
+
+        #expect(throws: TeradataWireError.self) { try ansi.switchDatabase(to: "sales") }
+        #expect(try TeradataWire.sentSQL(ansiTransport).count == 3)
+    }
+}
+
+struct TeradataDefaultDatabaseStatementTests {
+    @Test(
+        "Statements that can move the default database",
+        arguments: [
+            ("DATABASE hr", true),
+            ("database \"hr\";", true),
+            ("SET SESSION DATABASE hr", true),
+            ("ss database hr", true),
+            ("EXEC sales.refresh", true),
+            ("CALL sales.load()", true),
+            ("SELECT 1; DATABASE hr", true),
+            ("SET SESSION DATEFORM = ANSIDATE", false),
+            ("SELECT DATABASE", false),
+            ("CREATE DATABASE hr FROM dbc AS PERM = 0", false),
+            ("COMMENT ON DATABASE hr AS 'x'", false),
+        ]
+    )
+    func mayMoveDefaultDatabase(_ request: String, _ moves: Bool) {
+        #expect(TeradataStatementKind.mayMoveDefaultDatabase(request) == moves)
+    }
 }
 
 struct TeradataUnreadableColumnTests {

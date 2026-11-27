@@ -174,13 +174,11 @@ final class SchemaRefreshService {
         return schemaService.hasLoadedContent(for: connectionId, schema: schema)
     }
 
-    /// Push the loaded table list into the autocomplete provider.
-    ///
-    /// The provider caches the driver it is handed and fetches columns from it later, so it
-    /// must get one scoped to the browsed database rather than the shared session driver,
-    /// which a tab's execution moves without writing session state.
+    // The driver facts kept with the list mean the push leases no connection. Columns are read through the
+    // provider's own scope lease, never the shared session driver a tab's execution moves.
     func syncAutocompleteProvider(connectionId: UUID) async {
-        guard case .loaded = schemaService.state(for: connectionId) else {
+        guard case .loaded = schemaService.state(for: connectionId),
+              let facts = schemaService.catalogFacts(for: connectionId) else {
             Self.logger.debug(
                 "[schema] autocomplete sync skipped, schema not loaded connId=\(connectionId, privacy: .public)"
             )
@@ -197,22 +195,19 @@ final class SchemaRefreshService {
         let tables = schemaService.allLoadedTables(for: connectionId)
         let schemas = schemaService.schemas(for: connectionId) + schemaService.attachedSchemas(for: connectionId)
         let connection = databaseManager?.session(for: connectionId)?.connection
-        do {
-            try await metadataDriverProvider.withMetadataDriver(scope: browseScope) { driver in
-                await provider.resetForDatabase(
-                    browseDatabase,
-                    tables: tables,
-                    driver: driver,
-                    connection: connection
-                )
-                await provider.setNamespaces(schemas: schemas, databases: [browseDatabase])
-            }
-            providerRegistry.notePopulatedExternally(scope: browseScope)
-        } catch {
-            Self.logger.warning(
-                "[schema] autocomplete sync failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
-            )
-        }
+        await provider.resetForDatabase(browseDatabase, tables: tables, facts: facts, connection: connection)
+        await provider.setNamespaces(schemas: schemas, databases: [browseDatabase])
+        providerRegistry.notePopulatedExternally(scope: browseScope)
+        await provider.seedColumnCatalog()
+    }
+
+    // The schema list lands after the tables, so a sync made when the tables did names no schemas yet.
+    func syncAutocompleteNamespaces(connectionId: UUID) async {
+        guard case .loaded = schemaService.state(for: connectionId),
+              let browseScope = metadataDriverProvider.browseScope(for: connectionId),
+              let provider = providerRegistry.provider(for: browseScope) else { return }
+        let schemas = schemaService.schemas(for: connectionId) + schemaService.attachedSchemas(for: connectionId)
+        await provider.setNamespaces(schemas: schemas, databases: [browseScope.database])
     }
 
     func refreshForSchemaSwitch(connectionId: UUID) async {
@@ -349,8 +344,10 @@ final class SchemaRefreshService {
 /// not browsing, has nothing to refresh here.
 extension SchemaRefreshService: CatalogChangeTarget {
     func refreshCatalog(for change: CatalogChange) async {
-        guard !change.kinds.isDisjoint(with: [.objects, .schemas]),
-              let connection = databaseManager?.session(for: change.connectionId)?.connection,
+        guard !change.kinds.isDisjoint(with: [.objects, .schemas]) else { return }
+        // Every catalog the change reaches is read again when next shown; the browsed one is reread below.
+        schemaService.markKeptCatalogsStale(reachedBy: change)
+        guard let connection = databaseManager?.session(for: change.connectionId)?.connection,
               let browseScope = metadataDriverProvider.browseScope(for: change.connectionId),
               change.reaches(database: browseScope.database) else { return }
         await refreshAfterWrite(connection: connection)

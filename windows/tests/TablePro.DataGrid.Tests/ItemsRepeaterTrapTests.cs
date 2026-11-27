@@ -157,6 +157,100 @@ public sealed class ItemsRepeaterTrapTests
         Assert.True(problems.None, problems.ToString());
     });
 
+    // Traps 1 and 3 with rows of uneven height: each row has one element per pane, where its height puts it.
+    [Fact]
+    public Task WithWrapOnNoElementServesTwoRowsAndEachRepeaterHoldsASmallRange() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData(rows: 100_000), frozen: 1);
+        var random = new Random(3);
+        var visibleRows = (int)Math.Ceiling(grid.VisibleArea().Height / grid.RowHeight) + 1;
+        for (var jump = 0; jump < 60; jump++)
+        {
+            await GridChecks.JumpAsync(grid, random.NextDouble() * grid.Scroller.ScrollableWidth,
+                random.NextDouble() * grid.Scroller.ScrollableHeight);
+            Assert.Equal(grid.RealizedRows.Count, grid.RealizedRows.Values.Distinct().Count());
+            Assert.Equal(grid.RealizedFrozenRows.Count, grid.RealizedFrozenRows.Values.Distinct().Count());
+            Assert.Equal(grid.RealizedHeaders.Count, grid.RealizedHeaders.Values.Distinct().Count());
+            AssertContiguous(grid.RealizedRows.Keys, visibleRows);
+            AssertContiguous(grid.RealizedFrozenRows.Keys, visibleRows);
+            WrapChecks.AssertPlaced(grid, $"jump {jump}");
+        }
+        Assert.Equal(0, grid.DuplicateRecycles);
+        Assert.InRange(grid.RowElementsCreated, 1, 2 * (visibleRows + 2));
+    });
+
+    // Trap 2 with rows of uneven height.
+    [Fact]
+    public Task WithWrapOnRowsAreRealizedPastTenThousandPixels() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData(rows: 100_000));
+        var y = 20_000.0;
+        for (var page = 0; page < 30; page++)
+        {
+            var measures = grid.Counters.Layout.Measures;
+            await GridChecks.JumpAsync(grid, 20_000, y);
+            Assert.True(grid.Counters.Layout.Measures > measures, $"no measure at page {page}");
+            WrapChecks.AssertPlaced(grid, $"page {page}");
+            Assert.Contains(grid.RowAt(grid.VisibleArea().Top), grid.RealizedRows.Keys);
+            y = grid.VisibleArea().Top + grid.VisibleArea().Height;
+        }
+    });
+
+    // Trap 4 with rows of uneven height: the grid moves its own offset only for rows that grow above the view.
+    [Fact]
+    public Task WithWrapOnScrollingDownLandsOnEveryOffsetItAsksFor() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData(rows: 100_000));
+        var y = 0.0;
+        var offTarget = 0;
+        for (var step = 0; step < 300; step++)
+        {
+            y += grid.RowHeight * 3;
+            grid.ScrollTo(0, y);
+            grid.UpdateLayout();
+            offTarget += Math.Abs(grid.Scroller.VerticalOffset - y) < 2 ? 0 : 1;
+        }
+        await WinUiHost.NextFrameAsync();
+        Assert.Equal(0, offTarget);
+        var anchor = grid.Scroller.CurrentAnchor;
+        Assert.False(anchor is DrawnRow or HeaderCell, $"the ScrollViewer anchors on a {anchor?.GetType().Name}");
+        WrapChecks.AssertPlaced(grid, "scrolled down");
+    });
+
+    // Trap 5 with rows of uneven height: rows that arrive start at one line below the rows held.
+    [Fact]
+    public Task WithWrapOnNewDataLeavesOnlyItsOwnRowsOnScreen() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData(), frozen: 1);
+        await GridChecks.JumpAsync(grid, 0, grid.RowTop(300));
+        var next = new WrapData(rows: 0, columns: 30);
+        grid.SetData(next);
+        await WinUiHost.NextFrameAsync();
+        await WinUiHost.NextFrameAsync();
+        Assert.Equal(0, grid.TotalHeight);
+        next.RowCount = 500;
+        grid.RowsChanged();
+        for (var i = 0; i < 300 && grid.RealizedRows.Count == 0; i++)
+        {
+            await WinUiHost.NextFrameAsync();
+        }
+        await WrapChecks.SettleAsync(grid);
+
+        Assert.True(grid.WrapsText);
+        Assert.Equal(0, grid.RowWindow.First);
+        Assert.True(grid.RowHeightOf(0) > grid.RowHeight);
+        foreach (var (name, repeater, realized) in new[]
+        {
+            ("rows", grid.RowsRepeater, grid.RealizedRows),
+            ("frozen rows", grid.FrozenRowsRepeater, grid.RealizedFrozenRows),
+        })
+        {
+            var shown = Children(repeater).Where(OnScreen).ToList();
+            Assert.True(shown.All(realized.ContainsValue), $"{name}: {shown.Count} on screen, {realized.Count} realized");
+        }
+        WrapChecks.AssertPlaced(grid, "new data");
+    });
+
     private static IEnumerable<UIElement> Children(DependencyObject parent) =>
         Enumerable.Range(0, VisualTreeHelper.GetChildrenCount(parent)).Select(i => (UIElement)VisualTreeHelper.GetChild(parent, i));
 

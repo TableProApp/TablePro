@@ -1,0 +1,467 @@
+//
+//  TransferResults.swift
+//  TablePro
+//
+
+import AppKit
+import os
+import TableProPluginKit
+import UniformTypeIdentifiers
+
+// What a finished export, transfer or import reports in its own sheet.
+@MainActor
+internal enum TransferResults {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "TransferResults")
+
+    internal static let exportSuppressionKey = "hideExportSuccessDialog"
+
+    internal static func exportSucceeded(warnings: [String], notes: [String] = []) -> TransferResult {
+        TransferResult(
+            outcome: warnings.isEmpty ? .succeeded : .succeededWithIssues,
+            title: warnings.isEmpty
+                ? String(localized: "Export completed")
+                : String(localized: "Export completed with warnings"),
+            message: (notes + warnings).joined(separator: "\n\n")
+        )
+    }
+
+    internal static func transferSucceeded(
+        tableCount: Int,
+        rowCount: Int,
+        destinationName: String,
+        warnings: [String]
+    ) -> TransferResult {
+        TransferResult(
+            outcome: warnings.isEmpty ? .succeeded : .succeededWithIssues,
+            title: warnings.isEmpty
+                ? String(localized: "Transfer completed")
+                : String(localized: "Transfer completed with warnings"),
+            message: ([transferSummary(
+                tableCount: tableCount, rowCount: rowCount, destinationName: destinationName
+            )] + warnings).joined(separator: "\n\n")
+        )
+    }
+
+    private static func transferSummary(
+        tableCount: Int,
+        rowCount: Int,
+        destinationName: String
+    ) -> String {
+        let template = tableCount == 1
+            ? String(localized: "%1$lld rows from 1 table written to %2$@.")
+            : String(localized: "%1$lld rows from %3$lld tables written to %2$@.")
+        return String(format: template, Int64(rowCount), destinationName, Int64(tableCount))
+    }
+
+    internal static func importStopped(_ result: ImportStopResult) -> TransferResult {
+        var message = String(localized: "The details below show what happened to the import.")
+        if !result.completionNotes.isEmpty { message += "\n" + shownErrors(result.completionNotes) }
+        return TransferResult(
+            outcome: .stopped,
+            title: String(localized: "Import stopped"),
+            message: message,
+            details: TransferResult.Details(shown: result.text, copied: result.details)
+        )
+    }
+
+    internal static func importCancelledText(executedStatements: Int, transaction: ImportTransactionOutcome) -> String {
+        let isOne = executedStatements == 1
+        let template: String
+        switch transaction {
+        case .rolledBack:
+            template = isOne
+                ? String(localized: "%lld statement had already run and was rolled back.")
+                : String(localized: "%lld statements had already run and were rolled back.")
+        case .committedBeforeRollback:
+            template = isOne
+                ? String(localized: """
+                    %lld statement had already run and was kept, because a statement in the file, such as COMMIT, \
+                    CREATE, ALTER or DROP, committed the import's transaction as it ran.
+                    """)
+                : String(localized: """
+                    %lld statements had already run. Some were kept, because a statement in the file, such as \
+                    COMMIT, CREATE, ALTER or DROP, committed the import's transaction as it ran.
+                    """)
+        case .untracked, .endedByServer, .endedByFile:
+            return String(localized: "Anything already imported may stay.")
+        case .committed:
+            template = isOne
+                ? String(localized: "%lld statement had already run and stays committed.")
+                : String(localized: "%lld statements had already run and stay committed.")
+        }
+        return String(format: template, Int64(executedStatements))
+    }
+
+    internal static func importSucceeded(
+        result: PluginImportResult?,
+        rowTally: ImportRowTally? = nil,
+        runResult: ImportStopResult? = nil
+    ) -> TransferResult {
+        let skipped = result?.skippedStatements ?? 0
+        var message = importSummary(result, rowTally: rowTally)
+        var details: TransferResult.Details?
+        if let runResult, !runResult.completionNotes.isEmpty {
+            message += "\n" + shownErrors(runResult.completionNotes)
+            details = TransferResult.Details(shown: runResult.text, copied: runResult.details)
+        }
+
+        let errors = result?.errors ?? []
+        var errorReport: TransferResult.ErrorReport?
+        if !errors.isEmpty {
+            let report = failureReport(for: errors) + (runResult.map { "\n\n" + $0.details } ?? "")
+            details = TransferResult.Details(shown: report, copied: report)
+            errorReport = TransferResult.ErrorReport(errors: errors, totalSkipped: skipped)
+        }
+
+        return TransferResult(
+            outcome: skipped > 0 ? .succeededWithIssues : .succeeded,
+            title: skipped > 0
+                ? String(localized: "Import completed with errors")
+                : String(localized: "Import completed"),
+            message: message,
+            details: details,
+            errorReport: errorReport
+        )
+    }
+
+    internal static func saveErrorReport(
+        _ report: TransferResult.ErrorReport,
+        sourceFileName: String,
+        targetTable: String?,
+        window: NSWindow?
+    ) {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.showsTagField = false
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.nameFieldStringValue = ImportErrorReport.defaultFileName(forSource: sourceFileName)
+        panel.title = String(localized: "Save Import Errors")
+
+        let handler: @MainActor (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
+            let csv = ImportErrorReport.makeCSV(
+                sourceFileName: sourceFileName,
+                targetTable: targetTable,
+                errors: report.errors,
+                totalSkipped: report.totalSkipped
+            )
+            do {
+                try csv.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                logger.error("Failed to save the import error report: \(error.publicLogShape, privacy: .public)")
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Couldn't Save File"),
+                    message: error.localizedDescription,
+                    window: window
+                )
+            }
+        }
+
+        guard let window else {
+            handler(panel.runModal())
+            return
+        }
+        panel.beginSheetModal(for: window) { response in
+            MainActor.assumeIsolated { handler(response) }
+        }
+    }
+
+    internal static func batchImport(_ report: RowImportBatchReport) -> TransferResult {
+        let outcome: TransferResult.Outcome
+        let title: String
+        switch report.ending {
+        case .completed:
+            outcome = report.hasFailures ? .succeededWithIssues : .succeeded
+            title = report.hasFailures
+                ? String(localized: "Import completed with errors")
+                : String(localized: "Import completed")
+        case .failed:
+            outcome = .failed
+            title = String(localized: "Import failed")
+        case .stopped:
+            outcome = .stopped
+            title = String(localized: "Import stopped")
+        }
+        let lines = batchImportLines(report)
+        let preparation = report.stopResult?.ledger.preparationNote.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return TransferResult(
+            outcome: outcome,
+            title: title,
+            message: shownErrors(batchImportSummary(report)),
+            details: TransferResult.Details(
+                shown: ([preparation] + lines).filter { !$0.isEmpty }.joined(separator: "\n"),
+                copied: ([lines.joined(separator: "\n")] + batchImportErrors(report)
+                    + [report.stopResult?.details ?? ""]).joined(separator: "\n\n")
+            )
+        )
+    }
+
+    internal static func batchImportSummary(_ report: RowImportBatchReport) -> String {
+        let seconds = String(format: "%.2f", report.executionTime)
+        switch report.ending {
+        case .completed:
+            return String(
+                format: String(localized: "%1$lld rows from %2$lld files in %3$@ seconds."),
+                Int64(report.importedRowCount),
+                Int64(report.files.count),
+                seconds
+            ) + (report.stopResult.map { $0.completionNotes.isEmpty ? "" : "\n" + $0.completionNotes } ?? "")
+        case .failed(let index):
+            if let result = report.stopResult {
+                return [result.completionNotes,
+                        String(localized: "Each file below reports what happened to its changes."),
+                        String(localized: "Changes a rollback cannot undo stay either way."), result.failureText]
+                    .filter { !$0.isEmpty }.joined(separator: "\n")
+            }
+            let failure = importFailureText(for: report.failure)
+            let template = report.rowsKept
+                ? String(localized: "%1$@ failed, and the files imported before it were kept. %2$@")
+                : String(localized: "%1$@ failed, so every file was rolled back. %2$@")
+            return String(format: template, report.files[index].sourceName, failure)
+        case .stopped(let index):
+            if let result = report.stopResult {
+                return [result.completionNotes,
+                        String(localized: "Each file below reports what happened to its changes."),
+                        String(localized: "Changes a rollback cannot undo stay either way."), result.failureText]
+                    .filter { !$0.isEmpty }.joined(separator: "\n")
+            }
+            let template = report.rowsKept
+                ? String(localized: "Stopped at %@. The files imported before it were kept.")
+                : String(localized: "Stopped at %@. Every file was rolled back.")
+            return String(format: template, report.files[index].sourceName)
+        }
+    }
+
+    internal static func batchImportLines(_ report: RowImportBatchReport) -> [String] {
+        if let result = report.stopResult, report.ending != .completed {
+            return report.files.enumerated().map { index, file in
+                String(format: String(localized: "%1$@ to %2$@: %3$@"), file.sourceName, file.targetTable,
+                       result.fileText(for: index))
+            }
+        }
+        return zip(report.files, report.outcomes).map { file, outcome in
+            let status: String
+            switch outcome {
+            case .imported(let result):
+                status = importedRows(result, kept: report.rowsKept)
+            case .failed(let error, let rows):
+                status = [importFailureText(for: error), rowsBefore(rows, kept: report.rowsKept)]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+            case .stopped(let rows):
+                status = [String(localized: "Stopped."), rowsBefore(rows, kept: report.rowsKept)]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+            case .notRun:
+                status = String(localized: "not imported")
+            }
+            return String(format: String(localized: "%1$@ to %2$@: %3$@"), file.sourceName, file.targetTable, status)
+        }
+    }
+
+    private static func rowsBefore(_ rows: Int, kept: Bool) -> String? {
+        guard rows > 0 else { return nil }
+        if rows == 1 {
+            return kept
+                ? String(localized: "1 row before it was kept.")
+                : String(localized: "1 row before it was rolled back.")
+        }
+        let template = kept
+            ? String(localized: "%lld rows before it were kept.")
+            : String(localized: "%lld rows before it were rolled back.")
+        return String(format: template, Int64(rows))
+    }
+
+    private static func importedRows(_ result: PluginImportResult, kept: Bool) -> String {
+        let rows = result.executedStatements
+        var text = rows == 1
+            ? String(localized: "1 row")
+            : String(format: String(localized: "%lld rows"), Int64(rows))
+        if result.skippedStatements > 0 {
+            text += ", " + String(format: String(localized: "%lld failed"), Int64(result.skippedStatements))
+        }
+        if !kept {
+            text += ", " + String(localized: "rolled back")
+        }
+        return text
+    }
+
+    private static func batchImportErrors(_ report: RowImportBatchReport) -> [String] {
+        zip(report.files, report.outcomes).compactMap { file, outcome in
+            switch outcome {
+            case .imported(let result) where !result.errors.isEmpty:
+                return "\(file.sourceName)\n\(failureReport(for: result.errors))"
+            case .failed(let error, _):
+                return "\(file.sourceName)\n\(failureReport(for: error) ?? error.localizedDescription)"
+            case .imported, .stopped, .notRun:
+                return nil
+            }
+        }
+    }
+
+    internal static func importFailed(error: (any Error)?, result: ImportStopResult? = nil) -> TransferResult {
+        var details: TransferResult.Details?
+        if let result {
+            let shown = importFailureSummary(error: error, result: result)
+                + "\n\n" + (failureReport(for: error) ?? "")
+            details = TransferResult.Details(shown: shown, copied: shown + "\n\n" + result.details)
+        } else if let pluginError = error as? PluginImportError,
+           case .statementFailed(let statement, _, _) = pluginError {
+            details = TransferResult.Details(shown: statement, copied: failureReport(for: error) ?? statement)
+        }
+        return TransferResult(
+            outcome: .failed,
+            title: String(localized: "Import failed"),
+            message: importFailureDisplay(error: error, result: result),
+            details: details
+        )
+    }
+
+    internal static func importFailureDisplay(error: (any Error)?, result: ImportStopResult?) -> String {
+        let parts = [result?.completionNotes ?? "", importFailureText(for: error)]
+        return shownErrors(parts.filter { !$0.isEmpty }.joined(separator: "\n"))
+    }
+
+    internal static func importFailureSummary(error: (any Error)?, result: ImportStopResult?) -> String {
+        importFailureText(for: error) + (result.map { "\n\n" + $0.text } ?? "")
+    }
+
+    internal static func importFailureText(for error: (any Error)?) -> String {
+        guard let pluginError = error as? PluginImportError,
+              case .statementFailed(_, let line, let underlyingError) = pluginError else {
+            return RevealedText(error?.localizedDescription ?? String(localized: "Unknown error")).plainText
+        }
+        return RevealedText(String(
+            format: String(localized: "Failed at line %lld. %@"),
+            Int64(line),
+            shownErrors(underlyingError.localizedDescription)
+        )).plainText
+    }
+
+    internal static let shownErrorLineLimit = 5
+    internal static let shownErrorLengthLimit = 1_000
+
+    internal static func shownErrors(_ description: String) -> String {
+        let lines = description.components(separatedBy: "\n")
+        let firstLines = lines.prefix(shownErrorLineLimit).joined(separator: "\n")
+        let shown = cut(firstLines, toUnits: shownErrorLengthLimit) ?? firstLines
+        guard shown != description else { return description }
+        return shown + "\n" + String(localized: "Copy Details copies the rest.")
+    }
+
+    internal static func cut(_ text: String, toUnits limit: Int) -> String? {
+        let source = text as NSString
+        guard source.length > limit else { return nil }
+        let end = source.rangeOfComposedCharacterSequence(at: limit).location
+        return source.substring(to: end) + "\u{2026}"
+    }
+
+    internal static func failureReport(for error: (any Error)?) -> String? {
+        guard let pluginError = error as? PluginImportError,
+              case .statementFailed(let statement, let line, let underlyingError) = pluginError else {
+            return nil
+        }
+        return failureReport(for: [
+            PluginImportResult.ImportStatementError(
+                statement: statement,
+                line: line,
+                errorMessage: underlyingError.localizedDescription
+            )
+        ])
+    }
+
+    internal static func failureReport(for failures: [PluginImportResult.ImportStatementError]) -> String {
+        failures.map { failure in
+            let heading = String(
+                format: String(localized: "Line %1$lld: %2$@"),
+                Int64(failure.line),
+                failure.errorMessage
+            )
+            let statement = failure.statement.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !statement.isEmpty, statement != "row \(failure.line)" else { return heading }
+            return "\(heading)\n\(statement)"
+        }
+        .joined(separator: "\n\n")
+    }
+
+    internal static func importSummary(_ result: PluginImportResult?, rowTally: ImportRowTally? = nil) -> String {
+        guard let result else { return "" }
+        let seconds = String(
+            format: String(localized: "%@ seconds"),
+            String(format: "%.2f", result.executionTime)
+        )
+        if let rowTally {
+            return (rowTally.summaryLines(failed: result.skippedStatements) + [seconds]).joined(separator: "\n")
+        }
+        let counts = result.skippedStatements > 0
+            ? String(
+                format: String(localized: "%1$lld statements executed, %2$lld failed"),
+                Int64(result.executedStatements),
+                Int64(result.skippedStatements)
+            )
+            : String(
+                format: String(localized: "%lld statements executed"),
+                Int64(result.executedStatements)
+            )
+        return "\(counts)\n\(seconds)"
+    }
+}
+
+internal final class TransferReportView: NSView {
+    private static let width: CGFloat = 380
+    private static let textHeight: CGFloat = 140
+    private static let spacing: CGFloat = 8
+
+    internal static let shownLengthLimit = 10_000
+
+    internal static func shownText(_ text: String) -> String {
+        TransferResults.cut(text, toUnits: shownLengthLimit) ?? text
+    }
+
+    private let report: String
+    private let height: CGFloat
+
+    override internal var intrinsicContentSize: NSSize {
+        NSSize(width: Self.width, height: height)
+    }
+
+    internal convenience init(report: String) {
+        self.init(shown: report, copied: report)
+    }
+
+    internal init(shown: String, copied: String) {
+        report = copied
+        let button = NSButton(title: String(localized: "Copy Details"), target: nil, action: nil)
+        button.bezelStyle = .push
+        button.sizeToFit()
+        height = Self.textHeight + Self.spacing + button.frame.height
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: height))
+
+        let scroll = AlertHelper.scrollingTextAccessory(RevealedText(Self.shownText(shown)).plainText)
+        scroll.frame = NSRect(
+            x: 0,
+            y: button.frame.height + Self.spacing,
+            width: Self.width,
+            height: Self.textHeight
+        )
+        scroll.autoresizingMask = [.width]
+        addSubview(scroll)
+
+        button.target = self
+        button.action = #selector(copyReport)
+        button.frame.origin = NSPoint(x: Self.width - button.frame.width, y: 0)
+        button.autoresizingMask = [.minXMargin]
+        addSubview(button)
+    }
+
+    internal required init?(coder: NSCoder) {
+        report = ""
+        height = 0
+        super.init(coder: coder)
+    }
+
+    @objc
+    internal func copyReport() {
+        ClipboardService.shared.writeText(report)
+    }
+}

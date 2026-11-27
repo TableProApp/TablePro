@@ -55,7 +55,7 @@ fn marked_attributes(base: Option<&pango::AttrList>, marks: &[Mark]) -> pango::A
     attributes
 }
 
-/// What a one-line view draws for a value: its text, with each special
+/// What a cell or field draws for a value: its text, with each special
 /// character written as its mark while `marks` holds.
 pub(crate) struct Drawn<'a> {
     pub text: Cow<'a, str>,
@@ -63,9 +63,15 @@ pub(crate) struct Drawn<'a> {
 }
 
 // Drawing and column width both take the value from here, so a column is
-// as wide as the marks its cells draw.
-pub(crate) fn drawn<'a>(text: &'a str, attributes: Option<&pango::AttrList>, marks: bool) -> Drawn<'a> {
-    match marks.then(|| reveal(text)).flatten() {
+// as wide as the marks its cells draw. `line_breaks` marks LF and CR too,
+// for a view that draws one line.
+pub(crate) fn drawn<'a>(
+    text: &'a str,
+    attributes: Option<&pango::AttrList>,
+    marks: bool,
+    line_breaks: bool,
+) -> Drawn<'a> {
+    match marks.then(|| reveal(text, line_breaks)).flatten() {
         Some(revealed) => Drawn {
             attributes: Some(marked_attributes(attributes, &revealed.marks)),
             text: Cow::Owned(revealed.text),
@@ -78,7 +84,7 @@ pub(crate) fn drawn<'a>(text: &'a str, attributes: Option<&pango::AttrList>, mar
 }
 
 pub(crate) fn show_value(display: &gtk::Inscription, text: &str, attributes: Option<&pango::AttrList>, marks: bool) {
-    let drawn = drawn(text, attributes, marks);
+    let drawn = drawn(text, attributes, marks, true);
     display.set_text(Some(&drawn.text));
     display.set_attributes(drawn.attributes.as_ref());
 }

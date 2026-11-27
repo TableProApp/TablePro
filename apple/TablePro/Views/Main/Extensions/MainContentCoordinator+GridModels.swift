@@ -20,6 +20,15 @@ struct DataTabGridEntry {
     let store: QueryTabGridStateStore
     var lastUsed: Int
     var displayInputs: DataTabDisplayInputs?
+    // Every switch hands over a new presentation, so only rules that differ from these repaint.
+    var appliedHighlightRules: [HighlightRule]
+}
+
+// What the data tab's body computes for a tab's grid, named by the tab so it never reaches another tab's model.
+struct DataTabGridPresentation: Equatable {
+    let tabId: UUID
+    let configuration: DataGridConfiguration
+    let highlightRules: [HighlightRule]
 }
 
 // What decided a model's formatted text, which nothing invalidates while the grid is unmounted.
@@ -41,7 +50,8 @@ extension MainContentCoordinator {
             return model
         }
         let store = QueryTabGridStateStore(tabId: tabId, coordinator: self)
-        let configuration = tabManager.tabs.first { $0.id == tabId }.map(gridConfiguration(for:)) ?? DataGridConfiguration()
+        let tab = tabManager.tabs.first { $0.id == tabId }
+        let configuration = tab.map(gridConfiguration(for:)) ?? DataGridConfiguration()
         let model = DataGridModel(store: store, configuration: configuration, selectionSummary: selectionSummary)
         let adapter = DataTabGridAdapter(tabId: tabId, coordinator: self)
         adapter.attach(model)
@@ -52,7 +62,8 @@ extension MainContentCoordinator {
             adapter: adapter,
             store: store,
             lastUsed: displayStateClock,
-            displayInputs: currentDisplayInputs
+            displayInputs: currentDisplayInputs,
+            appliedHighlightRules: tab.map(highlightRules(for:)) ?? []
         )
         model.reloadRows()
         return model
@@ -125,17 +136,12 @@ extension MainContentCoordinator {
     func applyGridDelta(_ delta: Delta, forTab tabId: UUID) {
         guard let model = existingGridModel(forTab: tabId), delta != .none else { return }
         model.apply(delta)
-        if delta == .columnsReplaced || delta == .fullReplace {
+        if delta == .columnsReplaced || delta == .columnMetadataChanged || delta == .fullReplace {
             consumePendingColumnJump(forTab: tabId, contentReplaced: delta == .fullReplace)
         }
     }
 
     // MARK: - Editing
-
-    // The tab whose edits the shared change manager holds. A switch repoints it after it starts.
-    var changeManagerTabId: UUID? {
-        tabSwitchOutgoingTabId ?? tabManager.selectedTabId
-    }
 
     @discardableResult
     func commitActiveGridEdit() -> Bool {
@@ -156,14 +162,6 @@ extension MainContentCoordinator {
         guard let tab = tabManager.selectedTab else { return false }
         return existingGridModel(forTab: tab.id)?.isEditing == true
             || activeGridModelProvider(for: tab)?.activeGridModel?.isEditing == true
-    }
-
-    func observeChangeManagerForGridRepaint() -> AnyCancellable {
-        changeManager.$reloadVersion
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.selectedTabGridModel?.repaintAllRows() }
     }
 
     // MARK: - Sort
@@ -192,18 +190,31 @@ extension MainContentCoordinator {
             immutableColumns: Set(services.pluginManager.immutableColumns(for: connection.type)),
             usesTrueFalseBooleans: services.pluginManager.usesTrueFalseBooleans(for: connection.type),
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(connection.type),
-            cellWriterSupport: changeManager.cellWriterSupport,
-            supportsFieldRemoval: changeManager.supportsFieldRemoval,
+            cellWriterSupport: changeManager(forTab: tab.id).cellWriterSupport,
+            supportsFieldRemoval: changeManager(forTab: tab.id).supportsFieldRemoval,
             connectionScope: scope(for: tab)
         )
         configuration.commands = gridCommands(for: tab, isSelected: isSelected, isEditable: isEditable)
         return configuration
     }
 
+    func gridPresentation(for tab: QueryTab) -> DataTabGridPresentation {
+        DataTabGridPresentation(tabId: tab.id, configuration: gridConfiguration(for: tab), highlightRules: highlightRules(for: tab))
+    }
+
+    func applyGridPresentation(_ presentation: DataTabGridPresentation) {
+        guard let entry = dataGridEntries[presentation.tabId] else { return }
+        entry.model.configuration = presentation.configuration
+        guard entry.appliedHighlightRules != presentation.highlightRules else { return }
+        dataGridEntries[presentation.tabId]?.appliedHighlightRules = presentation.highlightRules
+        entry.model.display.cache.clearHighlights()
+        entry.model.repaintAllRows()
+    }
+
     private func gridCommands(for tab: QueryTab, isSelected: Bool, isEditable: Bool) -> Set<DataGridCommand> {
         var commands: Set<DataGridCommand> = [
-            .hideColumns, .showRowsAsJSON, .exportResults, .navigateForeignKey,
-            .highlightValues, .displayAs, .freezeColumns, .valueFilter
+            .hideColumns, .showRowsAsJSON, .exportResults, .shareResult, .navigateForeignKey,
+            .highlightValues, .displayAs, .freezeColumns, .valueFilter, .wrapText
         ]
         let operations = isEditable ? (activeViewWriteTarget?.operations ?? .all) : []
         if operations.contains(.insert) {
@@ -221,6 +232,28 @@ extension MainContentCoordinator {
         if findCoordinator.offersSearchAllRows(forTab: tab.id) { commands.insert(.searchAllRows) }
         if isSelected, canClearActiveQueryResults { commands.insert(.clearResults) }
         return commands
+    }
+
+    // MARK: - Wrap
+
+    private var wrappableGridModel: DataGridModel? {
+        guard hasMountedDataGrid, let tab = tabManager.selectedTab, tab.display.resultsViewMode == .data,
+              let model = existingGridModel(forTab: tab.id),
+              model.configuration.commands.contains(.wrapText) else { return nil }
+        return model
+    }
+
+    var canToggleWrapText: Bool {
+        wrappableGridModel != nil
+    }
+
+    var wrapsGridText: Bool {
+        wrappableGridModel?.wrapsText ?? false
+    }
+
+    func toggleWrapText() {
+        guard let model = wrappableGridModel else { return }
+        model.setWrapsText(!model.wrapsText)
     }
 
     // MARK: - Display caches

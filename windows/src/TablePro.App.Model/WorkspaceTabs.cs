@@ -21,6 +21,9 @@ public interface IWorkspaceTab
 
     SessionTab Snapshot();
 
+    // For the session's own writes alone: what an end without a close would lose, which a relaunch brings back.
+    SessionTab WithPendingWork(SessionTab snapshot);
+
     // Once only, however often it is asked for: the tab lets go of its session exactly once.
     Task CloseAsync();
 }
@@ -104,6 +107,35 @@ public sealed class WorkspaceTabs<TItem>
         }
     }
 
+    // The table the tab shows was dropped: nothing is asked, since its changes have nowhere to go, and the tab is not
+    // kept to reopen.
+    public async Task DiscardAsync(TItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (!_closing.Add(item))
+        {
+            return;
+        }
+
+        try
+        {
+            if (_view.ContentOf(item) is { } content)
+            {
+                await content.CloseAsync().ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _closing.Remove(item);
+        }
+
+        _view.Remove(item);
+        if (_view.Items.Count == 0)
+        {
+            Emptied?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     // A held transaction or unsaved changes not answered for yet.
     public bool HasUnconfirmed(ISet<IWorkspaceTab> confirmed)
     {
@@ -156,6 +188,9 @@ public sealed class WorkspaceTabs<TItem>
             .OfType<IWorkspaceTab>()
             .Where(tab => tab is { Kind: TabKind.Query, IsRunning: true }),
     ];
+
+    // A query running or a page loading: someone is waiting on it, so the license ask waits too.
+    public bool AnyRunning => _view.Items.Select(_view.ContentOf).OfType<IWorkspaceTab>().Any(tab => tab.IsRunning);
 
     // The tabs of a window that closed, so Reopen closed tab brings them back here in their order.
     public void KeepClosed(IReadOnlyList<SessionTab> tabs)

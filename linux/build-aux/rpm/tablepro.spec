@@ -20,7 +20,7 @@
 %bcond check 1
 
 Name:           tablepro
-Version:        0.1.0~beta.3
+Version:        0.1.0~beta.5
 Release:        1%{?dist}
 Summary:        Work with your databases
 # build-aux/update-third-party-licenses.sh writes this tag from the
@@ -125,7 +125,7 @@ Provides:       bundled(aws-lc) = 5.7.0
 Provides:       bundled(jitterentropy) = 3.6.3
 Provides:       bundled(s2n-bignum)
 Provides:       bundled(fiat-crypto)
-Provides:       bundled(duckdb) = 2.0.0
+Provides:       bundled(duckdb) = 2.0.1
 Provides:       bundled(brotli) = 1.1.0
 Provides:       bundled(moodycamel-concurrentqueue)
 Provides:       bundled(fast_float)
@@ -164,6 +164,9 @@ an SSH bastion.
 # Writes .cargo/config.toml with the vendored crates as the only source.
 # Cargo reads it from the parent of the Meson build directory it runs in.
 %cargo_prep -v vendor
+# %%cargo_prep replaces only crates.io. The vendored crates that come from
+# a git repository need the source replacement cargo vendor wrote for them.
+sed -n '/^\[source\."git+/,/^$/p' vendor/cargo-config.toml >> .cargo/config.toml
 # Some crates ship executable .rs files, whose leading #![...] attribute
 # brp-mangle-shebangs then rejects as a shebang in the debugsource package.
 find vendor -type f -name '*.rs' -perm /111 -exec chmod a-x {} +
@@ -228,6 +231,12 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 %{_metainfodir}/app.tablepro.TablePro.metainfo.xml
 
 %changelog
+* Wed Nov 18 2026 TablePro Authors <hello@tablepro.app> - 0.1.0~beta.5-1
+- Fifth beta
+
+* Mon Nov 16 2026 TablePro Authors <hello@tablepro.app> - 0.1.0~beta.4-1
+- Fourth beta
+
 * Sat Nov 07 2026 TablePro Authors <hello@tablepro.app> - 0.1.0~beta.3-1
 - Third beta
 

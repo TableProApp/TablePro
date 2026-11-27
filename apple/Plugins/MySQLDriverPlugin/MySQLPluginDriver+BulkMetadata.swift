@@ -29,12 +29,12 @@ extension MySQLPluginDriver {
     /// would depend on how the driver rendered an integer cell.
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
         guard flavor.hasMySQLObjectCatalogs else { return [:] }
-        let database = routineSchema(schema)
+        let database = effectiveSchema(schema)
         return try await catalogOrShow(
             database: database,
             catalogExists: serverHasInformationSchema,
             catalog: { try await self.catalogIndexes(database: database) },
-            show: { try await self.showIndexesByTable(database: database) }
+            show: { try await self.showIndexesByTable(database: database, keepsSpellingsApart: true) }
         )
     }
 
@@ -55,6 +55,7 @@ extension MySQLPluginDriver {
             """
 
         let result = try await execute(ownStatement: query)
+        try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
         let rows = result.rows.compactMap { row -> MySQLIndexRow? in
             guard let table = row[safe: 0]?.asText,
                   let index = row[safe: 1]?.asText
@@ -79,9 +80,10 @@ extension MySQLPluginDriver {
     /// per-table read indexes into. The database is named rather than inherited from the session,
     /// so a caller asking about another one is answered about the one it asked about.
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
-        guard !flavor.isDatabend else { return try await databendAllTableMetadata(database: routineSchema(schema)) }
-        guard !flavor.isStarRocks else { return try await starrocksTableStatus(database: routineSchema(schema)) }
-        let result = try await execute(query: Self.tableStatusStatement(database: routineSchema(schema)))
+        guard !flavor.isDatabend else { return try await databendAllTableMetadata(database: effectiveSchema(schema)) }
+        guard !flavor.isStarRocks else { return try await starrocksTableStatus(database: effectiveSchema(schema)) }
+        let result = try await execute(query: Self.tableStatusStatement(database: effectiveSchema(schema)))
+        try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
         let appendsInnoDBStatus = serverAppendsInnoDBStatus
         var metadata: [String: PluginTableMetadata] = [:]
         for row in result.rows {

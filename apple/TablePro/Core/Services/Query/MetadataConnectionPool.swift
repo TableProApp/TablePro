@@ -54,6 +54,31 @@ final class MetadataConnectionPool {
             self.workload = workload
             slot = scope.schema == nil ? .home : .followsSchema
         }
+
+        private init(connectionId: UUID, database: String, workload: Workload, slot: Slot) {
+            self.connectionId = connectionId
+            self.database = database
+            self.workload = workload
+            self.slot = slot
+        }
+
+        // The same database and slot under another workload: what an idle connection of one serves the other with.
+        func under(_ workload: Workload) -> Key {
+            Key(connectionId: connectionId, database: database, workload: workload, slot: slot)
+        }
+
+        // By bytes: a connection to one of two databases Swift's String equates never serves the other.
+        static func == (lhs: Key, rhs: Key) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && lhs.workload == rhs.workload && lhs.slot == rhs.slot
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            hasher.combine(workload)
+            hasher.combine(slot)
+        }
     }
 
     private struct OpenKey: Hashable, Sendable {
@@ -61,6 +86,23 @@ final class MetadataConnectionPool {
         let schema: String?
         // Set for a lease inside another lease's work, so its open is its own and nobody queues on it.
         let owner: UUID?
+
+        static func == (lhs: OpenKey, rhs: OpenKey) -> Bool {
+            lhs.key == rhs.key && CatalogName.same(lhs.schema, rhs.schema) && lhs.owner == rhs.owner
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(key)
+            CatalogName.hash(schema, into: &hasher)
+            hasher.combine(owner)
+        }
+    }
+
+    // Where a lease runs: the entry and the key it is listed under, which is another workload's key when a bulk
+    // lease borrows an idle interactive entry.
+    private struct Placement {
+        let entry: Entry
+        let key: Key
     }
 
     private enum LeaseOutcome<T: Sendable>: Sendable {
@@ -82,6 +124,9 @@ final class MetadataConnectionPool {
         // A startup command can move the search path after the driver read it, so the driver's cache is not trusted.
         var forcesNextSwitch: Bool
         var hasServedALease = false
+        // An interactive entry running a bulk lease it lent itself to. No interactive lease queues behind it,
+        // since a row count or a column preload can take far longer than the read that would wait.
+        var servesBulk = false
         private var tail: Task<Void, Never> = Task {}
 
         init(driver: DatabaseDriver, schema: String?, forcesNextSwitch: Bool) {
@@ -200,8 +245,8 @@ final class MetadataConnectionPool {
     ) async throws -> T {
         let key = Key(scope: scope, workload: workload)
         while true {
-            let entry = try await acquireEntry(forKey: key, schema: scope.schema, scope: scope)
-            if case .ran(let value) = try await run(body, on: entry, inKey: key, schema: scope.schema) {
+            let placed = try await acquireEntry(forKey: key, schema: scope.schema, scope: scope)
+            if case .ran(let value) = try await run(body, on: placed.entry, inKey: placed.key, schema: scope.schema) {
                 return value
             }
         }
@@ -283,7 +328,7 @@ final class MetadataConnectionPool {
 
     internal func markInFlight(scope: DatabaseScope, workload: Workload = .interactive) {
         let list = entries[Key(scope: scope, workload: workload)] ?? []
-        let entry = list.first(where: { $0.schema == scope.schema }) ?? list.first
+        let entry = list.first(where: { CatalogName.same($0.schema, scope.schema) }) ?? list.first
         entry?.inFlightCount += 1
     }
 
@@ -324,6 +369,7 @@ final class MetadataConnectionPool {
     private func releaseEntry(_ entry: Entry, connectionId: UUID) {
         entry.inFlightCount -= 1
         guard entry.inFlightCount == 0 else { return }
+        entry.servesBulk = false
         if entry.closeWhenIdle {
             entry.driver.disconnect()
             return
@@ -392,13 +438,13 @@ final class MetadataConnectionPool {
     // In order: an idle entry on the schema, any idle entry, the busy entry on the schema, an open for the schema
     // already dialing, a new entry if there is room, else a place in the room line. A lease inside another lease's
     // work skips the busy entry and the open: two such leases nesting in opposite directions would wait on each other.
-    private func acquireEntry(forKey key: Key, schema: String?, scope: DatabaseScope) async throws -> Entry {
+    private func acquireEntry(forKey key: Key, schema: String?, scope: DatabaseScope) async throws -> Placement {
         let held = entriesHeldByThisTask()
         let openKey = OpenKey(key: key, schema: schema, owner: held.isEmpty ? nil : UUID())
         while true {
             try await waitForTransport(for: scope)
-            if let entry = claimEntry(forKey: key, schema: schema, excluding: held) {
-                return entry
+            if let placed = claimEntry(forKey: key, schema: schema, excluding: held) {
+                return placed
             }
             if pending[openKey] == nil {
                 try await waitForRoom(forKey: key, schema: schema, held: held)
@@ -420,8 +466,9 @@ final class MetadataConnectionPool {
                 throw failure
             }
             if let entry = open.entry, isListed(entry, inKey: key) {
-                claim(entry, for: schema)
-                return entry
+                let placed = Placement(entry: entry, key: key)
+                claim(placed, for: schema, workload: key.workload)
+                return placed
             }
             if open.withdrawal == .closed {
                 throw DatabaseError.notConnected
@@ -434,38 +481,87 @@ final class MetadataConnectionPool {
         Set(PooledLeaseContext.open.filter { $0.isOpen }.map { $0.entryId })
     }
 
-    private func claimEntry(forKey key: Key, schema: String?, excluding held: Set<ObjectIdentifier>) -> Entry? {
+    private func claimEntry(forKey key: Key, schema: String?, excluding held: Set<ObjectIdentifier>) -> Placement? {
         // A Mac that slept comes back with entries the sweeper never reached and sockets the server already closed.
-        for entry in entries[key] ?? [] where !isUsable(entry) {
-            removeEntry(entry, fromKey: key)
+        for listed in Set([key, key.under(.interactive)]) {
+            for entry in entries[listed] ?? [] where !isUsable(entry) {
+                removeEntry(entry, fromKey: listed)
+            }
         }
-        guard let entry = placeWithoutOpening(forKey: key, schema: schema, excluding: held) else { return nil }
-        claim(entry, for: schema)
-        return entry
+        guard let placed = placeWithoutOpening(forKey: key, schema: schema, excluding: held) else { return nil }
+        claim(placed, for: schema, workload: key.workload)
+        return placed
     }
 
-    // At most one busy entry per schema, so two schemas share a connection only while one of them is idle.
+    // At most one busy entry per schema, so two schemas share a connection only while one of them is idle. A bulk
+    // lease takes an idle interactive entry before it dials one of its own: a fresh handshake costs more than the
+    // read, and the interactive side opens another entry if it needs one while the bulk read runs.
     private func placeWithoutOpening(
         forKey key: Key,
         schema: String?,
         excluding held: Set<ObjectIdentifier>
-    ) -> Entry? {
-        let candidates = (entries[key] ?? []).filter { !held.contains(ObjectIdentifier($0)) && isUsable($0) }
-        let idle = candidates.filter { isIdle($0) }
-        if let onSchema = idle.first(where: { $0.schema == schema }) {
-            return onSchema
+    ) -> Placement? {
+        if let idle = idleEntry(inKey: key, schema: schema, excluding: held) {
+            return Placement(entry: idle, key: key)
         }
-        if let any = idle.min(by: { $0.lastUsed < $1.lastUsed }) {
-            return any
+        // Borrowing keeps bulk work's reserve: it never takes the last connection an interactive read could use.
+        if key.workload == .bulk, busyCount(for: key.connectionId) < Self.maxPerConnection - 1 {
+            let interactive = key.under(.interactive)
+            if let idle = idleEntry(inKey: interactive, schema: schema, excluding: held) {
+                return Placement(entry: idle, key: interactive)
+            }
         }
         guard held.isEmpty else { return nil }
-        return candidates.first { $0.inFlightCount > 0 && $0.queuedSchema == schema }
+        let busy = (entries[key] ?? []).first { entry in
+            !held.contains(ObjectIdentifier(entry)) && isUsable(entry) && entry.inFlightCount > 0
+                && !entry.servesBulk && CatalogName.same(entry.queuedSchema, schema)
+        }
+        return busy.map { Placement(entry: $0, key: key) }
     }
 
-    private func claim(_ entry: Entry, for schema: String?) {
+    private func idleEntry(inKey key: Key, schema: String?, excluding held: Set<ObjectIdentifier>) -> Entry? {
+        let idle = (entries[key] ?? []).filter { !held.contains(ObjectIdentifier($0)) && isUsable($0) && isIdle($0) }
+        return idle.first { CatalogName.same($0.schema, schema) } ?? idle.min { $0.lastUsed < $1.lastUsed }
+    }
+
+    private func claim(_ placed: Placement, for schema: String?, workload: Workload) {
+        let entry = placed.entry
         entry.inFlightCount += 1
         entry.lastUsed = Date()
         entry.queuedSchema = schema
+        if workload == .bulk, placed.key.workload == .interactive {
+            entry.servesBulk = true
+        }
+    }
+
+    /// Whether a lease for `scope` would start at once on a pooled connection, without dialing one or queueing.
+    func hasIdleEntry(for scope: DatabaseScope, workload: Workload = .interactive) -> Bool {
+        let key = Key(scope: scope, workload: workload)
+        guard let placed = placeWithoutOpening(forKey: key, schema: scope.schema, excluding: entriesHeldByThisTask())
+        else { return false }
+        return isIdle(placed.entry)
+    }
+
+    /// Dials the scope's interactive connection in the background, once the session has logged in, so the reads
+    /// that follow the first one find it open. Never alongside the session's own login: a wrong password must count
+    /// as one failed login, not two. A connection already pooled or dialing for the scope, or a full pool, dials
+    /// nothing, and a failed dial is left to the first read that needs the pool, which reports it.
+    func prewarm(scope: DatabaseScope) {
+        let key = Key(scope: scope, workload: .interactive)
+        let openKey = OpenKey(key: key, schema: scope.schema, owner: nil)
+        guard !isReplacingTransport(for: key.connectionId),
+              (entries[key] ?? []).isEmpty,
+              pending[openKey] == nil,
+              heldCount(for: key.connectionId) < Self.maxPerConnection,
+              let open = try? startOpen(openKey)
+        else { return }
+        Task { [self] in
+            if let failure = await completion(of: open, for: openKey) {
+                Self.logger.info(
+                    "Background pooled connection did not open: \(failure.publicLogShape, privacy: .public)"
+                )
+            }
+        }
     }
 
     // Runs on the entry's queue before the lease's work, so the switch lands where the work reads.
@@ -475,7 +571,8 @@ final class MetadataConnectionPool {
         }
         let unconditionally = entry.forcesNextSwitch
         // Asked on every lease: Snowflake's drivers for one connection share a session, so another one may have moved it.
-        if !unconditionally, switchable.currentSchema == schema {
+        // By bytes: two schemas Swift's String equates are two schemas to the server.
+        if !unconditionally, CatalogName.same(switchable.currentSchema, schema) {
             entry.schema = schema
             return true
         }
@@ -545,16 +642,21 @@ final class MetadataConnectionPool {
         entry.inFlightCount == 0 && !isAwaitingItsOpeners(entry)
     }
 
-    // A new entry opens on the connection's own default and each lease moves it, so it can serve every schema.
+    // A new entry still serves every schema: each lease moves it to its own.
     private func startOpen(_ openKey: OpenKey) throws -> PendingOpen {
         let key = openKey.key
         guard let session = DatabaseManager.shared.session(for: key.connectionId) else {
             throw DatabaseError.notConnected
         }
         evictIdleIfNeeded(for: key.connectionId)
-        let scope = DatabaseScope(connectionId: key.connectionId, database: key.database, schema: nil)
         let forcesFirstSwitch = key.slot == .followsSchema
             && DatabaseManager.hasStartupCommands(session.connection.startupCommands)
+        // Opened on the schema it is first wanted for, which a driver that can lands on while it signs in. Not when
+        // a startup command runs after it: the first lease then moves the entry unconditionally.
+        let opensOnSchema = key.slot == .followsSchema && !forcesFirstSwitch
+        let scope = DatabaseScope(
+            connectionId: key.connectionId, database: key.database, schema: opensOnSchema ? openKey.schema : nil
+        )
         let open = PendingOpen()
         open.task = Task { [self] in
             let entry = Entry(driver: try await openDriver(scope), schema: nil, forcesNextSwitch: forcesFirstSwitch)
@@ -768,7 +870,8 @@ final class MetadataConnectionPool {
             deadline: deadline,
             timeoutEndpoint: timeoutEndpoint,
             effectiveQueryTimeoutSeconds: queryTimeout,
-            preparedConfiguration: preparedConfiguration
+            preparedConfiguration: preparedConfiguration,
+            initialSchema: DatabaseManager.hasStartupCommands(session.connection.startupCommands) ? nil : scope.schema
         )
         do {
             try await driver.connect()
@@ -829,7 +932,7 @@ final class MetadataConnectionPool {
     }
 
     static func switchDatabase(_ driver: DatabaseDriver, to database: String, timeoutSeconds: Double?) async throws {
-        guard let adapter = driver as? PluginDriverAdapter else {
+        guard let plugin = driver.plugin else {
             throw DatabaseError.unsupportedOperation
         }
         try await bounded(
@@ -837,7 +940,7 @@ final class MetadataConnectionPool {
             timeoutSeconds: timeoutSeconds,
             timeoutMessage: String(format: String(localized: "Switching to database '%@' timed out."), database)
         ) {
-            try await adapter.switchDatabase(to: database)
+            try await plugin.switchDatabase(to: database)
         }
     }
 

@@ -8,14 +8,8 @@ import os
 import TableProOracleCore
 import TableProPluginKit
 
-struct OraclePrincipalState: Sendable {
-    var access: OracleDictionaryAccess?
-    var roles: Set<String> = []
-    var catalog: PluginPrivilegeCatalog?
-}
-
 // A schema is what this driver lists as a database, so a table's scope is `.table(database: owner, schema: nil, ...)`.
-extension OraclePluginDriver: PluginPrincipalManagement {
+nonisolated extension OraclePluginDriver: PluginPrincipalManagement {
     var supportsRoleMembership: Bool { true }
     var supportsGrantableScopeSearch: Bool { true }
 
@@ -29,38 +23,7 @@ extension OraclePluginDriver: PluginPrincipalManagement {
     }
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] {
-        let access = try await dictionaryAccess()
-        let users = OraclePrincipalQueries.parseUsers(
-            try await textRows(OraclePrincipalQueries.users(access: access, release: principalRelease))
-        )
-        let roles = OraclePrincipalQueries.parseNames(try await textRows(OraclePrincipalQueries.roles(access: access)))
-        let grants = OraclePrincipalQueries.parseRoleGrants(
-            try await textRows(OraclePrincipalQueries.roleGrants(access: access))
-        )
-        let roleNames = Set(roles)
-        principalState.withLock { $0.roles = roleNames }
-
-        var memberOf: [String: Set<String>] = [:]
-        for grant in grants where roleNames.contains(grant.role) {
-            memberOf[grant.grantee, default: []].insert(grant.role)
-        }
-
-        let userInfos = users.filter { !roleNames.contains($0.name) }.map { user in
-            PluginPrincipalInfo(
-                ref: PluginPrincipalRef(name: user.name),
-                canLogin: !user.isLocked,
-                memberOf: (memberOf[user.name] ?? []).sorted()
-            )
-        }
-        let roleInfos = roles.map { role in
-            PluginPrincipalInfo(
-                ref: PluginPrincipalRef(name: role),
-                isRole: true,
-                canLogin: false,
-                memberOf: (memberOf[role] ?? []).sorted()
-            )
-        }
-        return userInfos + roleInfos
+        try await exportCatalog.fetchPrincipals()
     }
 
     func fetchPrivilegeCatalog() async throws -> PluginPrivilegeCatalog {
@@ -80,18 +43,7 @@ extension OraclePluginDriver: PluginPrincipalManagement {
     }
 
     func fetchGrants(for principal: PluginPrincipalRef) async throws -> [PluginGrantInfo] {
-        let access = try await dictionaryAccess()
-        let name = principal.name
-        let system = OraclePrincipalQueries.parseSystemPrivileges(
-            try await textRows(OraclePrincipalQueries.systemPrivileges(grantee: name, access: access))
-        )
-        let objects = OraclePrincipalQueries.parseObjectPrivileges(
-            try await textRows(OraclePrincipalQueries.objectPrivileges(grantee: name, access: access))
-        )
-        let columns = OraclePrincipalQueries.parseColumnPrivileges(
-            try await textRows(OraclePrincipalQueries.columnPrivileges(grantee: name, access: access))
-        )
-        return (system + objects + columns).map(Self.pluginGrant)
+        try await exportCatalog.fetchGrants(for: principal)
     }
 
     func fetchGrantableChildren(of scope: PluginPrivilegeScope) async throws -> [PluginPrivilegeScope] {
@@ -154,13 +106,11 @@ extension OraclePluginDriver: PluginPrincipalManagement {
     }
 
     func generateGrantSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        guard let grants = oracleGrants(changeSet.grantsToAdd) else { return nil }
-        return principalStatements.grantStatements(grants, to: changeSet.principal.name)
+        OracleExportCatalog.generateGrantSQL(changeSet: changeSet, roles: principalState.withLock { $0.roles })
     }
 
     func generateRevokeSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        guard let grants = oracleGrants(changeSet.grantsToRemove) else { return nil }
-        return principalStatements.revokeStatements(grants, from: changeSet.principal.name)
+        OracleExportCatalog.generateRevokeSQL(changeSet: changeSet, roles: principalState.withLock { $0.roles })
     }
 
     // MARK: - Helpers
@@ -173,65 +123,12 @@ extension OraclePluginDriver: PluginPrincipalManagement {
         try? serverRelease()
     }
 
-    // Probed once per connection: an account that cannot read DBA_USERS reads the ALL_ and USER_ views instead.
-    private func dictionaryAccess() async throws -> OracleDictionaryAccess {
-        if let access = principalState.withLock({ $0.access }) {
-            return access
-        }
-        let access: OracleDictionaryAccess
-        do {
-            _ = try await rawQuery(OraclePrincipalQueries.dbaProbe)
-            access = .dba
-        } catch let error as OraclePluginError where OraclePrincipalQueries.isMissingView(error.core) {
-            access = .session
-        }
-        principalState.withLock { $0.access = access }
-        return access
-    }
-
     private func textRows(_ query: String) async throws -> [[String?]] {
-        try await rawQuery(query).rows.map { $0.map(\.stringValue) }
+        try await exportCatalog.textRows(query)
     }
 
     private func names(_ query: String) async throws -> [String] {
-        OraclePrincipalQueries.parseNames(try await textRows(query))
-    }
-
-    private func oracleGrants(_ grants: [PluginGrantInfo]) -> [OracleGrant]? {
-        var converted: [OracleGrant] = []
-        for grant in grants {
-            let securable: OracleSecurable
-            switch grant.scope {
-            case .server:
-                securable = .system
-            case let .table(owner, _, table), let .column(owner, _, table, _):
-                securable = .object(owner: owner, name: table)
-            case .database, .schema:
-                return nil
-            @unknown default:
-                return nil
-            }
-            converted.append(OracleGrant(
-                privilege: grant.privilege,
-                securable: securable,
-                column: grant.scope.columnName,
-                isGrantable: grant.isGrantable
-            ))
-        }
-        return converted
-    }
-
-    private static func pluginGrant(_ grant: OracleGrant) -> PluginGrantInfo {
-        let scope: PluginPrivilegeScope
-        switch grant.securable {
-        case .system:
-            scope = .server
-        case let .object(owner, name):
-            scope = grant.column.map {
-                .column(database: owner, schema: nil, table: name, column: $0)
-            } ?? .table(database: owner, schema: nil, table: name)
-        }
-        return PluginGrantInfo(privilege: grant.privilege, scope: scope, isGrantable: grant.isGrantable)
+        try await exportCatalog.names(query)
     }
 
     private static func systemDescriptor(_ name: String) -> PluginPrivilegeDescriptor {

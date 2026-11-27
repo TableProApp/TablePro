@@ -20,6 +20,9 @@
 # `test` with no Test runs the Unit plan only; those two packages run with `package <Package>`.
 # A name no target declares exits 3 before anything builds. A Test that runs nothing is FAIL.
 # Here --no-wait skips the wait for another xcodebuild, and --offline pins SwiftPM to Package.resolved.
+# --jobs <n> passes -jobs to xcodebuild, -maximum-parallel-testing-workers to the test plans, --jobs and --num-workers
+# to swift test, and caps Cargo and Go in the core and bridge builds. abi caps only its core build:
+# apple/scripts/check-pluginkit-abi.sh runs its own xcodebuild uncapped.
 
 MAX_WAIT_SECONDS=1800
 APPLE_ROOT="$REPO_ROOT/apple"
@@ -113,6 +116,7 @@ wait_for_free_toolchain() {
 xcodebuild_flags() {
     printf '%s' "-skipPackagePluginValidation"
     is_offline && printf ' %s' "-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile"
+    [ -n "$JOBS" ] && printf ' -jobs %s' "$JOBS"
 }
 
 # ---------------------------------------------------------------------------- test selection
@@ -300,7 +304,8 @@ run_plan() {
     note "run: xcodebuild test -testPlan $plan${only[*]+ (${#only[@]} filter(s))}"
     # shellcheck disable=SC2046
     run_logged "$log" xcodebuild test -project "$APPLE_ROOT/TablePro.xcodeproj" -scheme TablePro \
-        -testPlan "$plan" -resultBundlePath "$bundle" $(xcodebuild_flags) ${only[@]+"${only[@]}"}
+        -testPlan "$plan" -resultBundlePath "$bundle" $(xcodebuild_flags) ${JOBS:+-maximum-parallel-testing-workers "$JOBS"} \
+        ${only[@]+"${only[@]}"}
     RUN_CODE=$?
     report_xcresult "$bundle" "$RUN_CODE" "$filters" "$log"
     ran_nothing_for_the_environment "$log" && RUN_STATUS=INCONCLUSIVE
@@ -316,6 +321,7 @@ run_plan() {
 run_swift_tests() {
     local package="$1" log="$2" filters="$3" dir="$APPLE_ROOT/Packages/$1" args=() label regex
     [ -f "$dir/Package.resolved" ] && args+=(--force-resolved-versions)
+    [ -n "$JOBS" ] && args+=(--jobs "$JOBS" --num-workers "$JOBS")
     while IFS=$'\t' read -r label regex _; do
         args+=(--filter "$regex")
     done < "$filters"
@@ -362,6 +368,73 @@ swiftlint_filtered_dirs() {
 }
 
 # ---------------------------------------------------------------------------- steps
+
+# Both Apple projects link the core (TableProFFI), and SwiftPM refuses to resolve it before
+# apple/scripts/build-core.sh has built its binary target. Rebuilt when a file it is built from changed after the last
+# build, or when it lacks the slice this step needs: this Mac's architecture, plus the Simulator's for an iOS step.
+# A rebuild keeps every slice the last one had, since each build replaces the XCFramework. Fails the step when the core
+# does not build.
+ensure_core() {
+    local log="$1" needed="${2:-$(uname -m)}" built="$APPLE_ROOT/Packages/TableProFFI/Build/TableProFFIC.xcframework"
+    local changed code slices
+    slices="$(core_slices "$built")"
+    if [ -d "$built" ]; then
+        changed="$(cd "$REPO_ROOT" && find core Cargo.toml Cargo.lock rust-toolchain.toml apple/scripts/build-core.sh \
+            apple/scripts/lib/deployment-target.sh apple/scripts/lib/system-sqlite.sh \
+            -type f ! -name '*.md' -newer "$built" -print -quit 2> /dev/null)"
+        if [ -n "$changed" ]; then
+            note "core: $changed changed after the last core build, so it is rebuilt first"
+        elif core_has_slice "$slices" "$needed"; then
+            return 0
+        else
+            note "core: built without its $needed slice, so it is rebuilt first"
+        fi
+    else
+        note "core: not built in this tree, so it is built first"
+    fi
+    # One macOS slice only, since build-core.sh takes arm64, x86_64 or both: a universal one already covers either.
+    if ! core_has_slice "$slices" "$needed"; then
+        case "$needed" in
+            arm64 | x86_64 | both) slices="$(printf '%s\n' $slices | grep -vxE 'arm64|x86_64|both')" ;;
+        esac
+        slices="$(printf '%s\n' $slices "$needed")"
+    fi
+    slices="$(printf '%s\n' $slices | sort -u | tr '\n' ' ')"
+    require_tool cargo
+    echo "== apple/scripts/build-core.sh $slices" >> "$log"
+    # shellcheck disable=SC2086
+    nice -n 10 "$APPLE_ROOT/scripts/build-core.sh" $slices >> "$log" 2>&1
+    code=$?
+    [ $code -eq 0 ] && return 0
+    STATUS=FAIL
+    note "the core did not build: $(grep -E '^error|FATAL|❌' "$log" 2> /dev/null | head -5)"
+    emit "$log" "$code"
+}
+
+# grep reads every line rather than quitting at a match, which would leave printf a SIGPIPE under pipefail.
+core_has_slice() {
+    case "$2" in
+        arm64 | x86_64) printf '%s\n' $1 | grep -xE "$2|both" > /dev/null ;;
+        *) printf '%s\n' $1 | grep -x "$2" > /dev/null ;;
+    esac
+}
+
+# The build-core.sh slice names an XCFramework holds, read from its Info.plist.
+core_slices() {
+    local plist="$1/Info.plist" ids
+    [ -f "$plist" ] || return 0
+    ids="$(plutil -extract AvailableLibraries json -o - "$plist" 2> /dev/null \
+        | python3 -c 'import json, sys; print("\n".join(l["LibraryIdentifier"] for l in json.load(sys.stdin)))' 2> /dev/null)"
+    printf '%s\n' "$ids" | while IFS= read -r id; do
+        case "$id" in
+            macos-arm64_x86_64) echo both ;;
+            macos-arm64) echo arm64 ;;
+            macos-x86_64) echo x86_64 ;;
+            ios-arm64) echo ios ;;
+            ios-arm64-simulator) echo ios-simulator ;;
+        esac
+    done
+}
 
 platform_parse() {
     local stem="${1%.log}" filters="${1%.log}.filters"
@@ -422,7 +495,8 @@ platform_step() {
             # Xcode copies the HANA helper into the plugin and never builds it.
             helper="$APPLE_ROOT/Native/HanaBridge/bin/tablepro-hana-helper"
             if [ "$scheme" = "AllPlugins" ] && [ ! -e "$helper" ] && command -v go > /dev/null; then
-                "$APPLE_ROOT/scripts/build-hana.sh" "$(uname -m)" >> "$log" 2>&1 \
+                # build-hana.sh clears GOFLAGS, so the cap reaches go build's -p through its default, GOMAXPROCS.
+                env ${JOBS:+GOMAXPROCS="$JOBS"} "$APPLE_ROOT/scripts/build-hana.sh" "$(uname -m)" >> "$log" 2>&1 \
                     && note "built the HANA helper first: $helper"
             fi
             helper="$APPLE_ROOT/Native/DamengBridge/lib/libdameng_bridge.a"
@@ -437,6 +511,7 @@ platform_step() {
                 fi
                 note "built the Dameng bridge first: $helper"
             fi
+            ensure_core "$log"
             # shellcheck disable=SC2046
             xcodebuild -project "$APPLE_ROOT/TablePro.xcodeproj" -scheme "$scheme" \
                 -configuration Debug build $(xcodebuild_flags) >> "$log" 2>&1
@@ -495,6 +570,7 @@ platform_step() {
             if [ "$runs_plan" -eq 1 ]; then
                 require_tool xcodebuild
                 wait_for_free_toolchain
+                ensure_core "$log"
                 run_log="$log"
                 printf '%s' "$plan_tests" > "${run_log%.log}.filters"
                 run_plan "$plan" "$run_log" "${run_log%.log}.filters"
@@ -525,6 +601,8 @@ platform_step() {
             require_tool xcodebuild
             require_tool xcodegen
             log="$(new_log abi)"
+            : > "$log"
+            ensure_core "$log"
             run_logged "$log" "$APPLE_ROOT/scripts/check-pluginkit-abi.sh" "$@"
             code=$?
             if [ $code -eq 0 ]; then
@@ -579,6 +657,8 @@ platform_step() {
             require_tool swift
             require_tool python3
             log="$(new_log "package-$1")"
+            : > "$log"
+            [ "$1" = TableProFFI ] && ensure_core "$log"
             : > "${log%.log}.filters"
             [ $# -ge 2 ] && printf '%s\t%s\n' "$2" "$2" > "${log%.log}.filters"
             run_swift_tests "$1" "$log" "${log%.log}.filters"
@@ -601,6 +681,7 @@ platform_step() {
             if [ ! -d "$project" ]; then
                 "$APPLE_ROOT/scripts/generate-project.sh" ios >> "$log" 2>&1
             fi
+            ensure_core "$log" ios-simulator
             # CI names one simulator; this machine may not have it, so take the first available iPhone.
             simulator="$(xcrun simctl list devices available 2> /dev/null \
                 | grep -m1 -oE 'iPhone[^(]*\([0-9A-F-]{36}\)' | grep -oE '[0-9A-F-]{36}')"
@@ -617,7 +698,7 @@ platform_step() {
             done
             xcodebuild test -project "$project" -scheme TableProMobile -destination "id=$simulator" \
                 -parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
-                -resultBundlePath "$bundle" "${filters[@]}" >> "$log" 2>&1
+                ${JOBS:+-jobs "$JOBS"} -resultBundlePath "$bundle" "${filters[@]}" >> "$log" 2>&1
             code=$?
             note "results: $bundle"
             report_xcresult "$bundle" "$code" "${log%.log}.filters" "$log"

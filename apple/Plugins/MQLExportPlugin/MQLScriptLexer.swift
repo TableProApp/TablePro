@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum MQLScriptToken: Equatable {
+nonisolated enum MQLScriptToken: Equatable {
     case identifier(String)
     case string(String)
     case number(String)
@@ -14,7 +14,7 @@ enum MQLScriptToken: Equatable {
     case unreadable
 }
 
-struct MQLScriptLexeme: Equatable {
+nonisolated struct MQLScriptLexeme: Equatable {
     let token: MQLScriptToken
     let followsLineBreak: Bool
     let followsBlankLine: Bool
@@ -26,7 +26,7 @@ struct MQLScriptLexeme: Equatable {
 /// Only what a collection definition needs is read. Anything else, a regular expression literal,
 /// a template string or an operator, comes back as `unreadable`, and a string with an escape it
 /// does not know or a raw line break in it does too.
-struct MQLScriptLexer {
+nonisolated struct MQLScriptLexer {
     private static let punctuators: Set<Unicode.Scalar> = ["{", "}", "[", "]", "(", ")", ",", ":", ";", ".", "-"]
     private static let lineTerminators: Set<Unicode.Scalar> = ["\n", "\r", "\u{2028}", "\u{2029}"]
     private static let spaces: Set<Unicode.Scalar> = [" ", "\t", "\u{0B}", "\u{0C}", "\u{A0}", "\u{FEFF}"]

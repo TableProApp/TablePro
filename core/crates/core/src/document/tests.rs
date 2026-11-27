@@ -1,5 +1,6 @@
 use crate::browse::{
     ExportFields, ExportRequest, PageRequest, RowKeyLayout, SortKey, build_count, build_export, build_page,
+    build_view_sql,
 };
 use crate::column::{
     ColumnDefault, ColumnInfo, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm, TextLength,
@@ -480,6 +481,35 @@ fn an_export_reads_every_document_in_page_order() {
         format!(
             r#"db.getCollection("users").aggregate([{{"$sort": {{"qty": 1, "_id": 1}}}}, {PROJECTION}], {{"allowDiskUse": true}})"#
         )
+    );
+}
+
+#[test]
+fn a_view_s_shell_command_writes_its_filter_values_in() {
+    let columns = columns();
+    let filter = FilterSet {
+        combinator: Combinator::And,
+        rules: vec![FilterRule {
+            column: "qty".to_owned(),
+            op: FilterOp::Gt,
+            value: Some(FilterValue::Single("5".to_owned())),
+        }],
+        extra_sql: None,
+    };
+    let request = ExportRequest {
+        table: &TableRef::unqualified("users"),
+        columns: &columns,
+        filter: &filter,
+        sort: &[],
+        identity: &by_id(),
+        fields: ExportFields::Every,
+    };
+
+    let text = build_view_sql(&shell(), &request).expect("the view's command");
+
+    assert_eq!(
+        text,
+        r#"db.getCollection("users").aggregate([{"$match": {"qty": {"$gt": 5}}}, {"$sort": {"_id": 1}}], {"allowDiskUse": true})"#
     );
 }
 

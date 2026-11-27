@@ -13,14 +13,19 @@ import Testing
 /// easier"); sqlite3 rejects `DROP TABLE IF EXISTS "fields" CASCADE;` outright with
 /// `near "CASCADE": syntax error`. The clause was previously emitted for every engine.
 struct SQLExportDropClauseTests {
-
     private final class StubExportDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId: String
         let supportsCascadeDrop: Bool
+        private let routineDrop: String?
 
-        init(databaseTypeId: String, supportsCascadeDrop: Bool) {
+        init(databaseTypeId: String, supportsCascadeDrop: Bool, routineDrop: String? = nil) {
             self.databaseTypeId = databaseTypeId
             self.supportsCascadeDrop = supportsCascadeDrop
+            self.routineDrop = routineDrop
+        }
+
+        func dropStatement(for object: PluginExportTable) -> String? {
+            object.kind == .routine ? routineDrop : nil
         }
 
         func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -97,6 +102,27 @@ struct SQLExportDropClauseTests {
     func engineWithCascade() async throws {
         let sql = try await dump(databaseTypeId: "PostgreSQL", supportsCascadeDrop: true)
         #expect(sql.contains("DROP TABLE IF EXISTS `fields` CASCADE;"))
+    }
+
+    private func routineDump(routineDrop: String?) async throws -> [String] {
+        let routine = PluginExportTable(
+            name: "p", databaseName: "", tableType: "routine", optionValues: [true, true, true], schema: nil, kind: .routine)
+        let source = StubExportDataSource(databaseTypeId: "MySQL", supportsCascadeDrop: false, routineDrop: routineDrop)
+        return try await SQLExportHarness.shared.dump(tables: [routine], dataSource: source)
+            .text.components(separatedBy: "\n")
+    }
+
+    // MariaDB stops a restore at `DROP ROUTINE IF EXISTS` with error 1064, and only PostgreSQL has the statement.
+    @Test("A routine the driver writes no drop for gets no DROP line")
+    func routineWithoutDriverDropGetsNoDrop() async throws {
+        let lines = try await routineDump(routineDrop: nil)
+        #expect(!lines.contains { $0.hasPrefix("DROP") })
+    }
+
+    @Test("A routine keeps the drop its driver writes")
+    func routineKeepsTheDriverDrop() async throws {
+        let lines = try await routineDump(routineDrop: "DROP PROCEDURE IF EXISTS `p`")
+        #expect(lines.filter { $0.hasPrefix("DROP") } == ["DROP PROCEDURE IF EXISTS `p`;"])
     }
 
     /// The default is the answer that is never a syntax error. This asserts the protocol

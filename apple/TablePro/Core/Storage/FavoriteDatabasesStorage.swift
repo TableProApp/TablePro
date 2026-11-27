@@ -4,44 +4,40 @@
 //
 
 import Foundation
-import os
 import TableProSyncTransport
 
 extension Notification.Name {
     internal static let favoriteDatabasesDidChange = Notification.Name("FavoriteDatabasesDidChange")
 }
 
-/// Every entry lives under one key rather than one key per connection, so a sync push can resolve a
-/// dirty id back to its entry without knowing which connections exist, and so deleting a connection
-/// leaves nothing behind to forget. `FavoriteTablesStorage` is the same shape.
+// One key for every connection, so a sync push resolves a dirty id without knowing the connections. `FavoriteTablesStorage` is the same shape.
 @MainActor
 internal final class FavoriteDatabasesStorage {
-    internal static let shared = FavoriteDatabasesStorage()
+    internal static let shared = FavoriteDatabasesStorage(core: .shared)
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "FavoriteDatabasesStorage")
-    private static let storageKey = "com.TablePro.favoriteDatabases"
+    private static let storageKey = JSONDefaultsKey<Set<FavoriteDatabaseEntry>>("com.TablePro.favoriteDatabases")
 
     private let defaults: UserDefaults
     private let syncTracker: SyncChangeTracker
     private var cache: Set<FavoriteDatabaseEntry>?
+    // Nil keeps the favourites out of the core, for a store nothing else reads.
+    internal private(set) var coreMirror: CoreMirror<FavoriteDatabasesCoreAdapter>?
 
     internal init(
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared
+        syncTracker: SyncChangeTracker = .shared,
+        core: CoreHistoryDatabase? = nil
     ) {
         self.defaults = defaults
         self.syncTracker = syncTracker
+        if let core {
+            coreMirror = CoreMirror(adapter: FavoriteDatabasesCoreAdapter(store: self, database: core), defaults: defaults)
+        }
     }
 
     internal func loadFavorites() -> Set<FavoriteDatabaseEntry> {
         if let cache { return cache }
-        guard let data = defaults.data(forKey: Self.storageKey),
-              let decoded = try? JSONDecoder().decode(Set<FavoriteDatabaseEntry>.self, from: data)
-        else {
-            cache = []
-            return []
-        }
-        let valid = decoded.filter { !$0.database.isEmpty }
+        let valid = (defaults.read(Self.storageKey).value ?? []).filter { !$0.database.isEmpty }
         cache = valid
         return valid
     }
@@ -105,9 +101,7 @@ internal final class FavoriteDatabasesStorage {
         }
     }
 
-    /// The composite id never includes the environment. A record keyed on a mutable payload is
-    /// orphaned the moment that payload changes, so re-tagging a database would leave the old
-    /// record behind and push a second one beside it.
+    // No environment in the id: re-tagging a database would orphan the old record and push a second one.
     nonisolated internal static func syncId(for entry: FavoriteDatabaseEntry) -> String {
         (entry.connectionId.uuidString + "|" + entry.database).sha256
     }
@@ -148,6 +142,24 @@ internal final class FavoriteDatabasesStorage {
         case .discard:
             syncTracker.discardDirty(.favoriteDatabase, ids: removed.map(Self.syncId(for:)))
         }
+        coreMirror?.schedulePush()
+        postChangeNotification()
+    }
+
+    // False when favourites are stored and do not decode, which reads as none and must not read as none removed.
+    internal var storedFavoritesRead: Bool {
+        !defaults.read(Self.storageKey).isUnreadable
+    }
+
+    // The core's copy written back, marking nothing: it came from this Mac or a pull, never a new edit here.
+    internal func applyCoreFavorites(puts: [FavoriteDatabaseEntry], removals: [String]) {
+        let removed = Set(removals)
+        var favorites = loadFavorites().filter { !removed.contains($0.id) }
+        for entry in puts {
+            Self.upsert(entry, into: &favorites)
+        }
+        guard favorites != loadFavorites() else { return }
+        persist(favorites)
         postChangeNotification()
     }
 
@@ -158,13 +170,9 @@ internal final class FavoriteDatabasesStorage {
     private func persist(_ favorites: Set<FavoriteDatabaseEntry>) {
         cache = favorites
         guard !favorites.isEmpty else {
-            defaults.removeObject(forKey: Self.storageKey)
+            defaults.removeValue(for: Self.storageKey)
             return
         }
-        do {
-            defaults.set(try JSONEncoder().encode(favorites), forKey: Self.storageKey)
-        } catch {
-            Self.logger.error("Failed to encode favorite databases: \(error.publicLogShape, privacy: .public)")
-        }
+        try? defaults.write(favorites, to: Self.storageKey)
     }
 }

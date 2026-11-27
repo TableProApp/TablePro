@@ -44,6 +44,20 @@ struct GeometryFieldPreviewStoreTests {
         #expect(store.token == token)
     }
 
+    @Test("Another row drops the last row's preview while its own large value reads")
+    func anotherRowDropsThePreview() {
+        let store = GeometryFieldPreviewStore()
+        let first = UUID()
+        _ = store.resolve(request("POINT(1 2)"), source: .spatialColumn, documentID: first)
+
+        let sameRow = store.resolve(request(largeLine), source: .spatialColumn, documentID: first)
+        let nextRow = store.resolve(request(largeLine), source: .spatialColumn, documentID: UUID())
+
+        #expect(isDrawable(sameRow.preview))
+        #expect(nextRow.preview == nil)
+        #expect(nextRow.pending == request(largeLine))
+    }
+
     @Test("A new value is read and moves the token")
     func newValueMovesTheToken() {
         let store = GeometryFieldPreviewStore()

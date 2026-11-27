@@ -6,10 +6,9 @@
 import Combine
 import Foundation
 import os
-import SwiftUI
 import TableProPluginKit
 
-final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "Markdown Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to Markdown tables"
@@ -25,18 +24,15 @@ final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, Settable
     /// would mean holding the whole table in memory to decide a column width.
     private static let alignmentSampleRows = 200
 
-    @Published var settings = MarkdownExportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = MarkdownExportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MarkdownExportPlugin")
 
     required init() { loadSettings() }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(MarkdownExportOptionsView(plugin: self))
-    }
 
     func resetSettingsToDefaults() {
         settings = MarkdownExportOptions()
@@ -66,6 +62,8 @@ final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, Settable
             try fileHandle.write(contentsOf: "\n".toUTF8Data())
         }
 
+        // The rows buffered for alignment are written after the stream ends, past its own checks.
+        try progress.checkCancellation()
         try fileHandle.close()
         try PluginExportUtilities.commitAtomicWrite(from: tempURL, to: destination)
         committed = true
@@ -146,7 +144,7 @@ final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, Settable
         case .null:
             return MarkdownTableRenderer.cell(nullPlaceholder)
         case .bytes(let data):
-            return MarkdownTableRenderer.cell("0x\(data.map { String(format: "%02X", $0) }.joined())")
+            return MarkdownTableRenderer.cell("0x\(PluginHexText.uppercase(data))")
         case .text(let text):
             return MarkdownTableRenderer.cell(text)
         }

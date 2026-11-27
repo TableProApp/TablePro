@@ -1,3 +1,4 @@
+use gio::prelude::FileExt;
 use gtk4::glib;
 use libadwaita as adw;
 use tablepro_core::SafeModeLevel;
@@ -5,10 +6,12 @@ use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::SecretKind;
 use tablepro_core::ddl::DropDatabaseOptions;
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, ConnectionTagName, SavedConnection};
+use tablepro_storage::{
+    ConnectionColor, ConnectionGroupName, ConnectionProjectName, ConnectionTag, ConnectionTagName, SavedConnection,
+};
 use uuid::Uuid;
 
-use crate::services::library_outline::LibraryMove;
+use crate::services::library_outline::{LibraryItem, LibraryMove};
 use crate::services::saved_connection_editor::GroupChoice;
 
 use super::connect_failure_details::Remedy;
@@ -202,6 +205,8 @@ pub(crate) enum SessionWindowInput {
     UpdateTag(ConnectionTag),
     DeleteTag(Uuid),
     ManageTags,
+    NewProject,
+    ManageProjects,
     ExportConnections,
     ImportConnections,
     /// The file the user picked to import, read off the GTK thread.
@@ -247,6 +252,23 @@ pub(crate) enum LibraryEdit {
     DeleteGroup(Uuid),
     Change(LibraryMove),
     SetFavourite(Uuid, bool),
+    // `switch` makes the new project the active one, as the switcher's New Project… does.
+    CreateProject {
+        name: ConnectionProjectName,
+        switch: bool,
+    },
+    RenameProject(Uuid, ConnectionProjectName),
+    // The dialog asked before sending it.
+    DeleteProject(Uuid),
+    MoveProject {
+        id: Uuid,
+        before: Option<Uuid>,
+    },
+    // `None` is no project.
+    MoveToProject {
+        item: LibraryItem,
+        project: Option<Uuid>,
+    },
 }
 
 #[derive(Debug)]
@@ -259,11 +281,40 @@ pub(crate) enum ScriptInput {
         /// The session in front when the read began, which takes the script if it is still open.
         target: Option<SessionKey>,
     },
+    // A shared link's SQL, which opens as a script does with no file behind it.
+    Shared {
+        title: String,
+        sql: String,
+    },
     /// The waiting scripts banner's Cancel.
     DropWaiting,
     /// Scripts another window's user chose this window's session for.
     For {
         key: SessionKey,
-        scripts: Vec<(gio::File, String)>,
+        scripts: Vec<WaitingScript>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum WaitingScript {
+    File { file: gio::File, text: String },
+    Shared { title: String, sql: String },
+}
+
+impl WaitingScript {
+    pub(crate) fn file(&self) -> Option<&gio::File> {
+        match self {
+            Self::File { file, .. } => Some(file),
+            Self::Shared { .. } => None,
+        }
+    }
+
+    // A second ask for the same file or the same shared SQL replaces the first.
+    pub(crate) fn same_as(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::File { file, .. }, Self::File { file: other, .. }) => file.equal(other),
+            (Self::Shared { sql, .. }, Self::Shared { sql: other, .. }) => sql == other,
+            _ => false,
+        }
+    }
 }

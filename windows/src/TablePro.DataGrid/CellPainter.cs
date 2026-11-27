@@ -12,6 +12,7 @@ using static TerraFX.Interop.DirectX.D2D1_TEXT_ANTIALIAS_MODE;
 using static TerraFX.Interop.DirectX.DWRITE_FONT_STRETCH;
 using static TerraFX.Interop.DirectX.DWRITE_FONT_STYLE;
 using static TerraFX.Interop.DirectX.DWRITE_FONT_WEIGHT;
+using static TerraFX.Interop.DirectX.DWRITE_LINE_SPACING_METHOD;
 using static TerraFX.Interop.DirectX.DWRITE_PARAGRAPH_ALIGNMENT;
 using static TerraFX.Interop.DirectX.DWRITE_READING_DIRECTION;
 using static TerraFX.Interop.DirectX.DWRITE_TEXT_ALIGNMENT;
@@ -30,12 +31,12 @@ internal enum CellInk : byte
     Deleted,
 }
 
-// Matches a TextBlock cell: XAML's font and content size times the text scale, one line cut with an ellipsis.
+// Matches a TextBlock cell: XAML's font or the host's, its size times the text scale, one line cut with an ellipsis.
 internal sealed unsafe class CellPainter : IDisposable
 {
     public const float Padding = 12;
     public const float RowNumberPadding = 8;
-    public const string NullText = "NULL";
+    public const string NullWord = "NULL";
 
     private static readonly string[] Families = ["Segoe UI Variable Text", "Segoe UI"];
 
@@ -44,6 +45,12 @@ internal sealed unsafe class CellPainter : IDisposable
     private IDWriteTextFormat* _null;
     private IDWriteTextFormat* _number;
     private IDWriteTextFormat* _default;
+    private IDWriteTextFormat* _wrapped;
+    private float _wrapLineHeight;
+    private float[]? _advances;
+    private float _ellipsisAdvance;
+    private DWRITE_LINE_METRICS[] _lines = new DWRITE_LINE_METRICS[16];
+    private char[] _capped = new char[256];
     private IDWriteInlineObject* _ellipsis;
     private IDWriteInlineObject* _nullEllipsis;
     private IDWriteInlineObject* _defaultEllipsis;
@@ -63,17 +70,19 @@ internal sealed unsafe class CellPainter : IDisposable
     private ID2D1SolidColorBrush* _selectionBrush;
     private int _brushGeneration = -1;
     private GridColors _colors;
-    private string _defaultText = "DEFAULT";
+    private string _defaultText = string.Empty;
+    private string _nullText = NullWord;
+    private string _unreadableFormat = "{0}";
 
-    public CellPainter(SurfaceDevice device, float fontSize, GridColors colors)
+    public CellPainter(SurfaceDevice device, string? family, float fontSize, GridColors colors)
     {
         _device = device;
         _colors = colors;
-        FamilyName = PickFamily(device.DWrite);
+        FamilyName = PickFamily(device.DWrite, family);
         Configure(fontSize, colors);
     }
 
-    public string FamilyName { get; }
+    public string FamilyName { get; private set; }
 
     public float FontSize { get; private set; }
 
@@ -91,6 +100,34 @@ internal sealed unsafe class CellPainter : IDisposable
         }
     }
 
+    // What a value the driver could not read shows, its type's name as {0}.
+    public string UnreadableFormat
+    {
+        get => _unreadableFormat;
+        set
+        {
+            if (!string.Equals(_unreadableFormat, value, StringComparison.Ordinal))
+            {
+                _unreadableFormat = value;
+                Version++;
+            }
+        }
+    }
+
+    // What a NULL cell shows.
+    public string NullText
+    {
+        get => _nullText;
+        set
+        {
+            if (!string.Equals(_nullText, value, StringComparison.Ordinal))
+            {
+                _nullText = value;
+                Version++;
+            }
+        }
+    }
+
     // Bumped by every change that makes drawn rows stale: fonts, colors, the device.
     public int Version { get; private set; }
 
@@ -102,6 +139,12 @@ internal sealed unsafe class CellPainter : IDisposable
 
     // What WarmAsync drew, for the gate: samples drawn and the milliseconds it took.
     public static string Warmed { get; private set; } = "";
+
+    public void Configure(string? family, float fontSize, GridColors colors)
+    {
+        FamilyName = PickFamily(_device.DWrite, family);
+        Configure(fontSize, colors);
+    }
 
     public void Configure(float fontSize, GridColors colors)
     {
@@ -198,8 +241,15 @@ internal sealed unsafe class CellPainter : IDisposable
         if ((state & CellState.Null) != 0)
         {
             ink = deleted ? CellInk.Deleted : CellInk.Placeholder;
-            layout = Create(NullText, _null, width, height);
-            length = NullText.Length;
+            layout = Create(_nullText, _null, width, height);
+            length = _nullText.Length;
+        }
+        else if ((state & CellState.Unreadable) != 0)
+        {
+            ink = deleted ? CellInk.Deleted : CellInk.Placeholder;
+            var shown = Unreadable(text);
+            layout = Create(shown, _null, width, height);
+            length = shown.Length;
         }
         else if ((state & CellState.Default) != 0)
         {
@@ -254,6 +304,99 @@ internal sealed unsafe class CellPainter : IDisposable
         return layout;
     }
 
+    // The height each line of a wrapped cell takes, whatever font a line falls back to.
+    public float WrapLineHeight
+    {
+        get
+        {
+            EnsureWrapped();
+            return _wrapLineHeight;
+        }
+    }
+
+    // Where a wrapped cell's first line starts: where the one centered line of a row that does not wrap sits.
+    public float WrapInset(float rowPitch) => MathF.Max(0, (rowPitch - WrapLineHeight) / 2);
+
+    // True only when the text surely takes one line of the width, by each character's advance, with no layout.
+    public bool FitsOneLine(ReadOnlySpan<char> text, float width)
+    {
+        var advances = _advances ??= MeasureAdvances();
+        var room = width - 2;
+        foreach (var character in text)
+        {
+            if (character == '\n')
+            {
+                return false;
+            }
+            // Outside ASCII no glyph in common use is wider than two ems.
+            room -= character < advances.Length ? advances[character] : FontSize * 2;
+            if (room < 0)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // The lines a wrapped cell's text takes at a width, however many: a row's height and the tip's rule read it.
+    public int CountLines(ReadOnlySpan<char> text, CellState state, float width)
+    {
+        if (text.IsEmpty || width <= 0 || FitsOneLine(text, width))
+        {
+            return 1;
+        }
+        EnsureWrapped();
+        var layout = WrappedLayout(text, state, width, _wrapLineHeight);
+        DWRITE_TEXT_METRICS metrics;
+        layout->GetMetrics(&metrics);
+        layout->Release();
+        return Math.Max(1, (int)metrics.lineCount);
+    }
+
+    // A wrapped layout the caller releases, or null when nothing shows; past maxLines the text ends in one ellipsis.
+    public IDWriteTextLayout* CreateWrapped(ReadOnlySpan<char> text, CellState state, float width, int maxLines,
+        out CellInk ink)
+    {
+        var deleted = (state & CellState.Deleted) != 0;
+        ink = deleted ? CellInk.Deleted : CellInk.Text;
+        if (width <= 0 || text.IsEmpty || maxLines <= 0)
+        {
+            return null;
+        }
+        EnsureWrapped();
+        var height = maxLines * _wrapLineHeight;
+        var layout = WrappedLayout(text, state, width, height);
+        var length = text.Length;
+        var cut = (state & CellState.Truncated) != 0;
+        DWRITE_TEXT_METRICS metrics;
+        layout->GetMetrics(&metrics);
+        if (metrics.lineCount > (uint)maxLines)
+        {
+            var end = LinesEnd(layout, (int)metrics.lineCount, maxLines, out var breaks);
+            if (end > 0)
+            {
+                layout->Release();
+                layout = Capped(text[..Math.Min(end, text.Length)], breaks, state, width, height, maxLines, out length);
+                cut = true;
+            }
+        }
+        if (cut && length > 0)
+        {
+            layout->SetDrawingEffect((IUnknown*)_cutMarkBrush,
+                new DWRITE_TEXT_RANGE { startPosition = (uint)(length - 1), length = 1 });
+        }
+        var range = new DWRITE_TEXT_RANGE { startPosition = 0, length = (uint)length };
+        if (deleted)
+        {
+            layout->SetStrikethrough(BOOL.TRUE, range);
+        }
+        else if ((state & (CellState.Modified | CellState.Inserted)) != 0)
+        {
+            layout->SetUnderline(BOOL.TRUE, range);
+        }
+        return layout;
+    }
+
     // The width text takes on one line, for fitting a column to its content.
     public float Measure(ReadOnlySpan<char> text, bool placeholder = false)
     {
@@ -264,6 +407,9 @@ internal sealed unsafe class CellPainter : IDisposable
         return Measure(text, placeholder ? _null : _text);
     }
 
+    public string Unreadable(ReadOnlySpan<char> typeName) =>
+        string.Format(CultureInfo.CurrentCulture, _unreadableFormat, typeName.ToString());
+
     public float MeasureDefault() => _defaultText.Length == 0 ? 0 : Measure(_defaultText, _default);
 
     // Lays out and draws sample cells of every common script as the rows do, on the rows' device from a pool thread.
@@ -271,6 +417,7 @@ internal sealed unsafe class CellPainter : IDisposable
     {
         var text = (nint)_text;
         var placeholder = (nint)_null;
+        var nullText = _nullText;
         var device = (nint)_device.Direct2D;
         var factory = (nint)_device.DWrite;
         _text->AddRef();
@@ -282,7 +429,7 @@ internal sealed unsafe class CellPainter : IDisposable
             try
             {
                 DrawSamples((IDWriteFactory*)factory, (ID2D1Device*)device, (IDWriteTextFormat*)text,
-                    (IDWriteTextFormat*)placeholder, width, height);
+                    (IDWriteTextFormat*)placeholder, nullText, width, height);
             }
             finally
             {
@@ -301,7 +448,7 @@ internal sealed unsafe class CellPainter : IDisposable
     }
 
     private static void DrawSamples(IDWriteFactory* factory, ID2D1Device* device, IDWriteTextFormat* text,
-        IDWriteTextFormat* placeholder, float width, float height)
+        IDWriteTextFormat* placeholder, string nullText, float width, float height)
     {
         ID2D1DeviceContext* context = null;
         ID2D1Bitmap1* target = null;
@@ -337,7 +484,7 @@ internal sealed unsafe class CellPainter : IDisposable
             var samples = FontWarmup.Scripts.Split(' ').Concat(FontWarmup.Glyphs.Chunk(48).Select(chunk => new string(chunk))).ToArray();
             for (var i = -1; i <= samples.Length; i++)
             {
-                var sample = i < 0 ? FontWarmup.Scripts : i == samples.Length ? NullText : samples[i];
+                var sample = i < 0 ? FontWarmup.Scripts : i == samples.Length ? nullText : samples[i];
                 var format = i == samples.Length ? placeholder : text;
                 IDWriteTextLayout* layout;
                 fixed (char* chars = sample)
@@ -377,6 +524,142 @@ internal sealed unsafe class CellPainter : IDisposable
         layout->GetMetrics(&metrics);
         layout->Release();
         return metrics.widthIncludingTrailingWhitespace;
+    }
+
+    private IDWriteTextLayout* WrappedLayout(ReadOnlySpan<char> text, CellState state, float width, float height)
+    {
+        var layout = Create(text, _wrapped, width, height);
+        if ((state & CellState.RightToLeft) != 0)
+        {
+            layout->SetReadingDirection(DWRITE_READING_DIRECTION_RIGHT_TO_LEFT);
+        }
+        return layout;
+    }
+
+    // The characters the first lines of a layout hold, and whether the last of them ends at a line break; 0 on failure.
+    private int LinesEnd(IDWriteTextLayout* layout, int lineCount, int lines, out bool breaks)
+    {
+        breaks = false;
+        if (_lines.Length < lineCount)
+        {
+            _lines = new DWRITE_LINE_METRICS[lineCount];
+        }
+        uint actual;
+        fixed (DWRITE_LINE_METRICS* metrics = _lines)
+        {
+            if (layout->GetLineMetrics(metrics, (uint)_lines.Length, &actual).FAILED || actual < (uint)lines)
+            {
+                return 0;
+            }
+        }
+        var end = 0;
+        for (var line = 0; line < lines; line++)
+        {
+            end += (int)_lines[line].length;
+        }
+        breaks = _lines[lines - 1].newlineLength > 0;
+        return end;
+    }
+
+    // DirectWrite has no line limit and documents no trimming of a wrapped layout, so the cut is made here.
+    private IDWriteTextLayout* Capped(ReadOnlySpan<char> text, bool breaks, CellState state, float width, float height,
+        int maxLines, out int length)
+    {
+        // Only the break that ends the last line goes: blank lines above it are part of the value.
+        var kept = TrimSpaces(breaks && text.Length > 0 ? text[..^1] : text);
+        // Text the core cut ends in its own ellipsis already.
+        var marked = kept.Length > 0 && kept[^1] == CellBlock.Ellipsis;
+        if (!marked && !breaks)
+        {
+            kept = MakeRoom(kept);
+        }
+        for (var attempt = 0; ; attempt++)
+        {
+            if (_capped.Length < kept.Length + 1)
+            {
+                _capped = new char[Math.Max(_capped.Length * 2, kept.Length + 1)];
+            }
+            kept.CopyTo(_capped);
+            length = kept.Length;
+            if (!marked)
+            {
+                _capped[length++] = CellBlock.Ellipsis;
+            }
+            var layout = WrappedLayout(_capped.AsSpan(0, length), state, width, height);
+            DWRITE_TEXT_METRICS metrics;
+            layout->GetMetrics(&metrics);
+            if (metrics.lineCount <= (uint)maxLines || kept.Length <= 1 || attempt == 16)
+            {
+                return layout;
+            }
+            layout->Release();
+            kept = TrimSpaces(DropLast(kept));
+        }
+    }
+
+    private static ReadOnlySpan<char> TrimSpaces(ReadOnlySpan<char> text)
+    {
+        var end = text.Length;
+        while (end > 0 && text[end - 1] != '\n' && char.IsWhiteSpace(text[end - 1]))
+        {
+            end--;
+        }
+        return text[..end];
+    }
+
+    // Drops characters from a full line's end until what they took is at least an ellipsis wide, by their advances.
+    private ReadOnlySpan<char> MakeRoom(ReadOnlySpan<char> text)
+    {
+        var advances = _advances ??= MeasureAdvances();
+        var freed = 0f;
+        while (text.Length > 1 && freed < _ellipsisAdvance)
+        {
+            var last = text[^1];
+            // A character outside ASCII frees at least half an em, or the layout's line count says to drop more.
+            freed += last < advances.Length ? advances[last] : FontSize / 2;
+            text = DropLast(text);
+        }
+        return text;
+    }
+
+    private static ReadOnlySpan<char> DropLast(ReadOnlySpan<char> text) =>
+        text.Length >= 2 && char.IsLowSurrogate(text[^1]) && char.IsHighSurrogate(text[^2]) ? text[..^2] : text[..^1];
+
+    // The advance of each printable ASCII character alone, and the ellipsis's, measured once per font.
+    private float[] MeasureAdvances()
+    {
+        var advances = new float[128];
+        Span<char> one = stackalloc char[1];
+        for (var character = ' '; character < 127; character++)
+        {
+            one[0] = character;
+            advances[character] = Measure(one, _text);
+        }
+        one[0] = CellBlock.Ellipsis;
+        _ellipsisAdvance = Measure(one, _text);
+        return advances;
+    }
+
+    // Made when a grid first wraps, so a grid that never does pays for no format and no probe.
+    private void EnsureWrapped()
+    {
+        if (_wrapped != null)
+        {
+            return;
+        }
+        _wrapped = CreateFormat(DWRITE_FONT_STYLE_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING);
+        // A word wider than the column, such as a URL or a hash, breaks inside itself rather than overflow.
+        _wrapped->SetWordWrapping(DWRITE_WORD_WRAPPING_EMERGENCY_BREAK);
+        _wrapped->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+        var probe = Create("M", _wrapped, 1000, 1000);
+        DWRITE_LINE_METRICS line;
+        uint count;
+        probe->GetLineMetrics(&line, 1, &count);
+        probe->Release();
+        _wrapLineHeight = MathF.Ceiling(line.height);
+        // Uniform, so a line that falls back to a taller font is no taller and a row is its line count times this.
+        _wrapped->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, _wrapLineHeight,
+            line.baseline + ((_wrapLineHeight - line.height) / 2));
     }
 
     private IDWriteTextLayout* Create(ReadOnlySpan<char> text, IDWriteTextFormat* format, float width, float height)
@@ -425,22 +708,22 @@ internal sealed unsafe class CellPainter : IDisposable
         return brush;
     }
 
-    internal static string PickFamily(IDWriteFactory* factory)
+    // The family asked for when it is installed, else the first of ours that is.
+    internal static string PickFamily(IDWriteFactory* factory, string? preferred = null)
     {
         IDWriteFontCollection* fonts;
         NativeCom.Check(factory->GetSystemFontCollection(&fonts, BOOL.FALSE));
         try
         {
+            if (!string.IsNullOrWhiteSpace(preferred) && IsInstalled(fonts, preferred))
+            {
+                return preferred;
+            }
             foreach (var name in Families)
             {
-                uint index;
-                BOOL exists;
-                fixed (char* chars = name)
+                if (IsInstalled(fonts, name))
                 {
-                    if (fonts->FindFamilyName(chars, &index, &exists).SUCCEEDED && exists)
-                    {
-                        return name;
-                    }
+                    return name;
                 }
             }
         }
@@ -449,6 +732,16 @@ internal sealed unsafe class CellPainter : IDisposable
             fonts->Release();
         }
         return Families[^1];
+    }
+
+    private static bool IsInstalled(IDWriteFontCollection* fonts, string name)
+    {
+        uint index;
+        BOOL exists;
+        fixed (char* chars = name)
+        {
+            return fonts->FindFamilyName(chars, &index, &exists).SUCCEEDED && exists;
+        }
     }
 
     private void ReleaseBrushes()
@@ -474,6 +767,8 @@ internal sealed unsafe class CellPainter : IDisposable
         NativeCom.Release(ref _ellipsis);
         NativeCom.Release(ref _nullEllipsis);
         NativeCom.Release(ref _defaultEllipsis);
+        NativeCom.Release(ref _wrapped);
+        _advances = null;
         NativeCom.Release(ref _text);
         NativeCom.Release(ref _null);
         NativeCom.Release(ref _number);

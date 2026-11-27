@@ -96,9 +96,9 @@ internal enum CatalogTableListing {
         let schemas = try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
             try await driver.fetchSchemas()
         }
-        // The set read keeps the excluded schemas out of the engine's query.
-        var seen: Set<String> = []
-        let kept = schemas.filter { !excluded.contains($0) && seen.insert($0).inserted }
+        // The set read keeps the excluded schemas out of the engine's query. Two schemas Swift's String equates stay two.
+        var seen: Set<CatalogName> = []
+        let kept = schemas.filter { !excluded.contains($0) && seen.insert(CatalogName($0)).inserted }
         return try await tables(inListedSchemas: kept, scope: scope, metadata: metadata)
     }
 

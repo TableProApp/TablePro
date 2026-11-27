@@ -19,7 +19,7 @@ internal enum ConnectionURLFilter: Equatable, Sendable {
     }
 
     internal var filterState: TabFilterState {
-        TabFilterState(filters: [tableFilter], commit: .all, isVisible: true, filterLogicMode: .and)
+        TabFilterState.applying([tableFilter], logicMode: .and)
     }
 
     private var tableFilter: TableFilter {

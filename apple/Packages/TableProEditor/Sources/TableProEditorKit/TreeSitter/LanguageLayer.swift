@@ -10,15 +10,19 @@ import SwiftTreeSitter
 import TableProGrammars
 import TreeSitter
 
-extension Parser {
-    func reset() {
-        let mirror = Mirror(reflecting: self)
-        for case let (label?, value) in mirror.children {
-            if label == "internalParser", let value = value as? OpaquePointer {
-                ts_parser_reset(value)
-            }
-        }
-    }
+/// What a layer's parser is in the middle of, shared by every copy of the layer since they share the parser.
+final class ParseSession {
+    /// The text revision a parse that timed out was reading. Calling `parse` again over the same text resumes it;
+    /// any other parse resets the parser first, or tree-sitter would resume over text that has since changed.
+    var outstandingRevision: Int?
+}
+
+/// How a layer's parse ended.
+enum LayerParseResult {
+    case parsed([NSRange])
+    /// The budgeted parse ran out of time; the parser holds it for the same revision to resume.
+    case timedOut
+    case cancelled
 }
 
 public class LanguageLayer: Hashable {
@@ -38,9 +42,11 @@ public class LanguageLayer: Hashable {
         supportsInjections: Bool,
         tree: MutableTree? = nil,
         languageQuery: Query? = nil,
-        ranges: [NSRange]
+        ranges: [NSRange],
+        session: ParseSession = ParseSession()
     ) {
         self.id = id
+        self.session = session
         self.tsLanguage = tsLanguage
         self.parser = parser
         self.supportsInjections = supportsInjections
@@ -55,6 +61,7 @@ public class LanguageLayer: Hashable {
     let tsLanguage: Language?
     let parser: Parser
     let supportsInjections: Bool
+    let session: ParseSession
     var tree: MutableTree?
     var languageQuery: Query?
     var ranges: [NSRange]
@@ -67,7 +74,8 @@ public class LanguageLayer: Hashable {
             supportsInjections: supportsInjections,
             tree: tree?.mutableCopy(),
             languageQuery: languageQuery,
-            ranges: ranges
+            ranges: ranges,
+            session: session
         )
     }
 
@@ -82,92 +90,89 @@ public class LanguageLayer: Hashable {
 
     /// Calculates a series of ranges that have been invalidated by a given edit.
     /// - Parameters:
-    ///   - edit: The edit to act on.
-    ///   - timeout: The maximum time interval the parser can run before halting.
+    ///   - edits: The edits to act on.
+    ///   - revision: The text revision `readBlock` reads, which identifies a parse to resume.
+    ///   - budget: How long the parse may run before it stops and is left to resume. `nil` runs it to the end,
+    ///             checking for cancellation every ``TreeSitterClient/Constants/parserTimeout``.
     ///   - readBlock: A callback for fetching blocks of text.
-    /// - Returns: An array of distinct `NSRanges` that need to be re-highlighted.
+    /// - Returns: The distinct `NSRanges` that need to be re-highlighted, or why there are none.
     func findChangedByteRanges(
         edits: [InputEdit],
-        timeout: TimeInterval?,
+        revision: Int,
+        budget: TimeInterval?,
         readBlock: @escaping Parser.ReadBlock
-    ) -> [NSRange] {
-        parser.timeout = timeout ?? 0
-
-        let (newTree, didCancel) = calculateNewState(
-            tree: self.tree?.mutableCopy(),
-            parser: self.parser,
-            edits: edits,
-            readBlock: readBlock
-        )
-
-        if didCancel {
-            return []
+    ) -> LayerParseResult {
+        if session.outstandingRevision != nil, session.outstandingRevision != revision {
+            parser.reset()
         }
+        session.outstandingRevision = nil
 
-        if self.tree == nil && newTree == nil {
+        guard let oldTree = self.tree?.mutableCopy() else {
             // There was no existing tree, make a new one and return all indexes.
-            self.tree = parser.parse(tree: nil as Tree?, readBlock: readBlock)
-            return [self.tree?.rootNode?.range ?? .zero]
+            parser.timeout = budget ?? 0
+            guard let tree = parser.parse(tree: nil as Tree?, readBlock: readBlock) else {
+                guard budget != nil else { return .cancelled }
+                session.outstandingRevision = revision
+                return .timedOut
+            }
+            self.tree = tree
+            return .parsed([tree.rootNode?.range ?? .zero])
+        }
+        for edit in edits {
+            oldTree.edit(edit)
         }
 
-        let ranges = changedByteRanges(self.tree, newTree).map { $0.range }
+        parser.timeout = budget ?? TreeSitterClient.Constants.parserTimeout
+        guard let newTree = parse(after: oldTree, budgeted: budget != nil, readBlock: readBlock) else {
+            if budget != nil, !Task.isCancelled {
+                session.outstandingRevision = revision
+                return .timedOut
+            }
+            return .cancelled
+        }
 
+        // Tree-sitter compares the new tree with the old one as edited, so only what the edit changed comes back.
+        let ranges = changedByteRanges(oldTree, newTree).map { $0.range }
         self.tree = newTree
-
-        return ranges
+        return .parsed(ranges)
     }
 
-    /// Applies the edit to the current `tree` and returns the old tree and a copy of the current tree with the
-    /// processed edit.
-    /// - Parameters:
-    ///   - tree: The tree before an edit used to parse the new tree.
-    ///   - parser: The parser used to parse the new tree.
-    ///   - edit: The edit to apply.
-    ///   - readBlock: The block to use to read text.
-    ///   - skipParse: Set to true to skip any parsing steps and only apply the edit to the tree.
-    /// - Returns: The new tree, if it was parsed, and a boolean indicating if parsing was skipped or cancelled.
-    internal func calculateNewState(
-        tree: MutableTree?,
-        parser: Parser,
-        edits: [InputEdit],
+    /// Parses the text after `tree`, already edited, resuming the parse each time the parser's timeout stops it.
+    /// - Returns: The new tree, or `nil` when the parse was cancelled or, if `budgeted`, ran out of time.
+    private func parse(
+        after tree: MutableTree,
+        budgeted: Bool,
         readBlock: @escaping Parser.ReadBlock
-    ) -> (tree: MutableTree?, didCancel: Bool) {
-        guard let tree else {
-            return (nil, false)
-        }
-
-        // Apply the edits to the old tree
-        for edit in edits {
-            tree.edit(edit)
-        }
-
+    ) -> MutableTree? {
         let start = ContinuousClock.now
         var wasLongParse = false
+        defer {
+            if wasLongParse {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: TreeSitterClient.Constants.longParseFinished, object: nil)
+                }
+            }
+        }
 
-        // Check every timeout to see if the task is canceled to avoid parsing after the editor has been closed.
-        // We can continue a parse after a timeout causes it to cancel by calling parse on the same tree.
-        var newTree: MutableTree?
-        while newTree == nil {
+        // A timed out parse continues where it stopped when `parse` is called again over the same text.
+        while true {
             if Task.isCancelled {
                 parser.reset()
-                return (nil, true)
+                return nil
             }
-            if start.duration(to: .now) > TreeSitterClient.Constants.longParseTimeout {
+            if !wasLongParse, start.duration(to: .now) > TreeSitterClient.Constants.longParseTimeout {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: TreeSitterClient.Constants.longParse, object: nil)
                 }
                 wasLongParse = true
             }
-            newTree = DispatchQueue.waitMainIfNot { parser.parse(tree: tree, readBlock: readBlock) }
-        }
-
-        if wasLongParse {
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: TreeSitterClient.Constants.longParseFinished, object: nil)
+            if let newTree = parser.parse(tree: tree, readBlock: readBlock) {
+                return newTree
+            }
+            if budgeted {
+                return nil
             }
         }
-
-        return (newTree, false)
     }
 
     /// Calculates the changed byte ranges between two trees.

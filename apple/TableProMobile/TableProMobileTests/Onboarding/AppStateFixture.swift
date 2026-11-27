@@ -29,6 +29,10 @@ struct AppStateFixture {
         libraryDirectory.appendingPathComponent("connections.json")
     }
 
+    var coreConnectionsFile: URL {
+        libraryDirectory.appendingPathComponent("Core/connections.json")
+    }
+
     init() throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("app-state-\(UUID().uuidString)", isDirectory: true)
@@ -51,14 +55,18 @@ struct AppStateFixture {
         secureStore: any SecureStore = MockSecureStore(),
         libraryPublisher: ConnectionLibraryPublisher? = nil,
         transport: any IOSSyncTransport = UnreachableSyncTransport(),
-        driverFactory: (any DriverFactory)? = nil
+        driverFactory: (any DriverFactory)? = nil,
+        projectSyncWritable: Bool? = nil
     ) -> AppState {
         let coordinator = IOSSyncCoordinator(
             metadata: metadata,
             recordCache: SyncRecordCache(directory: root.appendingPathComponent("Cache"), defaults: nil),
             makeTransport: { transport },
             isEnabled: { syncEnabled },
-            notificationCenter: NotificationCenter()
+            schema: projectSyncWritable.map { .projects(deployed: $0) } ?? .production,
+            defaults: defaults,
+            notificationCenter: NotificationCenter(),
+            pushRegistrar: .inert
         )
         return AppState(
             libraryDirectory: libraryDirectory,
@@ -117,5 +125,19 @@ struct AppStateFixture {
 
     func documentsFile(_ name: String) -> URL {
         documentsDirectory.appendingPathComponent(name)
+    }
+}
+
+extension SyncWritableSchema {
+    // Production's schema with the project type and both membership fields deployed, or held back.
+    static func projects(deployed: Bool) -> SyncWritableSchema {
+        SyncWritableSchema(
+            field: { field in
+                let isProjectField = field is ConnectionProjectSyncField
+                    || field.key == ConnectionSyncField.projectId.key
+                return isProjectField ? deployed : field.isWritable
+            },
+            type: { $0 == .project ? deployed : $0.isWritable }
+        )
     }
 }

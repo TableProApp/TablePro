@@ -25,12 +25,14 @@ struct ServerDashboardSplitViewTests {
         let splitController = try #require(splitViewController(in: window.contentView))
         #expect(metrics(in: splitController)?.isEmpty == true)
 
-        viewModel.metrics = [
+        var board = DashboardBoard()
+        board.metrics = [
             DashboardMetric(id: "uptime", label: "Uptime", value: "3", unit: "days", icon: "clock")
         ]
-        viewModel.slowQueries = [
+        board.slowQueries = [
             DashboardSlowQuery(duration: "4s", query: "SELECT SLEEP(4)", user: "app", database: "shop")
         ]
+        viewModel.board = board
 
         #expect(await settle(window) { metrics(in: splitController)?.count == 1 })
         #expect(slowQueries(in: splitController)?.count == 1)

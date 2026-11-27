@@ -25,6 +25,12 @@ public sealed partial class DatabaseSession : IAsyncDisposable
 
     public bool IsReadOnly => _session.ReadOnly();
 
+    // OneDatabase while the session has no connection to ask.
+    public DatabaseLayout Layout => Mapping.Layout(_session.DatabaseLayout());
+
+    // The database the connection was asked to open; null for a file or a login that named none.
+    public string? Database => _session.Database();
+
     internal Native.DatabaseSession Handle => _session;
 
     public async Task<IReadOnlyList<SchemaEntry>> GetSchemasAsync(CancellationToken cancellationToken = default)
@@ -81,12 +87,14 @@ public sealed partial class DatabaseSession : IAsyncDisposable
     }
 
     // Returns once the read starts, so a bad filter throws here unsent; the token also stops the read, as Run's does.
+    // Resume, from the page before, is where a server-paged table's next page starts; offset is read through otherwise.
     public async Task<TablePageRun> ReadTablePageAsync(
         TableName table,
         ColumnSort? sort,
         TableFilter? filter,
         long limit,
         long offset = 0,
+        PageResume? resume = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(table);
@@ -94,21 +102,19 @@ public sealed partial class DatabaseSession : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
         var nativeFilter = filter is null ? null : Mapping.Filter(filter);
         var wake = new RunWake();
-        using var page = await CoreCall.RunAsync(
+        var page = await CoreCall.RunAsync(
                 token => _session.ReadTablePage(
                     Mapping.Table(table),
                     Mapping.Sort(sort),
                     nativeFilter,
                     checked((ulong)limit),
                     checked((ulong)offset),
+                    resume?.Handle,
                     wake,
                     token),
                 cancellationToken)
             .ConfigureAwait(false);
-        return new TablePageRun(
-            new QueryRun(page.Run(), wake, cancellationToken),
-            checked((int)page.VisibleColumns()),
-            page.CanSeek());
+        return new TablePageRun(page, new QueryRun(page.Run(), wake, cancellationToken));
     }
 
     // Every row the filter selects, counted by the server.
@@ -135,6 +141,17 @@ public sealed partial class DatabaseSession : IAsyncDisposable
                 cancellationToken)
             .ConfigureAwait(false);
         return Mapping.Estimate(estimate);
+    }
+
+    // The row estimate with the table's comment and sizes, read in one metadata call.
+    public async Task<TableInfo> GetTableInfoAsync(TableName table, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var info = await CoreCall.RunAsync(
+                token => _session.TableInfo(Mapping.Table(table), token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return Mapping.Info(info);
     }
 
     // Kind decides whether a CREATE script belongs: a view gets none.
@@ -208,6 +225,25 @@ public sealed partial class DatabaseSession : IAsyncDisposable
             : null;
     }
 
+    // What completes at caret for an editor in database, null for the connection's own. Null where nothing does, and
+    // where nothing is typed yet in a place that takes anything unless asked. The catalog reads are the object tree's.
+    public async Task<SqlCompletion?> CompleteAsync(
+        string text,
+        int caret,
+        bool asked,
+        string? database = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentOutOfRangeException.ThrowIfNegative(caret);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(caret, text.Length);
+        var list = await CoreCall.RunAsync(
+                token => _session.Complete(text, checked((uint)caret), asked, database, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return list is null ? null : new SqlCompletion(list);
+    }
+
     // A level saved while the session is open applies to it at once. False when it crosses Read only, which only a
     // new connection can do; the session keeps its level until then.
     public bool SetSafeMode(SafeMode level) => _session.SetSafeMode(Mapping.Level(level));
@@ -226,12 +262,56 @@ public sealed partial class DatabaseSession : IAsyncDisposable
         return new TableEditor(editor);
     }
 
-    // An editor tab's own connection, which keeps its transaction from one run to the next.
-    public async Task<QueryEditor> OpenEditorAsync(CancellationToken cancellationToken = default)
+    // A query result's rows as a save sees them; Lock says why not when the result is not one keyed table's rows.
+    // Rows is the run's only set, read outside a transaction in the session's database, which the caller checks.
+    public async Task<TableEditor> OpenResultEditorAsync(
+        string sql,
+        ResultSet rows,
+        CancellationToken cancellationToken = default)
     {
-        var editor = await CoreCall.RunAsync(token => _session.OpenEditor(token), cancellationToken)
+        ArgumentNullException.ThrowIfNull(sql);
+        ArgumentNullException.ThrowIfNull(rows);
+        var editor = await CoreCall.RunAsync(
+                token => _session.ResultEditor(sql, rows.Handle, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new TableEditor(editor);
+    }
+
+    // The table's foreign keys and the other tables' keys that point at it, read in one operation.
+    public async Task<TableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var keys = await CoreCall.RunAsync(token => _session.TableKeys(Mapping.Table(table), token), cancellationToken)
+            .ConfigureAwait(false);
+        return new TableKeys(keys);
+    }
+
+    // An editor tab's own connection, which keeps its transaction from one run to the next.
+    public Task<QueryEditor> OpenEditorAsync(CancellationToken cancellationToken = default) =>
+        OpenEditorAsync(null, cancellationToken);
+
+    // Opened in database, or moved there before it returns; one that cannot reach it is closed and the call throws.
+    public async Task<QueryEditor> OpenEditorAsync(string? database, CancellationToken cancellationToken = default)
+    {
+        var editor = await CoreCall.RunAsync(token => _session.OpenEditor(database, token), cancellationToken)
             .ConfigureAwait(false);
         return new QueryEditor(editor);
+    }
+
+    // The server's databases the login sees: the connection's own marked default, the engine's own marked system.
+    public async Task<IReadOnlyList<SchemaEntry>> GetDatabasesAsync(CancellationToken cancellationToken = default)
+    {
+        var databases = await CoreCall.RunAsync(token => _session.Databases(token), cancellationToken)
+            .ConfigureAwait(false);
+        return [.. databases.Select(Mapping.Schema)];
+    }
+
+    // A key-value engine's key; nothing is read until ReadMoreAsync.
+    public KeyReader OpenKey(string key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return new KeyReader(_session.OpenKey(key));
     }
 
     public async ValueTask DisposeAsync()

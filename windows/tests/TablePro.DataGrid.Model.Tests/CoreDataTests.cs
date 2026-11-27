@@ -55,6 +55,52 @@ public sealed class CoreDataTests
         Assert.Equal("", lines[5]);
     }
 
+    [Fact]
+    public async Task AReaderThatKeepsLineBreaksReadsEachAsOneNewlineAndCopiesTheValuesOwn()
+    {
+        await using var database = await CoreDatabase.CreateAsync();
+        using var data = await database.QueryAsync(
+            "SELECT 'one' || char(13) || char(10) || 'two' AS note, 'tab' || char(9) || 'here' AS name, 'word' AS plain "
+            + "UNION ALL SELECT 'first' || char(8232) || 'second' || char(10), 'two words', printf('%.600c', 'x')");
+        using var cache = new CellCache(data.Data.OpenReader());
+
+        Assert.Equal("one  two", cache.Get(0, 0, 64).Text.ToString());
+        Assert.Equal("first second ", cache.Get(1, 0, 64).Text.ToString());
+
+        cache.KeepsLineBreaks = true;
+
+        var crlf = cache.Get(0, 0, 64);
+        Assert.Equal("one\ntwo", crlf.Text.ToString());
+        Assert.Equal(CellState.Lossy, crlf.State);
+        Assert.Equal("first\nsecond", cache.Get(1, 0, 64).Text.ToString());
+        Assert.Equal("tab here", cache.Get(0, 1, 64).Text.ToString());
+        Assert.Equal(CellState.Lossy, cache.Get(1, 1, 64).State);
+        Assert.Equal(CellState.None, cache.Get(0, 2, 64).State);
+        Assert.True(cache.Get(1, 2, 64).IsTruncated);
+
+        using var reader = data.Data.OpenReader();
+        reader.KeepsLineBreaks = true;
+        var tsv = GridCopy.Tsv(reader, new CellRange(0, 0, 0, 1), TestContext.Current.CancellationToken);
+        Assert.Equal("\"one\r\ntwo\"\t\"tab\there\"\r\n", tsv);
+    }
+
+    // DuckDB hands an editor run a TIMETZ as the time alone, which the driver cannot read back.
+    [Fact]
+    public async Task AValueTheDriverCouldNotReadKeepsItsTypeAndCopiesAsNothing()
+    {
+        await using var database = await CoreDatabase.CreateAsync("grid.duckdb");
+        using var data = await database.QueryAsync("SELECT 1 AS id, TIMETZ '12:30:00+05:30' AS at");
+        using var cache = new CellCache(data.Data.OpenReader());
+        using var reader = data.Data.OpenReader();
+
+        var cell = cache.Get(0, 1, 64);
+        var tsv = GridCopy.Tsv(reader, new CellRange(0, 0, 0, 1), TestContext.Current.CancellationToken);
+
+        Assert.Equal("TIME WITH TIME ZONE", cell.Text.ToString());
+        Assert.Equal(CellState.Unreadable, cell.State);
+        Assert.Equal("1\t\r\n", tsv);
+    }
+
     // The grid's fetch path over the real core allocates nothing once its blocks are loaded.
     [Fact]
     public async Task ScrollingAMillionRowsAllocatesNothingOnceTheCacheIsFull()
@@ -104,11 +150,11 @@ internal sealed class CoreDatabase : IAsyncDisposable
         _editor = editor;
     }
 
-    public static async Task<CoreDatabase> CreateAsync()
+    public static async Task<CoreDatabase> CreateAsync(string file = "grid.sqlite")
     {
         var directory = Directory.CreateTempSubdirectory("tablepro-grid-").FullName;
         var core = TableProCore.Create(new HostConfiguration("test"), new NoSecrets());
-        var session = await core.OpenFileAsync(new FileOpenOptions(Path.Combine(directory, "grid.sqlite"), Create: true));
+        var session = await core.OpenFileAsync(new FileOpenOptions(Path.Combine(directory, file), Create: true));
         var editor = await session.OpenEditorAsync();
         return new CoreDatabase(directory, core, session, editor);
     }
@@ -126,7 +172,14 @@ internal sealed class CoreDatabase : IAsyncDisposable
         await _editor.DisposeAsync();
         await _session.DisposeAsync();
         _core.Dispose();
-        Directory.Delete(_directory, recursive: true);
+        try
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // A DuckDB file closes on the core's own threads, which can still hold it here on Windows.
+        }
     }
 
     private sealed class NoSecrets : ISecretStore

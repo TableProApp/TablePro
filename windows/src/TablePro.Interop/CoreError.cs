@@ -11,6 +11,9 @@ public sealed record CoreError(
     HostKeyFailure? HostKey = null)
 {
     public TlsFailure? TlsFailure { get; init; }
+
+    // What an ai.* error is about: its host, status and provider.
+    public AiFailure? Ai { get; init; }
 }
 
 public sealed record HostKeyFailure(
@@ -28,6 +31,7 @@ public sealed record ServerMessage(
     string? SqlState,
     string? Detail,
     string? Hint,
+    // In characters from 1, from the start of the SQL the run was given.
     int? Position);
 
 public sealed class TableProException : Exception

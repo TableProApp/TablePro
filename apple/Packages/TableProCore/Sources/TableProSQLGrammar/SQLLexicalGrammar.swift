@@ -164,6 +164,15 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// PostgreSQL 17.11. That pass reads quotes its own way, so DuckDB's profile also doubts this fact. Curated only.
     public static let nonASCIISpacesEndNames = SQLLexicalGrammar(rawValue: 1 << 42)
 
+    // `BT` and `ET` begin and end a transaction, as Teradata reads them; anywhere else they are names. Curated only.
+    public static let transactionShortForms = SQLLexicalGrammar(rawValue: 1 << 43)
+
+    /// A routine's body is one statement, as MySQL's `routine_body` reads it, and a compound one holds the `;`s inside
+    /// it: `IF ... END IF`, `WHILE ... END WHILE`, `LOOP ... END LOOP` and `REPEAT ... END REPEAT` as `BEGIN ... END`
+    /// does. A `SET` outside the return type starts the body, so a `begin` after it is a name. Measured on MariaDB
+    /// 13.0.2. Curated only.
+    public static let compoundStatementBodies = SQLLexicalGrammar(rawValue: 1 << 44)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

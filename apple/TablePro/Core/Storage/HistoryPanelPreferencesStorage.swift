@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 struct HistoryPanelPreferences: Codable, Equatable, Sendable {
     var isVisible: Bool
@@ -50,34 +49,19 @@ struct HistoryPanelPreferences: Codable, Equatable, Sendable {
 }
 
 enum HistoryPanelPreferencesStorage {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "HistoryPanelPreferencesStorage")
-
-    private static func key(for connectionId: UUID) -> String {
-        "HistoryPanel.\(connectionId.uuidString)"
+    private static func key(for connectionId: UUID) -> JSONDefaultsKey<HistoryPanelPreferences> {
+        JSONDefaultsKey("HistoryPanel.\(connectionId.uuidString)")
     }
 
     static func load(for connectionId: UUID) -> HistoryPanelPreferences {
-        guard let data = AppStorageEnvironment.shared.defaults.data(forKey: key(for: connectionId)) else {
-            return .default
-        }
-        do {
-            return try JSONDecoder().decode(HistoryPanelPreferences.self, from: data)
-        } catch {
-            logger.error("Failed to decode history panel preferences: \(error.publicLogShape, privacy: .public)")
-            return .default
-        }
+        AppStorageEnvironment.shared.defaults.read(key(for: connectionId)).value ?? .default
     }
 
     static func save(_ preferences: HistoryPanelPreferences, for connectionId: UUID) {
-        do {
-            let data = try JSONEncoder().encode(preferences)
-            AppStorageEnvironment.shared.defaults.set(data, forKey: key(for: connectionId))
-        } catch {
-            logger.error("Failed to encode history panel preferences: \(error.publicLogShape, privacy: .public)")
-        }
+        try? AppStorageEnvironment.shared.defaults.write(preferences, to: key(for: connectionId))
     }
 
     static func remove(for connectionId: UUID) {
-        AppStorageEnvironment.shared.defaults.removeObject(forKey: key(for: connectionId))
+        AppStorageEnvironment.shared.defaults.removeValue(for: key(for: connectionId))
     }
 }

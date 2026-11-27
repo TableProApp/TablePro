@@ -1,6 +1,6 @@
 # 0011: SQL dumps and SQL file imports run in process
 
-- **Status**: Accepted
+- **Status**: Accepted; the import of COPY rows as INSERTs superseded by [0024](0024-copy-rows-through-copy-in.md)
 - **Date**: 2026-11-05
 
 ## Context

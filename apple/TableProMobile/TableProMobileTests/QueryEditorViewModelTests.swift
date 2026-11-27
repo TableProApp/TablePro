@@ -495,6 +495,20 @@ struct QueryEditorViewModelTests {
         #expect(!QueryEditorViewModel.resultsFitExport(rows: rows, availableBytes: margin + 40_000))
     }
 
+    @Test("a Read-Only run asks every request for the engine's read-only mode, and any other run asks none")
+    func readOnlyReachesEveryRequest() async {
+        let driver = StreamOptionsRecorder()
+        let vm = QueryEditorViewModel(windowCapacity: 100)
+
+        await vm.run(driver: driver, script: .statements("SELECT 1", "SELECT 2"), enforcesReadOnly: true)
+        let readOnlyRun = driver.options.map { $0.enforcesReadOnly }
+        await vm.run(driver: driver, script: .statements("SELECT 3"))
+        let plainRun = driver.options.dropFirst(2).map { $0.enforcesReadOnly }
+
+        #expect(readOnlyRun == [true, true])
+        #expect(plainRun == [false])
+    }
+
     @Test("the budget is a quarter of the headroom past 64 MB, at most 64 MB, and 64 MB when the headroom is unknown")
     func textBudgetFollowsTheHeadroom() {
         let megabyte = 1_024 * 1_024
@@ -513,6 +527,40 @@ private extension QueryScript {
     static func statements(_ sql: String...) -> QueryScript {
         QueryScript(units: sql.map { Unit(sql: $0) }, unitKind: .statement)
     }
+}
+
+// Keeps the options each request streams with and answers every one with nothing.
+private final class StreamOptionsRecorder: DatabaseDriver, @unchecked Sendable {
+    private(set) var options: [StreamOptions] = []
+
+    var supportsSchemas: Bool { false }
+    var currentSchema: String? { nil }
+    var supportsTransactions: Bool { true }
+    var serverVersion: String? { nil }
+
+    func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
+        self.options.append(options)
+        return AsyncThrowingStream { $0.finish() }
+    }
+
+    func connect() async throws {}
+    func disconnect() async throws {}
+    func ping() async throws -> Bool { true }
+    func execute(query: String) async throws -> QueryResult {
+        QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+    func cancelCurrentQuery() async throws {}
+    func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    func fetchDatabases() async throws -> [String] { [] }
+    func switchDatabase(to name: String) async throws {}
+    func switchSchema(to name: String) async throws {}
+    func fetchSchemas() async throws -> [String] { [] }
+    func beginTransaction() async throws {}
+    func commitTransaction() async throws {}
+    func rollbackTransaction() async throws {}
 }
 
 private actor QueryGate {

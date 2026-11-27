@@ -1,168 +1,116 @@
-import AppKit
 import SwiftUI
 
 struct GeneralSettingsView: View {
-    @Binding var settings: GeneralSettings
-    @Binding var tabSettings: TabSettings
-    @ObservedObject var updater: SoftwareUpdater
-    var onResetAll: () -> Void
+    @ObservedObject var settings: SettingsSlice<GeneralSettings>
+    let onResetAll: () -> Void
+    @ObservedObject private var policy = ManagedPolicyCenter.shared
 
-    @State private var initialLanguage: AppLanguage?
     @State private var showResetConfirmation = false
-    @AppStorage(SidebarPersistenceKey.defaultLayout, store: AppStorageEnvironment.shared.defaults) private var defaultSidebarLayout: SidebarLayout = .flat
-
-    private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
-
-    private var queryTimeoutOptions: [Int] {
-        let current = settings.queryTimeoutSeconds
-        if current > 0, !Self.standardTimeouts.contains(current) {
-            return (Self.standardTimeouts + [current]).sorted()
-        }
-        return Self.standardTimeouts
-    }
 
     var body: some View {
         Form {
-            Picker("Language:", selection: $settings.language) {
-                ForEach(AppLanguage.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
-                }
-            }
-
-            if let initial = initialLanguage, settings.language != initial {
-                LabeledContent {
-                    Button(String(localized: "Relaunch")) {
-                        UpdateCenter.shared.relaunch()
-                    }
-                    .accessibilityIdentifier("language-relaunch-button")
-                } label: {
-                    Text("Relaunch TablePro to finish switching languages.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Picker("When TablePro starts:", selection: $settings.startupBehavior) {
-                ForEach(StartupBehavior.allCases) { behavior in
-                    Text(behavior.displayName).tag(behavior)
-                }
-            }
-
-            Section("Tabs") {
-                Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
-                    .help("Single-clicking a table opens a temporary tab that gets replaced on next click.")
-
-                Picker("When tabs stop fitting:", selection: $tabSettings.overflow) {
-                    ForEach(EditorTabStripOverflow.allCases, id: \.self) { style in
-                        Text(style.displayName).tag(style)
+            Section {
+                Picker("Language", selection: $settings.value.language) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.displayName).tag(language)
                     }
                 }
-                .help("Scrolling keeps one row of tabs, the way every macOS tab bar does. Rows wraps them so nothing is off screen.")
-            }
+                .accessibilityIdentifier("general-language-picker")
 
-            Section("Sidebar") {
-                Toggle("Show connections", isOn: $settings.showWorkspaceRail)
-                    .help("Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it.")
-
-                Toggle("Show recent tables", isOn: $settings.showRecentTables)
-                    .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
-
-                Toggle("Show object icons", isOn: $settings.showObjectIcons)
-                    .help("Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names.")
-
-                Toggle("Show object comments", isOn: $settings.showObjectComments)
-                    .help("Shows database object comments next to tables in the sidebar and in grid column headers.")
-
-                Toggle("Show system databases and schemas", isOn: $settings.showSystemContainers)
-                    .accessibilityIdentifier("show-system-containers-toggle")
-                    .help(String(localized: """
-                        Lists system databases such as mysql and information_schema, and system schemas, \
-                        in the sidebar tree and the database filter. Switchers always list them.
-                        """))
-
-                Toggle("Show partitions", isOn: $settings.showPartitions)
-                    .accessibilityIdentifier("show-partitions-toggle")
-                    .help(String(localized: """
-                        Lists a partitioned table's partitions under it in the sidebar, with how many \
-                        it holds. Turn it off to keep partitioned tables as single rows.
-                        """))
-
-                Picker("Row size:", selection: $settings.sidebarRowSize) {
-                    ForEach(SidebarRowSizePreference.allCases, id: \.self) { size in
-                        Text(size.title).tag(size)
+                if settings.value.language != LanguageLaunchState.language {
+                    LabeledContent {
+                        Button(String(localized: "Relaunch")) {
+                            UpdateCenter.shared.relaunch()
+                        }
+                        .accessibilityIdentifier("language-relaunch-button")
+                    } label: {
+                        Text("Relaunch TablePro to finish switching languages.")
                     }
                 }
-                .help(String(localized: """
-                    Match System follows Sidebar icon size in System Settings > Appearance. \
-                    Choose a size to fit more objects on screen than the rest of the system shows.
-                    """))
 
-                Picker("Default layout for new connections:", selection: $defaultSidebarLayout) {
-                    Text("List").tag(SidebarLayout.flat)
-                    Text("Tree").tag(SidebarLayout.tree)
-                }
-                .help(String(localized: "Layout for new connections on servers that support a database tree. Switch the current connection from the View menu."))
-            }
-
-            ConnectionsSettingsSection(healthCheck: $settings.connectionHealthCheck)
-
-            Section("Query Execution") {
-                Picker("Query timeout:", selection: $settings.queryTimeoutSeconds) {
-                    Text("No limit").tag(0)
-                    ForEach(queryTimeoutOptions, id: \.self) { seconds in
-                        Text("\(seconds) seconds").tag(seconds)
+                Picker("When TablePro starts", selection: $settings.value.startupBehavior) {
+                    ForEach(StartupBehavior.allCases) { behavior in
+                        Text(behavior.displayName).tag(behavior)
                     }
                 }
-                .help(String(localized: "Maximum time to wait for a query to complete. Set to 0 for no limit. Applied to new connections."))
+                .accessibilityIdentifier("general-startup-picker")
             }
-
-            CommandLineToolSection()
-
-            LinkedFoldersSection()
-
-            TrustedExternalConnectionsSection()
-
-            SoftwareUpdateSection(updater: updater, updates: .shared)
 
             Section {
-                Toggle("Share usage data", isOn: $settings.shareAnalytics)
+                SoftwareUpdateDrillRow()
+                SettingsDrillRow(route: SettingsRoute.page(.commandLineTool), title: SettingsPage.commandLineTool.title)
+            }
+
+            Section {
+                Toggle(isOn: shareUsageData) {
+                    Text("Share usage data")
+                    if policy.snapshot.allowsUsageData {
+                        Text(
+                            """
+                            Sent to PostHog: app and macOS versions, Mac model, screen size, architecture, language, \
+                            time zone, database types, connection count, first connection and query, plan prompts, \
+                            sign-in and sign-out, and your account ID once you sign in. Never hostnames, credentials, \
+                            queries, or rows.
+                            """
+                        )
+                    } else {
+                        Text("Managed by your organization")
+                            .accessibilityIdentifier("general-share-usage-managed")
+                    }
+                }
+                .disabled(!policy.snapshot.allowsUsageData)
+                .accessibilityIdentifier("general-share-usage-toggle")
             } header: {
                 Text("Privacy")
-            } footer: {
-                Text(
-                    """
-                    Sent to PostHog: app and macOS versions, Mac model, screen size, architecture, language, time zone, \
-                    database types, connection count, first connection and query, plan prompts, sign-in and sign-out, \
-                    and your account ID once you sign in. Never hostnames, credentials, queries, or rows.
-                    """
-                )
             }
 
             Section {
-                Button(String(localized: "Reset All Settings to Defaults"), role: .destructive) {
-                    showResetConfirmation = true
+                LabeledContent {
+                    Button(String(localized: "Reset…"), role: .destructive) {
+                        showResetConfirmation = true
+                    }
+                    .accessibilityLabel(String(localized: "Reset All Settings…"))
+                    .accessibilityIdentifier("general-reset-all-button")
+                } label: {
+                    Text("Reset all settings")
+                    Text("Returns every section to its defaults.")
                 }
             }
         }
         .formStyle(.grouped)
-        .alert(String(localized: "Reset All Settings"), isPresented: $showResetConfirmation) {
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-general")
+        .alert(String(localized: "Reset all settings?"), isPresented: $showResetConfirmation) {
             Button(String(localized: "Reset"), role: .destructive) { onResetAll() }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            Text("This will reset all settings across every section to their default values. AI providers, their API keys and Enable AI Features are kept.")
-        }
-        .onAppear {
-            if initialLanguage == nil { initialLanguage = settings.language }
+            Text(
+                """
+                Every section returns to its default values. AI providers and their API keys, Enable AI features, \
+                Share usage data, linked folders, trusted links, connections and history are kept.
+                """
+            )
         }
     }
 }
 
-#Preview {
-    GeneralSettingsView(
-        settings: .constant(.default),
-        tabSettings: .constant(.default),
-        updater: SoftwareUpdater.shared,
-        onResetAll: {}
-    )
-    .frame(width: 450, height: 500)
+extension GeneralSettingsView {
+    // UsageDataAllowed=false shows the switch off and leaves the person's own choice as it was.
+    private var shareUsageData: Binding<Bool> {
+        guard policy.snapshot.allowsUsageData else { return .constant(false) }
+        return $settings.value.shareAnalytics
+    }
+}
+
+// Only this row re-renders when the update status changes.
+private struct SoftwareUpdateDrillRow: View {
+    @ObservedObject private var updates = UpdateCenter.shared
+
+    var body: some View {
+        SettingsDrillRow(
+            route: SettingsRoute.page(.softwareUpdate),
+            title: SettingsPage.softwareUpdate.title,
+            value: updates.status.indicatorTitle
+        )
+    }
 }

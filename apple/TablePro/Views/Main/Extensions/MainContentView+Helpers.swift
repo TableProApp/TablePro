@@ -123,8 +123,12 @@ extension MainContentView {
         for row in displayRows {
             let values = columns.indices.map { i -> String in
                 guard i < row.values.count else { return "NULL" }
-                if let byteCount = row.unloadedByteCount(i) {
-                    return DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
+                if let byteCount = tableRows.unloadedByteCount(row.id, column: i) {
+                    // A cut text's first characters say more than its size, unless the summary masks the column.
+                    guard !overlay.isMasked(i), let head = tableRows.unloadedHead(row.id, column: i) else {
+                        return DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
+                    }
+                    return String(head.prefix(200)) + "…"
                 }
                 let raw: String
                 switch overlay.value(row.values[i], column: i) {

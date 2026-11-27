@@ -59,6 +59,7 @@ impl GridMenus {
         let editable = grid.config().is_some_and(|config| config.tracker.is_some());
         let references = gio::Menu::new();
         let expressions = gio::Menu::new();
+        let wraps = grid.config().is_some_and(|config| config.wrap_text);
         let cell = popover(grid, &cell_menu(grid, &references, &expressions));
         let empty = editable.then(|| {
             popover(
@@ -72,7 +73,7 @@ impl GridMenus {
         let reference_chooser = popover(grid, &gio::Menu::new());
         let choices = editable.then(|| popover(grid, &gio::Menu::new()));
         Self {
-            row_numbers: popover(grid, &row_numbers_header_menu()),
+            row_numbers: popover(grid, &row_numbers_header_menu(wraps)),
             cell,
             empty,
             references,
@@ -177,13 +178,15 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -
             item(&gettext("Show Row as _JSON"), "grid.show-row-json"),
         ]),
     );
-    menu.append_section(None, &column_section(sorts));
+    let wraps = config.as_ref().is_some_and(|config| config.wrap_text);
+    menu.append_section(None, &column_section(sorts, wraps));
     let export = item(&gettext("E_xport…"), "grid.export");
     // The window's Export Results key reaches the grid of the tab in front.
-    if let Some(key) = crate::application::triggers_for("win.export-results").first() {
-        export.set_attribute_value("accel", Some(&key.to_variant()));
-    }
+    crate::application::keymap::show_key_of(&export, "win.export-results");
     let rows = section([export]);
+    if config.as_ref().is_some_and(|config| config.share) {
+        rows.append_item(&item(&gettext("_Share Result…"), "grid.share"));
+    }
     if editable {
         rows.append_item(&item(&gettext("_Insert Row"), "grid.insert-row"));
         rows.append_item(&item(&gettext("D_uplicate"), "grid.duplicate-rows"));
@@ -195,7 +198,7 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -
 
 /// What a header's click and drag do, which no key reaches, so the cell
 /// menu offers them for the cell's column.
-fn column_section(sorts: bool) -> gio::Menu {
+fn column_section(sorts: bool, wraps: bool) -> gio::Menu {
     let column = gio::Menu::new();
     if sorts {
         column.append_item(&hidden_while_disabled(
@@ -218,14 +221,24 @@ fn column_section(sorts: bool) -> gio::Menu {
             item(&gettext("Col_umns…"), "grid.columns"),
         ]),
     );
+    if wraps {
+        column.append_section(None, &wrap_section());
+    }
     let menu = gio::Menu::new();
     menu.append_submenu(Some(&gettext("Colu_mn")), &column);
     menu
 }
 
+/// A check item for the whole grid, in a section of its own: the HIG keeps
+/// check items apart from commands.
+fn wrap_section() -> gio::Menu {
+    section([item(&gettext("_Wrap Text"), "grid.wrap-text")])
+}
+
 /// A header's own menu, on a secondary click. It names its column, since
-/// GTK opens it without telling the grid.
-pub fn header_menu(column: &GridColumn, sorting: GridSorting) -> gio::Menu {
+/// GTK opens it without telling the grid. `wraps` is for a grid that
+/// offers Wrap Text.
+pub fn header_menu(column: &GridColumn, sorting: GridSorting, wraps: bool) -> gio::Menu {
     let index = (column.index as u32).to_variant();
     let at = |label: String, action: &str| {
         let item = gio::MenuItem::new(Some(&label), None);
@@ -254,20 +267,26 @@ pub fn header_menu(column: &GridColumn, sorting: GridSorting) -> gio::Menu {
         ]),
     );
     menu.append_section(None, &section([item(&gettext("Col_umns…"), "grid.columns")]));
+    if wraps {
+        menu.append_section(None, &wrap_section());
+    }
+    crate::application::keymap::follow_menu(&menu);
     menu
 }
 
 /// The row number column's header menu. GTK keeps a header's click for
 /// sorting, so the header selects the rows from here. The key is
 /// GtkListBase's `list.select-all`, out of a header menu's reach.
-pub fn row_numbers_header_menu() -> gio::Menu {
+pub fn row_numbers_header_menu(wraps: bool) -> gio::Menu {
     let select_all = item(&gettext("Select _All Rows"), "grid.select-all");
-    if let Some(key) = crate::application::triggers_for("list.select-all").first() {
-        select_all.set_attribute_value("accel", Some(&key.to_variant()));
-    }
+    crate::application::keymap::show_key_of(&select_all, "list.select-all");
     let menu = gio::Menu::new();
     menu.append_section(None, &section([select_all]));
     menu.append_section(None, &section([item(&gettext("Col_umns…"), "grid.columns")]));
+    if wraps {
+        menu.append_section(None, &wrap_section());
+    }
+    crate::application::keymap::follow_menu(&menu);
     menu
 }
 

@@ -7,16 +7,28 @@ import Foundation
 import TableProCloudAPI
 
 internal enum AccountAPI {
+    // The server URL is the bearer middleware's to set, from the server the core signs in to. `onlyTo` pins a
+    // tablepro.app service to tablepro.app.
     static func client(
-        configuration: AccountConfiguration,
+        backend: any AccountBackend,
         transport: any ClientTransport,
-        session: AccountSession
+        onlyTo: URL? = nil,
+        session: String? = nil
     ) -> Client {
         Client(
-            serverURL: configuration.apiServerURL,
+            serverURL: AccountServer.production.apiBaseURL,
             configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
             transport: transport,
-            middlewares: [BearerTokenMiddleware(session: session)]
+            middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: onlyTo, session: session)]
+        )
+    }
+
+    // No bearer, and never the company server: a shared link is a tablepro.app link, opened signed in or not.
+    static func publicClient(serverURL: URL, transport: any ClientTransport) -> Client {
+        Client(
+            serverURL: serverURL,
+            configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
+            transport: transport
         )
     }
 
@@ -25,9 +37,14 @@ internal enum AccountAPI {
     }
 }
 
-// Sends the session's access token, and on a 401 refreshes once and retries.
-internal struct BearerTokenMiddleware: ClientMiddleware {
-    let session: AccountSession
+// Sends the core's access token to the server it was issued for, and on a 401 tells the core and retries once, on
+// that server only: a body sent to one server never goes to another.
+internal struct AccountBearerMiddleware: ClientMiddleware {
+    let backend: any AccountBackend
+    // A sign-in on any other server reads as signed out, and nothing is sent.
+    var onlyTo: URL?
+    // The core's sign-in a body was kept for: a bearer of any other is never sent with it.
+    var session: String?
 
     func intercept(
         _ request: HTTPRequest,
@@ -36,16 +53,24 @@ internal struct BearerTokenMiddleware: ClientMiddleware {
         operationID: String,
         next: @concurrent @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
-        let token = try await session.accessToken()
+        let access = try await backend.accessToken()
+        if let onlyTo, access.apiBaseURL != onlyTo {
+            throw AccountError.signedOut
+        }
+        guard session == nil || access.sessionID == session else { throw AccountError.signedOut }
         var request = request
-        request.headerFields[.authorization] = "Bearer \(token.value)"
-        let (response, responseBody) = try await next(request, body, baseURL)
+        request.headerFields[.authorization] = "Bearer \(access.token)"
+        let (response, responseBody) = try await next(request, body, access.apiBaseURL)
         guard response.status == .unauthorized else {
             return (response, responseBody)
         }
-        let refreshed = try await session.refresh(replacing: token)
-        request.headerFields[.authorization] = "Bearer \(refreshed.value)"
-        return try await next(request, body, baseURL)
+        await backend.accessTokenRejected(access.token)
+        let refreshed = try await backend.accessToken()
+        guard refreshed.apiBaseURL == access.apiBaseURL, refreshed.sessionID == access.sessionID else {
+            throw AccountError.signedOut
+        }
+        request.headerFields[.authorization] = "Bearer \(refreshed.token)"
+        return try await next(request, body, access.apiBaseURL)
     }
 }
 

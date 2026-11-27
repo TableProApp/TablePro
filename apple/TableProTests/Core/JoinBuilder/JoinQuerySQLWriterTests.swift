@@ -25,7 +25,7 @@ struct JoinQuerySQLWriterTests {
 
     private let graph = JoinGraphTests.graph()
 
-    private static let columnTypes: [String: [String: ColumnType]] = [
+    private static let columnTypes: [CatalogName: [String: ColumnType]] = [
         "orders": [
             "id": .integer(rawType: "int"),
             "customer_id": .integer(rawType: "int"),
@@ -52,7 +52,7 @@ struct JoinQuerySQLWriterTests {
     private func draft(_ tables: [String]) -> JoinQueryDraft {
         var draft = JoinQueryDraft()
         for table in tables {
-            draft.add(table, in: graph)
+            draft.add(CatalogName(table), in: graph)
         }
         return draft
     }

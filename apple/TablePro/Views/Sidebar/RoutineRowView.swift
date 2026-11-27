@@ -1,8 +1,3 @@
-//
-//  RoutineRowView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 enum RoutineRowLogic {
@@ -22,7 +17,6 @@ enum RoutineRowLogic {
         }
     }
 
-    /// The parts the row could not show: its full identity, then whatever the engine said about it.
     static func tooltip(for routine: RoutineInfo) -> String {
         var lines = [RoutineDisplayLabel.copyableSignature(for: routine)]
         if let returnType = routine.returnType, !returnType.isEmpty {
@@ -37,9 +31,9 @@ enum RoutineRowLogic {
 }
 
 struct RoutineRowView: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let routine: RoutineInfo
     let displayLabel: String
+    let showsIcon: Bool
 
     var body: some View {
         Label {
@@ -51,7 +45,7 @@ struct RoutineRowView: View {
                 .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
-        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .sidebarRowIcon(visible: showsIcon)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(RoutineRowLogic.accessibilityLabel(for: routine, displayLabel: displayLabel))
         .help(RoutineRowLogic.tooltip(for: routine))

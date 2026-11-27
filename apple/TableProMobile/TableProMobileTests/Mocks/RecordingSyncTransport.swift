@@ -4,7 +4,7 @@ import Foundation
 import TableProSyncTransport
 
 // Answers every pull with the records it holds and saves every push, recording both.
-actor RecordingSyncTransport: IOSSyncTransport {
+actor RecordingSyncTransport {
     let currentZoneID = CKRecordZone.ID(zoneName: "RecordingZone", ownerName: CKCurrentUserDefaultName)
     private var remoteRecords: [CKRecord]
     private var remoteDeletions: [CKRecord.ID]
@@ -12,6 +12,12 @@ actor RecordingSyncTransport: IOSSyncTransport {
     private(set) var pushedRecords: [CKRecord] = []
     private(set) var pushedDeletions: [CKRecord.ID] = []
     private(set) var pullCount = 0
+    private(set) var fullFetchCount = 0
+    private var answersOnlyFullFetches = false
+    private var fetchable: [CKRecord.ID: CKRecord] = [:]
+    private(set) var fetchedRecordIDs: [CKRecord.ID] = []
+    private(set) var subscriptionSaves = 0
+    private var subscriptionError: (any Error)?
     private var beforeAccountRead: (@Sendable () async -> Void)?
     private var beforePull: (@Sendable () async -> Void)?
 
@@ -28,6 +34,16 @@ actor RecordingSyncTransport: IOSSyncTransport {
     func answerPulls(with records: [CKRecord], deletions: [CKRecord.ID] = []) {
         remoteRecords = records
         remoteDeletions = deletions
+    }
+
+    // A server nothing changed on: a pull from a token brings nothing, and only a full fetch lists the records.
+    func answerOnlyFullFetches() {
+        answersOnlyFullFetches = true
+    }
+
+    // Served to a fetch by id, as the server holds it.
+    func serveOnFetch(_ record: CKRecord) {
+        fetchable[record.recordID] = record
     }
 
     // Runs inside every account read, before any download starts.
@@ -51,14 +67,31 @@ actor RecordingSyncTransport: IOSSyncTransport {
 
     func ensureZoneExists() async throws {}
 
+    func failSubscriptionSaves(with error: (any Error)?) {
+        subscriptionError = error
+    }
+
+    func saveSubscription() async throws {
+        subscriptionSaves += 1
+        if let subscriptionError {
+            throw subscriptionError
+        }
+    }
+
     func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         pullCount += 1
         await beforePull?()
+        if token == nil {
+            fullFetchCount += 1
+        } else if answersOnlyFullFetches {
+            return PullResult(changedRecords: [], deletedRecordIDs: [], newToken: newToken)
+        }
         return PullResult(changedRecords: remoteRecords, deletedRecordIDs: remoteDeletions, newToken: newToken)
     }
 
     func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord] {
-        [:]
+        fetchedRecordIDs.append(contentsOf: recordIDs)
+        return fetchable.filter { recordIDs.contains($0.key) }
     }
 
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
@@ -100,3 +133,7 @@ private final class RecordingChangeTokenArchive: NSObject, NSSecureCoding {
 
     func encode(with coder: NSCoder) {}
 }
+
+// Xcode 27.1 fails the conformance written on the actor ("'nonisolated' on an actor") when a test that makes one
+// compiles in the same batch.
+extension RecordingSyncTransport: IOSSyncTransport {}

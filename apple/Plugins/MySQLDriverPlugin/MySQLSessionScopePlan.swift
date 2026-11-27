@@ -8,7 +8,7 @@ import TableProMySQLCore
 import TableProPluginKit
 
 /// Which session settings each purpose saves and sets on MySQL, and what putting them back takes.
-internal enum MySQLSessionScopePlan {
+nonisolated internal enum MySQLSessionScopePlan {
     /// What a mysqldump or mariadb-dump file sets and puts back only at its end, which an imported file leaves changed
     /// when it stops early. `SHOW` reports only the ones the server has: `note_verbosity` is MariaDB's.
     ///

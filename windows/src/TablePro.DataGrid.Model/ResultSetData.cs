@@ -30,10 +30,13 @@ public sealed class ResultSetData : IGridData
     {
         private readonly ResultCursor _cursor = set.OpenCursor();
 
+        public bool KeepsLineBreaks { get; set; }
+
         public void Read(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters, CellBlock block)
         {
-            var window = _cursor.Fetch(firstRow, rowCount, firstColumn, columnCount, maxCharacters);
-            block.Reset(firstRow, window.RowCount, firstColumn, window.ColumnCount, maxCharacters);
+            var keeps = KeepsLineBreaks;
+            var window = _cursor.Fetch(firstRow, rowCount, firstColumn, columnCount, maxCharacters, keeps);
+            block.Reset(firstRow, window.RowCount, firstColumn, window.ColumnCount, maxCharacters, keeps);
             var characters = 0;
             for (var column = 0; column < window.ColumnCount; column++)
             {
@@ -52,11 +55,23 @@ public sealed class ResultSetData : IGridData
                     {
                         block.AddNull();
                     }
+                    else if (window.GetKind(row, column) == ValueKind.Undecodable)
+                    {
+                        block.AddUnreadable(window.GetUtf8(row, column));
+                    }
                     else
                     {
                         var text = window.GetUtf8(row, column);
-                        var lossy = IsText(window.GetKind(row, column)) && text.Contains((byte)' ');
-                        block.Add(text, window.IsTruncated(row, column), lossy);
+                        var truncated = window.IsTruncated(row, column);
+                        // A kept break may stand for CR LF or another form, as a space may for a tab.
+                        var lossy = IsText(window.GetKind(row, column))
+                            && (text.Contains((byte)' ') || (keeps && text.Contains((byte)'\n')));
+                        // A value's last line break starts no line of its own in a wrapped cell.
+                        if (keeps && !truncated && text.Length > 0 && text[^1] == (byte)'\n')
+                        {
+                            text = text[..^1];
+                        }
+                        block.Add(text, truncated, lossy);
                     }
                 }
             }

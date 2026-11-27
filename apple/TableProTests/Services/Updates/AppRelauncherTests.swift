@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -14,6 +15,10 @@ final class AppRelauncherFixture {
     let suite: EphemeralDefaults
     var documentsReviewed = true
     var stoppingWorkApproved = true
+    var commits: [SessionTransactionTracker.Hold] = []
+    var commitSucceeds = true
+    var commitGate: AsyncGate?
+    private(set) var commitCalls = 0
     private(set) var workQuestions = 0
     private(set) var approvedWhenQuitting: [Bool] = []
     var hasPendingUpdate = false
@@ -21,6 +26,8 @@ final class AppRelauncherFixture {
     var reopenFails = false
     private(set) var installs = 0
     private(set) var terminations = 0
+    // Runs that went through the next run loop turn rather than inside the commit's task.
+    private(set) var deferredRuns = 0
     private(set) var reopens: [(pid: pid_t, bundleURL: URL)] = []
     private(set) var relauncher: AppRelauncher!
 
@@ -30,7 +37,12 @@ final class AppRelauncherFixture {
             defaults: suite.defaults,
             approveStoppingWork: { [unowned self] in
                 workQuestions += 1
-                return stoppingWorkApproved
+                return stoppingWorkApproved ? QuitPlan(commits: commits, work: []) : nil
+            },
+            commitBeforeQuitting: { [unowned self] _ in
+                commitCalls += 1
+                await commitGate?.wait()
+                return commitSucceeds
             },
             reviewUnsavedDocuments: { [unowned self] completion in completion(documentsReviewed) },
             installPendingUpdate: { [unowned self] in
@@ -47,6 +59,10 @@ final class AppRelauncherFixture {
                 case .cancelledByTheApp:
                     relauncher.terminationWasCancelled()
                 }
+            },
+            performOutsideTask: { [unowned self] body in
+                deferredRuns += 1
+                body()
             },
             reopenAfterExit: { [unowned self] pid, url in
                 if reopenFails { throw CocoaError(.executableLoad) }
@@ -194,6 +210,101 @@ struct AppRelauncherTests {
         fixture.relauncher.relaunch()
 
         #expect(!fixture.reopenRequested)
+    }
+
+    @Test("With nothing to commit, the relaunch quits at once")
+    func noCommitQuitsAtOnce() throws {
+        let fixture = try AppRelauncherFixture()
+
+        fixture.relauncher.relaunch()
+
+        #expect(fixture.commitCalls == 0)
+        #expect(fixture.relauncher.pendingCommit == nil)
+        #expect(fixture.deferredRuns == 0)
+        #expect(fixture.terminations == 1)
+    }
+
+    // The quit a relaunch starts asks nothing, so a transaction it would end is committed first.
+    @Test("With an open transaction to commit, the relaunch quits only after the commit, outside its task")
+    func quitsOnlyAfterTheCommit() async throws {
+        let fixture = try AppRelauncherFixture()
+        let gate = AsyncGate()
+        fixture.commits = [Self.hold()]
+        fixture.commitGate = gate
+
+        fixture.relauncher.relaunch()
+        let commit = try #require(fixture.relauncher.pendingCommit)
+        await gate.arrived(1)
+
+        #expect(fixture.terminations == 0)
+        #expect(!fixture.relauncher.isRelaunchPending)
+
+        await gate.open()
+        await commit.value
+
+        #expect(fixture.commitCalls == 1)
+        #expect(fixture.deferredRuns == 1)
+        #expect(fixture.terminations == 1)
+        #expect(fixture.reopens.count == 1)
+        #expect(fixture.relauncher.pendingCommit == nil)
+    }
+
+    @Test("Sparkle takes over only after the commit, outside its task")
+    func sparkleInstallsAfterTheCommit() async throws {
+        let fixture = try AppRelauncherFixture()
+        fixture.commits = [Self.hold()]
+        fixture.hasPendingUpdate = true
+
+        fixture.relauncher.relaunch()
+        let commit = try #require(fixture.relauncher.pendingCommit)
+        await commit.value
+
+        #expect(fixture.deferredRuns == 1)
+        #expect(fixture.installs == 1)
+        #expect(fixture.relauncher.isRelaunchPending)
+    }
+
+    @Test("A commit that fails or is cancelled stops the relaunch, and a later quit stays a quit")
+    func failedCommitStopsTheRelaunch() async throws {
+        let fixture = try AppRelauncherFixture()
+        fixture.commits = [Self.hold()]
+        fixture.commitSucceeds = false
+        fixture.hasPendingUpdate = true
+
+        fixture.relauncher.relaunch()
+        let commit = try #require(fixture.relauncher.pendingCommit)
+        await commit.value
+
+        #expect(fixture.commitCalls == 1)
+        #expect(fixture.deferredRuns == 0)
+        #expect(fixture.installs == 0)
+        #expect(fixture.terminations == 0)
+        #expect(!fixture.relauncher.isRelaunchPending)
+        #expect(!fixture.relauncher.hasApprovedRunningWork)
+        #expect(fixture.relauncher.pendingCommit == nil)
+    }
+
+    @Test("A second relaunch while the commit runs asks nothing again")
+    func relaunchDuringTheCommitIsIgnored() async throws {
+        let fixture = try AppRelauncherFixture()
+        let gate = AsyncGate()
+        fixture.commits = [Self.hold()]
+        fixture.commitGate = gate
+
+        fixture.relauncher.relaunch()
+        let commit = try #require(fixture.relauncher.pendingCommit)
+        await gate.arrived(1)
+        fixture.relauncher.relaunch()
+        await gate.open()
+        await commit.value
+
+        #expect(fixture.workQuestions == 1)
+        #expect(fixture.commitCalls == 1)
+        #expect(fixture.terminations == 1)
+    }
+
+    private static func hold() -> SessionTransactionTracker.Hold {
+        SessionTransactionTracker.Hold(key: .init(connectionId: UUID(), lane: nil), state: .open, revision: 0)
     }
 
     @Test("The next launch reads the reopen request once")

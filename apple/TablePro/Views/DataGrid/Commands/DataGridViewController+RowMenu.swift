@@ -123,6 +123,9 @@ extension DataGridViewController {
 
     private func resultItems(context: DataGridMenuContext, cell: DataGridCommandCell?) -> [NSMenuItem] {
         var items: [NSMenuItem] = []
+        if cell != nil, let focus = context.scope(in: model).focus, let editor = valueEditor(at: focus) {
+            items.append(menuItem(Self.valueEditorTitle(editor), #selector(openValueEditorFromMenu(_:)), context))
+        }
         if gridCommands.offers(.showRowsAsJSON) {
             items.append(menuItem(String(localized: "Show Row as JSON"), #selector(showRowsAsJSONFromMenu(_:)), context))
         }
@@ -209,6 +212,9 @@ extension DataGridViewController {
         if gridCommands.offers(.exportResults) {
             items.append(menuItem(String(localized: "Export Results…"), #selector(exportResultsFromMenu(_:)), context))
         }
+        if gridCommands.offers(.shareResult), ShareAvailability.isAvailable {
+            items.append(menuItem(String(localized: "Share Result…"), #selector(shareResultFromMenu(_:)), context))
+        }
         if gridCommands.offers(.clearResults) {
             items.append(menuItem(String(localized: "Clear Results"), #selector(clearResultsFromMenu(_:)), context))
         }
@@ -231,6 +237,7 @@ extension DataGridViewController {
     private static let rowMenuActions: Set<Selector> = [
         #selector(DataGridViewController.undoDeleteFromMenu(_:)),
         #selector(DataGridViewController.showRowsAsJSONFromMenu(_:)),
+        #selector(DataGridViewController.openValueEditorFromMenu(_:)),
         #selector(DataGridViewController.chooseForeignKeyRowFromMenu(_:)),
         #selector(DataGridViewController.previewForeignKeyFromMenu(_:)),
         #selector(DataGridViewController.openForeignKeyFromMenu(_:)),
@@ -238,6 +245,7 @@ extension DataGridViewController {
         #selector(DataGridViewController.applySetValueFromMenu(_:)),
         #selector(DataGridViewController.removeFieldFromMenu(_:)),
         #selector(DataGridViewController.exportResultsFromMenu(_:)),
+        #selector(DataGridViewController.shareResultFromMenu(_:)),
         #selector(DataGridViewController.clearResultsFromMenu(_:)),
         #selector(DataGridViewController.duplicateRowsFromMenu(_:)),
         #selector(DataGridViewController.copySummaryFigureFromMenu(_:)),
@@ -263,6 +271,10 @@ extension DataGridViewController {
 
     @objc func exportResultsFromMenu(_ sender: Any?) {
         model.actions?.gridExportResults()
+    }
+
+    @objc func shareResultFromMenu(_ sender: Any?) {
+        model.actions?.gridShareResult()
     }
 
     @objc func clearResultsFromMenu(_ sender: Any?) {

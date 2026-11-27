@@ -7,12 +7,12 @@ import TableProPluginKit
 
 // Runs a driver the Mac ships as a plugin, compiled into this app, the way the Mac's PluginDriverAdapter does. Its
 // rows are written with SQLBuilder's statements, as the Mac writes them for a plugin that generates none of its own.
-nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRowStreaming, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginBackedDriver")
 
     let plugin: any PluginDatabaseDriver
     let dialedHosts: [String]
-    private let queryTimeoutSeconds: Int?
+    let queryTimeoutSeconds: Int?
     private let readsOnly: @Sendable (String) -> Bool
     private let provesReads: Bool
     private let cancelsRunningRequest: (@Sendable () -> Void)?
@@ -125,6 +125,9 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
         plugin.disconnect()
     }
 
+    // Declared here so a driver over a file it holds open can say so.
+    var holdsSuspensionBlockingResource: Bool { false }
+
     func ping() async throws -> Bool {
         try await plugin.ping()
         return true
@@ -142,7 +145,13 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> QueryResult {
         let context = statementContext(query)
-        return QueryResult(from: try await exclusively { try await plugin.execute(query: query, context: context) })
+        return legacyResult(try await exclusively { try await plugin.execute(query: query, context: context) })
+    }
+
+    // The rows as text, for `execute`'s callers. Declared here so an engine whose columns can lack a type says what
+    // its values were.
+    func legacyResult(_ result: PluginQueryResult) -> QueryResult {
+        QueryResult(from: result)
     }
 
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
@@ -190,46 +199,17 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
         options: StreamOptions,
         into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
     ) {
-        let columns = zip(result.columns, result.columnTypeNames).enumerated().map { index, pair in
-            ColumnInfo(name: pair.0, typeName: pair.1, ordinalPosition: index)
-        }
-        continuation.yield(.columns(columns))
-        let keyIndices = options.lazyContext.map { context in
-            context.primaryKeyColumns.map { key in result.columns.firstIndex(of: key) }
-        }
+        var rows = PluginRowEmitter(options: options)
+        rows.begin(columns: result.columns, typeNames: result.columnTypeNames, into: continuation)
         let locators = result.rowLocators.flatMap { $0.count == result.rows.count ? $0 : nil } ?? []
 
-        var emitted = 0
         for (rowIndex, row) in result.rows.enumerated() {
             if Task.isCancelled {
                 continuation.yield(.truncated(reason: .cancelled))
                 return
             }
-            if emitted >= options.maxRows {
-                continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
-                return
-            }
             let locator = locators.indices.contains(rowIndex) ? locators[rowIndex] : nil
-            let cells = row.enumerated().map { index, value -> Cell in
-                let ref = cellRef(
-                    column: index < result.columns.count ? result.columns[index] : "",
-                    row: row,
-                    locator: locator,
-                    keyIndices: keyIndices,
-                    options: options
-                )
-                switch value {
-                case .null:
-                    return .null
-                // Bytes stay binary: shown as hex text they would read as an editable value and match no row.
-                case .bytes(let data):
-                    return .binary(byteCount: data.count, ref: ref)
-                case .text(let text):
-                    return Cell.from(text: text, options: options, ref: ref)
-                }
-            }
-            continuation.yield(.row(Row(cells: cells, locator: locator)))
-            emitted += 1
+            guard rows.emit(row, locator: locator, into: continuation) else { return }
         }
 
         if let message = result.statusMessage {
@@ -240,27 +220,11 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
         }
         // A plugin that capped the read itself returns exactly the cap and says it stopped there.
         if result.isTruncated {
-            let reason: TruncationReason = emitted >= options.maxRows
+            let reason: TruncationReason = rows.emitted >= options.maxRows
                 ? .rowCap(options.maxRows)
                 : .driverLimit("driver returned isTruncated=true")
             continuation.yield(.truncated(reason: reason))
         }
-    }
-
-    private static func cellRef(
-        column: String,
-        row: [PluginCellValue],
-        locator: String?,
-        keyIndices: [Int?]?,
-        options: StreamOptions
-    ) -> CellRef? {
-        guard let context = options.lazyContext, let keyIndices, !keyIndices.isEmpty else { return nil }
-        var components: [PrimaryKeyComponent] = []
-        for (key, index) in zip(context.primaryKeyColumns, keyIndices) {
-            guard let index, index < row.count, case .text(let value) = row[index] else { return nil }
-            components.append(PrimaryKeyComponent(column: key, value: value))
-        }
-        return CellRef(table: context.table, column: column, primaryKey: components, locator: locator)
     }
 
     // MARK: - Catalog
@@ -318,6 +282,77 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
 
     var currentSchema: String? { plugin.currentSchema }
 
+    // MARK: - Transfer
+
+    // The plugin's own result, bytes kept and no row cap, taking its turn like any other request.
+    func catalogQuery(_ sql: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        let plugin = plugin
+        var catalogContext = statementContext(sql)
+        catalogContext.readsCatalog = true
+        let context = catalogContext
+        return try await inSessionDatabase {
+            guard !parameters.isEmpty else { return try await plugin.execute(query: sql, context: context) }
+            return try await plugin.executeParameterized(query: sql, parameters: parameters, context: context)
+        }
+    }
+
+    // The plugin's stream, which reads a batch only when the export asks for one. It skips the request gate, so a
+    // transfer runs it on a driver of its own (`ConnectionManager.openDedicatedDriver`).
+    func exportRows(query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        var context = statementContext(query)
+        // A file export only reads, whatever the statement classifies as, as on the Mac.
+        context.readOnly = true
+        context.enforcesReadOnly = readOnly
+        return plugin.streamRows(query: query, context: context)
+    }
+
+    // A query export with the plugin's typed documents beside its rows, which MQL writes from (MongoDB).
+    func exportDocuments(query: String, readOnly: Bool) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        var context = statementContext(query)
+        context.readOnly = true
+        context.enforcesReadOnly = readOnly
+        return plugin.streamExportRows(query: query, context: context)
+    }
+
+    // The column types reach the plugin as the Mac's import hands them over.
+    func executeParameterized(query: String, parameters: [PluginCellValue], typeNames: [String?]?) async throws
+        -> QueryResult {
+        let plugin = plugin
+        var typedContext = statementContext(query)
+        typedContext.parameterTypeNames = typeNames
+        let context = typedContext
+        return legacyResult(try await inSessionDatabase {
+            try await plugin.executeParameterized(query: query, parameters: parameters, context: context)
+        })
+    }
+
+    func foreignKeyCheckStatements(enabled: Bool) -> [String] {
+        (enabled ? plugin.foreignKeyEnableStatements() : plugin.foreignKeyDisableStatements()) ?? []
+    }
+
+    // What the Mac's `ExportDataSourceAdapter` asks the plugin. Declared here so Oracle, whose export reads through its
+    // plugin's own catalog, answers with that.
+    func makeExportCatalog(context: MobileTransferContext) async throws -> any MobileExportCatalog {
+        PluginTransferCatalog(
+            driver: self,
+            databaseTypeId: context.databaseType.rawValue,
+            groupsByDatabase: context.databaseType == .clickhouse,
+            listsBySchema: context.databaseType == .duckdb,
+            switchesDatabase: context.databaseType == .mongodb,
+            openedDatabase: context.database?.nilIfEmpty ?? currentDatabase
+        )
+    }
+
+    // MongoDB takes no rows from a file, as on the Mac (D9).
+    func makeWriteDialect(context: MobileTransferContext) async throws -> any MobileWriteDialect {
+        guard context.databaseType != .mongodb else {
+            throw MobileTransferRefusal(reason: String(
+                format: String(localized: "%@ cannot take rows from a file."), context.databaseType.mobileDisplayName
+            ))
+        }
+        return PluginWriteDialect(plugin: plugin, databaseTypeId: context.databaseType.rawValue)
+    }
+
     // MARK: - Transactions
 
     var supportsTransactions: Bool { plugin.supportsTransactions }
@@ -339,10 +374,96 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
         guard plugin.supportsTransactions else { return .idle }
         switch await plugin.sessionTransactionState() {
         case .idle: return .idle
-        case .inTransaction, .abortedTransaction: return .explicitTransaction
+        case .inTransaction: return .explicitTransaction
+        case .abortedTransaction: return .abortedTransaction
         case .holdsSessionLocks: return .implicitTransaction
         case .unknown: return .unknown
         @unknown default: return .unknown
         }
+    }
+}
+
+// A plugin's rows as stream elements, one at a time: each cut for display as it comes, up to the cap.
+nonisolated struct PluginRowEmitter {
+    let options: StreamOptions
+    private var columns: [String] = []
+    private var keyIndices: [Int?]?
+    private(set) var emitted = 0
+
+    init(options: StreamOptions) {
+        self.options = options
+    }
+
+    mutating func begin(
+        columns: [String],
+        typeNames: [String],
+        into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
+    ) {
+        self.columns = columns
+        continuation.yield(.columns(zip(columns, typeNames).enumerated().map { index, pair in
+            ColumnInfo(name: pair.0, typeName: pair.1, ordinalPosition: index)
+        }))
+        keyIndices = options.lazyContext.map { context in
+            context.primaryKeyColumns.map { key in columns.firstIndex(of: key) }
+        }
+    }
+
+    // False once a row past the cap arrived, after saying the read stopped there.
+    mutating func emit(
+        _ row: [PluginCellValue],
+        locator: String?,
+        into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
+    ) -> Bool {
+        guard emitted < options.maxRows else {
+            continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
+            return false
+        }
+        let keyText: (Int) -> String? = { index in
+            guard index < row.count, case .text(let value) = row[index] else { return nil }
+            return value
+        }
+        let cells = row.indices.map { index -> Cell in
+            let ref = ref(column: index < columns.count ? columns[index] : "", keyText: keyText, locator: locator)
+            switch row[index] {
+            case .null:
+                return .null
+            // Bytes stay binary: shown as hex text they would read as an editable value and match no row.
+            case .bytes(let data):
+                return .binary(byteCount: data.count, ref: ref)
+            case .text(let text):
+                return Cell.from(text: text, options: options, ref: ref)
+            }
+        }
+        return emit(cells: cells, locator: locator, into: continuation)
+    }
+
+    // A row whose cells the caller made, under the same cap.
+    mutating func emit(
+        cells: [Cell],
+        locator: String?,
+        into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
+    ) -> Bool {
+        guard emitted < options.maxRows else {
+            continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
+            return false
+        }
+        continuation.yield(.row(Row(cells: cells, locator: locator)))
+        emitted += 1
+        return true
+    }
+
+    func column(at index: Int) -> String {
+        index < columns.count ? columns[index] : ""
+    }
+
+    // The key a long value is read back by, from the row's key columns as text.
+    func ref(column: String, keyText: (Int) -> String?, locator: String?) -> CellRef? {
+        guard let context = options.lazyContext, let keyIndices, !keyIndices.isEmpty else { return nil }
+        var components: [PrimaryKeyComponent] = []
+        for (key, index) in zip(context.primaryKeyColumns, keyIndices) {
+            guard let index, let value = keyText(index) else { return nil }
+            components.append(PrimaryKeyComponent(column: key, value: value))
+        }
+        return CellRef(table: context.table, column: column, primaryKey: components, locator: locator)
     }
 }

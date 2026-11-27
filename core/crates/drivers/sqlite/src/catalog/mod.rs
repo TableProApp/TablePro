@@ -14,13 +14,16 @@ use tablepro_core::column::{
     BoolStorage, CatalogType, ColumnDefault, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm,
     SqlExpression, SqlTypeExpr, TemporalZone, TextLength, TimeRange, classify_type_name,
 };
+use tablepro_core::meta::TableInfo;
 use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
 use tablepro_core::value::{SqlDecimal, Value};
+
+use crate::statement_limit::{byte_length, capped};
 
 pub(crate) use dependents::{SchemaRow, select_dependents};
 pub use runtime_version::{SQLITE_MIN_VERSION, SqliteVersion, check_runtime_version};
 pub(crate) use sqlite_column_row::{SqliteColumnRow, TableFacts};
-pub(crate) use table_definition::{InboundKeyRow, foreign_key_names, generated_expressions, inbound_foreign_keys};
+pub(crate) use table_definition::{InboundKeyColumn, foreign_key_names, generated_expressions, inbound_foreign_keys};
 
 /// The schema unqualified names resolve to.
 pub(crate) const MAIN_SCHEMA: &str = "main";
@@ -45,11 +48,15 @@ pub(crate) const INDEX_LIST_SQL: &str =
 pub(crate) const INDEX_XINFO_SQL: &str =
     "SELECT cid, name, \"desc\" FROM pragma_index_xinfo(?1, ?2) WHERE key = 1 ORDER BY seqno";
 
-pub(crate) const FOREIGN_KEY_LIST_SQL: &str = "SELECT id, \"table\", \"from\", \"to\", on_update, on_delete \
-     FROM pragma_foreign_key_list(?1, ?2) ORDER BY id, seq";
+// Unsorted: a sort holds every row before the first, and a column can carry REFERENCES thousands of times.
+pub(crate) const FOREIGN_KEY_LIST_SQL: &str = "SELECT id, seq, \"table\", \"from\", \"to\", on_update, on_delete \
+     FROM pragma_foreign_key_list(?1, ?2)";
 
-pub(crate) const FOREIGN_KEY_CHECK_SQL: &str =
-    "SELECT \"table\", rowid, parent, fkid FROM pragma_foreign_key_check(?1, ?2)";
+// A key column as `FOREIGN_KEY_LIST_SQL` reads it: its `seq`, the child's column and the parent's, if named.
+pub(crate) type ListedKeyColumn = (i64, String, Option<String>);
+
+// Not the table and parent names, which repeat on every row that breaks a key.
+pub(crate) const FOREIGN_KEY_CHECK_SQL: &str = "SELECT rowid, fkid FROM pragma_foreign_key_check(?1, ?2)";
 
 /// `sqlite_schema` of one schema, which has to be named in the FROM.
 pub(crate) fn objects_sql(schema_sql: &str) -> String {
@@ -62,35 +69,76 @@ pub(crate) fn objects_sql(schema_sql: &str) -> String {
 /// By the table too, which the sidebar names a trigger by.
 pub(crate) fn trigger_sql(schema_sql: &str) -> String {
     format!(
-        "SELECT sql FROM {schema_sql}.sqlite_schema \
-         WHERE type = 'trigger' AND name = ?1 AND tbl_name = ?2"
+        "SELECT {} FROM {schema_sql}.sqlite_schema \
+         WHERE type = 'trigger' AND name = ?1 AND tbl_name = ?2",
+        capped("sql")
     )
 }
 
 pub(crate) fn object_sql(schema_sql: &str) -> String {
-    format!("SELECT type, sql FROM {schema_sql}.sqlite_schema WHERE name = ?1 COLLATE NOCASE")
+    format!(
+        "SELECT type, {} FROM {schema_sql}.sqlite_schema WHERE name = ?1 COLLATE NOCASE",
+        capped("sql")
+    )
 }
 
 pub(crate) fn index_sql(schema_sql: &str) -> String {
-    format!("SELECT sql FROM {schema_sql}.sqlite_schema WHERE type = 'index' AND name = ?1")
+    format!(
+        "SELECT {} FROM {schema_sql}.sqlite_schema WHERE type = 'index' AND name = ?1",
+        capped("sql")
+    )
 }
 
 pub(crate) fn dependents_sql(schema_sql: &str) -> String {
     format!(
-        "SELECT type, name, tbl_name, sql FROM {schema_sql}.sqlite_schema \
-         WHERE type IN ('index', 'trigger', 'view') AND sql IS NOT NULL ORDER BY rowid"
+        "SELECT type, name, tbl_name, {} FROM {schema_sql}.sqlite_schema \
+         WHERE type IN ('index', 'trigger', 'view') AND sql IS NOT NULL ORDER BY rowid",
+        capped("sql")
     )
 }
 
-/// `child_keys` counts every key of the child, wherever it points, since
-/// the ids number them all.
-pub(crate) fn inbound_keys_sql(schema_sql: &str) -> String {
+// `small`: at most 64 KiB, with a key list SQLite cannot compile past ?3 bytes: no more key columns than REFERENCES
+// and commas, each with three names no longer than the text and 512 bytes of opcodes. Only a small one's text is read:
+// counting a longer one would copy it whole, a stored tail with it.
+fn sized_tables(schema_sql: &str) -> String {
+    let bytes = byte_length("sql");
     format!(
-        "SELECT m.name AS child, m.sql AS child_sql, \
-         (SELECT count(DISTINCT k.id) FROM pragma_foreign_key_list(m.name, ?2) k) AS child_keys, \
-         f.id AS id, f.\"from\" AS \"from\", f.\"to\" AS \"to\" \
-         FROM {schema_sql}.sqlite_schema m, pragma_foreign_key_list(m.name, ?2) f \
-         WHERE m.type = 'table' AND f.\"table\" = ?1 COLLATE NOCASE ORDER BY m.name, f.id, f.seq"
+        "WITH tables AS (SELECT rowid, name, {bytes} AS bytes, CASE WHEN {bytes} <= 65536 THEN sql END AS sql \
+           FROM {schema_sql}.sqlite_schema WHERE type = 'table' AND sql IS NOT NULL), \
+         sized AS (SELECT rowid, name, sql, \
+           CASE WHEN bytes <= 65536 THEN \
+             ((length(sql) - length(replace(lower(sql), 'references', ''))) / 10 \
+               + length(sql) - length(replace(sql, ',', '')) + 1) * (3 * bytes + 512) <= ?3 \
+           ELSE 0 END AS small FROM tables)"
+    )
+}
+
+// Every key of every small table, unsorted so the rows stream, a child's together: the child's keys are counted as
+// they pass, and only those pointing here carry their names and the child's CREATE TABLE.
+pub(crate) fn small_children_keys_sql(schema_sql: &str) -> String {
+    format!(
+        "{} SELECT m.name AS child, f.id AS id, f.seq AS seq, \
+           CASE WHEN f.\"table\" = ?1 COLLATE NOCASE THEN m.sql END AS sql, \
+           CASE WHEN f.\"table\" = ?1 COLLATE NOCASE THEN f.\"from\" END AS \"from\", \
+           CASE WHEN f.\"table\" = ?1 COLLATE NOCASE THEN f.\"to\" END AS \"to\", \
+           f.\"table\" = ?1 COLLATE NOCASE AS points_here \
+         FROM sized m, pragma_foreign_key_list(m.name, ?2) f WHERE m.small",
+        sized_tables(schema_sql)
+    )
+}
+
+pub(crate) fn large_tables_sql(schema_sql: &str) -> String {
+    format!(
+        "{} SELECT rowid, name FROM sized WHERE NOT small ORDER BY name",
+        sized_tables(schema_sql)
+    )
+}
+
+// By rowid: a lookup by name scans the whole schema, once per child.
+pub(crate) fn schema_row_sql(schema_sql: &str) -> String {
+    format!(
+        "SELECT name, {} FROM {schema_sql}.sqlite_schema WHERE rowid = ?1",
+        capped("sql")
     )
 }
 
@@ -98,6 +146,37 @@ pub(crate) fn inbound_keys_sql(schema_sql: &str) -> String {
 /// checked before it is read.
 pub(crate) fn has_table_sql(schema_sql: &str) -> String {
     format!("SELECT count(*) FROM {schema_sql}.sqlite_schema WHERE type = 'table' AND name = ?1")
+}
+
+/// The bytes `dbstat` counts for the table's own b-tree and for its
+/// indexes together, automatic ones included, by `sqlite_schema` type.
+pub(crate) fn table_pages_sql(schema_sql: &str) -> String {
+    format!(
+        "SELECT s.type, sum(d.pgsize) FROM {schema_sql}.sqlite_schema s \
+         JOIN dbstat d ON d.schema = ?1 AND d.name = s.name \
+         WHERE s.tbl_name = ?2 AND s.type IN ('table', 'index') GROUP BY s.type"
+    )
+}
+
+/// The sizes from what `table_pages_sql` read. Without a b-tree of its
+/// own the object is a view or a virtual table, which has none.
+pub(crate) fn table_sizes(bytes: &[(String, i64)]) -> TableInfo {
+    let of = |kind: &str| {
+        bytes
+            .iter()
+            .find(|(found, _)| found == kind)
+            .and_then(|(_, bytes)| u64::try_from(*bytes).ok())
+    };
+    let Some(data) = of("table") else {
+        return TableInfo::default();
+    };
+    let index = of("index").unwrap_or(0);
+    TableInfo {
+        comment: None,
+        data_bytes: Some(data),
+        index_bytes: Some(index),
+        total_bytes: data.checked_add(index),
+    }
 }
 
 /// The first number of a `sqlite_stat1` row is the row count ANALYZE
@@ -334,6 +413,22 @@ fn number_value(number: &SqlDecimal) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_table_adds_its_indexes_and_a_view_has_no_sizes() {
+        let bytes = [("index".to_owned(), 8192), ("table".to_owned(), 4096)];
+        assert_eq!(
+            table_sizes(&bytes),
+            TableInfo {
+                comment: None,
+                data_bytes: Some(4096),
+                index_bytes: Some(8192),
+                total_bytes: Some(12288),
+            }
+        );
+        assert_eq!(table_sizes(&[("table".to_owned(), 4096)]).index_bytes, Some(0));
+        assert_eq!(table_sizes(&[]), TableInfo::default());
+    }
 
     #[test]
     fn sqlite_affinity_rules_and_strict() {

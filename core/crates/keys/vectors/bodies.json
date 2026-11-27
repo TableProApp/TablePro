@@ -1,0 +1,467 @@
+{
+  "area": "bodies",
+  "suite": "tp1",
+  "format": 1,
+  "about": "Key object bodies and ids as records carry them, and when two key objects are the same (ADR 0051, Key object bodies; ADR 0052, Key objects)",
+  "origin": "https://sync.example.com",
+  "key_objects": [
+    {
+      "name": "a genesis certificate",
+      "op": "key_object",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "name": "a version record",
+      "op": "key_object",
+      "input": {
+        "object": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/2",
+          "fields_text": "{\"suite\":\"tp1\",\"start\":0,\"kid\":\"ft4yUor-n8DqP_617tOSWlfz8zxUtt7mwR-3d6qkxJg\",\"signer\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"signer_av\":1,\"sig\":\"YJfwazLopkQS3uDoF2BSk9wevlHmG1Qzko4kveUirCtRg4nCGBRu3M5PK2MJqPi72A0xTHSLiLkCumAkzoLyBw\"}"
+        }
+      },
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "name": "suite tp2",
+      "op": "key_object",
+      "row": "A suite not listed",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp2\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.suite",
+      "server": "bad_statement",
+      "clause": "A suite not listed"
+    },
+    {
+      "name": "a duplicate member",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a missing member",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "an unknown member",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"note\":\"x\",\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "replace_sig on a kind 0 certificate",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\",\"replace_sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a wrongly typed member",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":\"0\",\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "an integer with a fraction",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0.0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a kind out of range",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":4,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a key of 31 bytes",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo4w\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "padded base64url",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q=\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "non-zero pad bits",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43R\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "the standard alphabet",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"+euGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "signer_av 0",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/2",
+          "fields_text": "{\"suite\":\"tp1\",\"start\":0,\"kid\":\"ft4yUor-n8DqP_617tOSWlfz8zxUtt7mwR-3d6qkxJg\",\"signer\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"signer_av\":0,\"sig\":\"YJfwazLopkQS3uDoF2BSk9wevlHmG1Qzko4kveUirCtRg4nCGBRu3M5PK2MJqPi72A0xTHSLiLkCumAkzoLyBw\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "signer_av 2^31",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/2",
+          "fields_text": "{\"suite\":\"tp1\",\"start\":0,\"kid\":\"ft4yUor-n8DqP_617tOSWlfz8zxUtt7mwR-3d6qkxJg\",\"signer\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"signer_av\":2147483648,\"sig\":\"YJfwazLopkQS3uDoF2BSk9wevlHmG1Qzko4kveUirCtRg4nCGBRu3M5PK2MJqPi72A0xTHSLiLkCumAkzoLyBw\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "start 2",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/2",
+          "fields_text": "{\"suite\":\"tp1\",\"start\":2,\"kid\":\"ft4yUor-n8DqP_617tOSWlfz8zxUtt7mwR-3d6qkxJg\",\"signer\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"signer_av\":1,\"sig\":\"YJfwazLopkQS3uDoF2BSk9wevlHmG1Qzko4kveUirCtRg4nCGBRu3M5PK2MJqPi72A0xTHSLiLkCumAkzoLyBw\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a lower-case signer",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/2",
+          "fields_text": "{\"suite\":\"tp1\",\"start\":0,\"kid\":\"ft4yUor-n8DqP_617tOSWlfz8zxUtt7mwR-3d6qkxJg\",\"signer\":\"019a6b2e-8f3c-7d41-b2a5-6c0e9f14d7b8\",\"signer_av\":1,\"sig\":\"YJfwazLopkQS3uDoF2BSk9wevlHmG1Qzko4kveUirCtRg4nCGBRu3M5PK2MJqPi72A0xTHSLiLkCumAkzoLyBw\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a version of 0 in the id",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/0",
+          "fields_text": "{\"suite\":\"tp1\",\"start\":0,\"kid\":\"ft4yUor-n8DqP_617tOSWlfz8zxUtt7mwR-3d6qkxJg\",\"signer\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"signer_av\":1,\"sig\":\"YJfwazLopkQS3uDoF2BSk9wevlHmG1Qzko4kveUirCtRg4nCGBRu3M5PK2MJqPi72A0xTHSLiLkCumAkzoLyBw\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "a version of 2^31 in the id",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/2147483648",
+          "fields_text": "{\"suite\":\"tp1\",\"start\":0,\"kid\":\"ft4yUor-n8DqP_617tOSWlfz8zxUtt7mwR-3d6qkxJg\",\"signer\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"signer_av\":1,\"sig\":\"YJfwazLopkQS3uDoF2BSk9wevlHmG1Qzko4kveUirCtRg4nCGBRu3M5PK2MJqPi72A0xTHSLiLkCumAkzoLyBw\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "a version with a leading zero in the id",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/02",
+          "fields_text": "{\"suite\":\"tp1\",\"start\":0,\"kid\":\"ft4yUor-n8DqP_617tOSWlfz8zxUtt7mwR-3d6qkxJg\",\"signer\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"signer_av\":1,\"sig\":\"YJfwazLopkQS3uDoF2BSk9wevlHmG1Qzko4kveUirCtRg4nCGBRu3M5PK2MJqPi72A0xTHSLiLkCumAkzoLyBw\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "not an object",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.device",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/9B476F09-2A18-4452-91E1-F1106470CF6D/1",
+          "fields_text": "[{\"suite\":\"tp1\",\"dek\":\"OY0itFMG-2O1BLJb8C9IIK1Ei0-6Kb2YcOsR6JOocBo\",\"dsk\":\"wcSjCOejevQR6MdLRqLDUcwllDBrXjIZai8nLRd6VJk\",\"sig\":\"oF_AZWInhK0KmwgubN92S4ghoUYhuoqPifayFnKi9JGxXjYQPmSlHuGnrb6tXomPujyjyKNk1B89T73XK6fjBQ\"}]"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a recovery blob ct cut by a byte",
+      "op": "key_object",
+      "row": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes",
+      "input": {
+        "object": {
+          "kind": "key.recovery",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"nonce\":\"XdXcLAsttXwmXAxj\",\"ct\":\"SI0EhIuYFYI9nfK57b-TJ4xZp8_PqGSTYUslo1Q3RsYv3lIGAK4Ro-6fEKlQq9UvVfu00QRkUsqrXm-yWJRHShCZ0-OwMOw6-V9m8kfXlQ\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes"
+    },
+    {
+      "name": "a recovery blob nonce cut by a byte",
+      "op": "key_object",
+      "row": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes",
+      "input": {
+        "object": {
+          "kind": "key.recovery",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"nonce\":\"XdXcLAsttXwmXAw\",\"ct\":\"SI0EhIuYFYI9nfK57b-TJ4xZp8_PqGSTYUslo1Q3RsYv3lIGAK4Ro-6fEKlQq9UvVfu00QRkUsqrXm-yWJRHShCZ0-OwMOw6-V9m8kfXlXo\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes"
+    },
+    {
+      "name": "a replace with no replace_sig",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":1,\"ik\":\"g74BdCONzR7nvem_gpGeDXLL8PRsuufGoi0R-1DjCq0\",\"ask\":\"ZwgPf72kVFIHZPqs32rM7CMcH5HPCfRm5BATR6RtMlA\",\"aek\":\"x2wQPBYoGIcdH2lePDgA3kqLIoDSG2obTTQG2rzUJ1w\",\"sig\":\"JeVV-EVrBU1WkOGUZLTlHU3JYlLcCe70pjLYtFlxPIJtdZ9l2zn5L6vMDuwrnVK-wrKFAyD5f7Jzh_rNP6CWCg\"}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a reset proposal",
+      "op": "key_object",
+      "input": {
+        "object": {
+          "kind": "key.reset",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/8D757DB2-4099-4F8C-8C80-0B2664EC4405",
+          "fields_text": "{\"suite\":\"tp1\",\"av\":2,\"key_device\":\"9B476F09-2A18-4452-91E1-F1106470CF6D\",\"account\":{\"suite\":\"tp1\",\"kind\":2,\"ik\":\"gY5S7rYioFTVbCv4fsk5j--je5XZdnhQwn-pMLPkK68\",\"ask\":\"ZwgPf72kVFIHZPqs32rM7CMcH5HPCfRm5BATR6RtMlA\",\"aek\":\"x2wQPBYoGIcdH2lePDgA3kqLIoDSG2obTTQG2rzUJ1w\",\"sig\":\"5L3ewVccl3A2z2IYGU5GVO4vlzFBaHWlvRjZRcXLllTXCY0Dl3pdTA1jk0cM55EFZOIER_sbI4hcfajlDt1gCQ\"},\"device\":{\"suite\":\"tp1\",\"dek\":\"OY0itFMG-2O1BLJb8C9IIK1Ei0-6Kb2YcOsR6JOocBo\",\"dsk\":\"wcSjCOejevQR6MdLRqLDUcwllDBrXjIZai8nLRd6VJk\",\"sig\":\"zu5cvR6P8BNpUehA3gYzYmlPTiehiJOLo4sXz8wPrAdbuhq3JGfaeMsiYMYNPW38N5kpKFtrCN68O0V0AiJiCw\"},\"recovery\":{\"suite\":\"tp1\",\"nonce\":\"CkKSDrWcHKAxHVT1\",\"ct\":\"Jw0lRwpP8ju2nSU7nP7ALUb-XWuV7IC2WEj0RlhB605lDDfLLJDn18eRn6AZ7YLI-HGf8FwlvG_A1Cy_vqXmhFCRaTNDoxcPTgZi96knxck\"}}"
+        }
+      },
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "name": "a reset proposing a kind 0 certificate",
+      "op": "key_object",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "object": {
+          "kind": "key.reset",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/8D757DB2-4099-4F8C-8C80-0B2664EC4405",
+          "fields_text": "{\"suite\":\"tp1\",\"av\":2,\"key_device\":\"9B476F09-2A18-4452-91E1-F1106470CF6D\",\"account\":{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"gY5S7rYioFTVbCv4fsk5j--je5XZdnhQwn-pMLPkK68\",\"ask\":\"ZwgPf72kVFIHZPqs32rM7CMcH5HPCfRm5BATR6RtMlA\",\"aek\":\"x2wQPBYoGIcdH2lePDgA3kqLIoDSG2obTTQG2rzUJ1w\",\"sig\":\"5L3ewVccl3A2z2IYGU5GVO4vlzFBaHWlvRjZRcXLllTXCY0Dl3pdTA1jk0cM55EFZOIER_sbI4hcfajlDt1gCQ\"},\"device\":{\"suite\":\"tp1\",\"dek\":\"OY0itFMG-2O1BLJb8C9IIK1Ei0-6Kb2YcOsR6JOocBo\",\"dsk\":\"wcSjCOejevQR6MdLRqLDUcwllDBrXjIZai8nLRd6VJk\",\"sig\":\"zu5cvR6P8BNpUehA3gYzYmlPTiehiJOLo4sXz8wPrAdbuhq3JGfaeMsiYMYNPW38N5kpKFtrCN68O0V0AiJiCw\"},\"recovery\":{\"suite\":\"tp1\",\"nonce\":\"CkKSDrWcHKAxHVT1\",\"ct\":\"Jw0lRwpP8ju2nSU7nP7ALUb-XWuV7IC2WEj0RlhB605lDDfLLJDn18eRn6AZ7YLI-HGf8FwlvG_A1Cy_vqXmhFCRaTNDoxcPTgZi96knxck\"}}"
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
+    },
+    {
+      "name": "a suite not listed inside a reset",
+      "op": "key_object",
+      "row": "A suite not listed",
+      "input": {
+        "object": {
+          "kind": "key.reset",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/8D757DB2-4099-4F8C-8C80-0B2664EC4405",
+          "fields_text": "{\"suite\":\"tp1\",\"av\":2,\"key_device\":\"9B476F09-2A18-4452-91E1-F1106470CF6D\",\"account\":{\"suite\":\"tp2\",\"kind\":2,\"ik\":\"gY5S7rYioFTVbCv4fsk5j--je5XZdnhQwn-pMLPkK68\",\"ask\":\"ZwgPf72kVFIHZPqs32rM7CMcH5HPCfRm5BATR6RtMlA\",\"aek\":\"x2wQPBYoGIcdH2lePDgA3kqLIoDSG2obTTQG2rzUJ1w\",\"sig\":\"5L3ewVccl3A2z2IYGU5GVO4vlzFBaHWlvRjZRcXLllTXCY0Dl3pdTA1jk0cM55EFZOIER_sbI4hcfajlDt1gCQ\"},\"device\":{\"suite\":\"tp1\",\"dek\":\"OY0itFMG-2O1BLJb8C9IIK1Ei0-6Kb2YcOsR6JOocBo\",\"dsk\":\"wcSjCOejevQR6MdLRqLDUcwllDBrXjIZai8nLRd6VJk\",\"sig\":\"zu5cvR6P8BNpUehA3gYzYmlPTiehiJOLo4sXz8wPrAdbuhq3JGfaeMsiYMYNPW38N5kpKFtrCN68O0V0AiJiCw\"},\"recovery\":{\"suite\":\"tp1\",\"nonce\":\"CkKSDrWcHKAxHVT1\",\"ct\":\"Jw0lRwpP8ju2nSU7nP7ALUb-XWuV7IC2WEj0RlhB605lDDfLLJDn18eRn6AZ7YLI-HGf8FwlvG_A1Cy_vqXmhFCRaTNDoxcPTgZi96knxck\"}}"
+        }
+      },
+      "error": "keys.suite",
+      "server": "bad_statement",
+      "clause": "A suite not listed"
+    }
+  ],
+  "same_object": [
+    {
+      "name": "the same object, members in another order",
+      "op": "same_object",
+      "input": {
+        "held": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        },
+        "offered": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"kind\":0,\"suite\":\"tp1\"}"
+        }
+      },
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "name": "another object at a held id",
+      "op": "same_object",
+      "row": "A key object pushed again or pulled at a held id with other fields",
+      "input": {
+        "held": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"d33OLHPG7-wVtD2k2_QfbhfCYzGyoxiiiPsVCS69PYqArCVU_0SnMh13m8F14FP-fZEbo7mOL5BLYz_0e9nkCQ\"}"
+        },
+        "offered": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields_text": "{\"suite\":\"tp1\",\"kind\":0,\"ik\":\"seuGuUYQRUCQovQZchhDkO2FBNqd7h4H_9qcXomo43Q\",\"ask\":\"ZXAvu6xcnIfq48ZiorXWmHWAttb3qL7o0uavCfLAaqY\",\"aek\":\"buvuqhv3XnGpSbeDiboJFviGfYEz6AywMd-Lr962NwY\",\"sig\":\"BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw\"}"
+        }
+      },
+      "error": "keys.conflict",
+      "server": "create_only",
+      "clause": "A key object pushed again or pulled at a held id with other fields"
+    }
+  ]
+}

@@ -17,30 +17,37 @@ final class AppRelauncher {
     }
 
     private let defaults: UserDefaults
-    private let approveStoppingWork: @MainActor () -> Bool
+    private let approveStoppingWork: @MainActor () -> QuitPlan?
+    private let commitBeforeQuitting: @MainActor (QuitPlan) async -> Bool
     private let reviewUnsavedDocuments: @MainActor (@escaping @MainActor (Bool) -> Void) -> Void
     private let installPendingUpdate: @MainActor () -> Bool
     private let terminate: @MainActor () -> Void
+    private let performOutsideTask: @MainActor (@escaping @MainActor () -> Void) -> Void
     private let reopenAfterExit: @MainActor (_ pid: pid_t, _ bundleURL: URL) throws -> Void
     private var route: Route?
+    private(set) var pendingCommit: Task<Void, Never>?
 
     init(
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        approveStoppingWork: @escaping @MainActor () -> Bool = {
+        approveStoppingWork: @escaping @MainActor () -> QuitPlan? = {
             // Everything that can still refuse asks here, before Sparkle or the quit takes over.
-            ThemeEditorWindows.shared.prepareToTerminate()
-                && QuitApproval.approvesStoppingWork(registry: .shared, action: .relaunch, stopsWork: false)
+            guard ThemeEditorWindows.shared.prepareToTerminate() else { return nil }
+            return QuitApproval.approvesStoppingWork(registry: .shared, action: .relaunch)
         },
+        commitBeforeQuitting: @escaping @MainActor (QuitPlan) async -> Bool = { await QuitApproval.commitBeforeQuitting($0) },
         reviewUnsavedDocuments: @escaping @MainActor (@escaping @MainActor (Bool) -> Void) -> Void = UnsavedDocumentReview.run,
         installPendingUpdate: @escaping @MainActor () -> Bool = { SoftwareUpdater.shared.installAndRelaunch() },
         terminate: @escaping @MainActor () -> Void = { NSApp.terminate(nil) },
+        performOutsideTask: @escaping @MainActor (@escaping @MainActor () -> Void) -> Void = AppRelauncher.performOnNextRunLoopTurn,
         reopenAfterExit: @escaping @MainActor (_ pid: pid_t, _ bundleURL: URL) throws -> Void = AppRelauncher.reopenAfterExit(pid:bundleURL:)
     ) {
         self.defaults = defaults
         self.approveStoppingWork = approveStoppingWork
+        self.commitBeforeQuitting = commitBeforeQuitting
         self.reviewUnsavedDocuments = reviewUnsavedDocuments
         self.installPendingUpdate = installPendingUpdate
         self.terminate = terminate
+        self.performOutsideTask = performOutsideTask
         self.reopenAfterExit = reopenAfterExit
     }
 
@@ -51,12 +58,36 @@ final class AppRelauncher {
 
     // Documents are reviewed first: AppKit cancels a quit there before the app delegate hears of it.
     func relaunch() {
+        // A commit still running is this same relaunch.
+        guard pendingCommit == nil else { return }
         reviewUnsavedDocuments { [weak self] proceed in
-            guard let self, proceed, self.approveStoppingWork() else { return }
-            self.route = .sparkleInstall
-            guard !self.installPendingUpdate() else { return }
-            self.route = .reopenAfterExit
-            self.terminate()
+            guard let self, proceed, let plan = self.approveStoppingWork() else { return }
+            guard !plan.commits.isEmpty else {
+                self.quitToRelaunch()
+                return
+            }
+            // The commit runs before Sparkle or the quit takes over, since the quit it starts asks nothing.
+            self.pendingCommit = Task { [weak self] in
+                guard let self else { return }
+                let committed = await self.commitBeforeQuitting(plan)
+                self.pendingCommit = nil
+                guard committed else { return }
+                // A terminate from inside a main-actor job never lets the quit's reply task run.
+                self.performOutsideTask { [weak self] in self?.quitToRelaunch() }
+            }
+        }
+    }
+
+    private func quitToRelaunch() {
+        route = .sparkleInstall
+        guard !installPendingUpdate() else { return }
+        route = .reopenAfterExit
+        terminate()
+    }
+
+    static func performOnNextRunLoopTurn(_ body: @escaping @MainActor () -> Void) {
+        RunLoop.main.perform {
+            MainActor.assumeIsolated(body)
         }
     }
 

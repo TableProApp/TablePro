@@ -1,8 +1,3 @@
-//
-//  LicensePresentationTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -18,15 +13,13 @@ struct LicensePresentationTests {
         isOffline: Bool = false
     ) -> Entitlement {
         Entitlement(
-            token: "token", accountID: "acct_test", deviceID: "dev_this", machineID: AccountSettingsContentTests.machineID,
-            features: features, licenses: licenses, email: "ada@m16.example", name: "Ada",
-            issuedAt: now.addingTimeInterval(-20 * day), notBefore: now.addingTimeInterval(-20 * day),
+            accountID: "acct_test", features: features, licenses: licenses, email: "ada@m16.example", name: "Ada",
             expiresAt: expiresAt, isOffline: isOffline
         )
     }
 
     private static func gate(_ feature: ProFeature, _ state: AccountState) -> LicenseNotice? {
-        LicensePresentation.gate(for: feature, state: state, now: now)
+        LicensePresentation.gate(for: feature, state: AccountSettingsContentTests.withCoreGate(state))
     }
 
     private static func paneNotices(_ state: AccountState) -> [AccountSettingsContent.Notice] {
@@ -34,18 +27,8 @@ struct LicensePresentationTests {
     }
 
     private static func welcomeLine(_ state: AccountState) -> LicenseNotice? {
-        LicensePresentation.welcomeLine(state: state, configuration: AccountSettingsContentTests.configuration, now: now)
+        LicensePresentation.welcomeLine(state: AccountSettingsContentTests.withCoreGate(state), now: now)
     }
-
-    private static func legacy(expiresAt: String?, issuedAt: String) throws -> LegacyEntitlement {
-        let payload = LicensePayloadData(
-            billingCycle: nil, licenseKey: "KEY", email: "ada@m16.example", status: "active",
-            expiresAt: expiresAt, issuedAt: issuedAt, tier: "starter"
-        )
-        return try #require(LegacyEntitlement(payload: payload))
-    }
-
-    // MARK: - Gates
 
     @Test("An available feature has no gate")
     func availableHasNoGate() {
@@ -71,10 +54,10 @@ struct LicensePresentationTests {
         #expect(gate?.alternative == nil)
     }
 
-    @Test("Past the device limit the gate opens Settings instead of selling the plan this account holds")
+    @Test("Past the device limit the gate opens the Devices page instead of selling the plan this account holds")
     func deviceLimitGate() {
         let gate = Self.gate(.compareSync, AccountState(isSignedIn: true, refresh: .deviceLimitReached([])))
-        #expect(gate?.action == .openAccountSettings)
+        #expect(gate?.action == .openAccountSettings(page: .accountDevices))
         #expect(gate?.title != ProFeature.compareSync.paidPlanRequirement)
     }
 
@@ -91,12 +74,40 @@ struct LicensePresentationTests {
         #expect(Self.gate(.dataRewind, state)?.action == .retryValidation)
     }
 
-    @Test("A lapsed offline file sends the person to Settings, where the file is imported")
+    @Test("A lapsed offline file opens the Offline File and License Key page, where the file is imported")
     func lapsedOfflineFileOpensSettings() {
         let state = AccountState(entitlement: Self.entitlement(expiresAt: Self.now.addingTimeInterval(-Self.day), isOffline: true))
         let gate = Self.gate(.iCloudSync, state)
         #expect(gate?.title == AccountSettingsContent.Notice.expired(at: .now, isOfflineFile: true).title)
-        #expect(gate?.action == .openAccountSettings)
+        #expect(gate?.action == .openAccountSettings(page: .accountOffline))
+    }
+
+    @Test("A notice the pane fixes on a page opens that page; a payment problem opens the Account pane")
+    func noticeOpensItsPage() {
+        let plan = AccountSettingsContent.PlanRow(
+            id: "lic_1", title: "Pro", owner: "Ada", status: .paymentProblem, billing: nil
+        )
+        let expected: [(AccountSettingsContent.Notice, SettingsPage?)] = [
+            (.deviceLimit, .accountDevices),
+            (.expiringSoon(expiresAt: Self.now, isOfflineFile: true), .accountOffline),
+            (.expired(at: Self.now, isOfflineFile: true), .accountOffline),
+            (.paymentProblem(plan), nil),
+        ]
+        for (notice, page) in expected {
+            #expect(LicensePresentation.action(for: notice) == .openAccountSettings(page: page))
+        }
+    }
+
+    @Test("A notice this Mac can check again offers the check, not a trip to Settings")
+    func checkableNoticesRetry() {
+        let notices: [AccountSettingsContent.Notice] = [
+            .expiringSoon(expiresAt: Self.now, isOfflineFile: false),
+            .expired(at: Self.now, isOfflineFile: false),
+            .verificationFailed(message: nil),
+        ]
+        for notice in notices {
+            #expect(LicensePresentation.action(for: notice) == .retryValidation)
+        }
     }
 
     @Test("Signed in with no entitlement after a failed refresh reads as the pane's failed check")
@@ -121,23 +132,24 @@ struct LicensePresentationTests {
         }
     }
 
-    @Test("A key from an older build past its end date is asked to renew; one only past its 30 days is checked")
-    func legacyGates() throws {
-        let ended = try Self.legacy(expiresAt: "2026-01-02T00:00:00Z", issuedAt: "2026-01-01T00:00:00Z")
-        #expect(Self.gate(.iCloudSync, AccountState(legacy: ended))?.action == .renew)
-
-        let unchecked = try Self.legacy(expiresAt: nil, issuedAt: "2026-01-01T00:00:00Z")
-        #expect(Self.gate(.iCloudSync, AccountState(legacy: unchecked))?.action == .retryValidation)
-    }
-
-    // MARK: - Welcome line
-
-    @Test("Welcome says nothing about a working plan, a free account or a key an older build left")
-    func welcomeQuietWhenNothingIsNeeded() throws {
+    @Test("Welcome says nothing about a working plan or a free account")
+    func welcomeQuietWhenNothingIsNeeded() {
         #expect(Self.welcomeLine(AccountState(isSignedIn: true, entitlement: Self.entitlement())) == nil)
         #expect(Self.welcomeLine(AccountState(isSignedIn: true, entitlement: Self.entitlement(features: [], licenses: []))) == nil)
-        let legacy = try Self.legacy(expiresAt: nil, issuedAt: "2026-10-30T00:00:00Z")
-        #expect(Self.welcomeLine(AccountState(legacy: legacy)) == nil)
+    }
+
+    @Test("On a company server no gate sells a plan: signing in has no purchase beside it, and a missing feature names the organization")
+    func companyServerSellsNothing() {
+        let company = AccountSettingsContentTests.companyServer
+        let signedOut = Self.gate(.teamLibrary, AccountState(server: company))
+        #expect(signedOut?.action == .signIn)
+        #expect(signedOut?.alternative == nil)
+
+        let without = Self.gate(.teamLibrary, AccountState(
+            isSignedIn: true, entitlement: Self.entitlement(features: [], licenses: []), server: company
+        ))
+        #expect(without?.action == nil)
+        #expect(without?.title != ProFeature.teamLibrary.paidPlanRequirement)
     }
 
     @Test("Welcome offers sign-in to a Mac with no account")
@@ -167,8 +179,6 @@ struct LicensePresentationTests {
         #expect(!Self.paneNotices(state).isEmpty)
         #expect(Self.welcomeLine(state) == nil)
     }
-
-    // MARK: - Check failure
 
     @Test("Only a failed check has a reason to show")
     func checkFailureMessage() {

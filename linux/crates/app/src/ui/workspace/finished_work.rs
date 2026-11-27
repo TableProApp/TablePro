@@ -8,6 +8,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use uuid::Uuid;
 
+use super::editor_label::EditorLabel;
 use super::{Workspace, WorkspaceModel, WorkspaceTab, tab_title};
 use crate::workspace::{CompletedWork, WorkKind, WorkOutcome};
 
@@ -82,13 +83,14 @@ impl WorkspaceModel {
         }
     }
 
-    /// The tab's name for a notification, which can show on the lock
-    /// screen. An editor tab's title is the start of its script, so it
-    /// goes by its number instead.
+    // A notification can show on the lock screen, and an editor tab's title can be the start of its script.
     fn notice_label(&self, id: Uuid) -> Option<String> {
         let tabs = self.workspace_tabs.borrow();
         Some(match tabs.get(&id)? {
-            WorkspaceTab::Editor(slot) => tab_title::numbered_query(slot.ordinal),
+            WorkspaceTab::Editor(slot) => match (&slot.name, &slot.label) {
+                (Some(name), _) | (None, EditorLabel::File { name, .. }) => name.clone(),
+                (None, _) => tab_title::numbered_query(slot.ordinal),
+            },
             tab => tab_title::resolve_tab_title(&tab.identity(), self.naming.get()).label,
         })
     }

@@ -18,6 +18,22 @@
       </item>
     </section>
     <section>
+      <!-- The projects are listed above these two at run time, as one radio section. -->
+      <submenu id="project_menu">
+        <attribute name="label" translatable="yes">Pro_ject</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">_New Project…</attribute>
+            <attribute name="action">win.new-project</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">_Manage Projects…</attribute>
+            <attribute name="action">win.manage-projects</attribute>
+          </item>
+        </section>
+      </submenu>
+    </section>
+    <section>
       <item>
         <attribute name="label" translatable="yes">_Import Connections…</attribute>
         <attribute name="action">win.import-connections</attribute>
@@ -25,6 +41,10 @@
       <item>
         <attribute name="label" translatable="yes">Import f_rom Another App…</attribute>
         <attribute name="action">win.import-from-app</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Setup Guide</attribute>
+        <attribute name="action">win.setup-guide</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Export Connections…</attribute>
@@ -36,6 +56,10 @@
       </item>
     </section>
     <section>
+      <item>
+        <attribute name="label" translatable="yes">Manage Shared _Links…</attribute>
+        <attribute name="action">app.manage-shared-links</attribute>
+      </item>
       <item>
         <attribute name="label" translatable="yes">_Preferences</attribute>
         <attribute name="action">app.preferences</attribute>

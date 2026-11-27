@@ -21,7 +21,7 @@ use super::work_notifier::WorkNotifier;
 use super::{SessionWindowInput, WindowState};
 use crate::runtime::InputSender;
 use crate::services::file_location::LocationClassifier;
-use crate::services::saved_connection_list::StateObserverId;
+use crate::services::saved_connection_list::{ScopeObserverId, StateObserverId};
 use crate::ui::connect_dialog::ConnectDialog;
 use crate::ui::welcome_view::WelcomeView;
 use crate::ui::workspace::WorkspaceShell;
@@ -86,10 +86,12 @@ pub struct SessionWindow {
     pub(super) welcome: RefCell<Option<WelcomeView>>,
     /// Shows the banner while the shared connection list cannot be read.
     pub(super) list_observer: Cell<Option<StateObserverId>>,
+    pub(super) scope_observer: Cell<Option<ScopeObserverId>>,
     pub(super) picker: OnceCell<PickerPage>,
     pub(super) dialog: RefCell<Option<ConnectDialog>>,
     /// Manage Tags while it is open, which its rows' callbacks need.
     pub(super) manage_tags: RefCell<Option<Rc<crate::ui::tags::ManageTagsDialog>>>,
+    pub(super) manage_projects: RefCell<Option<Rc<crate::ui::projects::ManageProjectsDialog>>>,
     /// The connect dialog was asked for and opens once the SSH keys are
     /// looked for.
     pub(super) dialog_opening: Cell<bool>,
@@ -108,7 +110,7 @@ pub struct SessionWindow {
     pub(super) opened_for_file: Cell<bool>,
     // Read while no relational session was in front; the next one the
     // window adopts opens them.
-    pub(super) waiting_scripts: RefCell<Vec<(gio::File, String)>>,
+    pub(super) waiting_scripts: RefCell<Vec<super::session_window_input::WaitingScript>>,
     /// Reads which filesystem a database file is on. `None` reads the
     /// real one; a test stands in for a network share.
     pub(super) classify_location: Cell<Option<LocationClassifier>>,

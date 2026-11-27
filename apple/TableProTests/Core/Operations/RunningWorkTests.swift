@@ -121,13 +121,13 @@ struct RunningWorkTests {
         let prompt = try #require(RunningWorkPrompt.make(
             action: .close,
             work: [work(.restore, subject: "sales"), work(.query, subject: "Query 2")],
-            otherLosses: RunningWorkPrompt.transactionLines(for: ["app"])
+            otherLosses: ["Unsaved changes"]
         ))
 
         #expect(prompt.message.hasPrefix("""
         Restoring “sales” on Production
         Running query in “Query 2” on Production
-        Open transaction in “app”
+        Unsaved changes
 
         Closing stops this work.
         """))
@@ -151,13 +151,18 @@ struct RunningWorkTests {
         """)
     }
 
-    @Test("The quit a relaunch starts stops the approved work without asking again")
-    func relaunchApprovedQuitStopsWork() {
+    // The work is stopped by the quit once its commits landed, never by the approval.
+    @Test("The quit a relaunch starts asks nothing and plans the approved work's stop")
+    func relaunchApprovedQuitStopsWork() throws {
         var stopped = 0
         let registry = RunningWorkRegistry(providers: [])
         registry.begin(.restore, subject: "sales", connectionName: "", connectionIds: []) { stopped += 1 }
 
-        #expect(QuitApproval.approve(registry: registry, relaunchApproved: true))
+        let plan = try #require(QuitApproval.approve(registry: registry, relaunchApproved: true))
+        #expect(plan.commits.isEmpty)
+        #expect(stopped == 0)
+
+        registry.cancel(plan.work)
         #expect(stopped == 1)
     }
 

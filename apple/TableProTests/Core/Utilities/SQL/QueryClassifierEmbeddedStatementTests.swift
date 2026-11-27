@@ -67,6 +67,17 @@ struct QueryClassifierEmbeddedStatementTests {
         }
     }
 
+    @Test("A SurrealQL DELETE of one record by id is a row change, on its own or inside another statement")
+    func surrealQLRecordDeleteIsAWrite() {
+        for sql in ["DELETE person:tobie", "DELETE ONLY person:⟨tobie⟩ RETURN BEFORE", "SELECT * FROM (DELETE person:tobie)"] {
+            #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) == .write, "\(sql)")
+            #expect(!QueryClassifier.isDangerousQuery(sql, databaseType: .surrealdb), "\(sql)")
+        }
+        for sql in ["DELETE person", "DELETE person:1..10", "DELETE person:a, person:b", "SELECT * FROM (DELETE person:..)"] {
+            #expect(QueryClassifier.isDangerousQuery(sql, databaseType: .surrealdb), "\(sql)")
+        }
+    }
+
     @Test("A CockroachDB SELECT from a bracketed statement that writes is a write", arguments: [
         "SELECT * FROM [DELETE FROM orders RETURNING id]",
         "SELECT * FROM [ UPDATE orders SET total = 0 RETURNING id ]",

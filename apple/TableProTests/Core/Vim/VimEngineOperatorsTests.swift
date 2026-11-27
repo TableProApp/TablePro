@@ -354,7 +354,7 @@ final class VimEngineOperatorsTests {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("cw")
         #expect(engine.mode == .insert)
-        #expect(buffer.text == "world\nsecond line\nthird line\n")
+        #expect(buffer.text == " world\nsecond line\nthird line\n")
     }
 
     @Test
@@ -446,6 +446,212 @@ final class VimEngineOperatorsTests {
         key("P", shift: true)
         #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "Deleted text should round-trip through P")
+    }
+
+    // MARK: - Motions after an operator, as Vim takes them
+
+    private func make(_ text: String, at offset: Int) {
+        buffer = VimTextBufferMock(text: text)
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: offset, length: 0))
+    }
+
+    @Test("d% deletes through the matching bracket")
+    func dPercentDeletesThroughTheMatchingBracket() {
+        make("a (b c) d\n", at: 2)
+        keys("d%")
+        #expect(buffer.text == "a  d\n")
+        #expect(engine.register.text == "(b c)")
+    }
+
+    @Test("d% from before the bracket takes the text up to it")
+    func dPercentFromBeforeTheBracket() {
+        make("a (b c) d\n", at: 0)
+        keys("d%")
+        #expect(buffer.text == " d\n")
+    }
+
+    @Test("c% changes the bracketed text")
+    func cPercentChangesTheBracketedText() {
+        make("a (b c) d\n", at: 2)
+        keys("c%")
+        #expect(buffer.text == "a  d\n")
+        #expect(engine.mode == .insert)
+        #expect(pos == 2)
+    }
+
+    @Test("y% yanks without moving")
+    func yPercentYanks() {
+        make("a (b c) d\n", at: 0)
+        keys("y%")
+        #expect(buffer.text == "a (b c) d\n")
+        #expect(engine.register.text == "a (b c)")
+        #expect(pos == 0)
+    }
+
+    @Test("d% with no bracket ends the command")
+    func dPercentWithNoBracketEndsTheCommand() {
+        make("a b c d\n", at: 0)
+        keys("d%w")
+        #expect(buffer.text == "a b c d\n")
+        #expect(pos == 2)
+    }
+
+    @Test("A key that is not a motion ends the operator")
+    func nonMotionKeyEndsTheOperator() {
+        make("one two\n", at: 0)
+        keys("dxw")
+        #expect(buffer.text == "one two\n")
+        #expect(pos == 4)
+    }
+
+    @Test("dn deletes to the next match")
+    func dnDeletesToTheNextMatch() {
+        make("foo bar foo baz\n", at: 0)
+        keys("/foo\r0dn")
+        #expect(buffer.text == "foo baz\n")
+        #expect(engine.register.text == "foo bar ")
+    }
+
+    @Test("d} from a line start takes the paragraph's lines")
+    func dBraceFromLineStartIsLinewise() {
+        make("aaa\nbbb\n\nccc\n", at: 0)
+        keys("d}")
+        #expect(buffer.text == "\nccc\n")
+        #expect(engine.register.text == "aaa\nbbb\n")
+        #expect(engine.register.isLinewise)
+    }
+
+    @Test("d} from inside a line stops before the line break")
+    func dBraceFromInsideALine() {
+        make("aaa\nbbb\n\nccc\n", at: 1)
+        keys("d}")
+        #expect(buffer.text == "a\n\nccc\n")
+        #expect(engine.register.text == "aa\nbbb")
+        #expect(!engine.register.isLinewise)
+    }
+
+    @Test("d} on the last paragraph takes its lines")
+    func dBraceOnTheLastParagraph() {
+        make("aaa\nbbb\n", at: 0)
+        keys("d}")
+        #expect(buffer.text == "")
+        #expect(engine.register.isLinewise)
+    }
+
+    @Test("d'a deletes the lines through the mark")
+    func dQuoteMarkIsLinewise() {
+        make("aaa\nbbb\nccc\n", at: 8)
+        keys("magg")
+        keys("d'a")
+        #expect(buffer.text == "")
+        #expect(engine.register.text == "aaa\nbbb\nccc\n")
+    }
+
+    @Test("d`a deletes up to the mark")
+    func dBacktickMarkIsExclusive() {
+        make("aaa\nbbb\nccc\n", at: 5)
+        keys("magg")
+        keys("d`a")
+        #expect(buffer.text == "bb\nccc\n")
+    }
+
+    @Test("d'a with the mark unset ends the command")
+    func dQuoteUnsetMarkEndsTheCommand() {
+        make("aaa bbb\n", at: 0)
+        keys("d'aw")
+        #expect(buffer.text == "aaa bbb\n")
+        #expect(pos == 4)
+    }
+
+    @Test("dL deletes to the last visible line")
+    func dLDeletesToTheLastVisibleLine() {
+        make("aaa\nbbb\nccc\n", at: 0)
+        keys("d")
+        key("L", shift: true)
+        #expect(buffer.text == "")
+    }
+
+    @Test("db at a line start keeps the line break")
+    func dbAtLineStartKeepsTheLineBreak() {
+        make("foo bar\nbaz\n", at: 8)
+        keys("db")
+        #expect(buffer.text == "foo \nbaz\n")
+        #expect(engine.register.text == "bar")
+    }
+
+    @Test("dW on the last WORD of a line stops at the line end")
+    func dBigWOnTheLastWordStopsAtTheLineEnd() {
+        make("foo b.r\n  baz\n", at: 4)
+        keys("d")
+        key("W", shift: true)
+        #expect(buffer.text == "foo \n  baz\n")
+    }
+
+    @Test("dw on an empty line deletes the line")
+    func dwOnAnEmptyLineDeletesIt() {
+        make("aaa\n\nbbb\n", at: 4)
+        keys("dw")
+        #expect(buffer.text == "aaa\nbbb\n")
+    }
+
+    @Test("cw on a word changes to its end, not the space after")
+    func cwChangesToTheWordEnd() {
+        make("foo bar baz\n", at: 0)
+        keys("cw")
+        #expect(buffer.text == " bar baz\n")
+        #expect(engine.mode == .insert)
+    }
+
+    @Test("2cw changes two words, not the space after the second")
+    func cwWithCount() {
+        make("foo bar baz\n", at: 0)
+        keys("2cw")
+        #expect(buffer.text == " baz\n")
+    }
+
+    @Test("cw on blanks changes them up to the next word")
+    func cwOnBlanks() {
+        make("foo   bar\n", at: 4)
+        keys("cw")
+        #expect(buffer.text == "foo bar\n")
+    }
+
+    @Test("cj leaves one empty line to type on")
+    func cjLeavesALine() {
+        make("a\nb\nc\n", at: 0)
+        keys("cj")
+        #expect(buffer.text == "\nc\n")
+        #expect(engine.mode == .insert)
+        #expect(pos == 0)
+    }
+
+    @Test("dj on the last line deletes nothing")
+    func djOnTheLastLineFails() {
+        make("aaa\nbbb\n", at: 4)
+        keys("djx")
+        #expect(buffer.text == "aaa\nbb\n")
+    }
+
+    @Test(">b from a line start shifts only the line the motion covers")
+    func indentBackwardWordFromALineStart() {
+        make("foo bar\nbaz\n", at: 8)
+        keys(">b")
+        #expect(buffer.text == "    foo bar\nbaz\n")
+    }
+
+    @Test(">b at the start of the text shifts nothing")
+    func indentBackwardWordAtTheStartFails() {
+        make("abc\n", at: 0)
+        keys(">b")
+        #expect(buffer.text == "abc\n")
+    }
+
+    @Test(">w shifts the whole line")
+    func indentWithACharacterMotionShiftsTheLine() {
+        make("hello world\n", at: 6)
+        keys(">w")
+        #expect(buffer.text == "    hello world\n")
     }
 }
 

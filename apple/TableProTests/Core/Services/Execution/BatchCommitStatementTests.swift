@@ -38,6 +38,18 @@ struct BatchCommitStatementTests {
         #expect(Self.matches(sql))
     }
 
+    @Test("Teradata's ET is a commit point", arguments: ["ET", "et", "ET;", "-- done\nET"])
+    func teradataETIsACommitPoint(sql: String) {
+        #expect(Self.matches(sql, type: .teradata))
+    }
+
+    @Test("ET followed by anything is not ET, and ET is only Teradata's")
+    func etWithAFollowerIsNotACommitPoint() {
+        #expect(Self.matches("ET AL", type: .teradata) == false)
+        #expect(Self.matches("ET") == false)
+        #expect(Self.matches("ET", type: .mysql) == false)
+    }
+
     /// A block terminator is never a transaction's end, whichever engine wrote it.
     @Test(
         "END that closes a block is not a commit point",
@@ -81,5 +93,33 @@ struct BatchCommitStatementTests {
     @Test("A commit inside a MySQL conditional comment is a commit point")
     func conditionalCommentCommitIsACommitPoint() {
         #expect(Self.matches("/*!40101 COMMIT */", type: .mysql))
+    }
+}
+
+struct TransactionEndStatementTests {
+    private static func matches(_ sql: String) -> Bool {
+        TransactionEndStatement.matches(sql, grammar: DatabaseType.teradata.lexicalGrammar)
+    }
+
+    @Test(
+        "A commit or a rollback ends the transaction",
+        arguments: [
+            "COMMIT", "COMMIT WORK", "ET", "END TRANSACTION", "ROLLBACK", "ROLLBACK WORK", "rollback;", "ABORT",
+            "ABORT 'bad load' WHERE 1 = 1",
+        ]
+    )
+    func endsTheTransaction(sql: String) {
+        #expect(Self.matches(sql))
+    }
+
+    @Test(
+        "Anything else leaves it open",
+        arguments: [
+            "ROLLBACK TO SAVEPOINT s", "BT", "BEGIN TRANSACTION", "INSERT INTO t VALUES (1)", "SELECT 'ROLLBACK'",
+            "CREATE TABLE t (a INTEGER)", "",
+        ]
+    )
+    func leavesTheTransactionOpen(sql: String) {
+        #expect(Self.matches(sql) == false)
     }
 }

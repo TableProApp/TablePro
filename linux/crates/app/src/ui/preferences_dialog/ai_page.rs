@@ -12,7 +12,7 @@ use secrecy::SecretString;
 use tablepro_core::AiProvider;
 use tablepro_linux_platform::settings::keys;
 
-use crate::services::ai_service::{AiService, AiSetupError};
+use crate::services::ai_service::{AiService, AiSetupError, ModelListing};
 use crate::services::secret_save_report::SecretSaveReport;
 
 /// The provider row's entries, `None` first: the assistant starts off.
@@ -55,6 +55,8 @@ mod imp {
         pub models_stack: TemplateChild<gtk4::Stack>,
         #[template_child]
         pub models_problem: TemplateChild<gtk4::Label>,
+        #[template_child]
+        pub models_offline: TemplateChild<gtk4::Label>,
         #[template_child]
         pub models_list: TemplateChild<gtk4::ListBox>,
         #[template_child]
@@ -230,7 +232,7 @@ impl AiPage {
         let position = PROVIDERS.iter().position(|entry| *entry == provider).unwrap_or(0);
         imp.provider_row.set_selected(position as u32);
         if let Some(provider) = provider {
-            imp.model_row.set_text(&settings.ai_model(provider));
+            imp.model_row.set_text(&service.settle_model(provider));
             imp.address_row
                 .set_text(&settings.ai_base_url(AiProvider::OpenAiCompatible));
         }
@@ -403,41 +405,61 @@ impl AiPage {
         }
     }
 
-    fn show_models(&self, listed: Result<Vec<String>, AiSetupError>) {
+    fn show_models(&self, listing: ModelListing) {
         let imp = self.imp();
-        let models = match listed {
-            Ok(models) if !models.is_empty() => models,
-            Ok(_) => {
-                imp.models_problem
-                    .set_label(&crate::i18n::gettext("The provider lists no models."));
-                imp.models_stack.set_visible_child_name("failed");
-                return;
-            }
-            Err(error) => {
-                imp.models_problem
-                    .set_label(&super::super::assistant::setup_error_text(&error));
-                imp.models_stack.set_visible_child_name("failed");
-                return;
-            }
-        };
+        let problem = listing.error.as_ref().map(super::super::assistant::setup_error_text);
+        if listing.models.is_empty() {
+            imp.models_problem
+                .set_label(&problem.unwrap_or_else(|| crate::i18n::gettext("The provider lists no models.")));
+            imp.models_stack.set_visible_child_name("failed");
+            return;
+        }
+        // The provider's own list failed, so TablePro's is shown with why.
+        imp.models_offline.set_visible(problem.is_some());
+        if let Some(problem) = problem {
+            imp.models_offline.set_label(&crate::i18n::gettext_f(
+                "{problem} The models below are from TablePro’s own list.",
+                &[("problem", &problem)],
+            ));
+        }
         imp.models_list.remove_all();
         let current = imp.model_row.text().to_string();
-        for model in models {
-            let row = adw::ActionRow::builder().title(&model).activatable(true).build();
-            row.set_title_lines(1);
-            if model == current {
-                row.add_suffix(&gtk4::Image::from_icon_name("object-select-symbolic"));
-            }
-            let page = self.downgrade();
-            row.connect_activated(move |_| {
-                if let Some(page) = page.upgrade() {
-                    page.imp().model_row.set_text(&model);
-                    page.imp().models_popover.popdown();
-                }
-            });
-            imp.models_list.append(&row);
+        for model in listing.models {
+            imp.models_list.append(&self.model_row(model, &current));
         }
         imp.models_stack.set_visible_child_name("models");
+    }
+
+    /// The model's name over its id, or the id alone when it has no name.
+    fn model_row(&self, model: tablepro_ai::ModelInfo, current: &str) -> adw::ActionRow {
+        let title = model.name.clone().unwrap_or_else(|| model.id.clone());
+        let row = adw::ActionRow::builder()
+            .title(&title)
+            .use_markup(false)
+            .activatable(true)
+            .build();
+        row.set_title_lines(1);
+        if model.name.is_some() {
+            row.set_subtitle(&model.id);
+            row.set_subtitle_lines(1);
+        }
+        if model.deprecated {
+            let label = gtk4::Label::new(Some(&crate::i18n::gettext("Deprecated")));
+            label.add_css_class("dim-label");
+            row.add_suffix(&label);
+        }
+        if model.id == current {
+            row.add_suffix(&gtk4::Image::from_icon_name("object-select-symbolic"));
+        }
+        let page = self.downgrade();
+        let id = model.id;
+        row.connect_activated(move |_| {
+            if let Some(page) = page.upgrade() {
+                page.imp().model_row.set_text(&id);
+                page.imp().models_popover.popdown();
+            }
+        });
+        row
     }
 
     fn toast(&self, message: &str) {
@@ -508,14 +530,111 @@ mod tests {
 
         imp.provider_row.set_selected(1);
 
+        let default = tablepro_ai::ModelCatalog::bundled()
+            .default_model(AiProvider::Anthropic)
+            .unwrap();
         assert_eq!(settings.get().ai_provider(), Some(AiProvider::Anthropic));
         assert!(imp.connection_group.is_visible());
         assert!(!imp.address_row.is_visible(), "Anthropic's address is fixed");
-        assert_eq!(imp.model_row.text(), "claude-opus-5-5");
+        assert_eq!(imp.model_row.text(), default);
+        assert_eq!(
+            settings.get().ai_model(AiProvider::Anthropic),
+            default,
+            "saved on first use"
+        );
         assert_eq!(imp.key_row.title(), "API Key");
 
         imp.model_row.set_text("claude-haiku-5-5");
         assert_eq!(settings.get().ai_model(AiProvider::Anthropic), "claude-haiku-5-5");
+        imp.provider_row.set_selected(2);
+        imp.provider_row.set_selected(1);
+        assert_eq!(
+            imp.model_row.text(),
+            "claude-haiku-5-5",
+            "a saved model is never replaced"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_model_shows_its_name_over_its_id_and_says_when_it_is_deprecated() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let page = bound_page(&settings, &runtime);
+        let imp = page.imp();
+        imp.provider_row.set_selected(1);
+        imp.model_row.set_text("claude-opus-5-5");
+        let model = |id: &str, name: Option<&str>, deprecated: bool| tablepro_ai::ModelInfo {
+            id: id.to_owned(),
+            name: name.map(str::to_owned),
+            deprecated,
+            default: false,
+            offline: false,
+        };
+
+        page.show_models(ModelListing {
+            models: vec![
+                model("claude-opus-5-5", Some("Claude Opus 5.5"), false),
+                model("claude-preview", None, false),
+                model("claude-sonnet-4-5", Some("Claude Sonnet 4.5"), true),
+            ],
+            error: None,
+        });
+
+        let rows: Vec<adw::ActionRow> = std::iter::successors(imp.models_list.first_child(), |row| row.next_sibling())
+            .filter_map(|row| row.downcast::<adw::ActionRow>().ok())
+            .collect();
+        assert_eq!(imp.models_stack.visible_child_name().as_deref(), Some("models"));
+        assert!(!imp.models_offline.get_visible());
+        assert_eq!(
+            (rows[0].title().as_str(), rows[0].subtitle().as_deref()),
+            ("Claude Opus 5.5", Some("claude-opus-5-5"))
+        );
+        assert_eq!(rows[1].title(), "claude-preview");
+        assert_eq!(rows[1].subtitle().as_deref().unwrap_or_default(), "");
+        assert!(texts_in(&rows[2]).contains(&"Deprecated".to_owned()));
+        assert!(!texts_in(&rows[1]).contains(&"Deprecated".to_owned()));
+
+        rows[1].emit_by_name::<()>("activated", &[]);
+        assert_eq!(settings.get().ai_model(AiProvider::Anthropic), "claude-preview");
+    }
+
+    #[gtk4::test]
+    fn a_failed_listing_shows_the_catalogs_models_with_why() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let page = bound_page(&settings, &runtime);
+        let imp = page.imp();
+        imp.provider_row.set_selected(1);
+
+        page.show_models(ModelListing {
+            models: tablepro_ai::ModelCatalog::bundled().offline_models(AiProvider::Anthropic),
+            error: Some(AiSetupError::Ai(tablepro_ai::AiError::MissingKey(
+                AiProvider::Anthropic,
+            ))),
+        });
+
+        assert_eq!(imp.models_stack.visible_child_name().as_deref(), Some("models"));
+        assert!(imp.models_offline.get_visible());
+        assert!(
+            imp.models_offline
+                .label()
+                .ends_with("The models below are from TablePro’s own list.")
+        );
+        assert!(imp.models_list.first_child().is_some());
+    }
+
+    fn texts_in(widget: &impl IsA<gtk4::Widget>) -> Vec<String> {
+        let mut texts = Vec::new();
+        let mut stack = vec![widget.clone().upcast::<gtk4::Widget>()];
+        while let Some(widget) = stack.pop() {
+            if let Some(label) = widget.downcast_ref::<gtk4::Label>() {
+                texts.push(label.label().to_string());
+            }
+            stack.extend(std::iter::successors(widget.first_child(), |child| {
+                child.next_sibling()
+            }));
+        }
+        texts
     }
 
     #[gtk4::test]

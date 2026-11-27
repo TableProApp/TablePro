@@ -1,0 +1,28 @@
+//
+//  PluginDriverAdapter+CopyIn.swift
+//  TablePro
+//
+
+import Foundation
+import TableProPluginKit
+
+extension PluginDriverAdapter {
+    var supportsCopyFromStandardInput: Bool {
+        pluginDriver.capabilities.contains(.copyFromStandardInput)
+    }
+
+    @concurrent
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext?
+    ) async throws -> QueryResult {
+        try admit(statement)
+        // The rows come from the editor's text or an imported file, never from an external caller.
+        guard supportsCopyFromStandardInput, context?.origin != .external else {
+            throw PluginDriverUnsupportedOperation.copyFromStandardInput
+        }
+        let sent = context.map { statementContext(statement, approvedAs: $0) } ?? statementContext(statement)
+        return mapQueryResult(try await pluginDriver.copyFromStandardInput(statement: statement, rows: rows, context: sent))
+    }
+}

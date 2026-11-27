@@ -25,32 +25,34 @@ extension AIChatViewModel {
 
     func ensureColumnsLoaded(forTable tableName: String) async {
         dropSchemaCacheIfScopeChanged()
+        let key = CatalogName(tableName)
         // The ranking's bulk read fills columns without foreign keys, so each is checked on its own.
-        let needsColumns = (columnsByTable[tableName] ?? []).isEmpty
-        if !needsColumns, foreignKeysByTable[tableName] != nil { return }
-        if let inFlight = inFlightColumnFetches[tableName] {
+        let needsColumns = (columnsByTable[key] ?? []).isEmpty
+        if !needsColumns, foreignKeysByTable[key] != nil { return }
+        if let inFlight = inFlightColumnFetches[key] {
             await inFlight.value
             return
         }
         guard let connection else { return }
         let connId = connection.id
         let scope = schemaCacheScope
+        let schema = browsedSchema(connId)
         let task: Task<Void, Never> = Task { [weak self] in
             var columns: [ColumnInfo]?
             if needsColumns {
                 do {
                     columns = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId) { driver in
-                        try await driver.fetchColumns(table: tableName)
+                        try await driver.fetchColumns(table: tableName, schema: schema)
                     }
                 } catch {
                     Self.logger.warning("Column fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                     columns = []
                 }
             }
-            let fkMap: [String: [ForeignKeyInfo]]?
+            let fkMap: [CatalogName: [ForeignKeyInfo]]?
             do {
                 fkMap = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId) { driver in
-                    try await driver.fetchForeignKeys(forTables: [tableName])
+                    try await driver.fetchForeignKeys(forTables: [tableName], schema: schema)
                 }
             } catch {
                 Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
@@ -58,14 +60,14 @@ extension AIChatViewModel {
             }
             guard !Task.isCancelled, let self, self.schemaCacheScope == scope else { return }
             if let columns {
-                self.columnsByTable[tableName] = columns
+                self.columnsByTable[key] = columns
             }
             if let fkMap {
-                self.foreignKeysByTable[tableName] = fkMap[tableName] ?? []
+                self.foreignKeysByTable[key] = fkMap[key] ?? []
             }
-            self.inFlightColumnFetches[tableName] = nil
+            self.inFlightColumnFetches[key] = nil
         }
-        inFlightColumnFetches[tableName] = task
+        inFlightColumnFetches[key] = task
         await task.value
     }
 
@@ -117,17 +119,18 @@ extension AIChatViewModel {
         guard let connection else { return }
         let connId = connection.id
         let scope = schemaCacheScope
+        let schema = browsedSchema(connId)
         let settings = services.appSettings.ai
-        let tablesToFetch = Array(orderedTables().prefix(settings.maxSchemaTables))
+        let tablesToFetch = Array(orderedTables().prefix(settings.clampedMaxSchemaTables))
         guard !tablesToFetch.isEmpty else { return }
 
         await withTaskGroup(of: (String, [ColumnInfo]).self) { group in
-            for table in tablesToFetch where (columnsByTable[table.name] ?? []).isEmpty {
+            for table in tablesToFetch where (columnsByTable[CatalogName(table.name)] ?? []).isEmpty {
                 let name = table.name
                 group.addTask {
                     do {
                         let cols = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId, workload: .bulk) { driver in
-                            try await driver.fetchColumns(table: name)
+                            try await driver.fetchColumns(table: name, schema: schema)
                         }
                         return (name, cols)
                     } catch {
@@ -137,21 +140,21 @@ extension AIChatViewModel {
                 }
             }
             for await (name, cols) in group where schemaCacheScope == scope {
-                columnsByTable[name] = cols
+                columnsByTable[CatalogName(name)] = cols
             }
         }
 
         guard !Task.isCancelled, schemaCacheScope == scope else { return }
 
-        let needsFKFetch = tablesToFetch.contains { foreignKeysByTable[$0.name] == nil }
+        let needsFKFetch = tablesToFetch.contains { foreignKeysByTable[CatalogName($0.name)] == nil }
         guard needsFKFetch else { return }
         do {
             let fkMap = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId, workload: .bulk) { driver in
-                try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
+                try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name), schema: schema)
             }
             guard schemaCacheScope == scope else { return }
             for table in tablesToFetch {
-                foreignKeysByTable[table.name] = fkMap[table.name] ?? []
+                foreignKeysByTable[CatalogName(table.name)] = fkMap[CatalogName(table.name)] ?? []
             }
         } catch {
             Self.logger.warning("Foreign key bulk fetch failed: \(error.publicLogShape, privacy: .public)")
@@ -205,20 +208,19 @@ extension AIChatViewModel {
         let section = AISchemaContext.buildSchemaSection(
             tables: schemaTables(),
             defaultSchema: connection.flatMap { defaultSchema(for: $0) },
-            maxTables: settings.maxSchemaTables,
+            maxTables: settings.clampedMaxSchemaTables,
             identifierQuote: identifierQuote
         )
         return section.isEmpty ? nil : section
     }
 
-    /// `tables` lists the one schema the session browses, where a table name is unique, so the
-    /// name-keyed column and foreign key maps join to it by name.
+    // `tables` lists the one schema the session browses, where a name's bytes are unique, so the maps join to it by them.
     private func schemaTables() -> [AISchemaTable] {
         orderedTables().map { table in
             AISchemaTable(
                 table: table,
-                columns: columnsByTable[table.name] ?? [],
-                foreignKeys: foreignKeysByTable[table.name] ?? []
+                columns: columnsByTable[CatalogName(table.name)] ?? [],
+                foreignKeys: foreignKeysByTable[CatalogName(table.name)] ?? []
             )
         }
     }
@@ -230,7 +232,7 @@ extension AIChatViewModel {
             question: question,
             queryReferences: editorQueryReferences(),
             defaultSchema: connection.flatMap { defaultSchema(for: $0) },
-            maxTables: services.appSettings.ai.maxSchemaTables
+            maxTables: services.appSettings.ai.clampedMaxSchemaTables
         )
         guard input.tables.count > input.maxTables else { return }
         let scope = schemaCacheScope
@@ -255,13 +257,14 @@ extension AIChatViewModel {
     private func loadEveryColumnForRanking() async {
         guard let connection else { return }
         let tableCount = tables.count
-        guard tableCount > services.appSettings.ai.maxSchemaTables,
+        guard tableCount > services.appSettings.ai.clampedMaxSchemaTables,
               tableCount <= SQLSchemaProvider.maxCachedTables,
               bulkColumnReadTableCount != tableCount
         else { return }
         bulkColumnReadTableCount = tableCount
         let scope = schemaCacheScope
-        let allColumns: [String: [ColumnInfo]]?
+        let schema = browsedSchema(connection.id)
+        let allColumns: [CatalogName: [ColumnInfo]]?
         do {
             allColumns = try await DatabaseManager.shared.withBrowseMetadataDriver(
                 connectionId: connection.id,
@@ -269,7 +272,7 @@ extension AIChatViewModel {
             ) { driver in
                 // A driver without a bulk read would fall back to one query per table.
                 guard driver.providesBulkColumnFetch else { return nil }
-                return try await driver.fetchAllColumns()
+                return try await driver.fetchAllColumns(schema: schema)
             }
         } catch {
             Self.logger.warning("Bulk column fetch failed: \(error.publicLogShape, privacy: .public)")
@@ -282,15 +285,16 @@ extension AIChatViewModel {
         // A name that differs only by case is trusted only when it can mean one table, or a
         // zero-column `orders` would take a quoted `"Orders"`'s columns.
         let foldedTableCounts = Dictionary(tables.map { ($0.name.lowercased(), 1) }, uniquingKeysWith: +)
-        let byFoldedName = Dictionary(grouping: allColumns, by: { $0.key.lowercased() })
+        let byFoldedName = Dictionary(grouping: allColumns, by: { $0.key.text.lowercased() })
             .compactMapValues { $0.count == 1 ? $0[0].value : nil }
         var merged = columnsByTable
         // A table the read left out, such as a SQLite view, stays unknown, so the ranker never
         // takes this read for a complete one.
-        for table in tables where (merged[table.name] ?? []).isEmpty {
+        for table in tables where (merged[CatalogName(table.name)] ?? []).isEmpty {
             let folded = table.name.lowercased()
-            if let columns = allColumns[table.name] ?? (foldedTableCounts[folded] == 1 ? byFoldedName[folded] : nil) {
-                merged[table.name] = columns
+            let key = CatalogName(table.name)
+            if let columns = allColumns[key] ?? (foldedTableCounts[folded] == 1 ? byFoldedName[folded] : nil) {
+                merged[key] = columns
             }
         }
         columnsByTable = merged
@@ -300,11 +304,11 @@ extension AIChatViewModel {
     // was read in.
     private func dropSchemaCacheIfScopeChanged() {
         let scope = connection.map { connection in
-            [
+            CatalogName([
                 connection.id.uuidString,
                 services.databaseManager.browseDatabaseName(for: connection),
                 defaultSchema(for: connection) ?? ""
-            ].joined(separator: "\u{1F}")
+            ].joined(separator: "\u{1F}"))
         }
         guard scope != schemaCacheScope else { return }
         schemaCacheScope = scope
@@ -320,10 +324,15 @@ extension AIChatViewModel {
     private func orderedTables() -> [TableInfo] {
         let all = tables
         guard !relevantTableNames.isEmpty else { return all }
-        let byName = Dictionary(all.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        let relevant = relevantTableNames.compactMap { byName[$0] }
-        let picked = Set(relevant.map(\.name))
-        return relevant + all.filter { !picked.contains($0.name) }
+        let byName = Dictionary(all.map { (CatalogName($0.name), $0) }, uniquingKeysWith: { first, _ in first })
+        let relevant = relevantTableNames.compactMap { byName[CatalogName($0)] }
+        let picked = Set(relevant.map { CatalogName($0.name) })
+        return relevant + all.filter { !picked.contains(CatalogName($0.name)) }
+    }
+
+    // `tables` lists the browsed schema, and every read here runs on a driver pinned to it.
+    private func browsedSchema(_ connectionId: UUID) -> String? {
+        services.databaseManager.browseScope(for: connectionId)?.schema
     }
 
     private func defaultSchema(for connection: DatabaseConnection) -> String? {

@@ -18,7 +18,41 @@
                 AutomationProperties.HeadingLevel="Level1"
                 Style="{StaticResource TitleTextBlockStyle}" />
 
-            <TextBlock x:Uid="AppearanceHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" Margin="1,0,0,4" />
+            <TextBlock x:Uid="AccountHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" Margin="1,0,0,4" />
+            <InfoBar x:Name="AccountBar" AutomationProperties.AutomationId="AccountBar" IsClosable="False" IsOpen="False" Visibility="Collapsed" />
+            <toolkit:SettingsCard x:Name="AccountCard" AutomationProperties.AutomationId="AccountCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Contact" /></toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ProgressRing x:Name="AccountProgress" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+                    <Button x:Name="AccountButton" AutomationProperties.AutomationId="AccountButton" Click="OnAccountButton" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsExpander x:Uid="AccountDetails" x:Name="AccountDetails" AutomationProperties.AutomationId="AccountDetails" Visibility="Collapsed">
+                <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="Refresh" /></toolkit:SettingsExpander.HeaderIcon>
+                <Button x:Uid="AccountRefreshButton" x:Name="AccountRefreshButton" AutomationProperties.AutomationId="AccountRefreshButton" Click="OnAccountRefresh" />
+                <toolkit:SettingsExpander.Items>
+                    <toolkit:SettingsCard x:Uid="ManageAccountCard" IsClickEnabled="True" Click="OnManageAccount">
+                        <toolkit:SettingsCard.ActionIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.ActionIcon>
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Uid="ManageSharedLinksCard" IsClickEnabled="True" Click="OnManageSharedLinks">
+                        <toolkit:SettingsCard.ActionIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.ActionIcon>
+                    </toolkit:SettingsCard>
+                </toolkit:SettingsExpander.Items>
+            </toolkit:SettingsExpander>
+            <toolkit:SettingsExpander x:Uid="DevicesExpander" x:Name="DevicesExpander" AutomationProperties.AutomationId="DevicesExpander" Visibility="Collapsed" Expanded="OnDevicesExpanded">
+                <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE7F4;" /></toolkit:SettingsExpander.HeaderIcon>
+                <ProgressRing x:Name="DevicesProgress" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+            </toolkit:SettingsExpander>
+            <!-- Only the features this app has, each included or not by the plan (docs/decisions/0023-license-ask-and-paid-feature-gate.md). -->
+            <toolkit:SettingsExpander x:Uid="PlanFeaturesExpander" x:Name="PlanFeaturesExpander" AutomationProperties.AutomationId="PlanFeaturesExpander" IsExpanded="True">
+                <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE8D7;" /></toolkit:SettingsExpander.HeaderIcon>
+            </toolkit:SettingsExpander>
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <HyperlinkButton x:Uid="BuyLicenseLink" x:Name="BuyLicenseLink" AutomationProperties.AutomationId="BuyLicenseLink" Visibility="Collapsed" />
+                <HyperlinkButton x:Uid="LicensingGuideLink" x:Name="LicensingGuideLink" AutomationProperties.AutomationId="LicensingGuideLink" />
+            </StackPanel>
+
+            <TextBlock x:Uid="AppearanceHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsCard x:Uid="ThemeCard" x:Name="ThemeCard">
                 <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="FontColor" /></toolkit:SettingsCard.HeaderIcon>
                 <ComboBox x:Name="ThemeBox" x:Uid="ThemeBox" AutomationProperties.AutomationId="ThemeBox" MinWidth="200" SelectionChanged="OnThemeChanged">
@@ -47,6 +81,63 @@
                     SpinButtonPlacementMode="Compact"
                     ValueChanged="OnFontSizeChanged" />
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="FontFamilyCard" x:Name="FontFamilyCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Font" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="FontFamilyBox" x:Uid="FontFamilyBox" AutomationProperties.AutomationId="FontFamilyBox" MinWidth="200" SelectionChanged="OnFontFamilyChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="WordWrapCard" x:Name="WordWrapCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE751;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="WordWrapSwitch" x:Uid="WordWrapSwitch" AutomationProperties.AutomationId="WordWrapSwitch" Toggled="OnWordWrapToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="StatementCard" x:Name="StatementCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7E6;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="StatementSwitch" x:Uid="StatementSwitch" AutomationProperties.AutomationId="StatementSwitch" Toggled="OnStatementToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="FoldingCard" x:Name="FoldingCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE943;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="FoldingSwitch" x:Uid="FoldingSwitch" AutomationProperties.AutomationId="FoldingSwitch" Toggled="OnFoldingToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="VimCard" x:Name="VimCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="VimSwitch" x:Uid="VimSwitch" AutomationProperties.AutomationId="VimSwitch" Toggled="OnVimToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="ShortcutsCard" x:Name="ShortcutsCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="ShortcutsBox" x:Uid="ShortcutsBox" AutomationProperties.AutomationId="ShortcutsBox" MinWidth="200" SelectionChanged="OnShortcutsChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="LightSchemeCard" x:Name="LightSchemeCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE706;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="LightSchemeBox" x:Uid="LightSchemeBox" AutomationProperties.AutomationId="LightSchemeBox" MinWidth="200" SelectionChanged="OnLightSchemeChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="DarkSchemeCard" x:Name="DarkSchemeCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE708;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="DarkSchemeBox" x:Uid="DarkSchemeBox" AutomationProperties.AutomationId="DarkSchemeBox" MinWidth="200" SelectionChanged="OnDarkSchemeChanged" />
+            </toolkit:SettingsCard>
+
+            <TextBlock x:Uid="GridHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="GridFontCard" x:Name="GridFontCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Font" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="GridFontBox" x:Uid="GridFontBox" AutomationProperties.AutomationId="GridFontBox" MinWidth="200" SelectionChanged="OnGridFontChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="GridFontSizeCard" x:Name="GridFontSizeCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="FontSize" /></toolkit:SettingsCard.HeaderIcon>
+                <NumberBox
+                    x:Name="GridFontSizeBox"
+                    x:Uid="GridFontSizeBox"
+                    AutomationProperties.AutomationId="GridFontSizeBox"
+                    Maximum="36"
+                    Minimum="8"
+                    SpinButtonPlacementMode="Compact"
+                    ValueChanged="OnGridFontSizeChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="NullDisplayCard" x:Name="NullDisplayCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8C4;" /></toolkit:SettingsCard.HeaderIcon>
+                <TextBox x:Name="NullDisplayBox" x:Uid="NullDisplayBox" AutomationProperties.AutomationId="NullDisplayBox" MinWidth="200" MaxLength="20" TextChanged="OnNullDisplayChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="GridWrapCard" x:Name="GridWrapCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE751;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="GridWrapSwitch" x:Uid="GridWrapSwitch" AutomationProperties.AutomationId="GridWrapSwitch" Toggled="OnGridWrapToggled" />
+            </toolkit:SettingsCard>
 
             <TextBlock x:Uid="QueriesHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsCard x:Uid="RowLimitCard" x:Name="RowLimitCard">
@@ -61,6 +152,10 @@
                     SmallChange="100"
                     SpinButtonPlacementMode="Compact"
                     ValueChanged="OnRowLimitChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="ResultsKeptCard" x:Name="ResultsKeptCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="ViewAll" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="ResultsKeptBox" x:Uid="ResultsKeptBox" AutomationProperties.AutomationId="ResultsKeptBox" MinWidth="200" SelectionChanged="OnResultsKeptChanged" />
             </toolkit:SettingsCard>
             <toolkit:SettingsCard x:Uid="TimeoutCard" x:Name="TimeoutCard">
                 <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Clock" /></toolkit:SettingsCard.HeaderIcon>
@@ -79,6 +174,138 @@
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8FD;" /></toolkit:SettingsCard.HeaderIcon>
                 <ComboBox x:Name="PageSizeBox" x:Uid="PageSizeBox" AutomationProperties.AutomationId="PageSizeBox" MinWidth="200" SelectionChanged="OnPageSizeChanged" />
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="CountThresholdCard" x:Name="CountThresholdCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Calculator" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="CountThresholdBox" x:Uid="CountThresholdBox" AutomationProperties.AutomationId="CountThresholdBox" MinWidth="200" SelectionChanged="OnCountThresholdChanged" />
+            </toolkit:SettingsCard>
+
+            <TextBlock x:Uid="HistoryHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="HistoryRetentionCard" x:Name="HistoryRetentionCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Clock" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="HistoryRetentionBox" x:Uid="HistoryRetentionBox" AutomationProperties.AutomationId="HistoryRetentionBox" MinWidth="200" SelectionChanged="OnHistoryRetentionChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="HistoryMaxCard" x:Name="HistoryMaxCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="List" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="HistoryMaxBox" x:Uid="HistoryMaxBox" AutomationProperties.AutomationId="HistoryMaxBox" MinWidth="200" SelectionChanged="OnHistoryMaxChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="ClearHistoryCard" x:Name="ClearHistoryCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Delete" /></toolkit:SettingsCard.HeaderIcon>
+                <Button x:Uid="ClearHistorySettingsButton" x:Name="ClearHistoryButton" AutomationProperties.AutomationId="ClearHistorySettingsButton" Click="OnClearHistory" />
+            </toolkit:SettingsCard>
+
+            <TextBlock x:Uid="NotificationsHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="NotifyCard" x:Name="NotifyCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xEA8F;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="NotifySwitch" x:Uid="NotifySwitch" AutomationProperties.AutomationId="NotifySwitch" Toggled="OnNotifyToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="NotifyAfterCard" x:Name="NotifyAfterCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Clock" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="NotifyAfterBox" x:Uid="NotifyAfterBox" AutomationProperties.AutomationId="NotifyAfterBox" MinWidth="200" SelectionChanged="OnNotifyAfterChanged" />
+            </toolkit:SettingsCard>
+            <!-- Windows turns notifications off per app; the toggle above cannot turn them back on. -->
+            <InfoBar x:Name="NotificationsOffBar" x:Uid="NotificationsOffBar" AutomationProperties.AutomationId="NotificationsOffBar" IsClosable="False" IsOpen="False" Severity="Warning" Visibility="Collapsed">
+                <InfoBar.ActionButton>
+                    <HyperlinkButton x:Uid="NotificationsOffLink" NavigateUri="ms-settings:notifications" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <TextBlock x:Uid="AiHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="AiProviderCard" x:Name="AiProviderCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8BD;" /></toolkit:SettingsCard.HeaderIcon>
+                <!-- Off first, then the providers in the core's order; each item's Tag is its provider. -->
+                <ComboBox x:Name="AiProviderBox" x:Uid="AiProviderBox" AutomationProperties.AutomationId="AiProviderBox" MinWidth="240" SelectionChanged="OnAiProviderChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="AiAddressCard" x:Name="AiAddressCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.HeaderIcon>
+                <TextBox x:Name="AiAddressBox" x:Uid="AiAddressBox" AutomationProperties.AutomationId="AiAddressBox" MinWidth="240" TextChanged="OnAiAddressChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="AiKeyCard" x:Name="AiKeyCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Permissions" /></toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <PasswordBox x:Name="AiKeyBox" x:Uid="AiKeyBox" AutomationProperties.AutomationId="AiKeyBox" MinWidth="200" KeyDown="OnAiKeyKeyDown" PasswordChanged="OnAiKeyTyped" />
+                    <Button x:Uid="AiKeySaveButton" x:Name="AiKeySaveButton" AutomationProperties.AutomationId="AiKeySaveButton" Click="OnAiKeySave" IsEnabled="False" />
+                    <Button x:Uid="AiKeyRemoveButton" x:Name="AiKeyRemoveButton" AutomationProperties.AutomationId="AiKeyRemoveButton" Click="OnAiKeyRemove" Visibility="Collapsed" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="AiModelCard" x:Name="AiModelCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="List" /></toolkit:SettingsCard.HeaderIcon>
+                <!-- Typed or picked; the list is read from the provider each time it opens. -->
+                <ComboBox
+                    x:Name="AiModelBox"
+                    x:Uid="AiModelBox"
+                    AutomationProperties.AutomationId="AiModelBox"
+                    DropDownOpened="OnAiModelsOpened"
+                    IsEditable="True"
+                    MinWidth="240"
+                    SelectionChanged="OnAiModelPicked"
+                    TextSubmitted="OnAiModelTyped" />
+            </toolkit:SettingsCard>
+            <TextBlock
+                x:Name="AiStatusText"
+                AutomationProperties.AutomationId="AiStatusText"
+                AutomationProperties.LiveSetting="Polite"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap" />
+
+            <TextBlock x:Uid="McpHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="McpServerCard" x:Name="McpServerCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE968;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="McpServerSwitch" x:Uid="McpServerSwitch" AutomationProperties.AutomationId="McpServerSwitch" Toggled="OnMcpServerToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="McpStatusCard" x:Name="McpStatusCard" AutomationProperties.AutomationId="McpStatusCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.HeaderIcon>
+                <Button x:Uid="McpRetryButton" x:Name="McpRetryButton" AutomationProperties.AutomationId="McpRetryButton" Click="OnMcpRetry" Visibility="Collapsed" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="McpPortCard" x:Name="McpPortCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE839;" /></toolkit:SettingsCard.HeaderIcon>
+                <NumberBox
+                    x:Name="McpPortBox"
+                    x:Uid="McpPortBox"
+                    AutomationProperties.AutomationId="McpPortBox"
+                    Maximum="65535"
+                    Minimum="1024"
+                    SpinButtonPlacementMode="Compact"
+                    ValueChanged="OnMcpPortChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="McpAddressCard" x:Name="McpAddressCard" AutomationProperties.AutomationId="McpAddressCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Link" /></toolkit:SettingsCard.HeaderIcon>
+                <Button x:Uid="McpCopyAddressButton" AutomationProperties.AutomationId="McpCopyAddressButton" Click="OnCopyMcpAddress" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="McpTokenCard" x:Name="McpTokenCard" AutomationProperties.AutomationId="McpTokenCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Permissions" /></toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Uid="McpCopyHeaderButton" x:Name="McpCopyHeaderButton" AutomationProperties.AutomationId="McpCopyHeaderButton" Click="OnCopyMcpHeader" />
+                    <Button x:Uid="McpRegenerateButton" x:Name="McpRegenerateButton" AutomationProperties.AutomationId="McpRegenerateButton" Click="OnRegenerateMcpToken" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsExpander x:Uid="McpClientsExpander" x:Name="McpClientsExpander" AutomationProperties.AutomationId="McpClientsExpander">
+                <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="People" /></toolkit:SettingsExpander.HeaderIcon>
+            </toolkit:SettingsExpander>
+            <TextBlock
+                x:Name="McpNoteText"
+                AutomationProperties.AutomationId="McpNoteText"
+                AutomationProperties.LiveSetting="Polite"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap" />
+
+            <TextBlock x:Uid="UpdatesHeader" x:Name="UpdatesHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Name="UpdateCard" AutomationProperties.AutomationId="UpdateCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE895;" /></toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ProgressRing x:Name="UpdateProgress" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+                    <Button x:Name="UpdateButton" AutomationProperties.AutomationId="UpdateButton" Click="OnUpdateButton" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="UpdateChannelCard" x:Name="UpdateChannelCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7C1;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="UpdateChannelBox" x:Uid="UpdateChannelBox" AutomationProperties.AutomationId="UpdateChannelBox" MinWidth="200" SelectionChanged="OnUpdateChannelChanged">
+                    <ComboBoxItem x:Uid="UpdateChannelStable" Tag="Stable" />
+                    <ComboBoxItem x:Uid="UpdateChannelBeta" Tag="Beta" />
+                </ComboBox>
+            </toolkit:SettingsCard>
+            <HyperlinkButton x:Uid="WhatsNewLink" x:Name="WhatsNewLink" AutomationProperties.AutomationId="WhatsNewLink" Click="OnWhatsNew" />
 
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsExpander x:Name="AboutExpander" x:Uid="AboutExpander" AutomationProperties.AutomationId="AboutExpander">

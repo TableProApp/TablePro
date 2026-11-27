@@ -1,10 +1,6 @@
-//
-//  AccountSettingsModel.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
+import TableProHTTP
 
 internal struct AccountRemote<Value: Equatable>: Equatable {
     var value: Value?
@@ -19,6 +15,28 @@ internal struct AccountActionFailure: Equatable, Identifiable {
     var id: String { title + message }
 }
 
+internal struct AccountSignOutConfirmation: Equatable {
+    // The Team Library edits and conflicts not uploaded yet, taken with sync stopped.
+    let teamChanges: [String]
+    var uploadFailure: TeamLibraryFailure?
+    let removesOfflineFile: Bool
+
+    var discardsSomething: Bool {
+        !teamChanges.isEmpty || removesOfflineFile
+    }
+
+    var message: String {
+        var sentences = [String(localized: "Paid features stop on this Mac until you sign in again.")]
+        if !teamChanges.isEmpty {
+            sentences.append(TeamLibraryUnsentChanges.message(teamChanges, failure: uploadFailure))
+        }
+        if removesOfflineFile {
+            sentences.append(String(localized: "The imported offline file is removed."))
+        }
+        return sentences.joined(separator: " ")
+    }
+}
+
 @MainActor
 internal final class AccountSettingsModel: ObservableObject {
     enum Activity: Equatable {
@@ -30,6 +48,20 @@ internal final class AccountSettingsModel: ObservableObject {
         case usingKey
     }
 
+    struct Loader {
+        var profile: @MainActor () async throws(AccountError) -> AccountProfile
+        var devices: @MainActor () async throws(AccountError) -> [AccountDevice]
+
+        static func live(_ services: AccountServices) -> Loader {
+            Loader(
+                profile: { () async throws(AccountError) -> AccountProfile in try await services.fetchProfile() },
+                devices: { () async throws(AccountError) -> [AccountDevice] in try await services.fetchDevices() }
+            )
+        }
+    }
+
+    static let freshness: TimeInterval = 60
+
     @Published private(set) var profile = AccountRemote<AccountProfile>()
     @Published private(set) var devices = AccountRemote<[AccountDevice]>()
     @Published private(set) var activity: Activity?
@@ -40,20 +72,48 @@ internal final class AccountSettingsModel: ObservableObject {
     // Read once when the sheet opens, not on every render: it comes from the Keychain.
     @Published private(set) var licenseKeyPrefill: String?
     @Published var presentsOfflineImporter = false
+    @Published var pendingRemoval: AccountSettingsContent.DeviceRow?
 
     let services: AccountServices
+    private let loader: Loader
     private let now: () -> Date
+    private let openURL: @MainActor (URL) -> Void
+    private let teamLibrary: @MainActor () -> TeamLibrarySync
+    private let askSignOut: @MainActor (AccountSignOutConfirmation) async -> AccountSignOutAnswer
+    private let closeSignOutQuestion: @MainActor () -> Void
+    private var asksSignOut = false
     private var stateObserver: AnyCancellable?
     private var loadedSignedIn: Bool?
+    // Bumped when the loaded data is dropped, so a load still out for the old account lands nowhere.
+    private var generation = 0
+    private var lastLoad: Date?
+    private var returnsFromPortal = false
 
-    init(services: AccountServices, now: @escaping () -> Date = { Date() }) {
+    init(
+        services: AccountServices,
+        loader: Loader? = nil,
+        now: @escaping () -> Date = { Date() },
+        openURL: @escaping @MainActor (URL) -> Void = { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },
+        teamLibrary: @escaping @MainActor () -> TeamLibrarySync = { .shared },
+        askSignOut: @escaping @MainActor (AccountSignOutConfirmation) async -> AccountSignOutAnswer = AccountSignOutPrompt.ask,
+        closeSignOutQuestion: @escaping @MainActor () -> Void = AccountSignOutPrompt.close
+    ) {
         self.services = services
+        self.loader = loader ?? .live(services)
         self.now = now
+        self.openURL = openURL
+        self.teamLibrary = teamLibrary
+        self.askSignOut = askSignOut
+        self.closeSignOutQuestion = closeSignOutQuestion
         stateObserver = services.access.$state
             .dropFirst()
             .sink { [weak self] state in
                 guard let self else { return }
                 objectWillChange.send()
+                // Signed out some other way while Sign Out asks: nothing is left to sign out of.
+                if !state.isSignedIn, asksSignOut {
+                    closeSignOutQuestion()
+                }
                 if let loadedSignedIn, state.isSignedIn != loadedSignedIn {
                     Task { await self.reload() }
                 }
@@ -69,15 +129,32 @@ internal final class AccountSettingsModel: ObservableObject {
             state: services.access.state,
             profile: profile.value,
             devices: devices.value,
-            hasLegacyLicense: services.access.state.legacy != nil,
             machineID: services.machineID,
-            configuration: services.configuration,
             now: now()
         )
     }
 
     var isBusy: Bool {
         activity != nil
+    }
+
+    // Every show of the pane and every return to the window: a portal visit may have changed the account.
+    func refreshOnVisit() async {
+        guard returnsFromPortal else {
+            await reloadIfStale()
+            return
+        }
+        returnsFromPortal = false
+        await services.checkNow()
+        await reload()
+    }
+
+    func reloadIfStale() async {
+        if services.access.state.isSignedIn == loadedSignedIn, let lastLoad,
+           now().timeIntervalSince(lastLoad) < Self.freshness {
+            return
+        }
+        await reload()
     }
 
     // Keeps what it loaded before when a load fails; a sign-in or sign-out drops it first.
@@ -88,32 +165,55 @@ internal final class AccountSettingsModel: ObservableObject {
             loadedSignedIn = isSignedIn
         }
         guard isSignedIn else { return }
-        async let profileLoad: Void = loadProfile()
-        async let devicesLoad: Void = loadDevices()
-        _ = await (profileLoad, devicesLoad)
+        let started = generation
+        async let profileLoad = loadProfile()
+        async let devicesLoad = loadDevices()
+        let (profileLoaded, devicesLoaded) = await (profileLoad, devicesLoad)
+        guard started == generation, profileLoaded, devicesLoaded else { return }
+        lastLoad = now()
     }
 
-    func loadProfile() async {
-        if profile.value == nil {
-            profile.isLoading = true
-        }
+    @discardableResult
+    func loadProfile() async -> Bool {
+        let started = generation
+        profile.isLoading = true
         do throws(AccountError) {
-            profile = AccountRemote(value: try await services.fetchProfile())
+            let value = try await loader.profile()
+            guard started == generation else { return false }
+            profile = AccountRemote(value: value)
+            return true
+        } catch .canceled {
+            if started == generation {
+                profile.isLoading = false
+            }
+            return false
         } catch {
+            guard started == generation else { return false }
             profile.isLoading = false
             profile.failure = error.friendlyDescription ?? String(localized: "Could not load your teams.")
+            return false
         }
     }
 
-    func loadDevices() async {
-        if devices.value == nil {
-            devices.isLoading = true
-        }
+    @discardableResult
+    func loadDevices() async -> Bool {
+        let started = generation
+        devices.isLoading = true
         do throws(AccountError) {
-            devices = AccountRemote(value: try await services.fetchDevices())
+            let value = try await loader.devices()
+            guard started == generation else { return false }
+            devices = AccountRemote(value: value)
+            return true
+        } catch .canceled {
+            if started == generation {
+                devices.isLoading = false
+            }
+            return false
         } catch {
+            guard started == generation else { return false }
             devices.isLoading = false
             devices.failure = error.friendlyDescription ?? String(localized: "Could not load your devices.")
+            return false
         }
     }
 
@@ -130,10 +230,40 @@ internal final class AccountSettingsModel: ObservableObject {
         presentDeviceLimitIfReached()
     }
 
+    // The whole of Sign Out. It holds Team Library from the question to its end, and every way out releases the hold:
+    // Cancel, a sign-out, and a sign-out that happened another way. What an upload leaves is asked about again.
     func signOut() async {
+        guard activity == nil else { return }
         activity = .signingOut
         defer { activity = nil }
-        await services.signOut()
+        let teamLibrary = teamLibrary()
+        let hold = await teamLibrary.hold()
+        defer { hold.release() }
+        var failure: TeamLibraryFailure?
+        while services.isSignedIn {
+            asksSignOut = true
+            let answer = await askSignOut(AccountSignOutConfirmation(
+                teamChanges: teamLibrary.unsentChanges,
+                uploadFailure: failure,
+                removesOfflineFile: services.access.state.entitlement?.isOffline == true
+            ))
+            asksSignOut = false
+            guard services.isSignedIn else { return }
+            switch answer {
+            case .cancel:
+                return
+            case .discard:
+                teamLibrary.discardHeld()
+                await services.signOut()
+                return
+            case .upload:
+                failure = await teamLibrary.pushHeld().failure
+                if teamLibrary.unsentChanges.isEmpty, services.isSignedIn {
+                    await services.signOut()
+                    return
+                }
+            }
+        }
     }
 
     func checkNow() async {
@@ -143,7 +273,14 @@ internal final class AccountSettingsModel: ObservableObject {
         await reload()
     }
 
+    // The next return to the window checks the account again: billing, devices and teams change in the portal.
+    func openPortal(_ url: URL) {
+        returnsFromPortal = true
+        openURL(url)
+    }
+
     func removeDevice(_ device: AccountSettingsContent.DeviceRow) async {
+        pendingRemoval = nil
         activity = .removing(device.id)
         defer { activity = nil }
         do throws(AccountError) {
@@ -171,20 +308,30 @@ internal final class AccountSettingsModel: ObservableObject {
         }
     }
 
-    // Nil when the key signed this Mac in; the message to show beside the key otherwise.
+    func offlineFilePickerFailed(_ error: any Error) {
+        actionFailure = AccountActionFailure(
+            title: String(localized: "Could not import the offline file"),
+            message: error.localizedDescription
+        )
+    }
+
+    // Nil when the key signed this Mac in or the exchange was canceled; the message to show beside the key otherwise.
     func useLicenseKey(_ key: String) async -> String? {
         activity = .usingKey
         defer { activity = nil }
         do throws(AccountError) {
             _ = try await services.useLicenseKey(key)
+        } catch .canceled {
+            return nil
         } catch {
             return error.licenseKeyDescription ?? String(localized: "Could not use this license key.")
         }
         presentsLicenseKey = false
         presentDeviceLimitIfReached()
-        // The key may belong to another account than the one signed in before.
+        // The key may belong to another account than the one signed in before. The sheet closing cancels its own
+        // task, so the reload runs outside it.
         forgetLoaded()
-        await reload()
+        Task { await reload() }
         return nil
     }
 
@@ -200,6 +347,8 @@ internal final class AccountSettingsModel: ObservableObject {
     }
 
     private func forgetLoaded() {
+        generation += 1
+        lastLoad = nil
         profile = AccountRemote()
         devices = AccountRemote()
     }

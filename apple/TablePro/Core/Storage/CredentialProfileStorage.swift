@@ -1,8 +1,3 @@
-//
-//  CredentialProfileStorage.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProImport
@@ -12,34 +7,60 @@ extension Notification.Name {
     static let credentialProfilesDidChange = Notification.Name("CredentialProfilesDidChange")
 }
 
-/// The named credential profiles, in a file beside `connections.json` and stamped the same way.
-///
-/// Not `UserDefaults`, which is where SSH profiles live. A credential profile can declare a
-/// `PasswordSource.command(shell:)`, and the trust tag is the only thing standing between an
-/// attacker-writable file and a command this Mac never agreed to run. `ConnectionStorage` has that
-/// tag; the defaults domain has nothing of the kind.
+enum ProfileSecretRead: Equatable, Sendable {
+    case found(String)
+    case absent
+    case unreadable
+
+    init(_ result: KeychainStringResult) {
+        switch result {
+        case .found(let value):
+            self = value.isEmpty ? .absent : .found(value)
+        case .notFound:
+            self = .absent
+        case .locked, .userCancelled, .authFailed, .error:
+            self = .unreadable
+        }
+    }
+
+    var value: String? {
+        guard case .found(let value) = self else { return nil }
+        return value
+    }
+}
+
+enum ProfileSecretChange: Equatable, Sendable {
+    case write(String)
+    case keep
+    case delete
+
+    // An empty field over a secret that could not be read means "not shown", never "cleared".
+    static func decide(applies: Bool, value: String, read: ProfileSecretRead) -> ProfileSecretChange {
+        if applies, !value.isEmpty {
+            return read == .found(value) ? .keep : .write(value)
+        }
+        return read == .unreadable ? .keep : .delete
+    }
+}
+
+// A file and not UserDefaults: a profile can name a shell command, and only the file's trust tag stops one this Mac never agreed to run.
 @MainActor
 final class CredentialProfileStorage {
     static let shared = CredentialProfileStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CredentialProfileStorage")
 
-    /// The prefix is load-bearing. `TableProMobile`'s `KeychainSecureStore.cleanOrphanedCredentials`
-    /// sweeps `com.TablePro.password.` and deletes any item whose trailing UUID is not a saved
-    /// connection, and a profile id is never a connection id.
-    private static let secretPrefix = "com.TablePro.credprofile."
+    // TableProMobile sweeps `com.TablePro.password.` items whose UUID is not a connection, so profile secrets must not share that prefix.
+    static let secretKeyPrefix = "com.TablePro.credprofile."
+    private static let secretPrefix = secretKeyPrefix
 
     private let file: IntegrityStampedFileStore<CredentialProfile>
     private let keychain: any KeychainStoring
     private let syncTracker: SyncChangeTracker
     private let connectionStorageProvider: () -> ConnectionStorage
 
-    /// True when the file exists and would not decode. Saving then would write an empty list over
-    /// whatever it holds, so every mutation refuses until a load succeeds.
+    // Every mutation refuses while this is true, or a save would write an empty list over the file.
     private(set) var lastLoadFailed = false
 
-    /// Whether the profiles file is the one TablePro last wrote. `resolvePassword` reads it before
-    /// running a profile's password source, exactly as it reads `ConnectionStorage.storeIsTrusted`
-    /// before running a connection's.
     var storeIsTrusted: Bool { file.isTrusted }
 
     init(
@@ -67,8 +88,6 @@ final class CredentialProfileStorage {
         return directory.appendingPathComponent("credentialProfiles.json")
     }
 
-    // MARK: - Profile CRUD
-
     func loadProfiles() -> [CredentialProfile] {
         guard let profiles = file.load() else {
             lastLoadFailed = true
@@ -76,6 +95,12 @@ final class CredentialProfileStorage {
         }
         lastLoadFailed = false
         return profiles.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    // Loads first, so the answer does not depend on whether anything has read the file yet.
+    var unreadableProfileIds: Set<UUID> {
+        _ = loadProfiles()
+        return file.unreadableIds
     }
 
     func profile(for id: UUID) -> CredentialProfile? {
@@ -101,8 +126,6 @@ final class CredentialProfileStorage {
             return false
         }
         guard file.save(profiles) else { return false }
-        /// The Settings window is kept alive between openings, so a profile created from a
-        /// connection window has to reach a Profiles pane that is already on screen.
         NotificationCenter.default.post(name: .credentialProfilesDidChange, object: nil)
         return true
     }
@@ -111,15 +134,18 @@ final class CredentialProfileStorage {
     func addProfile(_ profile: CredentialProfile) -> Bool {
         var profiles = loadProfiles()
         guard !lastLoadFailed else { return false }
+        // A record this build cannot read still owns its id, so a second record under it would replace it on save.
+        guard !profiles.contains(where: { $0.id == profile.id }), !file.unreadableIds.contains(profile.id) else {
+            Self.logger.error("Refusing to add credential profile \(profile.id.uuidString, privacy: .public): the id is taken")
+            return false
+        }
         var placed = profile
         placed.sortOrder = (profiles.map { $0.sortOrder }.max() ?? -1) + 1
         profiles.append(placed)
         return saveProfiles(profiles)
     }
 
-    /// Returns only the profiles this call created. A name already here is skipped, so a file can
-    /// never select one of this Mac's credentials by naming it. Nil when the store is unreadable
-    /// or the save failed.
+    // A name already here is skipped, so a file can never select one of this Mac's credentials by naming it.
     func addImportedProfiles(_ imported: [PlannedCredentialProfile]) -> [BundleRef: UUID]? {
         guard !imported.isEmpty else { return [:] }
         var profiles = loadProfiles()
@@ -156,10 +182,8 @@ final class CredentialProfileStorage {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return false }
         profiles[index] = profile
         guard saveProfiles(profiles) else { return false }
-        /// Best effort, and deliberately not part of the result. The profile is saved and the
-        /// connect path resolves the username from it either way; this is what keeps the copy on
-        /// each connection, which every other reader of `username` uses, in step.
-        if !writeUsernameThrough(profile) {
+        // Best effort: the connect path resolves the username from the profile either way.
+        if !writeUsernameThrough(profile, byUser: true) {
             Self.logger.error(
                 "Saved credential profile \(profile.id.uuidString, privacy: .public) but could not update the connections linked to it"
             )
@@ -167,32 +191,26 @@ final class CredentialProfileStorage {
         return true
     }
 
-    /// Deleting hands each linked connection the profile's username and its stored password, as
-    /// that connection's own inline credentials, so nothing stops connecting. Returns false without
-    /// deleting anything when that hand-over cannot be completed.
+    // Linked connections take the profile's credentials as their own first; nothing is deleted if that hand-over fails.
     @discardableResult
     func deleteProfile(_ profile: CredentialProfile) -> Bool {
         var profiles = loadProfiles()
         guard !lastLoadFailed else { return false }
+        // The stored record, not the caller's copy, which can predate a sync or another window's edit.
+        var current = profiles.first { $0.id == profile.id } ?? profile
+        current.secureFieldIds = Array(Set(current.secureFieldIds).union(profile.secureFieldIds)).sorted()
         profiles.removeAll { $0.id == profile.id }
-        guard unlinkConnections(from: profile) else { return false }
+        guard unlinkConnections(from: current, byUser: true) else { return false }
         guard saveProfiles(profiles) else { return false }
         syncTracker.markDeleted(.credentialProfile, id: profile.id.uuidString)
 
-        deleteSecrets(for: profile)
+        deleteSecrets(for: current)
         return true
     }
 
-    // MARK: - Linked Connections
-
-    /// Copies the profile's username onto every connection that links to it.
-    ///
-    /// `connection.username` stays populated for a linked connection on purpose. It is read raw by
-    /// the AWS IAM signer, the `~/.pgpass` lookup, `NativeDumpRegistry`'s `-U` flags,
-    /// `ExternalConnectionTrustKey` and the connection record pushed to iCloud, and blanking it
-    /// would have pushed an empty username over the good value on a second Mac.
+    // connection.username stays filled for a linked connection: the IAM signer, ~/.pgpass, dump flags and sync read it raw.
     @discardableResult
-    func writeUsernameThrough(_ profile: CredentialProfile, byUser: Bool = true) -> Bool {
+    func writeUsernameThrough(_ profile: CredentialProfile, byUser: Bool) -> Bool {
         let storage = connectionStorageProvider()
         let linked = Set(
             storage.loadConnections()
@@ -204,9 +222,17 @@ final class CredentialProfileStorage {
         }
     }
 
+    // `byUser` false (a sync pull) never signs connections.json, which may hold a command nobody here approved.
     @discardableResult
-    func unlinkConnections(from profile: CredentialProfile) -> Bool {
+    func unlinkConnections(from profile: CredentialProfile, byUser: Bool) -> Bool {
         let storage = connectionStorageProvider()
+        // An unreadable library may hold connections that use this profile, and they would be left pointing at nothing.
+        guard !storage.isLibraryUnreadable else {
+            Self.logger.error(
+                "Refusing to unlink from credential profile \(profile.id.uuidString, privacy: .public): the connections could not be read"
+            )
+            return false
+        }
         let linked = storage.loadConnections().filter { $0.credentialMode == .profile(id: profile.id) }
         guard !linked.isEmpty else { return true }
 
@@ -224,19 +250,13 @@ final class CredentialProfileStorage {
         }
 
         let carriesSource = storeIsTrusted
-        let converted = storage.mutateConnections(ids: Set(linked.map { $0.id })) { connection in
+        let converted = storage.mutateConnections(ids: Set(linked.map { $0.id }), byUser: byUser) { connection in
             connection.credentialMode = .inline
             connection.username = profile.username
-            /// Every inline password field is written, not only the one this profile used. A
-            /// connection that carried a prompt flag or a pgpass flag from before it was linked
-            /// would otherwise keep it and override the password just copied in.
+            // Every inline password flag is written, or a stale prompt or pgpass flag overrides the password just copied in.
             connection.promptForPassword = profile.passwordMode == .prompt
             connection.usePgpass = profile.passwordMode == .pgpass
-            /// A password source can name a shell command, and `connections.json` re-stamps itself
-            /// as trusted whenever the user saves it. Carrying one out of a profiles file that
-            /// something else wrote would move a command from a store that refuses to run it into
-            /// one that will, with a profile delete standing in for the user's consent. So it is
-            /// carried only from a file TablePro itself last wrote; otherwise the connection asks.
+            // connections.json re-stamps itself on a user save, so a source from an untrusted profiles file would become runnable.
             if case .source(let source) = profile.passwordMode, carriesSource {
                 connection.passwordSource = source
             } else {
@@ -254,15 +274,22 @@ final class CredentialProfileStorage {
         return converted
     }
 
-    // MARK: - Secrets
-
+    @discardableResult
     func savePassword(_ password: String, for profileId: UUID) -> Bool {
         keychain.writeString(password, forKey: Self.passwordKey(profileId))
     }
 
     func loadPassword(for profileId: UUID) -> String? {
         keychain.readStringResult(forKey: Self.passwordKey(profileId))
-            .value(label: "Credential profile password (profileId=\(profileId.uuidString))", logger: Self.logger)
+            .value(label: Self.passwordLabel(profileId), logger: Self.logger)
+    }
+
+    func passwordRead(for profileId: UUID) -> DeferredSecretRead {
+        deferredRead(forKey: Self.passwordKey(profileId), label: Self.passwordLabel(profileId))
+    }
+
+    func readPassword(for profileId: UUID) -> ProfileSecretRead {
+        ProfileSecretRead(keychain.readStringResult(forKey: Self.passwordKey(profileId)))
     }
 
     func deletePassword(for profileId: UUID) {
@@ -276,18 +303,22 @@ final class CredentialProfileStorage {
 
     func loadSecureField(fieldId: String, for profileId: UUID) -> String? {
         keychain.readStringResult(forKey: Self.fieldKey(fieldId, profileId))
-            .value(
-                label: "Credential profile field \(fieldId) (profileId=\(profileId.uuidString))",
-                logger: Self.logger
-            )
+            .value(label: Self.fieldLabel(fieldId, profileId), logger: Self.logger)
+    }
+
+    func secureFieldRead(fieldId: String, for profileId: UUID) -> DeferredSecretRead {
+        deferredRead(forKey: Self.fieldKey(fieldId, profileId), label: Self.fieldLabel(fieldId, profileId))
+    }
+
+    func readSecureField(fieldId: String, for profileId: UUID) -> ProfileSecretRead {
+        ProfileSecretRead(keychain.readStringResult(forKey: Self.fieldKey(fieldId, profileId)))
     }
 
     func deleteSecureField(fieldId: String, for profileId: UUID) {
         keychain.delete(forKey: Self.fieldKey(fieldId, profileId))
     }
 
-    /// Every keychain item this type writes, removed together. A key written here and missing from
-    /// this list is a secret that outlives its owner with nothing left that can name it.
+    // Every Keychain item this type writes. A key missing here outlives its profile with nothing left to name it.
     func deleteSecrets(for profile: CredentialProfile) {
         deletePassword(for: profile.id)
         for fieldId in profile.secureFieldIds {
@@ -305,6 +336,21 @@ final class CredentialProfileStorage {
 
     private static func fieldKey(_ fieldId: String, _ profileId: UUID) -> String {
         "\(secretPrefix)field.\(fieldId).\(profileId.uuidString)"
+    }
+
+    private static func passwordLabel(_ profileId: UUID) -> String {
+        "Credential profile password (profileId=\(profileId.uuidString))"
+    }
+
+    private static func fieldLabel(_ fieldId: String, _ profileId: UUID) -> String {
+        "Credential profile field \(fieldId) (profileId=\(profileId.uuidString))"
+    }
+
+    private func deferredRead(forKey key: String, label: String) -> DeferredSecretRead {
+        let keychain = keychain
+        return DeferredSecretRead(key: key, label: label, logger: Self.logger) {
+            keychain.readStringResult(forKey: key)
+        }
     }
 
     private struct ProfileSecrets {
@@ -332,35 +378,24 @@ final class CredentialProfileStorage {
         }
     }
 
-    private enum SecretRead {
-        case readable(String?)
-        case unreadable
-    }
-
-    /// Nil when anything the profile owns exists but could not be read. A profile with no stored
-    /// secret reads as an empty set, which is correct for prompt, pgpass and source modes.
+    // Nil when anything the profile owns exists but could not be read; prompt, pgpass and source modes own no password.
     private func readSecrets(for profile: CredentialProfile) -> ProfileSecrets? {
         var password: String?
         if profile.passwordMode.usesStoredSecret {
-            guard case .readable(let value) = readSecret(Self.passwordKey(profile.id)) else { return nil }
-            password = value
+            switch readPassword(for: profile.id) {
+            case .found(let value): password = value
+            case .absent: break
+            case .unreadable: return nil
+            }
         }
         var fields: [String: String] = [:]
         for fieldId in profile.secureFieldIds {
-            guard case .readable(let value) = readSecret(Self.fieldKey(fieldId, profile.id)) else { return nil }
-            if let value { fields[fieldId] = value }
+            switch readSecureField(fieldId: fieldId, for: profile.id) {
+            case .found(let value): fields[fieldId] = value
+            case .absent: break
+            case .unreadable: return nil
+            }
         }
         return ProfileSecrets(password: password, fields: fields)
-    }
-
-    private func readSecret(_ key: String) -> SecretRead {
-        switch keychain.readStringResult(forKey: key) {
-        case .found(let value):
-            return .readable(value.isEmpty ? nil : value)
-        case .notFound:
-            return .readable(nil)
-        case .locked, .userCancelled, .authFailed, .error:
-            return .unreadable
-        }
     }
 }

@@ -29,7 +29,7 @@ import TableProPluginKit
 /// Every ambiguity resolves toward "the session is holding something". The cost of that is only
 /// that a connection keeps its slot, which is what happens today; the cost of the opposite is
 /// destroying a user's transaction or temporary table without telling them.
-struct MySQLSessionFootprint: Equatable {
+nonisolated struct MySQLSessionFootprint: Equatable {
     private(set) var hasOpenTransaction = false
     private(set) var hasTemporaryTables = false
     private(set) var hasUserVariables = false
@@ -102,13 +102,24 @@ struct MySQLSessionFootprint: Equatable {
     /// `NO_BACKSLASH_ESCAPES` closes early is split where the server splits it.
     mutating func observe(_ sql: String, lexicalFeatures: SQLLexicalFeatures) {
         for statement in SQLStatementSplitting.statements(in: sql, lexicalFeatures: lexicalFeatures) {
-            let readings = Self.executableBodies(of: statement).map { body in
+            observeDatabaseMove(statement)
+            let bodies = Self.executableBodies(of: statement)
+            if !bodies.isComplete {
+                ranOpaqueRoutine = true
+            }
+            let readings = bodies.readings.map { body in
                 var reading = self
                 reading.observeReading(body, lexicalFeatures: lexicalFeatures)
                 return reading
             }
             self = readings.dropFirst().reduce(readings[0]) { $0.holding($1) }
         }
+    }
+
+    private mutating func observeDatabaseMove(_ statement: String) {
+        let move = MySQLDatabaseMoveScan.move(of: statement)
+        hasChangedDatabase = hasChangedDatabase || move.changesDatabase
+        ranOpaqueRoutine = ranOpaqueRoutine || move.runsOpaqueCode
     }
 
     // A reading can hold statements the split above kept inside the comment, as one whose `#` hid a `*/` does when
@@ -173,7 +184,7 @@ struct MySQLSessionFootprint: Equatable {
     mutating func observeFailure(of sql: String, lexicalFeatures: SQLLexicalFeatures) {
         let statements = SQLStatementSplitting.statements(in: sql, lexicalFeatures: lexicalFeatures)
         guard statements.count == 1, let failed = statements.first else { return }
-        let refusedLock = Self.executableBodies(of: failed).allSatisfy { body in
+        let refusedLock = Self.executableBodies(of: failed).readings.allSatisfy { body in
             Self.collapsedHead(of: body.uppercased()).hasPrefix("LOCK TABLE")
         }
         guard refusedLock else { return }
@@ -285,12 +296,6 @@ struct MySQLSessionFootprint: Equatable {
         if head.hasPrefix("HANDLER ") {
             hasOpenHandlers = true
         }
-        if head.hasPrefix("CALL ") {
-            ranOpaqueRoutine = true
-        }
-        if head.hasPrefix("USE ") {
-            hasChangedDatabase = true
-        }
         if normalized.contains("GET_LOCK(") {
             hasAdvisoryLocks = true
         }
@@ -321,22 +326,37 @@ struct MySQLSessionFootprint: Equatable {
     /// version-gated block, is still classified by the first thing the server would run. A server
     /// older than a version after 40101 skips the body, and MySQL reads `/*M!` as a plain comment,
     /// so for those what follows is also read on its own.
-    private static func executableBodies(of statement: String) -> [String] {
-        let isMariaDBMarker = statement.hasPrefix("/*M!")
-        guard statement.hasPrefix("/*!") || isMariaDBMarker else { return [statement] }
-        guard let close = statement.range(of: "*/") else { return [statement] }
-        let marked = statement[statement.index(statement.startIndex, offsetBy: 2)..<close.lowerBound]
-        let afterMarker = marked.drop(while: { $0 == "M" }).dropFirst()
-        let digits = afterMarker.prefix(while: { $0.isASCII && $0.isNumber })
-        let version = digits.count >= 5 ? Int(digits.prefix(5)) : nil
-        let body = afterMarker
-            .drop(while: { $0.isNumber })
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let remainder = statement[close.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
-        let run = remainder.isEmpty ? body : body.isEmpty ? remainder : "\(body) \(remainder)"
-        let maySkip = isMariaDBMarker || (version ?? 0) > 40_101
-        return maySkip ? [run] + executableBodies(of: remainder) : [run]
+    private static func executableBodies(of statement: String) -> (readings: [String], isComplete: Bool) {
+        var readings: [String] = []
+        var text = statement
+        for _ in 0..<maximumReadings {
+            let isMariaDBMarker = text.hasPrefix("/*M!")
+            guard text.hasPrefix("/*!") || isMariaDBMarker, let close = text.range(of: "*/") else {
+                readings.append(text)
+                return (readings, true)
+            }
+            let marked = text[text.index(text.startIndex, offsetBy: 2)..<close.lowerBound]
+            let afterMarker = marked.drop(while: { $0 == "M" }).dropFirst()
+            let digits = afterMarker.prefix(while: { $0.isASCII && $0.isNumber })
+            let version = digits.count >= 5 ? Int(digits.prefix(5)) : nil
+            let body = afterMarker
+                .drop(while: { $0.isNumber })
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let remainder = text[close.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            // An empty comment runs nothing, so the statement is whatever follows it.
+            guard !body.isEmpty else {
+                text = remainder
+                continue
+            }
+            readings.append(remainder.isEmpty ? body : "\(body) \(remainder)")
+            guard isMariaDBMarker || (version ?? 0) > 40_101 else { return (readings, true) }
+            text = remainder
+        }
+        return (readings + [text], false)
     }
+
+    // Past this many comments the statement counts as opaque, so the work stays linear in its length.
+    private static let maximumReadings = 32
 
     /// The statement's opening words with each run of whitespace collapsed, which is what the
     /// prefix checks match against: `CREATE TEMPORARY\nTABLE` is the same statement as

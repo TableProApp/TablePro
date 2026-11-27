@@ -11,8 +11,8 @@ async-trait.workspace = true
 futures.workspace = true
 # Two direct calls sqlx does not wrap: sqlite3_get_autocommit, until sqlx
 # exposes the transaction state of a connection, and sqlite3_busy_handler.
-# The range follows sqlx-sqlite's own, because only one libsqlite3-sys can
-# be linked.
+# The workspace pin stays inside sqlx-sqlite's range, because only one
+# libsqlite3-sys can be linked.
 libsqlite3-sys.workspace = true
 sqlparser.workspace = true
 sqlx.workspace = true
@@ -21,12 +21,12 @@ tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
-# Linux links the distribution's SQLite, as tablepro-storage does; the
-# other targets build the copy sqlx ships.
-[target.'cfg(target_os = "linux")'.dependencies]
+# Links the SQLite tablepro-storage links: the system's on Linux and Apple
+# targets, the copy sqlx ships on Windows.
+[target.'cfg(any(target_os = "linux", target_vendor = "apple"))'.dependencies]
 sqlx = { workspace = true, features = ["sqlite-unbundled"] }
 
-[target.'cfg(not(target_os = "linux"))'.dependencies]
+[target.'cfg(not(any(target_os = "linux", target_vendor = "apple")))'.dependencies]
 sqlx = { workspace = true, features = ["sqlite"] }
 
 [dev-dependencies]

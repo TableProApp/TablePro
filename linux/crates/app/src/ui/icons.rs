@@ -3,6 +3,7 @@
 
 pub const ACCOUNT: &str = "avatar-default-symbolic";
 pub const ACTION_UNAVAILABLE: &str = "action-unavailable-symbolic";
+pub const APPLICATION_X_EXECUTABLE: &str = "application-x-executable-symbolic";
 pub const APPLICATIONS_ENGINEERING: &str = "applications-engineering-symbolic";
 pub const APPLICATIONS_SCIENCE: &str = "applications-science-symbolic";
 /// Bundled: a speech bubble, for the AI assistant.
@@ -80,6 +81,7 @@ pub const TEXT_X_GENERIC: &str = "text-x-generic-symbolic";
 pub const USER_HOME: &str = "user-home-symbolic";
 pub const USER_TRASH: &str = "user-trash-symbolic";
 pub const UTILITIES_TERMINAL: &str = "utilities-terminal-symbolic";
+pub const VIEW_APP_GRID: &str = "view-app-grid-symbolic";
 pub const VIEW_GRID: &str = "view-grid-symbolic";
 pub const VIEW_LIST: &str = "view-list-symbolic";
 pub const VIEW_MORE: &str = "view-more-symbolic";
@@ -106,6 +108,7 @@ pub const ZOOM_OUT: &str = "zoom-out-symbolic";
 pub const ALL: &[&str] = &[
     ACCOUNT,
     ACTION_UNAVAILABLE,
+    APPLICATION_X_EXECUTABLE,
     APPLICATIONS_ENGINEERING,
     APPLICATIONS_SCIENCE,
     ASSISTANT,
@@ -176,6 +179,7 @@ pub const ALL: &[&str] = &[
     USER_HOME,
     USER_TRASH,
     UTILITIES_TERMINAL,
+    VIEW_APP_GRID,
     VIEW_GRID,
     VIEW_LIST,
     VIEW_MORE,

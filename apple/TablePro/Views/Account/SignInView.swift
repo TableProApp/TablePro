@@ -32,7 +32,11 @@ internal struct SignInView: View {
 
             switch model.phase {
             case .ready, .signingIn, .failed:
-                signInContent
+                if model.entersCompanyServer {
+                    companyServerContent
+                } else {
+                    signInContent
+                }
             case .signedIn(let email, let plan):
                 signedInContent(email: email, plan: plan)
             case .deviceLimit:
@@ -51,23 +55,33 @@ internal struct SignInView: View {
     private var signInContent: some View {
         VStack(spacing: 20) {
             VStack(spacing: 8) {
-                Text("Sign in to TablePro")
-                    .font(.title2.weight(.semibold))
-                    .accessibilityAddTraits(.isHeader)
+                Group {
+                    if model.server.isProduction {
+                        Text("Sign in to TablePro")
+                    } else {
+                        Text(String(format: String(localized: "Sign in to %@"), model.server.host))
+                    }
+                }
+                .font(.title2.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("sign-in-title")
 
-                Text("Your account unlocks the features your plan includes, on up to 3 devices. Everything else works without an account.")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Group {
+                    if model.server.isProduction {
+                        Text("Your account unlocks the features your plan includes, on up to 3 devices. Everything else works without an account.")
+                    } else if model.server.isManaged {
+                        Text("Your organization set up this TablePro server. Sign in with your work account.")
+                    } else {
+                        Text("Your organization's TablePro server. Sign in with your work account.")
+                    }
+                }
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
-            if case .failed(let message) = model.phase {
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("sign-in-error")
-            }
+            failureLabel
 
             VStack(spacing: 10) {
                 Button {
@@ -98,12 +112,106 @@ internal struct SignInView: View {
             }
             .controlSize(.large)
 
-            Text(SignInCopy.codeHint)
-                .font(.callout)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if model.offersOtherServers {
+                if model.server.isProduction {
+                    Button(String(localized: "Use a Company Server…")) {
+                        model.showCompanyServer()
+                    }
+                    .buttonStyle(.link)
+                    .disabled(model.isSigningIn)
+                    .accessibilityIdentifier("sign-in-use-company-server")
+                } else {
+                    Button(String(localized: "Use TablePro's Server Instead")) {
+                        Task { await model.useTableProServer() }
+                    }
+                    .buttonStyle(.link)
+                    .disabled(model.isSigningIn)
+                    .accessibilityIdentifier("sign-in-use-tablepro-server")
+                }
+            }
+
+            if model.server.isProduction {
+                Text(SignInCopy.codeHint)
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    // core ADR 0044: one URL field, the address the administrator hands out.
+    private var companyServerContent: some View {
+        VStack(spacing: 20) {
+            VStack(spacing: 8) {
+                Text("Use a Company Server")
+                    .font(.title2.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+
+                Text("Enter the address of your organization's TablePro server. Your administrator has it.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            TextField(
+                String(localized: "Server address"),
+                text: $model.companyServerAddress,
+                prompt: Text(verbatim: "https://tablepro.example.com")
+            )
+            .textFieldStyle(.roundedBorder)
+            .autocorrectionDisabled()
+            .disabled(model.isSigningIn)
+            .onSubmit { continueToCompanyServer() }
+            .accessibilityIdentifier("sign-in-company-server-address")
+
+            failureLabel
+
+            VStack(spacing: 10) {
+                Button(action: continueToCompanyServer) {
+                    HStack(spacing: 8) {
+                        if model.isSigningIn {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityHidden(true)
+                        }
+                        Text("Continue")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.isSigningIn || model.companyServerURL == nil)
+                .accessibilityIdentifier("sign-in-company-server-continue")
+
+                Button {
+                    model.cancelCompanyServer()
+                } label: {
+                    Text("Back")
+                        .frame(maxWidth: .infinity)
+                }
+                .keyboardShortcut(.cancelAction)
+                .disabled(model.isSigningIn)
+                .accessibilityIdentifier("sign-in-company-server-back")
+            }
+            .controlSize(.large)
+        }
+    }
+
+    @ViewBuilder
+    private var failureLabel: some View {
+        if case .failed(let message) = model.phase {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("sign-in-error")
+        }
+    }
+
+    private func continueToCompanyServer() {
+        guard model.companyServerURL != nil, !model.isSigningIn else { return }
+        Task { await model.signInToCompanyServer(using: authenticator()) }
     }
 
     private func signedInContent(email: String?, plan: String?) -> some View {

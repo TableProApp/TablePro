@@ -15,6 +15,7 @@ import TableProCoreTypes
 import TableProKerberos
 import TableProPluginKit
 import TableProPostgreSQLCore
+import TableProSQLGrammar
 import TableProTLSClientIdentity
 
 private final class LibPQCancelRequest: @unchecked Sendable {
@@ -63,6 +64,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let connectTimeout: LibPQConnectTimeout
     private let kerberos: LibPQKerberosSignIn?
     private let serverName: String?
+    private let directTLS: LibPQDirectTLSMemory?
     let pinsCatalogSearchPath: Bool
 
     private let stateLock = NSLock()
@@ -72,10 +74,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
     private var _cachedServerVersionNumber: Int32 = 0
+    private var _backendProcessID: Int32 = 0
     private var _isConnectCancelled: Bool = false
     private var _lastTransactionState: LibPQTransactionState = .idle
     private var _hasLostConnection = false
     private var _interruptsBlockedCallOnDisconnect = false
+    // A copy-in sends its own cancel request (LibPQCopyIn), so none outlives it.
+    private var copyInRunning = false
     private var serverMessages: Unmanaged<LibPQServerMessageSink>?
     private var _standardConformingStrings = true
     // Queue-confined. Non-nil until every schema/flavor/catalog bootstrap probe has completed.
@@ -93,6 +98,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     var standardConformingStrings: Bool {
         stateLock.withLock { _standardConformingStrings }
+    }
+
+    var backendProcessID: Int32 {
+        stateLock.withLock { _backendProcessID }
     }
 
     private var isShuttingDown: Bool {
@@ -132,7 +141,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         ),
         kerberos: LibPQKerberosSignIn? = nil,
         serverName: String? = nil,
-        pinsCatalogSearchPath: Bool = true
+        pinsCatalogSearchPath: Bool = true,
+        directTLS: LibPQDirectTLSMemory? = nil
     ) {
         self.host = host
         self.port = port
@@ -147,6 +157,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.kerberos = kerberos
         self.serverName = serverName
         self.pinsCatalogSearchPath = pinsCatalogSearchPath
+        self.directTLS = directTLS
     }
 
     deinit {
@@ -208,21 +219,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         // libpq reads the roots file while it polls, and every reconnect writes a new one.
         let trustAnchors = try systemTrustAnchorsFile()
         defer { trustAnchors?.remove() }
-        let conninfo = try connectionString(systemTrustAnchorsPath: trustAnchors?.url.path)
+        let trustAnchorsPath = trustAnchors?.url.path
         let connection = try signingIn(until: deadline) { () throws -> OpaquePointer in
-            guard let connection = conninfo.withCString({ PQconnectStart($0) }) else {
-                throw LibPQPluginError.connectionFailed
-            }
-            do {
-                guard PQstatus(connection) != CONNECTION_BAD else {
-                    throw connectionError(from: connection)
-                }
-                try pollUntilConnected(connection, deadline: deadline, reportingStage: report)
-                return connection
-            } catch {
-                PQfinish(connection)
-                throw error
-            }
+            try openConnection(trustAnchorsPath: trustAnchorsPath, deadline: deadline, reportingStage: report)
         }
         bootstrapTransportFailed = false
 
@@ -238,12 +237,71 @@ final class LibPQPluginConnection: @unchecked Sendable {
         stateLock.lock()
         conn = connection
         serverMessages = sink
+        _backendProcessID = PQbackendPID(connection)
         _lastTransactionState = .idle
         _hasLostConnection = false
         _isConnected = false
         stateLock.unlock()
         activeConnectDeadline = deadline
         adopted = true
+    }
+
+    private var directTLSEndpoint: LibPQDirectTLSMemory.Endpoint {
+        LibPQDirectTLSMemory.Endpoint(host: host, port: port, serverName: serverName)
+    }
+
+    // A server that turns direct TLS away gets the standard negotiation once more, under the same `sslmode`, and only
+    // when the attempt ended before sign-in: a wrong password is never sent twice.
+    private func openConnection(
+        trustAnchorsPath: String?,
+        deadline: LibPQConnectDeadline,
+        reportingStage report: @escaping ConnectionStageReporter
+    ) throws -> OpaquePointer {
+        let endpoint = directTLSEndpoint
+        var progress = LibPQHandshakeProgress()
+        guard LibPQConnectionString.allowsDirectTLS(sslConfig: sslConfig, kerberos: kerberos),
+              let directTLS, directTLS.allowsDirect(endpoint) else {
+            return try attemptConnection(
+                trustAnchorsPath: trustAnchorsPath, directTLS: false, deadline: deadline, report: report, progress: &progress
+            )
+        }
+        do {
+            return try attemptConnection(
+                trustAnchorsPath: trustAnchorsPath, directTLS: true, deadline: deadline, report: report, progress: &progress
+            )
+        } catch {
+            guard progress.refusedDirectTLS, !(error is CancellationError),
+                  deadline.remainingMicroseconds(nowMicroseconds: Int64(PQgetCurrentTimeUSec())) != nil else { throw error }
+            directTLS.noteRefused(endpoint)
+            Self.logger.info("Direct TLS was refused, negotiating TLS the standard way")
+            var retryProgress = LibPQHandshakeProgress()
+            return try attemptConnection(
+                trustAnchorsPath: trustAnchorsPath, directTLS: false, deadline: deadline, report: report, progress: &retryProgress
+            )
+        }
+    }
+
+    private func attemptConnection(
+        trustAnchorsPath: String?,
+        directTLS: Bool,
+        deadline: LibPQConnectDeadline,
+        report: @escaping ConnectionStageReporter,
+        progress: inout LibPQHandshakeProgress
+    ) throws -> OpaquePointer {
+        let conninfo = try connectionString(systemTrustAnchorsPath: trustAnchorsPath, directTLS: directTLS)
+        guard let connection = conninfo.withCString({ PQconnectStart($0) }) else {
+            throw LibPQPluginError.connectionFailed
+        }
+        do {
+            guard PQstatus(connection) != CONNECTION_BAD else {
+                throw connectionError(from: connection)
+            }
+            try pollUntilConnected(connection, deadline: deadline, reportingStage: report, progress: &progress)
+            return connection
+        } catch {
+            PQfinish(connection)
+            throw error
+        }
     }
 
     // A failure fails the connect: without sslrootcert libpq would look for a file that is not there.
@@ -299,14 +357,15 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private func pollUntilConnected(
         _ connection: OpaquePointer,
         deadline: LibPQConnectDeadline,
-        reportingStage report: @escaping ConnectionStageReporter
+        reportingStage report: @escaping ConnectionStageReporter,
+        progress: inout LibPQHandshakeProgress
     ) throws {
         var status = PGRES_POLLING_WRITING
         var lastHandshakeStatus: ConnStatusType?
 
         while true {
             try checkConnectCancellation()
-            reportHandshakeStage(of: connection, last: &lastHandshakeStatus, report: report)
+            reportHandshakeStage(of: connection, last: &lastHandshakeStatus, report: report, progress: &progress)
 
             switch status {
             case PGRES_POLLING_OK:
@@ -347,7 +406,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private func reportHandshakeStage(
         of connection: OpaquePointer,
         last: inout ConnStatusType?,
-        report: ConnectionStageReporter
+        report: ConnectionStageReporter,
+        progress: inout LibPQHandshakeProgress
     ) {
         let current = PQstatus(connection)
         guard current != last else { return }
@@ -355,8 +415,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         switch current {
         case CONNECTION_SSL_STARTUP:
+            progress.startedEncryption = true
             report(.negotiatingEncryption)
         case CONNECTION_AWAITING_RESPONSE, CONNECTION_AUTH_OK:
+            progress.startedSignIn = true
             report(.authenticating)
         default:
             break
@@ -620,7 +682,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         Self.logger.warning("standard_conforming_strings is off; string literals escape backslashes")
     }
 
-    private func connectionString(systemTrustAnchorsPath: String?) throws -> String {
+    private func connectionString(systemTrustAnchorsPath: String?, directTLS: Bool) throws -> String {
         try LibPQConnectionString.build(
             host: host,
             port: port,
@@ -633,7 +695,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             connectTimeoutSeconds: connectTimeout.nativeSeconds,
             kerberos: kerberos,
             serverName: serverName,
-            systemTrustAnchorsPath: systemTrustAnchorsPath
+            systemTrustAnchorsPath: systemTrustAnchorsPath,
+            directTLS: directTLS
         )
     }
 
@@ -711,13 +774,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {
-        guard cancellationGate.cancel() != nil else { return }
+        guard cancellationGate.cancel() != nil, !stateLock.withLock({ copyInRunning }) else { return }
         requestServerCancelOnCurrentConnection()
     }
 
     // MARK: - Query Execution
 
-    func executeQuery(_ query: String) async throws -> LibPQPluginQueryResult {
+    func executeQuery(_ query: String, probesBeforeBlock: Bool = false) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -725,17 +788,21 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if let deadline = activeConnectDeadline {
                 return try executeConnectQuerySync(queryToRun, deadline: deadline)
             }
-            return try executeQuerySync(queryToRun)
+            return try executeQuerySync(queryToRun, probesBeforeBlock: probesBeforeBlock)
         }
     }
 
     // The extended query protocol refuses a text holding a second statement, so one the host's split missed fails.
-    func executeSingleStatement(_ query: String) async throws -> LibPQPluginQueryResult {
+    func executeSingleStatement(
+        _ query: String,
+        keeping: Int = PluginRowLimits.emergencyMax,
+        probesBeforeBlock: Bool = false
+    ) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
-            return try executeQuerySync(queryToRun, singleStatement: true)
+            return try rowByRowReadSync(queryToRun, parameters: [], keeping: keeping, probesBeforeBlock: probesBeforeBlock)
         }
     }
 
@@ -776,14 +843,33 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    // Nil once the connect has finished, when a block of the user's may be open: the caller then scopes each read alone.
-    func executeConnectStatements(_ statements: String) async throws -> [Result<LibPQPluginQueryResult, Error>]? {
+    // One Query for several statements. Nil when the session cannot take one: a block a failed statement aborted, where
+    // the caller's reads each report that themselves.
+    func executeStatementBatch(_ statements: String) async throws -> [Result<LibPQPluginQueryResult, Error>]? {
         let statementsToRun = String(statements)
 
         return try await pluginDispatchAsync(on: queue) { [self] () throws -> [Result<LibPQPluginQueryResult, Error>]? in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
-            guard let deadline = activeConnectDeadline else { return nil }
-            return try executeConnectStatementsSync(statementsToRun, deadline: deadline)
+            if let deadline = activeConnectDeadline {
+                return try executeConnectStatementsSync(statementsToRun, deadline: deadline)
+            }
+            switch transactionStateOnQueue() {
+            case .idle:
+                return try executeStatementsSync(statementsToRun)
+            case .inTransaction:
+                return try executeStatementsInUserBlockSync(statementsToRun)
+            default:
+                return nil
+            }
+        }
+    }
+
+    // Whether this session reached a version 17 backend over TLS, which is what lets its endpoint skip the SSLRequest.
+    func noteDirectBackend() async {
+        _ = try? await pluginDispatchAsync(on: queue) { [self] in
+            guard let directTLS, !isShuttingDown, let conn = connectionHandle, PQsslInUse(conn) != 0,
+                  PQserverVersion(conn) >= LibPQDirectTLSMemory.minimumServerVersion else { return }
+            directTLS.noteDirectBackend(directTLSEndpoint)
         }
     }
 
@@ -807,7 +893,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     func executeReadOnlyStatement(
         _ statement: String,
         parameters: [PluginCellValue]?,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> LibPQPluginQueryResult {
         let statementToRun = String(statement)
         let params = parameters
@@ -817,11 +903,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if let ended = sessionEndedBeforeSending(conn) { throw ended }
             return try LibPQReadOnlyTransaction.run(
                 state: transactionStateOnQueue().sessionTransactionState,
-                reason: reason,
+                scope: scope,
                 send: { try runReadOnlyControl($0, on: conn) }
             ) {
                 guard let params else { return try executeQuerySync(statementToRun, singleStatement: true) }
-                return try executeParameterizedQuerySync(statementToRun, parameters: params)
+                return try rowByRowReadSync(statementToRun, parameters: params)
             }
         }
     }
@@ -859,25 +945,20 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let state = transactionStateOnQueue()
             if requiresIdleSession, state != .idle { throw PostgreSQLSessionScopeError.sessionNotIdle }
             guard state == .inTransaction else {
-                return try executeParameterizedQuerySync(statementToRun, parameters: params)
+                return try rowByRowReadSync(statementToRun, parameters: params)
             }
-            _ = try executeQuerySync(Self.sessionSettingSavepoint)
+            _ = try executeQuerySync(PostgreSQLSessionScopeSQL.settingSavepoint)
             let result: LibPQPluginQueryResult
             do {
-                result = try executeParameterizedQuerySync(statementToRun, parameters: params)
+                result = try rowByRowReadSync(statementToRun, parameters: params)
             } catch {
-                _ = try? executeQuerySync(Self.sessionSettingRollback)
+                _ = try? executeQuerySync(PostgreSQLSessionScopeSQL.settingRollback)
                 throw error
             }
-            _ = try executeQuerySync(Self.sessionSettingRelease)
+            _ = try executeQuerySync(PostgreSQLSessionScopeSQL.settingRelease)
             return result
         }
     }
-
-    private static let sessionSettingSavepoint = "SAVEPOINT tablepro_session_setting"
-    private static let sessionSettingRelease = "RELEASE SAVEPOINT tablepro_session_setting"
-    private static let sessionSettingRollback =
-        "ROLLBACK TO SAVEPOINT tablepro_session_setting; RELEASE SAVEPOINT tablepro_session_setting"
 
     // Whether the session is inside a transaction block, including one a failed statement has
     // aborted, so a statement sent now joins it. Called on the connection's queue only: one `PGconn`
@@ -941,13 +1022,39 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> LibPQPluginQueryResult {
+    func executeParameterizedQuery(
+        _ query: String,
+        parameters: [PluginCellValue],
+        keeping: Int = PluginRowLimits.emergencyMax
+    ) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
-            return try executeParameterizedQuerySync(queryToRun, parameters: params)
+            return try rowByRowReadSync(queryToRun, parameters: params, keeping: keeping)
+        }
+    }
+
+    // One dispatch holds the connection from the COPY to its last result: a PQexec sent in between would end the copy.
+    func copyFromStandardInput(
+        _ statement: String,
+        rows: PluginCopyData,
+        readOnly: LibPQReadOnlyTransaction.Reason?
+    ) async throws -> LibPQPluginQueryResult {
+        let statementToRun = String(statement)
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            guard let readOnly else { return try copyFromStandardInputSync(statementToRun, rows: rows, conn: conn) }
+            if let ended = sessionEndedBeforeSending(conn) { throw ended }
+            return try LibPQReadOnlyTransaction.run(
+                state: transactionStateOnQueue().sessionTransactionState,
+                reason: readOnly,
+                send: { try runReadOnlyControl($0, on: conn) }
+            ) {
+                try copyFromStandardInputSync(statementToRun, rows: rows, conn: conn)
+            }
         }
     }
 
@@ -1026,7 +1133,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return decoded
     }
 
-    private func executeQuerySync(_ query: String, singleStatement: Bool = false) throws -> LibPQPluginQueryResult {
+    private func executeQuerySync(
+        _ query: String,
+        singleStatement: Bool = false,
+        probesBeforeBlock: Bool = false
+    ) throws -> LibPQPluginQueryResult {
+        if singleStatement { return try rowByRowReadSync(query, parameters: [], probesBeforeBlock: probesBeforeBlock) }
         let conn = connectionHandle
 
         guard !isShuttingDown, let conn else {
@@ -1039,10 +1151,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let cancelsOutput = cancelsAbandonedOutput(conn)
         if let ended = sessionEndedBeforeSending(conn) { throw ended }
+        if probesBeforeBlock { try probeSavepointsBeforeBlock(opening: query, conn: conn, generation: generation) }
 
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
-            singleStatement ? PQexecParams(conn, queryPtr, 0, nil, nil, nil, nil, 0) : PQexec(conn, queryPtr)
+            PQexec(conn, queryPtr)
         }
 
         guard let result = result else {
@@ -1056,6 +1169,78 @@ final class LibPQPluginConnection: @unchecked Sendable {
             generation: generation,
             cancelsOutput: cancelsOutput,
             allowsSideQueries: true
+        )
+    }
+
+    // A statement that is not a copy-in, the server's refusal of the COPY among them, reads as any other result.
+    private func copyFromStandardInputSync(
+        _ statement: String,
+        rows: PluginCopyData,
+        conn: OpaquePointer
+    ) throws -> LibPQPluginQueryResult {
+        // Set around the whole generation, so no Stop finds it running without the flag.
+        stateLock.withLock { copyInRunning = true }
+        let generation = cancellationGate.beginQuery()
+        defer {
+            cancellationGate.endQuery(generation)
+            stateLock.withLock { copyInRunning = false }
+        }
+        defer { refreshStandardConformingStrings(from: conn) }
+
+        // PQexec drained them itself; PQsendQuery refuses while any are left.
+        let cancelsOutput = cancelsAbandonedOutput(conn)
+        finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
+        if let ended = sessionEndedBeforeSending(conn) { throw ended }
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+        let stop = LibPQCopyIn.Stop(
+            requested: { [cancellationGate] in cancellationGate.isCancelled(generation) },
+            closing: { [self] in isShuttingDown },
+            sendCancelRequest: { [self] in sendServerCancelAndWait(on: conn) }
+        )
+        guard let start = LibPQCopyIn.begin(statement, conn: conn, stop: stop) else {
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
+        }
+        recordTransactionState(of: conn)
+        guard let copy = LibPQCopyState.copy(of: start), copy.direction == .copyIn else {
+            return try queryResult(
+                from: start,
+                connection: conn,
+                generation: generation,
+                cancelsOutput: cancelsOutput,
+                allowsSideQueries: true
+            )
+        }
+        PQclear(start)
+
+        let sent = LibPQCopyIn.send(rows, format: copy.format, conn: conn, stop: stop)
+        recordTransactionState(of: conn)
+        guard let result = sent.result else {
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
+        }
+        defer { PQclear(result) }
+        switch sent.interruption {
+        case .cancelled:
+            throw CancellationError()
+        case .source(let error):
+            throw error
+        case .binaryFormat:
+            throw LibPQPluginError(message: LibPQCopyIn.binaryRefusal, sqlState: nil, detail: nil)
+        case .connection, nil:
+            break
+        }
+        guard PQresultStatus(result) == PGRES_COMMAND_OK else {
+            let error = getResultError(from: result)
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            throw lostConnection(error, on: conn, sent: true)
+        }
+        return LibPQPluginQueryResult(
+            columns: [],
+            columnOids: [],
+            columnTypeNames: [],
+            rows: [],
+            affectedRows: getAffectedRows(from: result),
+            commandTag: getCommandTag(from: result),
+            isTruncated: false
         )
     }
 
@@ -1130,10 +1315,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
         if let ended = sessionEndedBeforeSending(conn) { throw ended }
 
-        // A Stop during one of the driver's own round trips is spent there, so each is followed by a check before
-        // the user's statement goes out.
-        probeSavepointsWhileIdle(conn)
-        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+        // A Stop during the cursor's own round trip is spent there, so it is followed by a check before the user's
+        // statement goes out.
         if let plan = cappedCursorPlan(for: query, rowCap: rowCap, conn: conn),
            let read = try cappedCursorRead(plan, rowCap: rowCap, conn: conn, generation: generation, sentAt: sentAt) {
             return read
@@ -1148,9 +1331,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
         }
 
-        guard PQsetSingleRowMode(conn) != 0 else {
+        guard LibPQRowMode.enter(conn) else {
             _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var metadata: ColumnMetadata?
@@ -1167,22 +1350,15 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let status = PQresultStatus(result)
             if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
 
-            if status == PGRES_SINGLE_TUPLE {
+            if LibPQRowMode.carriesRows(status) {
                 let columns = metadata ?? readColumnMetadata(from: result)
                 metadata = columns
 
-                var row: [PluginCellValue] = []
-                row.reserveCapacity(columns.columnOids.count)
-                for columnIndex in columns.columnOids.indices {
-                    row.append(Self.decodeCell(
-                        from: result,
-                        row: 0,
-                        column: Int32(columnIndex),
-                        oid: columns.columnOids[columnIndex]
-                    ))
+                // One past the cap tells "exactly `rowCap`" from "more"; the rest of the chunk is never decoded.
+                for rowIndex in 0..<PQntuples(result) where rows.count <= rowCap {
+                    rows.append(Self.row(rowIndex, of: result, oids: columns.columnOids))
                 }
                 PQclear(result)
-                rows.append(row)
 
                 if cancellationGate.isCancelled(generation) {
                     _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
@@ -1219,12 +1395,18 @@ final class LibPQPluginConnection: @unchecked Sendable {
             break
         }
 
+        // Drained with no cancel sent, an error past the cap is the statement's own: inside the user's block it aborted
+        // the block, and a truncated success would leave a later COMMIT to roll back what looked done.
+        var drainFailure: LibPQPluginError?
         let outcome = truncated
-            ? cancelAndDrain(conn, suppressCancel: suppressCancel)
+            ? cancelAndDrain(conn, suppressCancel: suppressCancel, inspecting: { result in
+                guard suppressCancel, drainFailure == nil, PQresultStatus(result) == PGRES_FATAL_ERROR else { return }
+                drainFailure = getResultError(from: result)
+            })
             : finishPendingResults(conn, cancellingOutput: cancelsOutput)
         recordTransactionState(of: conn)
 
-        if let failedStatement {
+        if let failedStatement = failedStatement ?? drainFailure {
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw lostConnection(failedStatement, on: conn, sent: true)
         }
@@ -1270,6 +1452,24 @@ final class LibPQPluginConnection: @unchecked Sendable {
         recordTransactionState(of: conn)
         guard PQstatus(conn) == CONNECTION_OK, !cancelled else { return }
         takesSavepoints = accepted
+    }
+
+    // The answer is used only inside a block, so the probe waits for the statement that opens one and runs in that
+    // statement's generation: a Stop during it sends none of the statement.
+    private func probeSavepointsBeforeBlock(opening query: String, conn: OpaquePointer, generation: Int) throws {
+        guard takesSavepoints == nil, Self.opensTransactionBlock(query) else { return }
+        probeSavepointsWhileIdle(conn)
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+    }
+
+    // The head read as `LibPQPipelineAdmission.admits` reads it. The session's backslash setting changes only literals,
+    // never the blanks and comments before the first word.
+    static func opensTransactionBlock(_ query: String) -> Bool {
+        let grammar = SQLLexicalReadings.resolve(
+            databaseTypeId: PostgreSQLPlugin.databaseTypeId, declared: nil, session: nil
+        ).execution
+        let keyword = SQLStatementRowLimit.leadingKeyword(query, grammar: grammar)
+        return keyword == "BEGIN" || keyword == "START"
     }
 
     private func cappedCursorPlan(for query: String, rowCap: Int, conn: OpaquePointer) -> LibPQCappedCursorRead.Plan? {
@@ -1318,10 +1518,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
         guard sendOk != 0 else {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
         }
-        guard PQsetSingleRowMode(conn) != 0 else {
+        guard LibPQRowMode.enter(conn) else {
             _ = finishPendingResults(conn, cancellingOutput: false)
             recordTransactionState(of: conn)
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var metadata: ColumnMetadata?
@@ -1333,22 +1533,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         while let result = PQgetResult(conn) {
             let status = PQresultStatus(result)
-            if status == PGRES_SINGLE_TUPLE || status == PGRES_TUPLES_OK {
+            if LibPQRowMode.carriesRows(status) || status == PGRES_TUPLES_OK {
                 if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
                 let columns = metadata ?? readColumnMetadata(from: result)
                 metadata = columns
                 for rowIndex in 0..<PQntuples(result) {
-                    var row: [PluginCellValue] = []
-                    row.reserveCapacity(columns.columnOids.count)
-                    for columnIndex in columns.columnOids.indices {
-                        row.append(Self.decodeCell(
-                            from: result,
-                            row: rowIndex,
-                            column: Int32(columnIndex),
-                            oid: columns.columnOids[columnIndex]
-                        ))
-                    }
-                    rows.append(row)
+                    rows.append(Self.row(rowIndex, of: result, oids: columns.columnOids))
                 }
             } else if status == PGRES_COMMAND_OK {
                 if getCommandTag(from: result) == "DECLARE CURSOR" { declared = true }
@@ -1408,65 +1598,6 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return PQresultStatus(result) == PGRES_COMMAND_OK
     }
 
-    private func executeParameterizedQuerySync(_ query: String, parameters: [PluginCellValue]) throws -> LibPQPluginQueryResult {
-        let conn = connectionHandle
-
-        guard !isShuttingDown, let conn else {
-            throw LibPQPluginError.notConnected
-        }
-
-        let generation = cancellationGate.beginQuery()
-        defer { cancellationGate.endQuery(generation) }
-        defer { refreshStandardConformingStrings(from: conn) }
-
-        let cancelsOutput = cancelsAbandonedOutput(conn)
-        let localQuery = String(query)
-        let result: OpaquePointer? = try LibPQParameterBuffers.with(parameters) { values, lengths, formats in
-            if let ended = sessionEndedBeforeSending(conn) { throw ended }
-            return localQuery.withCString { queryPtr in
-                PQexecParams(conn, queryPtr, Int32(parameters.count), nil, values, lengths, formats, 0)
-            }
-        }
-
-        guard let result = result else {
-            throw lostConnection(getError(from: conn), on: conn, sent: true)
-        }
-        recordTransactionState(of: conn)
-
-        let status = PQresultStatus(result)
-
-        switch status {
-        case PGRES_COMMAND_OK:
-            let affected = getAffectedRows(from: result)
-            let cmdTag = getCommandTag(from: result)
-            PQclear(result)
-            noteCommandTag(cmdTag, conn: conn)
-            return LibPQPluginQueryResult(
-                columns: [],
-                columnOids: [],
-                columnTypeNames: [],
-                rows: [],
-                affectedRows: affected,
-                commandTag: cmdTag,
-                isTruncated: false
-            )
-
-        case PGRES_TUPLES_OK:
-            defer { PQclear(result) }
-            return try fetchResults(from: result, conn: conn, generation: generation)
-
-        default:
-            if let copy = LibPQCopyState.copy(of: result) {
-                PQclear(result)
-                throw abandonedCopyError(copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation)
-            }
-            let error = getResultError(from: result)
-            PQclear(result)
-            if cancellationGate.isCancelled(generation) { throw CancellationError() }
-            throw lostConnection(error, on: conn, sent: true)
-        }
-    }
-
     // MARK: - Pending Results
 
     // A statement the user did not get to see is worse than a slow one, so a COPY ended by any
@@ -1500,8 +1631,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
         !suppressServerSideCancel && PQtransactionStatus(conn) != PQTRANS_INTRANS
     }
 
-    private func finishPendingResults(_ conn: OpaquePointer, cancellingOutput: Bool) -> LibPQDrainOutcome {
-        let outcome = LibPQCopyState.finishPendingResults(conn, cancellingOutput: cancellingOutput)
+    private func finishPendingResults(
+        _ conn: OpaquePointer,
+        cancellingOutput: Bool,
+        inspecting inspect: (OpaquePointer) -> Void = { _ in }
+    ) -> LibPQDrainOutcome {
+        let outcome = LibPQCopyState.finishPendingResults(conn, cancellingOutput: cancellingOutput, inspecting: inspect)
         guard let stuck = outcome.stuckInCopy else { return outcome }
         Self.logger.fault(
             "libpq stayed in \(String(describing: stuck.direction), privacy: .public); dropping the connection"
@@ -1513,7 +1648,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Streaming Query
 
-    private func cancelAndDrain(_ conn: OpaquePointer, suppressCancel: Bool) -> LibPQDrainOutcome {
+    private func cancelAndDrain(
+        _ conn: OpaquePointer,
+        suppressCancel: Bool,
+        inspecting inspect: (OpaquePointer) -> Void = { _ in }
+    ) -> LibPQDrainOutcome {
         if !suppressCancel {
             let cancelObj = PQgetCancel(conn)
             if let cancelObj {
@@ -1522,7 +1661,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 PQfreeCancel(cancelObj)
             }
         }
-        return finishPendingResults(conn, cancellingOutput: false)
+        return finishPendingResults(conn, cancellingOutput: false, inspecting: inspect)
     }
 
     // The abort is polled by the producer rather than acted on from `onTermination`, because both
@@ -1530,7 +1669,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // only once the whole result has been read, which is no abort at all.
     func streamQuery(
         _ query: String,
-        readOnly: LibPQReadOnlyTransaction.Reason? = nil
+        readOnly: LibPQReadOnlyTransaction.Scope? = nil
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
 
@@ -1576,7 +1715,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         // The extended protocol takes one statement, so no `COMMIT; INSERT` can follow the read.
                         try LibPQReadOnlyTransaction.run(
                             state: transactionStateOnQueue().sessionTransactionState,
-                            reason: readOnly,
+                            scope: readOnly,
                             send: { try runReadOnlyControl($0, on: conn) }
                         ) {
                             try streamResults(stream, singleStatement: true)
@@ -1601,10 +1740,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let cancelsOutput: Bool
     }
 
-    // In single-row mode a result with no rows arrives as one zero-row PGRES_TUPLES_OK, which carries the same row
-    // description every PGRES_SINGLE_TUPLE does.
+    // In row-by-row mode a result with no rows arrives as one zero-row PGRES_TUPLES_OK, which carries the same row
+    // description every chunk of rows does.
     static func carriesRowDescription(_ status: ExecStatusType) -> Bool {
-        status == PGRES_SINGLE_TUPLE || status == PGRES_TUPLES_OK
+        LibPQRowMode.carriesRows(status) || status == PGRES_TUPLES_OK
     }
 
     func streamHeader(from result: OpaquePointer) -> (header: PluginStreamHeader, columnOids: [UInt32]) {
@@ -1644,18 +1783,16 @@ final class LibPQPluginConnection: @unchecked Sendable {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
         }
 
-        if PQsetSingleRowMode(conn) == 0 {
+        if !LibPQRowMode.enter(conn) {
             _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
             if holdsSavepoint, let aborted = endStreamSavepoint(conn, undoing: true) { throw aborted }
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var headerSent = false
         var columnOids: [UInt32] = []
         var lastCommandTag: String?
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
+        var batch = PluginRowBatcher()
         let stops = { self.cancellationGate.isCancelled(generation) }
 
         while let result = PQgetResult(conn) {
@@ -1668,27 +1805,16 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 headerSent = true
             }
 
-            if status == PGRES_SINGLE_TUPLE {
-                let numFields = Int(PQnfields(result))
-                var row: [PluginCellValue] = []
-                row.reserveCapacity(numFields)
-
-                for colIndex in 0..<numFields {
-                    row.append(Self.decodeCell(
-                        from: result,
-                        row: 0,
-                        column: Int32(colIndex),
-                        oid: columnOids[colIndex]
-                    ))
+            if LibPQRowMode.carriesRows(status) {
+                for rowIndex in 0..<PQntuples(result) {
+                    guard batch.append(Self.row(rowIndex, of: result, oids: columnOids)) else { continue }
+                    // A reader that left or a Stop is handled just below, so the rest of the chunk is dropped.
+                    guard PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops) else {
+                        break
+                    }
+                    batch.removeAll()
                 }
-
                 PQclear(result)
-                batch.append(row)
-                // A reader that left or a Stop is handled just below.
-                if batch.count >= batchSize,
-                   PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops) {
-                    batch.removeAll(keepingCapacity: true)
-                }
 
                 if run.abort.isAborted || cancellationGate.isCancelled(generation) {
                     _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
@@ -1719,7 +1845,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
         }
 
-        let delivered = batch.isEmpty || PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops)
+        let delivered = batch.isEmpty
+            || PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops)
 
         let outcome = finishPendingResults(conn, cancellingOutput: cancelsOutput)
         recordTransactionState(of: conn)
@@ -1894,6 +2021,23 @@ extension LibPQPluginConnection {
 
 // Outside the class body, which is at its length limit. An extension in this file still reaches its private members.
 extension LibPQPluginConnection {
+    // The call waits for it, unlike the queued requests: PQcancel returns once the server has the request, so it
+    // cannot reach a statement the call sends later. PQcancel has no timeout of its own, so the wait ends at the
+    // connect timeout or a disconnect.
+    fileprivate func sendServerCancelAndWait(on connection: OpaquePointer) {
+        guard !suppressServerSideCancel, let cancelObject = PQgetCancel(connection) else { return }
+        let request = LibPQCancelRequest(cancelObject)
+        let delivered = DispatchSemaphore(value: 0)
+        Self.cancellationQueue.async {
+            request.perform()
+            delivered.signal()
+        }
+        let deadline = DispatchTime.now() + .milliseconds(connectTimeout.milliseconds)
+        while delivered.wait(timeout: .now() + .milliseconds(100)) == .timedOut {
+            guard !isShuttingDown, DispatchTime.now() < deadline else { return }
+        }
+    }
+
     // `executeReadOnlyStatement` bounded at the source: the statement stops at `bound`, so no more than that is ever
     // held. Stopping ends only the read-only transaction this opened. Unknown column types are looked up after its
     // ROLLBACK, since a cancel can leave it aborted.
@@ -1901,7 +2045,7 @@ extension LibPQPluginConnection {
         _ statement: String,
         parameters: [PluginCellValue]?,
         bound: LibPQReadBound,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> LibPQPluginQueryResult {
         let statementToRun = String(statement)
         let params = parameters ?? []
@@ -1911,7 +2055,7 @@ extension LibPQPluginConnection {
             if let ended = sessionEndedBeforeSending(conn) { throw ended }
             let read = try LibPQReadOnlyTransaction.run(
                 state: transactionStateOnQueue().sessionTransactionState,
-                reason: reason,
+                scope: scope,
                 send: { try runReadOnlyControl($0, on: conn) }
             ) {
                 if suppressServerSideCancel,
@@ -1953,7 +2097,7 @@ extension LibPQPluginConnection {
     // the block is this read's own and ends in ROLLBACK, so the server is cancelled wherever it takes a cancel, which
     // `cancelsAbandonedOutput` would refuse inside a block the user opened. A server that takes none reaches this only
     // for a statement no cursor can hold or whose DECLARE it refused, and its rest is drained. The column sources come
-    // from the first row description, as every single-row result carries one.
+    // from the first row description, as every chunk of rows carries one.
     private func boundedReadSync(
         _ query: String,
         parameters: [PluginCellValue],
@@ -1976,10 +2120,10 @@ extension LibPQPluginConnection {
         guard sent != 0 else {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
         }
-        guard PQsetSingleRowMode(conn) != 0 else {
+        guard LibPQRowMode.enter(conn, chunked: bound.byteLimit == nil) else {
             _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
             recordTransactionState(of: conn)
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var read = BoundedRead()
@@ -1997,21 +2141,22 @@ extension LibPQPluginConnection {
                 read.columnSources = PostgreSQLColumnOrigins.sources(of: result)
             }
 
-            if status == PGRES_SINGLE_TUPLE {
-                let row = Self.singleRow(of: result, oids: read.metadata?.columnOids ?? [])
+            if LibPQRowMode.carriesRows(status) {
+                let oids = read.metadata?.columnOids ?? []
+                for rowIndex in 0..<PQntuples(result) where !stopped {
+                    let row = Self.row(rowIndex, of: result, oids: oids)
+                    bytes += LibPQReadBound.byteCount(of: row)
+                    read.rows.append(row)
+                    stopped = bound.isReached(rows: read.rows.count, bytes: bytes)
+                }
                 PQclear(result)
-                bytes += LibPQReadBound.byteCount(of: row)
-                read.rows.append(row)
 
                 if cancellationGate.isCancelled(generation) {
                     _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
                     recordTransactionState(of: conn)
                     throw CancellationError()
                 }
-                if bound.isReached(rows: read.rows.count, bytes: bytes) {
-                    stopped = true
-                    break
-                }
+                if stopped { break }
                 continue
             }
 
@@ -2110,7 +2255,7 @@ extension LibPQPluginConnection {
         return read
     }
 
-    // One FETCH in single-row mode. A stop inside it drains only the rest of this batch, since the server takes no
+    // One FETCH read row by row. A stop inside it drains only the rest of this batch, since the server takes no
     // cancel; the cursor keeps everything after it unproduced.
     private func fetchCursorBatch(
         count: Int,
@@ -2123,10 +2268,10 @@ extension LibPQPluginConnection {
     ) throws -> (received: Int, stopped: Bool) {
         let sendOk = LibPQBoundedCursor.fetch(count).withCString { PQsendQuery(conn, $0) }
         guard sendOk != 0 else { throw lostConnection(getError(from: conn), on: conn, sent: false) }
-        guard PQsetSingleRowMode(conn) != 0 else {
+        guard LibPQRowMode.enter(conn, chunked: bound.byteLimit == nil) else {
             _ = finishPendingResults(conn, cancellingOutput: false)
             recordTransactionState(of: conn)
-            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
         }
 
         var received = 0
@@ -2139,17 +2284,17 @@ extension LibPQPluginConnection {
                 read.metadata = readColumnMetadata(from: result)
                 read.columnSources = PostgreSQLColumnOrigins.sources(of: result)
             }
-            if status == PGRES_SINGLE_TUPLE {
-                let row = Self.singleRow(of: result, oids: read.metadata?.columnOids ?? [])
-                PQclear(result)
-                received += 1
-                bytes += LibPQReadBound.byteCount(of: row)
-                read.rows.append(row)
-                if cancellationGate.isCancelled(generation) { break }
-                if bound.isReached(rows: read.rows.count, bytes: bytes) {
-                    stopped = true
-                    break
+            if LibPQRowMode.carriesRows(status) {
+                let oids = read.metadata?.columnOids ?? []
+                for rowIndex in 0..<PQntuples(result) where !stopped {
+                    let row = Self.row(rowIndex, of: result, oids: oids)
+                    received += 1
+                    bytes += LibPQReadBound.byteCount(of: row)
+                    read.rows.append(row)
+                    stopped = bound.isReached(rows: read.rows.count, bytes: bytes)
                 }
+                PQclear(result)
+                if stopped || cancellationGate.isCancelled(generation) { break }
                 continue
             }
             if status != PGRES_TUPLES_OK, status != PGRES_COMMAND_OK { failure = getResultError(from: result) }
@@ -2160,5 +2305,352 @@ extension LibPQPluginConnection {
         recordTransactionState(of: conn)
         if let failure { throw lostConnection(failure, on: conn, sent: true) }
         return (received, stopped)
+    }
+}
+
+// MARK: - Row-By-Row Read
+
+// Outside the class body, which is at its length limit. libpq hands the rows over a chunk at a time, so an uncapped result
+// is never held twice, once in libpq's buffer and once decoded.
+extension LibPQPluginConnection {
+    private struct RowByRowRead {
+        var metadata: ColumnMetadata?
+        var columnSources: [PostgreSQLColumnOrigins.Source?] = []
+        var rows: [[PluginCellValue]] = []
+        var rowCount = 0
+        var affectedRows = 0
+        var commandTag: String?
+        var firstRowTime: TimeInterval?
+    }
+
+    // Every row counts toward the affected rows, and the ones past `keeping` are read and dropped without decoding: a
+    // cancel would stop an `INSERT ... RETURNING` part way.
+    fileprivate func rowByRowReadSync(
+        _ query: String,
+        parameters: [PluginCellValue],
+        keeping: Int = PluginRowLimits.emergencyMax,
+        probesBeforeBlock: Bool = false
+    ) throws -> LibPQPluginQueryResult {
+        guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
+
+        let sentAt = Date()
+        let cancelsOutput = cancelsAbandonedOutput(conn)
+        finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
+        if probesBeforeBlock { try probeSavepointsBeforeBlock(opening: query, conn: conn, generation: generation) }
+        let sent: Int32 = try LibPQParameterBuffers.with(parameters) { values, lengths, formats in
+            if let ended = sessionEndedBeforeSending(conn) { throw ended }
+            return query.withCString { queryPtr in
+                PQsendQueryParams(conn, queryPtr, Int32(parameters.count), nil, values, lengths, formats, 0)
+            }
+        }
+        guard sent != 0 else { throw lostConnection(getError(from: conn), on: conn, sent: false) }
+        guard LibPQRowMode.enter(conn) else {
+            _ = cancelAndDrain(conn, suppressCancel: !cancelsOutput)
+            recordTransactionState(of: conn)
+            throw LibPQPluginError(message: "Failed to enter row-by-row mode", sqlState: nil, detail: nil)
+        }
+
+        var read = RowByRowRead()
+        let maxRows = max(keeping, 0)
+        var failure: LibPQPluginError?
+
+        while let result = PQgetResult(conn) {
+            let status = PQresultStatus(result)
+            if read.firstRowTime == nil { read.firstRowTime = Date().timeIntervalSince(sentAt) }
+            if read.metadata == nil, Self.carriesRowDescription(status) {
+                read.metadata = readColumnMetadata(from: result)
+                read.columnSources = PostgreSQLColumnOrigins.sources(of: result)
+            }
+
+            if LibPQRowMode.carriesRows(status) {
+                let oids = read.metadata?.columnOids ?? []
+                for rowIndex in 0..<PQntuples(result) {
+                    read.rowCount += 1
+                    if read.rowCount <= maxRows { read.rows.append(Self.row(rowIndex, of: result, oids: oids)) }
+                }
+                PQclear(result)
+                // Stop already sent the server its cancel, and a second one could land on the next statement.
+                if cancellationGate.isCancelled(generation) {
+                    _ = finishPendingResults(conn, cancellingOutput: false)
+                    recordTransactionState(of: conn)
+                    throw CancellationError()
+                }
+            } else if status == PGRES_TUPLES_OK {
+                read.commandTag = getCommandTag(from: result)
+                PQclear(result)
+            } else if status == PGRES_COMMAND_OK {
+                read.affectedRows = getAffectedRows(from: result)
+                read.commandTag = getCommandTag(from: result)
+                PQclear(result)
+            } else if let copy = LibPQCopyState.copy(of: result) {
+                PQclear(result)
+                let error = abandonedCopyError(copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation)
+                recordTransactionState(of: conn)
+                throw error
+            } else {
+                failure = getResultError(from: result)
+                PQclear(result)
+                break
+            }
+        }
+
+        _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+        recordTransactionState(of: conn)
+        if let failure {
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            throw lostConnection(failure, on: conn, sent: true)
+        }
+        // A Stop that arrived after the server finished changes nothing: the write it answered is committed.
+        return finishedRead(read, maxRows: maxRows, conn: conn)
+    }
+
+    private func finishedRead(_ read: RowByRowRead, maxRows: Int, conn: OpaquePointer) -> LibPQPluginQueryResult {
+        guard let rawMetadata = read.metadata else {
+            noteCommandTag(read.commandTag, conn: conn)
+            return LibPQPluginQueryResult(
+                columns: [],
+                columnOids: [],
+                columnTypeNames: [],
+                rows: [],
+                affectedRows: read.affectedRows,
+                commandTag: read.commandTag,
+                isTruncated: false,
+                firstRowTime: read.firstRowTime
+            )
+        }
+        if read.rowCount > maxRows, maxRows == PluginRowLimits.emergencyMax {
+            Self.logger.warning("Result set truncated at \(maxRows) rows")
+        }
+        let metadata = resolvingUnknownTypes(rawMetadata, conn: conn)
+        var rendered = PostGISTypes.rendering(
+            LibPQPluginQueryResult(
+                columns: metadata.columns,
+                columnOids: metadata.columnOids,
+                columnTypeNames: metadata.columnTypeNames,
+                rows: read.rows,
+                affectedRows: read.rowCount,
+                commandTag: read.commandTag,
+                isTruncated: read.rowCount > maxRows,
+                firstRowTime: read.firstRowTime
+            ),
+            types: typeNames.postgisTypes
+        )
+        rendered.columnSources = read.columnSources
+        return rendered
+    }
+}
+
+// MARK: - Statement Batches
+
+extension LibPQPluginConnection {
+    fileprivate func executeStatementsSync(_ statements: String) throws -> [Result<LibPQPluginQueryResult, Error>] {
+        guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
+
+        let cancelsOutput = cancelsAbandonedOutput(conn)
+        finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
+        if let ended = sessionEndedBeforeSending(conn) { throw ended }
+        guard statements.withCString({ PQsendQuery(conn, $0) }) != 0 else {
+            throw lostConnection(getError(from: conn), on: conn, sent: false)
+        }
+
+        var results: [OpaquePointer] = []
+        while let result = PQgetResult(conn) { results.append(result) }
+        recordTransactionState(of: conn)
+        guard !results.isEmpty else { throw lostConnection(getError(from: conn), on: conn, sent: true) }
+        if cancellationGate.isCancelled(generation) {
+            results.forEach { PQclear($0) }
+            throw CancellationError()
+        }
+        return results.map { result in
+            Result {
+                try queryResult(
+                    from: result,
+                    connection: conn,
+                    generation: generation,
+                    cancelsOutput: cancelsOutput,
+                    allowsSideQueries: false
+                )
+            }
+        }
+    }
+
+    // Inside the user's block a savepoint keeps the `SET LOCAL` and any failure to this batch. A failed read ends the
+    // Query, so the rollback goes in one of its own.
+    fileprivate func executeStatementsInUserBlockSync(
+        _ statements: String
+    ) throws -> [Result<LibPQPluginQueryResult, Error>] {
+        let results: [Result<LibPQPluginQueryResult, Error>]
+        do {
+            results = try executeStatementsSync(Self.scopedReadSavepoint + "\n;\n" + statements)
+        } catch {
+            _ = try? executeQuerySync(Self.scopedReadRollback)
+            throw error
+        }
+        _ = try executeQuerySync(Self.scopedReadRollback)
+        return Array(results.dropFirst())
+    }
+}
+
+// MARK: - Statement Pipelines
+
+extension LibPQPluginConnection {
+    private static let pipelineWaitMicroseconds: Int64 = 100_000
+
+    // Inside a transaction block only: there an error aborts every statement after it until the Sync, as a caller
+    // stopping at the failure would. Outside one the pipeline is one implicit transaction, and a failure would roll
+    // back statements that, sent alone, commit. Nil also when libpq will not enter pipeline mode.
+    func executePipeline(_ statements: [LibPQPipelineStatement]) async throws -> [PluginBatchStatementOutcome]? {
+        try await pluginDispatchAsync(on: queue) { [self] () throws -> [PluginBatchStatementOutcome]? in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            guard activeConnectDeadline == nil, !statements.isEmpty, transactionStateOnQueue() == .inTransaction else {
+                return nil
+            }
+            return try pipelineSync(statements, conn: conn)
+        }
+    }
+
+    fileprivate func pipelineSync(
+        _ statements: [LibPQPipelineStatement],
+        conn: OpaquePointer
+    ) throws -> [PluginBatchStatementOutcome]? {
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
+
+        finishAbandonedResults(conn, cancellingOutput: cancelsAbandonedOutput(conn))
+        if let ended = sessionEndedBeforeSending(conn) { return [.failed(ended)] }
+        guard PQenterPipelineMode(conn) == 1 else { return nil }
+        // Non-blocking sends, with replies read between them: a server whose output nobody reads stops reading.
+        guard PQsetnonblocking(conn, 1) == 0 else {
+            _ = PQexitPipelineMode(conn)
+            return nil
+        }
+
+        var tally = LibPQPipelineTally(total: statements.count, startedAt: Date())
+        var cutShort: (any Error)?
+        var sending = true
+        for statement in statements where sending {
+            // Stop holds back what is not sent yet; the statement it lands on fails with the cancel.
+            if cancellationGate.isCancelled(generation) {
+                cutShort = CancellationError()
+                break
+            }
+            let sent: Int32
+            do {
+                sent = try LibPQParameterBuffers.with(statement.parameters) { values, lengths, formats in
+                    statement.query.withCString { queryPtr in
+                        PQsendQueryParams(conn, queryPtr, Int32(statement.parameters.count), nil, values, lengths, formats, 0)
+                    }
+                }
+            } catch {
+                // The pipeline is already open, so it still gets its Sync.
+                cutShort = error
+                break
+            }
+            guard sent != 0 else {
+                cutShort = getError(from: conn)
+                break
+            }
+            tally.sent += 1
+            readsRowByRow(conn)
+            sending = flushPipeline(conn, tally: &tally, generation: generation)
+        }
+        // Without its Sync the server holds every reply, so a read would wait for ever.
+        let synced = sending && PQsendPipelineSync(conn) == 1 && flushPipeline(conn, tally: &tally, generation: generation)
+        if synced, PQsetnonblocking(conn, 0) == 0 {
+            while PQstatus(conn) == CONNECTION_OK, !tally.isComplete {
+                guard let result = PQgetResult(conn) else {
+                    guard tally.endStatement() else { break }
+                    readsRowByRow(conn)
+                    continue
+                }
+                take(result, into: &tally, conn: conn, generation: generation)
+            }
+        }
+        recordTransactionState(of: conn)
+
+        if PQstatus(conn) != CONNECTION_OK || !tally.isComplete {
+            let reason = (cutShort as? LibPQPluginError) ?? getError(from: conn)
+            if PQstatus(conn) == CONNECTION_OK {
+                // Its replies can no longer be told apart, so the session is not used again.
+                Self.logger.fault("A statement pipeline ended before its Sync; dropping the connection")
+                let loss = LibPQConnectionLoss(sent: true, recordedState: lastTransactionState)
+                stateLock.withLock {
+                    _lastTransactionState = .unknown
+                    _hasLostConnection = true
+                }
+                disconnect()
+                cutShort = LibPQConnectionLostError(loss: loss, underlying: reason)
+            } else {
+                cutShort = lostConnection(reason, on: conn, sent: true)
+            }
+        } else if PQexitPipelineMode(conn) != 1 {
+            Self.logger.fault("libpq stayed in pipeline mode; dropping the connection")
+            stateLock.withLock { _hasLostConnection = true }
+            disconnect()
+        } else {
+            for tag in Set(tally.commandTags) { noteCommandTag(tag, conn: conn) }
+        }
+        return tally.outcomes(cutShort: cutShort)
+    }
+
+    // False once the connection fails. Each wait also reads, so the server's replies never back up behind ours.
+    private func flushPipeline(_ conn: OpaquePointer, tally: inout LibPQPipelineTally, generation: Int) -> Bool {
+        while true {
+            let flushed = PQflush(conn)
+            if flushed == 0 { return true }
+            guard flushed == 1, !isShuttingDown else { return false }
+            let socket = PQsocket(conn)
+            guard socket >= 0 else { return false }
+            let deadline = pg_usec_time_t(Int64(PQgetCurrentTimeUSec()) + Self.pipelineWaitMicroseconds)
+            guard PQsocketPoll(socket, 1, 1, deadline) >= 0 || errno == EINTR else { return false }
+            guard PQconsumeInput(conn) == 1 else { return false }
+            while tally.awaitsStatement, PQisBusy(conn) == 0 {
+                guard let result = PQgetResult(conn) else {
+                    guard tally.endStatement() else { return false }
+                    readsRowByRow(conn)
+                    continue
+                }
+                take(result, into: &tally, conn: conn, generation: generation)
+            }
+        }
+    }
+
+    // For the statement whose replies come next, before any of them is read; libpq refuses once one has been, and an
+    // aborted statement has none to read.
+    private func readsRowByRow(_ conn: OpaquePointer) {
+        _ = LibPQRowMode.enter(conn)
+    }
+
+    private func take(_ result: OpaquePointer, into tally: inout LibPQPipelineTally, conn: OpaquePointer, generation: Int) {
+        defer { PQclear(result) }
+        let status = PQresultStatus(result)
+        switch status {
+        case PGRES_SINGLE_TUPLE, PGRES_TUPLES_CHUNK:
+            tally.takeRows(Int(PQntuples(result)))
+        case PGRES_PIPELINE_SYNC:
+            tally.takeSync()
+        case PGRES_PIPELINE_ABORTED:
+            tally.take(.aborted)
+        case PGRES_COMMAND_OK:
+            tally.take(.completed(rowsAffected: getAffectedRows(from: result), commandTag: getCommandTag(from: result)))
+        case PGRES_TUPLES_OK:
+            tally.take(.completed(rowsAffected: Int(PQntuples(result)), commandTag: getCommandTag(from: result)))
+        default:
+            let error = getResultError(from: result)
+            if cancellationGate.isCancelled(generation) {
+                tally.take(.failed(CancellationError()))
+            } else {
+                tally.take(.failed(lostConnection(error, on: conn, sent: true)))
+            }
+        }
     }
 }

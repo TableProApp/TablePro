@@ -298,7 +298,7 @@ extension GlobalStateSuites {
 
         @Test("None behavior skips the schema wait unless columns are hidden")
         func firstLoadSchemaWaitDecision() async {
-            let (coordinator, tabManager, index) = makeCoordinator(tableName: "users", type: .postgresql)
+            let (coordinator, tabManager, index) = makeCoordinator(tableName: "users", type: .mssql)
 
             await withDefaultSortBehavior(DefaultSortBehavior.none) {
                 #expect(!coordinator.firstLoadNeedsSchemaColumns(for: tabManager.tabs[index], hint: .useAppDefault))

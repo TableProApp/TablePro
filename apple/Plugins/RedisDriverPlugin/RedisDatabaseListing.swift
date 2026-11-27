@@ -61,14 +61,28 @@ extension RedisCommandChannel {
                 keyCounts: includingKeyCounts ? try await keyCountsByDatabase() : nil
             )
         }
-        let reported = try await reportedDatabaseCount()
-        let keyCounts = includingKeyCounts || reported == nil ? try await keyCountsByDatabase() : nil
+        let reported: Int?
+        let keyCounts: [Int: Int]?
+        if includingKeyCounts {
+            (reported, keyCounts) = try await databaseCountAndKeyCounts()
+        } else {
+            reported = try await reportedDatabaseCount()
+            keyCounts = reported == nil ? try await keyCountsByDatabase() : nil
+        }
         let count = RedisDatabaseCount.resolve(
             reported: reported,
             keyspace: keyCounts,
             currentDatabase: currentDatabase()
         )
         return RedisDatabaseListing(databaseCount: count, keyCounts: includingKeyCounts ? keyCounts : nil)
+    }
+
+    // One pipeline: `CONFIG GET databases` and `INFO keyspace` go out together, and each declines on its own.
+    func databaseCountAndKeyCounts() async throws -> (reported: Int?, keyCounts: [Int: Int]?) {
+        let answers = try await runMetadataReads([["CONFIG", "GET", "databases"], ["INFO", "keyspace"]])
+        let reported = answers.first.flatMap { $0 }.flatMap(RedisDatabaseCount.reported(by:))
+        let keyCounts = answers.last.flatMap { $0 }.map { RedisServerInfo.keyspace(from: $0.stringValue ?? "") }
+        return (reported, keyCounts)
     }
 
     func reportedDatabaseCount() async throws -> Int? {

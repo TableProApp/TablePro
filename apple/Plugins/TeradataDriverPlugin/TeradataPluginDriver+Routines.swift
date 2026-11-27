@@ -55,18 +55,14 @@ extension TeradataPluginDriver {
             .compactMap { cellText($0, 0) }
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        /// A procedure created without SPL retention has no stored text, which the server reports
-        /// as an empty answer rather than an error.
+        // A procedure created without SPL retention has no stored text, and the server answers empty, not an error.
         guard !text.isEmpty else {
             throw PluginObjectSourceError.insufficientPrivilege(routine.name)
         }
         return text
     }
 
-    /// False until the whole-schema scope is checked against a live server. This driver has no
-    /// per-table trigger read, so the protocol default answers with nothing and a comparison has
-    /// never listed its triggers; opting in here would change what is compared rather than only
-    /// how fast it is read.
+    // Unchecked on a live server: with no per-table read, opting in would change what Compare lists, not its speed.
     var providesBulkTriggerFetch: Bool { false }
 
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
@@ -82,6 +78,10 @@ extension TeradataPluginDriver {
             throw PluginObjectSourceError.notFound(trigger.name)
         }
         return definition
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        TeradataObjectQueries.dropTriggerStatement(name: name, database: routineDatabase(schema))
     }
 
     func teradataTriggerList(schema: String?, table: String?) async throws -> [PluginTriggerInfo] {

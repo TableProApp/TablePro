@@ -77,8 +77,8 @@ enum ERDiagramLayout {
     private static func undirectedAdjacency(graph: ERDiagramGraph) -> [UUID: [UUID]] {
         var adjacency: [UUID: [UUID]] = [:]
         for edge in graph.edges {
-            guard let from = graph.nodeIndex[edge.fromTable],
-                  let to = graph.nodeIndex[edge.toTable],
+            guard let from = graph.nodeId(of: edge.fromTable),
+                  let to = graph.nodeId(of: edge.toTable),
                   from != to
             else { continue }
             adjacency[from, default: []].append(to)

@@ -153,7 +153,8 @@ internal struct CompareRowService {
             databaseType: endpoint.databaseType,
             gate: gate,
             operationDescription: String(localized: "Execute Query"),
-            manager: manager
+            manager: manager,
+            runsIn: endpoint.scope
         )
     }
 
@@ -270,7 +271,8 @@ private struct SideRead: Sendable {
     }
 
     private func stream(_ query: String, driver: any PluginDatabaseDriver) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let context else { return driver.streamRows(query: query) }
+        guard var context else { return driver.streamRows(query: query) }
+        context.readFunctionCalls(in: query, databaseType: endpoint.databaseType)
         return driver.streamRows(query: query, context: context)
     }
 

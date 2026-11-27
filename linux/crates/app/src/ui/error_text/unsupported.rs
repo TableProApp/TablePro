@@ -21,6 +21,7 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
         }
         UnsupportedFeature::CopyFromStdinInEditor => gettext("COPY FROM STDIN cannot run in the editor."),
         UnsupportedFeature::CopyToStdoutInEditor => gettext("COPY TO STDOUT cannot run in the editor."),
+        UnsupportedFeature::CopyFromStdin => gettext("This database cannot take the rows of COPY FROM STDIN."),
         UnsupportedFeature::TimestampInRepeatedHour => gettext(
             "This time falls in the hour the session's time zone repeats, so the database cannot store it as one instant.",
         ),
@@ -103,6 +104,7 @@ mod tests {
             UnsupportedFeature::EditorCommand { command: "MONITOR" },
             UnsupportedFeature::AuthPlugin,
             UnsupportedFeature::SqlDump,
+            UnsupportedFeature::CopyFromStdin,
         ];
 
         let messages: Vec<String> = features.iter().map(|feature| unsupported_message(*feature)).collect();

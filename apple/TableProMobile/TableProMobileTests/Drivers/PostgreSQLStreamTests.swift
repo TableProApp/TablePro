@@ -85,6 +85,37 @@ struct PostgreSQLStreamTests {
         #expect(drained.end == .cancelled)
     }
 
+    @Test("The first failure keeps its SQLSTATE")
+    func firstFailureKeepsItsState() {
+        let drained = drain([.failed("ERROR:  cannot execute DELETE\n", sqlState: "25006"), .failed("ERROR:  later\n", sqlState: "XX000")])
+        #expect(drained.end == .failed("ERROR:  cannot execute DELETE\n", sqlState: "25006"))
+    }
+
+    @Test("In the read-only transaction a refusal state is Read-Only's refusal; anywhere else it is a query error", arguments: [
+        "25006", "25001",
+    ])
+    func refusalStateInReadOnlyTransaction(sqlState: String) {
+        let end = PostgreSQLStreamEnd.failed("ERROR:  cannot execute DELETE in a read-only transaction\n", sqlState: sqlState)
+        let refusal = end.error(inReadOnlyTransaction: true) as? ReadOnlyModeRefusal
+        #expect(refusal == .refused(
+            message: LibPQReadOnlyTransaction.refusalMessage(.safeMode),
+            serverMessage: "ERROR:  cannot execute DELETE in a read-only transaction\n"
+        ))
+        #expect(refusal?.errorDescription == """
+        \(LibPQReadOnlyTransaction.refusalMessage(.safeMode))
+        ERROR:  cannot execute DELETE in a read-only transaction
+        """)
+        #expect(end.error(inReadOnlyTransaction: false) is PostgreSQLError)
+        #expect(end.error is PostgreSQLError)
+    }
+
+    @Test("In the read-only transaction any other failure stays a query error")
+    func otherStateInReadOnlyTransaction() {
+        let end = PostgreSQLStreamEnd.failed("ERROR:  relation \"orders\" does not exist\n", sqlState: "42P01")
+        #expect(end.error(inReadOnlyTransaction: true) is PostgreSQLError)
+        #expect(PostgreSQLStreamEnd.failed("ERROR:  lost\n").error(inReadOnlyTransaction: true) is PostgreSQLError)
+    }
+
     @Test("A failed end carries the server's message, and a cancelled end is a cancellation")
     func endErrors() {
         let failure = PostgreSQLStreamEnd.failed("ERROR:  division by zero\n").error as? PostgreSQLError

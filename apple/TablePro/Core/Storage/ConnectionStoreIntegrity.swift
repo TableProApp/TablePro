@@ -79,6 +79,11 @@ struct ConnectionStoreIntegrity: Sendable {
         return .trusted
     }
 
+    // A tag removed on purpose still counts as one this device wrote, so its absence reads as modified.
+    func recordTagged(fileURL: URL) -> Bool {
+        keySource.hasStamped(Self.storeId(for: fileURL)) || keySource.recordStamped(Self.storeId(for: fileURL))
+    }
+
     @discardableResult
     func stamp(_ data: Data, fileURL: URL) -> Bool {
         guard let key = keySource.key() else { return false }

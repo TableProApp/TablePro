@@ -16,8 +16,9 @@ public sealed unsafe class ResultCursor : IDisposable
 
     internal long Generation { get; private set; }
 
-    // Cells cut at maxCharacters on one line. The window stays readable until the next fetch or the dispose.
-    public ResultWindow Fetch(long firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters)
+    // Cells cut at maxCharacters on one line, or with each line break kept as one LF; readable until the next fetch.
+    public ResultWindow Fetch(long firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters,
+        bool keepLineBreaks = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(firstRow);
         ArgumentOutOfRangeException.ThrowIfNegative(rowCount);
@@ -29,13 +30,12 @@ public sealed unsafe class ResultCursor : IDisposable
         try
         {
             _handle.DangerousAddRef(ref added);
-            var window = WindowMethods.tablepro_cursor_fetch(
-                (TpCursor*)_handle.DangerousGetHandle(),
-                (ulong)firstRow,
-                (uint)rowCount,
-                (uint)firstColumn,
-                (uint)columnCount,
-                (uint)maxCharacters);
+            var cursor = (TpCursor*)_handle.DangerousGetHandle();
+            var window = keepLineBreaks
+                ? WindowMethods.tablepro_cursor_fetch_lines(cursor, (ulong)firstRow, (uint)rowCount, (uint)firstColumn,
+                    (uint)columnCount, (uint)maxCharacters)
+                : WindowMethods.tablepro_cursor_fetch(cursor, (ulong)firstRow, (uint)rowCount, (uint)firstColumn,
+                    (uint)columnCount, (uint)maxCharacters);
             Generation++;
             if (window == null)
             {

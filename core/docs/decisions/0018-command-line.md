@@ -1,6 +1,6 @@
 # 0018: One command line for the apps on the core
 
-- **Status**: Accepted
+- **Status**: Accepted; Windows host by [0036](0036-mcp-and-the-command-line-through-the-ffi.md)
 - **Date**: 2026-11-08
 
 ## Context

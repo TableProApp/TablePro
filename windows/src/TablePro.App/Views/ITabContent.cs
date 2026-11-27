@@ -15,6 +15,11 @@ internal interface ITabContent : IWorkspaceTab
     // A definition tab shows text, not rows.
     DataGridView? Grid { get; }
 
+    // Whether the tab's rows wrap long values, which View and the column headers' menu switch; null where they cannot.
+    bool? WrapsText { get; }
+
+    void SetWrapsText(bool wraps);
+
     // Copy and Select All reach the grid when it, not the editor, had focus last.
     bool GridIsTarget { get; }
 

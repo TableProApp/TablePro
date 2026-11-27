@@ -3,7 +3,7 @@ using Native = TablePro.Interop.Native;
 namespace TablePro.Interop;
 
 // Generated types stay internal so a generator upgrade cannot change the API. Counts cross unsigned and fit a long.
-internal static class Mapping
+internal static partial class Mapping
 {
     public static CoreError Error(Native.ErrorInfo info) => new(
         info.Code,
@@ -25,6 +25,7 @@ internal static class Mapping
             : null)
     {
         TlsFailure = info.TlsFailure is { } failure ? TlsFailureKind(failure) : null,
+        Ai = info.Ai is { } ai ? Failure(ai) : null,
     };
 
     private static TlsFailure TlsFailureKind(Native.TlsFailureTag failure) => failure switch
@@ -79,6 +80,13 @@ internal static class Mapping
 
     public static SchemaEntry Schema(Native.SchemaEntry schema) =>
         new(schema.Name, schema.IsDefault, schema.IsSystem);
+
+    public static DatabaseLayout Layout(Native.DatabaseLayoutTag layout) => layout switch
+    {
+        Native.DatabaseLayoutTag.AsSchemas => DatabaseLayout.AsSchemas,
+        Native.DatabaseLayoutTag.WithSchemas => DatabaseLayout.WithSchemas,
+        _ => DatabaseLayout.OneDatabase,
+    };
 
     public static ObjectEntry Object(Native.ObjectEntry entry) =>
         new(entry.Schema, entry.Name, ObjectKind(entry.Kind), entry.ParentTable);
@@ -196,6 +204,13 @@ internal static class Mapping
         Native.RowEstimate.Approximate approximate => new RowEstimate(Count(approximate.Rows), IsExact: false),
         _ => null,
     };
+
+    public static TableInfo Info(Native.TableInfoRecord info) => new(
+        Estimate(info.Rows),
+        info.Comment,
+        info.DataBytes is { } data ? Count(data) : null,
+        info.IndexBytes is { } index ? Count(index) : null,
+        info.TotalBytes is { } total ? Count(total) : null);
 
     public static ObjectSource Source(Native.ObjectSource source) =>
         new(source.Sql, source.Database, source.OpensInEditor);
@@ -375,12 +390,16 @@ internal static class Mapping
         _ => Native.TlsFailureTag.Other,
     };
 
+    // Every tag named: a tag this build does not know must not land in another item's slot.
     public static SecretItem Item(Native.SecretItemTag item) => item switch
     {
+        Native.SecretItemTag.McpToken => SecretItem.McpToken,
         Native.SecretItemTag.AnthropicKey => SecretItem.AnthropicKey,
         Native.SecretItemTag.OpenAiKey => SecretItem.OpenAIKey,
         Native.SecretItemTag.OpenAiCompatibleKey => SecretItem.OpenAICompatibleKey,
-        _ => SecretItem.McpToken,
+        Native.SecretItemTag.AccountRefreshToken => SecretItem.AccountRefreshToken,
+        Native.SecretItemTag.AccountRefreshTokenFor keyed => SecretItem.AccountRefreshTokenFor(keyed.SignInKey),
+        _ => throw new ArgumentOutOfRangeException(nameof(item), item, "A secret item the core added after this build."),
     };
 
     public static Native.HostConfig Host(HostConfiguration configuration) =>
@@ -391,9 +410,17 @@ internal static class Mapping
 
     public static Native.SafeModeTag Level(SafeMode level) => level switch
     {
-        SafeMode.ConfirmWrites => Native.SafeModeTag.ConfirmWrites,
+        SafeMode.ConfirmWrites => Native.SafeModeTag.Alert,
         SafeMode.ReadOnly => Native.SafeModeTag.ReadOnly,
-        _ => Native.SafeModeTag.Off,
+        _ => Native.SafeModeTag.Silent,
+    };
+
+    // The level a session here runs for a stored one, rounded up by the core; a save of it keeps the stored level.
+    public static SafeMode Level(Native.SafeModeTag level) => Native.CoreMethods.SafeModeEnforced(level) switch
+    {
+        Native.SafeModeTag.Silent => SafeMode.Off,
+        Native.SafeModeTag.Alert => SafeMode.ConfirmWrites,
+        _ => SafeMode.ReadOnly,
     };
 
     public static Native.ConnectionRecord Record(SavedConnection connection) => new(
@@ -416,7 +443,7 @@ internal static class Mapping
                 ssh.Host,
                 ssh.Port is { } port ? checked((ushort)port) : null,
                 ssh.UserName,
-                [.. ssh.JumpHosts],
+                [.. ssh.JumpHosts.SelectMany(Native.CoreMethods.ParseJumpHosts)],
                 ssh.Auth switch
                 {
                     SshAuthMethod.PrivateKey => new Native.SshAuthTag.PrivateKey(ssh.KeyPath, ssh.KeyHasPassphrase),
@@ -430,7 +457,10 @@ internal static class Mapping
         connection.Color,
         connection.GroupId?.ToString(),
         connection.LastOpened?.ToUnixTimeMilliseconds(),
-        [.. connection.Tags.Select(tag => tag.ToString())]);
+        [.. connection.Tags.Select(tag => tag.ToString())],
+        connection.AiPolicy is { } policy ? Policy(policy) : null,
+        connection.ExternalAccess is { } access ? Access(access) : null,
+        connection.ProjectId?.ToString());
 
     public static SavedConnection Connection(Native.ConnectionRecord record) => new(
         Guid.Parse(record.Id),
@@ -446,19 +476,15 @@ internal static class Mapping
             record.Tls.ClientCertificate,
             record.Tls.ClientKey,
             record.Tls.ServerName),
-        record.SafeMode switch
-        {
-            Native.SafeModeTag.ConfirmWrites => SafeMode.ConfirmWrites,
-            Native.SafeModeTag.ReadOnly => SafeMode.ReadOnly,
-            _ => SafeMode.Off,
-        },
+        Level(record.SafeMode),
         record.IntegratedAuth,
-        record.Ssh is { } ssh
+        // A tunnel switched off reads as none; the core keeps its settings, and a save without one keeps them off.
+        record.Ssh is { Enabled: not false } ssh
             ? new SshSettings(
                 ssh.Host,
                 ssh.Port,
                 ssh.Username,
-                [.. ssh.JumpHosts],
+                [.. ssh.JumpHosts.Select(hop => Native.CoreMethods.JumpHostsText([hop]))],
                 ssh.Auth switch
                 {
                     Native.SshAuthTag.PrivateKey => SshAuthMethod.PrivateKey,
@@ -475,6 +501,9 @@ internal static class Mapping
         record.LastOpenedMs is { } opened ? DateTimeOffset.FromUnixTimeMilliseconds(opened) : null)
     {
         Tags = [.. record.Tags.Select(Guid.Parse)],
+        AiPolicy = Policy(record.AiPolicy ?? Native.AiPolicyTag.Ask),
+        ExternalAccess = Access(record.ExternalAccess ?? Native.ExternalAccessTag.ReadOnly),
+        ProjectId = record.ProjectId is { } project ? Guid.Parse(project) : null,
     };
 
     public static ConnectionGroup Group(Native.GroupRecord group) => new(
@@ -482,7 +511,16 @@ internal static class Mapping
         group.Name,
         group.ParentId is { } parent ? Guid.Parse(parent) : null,
         checked((int)group.Order),
-        group.Color);
+        group.Color)
+    {
+        ProjectId = group.ProjectId is { } project ? Guid.Parse(project) : null,
+    };
+
+    public static ConnectionProject Project(Native.ProjectRecord project) => new(
+        Guid.Parse(project.Id),
+        project.Name,
+        checked((int)project.Order),
+        project.Color);
 
     public static LibrarySnapshot Snapshot(Native.LibrarySnapshot snapshot) => new(
         [.. snapshot.Connections.Select(Connection)],
@@ -491,6 +529,8 @@ internal static class Mapping
         [.. snapshot.Recent.Select(Guid.Parse)])
     {
         Tags = [.. snapshot.Tags.Select(tag => new ConnectionTag(Guid.Parse(tag.Id), tag.Name, tag.Color))],
+        Projects = [.. snapshot.Projects.Select(Project)],
+        Scope = snapshot.Scope is { } scope ? Guid.Parse(scope) : null,
     };
 
     public static ParsedConnectionUrl Url(Native.ParsedConnectionUrl url) => new(
@@ -511,15 +551,17 @@ internal static class Mapping
         TlsMode.Disable => Native.TlsModeTag.Disable,
         TlsMode.Prefer => Native.TlsModeTag.Prefer,
         TlsMode.Require => Native.TlsModeTag.Require,
+        TlsMode.VerifyCa => Native.TlsModeTag.VerifyCa,
         TlsMode.Strict => Native.TlsModeTag.Strict,
         _ => Native.TlsModeTag.VerifyFull,
     };
 
-    private static TlsMode Tls(Native.TlsModeTag mode) => mode switch
+    public static TlsMode Tls(Native.TlsModeTag mode) => mode switch
     {
         Native.TlsModeTag.Disable => TlsMode.Disable,
         Native.TlsModeTag.Prefer => TlsMode.Prefer,
         Native.TlsModeTag.Require => TlsMode.Require,
+        Native.TlsModeTag.VerifyCa => TlsMode.VerifyCa,
         Native.TlsModeTag.Strict => TlsMode.Strict,
         _ => TlsMode.VerifyFull,
     };
@@ -579,6 +621,11 @@ internal static class Mapping
         Native.EditLock.ReadOnlyConnection => EditLock.ReadOnlyConnection,
         Native.EditLock.NoPrimaryKey => EditLock.NoPrimaryKey,
         Native.EditLock.KeyUnreadable => EditLock.KeyUnreadable,
+        Native.EditLock.NotOneSelect => EditLock.NotOneSelect,
+        Native.EditLock.MoreThanOneTable => EditLock.MoreThanOneTable,
+        Native.EditLock.Collapsed => EditLock.Collapsed,
+        Native.EditLock.Untraced => EditLock.Untraced,
+        Native.EditLock.KeyNotShown => EditLock.KeyNotShown,
         _ => EditLock.ColumnsChanged,
     };
 

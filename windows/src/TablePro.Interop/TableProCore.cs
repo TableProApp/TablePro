@@ -13,18 +13,23 @@ public sealed class TableProCore : IDisposable
 {
     private readonly Native.Core _core;
     private readonly Lazy<ConnectionLibrary> _library;
+    private readonly Lazy<AiAssistant> _assistant;
 
     private TableProCore(Native.Core core)
     {
         _core = core;
         Engines = [.. core.Drivers().Select(Mapping.Engine)];
         _library = new Lazy<ConnectionLibrary>(() => new ConnectionLibrary(CoreCall.Run(_core.Library)));
+        _assistant = new Lazy<AiAssistant>(() => new AiAssistant(_core.AiAssistant()));
     }
 
     public IReadOnlyList<DatabaseEngine> Engines { get; }
 
     // Throws TableProException with code ffi.no_storage when the configuration named no storage directory.
     public ConnectionLibrary Library => _library.Value;
+
+    // Its keys go to the store the core was given, Credential Manager for the app.
+    public AiAssistant Assistant => _assistant.Value;
 
     public static TableProCore Create(HostConfiguration configuration, ISecretStore secrets)
     {
@@ -48,12 +53,86 @@ public sealed class TableProCore : IDisposable
         return Mapping.Url(CoreCall.Run(() => Native.CoreMethods.ParseConnectionUrl(url)));
     }
 
+    // Jump hosts as OpenSSH's -J takes them, user@host:port separated by commas; throws TableProException with code
+    // ssh.invalid_destination for a list a connect would refuse.
+    public static void CheckJumpHosts(string list)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        CoreCall.Run(() => Native.CoreMethods.CheckJumpHosts(list));
+    }
+
+    // The other apps Windows has, each looked for where it keeps its files; nothing is decrypted yet. Presence reads
+    // no count, for a check that has to answer quickly.
+    public async Task<IReadOnlyList<ForeignSource>> GetForeignSourcesAsync(
+        ForeignAppDirs dirs,
+        ForeignScanDepth depth = ForeignScanDepth.Inventory)
+    {
+        ArgumentNullException.ThrowIfNull(dirs);
+        var sources = await CoreCall.RunAsync(() => _core.ForeignSources(Mapping.Dirs(dirs), Mapping.Depth(depth)))
+            .ConfigureAwait(false);
+        return [.. sources.Select(Mapping.Source)];
+    }
+
+    // A shortcut preset's rows for the platform named, never the one this build runs on. Throws TableProException
+    // with a keymap.* code.
+    public static IReadOnlyList<KeymapBinding> KeymapPreset(string id, KeymapPlatform platform)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        var bindings = CoreCall.Run(() => Native.CoreMethods.KeymapPreset(id, Mapping.Platform(platform)));
+        return [.. bindings.Select(Mapping.Binding)];
+    }
+
+    public static IReadOnlyList<KeymapPresetInfo> KeymapPresets(KeymapPlatform platform)
+    {
+        var presets = CoreCall.Run(() => Native.CoreMethods.KeymapPresets(Mapping.Platform(platform)));
+        return [.. presets.Select(Mapping.Preset)];
+    }
+
+    // File is the export the user picked, for an app imported from one. Throws foreign_import.* codes.
+    public async Task<ForeignImportReview> ReadForeignAsync(
+        ForeignApp app,
+        ForeignAppDirs dirs,
+        string? file,
+        ForeignImportRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(dirs);
+        ArgumentNullException.ThrowIfNull(request);
+        var native = new Native.ForeignImportRequest(request.IncludePasswords, request.IncludeSavedQueries);
+        var review = await CoreCall.RunAsync(
+                token => _core.ReadForeign(Mapping.ForeignApp(app), Mapping.Dirs(dirs), file, native, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new ForeignImportReview(review);
+    }
+
     // Opened once per core and shared. Throws TableProException with code ffi.no_storage without a storage directory.
     public async Task<QueryHistory> OpenHistoryAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var store = await CoreCall.RunAsync(() => _core.History()).ConfigureAwait(false);
         return new QueryHistory(store);
+    }
+
+    // Keeps the entitlement fresh until disposed; account.no_machine_id or ffi.account_config when it cannot start.
+    public async Task<TableProAccount> OpenAccountAsync(AccountConfiguration configuration, IAccountBrowser browser)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(browser);
+        var native = Mapping.Account(configuration);
+        var wake = new AccountWake();
+        var service = await CoreCall.RunAsync(
+                () => _core.OpenAccount(native, new AccountBrowserAdapter(browser), null, wake))
+            .ConfigureAwait(false);
+        return new TableProAccount(service, wake);
+    }
+
+    // One per app: its tools reach the saved connections connected through this core, and the app through host.
+    public McpServer OpenMcpServer(IMcpAppHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        var wake = new McpWake();
+        return new McpServer(CoreCall.Run(() => _core.McpServer(new McpAppHostAdapter(host), wake)), wake);
     }
 
     public async Task<DatabaseSession> OpenFileAsync(
@@ -68,11 +147,13 @@ public sealed class TableProCore : IDisposable
     }
 
     // Logs in with secrets where set, else Credential Manager's; the core stores keep once it has logged in.
+    // Database, in place of the saved one, opens the connection in another of the server's databases.
     public async Task<DatabaseSession> ConnectAsync(
         Guid connectionId,
         ConnectionSecrets? secrets = null,
         ICredentialPrompter? prompter = null,
         ConnectionSecrets? keep = null,
+        string? database = null,
         CancellationToken cancellationToken = default)
     {
         var typed = Mapping.Secrets(secrets ?? ConnectionSecrets.None);
@@ -82,7 +163,7 @@ public sealed class TableProCore : IDisposable
         try
         {
             var session = await CoreCall.RunAsync(
-                    token => _core.ConnectSaved(connectionId.ToString(), typed, kept, adapter, token),
+                    token => _core.ConnectSaved(connectionId.ToString(), database, typed, kept, adapter, token),
                     cancellationToken)
                 .ConfigureAwait(false);
             return new DatabaseSession(session, adapter);

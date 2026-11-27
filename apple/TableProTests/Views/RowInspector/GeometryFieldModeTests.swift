@@ -108,6 +108,16 @@ struct GeometryFieldModeTests {
         #expect(latch.shown(preferred: .text, preview: drawable) == .map)
     }
 
+    @Test("A mode latched for one row is undecided for the next")
+    func latchBelongsToItsRow() {
+        let first = UUID()
+        var latch = ModeLatch().scoped(to: first)
+        latch.offer(preferred: .map, preview: .unavailable(.null))
+
+        #expect(latch.scoped(to: first).mode == .text)
+        #expect(latch.scoped(to: UUID()).mode == nil)
+    }
+
     @Test("A large value shows Map while it is first read, then follows the read")
     func aLargeValueWaitsForItsFirstRead() {
         var latch = ModeLatch()

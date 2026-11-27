@@ -18,6 +18,22 @@ pub(crate) struct AccountFile {
     // An offline file imported with no sign-in: the keyring holds nothing to open.
     #[serde(default)]
     pub offline_only: bool,
+    // The API the sign-in is with. None in a file from before company servers, which were all tablepro.app's or a
+    // development stack's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
+    // A company server's license and JWKS as it answered them, so a restore without the network still verifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entitlement_keys: Option<String>,
+    // The OAuth issuer a company server's sign-in came from, so its refresh token goes to no other.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    // Binds the license and keys above to the sign-in whose refresh token keys it, so keys another process wrote in
+    // admit nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_tag: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -89,6 +105,11 @@ mod tests {
             account_id: Some("acct_01k8d6wk00f8xsr79e7x052rkk".to_owned()),
             entitlement: Some("header.payload.signature".to_owned()),
             offline_only: false,
+            server: Some("https://api.example.com/v2".to_owned()),
+            license: Some("license.payload.signature".to_owned()),
+            entitlement_keys: Some(r#"{"keys":[]}"#.to_owned()),
+            issuer: Some("https://account.example.com".to_owned()),
+            trust_tag: Some("tag".to_owned()),
         };
 
         write(&path, &file).await.expect("written");
@@ -114,6 +135,7 @@ mod tests {
         assert_eq!(file.device_id.as_deref(), Some("dev_x"));
         assert_eq!(file.account_id, None);
         assert!(!file.offline_only);
+        assert_eq!((file.server, file.license), (None, None));
     }
 
     #[tokio::test]

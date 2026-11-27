@@ -27,7 +27,8 @@ env:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    # setup-python has no 3.9 for Ubuntu 26.04, which ubuntu-latest became; the release tooling step needs 3.9.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -51,7 +52,7 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint" actionlint
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: zizmor@${{ env.ZIZMOR_VERSION }}
 
@@ -75,6 +76,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+          python3 -m unittest discover -s scripts/ai-models -p 'test_*.py'
+          python3 -m unittest discover -s windows/ci -p 'test_*.py'
           python3 -m unittest discover -s apple/scripts/ci -p 'test_*.py'
           python3 -m unittest discover -s apple/scripts/lib -p 'test_*.py'
           python3 -m unittest discover -s apple/scripts -p 'test_localization.py'
@@ -107,6 +110,7 @@ jobs:
           set -euo pipefail
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir apple --version 0.0.0
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version 0.0.0
+          "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir windows --version 0.0.0
 
       # pr-title.yml runs the same check on a title edit, which starts no CI run. The title is read now, not from the
       # event, so a re-run after a retitle sees the current one.
@@ -132,10 +136,6 @@ jobs:
       # The app registers a plugin from these keys without loading it, and loads one without them at launch.
       - name: Check every plugin Info.plist declares the ids its class provides
         run: python3 apple/scripts/ci/check-plugin-provides.py
-
-      # The curated entry answers until the plugin loads, then the plugin's static replaces it (#2700).
-      - name: Check curated driver capabilities match their plugins
-        run: python3 apple/scripts/ci/check-capability-parity.py
 
       # Import, export and sync drop a field the trust catalog does not classify.
       - name: Check every connection field has a trust class
@@ -182,6 +182,10 @@ jobs:
       - name: Check the statement classifiers read words through the grammar's tokens
         run: python3 apple/scripts/ci/check-classifier-text-matching.py
 
+      # A new engine belongs in a plugin (apple/AGENTS.md, Scope); a view reads services through injection.
+      - name: Check engine-name comparisons and view singleton reads do not grow
+        run: python3 apple/scripts/ci/check-source-ratchets.py
+
       # The corpora run by hand against servers (scripts/probes/check-column-type-corpus.sh), so a type a driver
       # starts listing is caught here.
       - name: Check every listed column type has a corpus column
@@ -189,7 +193,7 @@ jobs:
 
       - name: Set up Go
         if: inputs.hana
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: apple/Native/HanaBridge/go.mod
           cache: false

@@ -63,6 +63,10 @@ pub struct GridConfig {
     pub find: bool,
     /// The host can add a filter rule from a cell's value.
     pub filter_by_value: bool,
+    // The host can share the rows as a link: an editor's results and a table tab's rows.
+    pub share: bool,
+    /// The grid offers Wrap Text: a table's rows or a result's, not a key's entries.
+    pub wrap_text: bool,
     pub tasks: Tasks,
     /// What a screen reader calls the grid.
     pub label: String,

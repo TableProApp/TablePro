@@ -61,11 +61,11 @@ struct ExactRowCounterTests {
     private func count(
         _ stub: CountStubDriver,
         countSQL: String? = ExactRowCounterTests.countSQL,
-        type: DatabaseType = .spanner
+        type: DatabaseType = .oracle
     ) async throws -> Int? {
         let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: type), pluginDriver: stub)
         return try await ExactRowCounter.count(
-            on: adapter, table: "Orders", filters: [], logicMode: .and, countSQL: countSQL
+            on: adapter, table: "Orders", schema: nil, filters: [], logicMode: .and, countSQL: countSQL
         )
     }
 
@@ -125,6 +125,15 @@ struct ExactRowCounterTests {
 
         let failing = CountStubDriver(ownsQueryBuilding: true, driverCount: .failure(.refused))
         await #expect(throws: CountStubError.self) { _ = try await count(failing, type: .cassandra) }
+        #expect(failing.executedQueries.isEmpty)
+    }
+
+    @Test("A Spanner count that fails is the answer, never a cue for a second scan")
+    func spannerCountFailureRunsNoHostCount() async {
+        let failing = CountStubDriver(ownsQueryBuilding: true, driverCount: .failure(.refused))
+
+        await #expect(throws: CountStubError.self) { _ = try await count(failing, type: .spanner) }
+
         #expect(failing.executedQueries.isEmpty)
     }
 

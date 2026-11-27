@@ -46,9 +46,14 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
     imp.inner_stack.set_visible_child_name("loading");
     imp.read_only_banner.set_revealed(init.read_only);
     let page_sizes = page_size_choices(&imp.page_size_dropdown, init.page_size);
-    imp.overflow_button.set_menu_model(Some(&overflow_menu(&page_sizes)));
-    imp.more_button.set_menu_model(Some(&more_menu(&page_sizes)));
-    imp.json_more.set_menu_model(Some(&json_menu(&page_sizes)));
+    for (button, menu) in [
+        (&imp.overflow_button, overflow_menu(&page_sizes)),
+        (&imp.more_button, more_menu(&page_sizes)),
+        (&imp.json_more, json_menu(&page_sizes)),
+    ] {
+        crate::application::keymap::follow_menu(&menu);
+        button.set_menu_model(Some(&menu));
+    }
     connect_controls(tab, page_sizes.clone());
     BrowseTabWidgets {
         inner_stack: imp.inner_stack.get(),
@@ -80,12 +85,15 @@ fn more_menu(page_sizes: &[u64]) -> gio::Menu {
     rows.append(Some(&gettext("_Insert Row")), Some("grid.insert-row"));
     rows.append(Some(&gettext("_Delete Selected Rows")), Some("grid.delete-rows"));
     rows.append(Some(&gettext("_Row Details")), Some("grid.show-details"));
+    let view = gio::Menu::new();
+    view.append(Some(&gettext("_Wrap Text")), Some("grid.wrap-text"));
     let pages = gio::Menu::new();
     pages.append(Some(&gettext("First _Page")), Some("browse.first-page"));
     pages.append(Some(&gettext("_Last Page")), Some("browse.last-page"));
     let menu = gio::Menu::new();
     menu.append_section(None, &actions);
     menu.append_section(None, &rows);
+    menu.append_section(None, &view);
     menu.append_section(None, &pages);
     menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
     menu
@@ -116,9 +124,7 @@ fn json_menu(page_sizes: &[u64]) -> gio::Menu {
 fn export_item() -> gio::MenuItem {
     let export = gio::MenuItem::new(Some(&gettext("_Export Rows…")), Some("browse.export"));
     // The window's Export Results key reaches this tab's Export.
-    if let Some(key) = crate::application::triggers_for("win.export-results").first() {
-        export.set_attribute_value("accel", Some(&key.to_variant()));
-    }
+    crate::application::keymap::show_key_of(&export, "win.export-results");
     export
 }
 
@@ -198,6 +204,8 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
         // Ctrl+F is the filter strip's in a table tab.
         find: false,
         filter_by_value: true,
+        share: true,
+        wrap_text: true,
         tasks: init.tasks,
         label: init.label,
     });
@@ -369,6 +377,24 @@ mod tests {
                 .as_deref()
                 == Some("grid.highlight-rules")
         }));
+    }
+
+    #[test]
+    fn the_more_menu_offers_wrap_text() {
+        let menu = more_menu(&[]);
+        let offered = (0..menu.n_items())
+            .filter_map(|section| menu.item_link(section, "section"))
+            .any(|section| {
+                (0..section.n_items()).any(|item| {
+                    section
+                        .item_attribute_value(item, "action", None)
+                        .and_then(|value| value.get::<String>())
+                        .as_deref()
+                        == Some("grid.wrap-text")
+                })
+            });
+
+        assert!(offered);
     }
 
     #[gtk4::test]

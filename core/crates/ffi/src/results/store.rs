@@ -1,8 +1,9 @@
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard};
 
-use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
+use tablepro_core::export::ResultExtent;
 use tablepro_core::value::order::{row_order, sorts_as_text};
+use tablepro_core::{Truncation, Value};
 
 use super::column_cells::{Cell, ColumnCells, cell_value, stored_value};
 use super::{ValueKind, cell_text};
@@ -23,6 +24,9 @@ pub(super) struct StoreState {
     pub(super) chunks: Vec<Chunk>,
     pub(super) rows: u64,
     pub(super) finished: bool,
+    // As the set's end reported them: every row when counted, and whether rows may follow those held.
+    pub(super) total: Option<u64>,
+    pub(super) cut: bool,
 }
 
 #[derive(Debug)]
@@ -41,6 +45,8 @@ impl ResultStore {
                 chunks: Vec::new(),
                 rows: 0,
                 finished: false,
+                total: None,
+                cut: false,
             }),
         }
     }
@@ -118,12 +124,40 @@ impl ResultStore {
         state.rows
     }
 
-    // A set the last chunk holds would otherwise keep the slack its arrays grew by.
+    #[cfg(test)]
     pub(crate) fn finish(&self) {
+        self.finish_as(None, Truncation::Complete);
+    }
+
+    // A set the last chunk holds would otherwise keep the slack its arrays grew by.
+    pub(crate) fn finish_as(&self, total_rows: Option<u64>, truncation: Truncation) {
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
         state.finished = true;
+        state.total = total_rows;
+        state.cut = truncation != Truncation::Complete;
         if let Some(chunk) = state.chunks.last_mut() {
             chunk.columns.iter_mut().for_each(ColumnCells::shrink);
+        }
+    }
+
+    // The run ended, as a cancel or an error ends it, before the set said it was finished: rows may follow.
+    pub(crate) fn finish_with_run(&self) {
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        if !state.finished {
+            state.finished = true;
+            state.cut = true;
+        }
+        if let Some(chunk) = state.chunks.last_mut() {
+            chunk.columns.iter_mut().for_each(ColumnCells::shrink);
+        }
+    }
+
+    pub(crate) fn extent(&self) -> ResultExtent {
+        let state = self.read();
+        ResultExtent {
+            held: state.rows,
+            total: state.total,
+            cut: state.cut,
         }
     }
 
@@ -133,6 +167,23 @@ impl ResultStore {
         let cell = state.cell(row, column)?;
         Some(cell.kind.map(|kind| cell_text::full(kind, cell.bytes)))
     }
+
+    // `Some(None)` for null; otherwise the start of what `full_text` gives, and whether it was cut.
+    pub(crate) fn text_head(&self, row: u64, column: usize, max_chars: usize) -> Option<Option<(String, bool)>> {
+        let state = self.read();
+        let cell = state.cell(row, column)?;
+        Some(cell.kind.map(|kind| cell_text::head(kind, cell.bytes, max_chars)))
+    }
+
+    // `Some(None)` for null or a value that is not binary; otherwise its first `max_bytes` and its whole length.
+    pub(crate) fn binary(&self, row: u64, column: usize, max_bytes: usize) -> Option<Option<(Vec<u8>, u64)>> {
+        let state = self.read();
+        let cell = state.cell(row, column)?;
+        Some((cell.kind == Some(ValueKind::Bytes)).then(|| {
+            let kept = &cell.bytes[..cell.bytes.len().min(max_bytes)];
+            (kept.to_vec(), cell.bytes.len() as u64)
+        }))
+    }
 }
 
 impl ResultStore {
@@ -141,6 +192,10 @@ impl ResultStore {
         let state = self.read();
         let read = &state.columns.get(column)?.column_type;
         stored_value(state.cell(row, column)?, read)
+    }
+
+    pub(crate) fn cell_len(&self, row: u64, column: usize) -> Option<usize> {
+        Some(self.read().cell(row, column)?.bytes.len())
     }
 
     // The kind of the value in a cell, `None` for null; a dynamically typed column can hold any.

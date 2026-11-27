@@ -71,12 +71,13 @@ public sealed partial class ShellTests
     public void ThePrimaryKeepsADropTargetWhenItsOnlyTabMovesOut(string theme)
     {
         using var app = AppSession.Relaunch(AppSession.NewDataFolder(theme), theme, maximize: false);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.TypeInto("Query 1", "SELECT 42;");
         app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Move tab to new window") is not null);
         app.FindMenuItem("Move tab to new window").Patterns.Invoke.Pattern.Invoke();
         var child = app.WaitForWindow(SampleWindow);
-        Assert.Equal(string.Empty, AppSession.EditorText(app.FindEditor("Query 1")).Trim());
+        // Query 1 still holds its number in the other window.
+        Assert.Equal(string.Empty, AppSession.EditorText(app.FindEditor("Query 2")).Trim());
         var tab = Tab(app.Find("Tabs", child), "Query 1")!;
         var strip = AddTabButton(app.Find("Tabs"));
         app.Drag(child, () => Center(tab.BoundingRectangle), () => Center(strip.BoundingRectangle),
@@ -180,7 +181,7 @@ public sealed partial class ShellTests
     public void ClosingATabWindowOrExitingAsksBeforeRollingBack(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "BEGIN; UPDATE Track SET Name = 'Pending' WHERE TrackId = 1;");
         app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
@@ -203,8 +204,9 @@ public sealed partial class ShellTests
         app.Screenshot("35-window-close-transaction", torn);
         app.Find("PrimaryButton", torn).AsButton().Invoke();
         app.WaitForClose(SampleWindow);
-        app.TypeInto("Query 1", "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
-        app.Chord(() => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
+        // The tab the primary kept took the next number, since Query 1 still held its own in the closed window.
+        app.TypeInto("Query 2", "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
+        app.Chord(() => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
         Assert.Equal("0", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "0"));
     }
@@ -245,9 +247,36 @@ public sealed partial class ShellTests
         app.PressDialogButton();
     }
 
+    // The cancelled prompt is still playing its closing transition when Roll back asks.
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void RollBackRightAfterCancellingCloseStillAsks(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme);
+        var state = new
+        {
+            connections = new[]
+            {
+                new { filePath = AppSession.SampleDatabase(folder), name = "First", engineId = "sqlite",
+                    tabs = new[] { new { kind = "Query", title = "Query 1", sql = "BEGIN" } } },
+            },
+            front = 0,
+        };
+        File.WriteAllText(Path.Combine(folder, "session.json"), JsonSerializer.Serialize(state));
+        using var app = AppSession.Relaunch(folder, theme);
+        app.Find("SqlEditor");
+        app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+        app.Chord(() => app.TryFind("PrimaryButton") is not null, VirtualKeyShort.ALT, VirtualKeyShort.F4);
+        app.CloseDialog();
+        app.Find("RollBackButton").AsButton().Invoke();
+        app.PressDialogButton("Roll back");
+        Assert.True(Retry.WhileFalse(() => app.TryFind("CommitButton") is null or { IsOffscreen: true },
+            AppSession.Wait, throwOnTimeout: false).Success);
+    }
+
     private static void OpenTrack(AppSession app)
     {
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         var track = app.FindByName("Track", app.Find("ObjectTree"));
         app.Click(track, () => app.TryFind("TableStatus") is not null);
         AppSession.WaitForText(app.Find("TableStatus"), text => text.Contains(" of 3,503", StringComparison.Ordinal));

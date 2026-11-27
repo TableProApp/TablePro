@@ -106,8 +106,59 @@ public sealed record TableName(string? Schema, string Name);
 // Column is the table's column position, as the grid numbers its columns.
 public sealed record ColumnSort(int Column, bool Ascending);
 
-// Any columns past VisibleColumns are the engine's row address; without CanSeek only the first page can be read.
-public sealed record TablePageRun(QueryRun Run, int VisibleColumns, bool CanSeek);
+// Past VisibleColumns: the row's address. ViewSql: every row's query, or null. Without CanSeek an offset reads
+// through the rows before it, so the next page resumes from where this one stopped (NextPage).
+public sealed class TablePageRun : IDisposable
+{
+    private readonly Native.TablePageRead _page;
+
+    internal TablePageRun(Native.TablePageRead page, QueryRun run)
+    {
+        _page = page;
+        Run = run;
+        VisibleColumns = checked((int)page.VisibleColumns());
+        CanSeek = page.CanSeek();
+        ViewSql = page.ViewSql();
+    }
+
+    public QueryRun Run { get; }
+
+    public int VisibleColumns { get; }
+
+    public bool CanSeek { get; }
+
+    public string? ViewSql { get; }
+
+    // Read once the run finished; null for an engine that seeks, or after the last page.
+    public PageResume? NextPage() => _page.NextPage() is { } next ? new PageResume(next) : null;
+
+    public void Dispose() => _page.Dispose();
+}
+
+// Where a server-paged table's next page starts. Only a read of the same table, sort, filter and page size takes it.
+public sealed class PageResume : IDisposable
+{
+    internal PageResume(Native.PageResume resume)
+    {
+        Handle = resume;
+    }
+
+    internal Native.PageResume Handle { get; }
+
+    public void Dispose() => Handle.Dispose();
+}
+
+public enum DatabaseLayout
+{
+    // A connection reaches one database, such as a file.
+    OneDatabase,
+
+    // The server's databases are the schemas the catalog lists, so one connection reads every one.
+    AsSchemas,
+
+    // Each database holds schemas, or Redis's keys, of its own; a connection's catalog describes the one it opened.
+    WithSchemas,
+}
 
 public enum FailureCause
 {

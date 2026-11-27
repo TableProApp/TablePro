@@ -51,6 +51,37 @@ nonisolated internal enum MySQLServerVersion {
         }
     }
 
+    // None of these has been measured, and each can hand a session to another backend.
+    private static func namesProxy(_ banner: String?) -> Bool {
+        guard let banner else { return false }
+        let name = banner.lowercased()
+        return ["maxscale", "proxysql", "vitess"].contains(where: name.contains)
+    }
+
+    // The forks and named proxies keep their `USE` before every statement.
+    static func keepsDatabaseBetweenStatements(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        guard !namesProxy(banner) else { return false }
+        switch flavor {
+        case .mysql, .mariadb:
+            return true
+        case .tidb, .oceanbase, .databend, .starrocks:
+            return false
+        }
+    }
+
+    // Several statements sent before the first reply is read. Measured on MySQL 8.4.11 and MariaDB 13.0.2.
+    static func readsInOneFlight(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        guard !namesProxy(banner) else { return false }
+        switch flavor {
+        case .mysql:
+            return isAtLeast((8, 0, 0), banner: banner)
+        case .mariadb:
+            return isAtLeast((10, 6, 0), banner: banner)
+        case .tidb, .oceanbase, .databend, .starrocks:
+            return false
+        }
+    }
+
     /// `COLUMNS.GENERATION_EXPRESSION` arrived with generated columns: MySQL 5.7.6, MariaDB 10.2.
     /// MariaDB 10.1 has the columns but not the catalog column.
     static func hasGenerationExpression(banner: String?, flavor: MySQLServerFlavor) -> Bool {
@@ -99,6 +130,19 @@ nonisolated internal enum MySQLServerVersion {
     /// bare form, so a `SHOW` answer is never read this way whatever the server version.
     static func quotesColumnDefault(banner: String?, flavor: MySQLServerFlavor) -> Bool {
         flavor.isMariaDB && isAtLeast((10, 2, 7), banner: banner)
+    }
+
+    // MySQL 5.6.5 (WL #5968) and MariaDB 10.0.0 added `START TRANSACTION READ ONLY`. No other flavor is held to it, as
+    // `MySQLServerFlavor.enforcesReadOnlyTransactions` says.
+    static func hasReadOnlyTransactions(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        switch flavor {
+        case .mysql:
+            return !isLegacy(below: (5, 6, 5), banner: banner, flavor: flavor)
+        case .mariadb:
+            return !isLegacy(below: (10, 0, 0), banner: banner, flavor: flavor)
+        case .tidb, .oceanbase, .databend, .starrocks:
+            return false
+        }
     }
 
     // A binary default arrives as its bytes from MySQL 5.7.44, MariaDB and OceanBase, and as `0x` hex from MySQL 8.0.11 to 8.4.13.

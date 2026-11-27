@@ -17,7 +17,10 @@ extension PluginMetadataRegistry {
     /// KingbaseES runs PostgreSQL's catalogs and wire protocol, so its entry is PostgreSQL's with its own identity
     /// and without the cloud and Kerberos sign-in fields, which its servers do not offer.
     static func kingbaseESDefaults(postgreSQL: PluginMetadataSnapshot) -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
-        [("KingbaseES", PluginMetadataSnapshot(
+        // Its Oracle mode has not been run against the head and size reads, so a page reads every value whole.
+        var capabilities = postgreSQL.capabilities
+        capabilities.largeValueFunctions = nil
+        return [("KingbaseES", PluginMetadataSnapshot(
             displayName: "KingbaseES", iconName: "cylinder", defaultPort: 54_321,
             requiresAuthentication: true, supportsForeignKeys: postgreSQL.supportsForeignKeys,
             supportsSchemaEditing: postgreSQL.supportsSchemaEditing, isDownloadable: true,
@@ -28,11 +31,18 @@ extension PluginMetadataRegistry {
             brandColorHex: "#C9141E", queryLanguageName: "SQL", editorLanguage: .sql,
             connectionMode: .network, supportsDatabaseSwitching: postgreSQL.supportsDatabaseSwitching,
             structureEditing: postgreSQL.structureEditing,
-            capabilities: postgreSQL.capabilities, schema: postgreSQL.schema, editor: postgreSQL.editor,
+            capabilities: capabilities, schema: postgreSQL.schema, editor: postgreSQL.editor,
             connection: PluginMetadataSnapshot.ConnectionConfig(
                 additionalConnectionFields: postgreSQL.connection.additionalConnectionFields.filter {
-                    ["usePgpass", "connectionOptions"].contains($0.id)
-                },
+                    $0.id == "usePgpass"
+                } + [
+                    ConnectionField(
+                        id: "connectionOptions",
+                        label: String(localized: "Connection Options"),
+                        fieldType: .text,
+                        section: .advanced
+                    )
+                ],
                 category: .relational,
                 tagline: String(localized: "PostgreSQL and Oracle compatible SQL")
             )

@@ -3,7 +3,6 @@ import Testing
 import TableProModels
 @testable import TableProMobile
 
-@Suite("RowInsertPlanner")
 struct RowInsertPlannerTests {
     private let columns = [
         ColumnInfo(name: "id", typeName: "integer", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
@@ -67,6 +66,18 @@ struct RowInsertPlannerTests {
             table: "people", schema: nil, type: .mysql, driver: ansiDriver(), columns: [autoIncrement, name], rows: [row]
         )
         #expect((mysql.first ?? "").contains("1890"))
+    }
+
+    @Test("A SQL Server insert names the window's database in front of the schema")
+    func sqlServerInsertNamesTheDatabase() throws {
+        let write = PlannedRowWrite.insert(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, columns: columns,
+            values: ["name": .text("Ada")]
+        )
+
+        let batch = try #require(try write.batch(on: ansiDriver()))
+
+        #expect(batch.statements == ["INSERT INTO [shop].[dbo].[orders] ([name]) VALUES (N'Ada')"])
     }
 
     @Test("writes NULL for null values")
@@ -238,13 +249,29 @@ struct RowInsertPlannerTests {
         #expect(statements == [#"INSERT INTO "people" DEFAULT VALUES"#])
     }
 
-    @Test("an all-default row produces nothing on Oracle, which has no such statement")
+    @Test("an all-default row on Oracle names its first writable column, as the Mac writes it")
     func allDefaultsOnOracle() throws {
         let statements = try RowInsertPlanner.statements(
             table: "people", schema: nil, type: .oracle, driver: ansiDriver(),
             columns: defaultsColumns, rows: [PayloadRow(values: [:])], allowAllDefaults: true
         )
-        #expect(statements.isEmpty)
+        #expect(statements == [#"INSERT INTO "people" ("id") VALUES (DEFAULT)"#])
+    }
+
+    @Test("an Oracle row of only defaults names an always identity when no other column takes DEFAULT")
+    func allDefaultsOnOracleIdentityOnly() throws {
+        let columns = [
+            ColumnInfo(name: "TOTAL", typeName: "NUMBER", ordinalPosition: 0, isGenerated: true),
+            ColumnInfo(
+                name: "ID", typeName: "NUMBER", isPrimaryKey: true, isNullable: false, ordinalPosition: 1,
+                isAutoIncrement: true, rejectsWrittenValues: true
+            )
+        ]
+        let statements = try RowInsertPlanner.statements(
+            table: "T", schema: nil, type: .oracle, driver: ansiDriver(), columns: columns,
+            rows: [PayloadRow(values: [:])], allowAllDefaults: true, dropsEmptyPrimaryKey: false
+        )
+        #expect(statements == [#"INSERT INTO "T" ("ID") VALUES (DEFAULT)"#])
     }
 
     @Test("a caller that distinguishes omission writes an explicitly empty primary key")

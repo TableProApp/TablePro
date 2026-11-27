@@ -10,6 +10,8 @@ import AppKit
 enum DatabaseMenuBuilder {
     static let identifier = NSUserInterfaceItemIdentifier("menu.database")
     static let liveMessagesIdentifier = NSUserInterfaceItemIdentifier("menu.database.liveMessages")
+    static let compareIdentifier = NSUserInterfaceItemIdentifier("menu.database.compare")
+    static let compareSeparatorIdentifier = NSUserInterfaceItemIdentifier("menu.database.compareSeparator")
     static let manualCommitFootnoteIdentifier = NSUserInterfaceItemIdentifier("menu.database.manualCommitFootnote")
     static let manualCommitUnavailableFootnoteIdentifier = NSUserInterfaceItemIdentifier(
         "menu.database.manualCommitUnavailableFootnote"
@@ -166,9 +168,7 @@ enum DatabaseMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Reconnect"),
                 action: #selector(MainSplitViewController.retryConnection)
-            ),
-            MenuItemFactory.separator,
-            compareSubmenu()
+            )
         ])
         item.identifier = identifier
         if let menu = item.submenu {
@@ -177,10 +177,15 @@ enum DatabaseMenuBuilder {
         return item
     }
 
-    // Live Messages… sits with the other connection-wide tabs, and exists only while its module is on.
     static func applyModules(_ modules: Set<AppModule>, to menu: NSMenu) {
+        applyLiveMessages(modules.contains(.liveMessages), to: menu)
+        applyCompare(modules.contains(.compareSync), to: menu)
+    }
+
+    // Live Messages… sits with the other connection-wide tabs, and exists only while its module is on.
+    private static func applyLiveMessages(_ enabled: Bool, to menu: NSMenu) {
         let existing = menu.items.first { $0.identifier == liveMessagesIdentifier }
-        switch (modules.contains(.liveMessages), existing) {
+        switch (enabled, existing) {
         case (true, nil):
             let anchor = menu.items.firstIndex { $0.action == #selector(MainSplitViewController.showTableHealth(_:)) }
             let item = MenuItemFactory.item(
@@ -196,12 +201,25 @@ enum DatabaseMenuBuilder {
         }
     }
 
-    /// The HIG asks that every toolbar item also be a menu-bar command. These are the Compare &
-    /// Sync window's toolbar, mirrored here; they route by nil target, so they reach
-    /// `CompareSyncWindowController` only while that window is key and validate to disabled
-    /// everywhere else.
+    // Closes the menu behind its own separator, and exists only while the Compare & Sync module is on.
+    private static func applyCompare(_ enabled: Bool, to menu: NSMenu) {
+        let existing = menu.items.filter { $0.identifier == compareIdentifier || $0.identifier == compareSeparatorIdentifier }
+        switch (enabled, existing.isEmpty) {
+        case (true, true):
+            let separator = MenuItemFactory.separator
+            separator.identifier = compareSeparatorIdentifier
+            menu.addItem(separator)
+            menu.addItem(compareSubmenu())
+        case (false, false):
+            existing.forEach { menu.removeItem($0) }
+        default:
+            return
+        }
+    }
+
+    // The window's toolbar mirrored as menu commands (HIG). Nil target, so they validate to disabled unless it is key.
     private static func compareSubmenu() -> NSMenuItem {
-        MenuItemFactory.submenu(String(localized: "Compare"), items: [
+        let submenu = MenuItemFactory.submenu(String(localized: "Compare"), items: [
             MenuItemFactory.item(
                 String(localized: "Compare & Sync Databases…"),
                 action: #selector(AppDelegate.compareAndSyncDatabases(_:))
@@ -238,6 +256,8 @@ enum DatabaseMenuBuilder {
                 action: #selector(CompareSyncWindowController.stopComparison(_:))
             )
         ])
+        submenu.identifier = compareIdentifier
+        return submenu
     }
 
     private static let favoriteDatabaseDelegate = FavoriteDatabaseMenuDelegate()
@@ -312,7 +332,7 @@ enum DatabaseMenuBuilder {
 
     // Validation shows it under Manual Commit, which it shares an action with so it always validates as disabled.
     private static func manualCommitFootnote(_ text: String, identifier: NSUserInterfaceItemIdentifier) -> NSMenuItem {
-        let item = MenuFootnote.item(text)
+        let item = MenuFootnote.unwrappedItem(text)
         item.action = #selector(MainSplitViewController.toggleManualCommit(_:))
         item.identifier = identifier
         item.isHidden = true

@@ -20,6 +20,7 @@ struct SyncFieldParityTests {
         "ConnectionSyncField": ConnectionSyncField.allCases.map(\.rawValue),
         "ConnectionGroupSyncField": ConnectionGroupSyncField.allCases.map(\.rawValue),
         "ConnectionTagSyncField": ConnectionTagSyncField.allCases.map(\.rawValue),
+        "ConnectionProjectSyncField": ConnectionProjectSyncField.allCases.map(\.rawValue),
         "SQLFavoriteSyncField": SQLFavoriteSyncField.allCases.map(\.rawValue),
         "SQLFavoriteFolderSyncField": SQLFavoriteFolderSyncField.allCases.map(\.rawValue),
     ]

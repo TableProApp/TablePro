@@ -28,15 +28,16 @@ extension PluginMetadataRegistry {
                     supportsOpportunisticTLS: false,
                     supportsColumnSort: false,
                     supportsRawFilter: false,
-                    readOnlyEnforcement: .clientGuard
+                    readOnlyEnforcement: .clientGuard,
+                    dataCommands: memcachedDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
+                    defaultSchemaName: "public",
                     defaultGroupName: "default",
                     tableEntityName: "Keys",
                     containerEntityName: "Server",
                     defaultPrimaryKeyColumn: "Key",
-                    immutableColumns: ["Key"],
+                    immutableColumns: [],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],
@@ -58,6 +59,11 @@ extension PluginMetadataRegistry {
         ]
     }
 }
+
+// memcached `doc/protocol.txt`, the text protocol commands `MemcachedCommandParser` reads.
+private let memcachedDataCommands: Set<String> = [
+    "set", "add", "replace", "append", "prepend", "cas", "touch", "incr", "decr", "gat", "gats", "delete",
+]
 
 private let memcachedCompletions: [CompletionEntry] = [
     "get", "gets", "gat", "set", "add", "replace", "append", "prepend", "cas", "touch", "delete", "incr", "decr",

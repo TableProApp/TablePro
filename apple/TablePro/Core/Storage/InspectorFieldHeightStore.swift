@@ -5,7 +5,6 @@
 
 import Combine
 import Foundation
-import os
 
 // Device-local. Keyed by column name alone, so a size holds on every row and in every result showing that column.
 @MainActor
@@ -13,8 +12,7 @@ internal final class InspectorFieldHeightStore: ObservableObject {
     static let shared = InspectorFieldHeightStore()
     static let capacity = 200
 
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "InspectorFieldHeightStore")
-    private static let key = PreferenceKeys.rowInspectorFieldHeights.name
+    private static let key = PreferenceKeys.rowInspectorFieldHeights
 
     @Published private(set) var heights: [String: Double] = [:]
     // Least recently set first, so the oldest is dropped past `capacity`.
@@ -48,7 +46,7 @@ internal final class InspectorFieldHeightStore: ObservableObject {
     func reload() {
         var loaded: [String: Double] = [:]
         var loadedOrder: [String] = []
-        for entry in store.dataValue(forKey: Self.key).flatMap(Self.decode) ?? [] {
+        for entry in store.read(Self.key).value ?? [] {
             if loaded.updateValue(entry.height, forKey: entry.column) != nil {
                 loadedOrder.removeAll { $0 == entry.column }
             }
@@ -60,23 +58,10 @@ internal final class InspectorFieldHeightStore: ObservableObject {
 
     private func persist() {
         let entries = order.compactMap { column in heights[column].map { Entry(column: column, height: $0) } }
-        do {
-            store.setDataValue(try JSONEncoder().encode(entries), forKey: Self.key)
-        } catch {
-            Self.logger.error("Could not save field heights: \(error.publicLogShape, privacy: .public)")
-        }
+        try? store.write(entries, to: Self.key)
     }
 
-    private static func decode(_ data: Data) -> [Entry]? {
-        do {
-            return try JSONDecoder().decode([Entry].self, from: data)
-        } catch {
-            logger.error("Discarding unreadable field heights: \(error.publicLogShape, privacy: .public)")
-            return nil
-        }
-    }
-
-    private struct Entry: Codable {
+    struct Entry: Codable {
         let column: String
         let height: Double
     }

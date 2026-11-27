@@ -7,7 +7,7 @@ extension PluginMetadataRegistry {
             ("Qdrant", PluginMetadataSnapshot(
                 displayName: "Qdrant", iconName: "qdrant-icon", defaultPort: 6_333,
                 requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "qdrant", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
                 brandColorHex: "#DC244C",
@@ -35,10 +35,11 @@ extension PluginMetadataRegistry {
                     verifiesServerWithSystemTrust: true,
                     requestedTLSVerifiesIdentity: true,
                     columnsAreSampled: true,
-                    supportsPrincipalConnectionLimit: false
+                    supportsPrincipalConnectionLimit: false,
+                    dataCommands: qdrantDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
+                    defaultSchemaName: "public",
                     defaultGroupName: "default",
                     tableEntityName: "Collections",
                     containerEntityName: "Cluster",
@@ -66,6 +67,19 @@ extension PluginMetadataRegistry {
         ]
     }
 }
+
+// The point operations of the Qdrant OpenAPI, v1.9 to v1.20.
+private let qdrantDataCommands: Set<String> = [
+    "PUT /collections/{collection_name}/points",
+    "POST /collections/{collection_name}/points/delete",
+    "POST /collections/{collection_name}/points/payload",
+    "PUT /collections/{collection_name}/points/payload",
+    "POST /collections/{collection_name}/points/payload/delete",
+    "POST /collections/{collection_name}/points/payload/clear",
+    "PUT /collections/{collection_name}/points/vectors",
+    "POST /collections/{collection_name}/points/vectors/delete",
+    "POST /collections/{collection_name}/points/batch"
+]
 
 private let qdrantCompletions: [CompletionEntry] = [
     CompletionEntry(label: "GET /collections", insertText: "GET /collections"),

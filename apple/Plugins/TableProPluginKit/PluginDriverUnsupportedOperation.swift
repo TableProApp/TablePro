@@ -22,6 +22,7 @@ public enum PluginDriverUnsupportedOperation: Error, LocalizedError, Sendable {
     case writeDocument
     case explainPlan
     case importExportedDatabase
+    case copyFromStandardInput
 
     public var errorDescription: String? {
         switch self {
@@ -37,6 +38,8 @@ public enum PluginDriverUnsupportedOperation: Error, LocalizedError, Sendable {
             return String(localized: "This driver cannot explain a statement")
         case .importExportedDatabase:
             return String(localized: "This driver cannot restore an exported folder. Update it in Settings > Extensions.")
+        case .copyFromStandardInput:
+            return String(localized: "This driver cannot send rows to COPY FROM STDIN.")
         }
     }
 }

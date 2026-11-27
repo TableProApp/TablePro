@@ -76,8 +76,12 @@ extension MainContentCoordinator {
         prune(&erDiagramModels, keeping: openTabIds)
         discardTableHealthModels(tableHealthModels.keys.filter { !openTabIds.contains($0) })
         prune(&navigationHistories, keeping: openTabIds)
+        for tabId in Array(catalogPageReloads.keys) where !openTabIds.contains(tabId) {
+            catalogPageReloads.removeValue(forKey: tabId)?.task.cancel()
+        }
         // The editor stores the outgoing tab's history on its next update, after the close forgot it.
         editorUndoHistories.forgetAll(except: openTabIds)
+        releaseEdits(exceptTabs: openTabIds)
         toolbarState.forgetQueryTimings(keeping: openTabIds)
         for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
             session.releaseViewWiring()
@@ -94,12 +98,15 @@ extension MainContentCoordinator {
     // A retarget keeps the id, so stale caches (staged ALTERs) would prompt to apply the previous table's changes.
     func releaseRetargetedTabState(for tabId: UUID) {
         tableMetadataCache.removeValue(forKey: tabId)
+        forgetCatalogPage(ofTab: tabId)
         tabSessionRegistry.forgetFreshness(for: tabId)
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tabId)
         erDiagramModels.removeValue(forKey: tabId)
         discardTableHealthModels([tabId])
         tabsWithStagedPrincipals.remove(tabId)
+        // Rows read from the old target must not stay editable under the new one.
+        dropEdits(ofReplacedResultIn: tabId)
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
         toolbarState.hasTypeChanges = false
@@ -114,11 +121,12 @@ extension MainContentCoordinator {
         erDiagramModels.removeValue(forKey: tab.id)
         discardTableHealthModels([tab.id])
         navigationHistories.removeValue(forKey: tab.id)
+        forgetCatalogPage(ofTab: tab.id)
         editorUndoHistories.forget(tab.id)
         releaseGridModel(forTab: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)
+        releaseEdits(ofTab: tab.id)
         guard isSelectedTab(tab) else { return }
-        changeManager.clearChangesAndUndoHistory()
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
         toolbarState.hasTypeChanges = false
@@ -129,6 +137,7 @@ extension MainContentCoordinator {
         reportEndedExecutions(tabExecution.invalidate(tab.id, reason: .abandoned).map { [$0] } ?? [])
         cancelTableLoad(for: tab.id)
         cancelRowCountTask(for: tab.id)
+        cancelPhase2Work(forTab: tab.id, closingTab: true)
         cancelQueryTask(for: tab.id, delivery: .background)
     }
 }

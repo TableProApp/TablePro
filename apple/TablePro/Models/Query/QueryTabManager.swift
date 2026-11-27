@@ -10,24 +10,44 @@ import TableProUtilities
 
 @MainActor
 final class QueryTabManager: ObservableObject {
-    @Published var tabs: [QueryTab] = [] {
-        didSet {
+    private var _tabs: [QueryTab] = []
+
+    // Not @Published so the editor's keystrokes can skip the publish (`setEditorText`); every other write still sends it.
+    var tabs: [QueryTab] {
+        get { _tabs }
+        set {
+            objectWillChange.send()
+            let oldValue = _tabs
+            _tabs = newValue
             _tabIndexMapDirty = true
             _visibleTabs = nil
-            if oldValue.map(\.id) != tabs.map(\.id) {
+            if oldValue.map(\.id) != _tabs.map(\.id) {
                 tabStructureVersion += 1
-                pruneActivations(keeping: tabs)
+                pruneActivations(keeping: _tabs)
             }
-            publishAnchorChange(oldTabs: oldValue, newTabs: tabs)
-            syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
+            publishAnchorChange(oldTabs: oldValue, newTabs: _tabs)
+            syncTabSessionRegistry(oldTabs: oldValue, newTabs: _tabs)
             reconcileVisibleContainer()
+            notePersistedStateChange()
         }
+    }
+
+    // Moves on every write to what a tab save reads, so a save can tell that nothing changed without building it.
+    private(set) var persistenceGeneration: UInt64 = 0
+
+    // The owner's change-driven save; a window that is not showing still saves what changed in it.
+    var onPersistedStateChange: (() -> Void)?
+
+    func notePersistedStateChange() {
+        persistenceGeneration &+= 1
+        onPersistedStateChange?()
     }
 
     // Every selection writer lands here; a view modifier can't, as a connection the window isn't showing has no views.
     @Published var selectedTabId: UUID? {
         didSet {
             guard selectedTabId != oldValue else { return }
+            notePersistedStateChange()
             recordSelectedTabContainer()
             reconcileVisibleContainer()
             scheduleActivationRecord()
@@ -281,18 +301,56 @@ final class QueryTabManager: ObservableObject {
     // MARK: - Tab Naming
 
     static func nextQueryTitle(existingTabs: [QueryTab]) -> String {
-        let maxNumber = existingTabs
+        "Query \(nextQueryNumber(existingTabs: existingTabs))"
+    }
+
+    // A named tab keeps its number reserved. Int.max is skipped, since a typed or saved title can carry it and one more traps.
+    static func nextQueryNumber(existingTabs: [QueryTab]) -> Int {
+        let highest = existingTabs
             .filter { $0.tabType == .query }
-            .compactMap { tab -> Int? in
-                guard tab.title.hasPrefix("Query ") else { return nil }
-                return Int(tab.title.dropFirst(6))
-            }
+            .flatMap { tab in [tab.title, tab.automaticTitle].compactMap { $0 } }
+            .compactMap(QueryTab.defaultQueryNumber(in:))
+            .filter { $0 != Int.max }
             .max() ?? 0
-        return "Query \(maxNumber + 1)"
+        return highest + 1
     }
 
     private func nextTitle() -> String {
         Self.nextQueryTitle(existingTabs: globalTabsProvider() + tabs)
+    }
+
+    // The strip is hidden with one tab, so there is nowhere to type the name.
+    func canRenameTab(id: UUID) -> Bool {
+        let strip = visibleTabs
+        guard strip.count >= 2, let tab = strip.first(where: { $0.id == id }) else { return false }
+        return tab.canBeRenamed
+    }
+
+    func renameTab(id: UUID, to text: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }), tabs[index].canBeRenamed else { return }
+        let tab = tabs[index]
+        var renamed = tab
+        if let name = EditorTabNameNormalizer.normalize(text) {
+            renamed.automaticTitle = tab.automaticName
+            renamed.title = name
+        } else {
+            guard let automatic = tab.automaticTitle else { return }
+            renamed.automaticTitle = nil
+            renamed.title = restoredAutomaticTitle(automatic, forTab: id)
+        }
+        guard renamed.title != tab.title || renamed.automaticTitle != tab.automaticTitle else { return }
+        tabs[index] = renamed
+        markTabRenamed(id)
+    }
+
+    // A number another tab took meanwhile, as after a move, gives way to the next free one; any other title may repeat.
+    private func restoredAutomaticTitle(_ automatic: String, forTab id: UUID) -> String {
+        let all = globalTabsProvider() + tabs
+        let isHeldElsewhere = all.contains {
+            $0.id != id && $0.tabType == .query && ($0.title == automatic || $0.automaticTitle == automatic)
+        }
+        guard isHeldElsewhere, QueryTab.isDefaultQueryTitle(automatic) else { return automatic }
+        return Self.nextQueryTitle(existingTabs: all)
     }
 
     // MARK: - Tab Management
@@ -300,6 +358,7 @@ final class QueryTabManager: ObservableObject {
     func addTab(
         initialQuery: String? = nil,
         title: String? = nil,
+        keepsTitle: Bool = false,
         databaseName: String = "",
         sourceFileURL: URL? = nil,
         sourceFileStamp: FileStamp? = nil,
@@ -329,6 +388,11 @@ final class QueryTabManager: ObservableObject {
             tabTitle = nextTitle()
         }
         var newTab = QueryTab(title: tabTitle, tabType: .query)
+        newTab.wrapsText = AppSettingsManager.shared.dataGrid.wrapText
+        // Held as a name, so a move or a restore never renumbers it; clearing it comes back to the same title.
+        if keepsTitle, title != nil, sourceFileURL == nil {
+            newTab.automaticTitle = tabTitle
+        }
 
         if let query = initialQuery {
             newTab.content.query = query
@@ -455,6 +519,7 @@ final class QueryTabManager: ObservableObject {
             tableName: tableName
         )
         newTab.pagination = PaginationState(pageSize: pageSize)
+        newTab.wrapsText = AppSettingsManager.shared.dataGrid.wrapText
         newTab.tableContext.databaseName = databaseName
         newTab.tableContext.objectType = objectType
         newTab.tableContext.isTemporary = isTemporary
@@ -676,6 +741,7 @@ final class QueryTabManager: ObservableObject {
         var tab = tabs[selectedIndex]
         tab.tabType = .table
         tab.title = Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType)
+        tab.automaticTitle = nil
         // Built whole: a leftover field describes the previous table, and its primary keys matched a keyless table's edits.
         tab.tableContext = TabTableContext(
             tableName: tableName,
@@ -699,9 +765,9 @@ final class QueryTabManager: ObservableObject {
         tab.sortState = SortState()
         tab.restoredSortSource = .unset
         tab.selectionSnapshot = .empty
-        tab.pendingChanges = TabChangeSnapshot()
         tab.autoRefreshInterval = .off
         tab.autoRefreshPause = nil
+        tab.outdatedPageNotice = nil
         tab.hasUserInteraction = false
         tab.filterState = TabFilterState()
         tab.valueFilter = GridValueFilterState()
@@ -744,6 +810,26 @@ final class QueryTabManager: ObservableObject {
         return true
     }
 
+    // In place and silent unless a fact drawn from the text flips: a keystroke moves no id, anchor or container.
+    @discardableResult
+    func setEditorText(_ text: String, ofTab tabId: UUID) -> Bool {
+        rebuildTabIndexMapIfNeeded()
+        guard let index = _tabIndexMap[tabId], _tabs.indices.contains(index) else { return false }
+        var edited = _tabs[index]
+        let before = EditorTextFacts(edited)
+        edited.content.query = text
+        guard EditorTextFacts(edited) == before else {
+            tabs[index] = edited
+            return true
+        }
+        _tabs[index].content = edited.content
+        if let visibleIndex = _visibleTabs?.firstIndex(where: { $0.id == tabId }) {
+            _visibleTabs?[visibleIndex].content = edited.content
+        }
+        notePersistedStateChange()
+        return true
+    }
+
     func markTabRenamed(_ tabId: UUID) {
         guard tabs.contains(where: { $0.id == tabId }) else { return }
         tabStructureVersion += 1
@@ -754,6 +840,17 @@ final class QueryTabManager: ObservableObject {
         Logger(subsystem: "com.TablePro", category: "QueryTabManager")
             .debug("QueryTabManager deallocated")
         #endif
+    }
+}
+
+// Run, Explain, Format, the AI actions, the unsaved dot, the pending-change badge and Tear Off read these from the text.
+private struct EditorTextFacts: Equatable {
+    let hasQueryText: Bool
+    let isFileDirty: Bool
+
+    init(_ tab: QueryTab) {
+        hasQueryText = tab.hasQueryText
+        isFileDirty = tab.content.isFileDirty
     }
 }
 

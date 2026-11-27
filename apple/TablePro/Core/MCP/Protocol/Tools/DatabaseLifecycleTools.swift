@@ -51,10 +51,11 @@ public struct CreateDatabaseTool: MCPToolImplementation {
 
         // The driver builds the statement, so the approval is by kind and names the database.
         try MCPStatementGate.classify(kind: .schemaMutation, meta: meta, allowsDestructive: false, context: context)
+        let scope = try await services.connectionBridge.resolveServerScope(connectionId: connectionId)
         let operation = try await MCPStatementGate.approve(
             [],
             kind: .schemaMutation,
-            scope: DatabaseScope(connectionId: connectionId, database: "", schema: nil),
+            scope: scope,
             meta: meta,
             allowsDestructive: false,
             forcesUserConsent: true,
@@ -187,7 +188,7 @@ public struct DropDatabaseObjectTool: MCPToolImplementation {
         // A database is dropped from the server; a schema from the database the connection is on, which the
         // approval names.
         let scope = kind == "database"
-            ? DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+            ? try await services.connectionBridge.resolveServerScope(connectionId: connectionId)
             : try await services.connectionBridge.resolveScope(connectionId: connectionId, database: nil, schema: nil)
         let operation = try await MCPStatementGate.approve(
             [],

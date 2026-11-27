@@ -7,6 +7,8 @@ public enum SyncTrigger: Equatable, Sendable {
     case launch
     /// The app came forward, or the system woke it to refresh.
     case activation
+    /// CloudKit's silent notice that another device changed the private database.
+    case remoteChange
     /// Something synced was edited on this device.
     case localChange
     /// `CKAccountChanged`: the person signed in or out, or the account became ready.
@@ -65,7 +67,7 @@ public enum SyncAdmission: Equatable, Sendable {
                 return .full
             case .localChange:
                 return isDue ? .full : .none
-            case .activation, .networkRestored:
+            case .activation, .remoteChange, .networkRestored:
                 return isDue ? .full : .downloadOnly
             }
         case .signedOut, .accountNotReady, .accountRestricted:

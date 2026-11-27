@@ -110,11 +110,11 @@ struct ForeignKeysForTablesReadTests {
     func perTableDriverReadsOnlyTheTablesAskedFor() async throws {
         let driver = PerTableCatalogDriver(tableCount: 500)
 
-        let keys = try await adapter(driver).fetchForeignKeys(forTables: sixTables)
+        let keys = try await adapter(driver).fetchForeignKeys(forTables: sixTables, schema: nil)
 
         #expect(driver.log.perTableReads == sixTables)
         #expect(driver.log.tableListings == 0)
-        #expect(Set(keys.keys) == Set(sixTables))
+        #expect(Set(keys.keys) == Set(sixTables.map { CatalogName($0) }))
         #expect(keys["t3"]?.first?.name == "fk_t3")
     }
 
@@ -122,11 +122,11 @@ struct ForeignKeysForTablesReadTests {
     func bulkDriverKeepsItsSingleQuery() async throws {
         let driver = BulkCatalogDriver(tableCount: 500)
 
-        let keys = try await adapter(driver).fetchForeignKeys(forTables: sixTables)
+        let keys = try await adapter(driver).fetchForeignKeys(forTables: sixTables, schema: nil)
 
         #expect(driver.log.bulkReads == 1)
         #expect(driver.log.perTableReads.isEmpty)
-        #expect(Set(keys.keys) == Set(sixTables))
+        #expect(Set(keys.keys) == Set(sixTables.map { CatalogName($0) }))
     }
 
     @Test("Past five tables without a bulk read, a table that cannot be read still fails the read")
@@ -134,7 +134,7 @@ struct ForeignKeysForTablesReadTests {
         let driver = PerTableCatalogDriver(tableCount: 500, failures: ["t2": DatabaseError.queryFailed("denied")])
 
         await #expect(throws: DatabaseError.self) {
-            _ = try await adapter(driver).fetchForeignKeys(forTables: sixTables)
+            _ = try await adapter(driver).fetchForeignKeys(forTables: sixTables, schema: nil)
         }
         #expect(driver.log.perTableReads == ["t0", "t1", "t2"])
     }
@@ -143,7 +143,7 @@ struct ForeignKeysForTablesReadTests {
     func smallSetSkipsAnUnreadableTable() async throws {
         let driver = PerTableCatalogDriver(tableCount: 500, failures: ["t1": DatabaseError.queryFailed("denied")])
 
-        let keys = try await adapter(driver).fetchForeignKeys(forTables: ["t0", "t1", "t2"])
+        let keys = try await adapter(driver).fetchForeignKeys(forTables: ["t0", "t1", "t2"], schema: nil)
 
         #expect(Set(keys.keys) == ["t0", "t2"])
     }
@@ -153,7 +153,7 @@ struct ForeignKeysForTablesReadTests {
         let driver = PerTableCatalogDriver(tableCount: 500, cancelsCallerOnRead: true)
         let reader = adapter(driver)
 
-        let read = Task { try await reader.fetchForeignKeys(forTables: ["t0", "t1", "t2"]) }
+        let read = Task { try await reader.fetchForeignKeys(forTables: ["t0", "t1", "t2"], schema: nil) }
         await #expect(throws: CancellationError.self) {
             _ = try await read.value
         }
@@ -165,7 +165,7 @@ struct ForeignKeysForTablesReadTests {
         let driver = PerTableCatalogDriver(tableCount: 500, failures: ["t0": CancellationError()])
 
         await #expect(throws: CancellationError.self) {
-            _ = try await adapter(driver).fetchForeignKeys(forTables: ["t0", "t1", "t2"])
+            _ = try await adapter(driver).fetchForeignKeys(forTables: ["t0", "t1", "t2"], schema: nil)
         }
         #expect(driver.log.perTableReads == ["t0"])
     }

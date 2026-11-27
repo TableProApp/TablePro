@@ -4,23 +4,14 @@
 //
 
 import Foundation
-import os
 
-/// The keychain a sandboxed run gets instead of the login keychain. Backed by a plain file inside
-/// the sandbox, so a UI test's credentials never reach the real keychain and never survive the run.
-///
-/// A namespaced service string on the real keychain was the alternative and is worse: the items
-/// would still be written to the user's login keychain, and reading them on a headless machine
-/// needs the keychain unlocked, which is a documented CI failure mode. Nothing here is secret,
-/// because nothing in a sandbox outlives the test that made it.
+// A plain file in the sandbox, so a UI test's credentials never reach the login keychain, which a headless run cannot unlock.
 internal final class SandboxKeychainStore: KeychainStoring {
-    private let fileURL: URL
+    private let file: JSONFileStore<[String: String]>
     private let lock = NSLock()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SandboxKeychainStore")
-
     internal init(fileURL: URL) {
-        self.fileURL = fileURL
+        file = JSONFileStore(url: fileURL)
     }
 
     @discardableResult
@@ -47,21 +38,17 @@ internal final class SandboxKeychainStore: KeychainStoring {
         _ = persist(items)
     }
 
+    internal func deviceOnlyKeys(endingWith suffix: String) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return load().keys.filter { $0.hasSuffix(suffix) }
+    }
+
     private func load() -> [String: String] {
-        guard let data = try? Data(contentsOf: fileURL),
-              let items = try? JSONDecoder().decode([String: String].self, from: data)
-        else { return [:] }
-        return items
+        file.read().value ?? [:]
     }
 
     private func persist(_ items: [String: String]) -> Bool {
-        do {
-            let data = try JSONEncoder().encode(items)
-            try data.write(to: fileURL, options: .atomic)
-            return true
-        } catch {
-            Self.logger.error("Sandbox keychain write failed: \(error.publicLogShape, privacy: .public)")
-            return false
-        }
+        (try? file.write(items)) != nil
     }
 }

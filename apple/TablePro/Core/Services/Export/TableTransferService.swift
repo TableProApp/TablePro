@@ -75,7 +75,7 @@ final class TableTransferService: ObservableObject {
     /// the server's packet limit. Sized as a statement instead, a row carrying a wide column the
     /// mapping discards would close the batch on bytes the sink never sends, turning one round trip
     /// into one per row.
-    static let batchBudget = SQLWriteBatchBudget(maxRows: 500, maxBytes: 64 * 1_048_576)
+    nonisolated static let batchBudget = SQLWriteBatchBudget(maxRows: 500, maxBytes: 64 * 1_048_576)
 
     @Published var state = TableTransferState()
 
@@ -157,7 +157,8 @@ final class TableTransferService: ObservableObject {
             connectionId: source.connectionId,
             databaseType: request.sourceType,
             gate: gate,
-            manager: manager
+            manager: manager,
+            runsIn: source
         )
 
         var capabilities = CallerCapabilities.interactiveUser
@@ -266,61 +267,63 @@ final class TableTransferService: ObservableObject {
                 driver: destinationDriver,
                 databaseType: request.destinationType,
                 targetTable: object.name,
+                targetSchema: request.destinationSchema,
                 columnMapping: mapping,
                 sourceFields: Set(request.sourceColumns[object.name] ?? []),
                 isCancelled: { [flag = cancellationFlag] in flag.isCancelled }
             )
-            let bitKinds = try await Self.bitColumnKinds(
+            let columnKinds = try await Self.crossEngineColumnKinds(
                 for: object, source: source, request: request, destinationDriver: destinationDriver)
             // A Stop during those reads must land before "Delete existing rows first" empties the target.
             try checkCancellation()
             try await transferOne(
                 object: object, from: source, into: sink, request: request,
-                bitSpelling: { header in
-                    Self.bitRespelling(for: header, mapping: mapping, request: request, kinds: bitKinds)
+                coercerFor: { @MainActor header in
+                    Self.crossEngineCoercer(for: header, mapping: mapping, request: request, kinds: columnKinds)
                 }
             )
         }
     }
 
-    struct BitColumnKinds {
+    struct CrossEngineColumnKinds {
         let source: [String: CanonicalTypeKind]
         let target: [String: CanonicalTypeKind]
     }
 
-    // PostgreSQL and DuckDB read a BIT as its digits and MySQL as its number, so 00000101 bound to a MySQL BIT stores 101.
-    // Read before the row stream opens: a catalog read queued behind the source's own open stream waits for the whole
-    // table, and behind DuckDB's bounded one never ends. The catalog, because a fresh PostgreSQL session's header names
-    // a bit column `unknown` and MySQL's drops the width of a BIT(1).
-    static func bitColumnKinds(
+    // The source and target column kinds a cross-engine transfer reshapes values by, the same input Object
+    // Copy feeds `CrossEngineValueCoercer`. Nil when the two sides share a type family, since then nothing
+    // needs reshaping. A catalog read that fails propagates and stops the transfer: coercion that cannot
+    // read the schema it needs would write values the target stores wrong (a BIT as its decimal, a boolean
+    // as `t`) while reporting success, so it fails closed, as the destination catalog read already does.
+    //
+    // Read before the row stream opens: a catalog read queued behind the source's own open stream waits for
+    // the whole table, and behind DuckDB's bounded one never ends. The catalog, not the stream header,
+    // because a fresh PostgreSQL session's header names a bit column `unknown` and MySQL's drops the width
+    // of a BIT(1).
+    static func crossEngineColumnKinds(
         for object: ExportObjectItem,
         source: ExportDataSourceAdapter,
         request: Request,
         destinationDriver: DatabaseDriver
-    ) async throws -> BitColumnKinds? {
+    ) async throws -> CrossEngineColumnKinds? {
         let sourceFamily = SQLTypeFamily.of(request.sourceType)
         let targetFamily = SQLTypeFamily.of(request.destinationType)
-        guard sourceFamily.readsBitsAsDecimal != targetFamily.readsBitsAsDecimal,
-              Self.spellsBitStrings(sourceFamily), Self.spellsBitStrings(targetFamily) else { return nil }
-
+        guard sourceFamily != targetFamily else { return nil }
         let sourceColumns = try await source.fetchColumns(table: object.name, databaseName: object.databaseName)
         let sourceKinds = Self.kinds(of: sourceColumns.map { ($0.name, $0.typeNameForClassification, $0.ddlSpelling) },
                                      family: sourceFamily)
-        // A catalog that lists the table's columns and no bit string leaves nothing to respell.
-        guard sourceKinds.isEmpty || sourceKinds.values.contains(where: { Self.isBitString($0) }) else { return nil }
-
         let targetColumns = try await destinationDriver.fetchColumns(table: object.name, schema: request.destinationSchema)
         let targetKinds = Self.kinds(of: targetColumns.map { ($0.name, $0.typeNameForClassification, $0.ddlSpelling) },
                                      family: targetFamily)
-        return BitColumnKinds(source: sourceKinds, target: targetKinds)
+        return CrossEngineColumnKinds(source: sourceKinds, target: targetKinds)
     }
 
     // A column the catalog did not list keeps the header's type.
-    static func bitRespelling(
+    static func crossEngineCoercer(
         for header: PluginStreamHeader,
         mapping: [String: String],
         request: Request,
-        kinds: BitColumnKinds?
+        kinds: CrossEngineColumnKinds?
     ) -> CrossEngineValueCoercer? {
         guard let kinds else { return nil }
         let sourceFamily = SQLTypeFamily.of(request.sourceType)
@@ -329,16 +332,10 @@ final class TableTransferService: ObservableObject {
                 ? SQLTypeParser.parse(header.columnTypeNames[index], family: sourceFamily).kind
                 : nil)
             let targetKind = mapping[column].flatMap { kinds.target[$0] }
-            guard Self.isBitString(sourceKind), Self.isBitString(targetKind) else { return .init(source: nil, target: nil) }
             return .init(source: sourceKind, target: targetKind)
         }
         let coercer = CrossEngineValueCoercer(pairs: pairs, from: sourceFamily, to: SQLTypeFamily.of(request.destinationType))
         return coercer.isNeeded ? coercer : nil
-    }
-
-    // Only a family whose BIT is a bit string can take part: SQL Server reads BIT as a boolean, SQLite not at all.
-    private static func spellsBitStrings(_ family: SQLTypeFamily) -> Bool {
-        isBitString(SQLTypeParser.parse("BIT", family: family).kind)
     }
 
     private static func kinds(
@@ -350,11 +347,6 @@ final class TableTransferService: ObservableObject {
             kinds[column.name] = SQLTypeParser.parse(column.type, catalogSpelling: column.catalogSpelling, family: family).kind
         }
         return kinds
-    }
-
-    private static func isBitString(_ kind: CanonicalTypeKind?) -> Bool {
-        guard case .bitString = kind else { return false }
-        return true
     }
 
     /// Checked for every table before the first is written: the INSERT would name the contested
@@ -385,7 +377,7 @@ final class TableTransferService: ObservableObject {
         if let supplied = request.columnMapping[object.name], !supplied.isEmpty {
             return supplied
         }
-        guard let pluginDriver = (destinationDriver as? PluginDriverAdapter)?.schemaPluginDriver else {
+        guard let pluginDriver = destinationDriver.plugin else {
             throw TableTransferError.targetMissing(table: object.name)
         }
         let destinationColumns: [String]
@@ -419,7 +411,7 @@ final class TableTransferService: ObservableObject {
         from source: ExportDataSourceAdapter,
         into sink: ImportDataSinkAdapter,
         request: Request,
-        bitSpelling: (PluginStreamHeader) -> CrossEngineValueCoercer?
+        coercerFor: @escaping @MainActor @Sendable (PluginStreamHeader) -> CrossEngineValueCoercer?
     ) async throws {
         let exportTable = PluginExportTable(
             name: object.name,
@@ -433,14 +425,26 @@ final class TableTransferService: ObservableObject {
             rowScope: object.rowScope
         )
 
-        var columns: [String] = []
-        var coercer: CrossEngineValueCoercer?
-        var filler = SQLWriteBatchFiller<[String: PluginCellValue]>(budget: Self.batchBudget)
-        var wroteAnything = false
-
         if request.wrapInTransaction {
             try await sink.beginTransaction()
         }
+        let written = TransferRowCount()
+        let startingCount = state.transferredRows
+        let progressTask = Task { @MainActor [weak self] in
+            // The stream keeps only the newest count, so after each pause the sheet gets the latest one. A count that
+            // arrives after the final one is set is older than it, so it never moves the count back.
+            for await count in written.updates {
+                guard let self else { return }
+                self.state.transferredRows = max(self.state.transferredRows, startingCount + count)
+                do { try await Task.sleep(for: TransferRowCount.interval) } catch { return }
+            }
+        }
+        defer {
+            written.finish()
+            progressTask.cancel()
+            state.transferredRows = startingCount + written.total
+        }
+        var wroteAnything = false
         do {
             if request.deleteExistingRows {
                 try await sink.deleteAllRowsFromTargetTable()
@@ -449,28 +453,12 @@ final class TableTransferService: ObservableObject {
                 /// iteration and make the deletion permanent.
                 try checkCancellation()
             }
-            for try await element in source.streamRows(for: exportTable) {
-                try checkCancellation()
-                switch element {
-                case .header(let header):
-                    columns = header.columns
-                    coercer = bitSpelling(header)
-                case .rows(let rows):
-                    for row in rows {
-                        let keyed = Self.dictionary(columns: columns, row: coercer?.coerce(row) ?? row)
-                        let bytes = Self.batchBudget.byteCount(of: keyed.values)
-                        guard let batch = filler.append(keyed, bytes: bytes) else { continue }
-                        try await sink.insertRows(batch)
-                        state.transferredRows += batch.count
-                        wroteAnything = true
-                    }
-                }
-            }
-            if let batch = filler.take() {
-                try await sink.insertRows(batch)
-                state.transferredRows += batch.count
-                wroteAnything = true
-            }
+            wroteAnything = try await Self.copyRows(
+                of: exportTable, from: source, into: sink,
+                coercerFor: coercerFor, cancellation: cancellationFlag, written: written
+            )
+            // The throttle can hold back the last batches, and the commit below can take a while.
+            state.transferredRows = startingCount + written.total
             /// The last awaited write is not followed by a loop check, so without this a Stop during
             /// it committed anyway and reported success.
             try checkCancellation()
@@ -499,6 +487,46 @@ final class TableTransferService: ObservableObject {
         }
     }
 
+    // Off the main actor: building each row's dictionary, coercing it, mapping it and writing the INSERT text took main
+    // actor time for every row, in every window. Only the count goes back, through `written`, on a throttle.
+    @concurrent
+    nonisolated private static func copyRows(
+        of exportTable: PluginExportTable,
+        from source: ExportDataSourceAdapter,
+        into sink: ImportDataSinkAdapter,
+        coercerFor: @escaping @MainActor @Sendable (PluginStreamHeader) -> CrossEngineValueCoercer?,
+        cancellation: TransferCancellationFlag,
+        written: TransferRowCount
+    ) async throws -> Bool {
+        var columns: [String] = []
+        var coercer: CrossEngineValueCoercer?
+        var filler = SQLWriteBatchFiller<[String: PluginCellValue]>(budget: batchBudget)
+        var wroteAnything = false
+        for try await element in source.streamRows(for: exportTable) {
+            if cancellation.isCancelled { throw PluginImportCancellationError() }
+            switch element {
+            case .header(let header):
+                columns = header.columns
+                coercer = await coercerFor(header)
+            case .rows(let rows):
+                for row in rows {
+                    let keyed = dictionary(columns: columns, row: coercer?.coerce(row) ?? row)
+                    let bytes = batchBudget.byteCount(of: keyed.values)
+                    guard let batch = filler.append(keyed, bytes: bytes) else { continue }
+                    try await sink.insertRows(batch)
+                    written.add(batch.count)
+                    wroteAnything = true
+                }
+            }
+        }
+        if let batch = filler.take() {
+            try await sink.insertRows(batch)
+            written.add(batch.count)
+            wroteAnything = true
+        }
+        return wroteAnything
+    }
+
     /// A row arrives as positional values and the sink writes by column name, so the two are
     /// zipped here. A row shorter than its header is padded with nulls rather than dropped: a
     /// driver that omits trailing nulls would otherwise lose whole rows silently.
@@ -514,6 +542,36 @@ final class TableTransferService: ObservableObject {
     private func checkCancellation() throws {
         guard isCancelled else { return }
         throw PluginImportCancellationError()
+    }
+}
+
+/// The rows a transfer wrote, counted off the main actor. Every batch yields its count, the stream keeps only the
+/// newest, and the sheet takes one at most every `interval`; the final total is read once the copy ends.
+internal final class TransferRowCount: @unchecked Sendable {
+    internal static let interval = Duration.milliseconds(100)
+
+    private let lock = NSLock()
+    private var count = 0
+    private let continuation: AsyncStream<Int>.Continuation
+    internal let updates: AsyncStream<Int>
+
+    internal init() {
+        (updates, continuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+    }
+
+    internal var total: Int {
+        lock.withLock { count }
+    }
+
+    internal func add(_ rows: Int) {
+        lock.withLock {
+            count += rows
+            continuation.yield(count)
+        }
+    }
+
+    internal func finish() {
+        continuation.finish()
     }
 }
 

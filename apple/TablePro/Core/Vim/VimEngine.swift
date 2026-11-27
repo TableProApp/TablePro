@@ -28,15 +28,69 @@ struct VimLastFindChar {
     let till: Bool
 }
 
-enum VimDotKind {
-    case deleteCharForward(count: Int)
-    case deleteCharBackward(count: Int)
-    case operatorWithMotion(op: VimOperator, motion: Character, shift: Bool, count: Int)
-    case operatorDoubled(op: VimOperator, count: Int)
-    case toggleCase(count: Int)
-    case joinLines(withSpace: Bool, count: Int)
-    case replaceChar(char: Character, count: Int)
+struct VimChangeKey {
+    let character: Character
+    let shift: Bool
+    let isCount: Bool
 }
+
+enum VimInsertStep {
+    // What the text view did: characters deleted before the caret, then the text typed.
+    case typed(deleting: Int, text: String)
+    // A key the engine applies in Insert or Replace mode, such as Ctrl-W or an overwrite, which Vim replays as the key.
+    case key(Character)
+}
+
+// `:help visual-repeat`: the same number of characters within one line, the same number of lines with the same
+// column in the last for several, the same number of lines for a linewise selection.
+struct VimVisualExtent {
+    let linewise: Bool
+    let lines: Int
+    let characters: Int
+    let lastColumn: Int
+}
+
+// `3iX<Esc>` types X three times; `3oX<Esc>` opens a line for each.
+struct VimInsertRepeat {
+    let count: Int
+    let opensLine: Bool
+}
+
+struct VimVisualChange {
+    let extent: VimVisualExtent
+    let operatorKeys: [VimChangeKey]
+}
+
+// `:help .`: the keys of the last command that changed the text, and what it did in Insert or Replace mode if it went on
+// there. A Visual mode change keeps the selection's extent and the keys of its operator instead of its motions.
+struct VimChange {
+    var keys: [VimChangeKey]
+    var insertSteps: [VimInsertStep]?
+    var visual: VimVisualChange?
+}
+
+struct VimChangeDraft {
+    var keys: [VimChangeKey] = []
+    var changesText = false
+    var insertSteps: [VimInsertStep] = []
+    // Where the text typed since Insert or Replace mode began, or since the last engine key, sits, kept in step with
+    // every edit.
+    var insertedRange: NSRange?
+    var deletedBeforeInsert = 0
+    // Where the last edit left the caret, so a move no edit made shows.
+    var insertCaret = 0
+    var editedSinceCaret = false
+    // Where a caret move left the caret. What is typed next starts a new insert there; until then the insert before
+    // the move is the change.
+    var movedCaret: Int?
+    // The selection as the last Visual mode command found it, where that command's keys start and the register it got.
+    var visualExtent: VimVisualExtent?
+    var visualCommandStart = 0
+    var visualRegister: Character?
+}
+
+// `:help exclusive`, `:help inclusive`, `:help linewise`.
+enum VimMotionKind { case exclusive, inclusive, linewise }
 
 enum VimMacroPendingKind { case recordTarget, replayTarget }
 enum VimBracketPending { case openBracket, closeBracket }
@@ -54,6 +108,9 @@ final class VimEngine {
 
     private(set) var mode: VimMode = .normal {
         didSet {
+            if oldValue.isInsert, !mode.isInsert {
+                closeInsertUndoStep()
+            }
             if oldValue != mode {
                 onModeChange?(mode)
             }
@@ -82,7 +139,11 @@ final class VimEngine {
     var pendingBracket: VimBracketPending?
     var selectedRegister: Character?
     var lastFindChar: VimLastFindChar?
-    var lastDotKind: VimDotKind?
+    var lastChange: VimChange?
+    var changeDraft: VimChangeDraft?
+    var isRepeatingChange = false
+    var insertRepeat: VimInsertRepeat?
+    var insertUndoStepOpen = false
     var marks: [Character: Int] = [:]
     var namedRegisters: [Character: VimRegister] = [:]
     var numberedRegisters: [VimRegister] = Array(repeating: VimRegister(), count: 10)
@@ -101,6 +162,12 @@ final class VimEngine {
     var visualAnchor: Int = 0
     var lastInsertOffset: Int?
     var replaceModeEdits: [VimReplaceModeEdit] = []
+    var searchCount: Int = 1
+    // The column each named mark was set at, kept past the end of a line that shrinks, as Vim keeps it.
+    var markColumns: [Character: Int] = [:]
+    // Recent edits with the positions from before each, so undoing one puts them back.
+    var editJournal: [VimEditRecord] = []
+    var editJournalTextLength = 0
 
     var buffer: VimTextBuffer?
 
@@ -113,6 +180,7 @@ final class VimEngine {
 
     func process(_ char: Character, shift: Bool) -> Bool {
         let recordingTarget = macroRecording
+        changeKeyWillProcess(char, shift: shift)
         let consumed: Bool
         switch mode {
         case .normal:
@@ -123,12 +191,15 @@ final class VimEngine {
             consumed = processReplace(char)
         case .visual:
             consumed = processVisual(char, shift: shift)
+            // A register named in Visual mode belongs to the command that ends it, used or not.
+            if !mode.isVisual { selectedRegister = nil }
         case .commandLine(let commandBuffer):
             consumed = processCommandLine(char, buffer: commandBuffer)
         }
         if let target = recordingTarget, macroRecording == target {
             macroBuffers[target, default: []].append((char, shift))
         }
+        changeKeyDidProcess()
         if !mode.isVisual, let buffer {
             cursorOffset = buffer.selectedRange().location
         }
@@ -146,14 +217,45 @@ final class VimEngine {
         replaceModeEdits.removeAll()
         editsOnCurrentLine = 0
         lastEditedLine = nil
+        changeDraft = nil
+        insertRepeat = nil
+        closeInsertUndoStep()
     }
 
     func reset() {
+        cancelPendingCommand()
+        changeDraft = nil
+        insertRepeat = nil
+        mode = .normal
+    }
+
+    // Escape, leaving the command line or a motion that cannot move ends the whole command, so no part of it
+    // reaches the next key.
+    func cancelPendingCommand() {
         pendingOperator = nil
         countPrefix = 0
         operatorCount = 0
         pendingG = false
-        mode = .normal
+        pendingFindChar = nil
+        pendingReplaceChar = false
+        pendingMarkSet = false
+        pendingMarkJumpExact = nil
+        pendingRegisterSelect = false
+        selectedRegister = nil
+        pendingReplaceCharForVisual = false
+        pendingZ = false
+        pendingTextObject = false
+        pendingMacroTarget = nil
+        pendingMacroCount = 1
+        pendingBracket = nil
+        searchCount = 1
+    }
+
+    // A key that still waits for the rest of its command, not counting a count or a register already typed.
+    var hasPendingCommand: Bool {
+        pendingOperator != nil || pendingG || pendingFindChar != nil || pendingReplaceChar || pendingMarkSet
+            || pendingMarkJumpExact != nil || pendingRegisterSelect || pendingZ || pendingTextObject
+            || pendingMacroTarget != nil || pendingBracket != nil
     }
 
     func setMode(_ newMode: VimMode) {

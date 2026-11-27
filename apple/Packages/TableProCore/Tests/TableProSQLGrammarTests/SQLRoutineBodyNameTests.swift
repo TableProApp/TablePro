@@ -80,6 +80,8 @@ struct SQLRoutineBodyNameTests {
         "CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT 1 AS x$case, 2 AS \u{E9}case; END",
         "CREATE PROCEDURE p() LANGUAGE sql BEGIN ATOMIC CREATE FUNCTION g() RETURNS int BEGIN ATOMIC SELECT 1; END; END",
         "CREATE FUNCTION f() RETURNS void BEGIN ATOMIC /* nothing */ ; -- still nothing\n END",
+        "CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin atomic FROM (SELECT 1 AS begin) s; END",
+        "CREATE PROCEDURE p() LANGUAGE sql BEGIN ATOMIC CREATE OR REPLACE FUNCTION g() RETURNS int BEGIN ATOMIC SELECT begin atomic FROM t; END; SELECT begin atomic FROM t; END",
     ])
     func atomicBodies(function: String) {
         #expect(sent(function + "; DROP TABLE users", "PostgreSQL") == [function, "DROP TABLE users"])
@@ -95,6 +97,7 @@ struct SQLRoutineBodyNameTests {
         "CREATE PROCEDURE p(begin int, \"case\" int) BEGIN SELECT 1; END",
         "CREATE PROCEDURE p() BEGIN SELECT t.begin, t.case FROM t; END",
         "CREATE PROCEDURE p() BEGIN SELECT (SELECT begin FROM t); END",
+        "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN closed THEN begin ELSE NULL END FROM shifts; SELECT 2; END",
         "CREATE EVENT TRIGGER begin ON ddl_command_start EXECUTE FUNCTION f()",
     ])
     func namesOnOtherEngines(first: String) {
@@ -131,6 +134,8 @@ struct SQLRoutineBodyNameTests {
         "CREATE PROCEDURE p() BEGIN inner_block: BEGIN SELECT 1; END inner_block; SELECT 2; END",
         "CREATE PROCEDURE db.p() outer_block: BEGIN SELECT (CASE WHEN 1 THEN 2 END); SELECT 2; END outer_block",
         "CREATE FUNCTION f() RETURNS VARCHAR(10) CHARACTER SET utf8mb4 DETERMINISTIC BEGIN SET @a = 1; RETURN 'x'; END",
+        "CREATE FUNCTION f() RETURNS VARCHAR(10) CHAR SET utf8mb4 DETERMINISTIC BEGIN SET @a = 1; RETURN 'x'; END",
+        "CREATE FUNCTION f() RETURNS SET('a', 'b') DETERMINISTIC BEGIN SET @a = 1; RETURN 'a'; END",
         "CREATE TRIGGER tr AFTER DELETE ON t FOR EACH ROW BEGIN DELETE FROM log; INSERT INTO log VALUES (1); END",
         "CREATE TRIGGER tr BEFORE UPDATE ON t FOR EACH ROW FOLLOWS other BEGIN UPDATE log SET n = 1; SELECT 1; END",
     ])
@@ -169,6 +174,124 @@ struct SQLRoutineBodyNameTests {
                 "\(typeId)"
             )
         }
+    }
+
+    // Measured on MariaDB 13.0.2: each routine was stored with its whole body.
+    @Test("On MySQL a SET body is the routine's one statement, so a begin column in it opens no block", arguments: [
+        "CREATE PROCEDURE p() SET @x = begin IS NULL",
+        "CREATE PROCEDURE p(begin INT) SET @half = begin DIV 2",
+        "CREATE DEFINER=root@localhost PROCEDURE p() SQL SECURITY INVOKER SET @x = begin IS NULL",
+        "CREATE EVENT cleanup ON SCHEDULE EVERY 1 DAY DO SET @open = begin IS NULL",
+        "ALTER EVENT cleanup DO SET @open = begin IS NULL",
+    ])
+    func setBodiesOnMySQL(routine: String) {
+        for typeId in ["MySQL", "MariaDB", "OceanBase"] {
+            #expect(
+                sent(routine + ";\nCALL p();\nDROP TABLE users", typeId) == [routine, "CALL p()", "DROP TABLE users"],
+                "\(typeId)"
+            )
+        }
+    }
+
+    // Measured on MariaDB 13.0.2: each routine was stored with its whole body.
+    @Test("On MySQL an IF, WHILE, LOOP or REPEAT body holds its statements, and a begin column in it opens no block", arguments: [
+        "CREATE PROCEDURE p() IF 1 THEN SELECT begin FROM shifts; SELECT 2; END IF",
+        "CREATE PROCEDURE p(begin INT) IF begin IS NULL THEN SELECT 1; END IF",
+        "CREATE PROCEDURE p() IF (SELECT COUNT(*) FROM shifts WHERE begin IS NULL) > 0 THEN SELECT 1; END IF",
+        "CREATE PROCEDURE p() IF @a THEN SELECT 1; ELSEIF @b THEN SELECT begin FROM t; ELSE IF @c THEN SELECT 3; END IF; END IF",
+        "CREATE PROCEDURE p() IF 1 THEN BEGIN SELECT begin FROM t; SELECT 2; END; END IF",
+        "CREATE PROCEDURE p() IF 1 THEN SELECT CASE WHEN 1 THEN IF(1, 2, 3) ELSE REPEAT('a', 2) END; SELECT begin FROM t; END IF",
+        "CREATE PROCEDURE p() CASE 1 WHEN 1 THEN IF 2 THEN SELECT begin FROM t; END IF; ELSE SELECT 2; END CASE",
+        "CREATE PROCEDURE p() WHILE @i < 3 DO SET @i = @i + 1; SELECT begin FROM shifts; END WHILE",
+        "CREATE PROCEDURE p() lbl: LOOP SELECT begin FROM shifts; LEAVE lbl; END LOOP lbl",
+        "CREATE PROCEDURE p() REPEAT SET @i = @i + 1; SELECT begin FROM shifts; UNTIL @i > 3 END REPEAT",
+        "CREATE PROCEDURE p() WHILE 1 DO REPEAT SET @s = REPEAT('x', 2); UNTIL 1 END REPEAT; SELECT begin FROM t; END WHILE",
+        "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR NOT FOUND IF 1 THEN SET @d = 1; END IF; SELECT begin FROM t; END",
+        "CREATE TRIGGER tr BEFORE UPDATE ON shifts FOR EACH ROW IF NEW.closed THEN SET NEW.id = 0; SELECT begin FROM shifts INTO @b; END IF",
+        "CREATE EVENT cleanup ON SCHEDULE EVERY 1 DAY DO IF 1 THEN DELETE FROM shifts WHERE begin IS NULL; SELECT 1; END IF",
+        "CREATE EVENT cleanup ON SCHEDULE AT IF(1, NOW(), NOW()) + INTERVAL 1 DAY DO BEGIN SELECT begin FROM t; SELECT 2; END",
+        "CREATE PROCEDURE p() DO REPEAT('a', 2)",
+        "CREATE PROCEDURE p() IF 1 THEN SELECT CASE WHEN closed THEN begin ELSE NULL END FROM shifts; END IF",
+        "CREATE PROCEDURE p() IF CASE WHEN @a THEN IF(@b, 1, 0) END THEN SELECT 1; SELECT 2; END IF",
+        "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR NOT FOUND SET @d = CASE WHEN IF(@a, 1, 0) THEN 1 END; SELECT 1; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR NOT FOUND CASE @x WHEN 1 THEN BEGIN SELECT 1; END; ELSE SELECT 2; END CASE; SELECT 3; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT begin INTO @b FROM t; SELECT 1; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR 1062, SQLSTATE VALUE '23000', NOT FOUND SET @d = CASE WHEN @a THEN begin ELSE 0 END; SELECT 1; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR SQLWARNING lbl: BEGIN SELECT 1; END lbl; SELECT 2; END",
+        "CREATE PROCEDURE p(begin INT) DO CASE WHEN @a THEN begin ELSE 0 END",
+        "CREATE PROCEDURE p(begin INT) BEGIN DO CASE WHEN @a THEN begin ELSE 0 END; SELECT 2; END",
+        "CREATE PROCEDURE p() BEGIN FOR i IN 1..3 DO BEGIN SELECT i; SELECT 2; END; END FOR; SELECT 3; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE handler CURSOR FOR SELECT begin FROM t; SELECT 1; END",
+    ])
+    func compoundBodiesOnMySQL(routine: String) {
+        for typeId in ["MySQL", "MariaDB", "OceanBase"] {
+            #expect(
+                sent(routine + ";\nCALL p();\nDROP TABLE users", typeId) == [routine, "CALL p()", "DROP TABLE users"],
+                "\(typeId)"
+            )
+        }
+    }
+
+    @Test("A handler's own BEGIN ... END body still opens on every engine with the usual body", arguments: [
+        "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR SQLSTATE '23000' BEGIN SELECT 1; END; SELECT 2; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE EXIT HANDLER FOR SQLEXCEPTION, my_condition BEGIN SELECT 1; END; SELECT 2; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR 1062 BEGIN SELECT 1; END; SELECT 2; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE EXIT HANDLER FOR 1062, 1213 BEGIN SELECT 1; END; SELECT 2; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR NOT FOUND BEGIN SELECT 1; END; SELECT 2; END",
+        "CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR SQLSTATE VALUE '23000' BEGIN SELECT 1; END; SELECT 2; END",
+    ])
+    func handlerBodies(routine: String) {
+        for typeId in ["MySQL", "Snowflake", "BigQuery", "Nonesuch"] {
+            #expect(sent(routine + ";\nSELECT 3", typeId) == [routine, "SELECT 3"], "\(typeId)")
+        }
+    }
+
+    // Measured on MariaDB 13.0.2 with `sql_mode = ORACLE`.
+    @Test("MariaDB's Oracle mode WHILE ... LOOP closes at its END LOOP")
+    func oracleModeWhileLoop() {
+        let routine = "CREATE PROCEDURE p AS BEGIN WHILE 1 < 3 LOOP SELECT begin FROM t; EXIT; END LOOP; END"
+        #expect(sent(routine + ";\nDROP TABLE users", "MariaDB") == [routine, "DROP TABLE users"])
+    }
+
+    // Measured on PostgreSQL 17.11: the function was stored and the DROP after it ran in the same simple query.
+    @Test("A begin column with the alias atomic inside a BEGIN ATOMIC body hides nothing from the gate")
+    func beginAtomicAliasHidesNothing() {
+        let sql = "CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin atomic FROM (SELECT 1 AS begin) s; "
+            + "END; DROP TABLE users; END"
+        for typeId in ["PostgreSQL", "Redshift", "CockroachDB", "Nonesuch"] {
+            let readings = SQLLexicalReadings.resolve(databaseTypeId: typeId, declared: nil, session: nil)
+            #expect(SQLStatementClassifier.classify(sql, databaseTypeId: typeId, readings: readings).tier == .destructive)
+        }
+    }
+
+    @Test("Every gate reading sees the statement after a MySQL SET or IF body")
+    func mySQLGatesSeeTheStatementAfterTheBody() {
+        for body in ["SET @x = begin IS NULL", "IF 1 THEN SELECT begin FROM t; END IF", "LOOP SELECT begin FROM t; END LOOP"] {
+            let sql = "CREATE PROCEDURE p() \(body);\nDROP TABLE audit_tmp;"
+            for typeId in ["MySQL", "MariaDB"] {
+                let readings = SQLLexicalReadings.resolve(databaseTypeId: typeId, declared: nil, session: nil)
+                #expect(SQLStatementClassifier.classify(sql, databaseTypeId: typeId, readings: readings).tier == .destructive)
+                for grammar in readings.all {
+                    #expect(SQLStatementScanner.allStatements(in: sql, grammar: grammar).last == "DROP TABLE audit_tmp")
+                }
+            }
+        }
+    }
+
+    @Test("An engine TablePro does not know reads IF and WHILE as T-SQL does, so the statement after one stays its own", arguments: [
+        "IF @x = 1 SELECT 1; DROP TABLE users",
+        "IF @x = 1 SELECT 1; ELSE SELECT 2; DROP TABLE users",
+        "WHILE @i < 3 SET @i = @i + 1; DROP TABLE users",
+        "CREATE PROCEDURE p AS IF @x = 1 SELECT 1; DROP TABLE users",
+        "CREATE PROCEDURE p() IF a THEN SELECT 1; DROP TABLE users",
+        "CREATE PROCEDURE p AS WHILE @i < 3 SET @i = @i + 1; DROP TABLE users",
+        "CREATE PROCEDURE p() WHILE 1 DO SELECT 1; DROP TABLE users",
+        "CREATE PROCEDURE p() LOOP SELECT 1; DROP TABLE users",
+    ])
+    func unknownEnginesKeepTSQLControlFlow(sql: String) {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "Nonesuch", declared: nil, session: nil)
+        #expect(SQLStatementClassifier.classify(sql, databaseTypeId: "Nonesuch", readings: readings).tier == .destructive)
+        #expect(readings.all.allSatisfy { !SQLStatementScanner.endsInsideOpenBlock(sql, grammar: $0) })
     }
 
     @Test("A body that is a control statement keeps the blocks in it, and header clauses stay header", arguments: [
@@ -254,6 +377,10 @@ struct SQLRoutineBodyNameTests {
         ("MySQL", "CREATE PROCEDURE p() BEGIN SELECT 1; END", false),
         ("MySQL", "CREATE PROCEDURE p() BEGIN SELECT 1; END;", false),
         ("MySQL", "CREATE PROCEDURE p() SELECT 1 AS case; DROP TABLE users", true),
+        ("MySQL", "CREATE PROCEDURE p() IF 1 THEN SELECT 1; DROP TABLE users", true),
+        ("MySQL", "CREATE PROCEDURE p() WHILE 1 DO SELECT 1; DROP TABLE users", true),
+        ("MySQL", "CREATE PROCEDURE p() IF 1 THEN SELECT 1; END IF", false),
+        ("MySQL", "CREATE PROCEDURE p() DO IF(1, 2, 3); DROP TABLE users", false),
         ("Snowflake", "DECLARE c CURSOR FOR SELECT 1 AS case; DROP TABLE users", true),
         ("PostgreSQL", "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; DROP TABLE users", true),
         ("PostgreSQL", "CREATE TABLE begin(a int); DROP TABLE users", false),
@@ -270,13 +397,18 @@ struct SQLRoutineBodyNameTests {
     @Test("An engine TablePro does not know keeps the usual BEGIN ... END body")
     func unknownEnginesKeepTheUsualBody() {
         #expect(SQLLexicalProfile.everyKnownReading.allSatisfy { !$0.hasSingleBodyForm })
+        #expect(SQLLexicalProfile.everyKnownReading.allSatisfy { !$0.contains(.compoundStatementBodies) })
         let procedure = "CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END"
         #expect(sent(procedure + "; SELECT 3", "Nonesuch") == [procedure, "SELECT 3"])
     }
 
     @Test("A reading keeps the form of body its engine has, whatever the text holds")
     func relevanceKeepsTheBodyForm() {
-        for (typeId, fact) in [("Redshift", SQLLexicalGrammar.atomicRoutineBodies), ("PostgreSQL", .atomicRoutineBodies)] {
+        let bodyForms: [(String, SQLLexicalGrammar)] = [
+            ("Redshift", .atomicRoutineBodies), ("PostgreSQL", .atomicRoutineBodies),
+            ("MySQL", .compoundStatementBodies), ("MariaDB", .compoundStatementBodies),
+        ]
+        for (typeId, fact) in bodyForms {
             let readings = SQLLexicalReadings.resolve(databaseTypeId: typeId, declared: nil, session: nil)
             #expect(readings.distinct(for: "CREATE TABLE begin(a int)").allSatisfy { $0.contains(fact) }, "\(typeId)")
         }

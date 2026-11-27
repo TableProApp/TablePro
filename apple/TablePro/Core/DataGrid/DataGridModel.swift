@@ -109,11 +109,7 @@ final class DataGridModel: ObservableObject {
         let current = rows
         prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
         store.valueFilter = store.valueFilter.remapped(toColumns: current.columns)
-        let rebuilt = DataGridColumnSet(tableRows: current, layout: store.columnLayout)
-        if rebuilt != columns {
-            columns = rebuilt
-            mountedView?.apply(.columnsChanged)
-        }
+        columns = DataGridColumnSet(tableRows: current, layout: store.columnLayout)
         order = resolveOrder(in: current)
         display.cache.removeAll()
         restoreSelection(in: current)
@@ -127,6 +123,10 @@ final class DataGridModel: ObservableObject {
             reloadRows()
             return
         }
+        if delta == .columnMetadataChanged {
+            applyColumnMetadata()
+            return
+        }
         let current = rows
         switch delta {
         case .rowsInserted(let inserted):
@@ -137,7 +137,7 @@ final class DataGridModel: ObservableObject {
             prefetchSchemas(in: current, storageRows: IndexSet(integer: row), retryingFailures: false)
         case .cellsChanged(let positions):
             prefetchSchemas(in: current, storageRows: IndexSet(positions.map(\.row)), retryingFailures: false)
-        case .rowsRemoved, .fullReplace:
+        case .rowsRemoved, .columnMetadataChanged, .fullReplace:
             break
         }
         if delta.changesRowSet || delta == .columnsReplaced {
@@ -170,6 +170,13 @@ final class DataGridModel: ObservableObject {
         refreshFind(after: delta, in: current)
     }
 
+    // What a column offers moved, never the text in its cells, so the order, the cache and find all stand.
+    private func applyColumnMetadata() {
+        columns = DataGridColumnSet(tableRows: rows, layout: store.columnLayout)
+        displayRevision &+= 1
+        mountedView?.apply(.columnMetadataChanged)
+    }
+
     // An open find bar reads again only the cells the delta wrote and the rows that now show and did not before;
     // one that left drops its matches.
     private func refreshFind(after delta: Delta, in current: TableRows, previousOrder: DataGridRowOrder? = nil) {
@@ -187,7 +194,7 @@ final class DataGridModel: ObservableObject {
             }
         case .rowsInserted(let inserted):
             added = inserted.compactMap { current.rows.indices.contains($0) ? current.rows[$0].id : nil }
-        case .rowsRemoved:
+        case .rowsRemoved, .columnMetadataChanged:
             break
         case .columnsReplaced, .fullReplace:
             refreshFind()
@@ -215,6 +222,10 @@ final class DataGridModel: ObservableObject {
 
     var selectedRowIDs: [RowID] {
         order.rowIDs(atDisplayIndexes: selection.affectedRows, in: rows)
+    }
+
+    var selectedRowRuns: RowIDRuns {
+        order.rowIDRuns(atDisplayIndexes: selection.affectedRows, in: rows)
     }
 
     var activeCell: (rowID: RowID, column: DataGridColumn)? {
@@ -360,6 +371,22 @@ final class DataGridModel: ObservableObject {
             }
         }
         refreshFind()
+    }
+
+    // MARK: - Wrap
+
+    // Only a grid that offers the command wraps, whatever its store holds.
+    var wrapsText: Bool {
+        configuration.commands.contains(.wrapText) && store.wrapsText
+    }
+
+    // The cached text is flattened or keeps its breaks by this flag, so it goes with the change, mounted or not.
+    func setWrapsText(_ wraps: Bool) {
+        guard configuration.commands.contains(.wrapText), wraps != store.wrapsText, commitEditing() else { return }
+        store.wrapsText = wraps
+        display.keepsLineBreaks = wraps
+        display.cache.removeAll()
+        mountedView?.configurationDidChange()
     }
 
     // MARK: - Schemas
@@ -635,7 +662,7 @@ final class DataGridModel: ObservableObject {
         let row = rows.rows[storageIndex]
         let dataIndex = column.dataIndex
         guard dataIndex < row.values.count, changeState?.isRowDeleted(edit.rowID) != true else { return nil }
-        guard row.unloadedByteCount(dataIndex) == nil else { return nil }
+        guard rows.unloadedByteCount(row.id, column: dataIndex) == nil else { return nil }
 
         let newValue: PluginCellValue
         let isExpression: Bool
@@ -670,9 +697,9 @@ final class DataGridModel: ObservableObject {
 
         let oldValue = row.values[dataIndex]
         let absence = FieldAbsence(
-            wasAbsent: row.isAbsent(dataIndex),
+            wasAbsent: rows.isAbsent(row.id, column: dataIndex),
             isAbsent: removesField,
-            originalRow: row.absentColumns
+            originalRow: rows.absentColumns(of: row.id)
         )
         let wasExpression = changeState?.isExpression(rowID: row.id, columnIndex: dataIndex) ?? false
         guard oldValue != newValue || absence.wasAbsent != absence.isAbsent || wasExpression != isExpression else {
@@ -744,7 +771,7 @@ final class DataGridModel: ObservableObject {
 
     func repaintAllRows() {
         guard let mountedView, rowCount > 0 else { return }
-        mountedView.apply(.rowsUpdated(IndexSet(integersIn: 0..<rowCount), columns: nil))
+        mountedView.apply(.allRowsRepainted)
     }
 
     func anchor(for column: DataGridColumn) -> (view: NSView, rect: NSRect)? {

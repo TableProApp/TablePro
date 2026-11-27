@@ -38,9 +38,9 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
         coordinator?.tabManager.tabs.first { $0.id == tabId }
     }
 
-    // The change manager and the window's row commands belong to the selected tab only.
+    // The window's row commands act on the selected tab only.
     private var ownsWindowState: Bool {
-        coordinator?.changeManagerTabId == tabId
+        coordinator?.tabManager.selectedTabId == tabId
     }
 
     // MARK: - DataGridDataSource
@@ -50,28 +50,31 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
     }
 
     var gridChangeState: AnyChangeManager {
-        coordinator?.gridChangeState ?? Self.detachedChangeState
+        coordinator?.gridChangeState(forTab: tabId) ?? Self.detachedChangeState
     }
 
+    // Read per drawn row, so by index: `tab` copies the whole tab.
     var gridRowNumberOffset: Int {
-        tab?.pagination.currentOffset ?? 0
+        guard let coordinator, let index = coordinator.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return 0 }
+        return coordinator.tabManager.tabs[index].pagination.currentOffset
     }
 
+    // A cut value holds only its first characters, so a find over it covers part of the page, as over a page of more.
     var gridHasUnloadedRows: Bool {
         guard let tab else { return false }
-        return tab.pagination.hasUnloadedRows(loadedRowCount: gridRows.rows.count)
+        return tab.pagination.hasUnloadedRows(loadedRowCount: gridRows.rows.count) || gridRows.hasUnloadedValues
     }
 
     var gridHighlightRules: [HighlightRule] {
-        guard let coordinator, let tab else { return [] }
-        return coordinator.highlightRules(for: tab)
+        guard let coordinator, let index = coordinator.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return [] }
+        return coordinator.highlightRules(forTabAt: index)
     }
 
     // MARK: - Edits
 
-    // A commit against a tab the shared change manager no longer holds would land in another table (H2).
+    // Lands in this tab's own edits, also when a switch has already moved the selection (H2).
     func gridCommit(_ edits: [DataGridResolvedEdit], actionName: String) -> Bool {
-        guard let coordinator, ownsWindowState else { return false }
+        guard let coordinator, !coordinator.rowEditingCoordinator.isSaving(tabId: tabId) else { return false }
         let committed = coordinator.rowEditingCoordinator.commitGridEdits(edits, actionName: actionName, tabId: tabId)
         if committed {
             coordinator.gridCellsEdited.send()
@@ -141,7 +144,7 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
             apply()
             return
         }
-        coordinator.confirmDiscardRestoringRowsIfNeeded(action: .displayOrder) { confirmed in
+        coordinator.confirmDiscardChangesIfNeeded(action: .displayOrder) { confirmed in
             guard confirmed else { return }
             apply()
         }
@@ -182,6 +185,11 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
     func gridExportResults() {
         guard ownsWindowState else { return }
         coordinator?.commandActions?.exportQueryResults()
+    }
+
+    func gridShareResult() {
+        guard ownsWindowState else { return }
+        coordinator?.shareActiveResult()
     }
 
     func gridClearResults() {
@@ -247,7 +255,8 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
     ) -> NSMenuItem? {
         guard coordinator.canFilterRows,
               !row.id.isInserted,
-              !coordinator.changeManager.isCellModified(rowID: row.id, columnIndex: column.dataIndex) else { return nil }
+              !coordinator.changeManager(forTab: tabId).isCellModified(rowID: row.id, columnIndex: column.dataIndex)
+        else { return nil }
         let tabId = tabId
         return CellFilterMenuBuilder.menuItem(
             columnName: column.name,

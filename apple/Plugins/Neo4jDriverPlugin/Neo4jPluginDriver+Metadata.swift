@@ -19,8 +19,7 @@ extension Neo4jPluginDriver {
             guard case .server = error, !error.isAuthenticationFailure else { throw error }
             Self.logger.info("SHOW DATABASES failed, listing the current database only")
         }
-        let current = currentDatabase
-        return current.isEmpty ? [] : [current]
+        return currentDatabase.map { [$0] } ?? []
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {

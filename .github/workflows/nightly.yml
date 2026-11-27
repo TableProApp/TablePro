@@ -3,8 +3,8 @@ name: Nightly
 # The one schedule. Every suite a change can select runs on main in full, which also saves main's caches, and so does
 # the coverage pull requests leave out: every other server release, the minimum Rust version, the Arm64 Flatpak and
 # SSH tunnel tests, the advisory database, the x86_64 distribution packages and Flatpak repository (Arm64 on Sundays),
-# and the app and registry plugins built and packaged as a tag does, unsigned. GitHub mails a red run to whoever last
-# edited the schedule.
+# and the app and registry plugins built and packaged as a tag does, unsigned. It also regenerates and publishes the AI
+# model catalog. GitHub mails a red run to whoever last edited the schedule.
 
 on:
   schedule:
@@ -52,6 +52,12 @@ jobs:
   windows:
     uses: ./.github/workflows/windows.yml
 
+  ai-models:
+    permissions:
+      contents: write
+      actions: write
+    uses: ./.github/workflows/ai-models.yml
+
   linux:
     uses: ./.github/workflows/build-linux.yml
     with:
@@ -89,10 +95,13 @@ jobs:
 
       - uses: ./.github/actions/setup-xcode
 
+      # Both arches: scripts/release/build.sh with no arch builds the app for each.
       - uses: ./.github/actions/prepare-build
+        with:
+          core-arch: both
 
       - name: Set up Go for the SAP HANA helper
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: apple/Native/HanaBridge/go.mod
           cache: false

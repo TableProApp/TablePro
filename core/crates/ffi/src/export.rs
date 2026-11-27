@@ -1,19 +1,21 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, SortKey, build_export};
-use tablepro_core::column::ResultColumn;
+use tablepro_core::column::{ColumnKind, ColumnType, ResultColumn};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::edit::parse_filter_text;
 use tablepro_core::export::{
     CsvEncoder, CsvOptions, EncodeError, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RenderError, RowEncoder,
     SqlInsertEncoder, XLSX_MAX_DATA_ROWS, XlsxSheetWriter, XmlEncoder,
 };
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{RowIdentity, TableRef};
+use tablepro_core::sql_syntax::{SqlGrammar, same_name};
 use tablepro_core::value::{JsonText, OtherValue, UndecodableReason, UndecodedValue};
 use tablepro_core::{ColumnInfo, ReadStatement, ResultEvent, ResultSink, SinkFlow, Truncation, Value};
 use tablepro_session::OperationKind;
@@ -34,6 +36,28 @@ const CHUNK_BYTES: usize = 64 * 1024;
 // Held rows encoded between two looks at the cancel.
 const ROWS_PER_BATCH: u64 = 1_024;
 
+// The rows an export has written so far, which the app reads while it runs.
+#[derive(Debug, Default, uniffi::Object)]
+pub struct ExportProgress(AtomicU64);
+
+#[uniffi::export]
+impl ExportProgress {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    pub fn rows(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+impl ExportProgress {
+    fn add(&self, rows: u64) {
+        self.0.fetch_add(rows, Ordering::Relaxed);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum ExportFormatTag {
     Csv,
@@ -47,7 +71,12 @@ pub enum ExportFormatTag {
 
 #[uniffi::export]
 impl DatabaseSession {
-    // Only the first `visible_columns` columns, since a table page carries row addresses after them.
+    // Only the first `visible_columns` columns, since a table page carries row addresses after them. SQL INSERT with no
+    // table writes into `query_results`, as the macOS app names a query result's table.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the rows, their format, table and file, and the app's progress and cancel, as the app passes them"
+    )]
     pub async fn export_rows(
         &self,
         rows: Arc<ResultSet>,
@@ -55,6 +84,7 @@ impl DatabaseSession {
         format: ExportFormatTag,
         table: Option<TableName>,
         path: String,
+        progress: Option<Arc<ExportProgress>>,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<u64, CoreError> {
         let session = self.session().clone();
@@ -73,26 +103,35 @@ impl DatabaseSession {
             if format == ExportFormatTag::Excel && rows.row_count() > XLSX_MAX_DATA_ROWS as u64 {
                 return Err(sheet_full());
             }
+            let held = rows.result_columns();
+            let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
+            let columns: Arc<[ResultColumn]> = held.iter().take(visible).cloned().collect();
             let insert = match (format, &table) {
-                (ExportFormatTag::SqlInsert, None) => return Err(needs_table()),
                 (ExportFormatTag::SqlInsert, Some(table)) => {
-                    let columns = tokio::select! {
+                    let catalog = tokio::select! {
                         biased;
                         () = cancel.cancelled() => return Err(CoreError::Cancelled),
                         columns = session.columns(table.clone()) => columns?,
                     };
-                    Some(InsertTarget::of(table, &columns))
+                    Some(InsertTarget::of(table, &catalog))
                 }
+                (ExportFormatTag::SqlInsert, None) => Some(InsertTarget::of(&TableRef::unqualified(RESULT_TABLE), &[])),
                 _ => None,
             };
+            // A query result's INSERT that names a column twice is refused by the server, or keeps one of the two values
+            // where the engine reads the names as one column, so it is refused here before any file.
+            if format == ExportFormatTag::SqlInsert && table.is_none() && repeats_a_name(&columns, session.grammar()) {
+                return Err(CoreError::failed(
+                    "ffi.export_duplicate_columns",
+                    "SQL INSERT names each column once",
+                ));
+            }
             let recipe = Recipe {
                 format,
                 title: title(table.as_ref(), &target),
                 insert,
+                progress,
             };
-            let held = rows.result_columns();
-            let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
-            let columns: Arc<[ResultColumn]> = held.iter().take(visible).cloned().collect();
             let part = Arc::new(PartFile::beside(target)?);
             let ending = Ending::default();
             let mut sink = FileSink::new(
@@ -110,6 +149,10 @@ impl DatabaseSession {
     }
 
     // Every row the filter selects, in the sort's order, streamed to the file on a connection of the read's own.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the table's sort and filter, the format and file, and the app's progress and cancel"
+    )]
     pub async fn export_table(
         &self,
         table: TableName,
@@ -117,6 +160,7 @@ impl DatabaseSession {
         filter: Option<TableFilterArg>,
         format: ExportFormatTag,
         path: String,
+        progress: Option<Arc<ExportProgress>>,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<u64, CoreError> {
         let session = self.session().clone();
@@ -142,6 +186,7 @@ impl DatabaseSession {
                 format,
                 title: title(Some(&table), &target),
                 insert: (format == ExportFormatTag::SqlInsert).then(|| InsertTarget::of(&table, &columns)),
+                progress,
             };
             let read = Arc::new(TableRead {
                 table,
@@ -198,11 +243,15 @@ impl TableRead {
     }
 }
 
+// The table a query result's INSERT statements write into, as the macOS app names it.
+const RESULT_TABLE: &str = "query_results";
+
 #[derive(Clone)]
 struct Recipe {
     format: ExportFormatTag,
     title: String,
     insert: Option<InsertTarget>,
+    progress: Option<Arc<ExportProgress>>,
 }
 
 #[derive(Clone)]
@@ -347,6 +396,7 @@ impl FileSink {
                 .await?;
                 self.writer = Some(Writer::Sheet(sheet));
                 self.rows += count;
+                self.written(count);
                 Ok(())
             }
             None => Err(CoreError::failed(
@@ -357,14 +407,25 @@ impl FileSink {
     }
 
     async fn encode(&mut self, encoder: &mut dyn RowEncoder, rows: &[Vec<Value>]) -> Result<(), CoreError> {
+        let mut unreported = 0;
         for row in rows {
             encoder.row(&mut self.buffer, &mut row.iter()).map_err(encode_error)?;
             self.rows += 1;
+            unreported += 1;
             if self.buffer.len() >= CHUNK_BYTES {
                 self.flush().await?;
+                self.written(std::mem::take(&mut unreported));
             }
         }
+        self.written(unreported);
         Ok(())
+    }
+
+    // Counted as encoded, which is a chunk ahead of the disk at most.
+    fn written(&self, rows: u64) {
+        if let Some(progress) = &self.recipe.progress {
+            progress.add(rows);
+        }
     }
 
     async fn flush(&mut self) -> Result<(), CoreError> {
@@ -435,6 +496,17 @@ impl ResultSink for FileSink {
     }
 }
 
+// By the engine's own rule, since SQLite, MySQL and SQL Server read two names that differ only in case as one column,
+// and the second value would be dropped without a word.
+fn repeats_a_name(columns: &[ResultColumn], grammar: SqlGrammar) -> bool {
+    columns.iter().enumerate().any(|(index, column)| {
+        columns
+            .iter()
+            .take(index)
+            .any(|before| same_name(&before.name, &column.name, grammar))
+    })
+}
+
 // The rows a set holds, through the same sink a streamed read feeds, so both write the same bytes.
 async fn feed(
     sink: &mut FileSink,
@@ -473,7 +545,7 @@ async fn feed(
     Ok(())
 }
 
-fn held_row(set: &ResultSet, row: u64, columns: &[ResultColumn]) -> Vec<Value> {
+pub(crate) fn held_row(set: &ResultSet, row: u64, columns: &[ResultColumn]) -> Vec<Value> {
     columns
         .iter()
         .enumerate()
@@ -482,7 +554,7 @@ fn held_row(set: &ResultSet, row: u64, columns: &[ResultColumn]) -> Vec<Value> {
 }
 
 // The value where the store kept it exactly, else read back from the text the core's export wrote for it on arrival.
-fn held_value(set: &ResultSet, row: u64, index: usize, column: &ResultColumn) -> Value {
+pub(crate) fn held_value(set: &ResultSet, row: u64, index: usize, column: &ResultColumn) -> Value {
     if let Some(value) = set.stored_value(row, index) {
         return value;
     }
@@ -502,12 +574,47 @@ fn held_value(set: &ResultSet, row: u64, index: usize, column: &ResultColumn) ->
             Ok(json) => Value::Json(json),
             Err(_) => other(text),
         },
+        Some(ValueKind::Array) => array_value(&text, &column.column_type).unwrap_or_else(|| other(text)),
         // Refused by every encoder, as a streamed export refuses it.
         Some(ValueKind::Undecodable) => Value::Undecodable(Box::new(UndecodedValue {
             type_name: column.column_type.name.clone(),
             reason: UndecodableReason::UnsupportedType,
         })),
         _ => other(text),
+    }
+}
+
+// The store keeps an array as JSON whose items are each element's text (`value_text`), so each is read back by the
+// element's kind: a number stays a number and a binary value its bytes, as a streamed read gives them.
+fn array_value(text: &str, column: &ColumnType) -> Option<Value> {
+    items(&serde_json::from_str(text).ok()?, &element_of(column))
+}
+
+fn items(json: &serde_json::Value, element: &ColumnType) -> Option<Value> {
+    let serde_json::Value::Array(list) = json else {
+        return None;
+    };
+    list.iter()
+        .map(|item| match item {
+            serde_json::Value::Null => Some(Value::Null),
+            serde_json::Value::String(text) => {
+                Some(parse_filter_text(text, element).unwrap_or_else(|_| Value::Text(text.clone())))
+            }
+            // An inner dimension, which a declared kind such as PostgreSQL's int4[][] does not name again.
+            serde_json::Value::Array(_) => items(item, &element_of(element)),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(Value::Array)
+}
+
+fn element_of(column: &ColumnType) -> ColumnType {
+    match &column.kind {
+        ColumnKind::Array { element } => ColumnType {
+            kind: (**element).clone(),
+            ..column.clone()
+        },
+        _ => column.clone(),
     }
 }
 
@@ -568,6 +675,17 @@ impl Drop for PartFile {
             Err(error) => tracing::warn!(%error, "could not remove an unfinished export"),
         }
     }
+}
+
+// A file a store's export writes whole, beside its place and renamed over it once synced. Blocking.
+pub(crate) fn write_whole_file(path: &str, bytes: &[u8]) -> Result<(), CoreError> {
+    let part = PartFile::beside(destination(path)?)?;
+    let mut file = File::create(&part.path).map_err(|error| io_error(&part.target, &error))?;
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(|error| io_error(&part.target, &error))?;
+    drop(file);
+    part.place()
 }
 
 async fn blocking<T, F>(tasks: &Tasks, work: F) -> Result<T, CoreError>
@@ -659,4 +777,94 @@ fn file_gone() -> CoreError {
 
 fn not_connected() -> CoreError {
     CoreError::failed("ffi.not_connected", "the session has no connection")
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::column::{IntegerKind, IntegerWidth, ReadForm, TextLength};
+    use tablepro_core::export::{ResultExtent, build_snapshot};
+
+    use super::*;
+    use crate::results::ResultStore;
+
+    fn array_of(name: &str, element: ColumnKind) -> ResultColumn {
+        ResultColumn::new(
+            name,
+            ColumnType {
+                name: format!("{name}[]"),
+                kind: ColumnKind::Array {
+                    element: Box::new(element),
+                },
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
+        )
+    }
+
+    fn bigint() -> ColumnKind {
+        ColumnKind::Integer(IntegerKind {
+            width: IntegerWidth::W64,
+            signed: true,
+        })
+    }
+
+    #[test]
+    fn two_names_that_differ_only_in_case_are_one_column_where_the_engine_reads_them_so() {
+        let named = |name: &str| array_of(name, bigint());
+
+        assert!(repeats_a_name(&[named("a"), named("A")], SqlGrammar::Sqlite));
+        assert!(!repeats_a_name(&[named("a"), named("A")], SqlGrammar::PostgreSql));
+        assert!(repeats_a_name(
+            &[named("id"), named("name"), named("id")],
+            SqlGrammar::PostgreSql
+        ));
+        assert!(!repeats_a_name(&[named("id"), named("name")], SqlGrammar::MySql));
+    }
+
+    #[test]
+    fn an_array_comes_back_element_by_element_as_a_streamed_read_gives_it() {
+        let columns: Arc<[ResultColumn]> = vec![
+            array_of("ids", bigint()),
+            array_of(
+                "blobs",
+                ColumnKind::Bytes {
+                    length: TextLength::Unbounded,
+                },
+            ),
+            array_of("grid", bigint()),
+        ]
+        .into();
+        let row = vec![
+            Value::Array(vec![Value::Int(1), Value::Int(9_007_199_254_740_993), Value::Null]),
+            Value::Array(vec![Value::Bytes(vec![0xca, 0xfe])]),
+            Value::Array(vec![
+                Value::Array(vec![Value::Int(1), Value::Int(2)]),
+                Value::Array(vec![Value::Int(3), Value::Int(4)]),
+            ]),
+        ];
+        let store = Arc::new(ResultStore::new(columns.clone()));
+        store.append(std::slice::from_ref(&row));
+        store.finish();
+        let set = ResultSet::new(0, store);
+
+        let held = held_row(&set, 0, &columns);
+        let snapshot = build_snapshot(&columns, [held.clone()], ResultExtent::complete(1), 10).expect("a snapshot");
+
+        assert_eq!(held, row);
+        let cells: Vec<&str> = snapshot.rows[0].iter().map(|cell| cell.get()).collect();
+        assert_eq!(
+            cells,
+            ["[1,9007199254740993,null]", r#"["(binary, 2 bytes)"]"#, "[[1,2],[3,4]]"]
+        );
+    }
+
+    #[test]
+    fn an_array_whose_text_does_not_read_back_stays_its_text() {
+        let column = array_of("odd", bigint());
+
+        let value = array_value("{1,2,3}", &column.column_type);
+
+        assert_eq!(value, None);
+    }
 }

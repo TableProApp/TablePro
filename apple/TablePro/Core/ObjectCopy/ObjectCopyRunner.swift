@@ -139,7 +139,8 @@ internal struct ObjectCopyRunner {
             connectionId: request.source.connectionId,
             databaseType: request.source.databaseType,
             gate: gate,
-            operationDescription: String(localized: "Execute Query")
+            operationDescription: String(localized: "Execute Query"),
+            runsIn: request.source.scope
         )
 
         return try await gate.authorizing(authorizationRequest(for: plan)) {
@@ -275,6 +276,7 @@ internal struct ObjectCopyRunner {
         let pinsSession = plan.isStructureReadPinned && VerbatimTransferScopes.isSameEngine(
             source: request.source.databaseType, target: request.target.databaseType
         )
+        let family = TransactionEngineFamily.of(request.target.databaseType)
 
         return try await manager.withMetadataDriver(scope: scope) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
@@ -285,6 +287,7 @@ internal struct ObjectCopyRunner {
             let usesTransaction = hasCleanup && errorHandling == .stopAndRollback
                 && plugin.supportsTransactionalDDL && owner.sendsBegin && owner.commitsAtEnd
             if usesTransaction { try await plugin.beginTransaction(mode: .readWrite) }
+            let committingEach = usesTransaction ? nil : Self.standaloneFamily(family, owner: owner)
 
             var result: DDLResult
             do {
@@ -297,6 +300,7 @@ internal struct ObjectCopyRunner {
                         on: plugin,
                         pinsSession: pinsSession,
                         errorHandling: errorHandling,
+                        committingEach: committingEach,
                         progress: progress
                     )
                 }
@@ -309,7 +313,8 @@ internal struct ObjectCopyRunner {
             /// `sql_mode`: it gets its own creation settings, or else the target's.
             if !result.stopped {
                 let definitions = await Self.execute(
-                    definitionGroups, on: plugin, errorHandling: errorHandling, progress: progress
+                    definitionGroups, on: plugin, errorHandling: errorHandling, committingEach: committingEach,
+                    progress: progress
                 )
                 result.outcomes += definitions.outcomes
                 result.cancelled = definitions.cancelled
@@ -352,6 +357,7 @@ internal struct ObjectCopyRunner {
         on driver: any PluginDatabaseDriver,
         pinsSession: Bool,
         errorHandling: ImportErrorHandling,
+        committingEach family: TransactionEngineFamily?,
         progress: ObjectCopyProgress
     ) async throws -> DDLResult {
         let writesAnything = !schemaStatements.isEmpty || groups.contains { !$0.statements.isEmpty }
@@ -363,9 +369,11 @@ internal struct ObjectCopyRunner {
             /// table, view or routine can be created if the schema naming it is not there, so
             /// carrying on would report every one of them as its own failure for one cause.
             for statement in schemaStatements {
-                _ = try await driver.execute(query: statement.sql)
+                try await executeStatement(statement.sql, on: driver, committingEach: family)
             }
-            let result = await execute(groups, on: driver, errorHandling: errorHandling, progress: progress)
+            let result = await execute(
+                groups, on: driver, errorHandling: errorHandling, committingEach: family, progress: progress
+            )
             await scopes?.close()
             return result
         } catch {
@@ -374,10 +382,34 @@ internal struct ObjectCopyRunner {
         }
     }
 
+    // nil inside the phase's own transaction; otherwise a statement the session keeps pending is committed on its own.
+    nonisolated private static func executeStatement(
+        _ sql: String,
+        on driver: any PluginDatabaseDriver,
+        committingEach family: TransactionEngineFamily?
+    ) async throws {
+        guard let family else {
+            _ = try await driver.execute(query: sql)
+            return
+        }
+        _ = try await AppDefinitionCommit.run(on: driver, family: family, refusesOpenTransaction: false) {
+            try await driver.execute(query: sql)
+        }
+    }
+
+    // A phase that joined a transaction the session already held leaves it to its owner, as its result reports.
+    nonisolated private static func standaloneFamily(
+        _ family: TransactionEngineFamily,
+        owner: WriteTransactionOwner
+    ) -> TransactionEngineFamily? {
+        owner == .session ? nil : family
+    }
+
     nonisolated private static func execute(
         _ groups: [ObjectCopyStatementGroup],
         on driver: any PluginDatabaseDriver,
         errorHandling: ImportErrorHandling,
+        committingEach family: TransactionEngineFamily?,
         progress: ObjectCopyProgress
     ) async -> DDLResult {
         var result = DDLResult()
@@ -391,7 +423,7 @@ internal struct ObjectCopyRunner {
             let opened = await openSettings(of: group, on: driver)
             do {
                 for statement in group.statements {
-                    _ = try await driver.execute(query: statement.sql)
+                    try await executeStatement(statement.sql, on: driver, committingEach: family)
                 }
                 if opened { await closeSettings(of: group, on: driver) }
                 result.outcomes.append(ObjectCopyObjectOutcome(
@@ -495,13 +527,15 @@ internal struct ObjectCopyRunner {
         guard !runnable.isEmpty else { return DDLResult() }
 
         let errorHandling = request.errorHandling
+        let family = TransactionEngineFamily.of(request.target.databaseType)
         return try await manager.withMetadataDriver(scope: request.target.scope) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
             let owner = await Self.transactionOwner(of: driver)
             var result = await Self.execute(
-                runnable, on: plugin, errorHandling: errorHandling, progress: progress
+                runnable, on: plugin, errorHandling: errorHandling,
+                committingEach: Self.standaloneFamily(family, owner: owner), progress: progress
             )
             result.joinedSessionTransaction = owner == .session
             return result
@@ -619,8 +653,9 @@ internal struct ObjectCopyRunner {
             result.joinedSessionTransaction = owner == .session
             // Checks stay on for the clears: a table outside the copy that references a cleared one
             // keeps its own ON DELETE rule, and MySQL cannot prove no other database holds one.
+            // In this phase's own transaction or the session's, so a clear never commits on its own.
             let cleared = await Self.execute(
-                clearGroups, on: targetPlugin, errorHandling: errorHandling, progress: progress
+                clearGroups, on: targetPlugin, errorHandling: errorHandling, committingEach: nil, progress: progress
             )
             result.outcomes += cleared.outcomes.filter { $0.error != nil }
             result.cancelled = cleared.cancelled
@@ -805,6 +840,7 @@ internal struct ObjectCopyRunner {
         let copier = ObjectCopyRowCopier(
             step: step, sourceDatabaseType: request.source.databaseType, targetDatabaseType: targetType
         )
+        let family = TransactionEngineFamily.of(targetType)
 
         /// The injected manager on both sides. Reaching for the singleton on the target bypassed
         /// the caller's own connections and routing, which is the whole point of injecting one.
@@ -816,20 +852,48 @@ internal struct ObjectCopyRunner {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
             let owner = await Self.transactionOwner(of: targetDriver)
-            return try await manager.withMetadataDriver(
-                scope: sourceScope, workload: .bulk
-            ) { sourceDriver in
-                guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
-                    throw ObjectCopyError.refused(Self.noSourceDriver)
-                }
-                let readContext = sourceDriver.readOnlyRunContext(safeModeIsReadOnly: sourceIsReadOnly)
-                let outcome = try await BulkReadTimeout.lifted(on: [sourceDriver]) {
-                    try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
-                        progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+            let committingEach = Self.standaloneFamily(family, owner: owner)
+            let copied: CopiedRows
+            do {
+                copied = try await manager.withMetadataDriver(
+                    scope: sourceScope, workload: .bulk
+                ) { sourceDriver in
+                    guard let sourcePlugin = CompareMetadataService.pluginDriver(from: sourceDriver) else {
+                        throw ObjectCopyError.refused(Self.noSourceDriver)
                     }
+                    let readContext = sourceDriver.readOnlyRunContext(safeModeIsReadOnly: sourceIsReadOnly)
+                    let outcome = try await BulkReadTimeout.lifted(on: [sourceDriver]) {
+                        try await copier.copy(from: sourcePlugin, to: targetPlugin, readContext: readContext) { rows in
+                            progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
+                        }
+                    }
+                    return CopiedRows(outcome: outcome, joinedSessionTransaction: owner == .session)
                 }
-                return CopiedRows(outcome: outcome, joinedSessionTransaction: owner == .session)
+            } catch {
+                // A failed table keeps the rows written before the failure, as it reports them.
+                do {
+                    try await Self.commitRows(on: targetPlugin, committingEach: committingEach)
+                } catch let commitError {
+                    Self.logger.error("Committing the rows before a copy failure failed: \(commitError.publicLogShape, privacy: .public)")
+                }
+                throw error
             }
+            try await Self.commitRows(on: targetPlugin, committingEach: committingEach)
+            return copied
+        }
+    }
+
+    // A commit that fails is rolled back: a pooled connection would otherwise carry the rows into its next lease.
+    nonisolated private static func commitRows(
+        on plugin: any PluginDatabaseDriver,
+        committingEach family: TransactionEngineFamily?
+    ) async throws {
+        guard let family else { return }
+        do {
+            try await AppDefinitionCommit.commitIfOpen(on: plugin, family: family)
+        } catch {
+            _ = try? await TaskCancellationShield.run { try await plugin.rollbackTransaction() }
+            throw error
         }
     }
 

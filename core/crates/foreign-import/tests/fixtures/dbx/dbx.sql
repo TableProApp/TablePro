@@ -1,7 +1,10 @@
 -- The tables of t8y2/dbx at 39a77b5 (crates/dbx-core/src/persistence/storage.rs, SCHEMA_STATEMENTS),
 -- with rows in the shape DBX writes them: `ConnectionConfig` and `TransportLayerConfig` as serde
--- writes them (crates/dbx-types/src/models/connection.rs), secrets as `dbxenc1` envelopes
--- (persistence/secret_codec.rs) whose bytes are random, and the sidebar layout of ai/mcp_policy.rs.
+-- writes them (crates/dbx-types/src/models/connection.rs), and the sidebar layout of ai/mcp_policy.rs.
+-- The password and tunnel profile secrets are `dbxenc1` envelopes that `SecretCodec::encrypt` of
+-- t8y2/dbx at 3e34951 (persistence/secret_codec.rs) wrote under the key AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8,
+-- bytes 0 to 31; the connection string's bytes are random. A `secret` with no `secret_enc` is a row
+-- from before DBX encrypted its secrets.
 -- The inline `url_params`, `init_script` and passwords are as a DBX before its secret migration left
 -- them; DBX now writes those to connection_secrets and null to the JSON.
 CREATE TABLE IF NOT EXISTS connections (
@@ -94,9 +97,12 @@ INSERT INTO connections VALUES ('c-none', '{"id":"c-none","name":"No type","db_t
   "username":"","password":""}');
 
 INSERT INTO connection_secrets VALUES ('c-pg', 'password', '',
-  'dbxenc1.-3FKum-zY14Xff6W.h5ByNWu8dVhyOfARKADbpJk0cgGYUaCLBP_eVw0I');
+  'dbxenc1.hfbQTNxH8kGvTnAm.MVw59t-CPGvoxzDfrguWZ7LJ_mc8nW2VxDiHEflCu0Q');
 INSERT INTO connection_secrets VALUES ('c-mongo', 'connection_string', '',
   'dbxenc1.6jf3WfZK-cmIAQlO.lknV_79yjNVuqp1ptK1V8Ho9ezogPpB6dVedneQENQFTSKfAO7sOSNI');
+INSERT INTO connection_secrets VALUES ('c-legacy', 'ssh_password', 'stored-ssh-secret', NULL);
+INSERT INTO connection_secrets VALUES ('tunnel_profile.tp1', 'config', '',
+  'dbxenc1.yDh6wFvGEPqHnNfz.ea-k39R9OS3p0wc9i0wztyPmXcBRXBMC8trf_1TQtFOOFV6LzU3-5j4DDXWCQ8RCbdM3Pc5tJoFdzLzorm3JqDYZq0obvIGmfdjXimZYIhTdF7XhY0ErUjmaB_BWMvLtLHYFWCh2zzIF73HX8g6su50gfmrme9gAWvOZzfw2h2ir2933oriO-nx5tPMyGhA1m44Ek7y4mAiR4r7lwSsz9sBuFcrVM7Sg0K1XcavOjSVoOa1D2XL_5cka9FQup9KYLQphQSFGBVf5GbCAt5E6Sy-nhU0vyJ1S00t5XaVOxEf33ywb2-jbNGo5gN-hez8cGBVUWLjo2i6HcQ6RDIybECGwxQcit3oxjB_SNwvdliGYhFJ1F3KEP5_gs31-lmoI8hO3D9-OHGVlJpkT6ccoq_FdK3NCvcmiNJtr5mqu-NdXemyZno3-gzlqxN-qzN5AWgAgVBk4fIKT51yWsM4KShwAAuvf00VvThQ');
 
 INSERT INTO tunnel_profiles VALUES ('tp1', '{"type":"ssh","id":"tp1","name":"Shared bastion","enabled":true,
   "host":"bastion.internal","port":2200,"user":"ops","password":"","key_path":"","key_passphrase":"",

@@ -1,59 +1,118 @@
-//
-//  HistorySection.swift
-//  TablePro
-//
-
 import SwiftUI
 
-struct HistorySection: View {
-    @Binding var settings: HistorySettings
+struct QueryHistorySettingsPage: View {
+    static let maxEntries = [100, 500, 1_000, 5_000, 10_000, 0]
+    static let retentionDays = [7, 30, 90, 365, 0]
+
+    @ObservedObject var history: SettingsSlice<HistorySettings>
+    let context: SettingsPaneContext
+    @State private var isClearing = false
+
+    init(history: SettingsSlice<HistorySettings>, context: SettingsPaneContext) {
+        self.history = history
+        self.context = context
+    }
 
     var body: some View {
-        Section("Query History") {
-            Picker("Maximum entries:", selection: $settings.maxEntries) {
-                Text("100").tag(100)
-                Text("500").tag(500)
-                Text("1,000").tag(1_000)
-                Text("5,000").tag(5_000)
-                Text("10,000").tag(10_000)
-                Text("Unlimited").tag(0)
-            }
+        Form {
+            Section {
+                Toggle(isOn: $history.value.autoCleanup) {
+                    Text("Remove old entries automatically")
+                    Text(
+                        """
+                        Removes entries past these limits at launch, every 100 queries and when a limit changes. \
+                        Removed entries can't be recovered.
+                        """
+                    )
+                }
+                .accessibilityIdentifier("history-auto-cleanup-toggle")
 
-            Picker("Keep entries for:", selection: $settings.maxDays) {
-                Text("7 days").tag(7)
-                Text("30 days").tag(30)
-                Text("90 days").tag(90)
-                Text("1 year").tag(365)
-                Text("Forever").tag(0)
-            }
-
-            Toggle("Auto cleanup", isOn: $settings.autoCleanup)
-
-            LabeledContent("Clear all query history") {
-                Button("Clear History…") {
-                    Task { @MainActor in
-                        let confirmed = await AlertHelper.confirmDestructive(
-                            title: String(localized: "Clear All History?"),
-                            message: String(
-                                localized: """
-                                    This will permanently delete all query history entries, the saved changes kept \
-                                    for restoring, and the earlier versions of your query tabs. This action cannot \
-                                    be undone.
-                                    """
-                            ),
-                            confirmButton: String(localized: "Clear"),
-                            cancelButton: String(localized: "Cancel")
-                        )
-                        if confirmed {
-                            Task {
-                                _ = await QueryHistoryManager.shared.clearEverything()
-                                _ = await QueryHistoryManager.shared.clearRewindSnapshots()
-                                _ = await QueryTabVersionStorage.shared.removeAll()
-                            }
-                        }
+                Picker("Maximum entries", selection: $history.value.maxEntries) {
+                    SettingsChoiceItems(Self.maxEntries, including: history.value.maxEntries) { count in
+                        Text(Self.maxEntriesTitle(count))
                     }
+                }
+                .disabled(!history.value.autoCleanup)
+                .accessibilityIdentifier("history-max-entries-picker")
+
+                // Stays enabled while cleanup is off: it also bounds how long query tab versions are kept.
+                Picker(selection: $history.value.maxDays) {
+                    SettingsChoiceItems(Self.retentionDays, including: history.value.maxDays) { days in
+                        Text(Self.retentionTitle(days))
+                    }
+                } label: {
+                    Text("Keep entries for")
+                    Text("Earlier versions of query tabs are kept this long too, up to 30 days.")
+                }
+                .accessibilityIdentifier("history-max-days-picker")
+            }
+
+            Section {
+                LabeledContent {
+                    Button("Clear History…", action: confirmClear)
+                        .disabled(isClearing)
+                        .accessibilityIdentifier("history-clear-button")
+                } label: {
+                    Text("Clear query history")
+                    Text("Also deletes saved changes kept for Data Rewind and earlier versions of query tabs.")
                 }
             }
         }
+        .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(SettingsPage.queryHistory.pageIdentifier)
+    }
+
+    static func maxEntriesTitle(_ count: Int) -> String {
+        count == 0 ? String(localized: "No limit") : SettingsFormat.count(count)
+    }
+
+    static func retentionTitle(_ days: Int) -> String {
+        days == 0 ? String(localized: "Forever") : SettingsFormat.days(days)
+    }
+
+    private func confirmClear() {
+        let context = context
+        Task { @MainActor in
+            let confirmed = await AlertHelper.confirmDestructive(
+                title: String(localized: "Clear All History?"),
+                message: String(
+                    localized: """
+                        This will permanently delete all query history entries, the saved changes kept \
+                        for restoring, and the earlier versions of your query tabs. This action cannot \
+                        be undone.
+                        """
+                ),
+                confirmButton: String(localized: "Clear"),
+                cancelButton: String(localized: "Cancel")
+            )
+            guard confirmed else { return }
+            isClearing = true
+            let cleared = await SettingsClearing.run([
+                { await QueryHistoryManager.shared.clearEverything() },
+                { await QueryHistoryManager.shared.clearRewindSnapshots() },
+                { await QueryTabVersionStorage.shared.removeAll() },
+            ])
+            isClearing = false
+            if !cleared {
+                context.presentError(
+                    title: String(localized: "Couldn't Clear Query History"),
+                    message: String(localized: "Part of the history couldn't be deleted. Try again.")
+                )
+            }
+        }
+    }
+}
+
+enum SettingsClearing {
+    // Every step runs even after one fails, so a failed history delete still clears the rest.
+    @MainActor
+    static func run(_ steps: [@MainActor () async -> Bool]) async -> Bool {
+        var cleared = true
+        for step in steps {
+            let succeeded = await step()
+            cleared = cleared && succeeded
+        }
+        return cleared
     }
 }

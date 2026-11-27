@@ -16,10 +16,14 @@ internal struct WelcomeNewGroupRequest: Hashable {
     internal let movingConnectionIds: [UUID]
 }
 
-internal struct WelcomeTagToken: Identifiable, Hashable {
-    internal let id: UUID
-    internal let name: String
-    internal let color: ConnectionColor
+internal struct WelcomeTagFilter: Equatable {
+    // In the order they were turned on; a tag missing from storage still filters but has nothing to show.
+    internal var tags: [ConnectionTag] = []
+    internal var tagCount = 0
+    internal var match: LibraryTagMatch = .any
+
+    internal var isActive: Bool { tagCount > 0 }
+    internal var offersMatch: Bool { tagCount > 1 }
 }
 
 enum WelcomeActiveSheet: Identifiable {
@@ -34,6 +38,8 @@ enum WelcomeActiveSheet: Identifiable {
     case projectFolderScan(URL)
     case deeplinkImport(ConnectionBundle)
     case teamLibraryConflicts
+    case newProject
+    case manageProjects
 
     var id: String {
         switch self {
@@ -51,6 +57,8 @@ enum WelcomeActiveSheet: Identifiable {
                 .map { "\($0.settings.type)-\($0.settings.name)-\($0.settings.host)-\($0.settings.port)" }
                 .joined(separator: ",")
         case .teamLibraryConflicts: "teamLibraryConflicts"
+        case .newProject: "newProject"
+        case .manageProjects: "manageProjects"
         }
     }
 }
@@ -71,6 +79,8 @@ final class WelcomeViewModel: ObservableObject {
     let services: AppServices
     let recentConnections: RecentConnectionsStore
     let listPreferences: ConnectionListPreferences
+    let scope: ConnectionScope
+    var projectStorage: ProjectStorage { services.projectStorage }
     weak var outlineController: WelcomeOutlineControlling?
     var storage: ConnectionStorage { services.connectionStorage }
     var groupStorage: GroupStorage { services.groupStorage }
@@ -85,6 +95,15 @@ final class WelcomeViewModel: ObservableObject {
     private(set) var tagsById: [UUID: ConnectionTag] = [:]
     private(set) var groupGraph = LibraryGroupGraph(groups: [ConnectionGroup]())
     private(set) var groupConnectionCounts: [UUID: Int] = [:]
+    // The lists above hold the whole library, so an edit, a lookup by id and the device state never lose
+    // another project's records. Only what is listed reads this.
+    private(set) var scopedLibrary = LibraryScopedLibrary<DatabaseConnection, ConnectionGroup>(
+        projectId: nil,
+        connections: [],
+        groups: []
+    )
+    @Published private(set) var projects: [ConnectionProject] = []
+    @Published private(set) var activeProjectId: UUID?
     @Published var linkedConnections: [LinkedConnection] = [] {
         didSet { rebuildOutline() }
     }
@@ -95,12 +114,13 @@ final class WelcomeViewModel: ObservableObject {
     // MARK: - Query
 
     @Published var searchText = "" { didSet { scheduleRebuild(previous: oldValue) } }
-    @Published var searchTokens: [WelcomeTagToken] = [] {
-        didSet { if searchTokens != oldValue { rebuildOutline() } }
+    @Published var tagFilterIds: [UUID] = [] {
+        didSet { if tagFilterIds != oldValue { rebuildOutline() } }
     }
     @Published var tagMatch: LibraryTagMatch = .any {
         didSet { if tagMatch != oldValue { rebuildOutline() } }
     }
+    @Published private(set) var tagFilter = WelcomeTagFilter()
 
     // MARK: - Outline
 
@@ -116,7 +136,6 @@ final class WelcomeViewModel: ObservableObject {
     // MARK: - Presentation
 
     @Published private(set) var hasImportableApp = false
-    @Published var presentsWelcomeSheet = false
     @Published var connectionsToDelete: [DatabaseConnection] = []
     @Published var showDeleteConfirmation = false
     @Published var connectionsToExcludeFromSync: [DatabaseConnection] = []
@@ -142,13 +161,14 @@ final class WelcomeViewModel: ObservableObject {
 
     @Published var showImportFilePanel = false
     @Published var importOutcome: ImportOutcome?
-    /// Shown from the sheet's `onDismiss`, so the alert waits for the sheet to finish closing.
-    @Published var pendingImportOutcome: ImportOutcome?
+    // Handed off from the sheet's `onDismiss`, so an alert or a new window waits for the sheet to finish closing.
+    @Published var finishedImport: FinishedImport?
 
     // MARK: - Observers
 
     private var connectionUpdatedCancellable: AnyCancellable?
     private var listStateCancellable: AnyCancellable?
+    private var scopeCancellable: AnyCancellable?
     private var showsRecentCancellable: AnyCancellable?
     private var linkedFoldersCancellable: AnyCancellable?
     private var teamLibraryCancellable: AnyCancellable?
@@ -156,10 +176,10 @@ final class WelcomeViewModel: ObservableObject {
     private var connectionStatusCancellable: AnyCancellable?
     private var welcomeRouterTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
-    private let importableAppDetector: @MainActor () -> Bool
+    private var importableAppRefresh: Task<Void, Never>?
+    private let importableAppDetector: @MainActor () async -> Bool
     private let groupExpansionStore: WelcomeGroupExpansionStore
     private let hasStoredGroupExpansion: Bool
-    let isUITestSandbox: Bool
 
     // MARK: - Initialization
 
@@ -169,18 +189,18 @@ final class WelcomeViewModel: ObservableObject {
 
     init(
         services: AppServices,
-        importableAppDetector: @escaping @MainActor () -> Bool = WelcomeViewModel.detectImportableApp,
+        importableAppDetector: @escaping @MainActor () async -> Bool = { await !ForeignSourceScanner.probe().isEmpty },
         groupExpansionStore: WelcomeGroupExpansionStore = WelcomeGroupExpansionStore(),
         recentConnections: RecentConnectionsStore = .shared,
         listPreferences: ConnectionListPreferences = .shared,
-        isUITestSandbox: Bool = AppStorageEnvironment.shared.isIsolated
+        scope: ConnectionScope = .shared
     ) {
         self.services = services
         self.importableAppDetector = importableAppDetector
         self.groupExpansionStore = groupExpansionStore
         self.recentConnections = recentConnections
         self.listPreferences = listPreferences
-        self.isUITestSandbox = isUITestSandbox
+        self.scope = scope
         self.sortMode = listPreferences.sortMode
         self.showsRecent = listPreferences.showsRecent
         let storedExpansion = groupExpansionStore.load()
@@ -188,35 +208,55 @@ final class WelcomeViewModel: ObservableObject {
         self.expandedGroupIds = storedExpansion ?? []
     }
 
-    static func detectImportableApp() -> Bool {
-        ForeignAppImporterRegistry.all.contains { importer in
-            importer.importFileTypes == nil && importer.isAvailable()
-        }
-    }
-
     deinit {
         welcomeRouterTask?.cancel()
         searchDebounceTask?.cancel()
+        importableAppRefresh?.cancel()
     }
 
     // MARK: - Derived State
 
     var availableTags: [ConnectionTag] {
-        let usedIds = Set(connections.flatMap(\.tagIds))
+        let usedIds = Set(scopedLibrary.connections.flatMap(\.tagIds))
         return tags.filter { usedIds.contains($0.id) }
     }
 
-    var suggestedTokens: [WelcomeTagToken] {
-        let chosen = Set(searchTokens.map(\.id))
-        return availableTags.filter { !chosen.contains($0.id) }.map(Self.token(for:))
+    var scopedGroups: [ConnectionGroup] {
+        scopedLibrary.groups
     }
 
-    static func token(for tag: ConnectionTag) -> WelcomeTagToken {
-        WelcomeTagToken(id: tag.id, name: tag.name, color: tag.color)
+    var activeProject: ConnectionProject? {
+        activeProjectId.flatMap { id in projects.first { $0.id == id } }
+    }
+
+    func tagSuggestions(matching text: String) -> [ConnectionTag] {
+        let term = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return [] }
+        let active = Set(tagFilterIds)
+        return availableTags.filter { !active.contains($0.id) && $0.name.localizedCaseInsensitiveContains(term) }
+    }
+
+    func setTagFilter(_ tagId: UUID, isOn: Bool) {
+        if isOn {
+            guard !tagFilterIds.contains(tagId) else { return }
+            tagFilterIds.append(tagId)
+        } else {
+            tagFilterIds.removeAll { $0 == tagId }
+        }
+    }
+
+    // The typed text only led to the tag, so it goes once the tag filters instead.
+    func applyTagSuggestion(_ tagId: UUID) {
+        searchText = ""
+        setTagFilter(tagId, isOn: true)
+    }
+
+    func clearTagFilters() {
+        tagFilterIds.removeAll()
     }
 
     var query: LibraryQuery {
-        LibraryQuery(text: searchText, tagIds: Set(searchTokens.map(\.id)), tagMatch: tagMatch)
+        LibraryQuery(text: searchText, tagIds: Set(tagFilterIds), tagMatch: tagMatch)
     }
 
     var isFiltering: Bool {
@@ -257,7 +297,8 @@ final class WelcomeViewModel: ObservableObject {
             hasAnyConnection: hasAnyConnection,
             hasVisibleContent: !outline.isEmpty,
             searchText: query.trimmedText,
-            isTagFiltered: !searchTokens.isEmpty
+            isTagFiltered: !tagFilterIds.isEmpty,
+            activeProjectName: activeProject?.name
         ))
     }
 
@@ -277,6 +318,7 @@ final class WelcomeViewModel: ObservableObject {
     // MARK: - Outline
 
     func rebuildOutline() {
+        refreshScope()
         guard filtersStillApply() else { return }
         connectionsById = Dictionary(connections.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         groupsById = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -286,13 +328,21 @@ final class WelcomeViewModel: ObservableObject {
         groupConnectionCounts = Self.groupCounts(in: outline)
         let visible = visibleRowIds()
         selection = selection.filter { visible.contains($0) }
+        let filter = WelcomeTagFilter(
+            tags: tagFilterIds.compactMap { tagsById[$0] },
+            tagCount: tagFilterIds.count,
+            match: tagMatch
+        )
+        if filter != tagFilter {
+            tagFilter = filter
+        }
         outlineRevision += 1
     }
 
     func outlineRequest(query: LibraryQuery) -> LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag> {
         LibraryOutlineRequest(
-            connections: connections,
-            groups: groups,
+            connections: scopedLibrary.connections,
+            groups: scopedLibrary.groups,
             tags: tags,
             sortMode: sortMode,
             query: query,
@@ -349,10 +399,10 @@ final class WelcomeViewModel: ObservableObject {
             searchText = ""
             return false
         }
-        let usedTagIds = Set(connections.flatMap(\.tagIds))
-        let keptTokens = searchTokens.filter { usedTagIds.contains($0.id) }
-        guard keptTokens.count == searchTokens.count else {
-            searchTokens = keptTokens
+        let usedTagIds = Set(scopedLibrary.connections.flatMap(\.tagIds))
+        let keptTagIds = tagFilterIds.filter { usedTagIds.contains($0) }
+        guard keptTagIds.count == tagFilterIds.count else {
+            tagFilterIds = keptTagIds
             return false
         }
         return true
@@ -360,14 +410,39 @@ final class WelcomeViewModel: ObservableObject {
 
     private func scheduleRebuild(previous: String) {
         searchDebounceTask?.cancel()
+        searchDebounceTask = nil
         if searchText.isEmpty || previous.isEmpty {
             rebuildOutline()
             return
         }
         searchDebounceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: Self.searchDebounceNanoseconds)
-            guard !Task.isCancelled else { return }
-            self?.rebuildOutline()
+            guard !Task.isCancelled, let self else { return }
+            searchDebounceTask = nil
+            rebuildOutline()
+        }
+    }
+
+    // Return can arrive inside the debounce; picking the first row then picked it from the list for
+    // fewer typed characters, and the late rebuild dropped that row and the selection with it.
+    func submitSearch() {
+        if let pending = searchDebounceTask {
+            pending.cancel()
+            searchDebounceTask = nil
+            rebuildOutline()
+        }
+        focusList(selectFirstRow: true)
+    }
+
+    // Read on every rebuild: the active project and the project list change outside this window.
+    private func refreshScope() {
+        scopedLibrary = scope.scoped(connections: connections, groups: groups)
+        let stored = projectStorage.loadProjects()
+        if projects != stored {
+            projects = stored
+        }
+        if activeProjectId != scopedLibrary.projectId {
+            activeProjectId = scopedLibrary.projectId
         }
     }
 
@@ -395,8 +470,18 @@ final class WelcomeViewModel: ObservableObject {
 
     // MARK: - Setup
 
-    func refreshImportableApp() {
-        hasImportableApp = importableAppDetector()
+    // The probe runs off the main actor; an answer a newer refresh replaced is dropped.
+    @discardableResult
+    func refreshImportableApp() -> Task<Void, Never> {
+        importableAppRefresh?.cancel()
+        let detector = importableAppDetector
+        let refresh = Task { @MainActor [weak self] in
+            let found = await detector()
+            guard !Task.isCancelled, let self else { return }
+            hasImportableApp = found
+        }
+        importableAppRefresh = refresh
+        return refresh
     }
 
     func setUp() {
@@ -420,6 +505,12 @@ final class WelcomeViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.listStateDidChange()
+            }
+
+        // Sent on the main actor. The outline view holds the reload back while a drag or a rename runs.
+        scopeCancellable = scope.scopedSetChanged
+            .sink { [weak self] _ in
+                self?.loadConnections()
             }
 
         showsRecentCancellable = listPreferences.$showsRecent
@@ -462,7 +553,6 @@ final class WelcomeViewModel: ObservableObject {
         teamLibraryConnections = Self.buildTeamLibraryConnections()
 
         consumePendingRouterActions()
-        presentWelcomeSheetIfFirstLaunch()
         startWelcomeRouterObservation()
     }
 
@@ -555,13 +645,23 @@ final class WelcomeViewModel: ObservableObject {
         rebuildOutline()
     }
 
+    // A library that did not load, or a record this build cannot read, keeps its place.
     private func pruneDeviceState() {
-        let favoriteIds = Set(connections.filter(\.isFavorite).map(\.id))
+        guard !storage.lastLoadFailed else { return }
+        let unreadableIds = storage.unreadableConnectionIds
+        let favoriteIds = Set(connections.filter(\.isFavorite).map(\.id)).union(unreadableIds)
         listPreferences.setFavoritesOrder(
             LibraryOrdering.favoritesOrder(listPreferences.favoritesOrder, keeping: favoriteIds)
         )
         guard !connections.isEmpty else { return }
-        recentConnections.retain(only: Set(connections.map(\.id)))
+        recentConnections.retain(only: Set(connections.map(\.id)).union(unreadableIds))
+    }
+
+    // The list shows one project and the saved order holds every project's, so a change made here is merged in.
+    func saveFavoritesOrder(_ updated: [UUID], replacing displayed: [UUID]) {
+        listPreferences.setFavoritesOrder(
+            LibraryOrdering.favoritesOrder(listPreferences.favoritesOrder, scoped: displayed, reorderedTo: updated)
+        )
     }
 
     // MARK: - Connecting
@@ -628,9 +728,100 @@ final class WelcomeViewModel: ObservableObject {
         showImportFilePanel = true
     }
 
-    func finishImport(_ outcome: ImportOutcome) {
-        pendingImportOutcome = outcome
+    func finishImport(_ outcome: ImportOutcome, from origin: ImportOrigin) {
+        finishedImport = FinishedImport(outcome: outcome, origin: origin)
         activeSheet = nil
+    }
+
+    internal struct FinishedImport: Equatable {
+        let outcome: ImportOutcome
+        let origin: ImportOrigin
+    }
+
+    internal enum ImportEnding: Equatable {
+        case open(UUID)
+        case select([UUID])
+        case report(ImportOutcome, selecting: [UUID])
+    }
+
+    // A clean import hands off like the setup guide; anything failed or not kept is reported, and nothing opens.
+    internal static func importEnding(for outcome: ImportOutcome, from origin: ImportOrigin) -> ImportEnding {
+        let notKept = outcome.failure != nil || outcome.passwordsNotKept > 0 || outcome.savedQueriesNotImported > 0
+        switch outcome.handoff(from: origin) {
+        case .open(let id) where !notKept:
+            return .open(id)
+        case .select(let ids) where !notKept:
+            return .select(ids)
+        default:
+            return .report(outcome, selecting: outcome.connectionIds)
+        }
+    }
+
+    // A presentation a routed request or a failed connect opened; the setup guide stays out of its way.
+    var hasRoutedPresentation: Bool {
+        activeSheet != nil
+            || databaseTypeChooser != nil
+            || urlImportPresented
+            || pendingInstallType != nil
+            || pluginInstallConnection != nil
+            || pluginDiagnostic != nil
+            || showConnectionError
+            || showImportFilePanel
+    }
+
+    // The setup guide's ending, run here so a failed connect reports on Welcome as a list open does.
+    func handOff(_ handoff: ImportHandoff) {
+        switch handoff {
+        case .open(let id):
+            loadConnections()
+            guard let connection = connectionsById[id] else { return }
+            connectToDatabase(connection)
+        case .select(let ids):
+            revealConnections(ids)
+        case .stay:
+            return
+        }
+    }
+
+    func importSheetDidDismiss() {
+        guard let finished = finishedImport else { return }
+        finishedImport = nil
+        let outcome = finished.outcome
+        switch Self.importEnding(for: outcome, from: finished.origin) {
+        case .open(let id):
+            loadConnections()
+            guard let connection = connectionsById[id] else {
+                importOutcome = outcome
+                return
+            }
+            connectToDatabase(connection)
+        case .select(let ids):
+            revealConnections(ids)
+        case .report(let reported, let ids):
+            revealConnections(ids)
+            importOutcome = reported
+        }
+    }
+
+    // A search, a tag filter or a collapsed group would hide the rows, and the outline drops a hidden row's selection.
+    private func revealConnections(_ ids: [UUID]) {
+        loadConnections()
+        let present = ids.filter { connectionsById[$0] != nil }
+        guard !present.isEmpty else { return }
+        if !searchText.isEmpty {
+            searchText = ""
+        }
+        if !tagFilterIds.isEmpty {
+            tagFilterIds = []
+        }
+        for id in present {
+            if let groupId = connectionsById[id]?.groupId {
+                expandedGroupIds.formUnion(groupGraph.pathIds(to: groupId))
+            }
+        }
+        rebuildOutline()
+        selection = present.map { .connection($0, section: .connections) }
+        focusList()
     }
 
     func connectionString(for connection: DatabaseConnection) -> String {
@@ -777,7 +968,9 @@ final class WelcomeViewModel: ObservableObject {
         parentId: UUID?,
         moving connectionIds: [UUID]
     ) throws {
-        let group = ConnectionGroup(name: name, color: color, iconName: iconName, parentId: parentId)
+        let group = scope.placingInActiveProject(
+            ConnectionGroup(name: name, color: color, iconName: iconName, parentId: parentId)
+        )
         try groupStorage.addGroup(group)
         expandedGroupIds.insert(group.id)
         if let parentId {
@@ -785,7 +978,7 @@ final class WelcomeViewModel: ObservableObject {
         }
         groups = groupStorage.loadGroups()
         if !connectionIds.isEmpty,
-           !storage.moveConnections(connectionIds, toGroup: group.id, before: nil, validGroupIds: Set(groups.map(\.id))) {
+           !storage.moveConnections(connectionIds, toGroup: group.id, before: nil, groups: groups) {
             reportLibraryWriteFailure()
         }
         loadConnections()

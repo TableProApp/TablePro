@@ -16,17 +16,25 @@ extension MainContentCommandActions {
         for item in work { item.cancel() }
     }
 
+    // A cell still in its field editor is not in the change manager yet, so it lands before the window is read.
+    func holdsWorkOnWindowClose() -> Bool {
+        coordinator?.commitActiveGridEdit()
+        return hasUnsavedWorkInWindow || !workInWindow.isEmpty
+    }
+
+    // Every hosted connection, also one with no coordinator yet: an agent reply runs without one.
     var workInWindow: [RunningWork] {
         let coordinators: [MainContentCoordinator]
+        var connectionIds: Set<UUID>
         if let host = window?.contentViewController as? MainSplitViewController {
             coordinators = host.workspaces.workspaces.compactMap { $0.sessionState?.coordinator }
+            connectionIds = Set(host.workspaces.connectionIds)
         } else {
             coordinators = [coordinator].compactMap { $0 }
+            connectionIds = []
         }
-        return runningWork(.window(
-            ids: Set(coordinators.compactMap(\.windowId)),
-            connectionIds: Set(coordinators.map(\.connectionId))
-        ))
+        connectionIds.formUnion(coordinators.map(\.connectionId))
+        return runningWork(.window(ids: Set(coordinators.compactMap(\.windowId)), connectionIds: connectionIds))
     }
 
     // Asks before closing unsaved work (HIG); like NSDocument, the tab stays open when the save leaves work unsaved.
@@ -67,7 +75,8 @@ extension MainContentCommandActions {
             closeAnchorWindow
         ) {
         case .save:
-            guard await saveSelectedTabWork() else { return }
+            // A tab picked during the prompt refuses the save, and with it the close: its editors are not this tab's.
+            guard await saveWork(onTab: id) else { return }
             stop(work)
             closeRevealedTab(id, returningTo: previousSelection)
         case .dontSave:
@@ -101,5 +110,60 @@ extension MainContentCommandActions {
               coordinator.tabManager.selectedTabId != id,
               coordinator.tabManager.tabs.contains(where: { $0.id == id }) else { return }
         coordinator.tabManager.selectedTabId = id
+    }
+
+    // False while work is still staged after the attempt (review sheet, refused or cancelled DDL, file conflict, Save As cancel).
+    func saveSelectedTabWork() async -> Bool {
+        await saveWork(onTab: coordinator?.tabManager.selectedTabId)
+    }
+
+    // False once another tab is in front or the tab is gone: the mounted editors, grid and inspector it saves are the front tab's.
+    private func isShowing(_ tabId: UUID?) -> Bool {
+        guard let manager = coordinator?.tabManager else { return false }
+        return manager.selectedTabId == tabId && (tabId == nil || manager.selectedTabIndex != nil)
+    }
+
+    func saveWork(onTab tabId: UUID?) async -> Bool {
+        guard let coordinator = coordinator else { return true }
+        let stillOnTab = { self.isShowing(tabId) }
+        guard stillOnTab() else { return false }
+
+        if isUsersRolesTab, coordinator.usersRolesActions?.hasChanges() == true {
+            coordinator.usersRolesActions?.reviewAndApply()
+            return false
+        }
+
+        // Keyed on the session, not resultsViewMode, which let a Data-view or background tab close over its staged ALTERs.
+        if let tabId,
+           let session = coordinator.structureSessions[tabId],
+           session.changeManager.hasChanges {
+            guard await session.applyStagedChanges(coordinator: coordinator).allowsClose, stillOnTab() else {
+                return false
+            }
+        }
+        guard await applyDiagramEdits(ofTab: tabId, in: coordinator), stillOnTab() else { return false }
+        guard await applyTypeChanges(ofTab: tabId), stillOnTab() else { return false }
+        return await saveRowsThenFile(onTab: tabId)
+    }
+
+    // A query result's edits and the tab's .sql file are separate work that one Save answers for; it stops at the first failure.
+    func saveRowsThenFile(onTab tabId: UUID?) async -> Bool {
+        guard let coordinator else { return true }
+        guard isShowing(tabId) else { return false }
+        // The grid save writes the inspector's edits too: they are staged in the same change manager.
+        if hasDataWork {
+            guard coordinator.admitsSheetCommand() else { return false }
+            let saved = await withCheckedContinuation { continuation in
+                coordinator.saveCompletionContinuation = continuation
+                saveDataWork()
+                // Still there when the grid save never started, which reports nothing back.
+                coordinator.takeSaveCompletion()?.resume(returning: false)
+            }
+            guard saved, isShowing(tabId) else { return false }
+        } else if trailingPaneState.inspector.editState.hasEdits {
+            guard await saveInspectorEditsAwaiting(), isShowing(tabId) else { return false }
+        }
+        guard coordinator.tabManager.selectedTab?.content.isFileDirty == true else { return true }
+        return await saveSelectedFileAwaiting()
     }
 }

@@ -91,6 +91,15 @@ fn every_category_has_a_message() {
 }
 
 #[test]
+fn a_catalog_past_the_budget_names_the_limit() {
+    let message = driver_message(&DriverError::CatalogTooLarge {
+        limit_bytes: 64_000_000,
+    });
+
+    assert!(message.contains("64.0"), "{message}");
+}
+
+#[test]
 fn server_message_includes_code_detail_hint() {
     let diagnostics = ServerDiagnostics {
         detail: Some("Key (email)=(a@b.c) already exists.".to_owned()),
@@ -268,6 +277,16 @@ fn file_not_found_names_path() {
     });
 
     assert!(message.contains("/srv/app.db"), "{message}");
+}
+
+#[test]
+fn a_file_already_there_names_it_and_says_it_was_kept() {
+    let message = driver_message(&DriverError::FileExists {
+        path: PathBuf::from("/srv/new.db"),
+    });
+
+    assert!(message.contains("/srv/new.db"), "{message}");
+    assert!(message.contains("left as it is"), "{message}");
 }
 
 #[test]
@@ -486,6 +505,9 @@ fn every_ssh_destination_problem_has_its_own_words() {
         SshDestinationProblem::PortZero,
         SshDestinationProblem::NotAPort { text: "ssh".to_owned() },
         SshDestinationProblem::UnclosedBracket,
+        SshDestinationProblem::JumpHostKey {
+            host: "jump".to_owned(),
+        },
     ];
 
     let texts: Vec<String> = problems.iter().map(ssh_destination_problem_text).collect();
@@ -850,4 +872,26 @@ fn a_catalog_option_the_statement_cannot_carry_says_which() {
         invalid(CatalogOption::Template, ""),
         "This database takes no template for a new database."
     );
+}
+
+#[test]
+fn an_import_failure_names_where_the_server_failed() {
+    let diagnostics = ServerDiagnostics {
+        where_context: Some("COPY events, line 3, column ts: \"2024-13-01\"".to_owned()),
+        ..ServerDiagnostics::new(
+            Some(ServerCode::SqlState("22008".to_owned())),
+            "date/time field value out of range",
+        )
+    };
+
+    let message = sql_import_fault_message(&tablepro_core::import::SqlImportFault::Statement(
+        DriverError::reported(diagnostics),
+    ));
+    let without = sql_import_fault_message(&tablepro_core::import::SqlImportFault::Statement(DriverError::server(
+        "syntax error",
+    )));
+
+    assert!(message.contains("out of range"), "{message}");
+    assert!(message.contains("COPY events, line 3, column ts"), "{message}");
+    assert!(!without.contains('\n'), "{without}");
 }

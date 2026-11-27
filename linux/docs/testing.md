@@ -329,13 +329,13 @@ The MongoDB seed-list and replica-set tests also need public DNS and host port 2
 
 ### Files from tablepro-cloud
 
-`core/crates/account` keeps copies of two tablepro-cloud files: `openapi/v2.openapi-3.0.json`, the `/v2` document `build.rs` generates the client from, and `tests/data/entitlement_vectors.json`, the vectors the entitlement checks run against. tablepro-cloud is private and CI cannot reach it, so they are copies, never links. From `linux/`, refresh both from a tablepro-cloud checkout:
+The core keeps copies of three tablepro-cloud files: `core/crates/cloud-api/openapi/v2.openapi-3.0.json`, the `/v2` document its `build.rs` generates the client from, and `core/crates/account/tests/data/entitlement_vectors.json` and `license_vectors.json`, the vectors the entitlement and license checks run against. tablepro-cloud is private and CI cannot reach it, so they are copies, never links. From the repository root, refresh them from a tablepro-cloud checkout:
 
 ```bash
-build-aux/update-cloud-api.sh ~/src/tablepro-cloud   # without an argument, the checkout beside this repository
+core/scripts/update-cloud-api.sh ~/src/tablepro-cloud   # without an argument, the checkout beside this repository
 ```
 
-It prints the tablepro-cloud commit, for the commit message. Then build and run `tablepro-account`'s tests, and the stack tests below against a stack of that commit.
+It prints the tablepro-cloud commit, for the commit message. Then build and run the tests of `tablepro-cloud-api` and `tablepro-account`, and the stack tests below against a stack of that commit.
 
 ### tablepro-cloud stack
 
@@ -345,7 +345,15 @@ It prints the tablepro-cloud commit, for the commit message. Then build and run 
 - `remove-device`: removes the machine from the portal's Devices page.
 - `offline-file`: makes an offline file for `TABLEPRO_CLOUD_MACHINE_ID` through the portal's API, as its Devices page does, into `TABLEPRO_CLOUD_OUTPUT`.
 
+The share cases also change the stack's database through `core/crates/account/tests/browser/seed.cjs`, which needs no browser and writes what tablepro-cloud's `web/e2e` seed writes. Each step takes `TABLEPRO_CLOUD_EMAIL`, which the test sets:
+
+- `unverify`: clears the account's email verification.
+- `team`: makes a team the account owns, with the account and `TABLEPRO_CLOUD_MEMBER_EMAIL` seated on a Team license of 5 seats.
+- `team-links-off`: turns public links off for the team the account owns, as `PUT /api/teams/{team_id}/sharing` does.
+
 The cases cover a licensed sign-in with a restart, a refresh and a sign-out whose token the server then refuses; a free account without a keyring; a fourth machine told `device_limit_reached` with the three that hold the license; a machine over the limit that removes a holder in place and gets the license, while the holder with an offline file, which `device_limit_reached` names with its `offline_until`, is refused with `offline_file_active`; a second sign-in, which revokes the first one's token; a device removed in the portal, which signs the account out at its next refresh; and the profile and devices of an account, with an offline file the portal made unlocking a machine that never signed in, without opening its keyring.
+
+The share link cases cover a Free account that holds five links and is refused a sixth and every Pro option; an account whose email is not verified, which is told so and shares nothing; a Pro link behind a password, which opens with it, keeps every digit of its numbers and takes a report, while a report without a Turnstile token is refused; and a seated team member's team link, which counts outside the member's own limit until the team turns public links off.
 
 They read the stack from the environment:
 
@@ -355,7 +363,8 @@ They read the stack from the environment:
 | `TABLEPRO_CLOUD_ENTITLEMENT_KEY` | The `x` of the stack's entitlement signing key, base64url |
 | `TABLEPRO_CLOUD_EMAIL_DOMAIN` | The domain of the accounts the tests make, so runs never share one |
 | `TABLEPRO_CLOUD_MAIL_URL` | The fake Resend that keeps the sign-in emails |
-| `TABLEPRO_CLOUD_DATABASE_URL` | The stack's database, for the license grant and the seeded devices |
+| `TABLEPRO_CLOUD_DATABASE_URL` | The stack's database, for the license grant, the seeded devices and `seed.cjs` |
+| `TABLEPRO_CLOUD_REPORT_TOKEN` | A Turnstile token the stack's siteverify passes for the `share_report` action, for the report case |
 | `TABLEPRO_CLOUD_CHROME` | A Chrome or chrome-headless-shell binary |
 | `NODE_PATH` | Where `puppeteer` and `pg` are installed |
 
@@ -391,7 +400,7 @@ A fixture starts its engine's default release unless the engine's variable names
 
 | Variable | Releases | Default |
 |---|---|---|
-| `TABLEPRO_TEST_POSTGRES` | 13, 14, 15, 17, 18 | 17 |
+| `TABLEPRO_TEST_POSTGRES` | 10, 11, 12, 13, 14, 15, 17, 18 | 17 |
 | `TABLEPRO_TEST_MYSQL` | 8.0, 8.4, 9.7 | 8.4 |
 | `TABLEPRO_TEST_MARIADB` | 10.11, 11.4, 12.3 | 11.4 |
 | `TABLEPRO_TEST_MSSQL` | 2017, 2019, 2022, 2025 | 2022 |
@@ -402,7 +411,7 @@ A fixture starts its engine's default release unless the engine's variable names
 | `TABLEPRO_TEST_MONGO` | 7.0, 8.0 | 8.0 |
 | `TABLEPRO_TEST_OPENSSH` | 9.9, 10.3 | 10.3 |
 
-`core/crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `CassandraVersion`, `ScyllaVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
+`core/crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `CassandraVersion`, `ScyllaVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 10 to 13 are past end of life and stay for `every_read_and_a_save_work_before_14`, which starts each of them, and for the session's connect test on 12.
 
 The `integration` job runs each driver's suite on the defaults on every Linux change. The nightly's `integration-releases` job runs it once more for each other release: PostgreSQL 14, 15 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Cassandra 4.0 with ScyllaDB 2025.1, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `CassandraFixture::server_version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
@@ -412,7 +421,7 @@ Locally, set the variables for the run:
 TABLEPRO_TEST_MYSQL=8.0 TABLEPRO_TEST_MARIADB=10.11 cargo nextest run -p tablepro-driver-mysql --run-ignored only
 ```
 
-A new release gets its image in `fixture_image.rs`, a variant in its version type, an `integration-releases` entry in `.github/workflows/build-linux.yml` and a row in the README table. A release past its vendor's end of life loses all four.
+A new release gets its image in `fixture_image.rs`, a variant in its version type, an `integration-releases` entry in `.github/workflows/build-linux.yml` and a row in the README table. A release past its vendor's end of life loses all four, except PostgreSQL 10 to 13, which keep their image and variant for the old-release test.
 
 ### Docker or Podman
 
@@ -428,6 +437,8 @@ cargo nextest run -p tablepro-driver-postgres --run-ignored only
 Do not bother with `TESTCONTAINERS_RYUK_DISABLED`. That is a testcontainers-java / go setting; the Rust crate has no Ryuk reaper and stops each container when its handle drops.
 
 Every fixture starts its container through `tablepro_test_fixtures::start_container`, which takes a closure that builds the request and, when pulling the image failed, builds and starts it again, up to three times 5 seconds apart. testcontainers pulls once, and Docker Hub sometimes ends a pull early ("bytes remaining on stream"), which failed every test that needed the image. A test that starts a container of its own goes through it too.
+
+`TABLEPRO_TEST_DOCKER_HUB_MIRROR` names a registry that mirrors Docker Hub, as a Docker daemon's `registry-mirrors` does. Before each start, `start_container` pulls a Docker Hub image the machine lacks through it, `postgres:17-alpine` as `<mirror>/library/postgres:17-alpine`, and tags it with its Docker Hub name. When that pull fails, testcontainers pulls from Docker Hub as before. An image from another registry, such as SQL Server's, never goes through it. CI sets `mirror.gcr.io` (`.claude/rules/ci.md`, Writing workflow and lint code).
 
 `curl --unix-socket "${DOCKER_HOST#unix://}" http://localhost/_ping` should print `OK` before you run the suite. `--unix-socket` takes a filesystem path, so the `unix://` prefix has to come off.
 

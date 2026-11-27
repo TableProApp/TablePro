@@ -9,14 +9,14 @@ import TableProPluginKit
 import TableProSQLGrammar
 import TableProSQLQuoting
 
-internal func mysqlQuoteIdentifier(_ name: String) -> String {
+nonisolated internal func mysqlQuoteIdentifier(_ name: String) -> String {
     SQLQuoting.identifier(name, quote: .backtick)
 }
 
 /// MySQL and MariaDB take a `BLOB`, `TEXT`, `JSON` or `GEOMETRY` default "only if the value is
 /// written as an expression, even if the expression value is a literal", so the parentheses are
 /// required by the grammar rather than chosen by the caller.
-internal func mysqlRequiresParenthesisedDefault(dataType: String) -> Bool {
+nonisolated internal func mysqlRequiresParenthesisedDefault(dataType: String) -> Bool {
     let upper = dataType.uppercased()
     let base = upper.split(separator: "(", maxSplits: 1).first.map(String.init)?
         .trimmingCharacters(in: .whitespaces) ?? upper
@@ -24,7 +24,7 @@ internal func mysqlRequiresParenthesisedDefault(dataType: String) -> Bool {
 }
 
 // MySQL requires parentheses around every default that is not one whole literal; MariaDB accepts them bare.
-internal func mysqlDefaultIsLiteral(_ value: String) -> Bool {
+nonisolated internal func mysqlDefaultIsLiteral(_ value: String) -> Bool {
     let upper = value.uppercased()
     if upper == "NULL" || upper == "TRUE" || upper == "FALSE" { return true }
     return PluginNumericLiteral.isValid(value)
@@ -46,7 +46,7 @@ internal func mysqlDefaultIsLiteral(_ value: String) -> Bool {
 ///
 /// Nothing else is rewritten: the value already holds the SQL, and re-quoting it is what turned
 /// `(UUID())` into the six-character string `uuid()`.
-internal func mysqlDefaultValueLiteral(_ value: String, dataType: String, isMariaDB: Bool) -> String {
+nonisolated internal func mysqlDefaultValueLiteral(_ value: String, dataType: String, isMariaDB: Bool) -> String {
     if mysqlIsNullLiteral(value) { return "NULL" }
     if mysqlTemporalType(dataType), let expression = mysqlCurrentTimestampExpression(value, dataType: dataType) {
         return expression
@@ -58,7 +58,7 @@ internal func mysqlDefaultValueLiteral(_ value: String, dataType: String, isMari
 }
 
 // The statement takes these as SQL, whether the catalog or the user wrote them, so each has to be one expression.
-internal func mysqlColumnTextRefusal(for column: PluginColumnDefinition, flavor: MySQLServerFlavor) -> String? {
+nonisolated internal func mysqlColumnTextRefusal(for column: PluginColumnDefinition, flavor: MySQLServerFlavor) -> String? {
     let expressions = [column.defaultValue, column.generationExpression, column.columnCheck].compactMap { $0 }
     let acceptsAll = SQLExpressionFragment.isSingleType(column.dataType, databaseTypeId: flavor.databaseTypeId)
         && expressions.allSatisfy { $0.isEmpty || mysqlIsSingleExpression($0, flavor: flavor) }
@@ -71,14 +71,14 @@ internal func mysqlColumnTextRefusal(for column: PluginColumnDefinition, flavor:
     )
 }
 
-internal func mysqlIsNullLiteral(_ value: String) -> Bool {
+nonisolated internal func mysqlIsNullLiteral(_ value: String) -> Bool {
     value.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("NULL") == .orderedSame
 }
 
 /// Which of `CHARACTER SET` and `COLLATE` a column type takes. Measured on MySQL 8.4 and MariaDB 11.4:
 /// `CHARACTER SET` on `INT`, `VARBINARY`, `BLOB` or `JSON` is ERROR 1064, and so is `CHARACTER SET` on a
 /// national spelling (`NVARCHAR`), which takes `COLLATE` alone. A type outside the list takes neither.
-internal enum MySQLColumnTextType: Equatable {
+nonisolated internal enum MySQLColumnTextType: Equatable {
     case none
     case collationOnly
     case characterSetAndCollation
@@ -112,17 +112,17 @@ internal enum MySQLColumnTextType: Equatable {
 
 /// A name the catalog lists is a bare word; anything else is backticked, so the server refuses it as
 /// unknown rather than reading the rest of it as SQL.
-internal func mysqlCharsetName(_ name: String) -> String {
+nonisolated internal func mysqlCharsetName(_ name: String) -> String {
     mysqlIsSafeCharsetIdentifier(name) ? name : mysqlQuoteIdentifier(name)
 }
 
-internal func mysqlIsSafeCharsetIdentifier(_ value: String) -> Bool {
+nonisolated internal func mysqlIsSafeCharsetIdentifier(_ value: String) -> Bool {
     guard !value.isEmpty else { return false }
     let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
     return value.unicodeScalars.allSatisfy { allowed.contains($0) }
 }
 
-internal func mysqlCharacterSetClauses(_ column: PluginColumnDefinition) -> String {
+nonisolated internal func mysqlCharacterSetClauses(_ column: PluginColumnDefinition) -> String {
     let textType = MySQLColumnTextType(dataType: column.dataType)
     var clauses = ""
     if textType.takesCharacterSet, let charset = column.charset?.nilIfEmpty {
@@ -134,7 +134,7 @@ internal func mysqlCharacterSetClauses(_ column: PluginColumnDefinition) -> Stri
     return clauses
 }
 
-internal func mysqlColumnAttributesSQL(_ column: PluginColumnDefinition, isMariaDB: Bool) -> String {
+nonisolated internal func mysqlColumnAttributesSQL(_ column: PluginColumnDefinition, isMariaDB: Bool) -> String {
     var def = ""
 
     if column.unsigned {
@@ -162,7 +162,7 @@ internal func mysqlColumnAttributesSQL(_ column: PluginColumnDefinition, isMaria
 
 /// `columnCheck` is the column's own `CHECK` as the statement restates it, printed last on the line as
 /// MariaDB prints it. Only a `MODIFY` or a move of a column that already has one passes it.
-internal func mysqlColumnDefinitionSQL(
+nonisolated internal func mysqlColumnDefinitionSQL(
     _ column: PluginColumnDefinition,
     isMariaDB: Bool = false,
     columnCheck: String? = nil
@@ -171,7 +171,7 @@ internal func mysqlColumnDefinitionSQL(
     return mysqlColumnBodySQL(column, isMariaDB: isMariaDB) + check
 }
 
-private func mysqlColumnBodySQL(_ column: PluginColumnDefinition, isMariaDB: Bool) -> String {
+nonisolated private func mysqlColumnBodySQL(_ column: PluginColumnDefinition, isMariaDB: Bool) -> String {
     let name = mysqlQuoteIdentifier(column.name)
     guard let expression = column.generationExpression?.nilIfEmpty else {
         return "\(name) \(column.dataType)" + mysqlColumnAttributesSQL(column, isMariaDB: isMariaDB)

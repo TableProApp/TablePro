@@ -8,10 +8,8 @@ import TableProPluginKit
 
 // Which statements of a run become results of their own. Two or more statements that return no
 // rows share one summary, placed where the last of them ran, so the result of the last statement
-// stays the last result. Only the last `maxRowResults` results that return rows are kept.
+// stays the last result. With a limit, only that many of the newest results that return rows are kept.
 struct RunResultPlan: Equatable, Sendable {
-    static let maxRowResults = 100
-
     enum Entry: Equatable, Sendable {
         case statement(Int)
         case summary([Int])
@@ -25,9 +23,11 @@ struct RunResultPlan: Equatable, Sendable {
 
     var droppedRowResultCount: Int { rowResultCount - keptRowResultCount }
 
-    init(producesRows: [Bool], maxRowResults: Int = Self.maxRowResults) {
+    // `unavailable` are results that return rows but are already gone, so they count as dropped whatever the limit.
+    init(producesRows: [Bool], keepingRowResults limit: Int?, unavailable: Set<Int> = []) {
         let rowIndices = producesRows.indices.filter { producesRows[$0] }
-        let kept = Set(rowIndices.suffix(max(0, maxRowResults)))
+        let available = rowIndices.filter { !unavailable.contains($0) }
+        let kept = Set(limit.map { available.suffix(max(1, $0)) } ?? available[...])
         let summarized = producesRows.indices.filter { !producesRows[$0] }
         let collapses = summarized.count >= 2
 
@@ -71,12 +71,14 @@ struct RunResultPlan: Equatable, Sendable {
     }
 
     var droppedNotice: String? {
-        guard droppedRowResultCount > 0 else { return nil }
-        return String(
-            format: String(localized: "Showing the last %1$@ of %2$@ results that returned rows."),
-            keptRowResultCount.formatted(),
-            rowResultCount.formatted()
-        )
+        switch droppedRowResultCount {
+        case ...0:
+            return nil
+        case 1:
+            return String(localized: "1 earlier result was dropped.")
+        default:
+            return String(format: String(localized: "%@ earlier results were dropped."), droppedRowResultCount.formatted())
+        }
     }
 }
 

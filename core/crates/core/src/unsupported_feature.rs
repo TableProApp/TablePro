@@ -12,13 +12,16 @@ pub enum UnsupportedFeature {
     NetworkConnection,
     /// A save that turns foreign key checks off and verifies them after.
     ForeignKeySuspension,
-    /// The engine's client library is older than the driver needs, such
-    /// as `SQLite 3.37.0`.
+    /// The engine's client library or server is older than the driver
+    /// needs, such as `SQLite 3.43.0` or `PostgreSQL 10`.
     MinimumVersion {
         required: &'static str,
     },
     CopyFromStdinInEditor,
     CopyToStdoutInEditor,
+    /// The rows of a `COPY ... FROM STDIN`, on a session that cannot send
+    /// them.
+    CopyFromStdin,
     /// A TIMESTAMP in the hour the session time zone repeats, which the
     /// server cannot store as the one instant it was given.
     TimestampInRepeatedHour,
@@ -69,6 +72,43 @@ pub enum UnsupportedFeature {
     SqlDump,
 }
 
+impl UnsupportedFeature {
+    /// A stable code for each feature, for an app that words an error by
+    /// its codes.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::DatabaseFile => "unsupported.database_file",
+            Self::NetworkConnection => "unsupported.network_connection",
+            Self::ForeignKeySuspension => "unsupported.foreign_key_suspension",
+            Self::MinimumVersion { .. } => "unsupported.minimum_version",
+            Self::CopyFromStdinInEditor => "unsupported.copy_from_stdin_in_editor",
+            Self::CopyToStdoutInEditor => "unsupported.copy_to_stdout_in_editor",
+            Self::CopyFromStdin => "unsupported.copy_from_stdin",
+            Self::TimestampInRepeatedHour => "unsupported.timestamp_in_repeated_hour",
+            Self::TimeOutsideOneDay => "unsupported.time_outside_one_day",
+            Self::TimeWithOffset => "unsupported.time_with_offset",
+            Self::Interval => "unsupported.interval",
+            Self::BitString => "unsupported.bit_string",
+            Self::NumberWiderThan { .. } => "unsupported.number_wider_than",
+            Self::DecimalOutOfRange { .. } => "unsupported.decimal_out_of_range",
+            Self::DateOutsideYears { .. } => "unsupported.date_outside_years",
+            Self::HiddenAttach => "unsupported.hidden_attach",
+            Self::ServerPaging => "unsupported.server_paging",
+            Self::Tables => "unsupported.tables",
+            Self::Keys => "unsupported.keys",
+            Self::CharacterSets => "unsupported.character_sets",
+            Self::DatabaseSwitching => "unsupported.database_switching",
+            Self::DatabaseOptions => "unsupported.database_options",
+            Self::ObjectDefinitions => "unsupported.object_definitions",
+            Self::ClrRoutine => "unsupported.clr_routine",
+            Self::EncryptedDefinition => "unsupported.encrypted_definition",
+            Self::EditorCommand { .. } => "unsupported.editor_command",
+            Self::AuthPlugin => "unsupported.auth_plugin",
+            Self::SqlDump => "unsupported.sql_dump",
+        }
+    }
+}
+
 impl fmt::Display for UnsupportedFeature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -78,6 +118,7 @@ impl fmt::Display for UnsupportedFeature {
             Self::MinimumVersion { required } => write!(f, "{required} or later"),
             Self::CopyFromStdinInEditor => f.write_str("COPY FROM STDIN in the editor"),
             Self::CopyToStdoutInEditor => f.write_str("COPY TO STDOUT in the editor"),
+            Self::CopyFromStdin => f.write_str("COPY FROM STDIN rows"),
             Self::TimestampInRepeatedHour => {
                 f.write_str("single instant for a TIMESTAMP in the hour its time zone repeats")
             }

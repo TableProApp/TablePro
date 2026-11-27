@@ -4,6 +4,7 @@ use aws_lc_rs::digest;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use jsonwebtoken::DecodingKey;
+use serde::Deserialize;
 
 // (kid, RFC 8037 `x`) as tablepro-cloud's operations.md, Production entitlement key, publishes them.
 // Rotation order is in api.md, Entitlement token.
@@ -34,6 +35,38 @@ impl EntitlementKeys {
         Ok(Self { keys })
     }
 
+    // A company server's JWKS (RFC 7517), trusted only once its license verified. Each Ed25519 key is kept by its
+    // RFC 7638 thumbprint; one whose `kid` is not that, or that is not a signing key, is left out.
+    pub(crate) fn from_jwks(document: &[u8]) -> Result<Self, KeyError> {
+        let set: Jwks = serde_json::from_slice(document).map_err(|_| KeyError {
+            x: "the JWKS".to_owned(),
+        })?;
+        let keys: HashMap<_, _> = set
+            .keys
+            .into_iter()
+            .filter(|key| key.kty == "OKP" && key.crv.as_deref() == Some("Ed25519"))
+            .filter(|key| key.use_.as_deref().is_none_or(|use_| use_ == "sig"))
+            .filter(|key| key.alg.as_deref().is_none_or(|alg| alg == "EdDSA"))
+            .filter_map(|key| {
+                let x = key.x?;
+                let (kid, decoding) = keyed(&x).ok()?;
+                match key.kid.as_deref().is_none_or(|named| named == kid) {
+                    true => Some((kid, decoding)),
+                    false => {
+                        tracing::warn!(named = ?key.kid, "a JWKS key's kid is not its thumbprint, so it is left out");
+                        None
+                    }
+                }
+            })
+            .collect();
+        match keys.is_empty() {
+            true => Err(KeyError {
+                x: "the JWKS holds no Ed25519 signing key".to_owned(),
+            }),
+            false => Ok(Self { keys }),
+        }
+    }
+
     pub(crate) fn get(&self, kid: &str) -> Option<&DecodingKey> {
         self.keys.get(kid)
     }
@@ -49,7 +82,23 @@ impl std::fmt::Debug for EntitlementKeys {
     }
 }
 
-fn keyed(x: &str) -> Result<(String, DecodingKey), KeyError> {
+#[derive(Deserialize)]
+struct Jwks {
+    keys: Vec<Jwk>,
+}
+
+#[derive(Deserialize)]
+struct Jwk {
+    kty: String,
+    crv: Option<String>,
+    x: Option<String>,
+    kid: Option<String>,
+    #[serde(rename = "use")]
+    use_: Option<String>,
+    alg: Option<String>,
+}
+
+pub(crate) fn keyed(x: &str) -> Result<(String, DecodingKey), KeyError> {
     let error = || KeyError { x: x.to_owned() };
     let raw = URL_SAFE_NO_PAD.decode(x).map_err(|_| error())?;
     if raw.len() != 32 {
@@ -60,7 +109,7 @@ fn keyed(x: &str) -> Result<(String, DecodingKey), KeyError> {
 }
 
 // RFC 7638. A base64url `x` needs no JSON escaping.
-fn thumbprint(x: &str) -> String {
+pub(crate) fn thumbprint(x: &str) -> String {
     let members = format!(r#"{{"crv":"Ed25519","kty":"OKP","x":"{x}"}}"#);
     URL_SAFE_NO_PAD.encode(digest::digest(&digest::SHA256, members.as_bytes()))
 }
@@ -85,6 +134,31 @@ mod tests {
     fn what_is_not_a_32_byte_key_is_refused() {
         for x in ["", "not base64!", "AAAA", &format!("{RFC_8037_X}AA")] {
             assert!(EntitlementKeys::from_public_keys([x]).is_err(), "{x:?}");
+        }
+    }
+
+    #[test]
+    fn a_jwks_keeps_its_ed25519_signing_keys_by_their_thumbprints() {
+        let document = format!(
+            r#"{{"keys":[
+            {{"kty":"OKP","crv":"Ed25519","x":"{RFC_8037_X}","kid":"kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k","use":"sig","alg":"EdDSA"}},
+            {{"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU","y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"}},
+            {{"kty":"OKP","crv":"Ed25519","x":"{RFC_8037_X}","kid":"not-its-thumbprint"}},
+            {{"kty":"OKP","crv":"Ed25519","x":"{RFC_8037_X}","use":"enc"}}]}}"#
+        );
+
+        let keys = EntitlementKeys::from_jwks(document.as_bytes()).expect("a key");
+
+        assert_eq!(
+            keys.kids().collect::<Vec<_>>(),
+            ["kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k"]
+        );
+        for empty in [
+            r#"{"keys":[]}"#,
+            "not json",
+            r#"{"keys":[{"kty":"OKP","crv":"Ed25519","x":"AAAA"}]}"#,
+        ] {
+            assert!(EntitlementKeys::from_jwks(empty.as_bytes()).is_err(), "{empty}");
         }
     }
 

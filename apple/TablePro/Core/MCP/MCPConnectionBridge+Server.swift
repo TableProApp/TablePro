@@ -297,15 +297,16 @@ extension MCPConnectionBridge {
         return .object(payload)
     }
 
-    /// Refuses an operation the object's kind rules out, rather than handing back a statement the
-    /// server will skip with a warning and a success tag. The kind comes from the same table listing
-    /// `list_tables` reads.
+    // An object kind the operation rules out is refused: the server would skip it with a warning and a success tag.
+    // A named schema the engine has no whole-schema form for is refused too, while one only browsed is dropped, so the
+    // operation runs on the whole database and its approval names no schema.
     func maintenanceStatements(
         scope: DatabaseScope,
+        schemaWasNamed: Bool,
         operation: String,
         table: String?,
         options: [String: String]
-    ) async throws -> [String] {
+    ) async throws -> (statements: [String], scope: DatabaseScope) {
         try await ensureConnected(scope.connectionId)
         let descriptor = try await resolveMaintenanceOperation(
             connectionId: scope.connectionId,
@@ -332,20 +333,35 @@ extension MCPConnectionBridge {
             }
         }
 
-        let statements = await MainActor.run {
-            DatabaseManager.shared.driver(for: scope.connectionId)?.maintenanceStatements(
-                operation: operation,
-                table: table,
-                schema: scope.schema,
-                options: options
-            )
+        func build(schema: String?) async -> [String]? {
+            let statements = await MainActor.run {
+                DatabaseManager.shared.driver(for: scope.connectionId)?.maintenanceStatements(
+                    operation: operation,
+                    table: table,
+                    schema: schema,
+                    options: options
+                )
+            }
+            return statements?.isEmpty == false ? statements : nil
         }
-        guard let statements, !statements.isEmpty else {
+        if let statements = await build(schema: scope.schema) {
+            return (statements, scope)
+        }
+        if table == nil, let schema = scope.schema, descriptor.scope.admitsObject {
+            if !schemaWasNamed, let statements = await build(schema: nil) {
+                return (statements, DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: nil))
+            }
             throw DatabaseAccessError.invalidArgument(
-                String(localized: "That maintenance operation is not available on this connection.")
+                String(
+                    format: String(localized: "%1$@ cannot act on schema %2$@ alone on this connection. Pass 'table'."),
+                    descriptor.name,
+                    schema
+                )
             )
         }
-        return statements
+        throw DatabaseAccessError.invalidArgument(
+            String(localized: "That maintenance operation is not available on this connection.")
+        )
     }
 
     private func resolveMaintenanceOperation(

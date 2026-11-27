@@ -1,7 +1,7 @@
 //! What the catalogue says, and SQL the dialect builds against it.
 
 use tablepro_core::column::{ColumnKind, TemporalZone, TextLength};
-use tablepro_core::meta::{IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity};
+use tablepro_core::meta::{IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableInfo};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{
     ConnectTarget, Connection, DatabaseDriver, DriverError, FilterOp, FilterRule, FilterSet, FilterValue, RowLimit,
@@ -205,6 +205,43 @@ async fn fetch_table_definition_reports_keys_comment_and_source() {
         }
     );
     assert_eq!(estimate.rows, RowCountEstimate::Exact(0));
+    connection.close().await.expect("a close");
+}
+
+/// MergeTree keeps its bytes on disk as one figure, a view none.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn table_info_reports_comment_and_total_bytes() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let (sized, view) = (unique("sized"), unique("sized_view"));
+    setup(
+        connection.as_ref(),
+        &[
+            &format!(
+                "CREATE TABLE {} (id UInt64, label String, INDEX by_label label TYPE bloom_filter GRANULARITY 1) \
+                 ENGINE = MergeTree ORDER BY id COMMENT 'the sized one'",
+                quoted(&sized)
+            ),
+            &format!("INSERT INTO {} VALUES (1, 'a'), (2, 'b'), (3, 'c')", quoted(&sized)),
+            &format!("CREATE VIEW {} AS SELECT id FROM {}", quoted(&view), quoted(&sized)),
+        ],
+    )
+    .await;
+
+    let table_info = connection
+        .table_info(&table(&sized), within(CALL))
+        .await
+        .expect("the table's info");
+    let view_info = connection
+        .table_info(&table(&view), within(CALL))
+        .await
+        .expect("the view's info");
+
+    assert_eq!(table_info.comment.as_deref(), Some("the sized one"));
+    assert!(table_info.total_bytes.is_some_and(|total| total > 0), "{table_info:?}");
+    assert_eq!((table_info.data_bytes, table_info.index_bytes), (None, None));
+    assert_eq!(view_info, TableInfo::default());
     connection.close().await.expect("a close");
 }
 

@@ -19,3 +19,10 @@ struct XLSXExportOptionsView: View {
         .font(.system(size: 13))
     }
 }
+
+extension XLSXExportPlugin {
+    @MainActor
+    func settingsView() -> AnyView? {
+        AnyView(XLSXExportOptionsView(plugin: self))
+    }
+}

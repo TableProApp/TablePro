@@ -1,8 +1,3 @@
-//
-//  SQLEditorController.swift
-//  TablePro
-//
-
 import AppKit
 import Combine
 import SwiftUI
@@ -12,7 +7,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import TableProTextEngine
 
-/// What a query tab hands the SQL editor on every update.
 struct SQLEditorInput {
     var text: Binding<String>
     var cursorPositions: Binding<[CursorPosition]>
@@ -24,7 +18,7 @@ struct SQLEditorInput {
     var undoHistories: EditorUndoHistories?
     var sourceFileURL: URL?
     var claimFocusOnAppear = false
-    /// Called once the editor has latched a focus claim, so the owner's one-shot intent is cleared.
+    // Called once the editor latched a focus claim, so the owner clears its one-shot intent.
     var onFocusClaimed: (() -> Void)?
     var restoredCursorRange: NSRange?
     var pendingStatementJump: StatementAnchor?
@@ -37,19 +31,18 @@ struct SQLEditorInput {
     var onSelectAdjacentTab: ((Int) -> Void)?
     var tabCount: (() -> Int)?
     var onRunStatement: ((String, Int) -> Bool)?
-    /// A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
+    // A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
     var isExecuting = false
     var currentAIAvailability: (() -> AIQueryActionAvailability)?
     var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
+    var onShareQuery: ((String) -> Void)?
 }
 
-/// The SQL editor in AppKit, so the query tab hosts it with no SwiftUI host around it: each one above an editor
-/// forced the window to lay out every hosting view again as the editor's views went in.
+// AppKit, so no SwiftUI host wraps the editor: each one made the window lay out every hosting view as the editor went in.
 @MainActor
 final class SQLEditorController {
     let coordinator = SQLEditorCoordinator()
-    /// Reports Vim's mode to whatever draws it beside the editor.
     var onVimModeChange: ((VimMode) -> Void)?
 
     private let completionAdapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
@@ -81,6 +74,7 @@ final class SQLEditorController {
         applyInput(input)
         let host = SourceEditorHost { state in self.makeEditor(state: state) }
         host.onStateChange = { [weak self] old, new in self?.editorStateDidChange(from: old, to: new) }
+        host.controller.documentCache = input.undoHistories?.documents
         self.host = host
 
         let view = host.controller.view
@@ -93,6 +87,9 @@ final class SQLEditorController {
         observeEditorSettings()
         observeVimMode()
         observeSessionChanges()
+        completionAdapter.statementLocator = { [weak coordinator] text, offset, storage, grammar in
+            await coordinator?.completionStatement(at: offset, in: text, storage: storage, grammar: grammar)
+        }
         configureCompletion()
         setupFavoritesObserver()
         subscribeToCompletionRevision()
@@ -109,9 +106,10 @@ final class SQLEditorController {
         }
         input = newInput
         applyInput(newInput)
+        textViewController.documentCache = newInput.undoHistories?.documents
         pushEditor()
         if switchesTab {
-            restoreTabHistory(of: newInput)
+            restoreSelection(from: restoreTabHistory(of: newInput), orRestoredRange: newInput.restoredCursorRange)
         }
 
         if newInput.pendingStatementJump != old.pendingStatementJump, let jump = newInput.pendingStatementJump {
@@ -126,9 +124,7 @@ final class SQLEditorController {
             configureCompletion()
             setupFavoritesObserver()
         }
-        /// A tab rebound to another database keeps its editor and its connection, so only the scope moves. Without
-        /// this the editor keeps completing against the previous database's provider until the profile resolution
-        /// returns, which leases a metadata driver and on a non-poolable engine can queue behind a running query.
+        // Otherwise completion keeps the old database's provider until the profile resolves, which can queue behind a query.
         if newInput.databaseScope != old.databaseScope {
             completionProfile = nil
             configureCompletion()
@@ -137,8 +133,7 @@ final class SQLEditorController {
         resolveCompletionProfileIfNeeded()
     }
 
-    /// The editor's terminal teardown, run when its query tab area goes away for good, never when it only leaves
-    /// the window.
+    // Runs when the query tab area goes away for good, never when it only leaves the window.
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
@@ -152,33 +147,54 @@ final class SQLEditorController {
         host?.dismantle()
     }
 
-    // A large document's last keys are still on their way to the binding when the editor moves to another tab or
-    // goes away. Both run inside a SwiftUI update, where writing the tab would publish mid-update, so it lands next turn.
+    // Late keys arrive inside a SwiftUI update, where writing the tab would publish mid-update, so they land next turn.
     private func handOverPendingText(to binding: Binding<String>) {
         guard let text = host?.takePendingTextWriteback() else { return }
         Task { @MainActor in binding.wrappedValue = text }
     }
 
-    // One editor serves every query tab, and handing it another tab's text clears its history and Vim marks.
+    // One editor serves every query tab, and handing it another tab's text clears its history and Vim marks and
+    // leaves the outgoing tab's selection and scroll on it.
     private func saveTabHistory(of input: SQLEditorInput) {
         guard let tabID = input.tabID, let histories = input.undoHistories else { return }
         let undo = textViewController.takeUndoHistory()
-        let vimMarks = coordinator.vimDocumentMarks
-        guard undo != nil || vimMarks != nil else {
-            histories.store(nil, for: tabID)
-            return
-        }
-        let text = undo?.text ?? textViewController.textView.string
-        histories.store(EditorTabHistory(text: text, undo: undo, vimMarks: vimMarks), for: tabID)
+        histories.store(EditorTabHistory(
+            text: undo?.text ?? textViewController.textView.string,
+            undo: undo,
+            vimMarks: coordinator.vimDocumentMarks,
+            selection: textViewController.cursorPositions.map(\.range),
+            scrollPosition: textViewController.scrollPosition
+        ), for: tabID)
     }
 
-    // A tab whose text changed while it was away gets neither back.
-    private func restoreTabHistory(of input: SQLEditorInput) {
-        guard let tabID = input.tabID, let saved = input.undoHistories?.take(for: tabID) else { return }
+    // A tab whose text changed while it was away gets none of it back.
+    @discardableResult
+    private func restoreTabHistory(of input: SQLEditorInput) -> EditorTabHistory? {
+        guard let tabID = input.tabID, let saved = input.undoHistories?.take(for: tabID) else { return nil }
         let matches = saved.undo.map { textViewController.restoreUndoHistory($0) }
             ?? (saved.text as NSString).isEqual(to: textViewController.textView.string)
-        guard matches, let vimMarks = saved.vimMarks else { return }
-        coordinator.restoreVimDocumentMarks(vimMarks)
+        guard matches else { return nil }
+        if let vimMarks = saved.vimMarks {
+            coordinator.restoreVimDocumentMarks(vimMarks)
+        }
+        return saved
+    }
+
+    // A tab shown here before gets back its own selection and scroll; any other starts at its saved caret or the top.
+    private func restoreSelection(from history: EditorTabHistory?, orRestoredRange restoredRange: NSRange?) {
+        let controller = textViewController
+        // The frame still has the outgoing document's height until the next layout pass, which would clamp the scroll.
+        controller.textView.updateFrameIfNeeded()
+        if let history {
+            let selection = history.selection.isEmpty ? [NSRange(location: 0, length: 0)] : history.selection
+            controller.setCursorPositions(selection.map { CursorPosition(range: $0) })
+            controller.scrollPosition = history.scrollPosition
+            return
+        }
+        controller.scrollPosition = .zero
+        let length = controller.textView.textStorage.length
+        let caret = (restoredRange ?? NSRange(location: 0, length: 0)).clampedToTextLength(length)
+        controller.setCursorPositions([CursorPosition(range: caret)], scrollToVisible: restoredRange != nil)
     }
 
     private func applyInput(_ input: SQLEditorInput) {
@@ -193,6 +209,7 @@ final class SQLEditorController {
         coordinator.currentAIAvailability = input.currentAIAvailability
         coordinator.onAIAction = input.onAIAction
         coordinator.onSaveAsFavorite = input.onSaveAsFavorite
+        coordinator.onShareQuery = input.onShareQuery
         coordinator.schemaProvider = input.schemaProvider
         coordinator.databaseScope = input.databaseScope
         coordinator.databaseType = input.databaseType
@@ -213,8 +230,7 @@ final class SQLEditorController {
         refreshSessionGrammar()
     }
 
-    /// The grammar the session lexes with: KingbaseES in Oracle mode, MySQL under `NO_BACKSLASH_ESCAPES`, or
-    /// PostgreSQL with `standard_conforming_strings` off each split text differently from the engine's default.
+    // KingbaseES in Oracle mode, MySQL under NO_BACKSLASH_ESCAPES or PostgreSQL without standard_conforming_strings lex differently.
     private func refreshSessionGrammar() {
         guard let databaseType = input.databaseType else { return }
         let grammar: SQLLexicalGrammar
@@ -276,21 +292,18 @@ final class SQLEditorController {
         }
     }
 
-    // An edit reports its caret before its text is written back, so the caret waits for the text; one from a document
-    // the binding does not hold, as across a tab switch, is never passed on.
+    // The caret arrives before its text, so it waits; one from a document the binding does not hold is dropped.
     private func passPendingCaretOn() {
         guard let positions = pendingCaret else { return }
-        let editorLength = (textViewController.textView.string as NSString).length
+        let editorLength = textViewController.textView.textStorage.length
         guard editorLength == (input.text.wrappedValue as NSString).length else { return }
         pendingCaret = nil
         input.cursorPositions.wrappedValue = positions
     }
 
-    // MARK: - Settings
-
     private func observeEditorSettings() {
-        // `$editor` publishes before the value is stored; the theme reads the stored settings too.
-        AppSettingsManager.shared.$editor
+        // The slice publishes before the value is stored; the theme reads the stored settings too.
+        AppSettingsManager.shared.editorSlice.publisher
             .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] editor in
@@ -344,10 +357,7 @@ final class SQLEditorController {
         )
     }
 
-    // MARK: - Completion
-
-    /// The one place the completion service is configured. Configuring without a profile anywhere else put the
-    /// editor back on the app's own dialect after the resolver had run, with nothing scheduled to correct it.
+    // The only place completion is configured: doing it elsewhere without a profile reverted the dialect the resolver set.
     private func configureCompletion() {
         completionAdapter.configure(
             schemaProvider: input.schemaProvider,
@@ -358,9 +368,7 @@ final class SQLEditorController {
         )
     }
 
-    /// This scope's box alone, never the registry: the registry publishes on every fetch, and resolving again for
-    /// each of them would run while the user types. A `@Published` publisher delivers its current value on
-    /// subscribe, so the revision starts in step with the box.
+    // This scope's box, not the registry, which publishes on every fetch and would resolve again while the user types.
     private func subscribeToCompletionRevision() {
         revisionSubscription = nil
         guard let scope = input.databaseScope else { return }
@@ -381,7 +389,7 @@ final class SQLEditorController {
         )
     }
 
-    /// The revision is part of the request, so an invalidation of this scope restarts the resolution.
+    // The revision is part of the request, so an invalidation of this scope restarts the resolution.
     private func resolveCompletionProfileIfNeeded() {
         let request = completionProfileRequest
         guard request != profileRequest, !isTornDown else { return }
@@ -401,8 +409,6 @@ final class SQLEditorController {
             self.configureCompletion()
         }
     }
-
-    // MARK: - Favorites
 
     private func setupFavoritesObserver() {
         favoritesCancellables.removeAll()

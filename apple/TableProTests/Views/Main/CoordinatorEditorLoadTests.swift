@@ -19,13 +19,11 @@ struct CoordinatorEditorLoadTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
         let connection = TestFixtures.makeConnection(database: "testdb")
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             toolbarState: toolbarState
         )
         coordinator.openTabInNewWindow = { _ in }

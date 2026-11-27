@@ -111,6 +111,7 @@ internal extension StructureEditingSession {
         }
         adoptWrittenTableComment(from: hold.changes)
         adoptWrittenTableOptions(from: hold.changes)
+        coordinator?.followColumnChanges(hold.changes, table: tableName, schema: schemaName, database: databaseName)
         markEveryTabStale()
         hasLoaded = false
         lastAppliedAt = Date()
@@ -328,6 +329,7 @@ internal extension StructureEditingSession {
 
         let cleared = changeManager.releaseHold(hold, written: true)
         isApplying = false
+        coordinator?.followColumnChanges(hold.changes, table: tableName, schema: schemaName, database: databaseName)
         if cleared {
             markEveryTabStale()
             hasLoaded = false

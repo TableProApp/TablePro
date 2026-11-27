@@ -8,6 +8,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSnowflakeCore
 
 final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
@@ -321,6 +322,20 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await PluginNameSpellings.readEachTable(try await fetchTables(schema: schema).map(\.name)) {
+            try await fetchForeignKeys(table: $0, schema: schema)
+        }
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let database = connection?.currentDatabase
         let targetSchema = schema ?? connection?.currentSchema
         guard let database, let targetSchema else { return [:] }
@@ -332,6 +347,9 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } catch let error as SnowflakeError where error.indicatesInaccessibleObject {
             return [:]
         }
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(result.rows.compactMap { Self.text($0, 0) })
+        }
 
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -340,7 +358,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 name: name,
                 dataType: Self.text(row, 2) ?? "TEXT",
                 isNullable: (Self.text(row, 3) ?? "YES").uppercased() == "YES",
-                isPrimaryKey: primaryKeys[table]?.contains(name.uppercased()) == true,
+                isPrimaryKey: primaryKeys[table]?.contains(Array(name.uppercased().utf8)) == true,
                 defaultValue: Self.text(row, 4),
                 comment: Self.text(row, 5)
             )
@@ -352,18 +370,19 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return columnsByTable
     }
 
-    private func primaryKeysBySchema(database: String, schema: String) async -> [String: Set<String>] {
+    // A column set by bytes: a table can hold two columns whose names differ only in Unicode form.
+    private func primaryKeysBySchema(database: String, schema: String) async -> [String: Set<[UInt8]>] {
         guard let result = try? await rawQuery(
             SnowflakeSchemaQueries.showPrimaryKeysInSchema(database: database, schema: schema)
         ) else { return [:] }
         guard let tableIndex = columnIndex(of: "table_name", in: result),
               let columnIndexInResult = columnIndex(of: "column_name", in: result) else { return [:] }
 
-        var keys: [String: Set<String>] = [:]
+        var keys: [String: Set<[UInt8]>] = [:]
         for row in result.rows {
             guard let table = Self.text(row, tableIndex),
                   let column = Self.text(row, columnIndexInResult) else { continue }
-            keys[table, default: []].insert(column.uppercased())
+            keys[table, default: []].insert(Array(column.uppercased().utf8))
         }
         return keys
     }
@@ -384,6 +403,21 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let database, let targetSchema else { return [] }
 
         let primaryKeys = try await fetchPrimaryKeyColumns(table: table, schema: targetSchema, database: database)
+
+        if let shown = try await shownColumns(table: table, schema: targetSchema, database: database) {
+            let columns = shown.map { column in
+                PluginColumnInfo(
+                    name: column.name,
+                    dataType: column.dataType,
+                    isNullable: column.isNullable,
+                    isPrimaryKey: primaryKeys.contains(Array(column.name.uppercased().utf8)),
+                    defaultValue: column.defaultValue,
+                    comment: column.comment
+                )
+            }
+            cacheColumnTypes(table: table, schema: targetSchema, columns: columns)
+            return columns
+        }
 
         let sql = """
             SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COMMENT,
@@ -407,7 +441,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 name: name,
                 dataType: dataType,
                 isNullable: nullable,
-                isPrimaryKey: primaryKeys.contains(name.uppercased()),
+                isPrimaryKey: primaryKeys.contains(Array(name.uppercased().utf8)),
                 defaultValue: defaultValue,
                 comment: comment
             )
@@ -479,14 +513,39 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func clusteringKeyColumns(table: String, schema: String, database: String) async -> [String]? {
-        guard let result = try? await rawQuery(
-            SnowflakeSchemaQueries.showTablesLike(database: database, schema: schema, table: table)
-        ) else { return nil }
-        guard let clusterIdx = columnIndex(of: "cluster_by", in: result),
-              let row = result.rows.first,
-              let clusterBy = Self.text(row, clusterIdx),
-              !clusterBy.isEmpty else { return nil }
+        guard let shown = try? await shownTable(table: table, schema: schema, database: database),
+              let clusterBy = shown.clusterBy else { return nil }
         return SnowflakeSchemaQueries.parseClusterBy(clusterBy)
+    }
+
+    // A statement the server refuses, such as SHOW past its 10,000 rows, leaves the read to INFORMATION_SCHEMA.
+    private func shownColumns(table: String, schema: String, database: String) async throws -> [SnowflakeShownColumn]? {
+        do {
+            let result = try await rawQuery(
+                SnowflakeSchemaQueries.showColumns(database: database, schema: schema, table: table)
+            )
+            return SnowflakeShowMetadata.columns(from: Self.showRows(result))
+        } catch SnowflakeError.queryFailed {
+            return nil
+        }
+    }
+
+    private func shownTable(table: String, schema: String, database: String) async throws -> SnowflakeShownTable? {
+        do {
+            let result = try await rawQuery(
+                SnowflakeSchemaQueries.showTablesLike(database: database, schema: schema, table: table)
+            )
+            return SnowflakeShowMetadata.table(named: table, in: Self.showRows(result))
+        } catch SnowflakeError.queryFailed {
+            return nil
+        }
+    }
+
+    private static func showRows(_ result: SnowflakeQueryResult) -> SnowflakeShowRows {
+        SnowflakeShowRows(
+            columns: result.columns.map(\.name),
+            rows: result.rows.map { row in row.indices.map { text(row, $0) } }
+        )
     }
 
     var tableDDLIncludesForeignKeys: Bool { true }
@@ -531,6 +590,9 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             targetSchema = resolved
         }
         guard let database, let targetSchema else { return nil }
+        if let shown = try await shownTable(table: table, schema: targetSchema, database: database) {
+            return shown.rowCount.flatMap { Int(exactly: $0) }
+        }
         let sql = """
             SELECT ROW_COUNT
             FROM \(quoteIdentifier(database)).INFORMATION_SCHEMA.TABLES
@@ -547,6 +609,15 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let targetSchema = schema ?? connection?.currentSchema
         guard let database, let targetSchema else {
             return PluginTableMetadata(tableName: table)
+        }
+        if let shown = try await shownTable(table: table, schema: targetSchema, database: database) {
+            return PluginTableMetadata(
+                tableName: table,
+                dataSize: shown.bytes,
+                totalSize: shown.bytes,
+                rowCount: shown.rowCount,
+                comment: shown.comment
+            )
         }
         let sql = """
             SELECT ROW_COUNT, BYTES, COMMENT
@@ -687,7 +758,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return ddl
     }
 
-    private func fetchPrimaryKeyColumns(table: String, schema: String, database: String) async throws -> Set<String> {
+    private func fetchPrimaryKeyColumns(table: String, schema: String, database: String) async throws -> Set<[UInt8]> {
         let fqn = "\(quoteIdentifier(database)).\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
         guard let result = try? await rawQuery("SHOW PRIMARY KEYS IN TABLE \(fqn)") else {
             return []
@@ -695,10 +766,10 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let columnIndex = result.columns.firstIndex(where: { $0.name.lowercased() == "column_name" }) else {
             return []
         }
-        var keys: Set<String> = []
+        var keys: Set<[UInt8]> = []
         for row in result.rows {
             if let value = Self.text(row, columnIndex) {
-                keys.insert(value.uppercased())
+                keys.insert(Array(value.uppercased().utf8))
             }
         }
         return keys

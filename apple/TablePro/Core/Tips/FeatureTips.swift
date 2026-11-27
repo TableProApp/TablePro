@@ -89,12 +89,28 @@ internal struct FindPastQueriesTip: Tip {
         Image(systemName: "clock")
     }
 
+    // The rule counts donations for all time, so this many make every later one change nothing.
+    // The macro takes a literal, so the number is written twice.
+    static let queryRunsCounted = 10
+
     var rules: [Rule] {
         #Rule(Self.editorQueryRan) { $0.donations.count >= 10 }
     }
 
     var options: [any TipOption] {
         Tips.MaxDisplayCount(1)
+    }
+}
+
+// Whether a tip still needs a donation. An invalidated tip never shows again, and a rule that counts
+// donations for all time is met for good at `enough`. A rule with a window passes nil: its donations
+// age out, so only invalidation ends it.
+@available(macOS 14.0, *)
+internal enum FeatureTipDonation {
+    static func isNeeded(status: Tips.Status, donations: Int, enough: Int?) -> Bool {
+        if case .invalidated = status { return false }
+        guard let enough else { return true }
+        return donations < enough
     }
 }
 

@@ -41,12 +41,15 @@ extension MainContentCoordinator {
 
             do {
                 let route = DatabaseManager.shared.executionRoute(for: scope)
+                let refusesOpenTransaction = !route.isPooled
                 try await DatabaseManager.shared.withScopedDriver(
                     scope: scope, route: route, cancellation: .protectedWrite
                 ) { driver in
-                    try await driver.renameTable(
-                        name: oldName, schema: schema, to: newName, objectType: objectType
-                    )
+                    try await AppDefinitionCommit.run(on: driver, refusesOpenTransaction: refusesOpenTransaction) {
+                        try await driver.renameTable(
+                            name: oldName, schema: schema, to: newName, objectType: objectType
+                        )
+                    }
                 }
             } catch {
                 presentRenameFailure(error, object: ref.id)

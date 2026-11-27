@@ -42,6 +42,7 @@ extension MainContentCoordinator {
                 scope: scope,
                 route: services.databaseManager.executionRoute(for: scope),
                 cancellation: .cancellableRead(lease),
+                sessionWork: .statements,
                 body
             )
         }
@@ -52,6 +53,8 @@ extension MainContentCoordinator {
         )
     }
 
+    // True when the tab now shows the error.
+    @discardableResult
     func finishFailedQuery(
         _ error: Error,
         tabId: UUID,
@@ -61,12 +64,13 @@ extension MainContentCoordinator {
         isAutoLoad: Bool,
         trigger: TableLoadTrigger,
         traceToken: TableLoadTraceToken?,
-        serverOutput: PluginServerOutput = .none
-    ) {
+        serverOutput: PluginServerOutput = .none,
+        historySource: QueryHistorySource? = nil
+    ) -> Bool {
         guard tabExecution.settle(claim) else {
             reportStopRollback(error, tabId: tabId)
             traceStaleResultDropped(traceToken)
-            return
+            return false
         }
         /// Ahead of every early return below. A cancellation leaves through the next line, and a
         /// disconnected auto-load through the one after, so clearing this alongside the error text
@@ -82,25 +86,26 @@ extension MainContentCoordinator {
                 EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
             ])
             reportStopRollback(error, tabId: tabId)
-            return
+            return false
         }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
             parkedTableLoad = ParkedTableLoad(tabId: tabId, trigger: trigger)
-            return
+            return false
         }
-        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput, trigger: trigger)
+        handleQueryExecutionError(
+            error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput, trigger: trigger,
+            historySource: historySource
+        )
         reportQueryOperation(
             claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
         )
+        return true
     }
 
-    /// The change manager is one per window and holds whichever tab is selected, so a result that
-    /// still owns its own tab may not own the edits on screen. Clearing without the selection check
-    /// throws away another tab's uncommitted cells and its undo history.
+    // Only a result that still owns its tab replaces it, and only that tab's edits go.
     func clearChangesIfCurrent(claim: TabExecutionClaim) {
         guard tabExecution.ownsContent(claim), !Task.isCancelled else { return }
-        guard tabManager.selectedTabId == claim.tabId else { return }
-        changeManager.clearChangesAndUndoHistory()
+        dropEdits(ofReplacedResultIn: claim.tabId)
     }
 
     func resolveRowCap(sql: String, tabType: TabType, bypassLimit: Bool = false) -> Int? {
@@ -220,13 +225,15 @@ extension MainContentCoordinator {
         tabId: UUID,
         connectionType: DatabaseType,
         needsMetadataFetch: Bool,
-        schemaTask: Task<FetchedTableSchema, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         guard needsMetadataFetch else {
             launchPhase2Count(
                 tableName: tableName,
                 tabId: tabId,
-                connectionType: connectionType
+                connectionType: connectionType,
+                traceToken: traceToken
             )
             return
         }
@@ -234,7 +241,8 @@ extension MainContentCoordinator {
             tableName: tableName,
             tabId: tabId,
             connectionType: connectionType,
-            schemaTask: schemaTask
+            schemaTask: schemaTask,
+            traceToken: traceToken
         )
     }
 
@@ -243,26 +251,30 @@ extension MainContentCoordinator {
         tabId: UUID,
         connectionType: DatabaseType,
         schemaTask: Task<FetchedTableSchema, Error>?,
-        countsRows: Bool = true
+        countsRows: Bool = true,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
             connectionType: connectionType,
             schemaTask: schemaTask,
-            countsRows: countsRows
+            countsRows: countsRows,
+            traceToken: traceToken
         )
     }
 
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        connectionType: DatabaseType
+        connectionType: DatabaseType,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         queryExecutionCoordinator.launchPhase2Count(
             tableName: tableName,
             tabId: tabId,
-            connectionType: connectionType
+            connectionType: connectionType,
+            traceToken: traceToken
         )
     }
 
@@ -272,7 +284,8 @@ extension MainContentCoordinator {
         tabId: UUID,
         connection conn: DatabaseConnection,
         serverOutput: PluginServerOutput = .none,
-        trigger: TableLoadTrigger = .userInitiated
+        trigger: TableLoadTrigger = .userInitiated,
+        historySource: QueryHistorySource? = nil
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
@@ -280,7 +293,8 @@ extension MainContentCoordinator {
             tabId: tabId,
             connection: conn,
             serverOutput: serverOutput,
-            trigger: trigger
+            trigger: trigger,
+            historySource: historySource
         )
     }
 }

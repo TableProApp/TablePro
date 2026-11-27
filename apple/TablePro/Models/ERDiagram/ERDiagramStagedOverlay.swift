@@ -22,25 +22,25 @@ enum ERDiagramStagedOverlay {
         }
     }
 
-    static func apply(_ edits: [String: TableEdits], to graph: ERDiagramGraph) -> ERDiagramGraph {
+    static func apply(_ edits: [CatalogName: TableEdits], to graph: ERDiagramGraph) -> ERDiagramGraph {
         guard !edits.isEmpty else { return graph }
         var result = graph
         // An edited junction table stays drawn, or collapsing it would hide its staged keys.
         let editedIds = Set(edits.keys.compactMap { graph.nodeIndex[$0] })
         result.junctionTableIds.subtract(editedIds)
-        result.manyToManyEdges.removeAll { edits[$0.fkName] != nil }
+        result.manyToManyEdges.removeAll { edits[CatalogName($0.fkName)] != nil }
         result.nodes = graph.nodes.map { node in
-            guard let tableEdits = edits[node.tableName] else { return node }
+            guard let tableEdits = edits[CatalogName(node.tableName)] else { return node }
             return overlaid(node, with: tableEdits)
         }
 
-        var baseEdges: [String: EREdge] = [:]
+        var baseEdges: [[CatalogName]: EREdge] = [:]
         for edge in graph.edges where baseEdges[edgeKey(edge)] == nil {
             baseEdges[edgeKey(edge)] = edge
         }
-        var edges = graph.edges.filter { edits[$0.fromTable] == nil }
+        var edges = graph.edges.filter { edits[CatalogName($0.fromTable)] == nil }
         for (table, tableEdits) in edits.sorted(by: { $0.key < $1.key }) {
-            edges += overlaidEdges(of: table, with: tableEdits, graph: graph, baseEdges: baseEdges)
+            edges += overlaidEdges(of: table.text, with: tableEdits, graph: graph, baseEdges: baseEdges)
         }
         result.edges = edges
         return result
@@ -78,14 +78,14 @@ enum ERDiagramStagedOverlay {
         of table: String,
         with edits: TableEdits,
         graph: ERDiagramGraph,
-        baseEdges: [String: EREdge]
+        baseEdges: [[CatalogName]: EREdge]
     ) -> [EREdge] {
         let nullability = Dictionary(
             edits.columns.map { ($0.name, $0.isNullable) },
             uniquingKeysWith: { first, _ in first }
         )
         var edges: [EREdge] = []
-        for foreignKey in edits.foreignKeys where graph.nodeIndex[foreignKey.referencedTable] != nil {
+        for foreignKey in edits.foreignKeys where graph.nodeId(of: foreignKey.referencedTable) != nil {
             let mark = edits.foreignKeyEdits[foreignKey.id]
             for (offset, column) in foreignKey.columns.enumerated() {
                 let referenced = foreignKey.referencedColumns.indices.contains(offset)
@@ -93,7 +93,9 @@ enum ERDiagramStagedOverlay {
                     : ""
                 let key = "\(table).\(foreignKey.name).\(column)"
                 // A key added in place of a dropped one with its name is a separate relationship.
-                let base = mark == .added ? nil : baseEdges[key]
+                let base = mark == .added
+                    ? nil
+                    : baseEdges[[CatalogName(table), CatalogName(foreignKey.name), CatalogName(column)]]
                 let shown = edits.displayName(of: column)
                 edges.append(EREdge(
                     id: base?.id ?? ERDiagramGraphBuilder.stableId(for: "\(key).\(foreignKey.id.uuidString)"),
@@ -113,8 +115,8 @@ enum ERDiagramStagedOverlay {
         return edges
     }
 
-    private static func edgeKey(_ edge: EREdge) -> String {
-        "\(edge.fromTable).\(edge.fkName).\(edge.fromColumn)"
+    private static func edgeKey(_ edge: EREdge) -> [CatalogName] {
+        [CatalogName(edge.fromTable), CatalogName(edge.fkName), CatalogName(edge.fromColumn)]
     }
 }
 

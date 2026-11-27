@@ -48,6 +48,11 @@ fn fake_services_with(more: Vec<FakeDriver>) -> (AppServices, Backing) {
     }
     let runtime = crate::test_support::test_runtime();
     let settings = MemorySettings::new();
+    // These tests start on an empty library and expect the picker; mod setup_guide below clears it.
+    settings
+        .get()
+        .set_setup_guide_seen(true)
+        .expect("mark the setup guide seen");
     let dir = tempfile::tempdir().expect("a temporary directory");
     let paths = StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID);
     let storage = AppStorage::new(paths, Arc::new(FakeSecretVault::new()), &runtime.tasks());
@@ -378,7 +383,14 @@ fn a_file_without_a_hint_opens_in_the_idle_picker() {
 fn startup_installs_the_app_actions_and_their_accels() {
     let test = TestApp::started("Actions");
 
-    for action in ["new-window", "quit", "preferences", "about", "buy-license"] {
+    for action in [
+        "new-window",
+        "quit",
+        "preferences",
+        "about",
+        "buy-license",
+        "manage-shared-links",
+    ] {
         assert!(test.app.lookup_action(action).is_some(), "app.{action} is missing");
     }
 }
@@ -1202,7 +1214,7 @@ mod mcp {
             database: path.display().to_string(),
             username: String::new(),
             tls: TlsConfig::disabled(),
-            safe_mode: SafeModeLevel::Off,
+            safe_mode: SafeModeLevel::Silent,
             external_access: access,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
@@ -1211,10 +1223,14 @@ mod mcp {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         };
         test.services()
             .storage
@@ -1247,6 +1263,27 @@ mod mcp {
     fn opened(test: &TestApp, host: &Arc<mcp_bridge::GtkMcpHost>, saved: &SavedConnection) -> OpenOutcome {
         let (host, saved) = (host.clone(), saved.clone());
         on_runtime(test, async move { host.open(saved).await })
+    }
+
+    #[gtk4::test]
+    fn the_host_reads_the_active_project_for_each_call_from_the_setting() {
+        let test = TestApp::started("McpActiveProject");
+        let services = test.services();
+        let host = test.app.answer_mcp(&services);
+        assert_eq!(host.active_project(), None, "a fresh profile lists a project");
+        let project = Uuid::new_v4();
+
+        services
+            .settings
+            .set_active_project(Some(project))
+            .expect("the setting");
+        wait_until(WAIT, || host.active_project() == Some(project)).expect("the host to follow the switch");
+        // On the runtime, where the server's tools call it.
+        let asked = host.clone();
+        assert_eq!(on_runtime(&test, async move { asked.active_project() }), Some(project));
+
+        services.settings.set_active_project(None).expect("the setting");
+        wait_until(WAIT, || host.active_project().is_none()).expect("the host to follow the switch back");
     }
 
     #[gtk4::test]
@@ -1502,7 +1539,7 @@ mod links {
             database: path.display().to_string(),
             username: String::new(),
             tls: TlsConfig::disabled(),
-            safe_mode: SafeModeLevel::Off,
+            safe_mode: SafeModeLevel::Silent,
             external_access: ExternalAccess::default(),
             ai_policy: AiPolicy::default(),
             query_timeout_secs: None,
@@ -1511,10 +1548,14 @@ mod links {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         };
         test.services()
             .storage
@@ -1671,5 +1712,129 @@ mod links {
         assert!(window.connect_dialog().is_none());
         assert_eq!(test.app.windows().len(), 1);
         assert_eq!(window.page_name(), "picker");
+    }
+}
+
+mod share_links {
+    use super::*;
+    use crate::services::share_link::share_link_text;
+    use crate::ui::SessionWindow;
+
+    const TOKEN: &str = "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb7dEf0hIjK";
+
+    fn link(text: &str) -> gio::File {
+        crate::services::connection_link::register_link_schemes().expect("register the links");
+        gio::File::for_uri(text)
+    }
+
+    #[gtk4::test]
+    fn a_share_link_keeps_its_text_through_gio() {
+        let text = format!("tablepro://share?token={TOKEN}");
+
+        let file = link(&text);
+
+        assert_eq!(file.uri(), text);
+        assert_eq!(share_link_text(&file).as_deref(), Some(text.as_str()));
+    }
+
+    #[gtk4::test]
+    fn a_share_link_without_a_token_says_it_is_gone_and_opens_nothing() {
+        let test = TestApp::started("ShareLinkMalformed");
+        test.app.activate();
+        wait_until(WAIT, || test.app.windows().len() == 1).expect("the picker");
+        let window = test
+            .app
+            .active_window()
+            .and_downcast::<SessionWindow>()
+            .expect("the picker");
+
+        test.app.open(&[link("tablepro://share?token=short")], "");
+
+        wait_until(WAIT, || {
+            window
+                .toast_titles()
+                .contains(&"This shared link is no longer available.".to_owned())
+        })
+        .expect("the toast saying why");
+        assert_eq!(test.app.windows().len(), 1);
+        assert_eq!(window.page_name(), "picker");
+    }
+}
+
+mod setup_guide {
+    use super::*;
+    use crate::ui::SessionWindow;
+
+    fn unseen(name: &str) -> TestApp {
+        let test = TestApp::new_with(name, |services| {
+            if let Err(error) = services.settings.set_setup_guide_seen(false) {
+                panic!("{error}");
+            }
+            services
+        });
+        test.app
+            .register(gio::Cancellable::NONE)
+            .expect("register the application");
+        test
+    }
+
+    fn session(window: adw::ApplicationWindow) -> SessionWindow {
+        window.downcast().expect("a session window")
+    }
+
+    #[gtk4::test]
+    fn an_empty_library_opens_the_guide_in_the_first_picker_window_of_the_launch_only() {
+        let test = unseen("SetupGuideFirstWindow");
+
+        let first = session(test.window());
+        wait_until(WAIT, || first.page_name() == "setup").expect("the guide in the first window");
+        let second = session(test.window());
+        let opened = wait_until(Duration::from_millis(500), || second.page_name() == "setup");
+
+        assert!(opened.is_err(), "a second picker window opened the guide (G11)");
+        assert_eq!(second.page_name(), "picker");
+        assert!(
+            !test.services().settings.setup_guide_seen(),
+            "showing the guide marked it seen before it ended"
+        );
+    }
+
+    #[gtk4::test]
+    fn skip_ends_the_guide_on_the_picker_and_marks_it_seen() {
+        let test = unseen("SetupGuideSkip");
+        let window = session(test.window());
+        wait_until(WAIT, || window.page_name() == "setup").expect("the guide");
+
+        crate::test_support::descendants(&window)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+            .find(|button| button.label().as_deref() == Some("_Skip") && button.is_mapped())
+            .expect("the guide's Skip")
+            .emit_clicked();
+
+        wait_until(WAIT, || window.page_name() == "picker").expect("the picker");
+        assert!(test.services().settings.setup_guide_seen());
+    }
+
+    #[gtk4::test]
+    fn a_guide_that_ended_once_does_not_open_again() {
+        let test = TestApp::started("SetupGuideSeen");
+
+        let window = session(test.window());
+        let opened = wait_until(Duration::from_millis(500), || window.page_name() == "setup");
+
+        assert!(opened.is_err(), "the guide opened though it was seen (G2)");
+        assert_eq!(window.page_name(), "picker");
+    }
+
+    #[gtk4::test]
+    fn the_menu_opens_the_guide_however_the_library_stands() {
+        let test = TestApp::started("SetupGuideFromMenu");
+        let window = session(test.window());
+        wait_until(WAIT, || window.page_name() == "picker").expect("the picker");
+
+        WidgetExt::activate_action(&window, "win.setup-guide", None).expect("win.setup-guide");
+
+        wait_until(WAIT, || window.page_name() == "setup").expect("the guide (G6)");
     }
 }

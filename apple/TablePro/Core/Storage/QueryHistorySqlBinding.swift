@@ -40,4 +40,10 @@ struct QueryHistorySqlClause {
     static func placeholders(count: Int) -> String {
         Array(repeating: "?", count: count).joined(separator: ", ")
     }
+
+    // Only the rows of these connections, as a project's scope narrows the history.
+    mutating func appendConnections(in ids: Set<UUID>, column: String) {
+        let listed = Array(ids)
+        append(" AND \(column) IN (\(Self.placeholders(count: listed.count)))", bindings: listed.map { .text($0.uuidString) })
+    }
 }

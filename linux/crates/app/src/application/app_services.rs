@@ -1,4 +1,4 @@
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -20,6 +20,7 @@ use tablepro_storage::{QueryHistory, StoragePaths};
 use crate::config;
 use crate::runtime::GioProcessHold;
 use crate::services::account_service::{AccountHandle, AccountService, DesktopBrowser, KeyringRefreshToken};
+use crate::services::active_project::ActiveProject;
 use crate::services::active_session::ActiveSession;
 use crate::services::ai_service::AiService;
 use crate::services::connection_deletion::ConnectionDeletion;
@@ -49,6 +50,9 @@ pub struct AppServices {
     pub tasks: Tasks,
     /// The saved connections every picker shows, following the store.
     pub saved_connections: Rc<SavedConnectionList>,
+    // The setting, where the MCP server's threads read it for each call.
+    pub active_project: ActiveProject,
+    pub(crate) project_menu: Rc<crate::ui::projects::ProjectMenu>,
     /// Edits, copies and regroups saved connections with their secrets.
     pub saved_connection_editor: SavedConnectionEditor,
     /// Shows a file selected in the file manager.
@@ -76,6 +80,8 @@ pub struct AppServices {
     account: RefCell<AccountService>,
     telemetry: Telemetry,
     app_opened: RefCell<Option<AppOpenedChecks>>,
+    // A second picker window in one launch never opens the setup guide (core ADR 0057, G11).
+    first_picker_claimed: Cell<bool>,
 }
 
 // The usage data follows the account, which a sign-out, a removed device or a refused sign-in leaves
@@ -123,6 +129,18 @@ impl AppServices {
         let open_sessions = OpenSessions::new(storage.workspaces().clone(), application_hold.clone());
         let drivers = Arc::new(drivers);
         let saved_connections = SavedConnectionList::follow(storage.connections(), drivers.clone());
+        let active_project = ActiveProject::default();
+        active_project.set(settings.active_project());
+        saved_connections.set_active_project(settings.active_project());
+        let (following, mirror) = (Rc::downgrade(&saved_connections), active_project.clone());
+        // Never disconnected: the settings and the list both live as long as the process.
+        settings.connect_active_project_changed(move |project| {
+            mirror.set(project);
+            if let Some(list) = following.upgrade() {
+                list.set_active_project(project);
+            }
+        });
+        let project_menu = crate::ui::projects::ProjectMenu::follow(saved_connections.clone());
         let saved_connection_editor =
             SavedConnectionEditor::new(storage.connections().clone(), storage.secrets().clone(), tasks.clone());
         let ai = AiService::new(settings.clone(), tasks.clone(), None);
@@ -138,6 +156,8 @@ impl AppServices {
             storage: Rc::new(storage),
             tasks,
             saved_connections,
+            active_project,
+            project_menu,
             saved_connection_editor,
             file_revealer: Rc::new(FileLauncherRevealer),
             ai,
@@ -153,7 +173,12 @@ impl AppServices {
             account: RefCell::new(AccountService::signed_out()),
             telemetry: Telemetry::default(),
             app_opened: RefCell::default(),
+            first_picker_claimed: Cell::new(false),
         }
+    }
+
+    pub(crate) fn claim_first_picker_window(&self) -> bool {
+        !self.first_picker_claimed.replace(true)
     }
 
     /// A second launch builds this too before it hands its command line
@@ -193,7 +218,8 @@ impl AppServices {
         services.mcp_tokens = Some(mcp_tokens);
         services.account_tokens = Some(account_tokens);
         services.telemetry = telemetry;
-        services.ai = AiService::new(services.settings.clone(), services.tasks.clone(), Some(ai_keys));
+        let models = tablepro_ai::ModelCatalog::new(services.storage.paths().cache.join("ai-models"));
+        services.ai = AiService::with_catalog(services.settings.clone(), services.tasks.clone(), Some(ai_keys), models);
         services
     }
 
@@ -514,7 +540,8 @@ mod tests {
 
     use chrono::{TimeDelta, Utc};
     use tablepro_account::{
-        Account, AccountError, AccountSettings, AppClient, CallbackPage, DeviceDescription, Endpoints, MachineId, fakes,
+        Account, AccountError, AccountSettings, AppClient, CallbackPage, DeviceDescription, Endpoints, FixedServer,
+        MachineId, ServerSettings, fakes,
     };
     use tablepro_session::SessionKey;
     use tablepro_session::fakes::FakeConnector;
@@ -575,19 +602,23 @@ mod tests {
     fn account(stub: &CloudStub, machine: MachineId, dir: &Path) -> (Account, AccountHandle) {
         let settings = AccountSettings {
             client: AppClient::LINUX,
-            endpoints: Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints"),
+            server: ServerSettings::Fixed(FixedServer {
+                endpoints: Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints"),
+                keys: fakes::keys().expect("the test key"),
+                issuer: fakes::ISSUER.to_owned(),
+            }),
             device: DeviceDescription {
                 name: "Ada's laptop".to_owned(),
                 app_version: "0.1.0".to_owned(),
                 os_version: "Ubuntu 26.04".to_owned(),
             },
             machine_id: machine,
-            keys: fakes::keys().expect("the test key"),
             account_file: dir.join("account.json"),
             callback_page: CallbackPage {
                 finished: String::new(),
                 unknown: String::new(),
             },
+            legacy_entitlement_file: None,
         };
         let (status, receiver) = watch::channel(AccountStatus::SignedOut);
         let account = Account::new(

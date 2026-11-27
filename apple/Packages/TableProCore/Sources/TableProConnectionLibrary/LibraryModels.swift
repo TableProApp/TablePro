@@ -8,6 +8,7 @@ public protocol LibraryConnectionRepresentable {
     var username: String { get }
     var libraryTypeName: String { get }
     var groupId: UUID? { get }
+    var projectId: UUID? { get }
     var tagIds: [UUID] { get }
     var sortOrder: Int { get }
     var isFavorite: Bool { get }
@@ -17,6 +18,13 @@ public protocol LibraryGroupRepresentable {
     var id: UUID { get }
     var name: String { get }
     var parentId: UUID? { get }
+    var projectId: UUID? { get }
+    var sortOrder: Int { get }
+}
+
+public protocol LibraryProjectRepresentable {
+    var id: UUID { get }
+    var name: String { get }
     var sortOrder: Int { get }
 }
 
@@ -58,6 +66,10 @@ public struct LibraryQuery: Hashable, Sendable {
 
     public var hasTextTerm: Bool {
         !trimmedText.isEmpty
+    }
+
+    public var words: [String] {
+        text.split(whereSeparator: \.isWhitespace).map(String.init)
     }
 }
 

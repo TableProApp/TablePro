@@ -320,11 +320,12 @@ internal struct CompareMetadataService {
     /// that is missing from a sparse map asks for the folded fallback, so computing it per lookup
     /// made the fallback quadratic in the table count.
     private struct FoldedMap<Value: Sendable>: Sendable {
-        let byName: [String: Value]
+        // By bytes: a sparse map's String lookup handed a table with no entry the entry of its NFC or NFD twin.
+        let byName: [CatalogName: Value]
         let byFoldedName: [String: Value]
 
         init(_ map: [String: Value]) {
-            byName = map
+            byName = map.keyedByCatalogName
             var folded: [String: Value] = [:]
             var collided: Set<String> = []
             for (key, value) in map {
@@ -400,7 +401,7 @@ internal struct CompareMetadataService {
         /// alone, so it would have dropped the real one.
         func lookup<Value>(_ map: FoldedMap<Value>?, _ name: String) -> Value? {
             guard let map else { return nil }
-            if let exact = map.byName[name] { return exact }
+            if let exact = map.byName[CatalogName(name)] { return exact }
             let folded = name.lowercased()
             guard unambiguousFolded.contains(folded) else { return nil }
             return map.byFoldedName[folded]
@@ -533,7 +534,7 @@ internal struct CompareMetadataService {
     }
 
     nonisolated internal static func pluginDriver(from driver: DatabaseDriver) -> (any PluginDatabaseDriver)? {
-        (driver as? PluginDriverAdapter)?.schemaPluginDriver
+        driver.plugin
     }
 }
 

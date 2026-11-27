@@ -11,14 +11,21 @@ mod files;
 mod host;
 mod record;
 pub mod review;
+mod sources;
 mod sql_file_tree;
 
 pub use app::{ForeignApp, ForeignImporter, ImportRequest, Inventory, PasswordSource, SavedQuerySupport};
 pub use collect::{CollectedConnection, CollectedImport, CollectedSavedQuery, PasswordOutcome};
 pub use dirs::{ForeignAppDirs, ForeignPlatform};
 pub use error::ForeignImportError;
-pub use host::{ForeignHost, ForeignKeychain, KeychainRead, PlainHost};
+pub use host::{
+    DataProtection, ForeignCredentialManager, ForeignHost, ForeignKeychain, ForeignSecretService, KeychainRead,
+    PlainHost, SecretScope,
+};
 pub use record::{
     ForeignColor, ForeignConnection, ForeignConnectionRecord, ForeignCredentials, ForeignJumpHost, ForeignSavedQuery,
     ForeignSsh, ForeignSshAuth, ForeignSsl, ForeignSslMode, SavedQueryContent, TLS_SETTINGS_UNREAD,
+};
+pub use sources::{
+    ForeignSource, PasswordOffer, ScanDepth, SourceAvailability, UnreadableReason, preselect, sources_blocking,
 };

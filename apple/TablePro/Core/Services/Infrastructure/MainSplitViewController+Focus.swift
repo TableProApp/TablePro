@@ -17,17 +17,28 @@ import TableProTextEngine
 /// a window hosting several connections has several editors registered at once, and a window-wide
 /// registry cannot tell them apart.
 internal extension MainSplitViewController {
-    /// What the window names as its `initialFirstResponder`: the container the selected tab's content
-    /// is shown in.
-    ///
-    /// AppKit picks a first responder once, as the window is first placed on screen, and only from
-    /// the views that exist at that moment. The editor, the grid and the object list are SwiftUI and
-    /// do not exist yet, so left to itself AppKit took the first key view it could find, which was
-    /// the connections strip, and Command W then closed the connection instead of the tab. The
-    /// container takes no focus itself, so the window keeps it, and the content adopts it once it is
-    /// built (`SQLEditorCoordinator`, `SidebarOutlineView`), whatever else the window holds by then.
+    // AppKit picks a first responder once, at first show, from the views that exist then, and the editor, the grid
+    // and the object list are SwiftUI that arrives later. This container takes no focus and names no key view after
+    // it until the window is on screen (`WorkspacePaneHost`), so the window stays vacant and the content adopts it
+    // once built (`SQLEditorCoordinator`, `SidebarOutlineView`). Left to AppKit, the pick was the connections strip
+    // (Command W closed the connection) or the sidebar filter.
     var initialFirstResponderContainer: NSView {
         detailPaneHost.view
+    }
+
+    var detailPaneHoldsKeyboard: Bool {
+        guard let responder = view.window?.firstResponder as? NSView else { return false }
+        return responder.isDescendant(of: detailPaneHost.view)
+    }
+
+    // A connection switch takes the outgoing editor or grid out of the window. The keyboard follows into the incoming
+    // connection's editor or grid; with neither built yet, its object list adopts the empty window (`SidebarOutlineView`).
+    func keepKeyboardInDetailPane(detailHeldKeyboard: Bool) {
+        guard detailHeldKeyboard, let window = view.window, window.firstResponder === window,
+              let selected = workspaces.selected, selected.detailMode == .browse else { return }
+        guard !focusQueryEditor() else { return }
+        // Not the Focus Results command: a switch must not expand a results pane the user collapsed.
+        _ = selected.sessionState?.coordinator.focusActiveGrid()
     }
 
     @discardableResult

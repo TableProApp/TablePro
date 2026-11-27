@@ -16,23 +16,24 @@ struct AIModelCatalogTests {
         try #require(AIProviderRegistry.shared.descriptor(for: AIProviderType.claude.rawValue))
     }
 
-    @Test("Live provider metadata wins over the static overlay")
+    @Test("Live provider metadata wins over the catalog")
     func liveMetadataWins() throws {
         let live = AIModelInfo(
             id: "claude-haiku-4-5",
             reasoning: AIReasoningSupport(mode: .adaptive, effortLevels: [.low, .medium, .high, .xhigh])
         )
-        let levels = try claudeDescriptor().supportedEffortLevels(forModelID: "claude-haiku-4-5", fetched: live)
-        #expect(levels == [.low, .medium, .high, .xhigh], "live metadata must override the offline table")
+        #expect(try claudeDescriptor().supportedEffortLevels(for: live) == [.low, .medium, .high, .xhigh])
     }
 
-    /// OpenAI has no effort resolver and does not curate gpt-5.4, and the plain default lacks
-    /// Extra High, so only the offline table can supply this answer.
-    @Test("Without live metadata the overlay supplies the answer")
-    func overlayFallback() throws {
+    // Before any list loads, a send reads the bundled or cached catalog, never the network.
+    @Test("Without a loaded list the catalog supplies the model's levels")
+    func catalogFallback() throws {
+        let reference = AIModelReference(file: try AIModelReferenceFixtures.file)
+        let source = AIModelSource(key: "openai", api: "responses", hidesUnknown: true, liveOrdered: false)
+        let info = AIModelCatalog().info(providerID: UUID(), source: source, modelID: "gpt-5.6-sol", reference: reference)
         let openAI = try #require(AIProviderRegistry.shared.descriptor(for: AIProviderType.openAI.rawValue))
-        #expect(openAI.curatedModel(forID: "gpt-5.4") == nil)
-        #expect(openAI.supportedEffortLevels(forModelID: "gpt-5.4", fetched: nil) == [.low, .medium, .high, .xhigh])
+        #expect(openAI.supportedEffortLevels(for: info) == [.low, .medium, .high, .xhigh, .max])
+        #expect(openAI.supportedEffortLevels(for: nil).isEmpty, "no level is guessed for a model nothing describes")
     }
 
     @Test("Storing an empty list never erases what is already known")
@@ -148,7 +149,8 @@ struct AIModelCatalogTests {
     func refreshFetchesThroughTheTransport() async {
         let catalog = AIModelCatalog()
         let provider = UUID()
-        await catalog.refresh(providerID: provider, using: ListedModelsTransport(ids: ["a", "b"]))
+        let config = AIProviderConfig(id: provider, type: .custom, endpoint: "http://localhost:1")
+        await catalog.refresh(config: config, using: ListedModelsTransport(ids: ["a", "b"]))
         #expect(catalog.fetchedInfo(providerID: provider, modelID: "b") != nil)
     }
 
@@ -164,32 +166,66 @@ struct AIModelCatalogTests {
         #expect(catalog.fetchedInfo(providerID: provider, modelID: "m") == nil)
     }
 
-    @Test("Anthropic capability payloads decode into reasoning support")
-    func anthropicCapabilityDecoding() throws {
-        let adaptive: [String: Any] = [
-            "id": "claude-opus-5",
-            "display_name": "Claude Opus 5",
+    private static func anthropicModel(
+        _ id: String,
+        disabled: Bool,
+        efforts: [String],
+        images: Bool = true,
+        lifecycle: String = "active"
+    ) -> [String: Any] {
+        var effort: [String: Any] = ["supported": !efforts.isEmpty]
+        for level in ["low", "medium", "high", "xhigh", "max"] {
+            effort[level] = ["supported": efforts.contains(level)]
+        }
+        return [
+            "id": id,
+            "display_name": "Claude",
             "max_input_tokens": 1_000_000,
             "max_tokens": 128_000,
+            "lifecycle": lifecycle,
+            "created_at": "2026-10-20T00:00:00Z",
             "capabilities": [
+                "image_input": ["supported": images],
                 "thinking": [
                     "supported": true,
-                    "types": ["adaptive": ["supported": true], "enabled": ["supported": false]]
+                    "types": [
+                        "adaptive": ["supported": true],
+                        "enabled": ["supported": false],
+                        "disabled": ["supported": disabled]
+                    ]
                 ],
-                "effort": [
-                    "supported": true,
-                    "low": ["supported": true],
-                    "medium": ["supported": true],
-                    "high": ["supported": true],
-                    "xhigh": ["supported": true]
-                ]
+                "effort": effort
             ]
         ]
-        let decoded = try #require(AnthropicProvider.decodeModel(adaptive))
-        #expect(decoded.reasoning?.mode == .adaptive)
-        #expect(decoded.maxOutputTokens == 128_000)
-        #expect(decoded.contextWindow == 1_000_000)
-        #expect(decoded.reasoning?.effortLevels.contains(.xhigh) == true)
+    }
+
+    // Opus 5.5 answers `thinking: disabled` with a 400, so it always reasons; Opus 5 can be turned off.
+    @Test("Anthropic capabilities decode the levels, max, Off and image input the API states")
+    func anthropicCapabilityDecoding() throws {
+        let always = try #require(AnthropicProvider.decodeModel(Self.anthropicModel(
+            "claude-opus-5-5",
+            disabled: false,
+            efforts: ["low", "medium", "high", "xhigh", "max"],
+            images: false
+        )))
+        let reasoning = try #require(always.reasoning)
+        #expect(reasoning.mode == .adaptive)
+        #expect(reasoning.effortLevels == [.low, .medium, .high, .xhigh, .max])
+        #expect(!reasoning.effortLevels.contains(.minimal), "Minimal is not an Anthropic level")
+        #expect(reasoning.isMandatory)
+        #expect(!reasoning.canTurnOff)
+        #expect(always.supportsImages == false)
+        #expect(always.maxOutputTokens == 128_000)
+        #expect(always.released != nil)
+
+        let optional = try #require(AnthropicProvider.decodeModel(Self.anthropicModel(
+            "claude-opus-5",
+            disabled: true,
+            efforts: ["low", "medium", "high", "xhigh"]
+        )))
+        #expect(optional.reasoning?.canTurnOff == true)
+        #expect(optional.reasoning?.isMandatory == false)
+        #expect(optional.supportsImages == true)
 
         let budgeted: [String: Any] = [
             "id": "claude-haiku-4-5",
@@ -206,13 +242,22 @@ struct AIModelCatalogTests {
         #expect(decodedBudgeted.reasoning?.sendsEffortParameter == false)
     }
 
+    @Test("A deprecated Claude model is marked, with its retirement date")
+    func anthropicLifecycle() throws {
+        var json = Self.anthropicModel("claude-sonnet-4-5", disabled: true, efforts: [], lifecycle: "deprecated")
+        json["retires_at"] = "2026-11-30T00:00:00Z"
+        let model = try #require(AnthropicProvider.decodeModel(json))
+        #expect(model.isDeprecated)
+        #expect(model.retiresAt == ISO8601DateFormatter().date(from: "2026-11-30T00:00:00Z"))
+    }
+
     @Test("A payload with no capabilities object leaves reasoning unknown rather than guessing")
     func missingCapabilitiesStaysUnknown() throws {
         let decoded = try #require(AnthropicProvider.decodeModel(["id": "claude-future-9"]))
         #expect(decoded.reasoning == nil)
     }
 
-    @Test("Gemini model metadata decodes thinking support and token limits")
+    @Test("Gemini model metadata decodes its name and token limits")
     func geminiDecoding() throws {
         let thinking: [String: Any] = [
             "name": "models/gemini-3.6-flash",
@@ -224,8 +269,8 @@ struct AIModelCatalogTests {
         ]
         let decoded = try #require(GeminiProvider.decodeModel(thinking))
         #expect(decoded.id == "gemini-3.6-flash", "the models/ prefix must be stripped")
+        #expect(decoded.displayName == "Gemini 3.6 Flash")
         #expect(decoded.maxOutputTokens == 65_536)
-        #expect(decoded.reasoning?.mode == .effortOnly)
 
         let embedding: [String: Any] = [
             "name": "models/text-embedding-004",
@@ -238,8 +283,30 @@ struct AIModelCatalogTests {
     func reasoningClamps() {
         let support = AIReasoningSupport(mode: .adaptive, effortLevels: [.low, .medium, .high])
         #expect(support.clampedEffort(.xhigh) == .high)
+        #expect(support.clampedEffort(.max) == .high)
         #expect(support.clampedEffort(.medium) == .medium)
         #expect(AIReasoningSupport.unsupported.clampedEffort(.high) == nil)
+    }
+
+    // A saved Off reaches only a model that takes it; one that always reasons runs its lowest level instead.
+    @Test("Off is sent only where the model takes an explicit off")
+    func offClamps() {
+        let explicit = AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .high], canTurnOff: true)
+        let always = AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .high], isMandatory: true)
+        let optional = AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .high])
+        #expect(explicit.clampedEffort(.off) == .off)
+        #expect(always.clampedEffort(.off) == .low)
+        #expect(optional.clampedEffort(.off) == nil)
+    }
+
+    @Test("The preselected level is the server's default, never above High")
+    func preferredEffortIsCapped() {
+        let maxDefault = AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .high, .max], defaultEffort: .max)
+        let lowDefault = AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium], defaultEffort: .low)
+        let noDefault = AIReasoningSupport(mode: .effortOnly, effortLevels: [.high])
+        #expect(maxDefault.preferredEffort == .high)
+        #expect(lowDefault.preferredEffort == .low)
+        #expect(noDefault.preferredEffort == .high)
     }
 
     @Test("Budgeted models never advertise the effort parameter")

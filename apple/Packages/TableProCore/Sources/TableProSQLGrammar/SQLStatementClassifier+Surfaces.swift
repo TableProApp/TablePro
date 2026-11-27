@@ -28,7 +28,7 @@ extension SQLStatementTiering {
         duckDB: [
             "GLOB", "SNIFF_CSV", "GETENV", "QUERY", "QUERY_TABLE", "JSON_EXECUTE_SERIALIZED_SQL", "FROM_SUBSTRAIT",
             "FROM_SUBSTRAIT_JSON", "IMPORT_DATABASE", "ARROW_SCAN", "ARROW_SCAN_DUMB", "LOAD_AWS_CREDENTIALS",
-            "ENABLE_LOGGING", "START_UI", "START_UI_SERVER"
+            "ENABLE_LOGGING", "START_UI", "START_UI_SERVER", "GET_MD_TOKEN", "PROMPT", "EMBEDDING"
         ],
         clickHouse: [
             "FILE", "FILECLUSTER", "URL", "URLCLUSTER", "S3", "S3CLUSTER", "GCS", "COSN", "OSS", "HDFS", "HDFSCLUSTER",
@@ -40,8 +40,17 @@ extension SQLStatementTiering {
     ]
 
     static let functionFamiliesReachingOutside: [String: [String]] = [
-        duckDB: ["READ_", "PARQUET_", "ST_READ", "ICEBERG_", "DELTA_", "SQLITE_", "POSTGRES_", "MYSQL_"],
+        // MotherDuck's md_ calls run on the service with the user's token, md_run_flight runs Python there.
+        duckDB: [
+            "READ_", "PARQUET_", "ST_READ", "ICEBERG_", "DELTA_", "SQLITE_", "POSTGRES_", "MYSQL_", "PROMPT_", "MD_",
+            "__MD_"
+        ],
         clickHouse: ["AZUREBLOBSTORAGE", "ICEBERG", "DELTALAKE", "HUDI", "PAIMON"]
+    ]
+
+    // Not in filesystemNames: `prompt_query` is a plausible column name on other engines.
+    static let duckDBPragmasReachingOutside: Set<String> = [
+        "PRINT_MD_TOKEN", "MD_CONNECT", "__DUCK_PANIC", "__RESET_USER_ENVIRONMENT", "PROMPT_QUERY",
     ]
 
     // A read of a file stays a read in the app's own windows, where the tier sets the row cap.
@@ -115,6 +124,25 @@ extension SQLStatementTiering {
         return false
     }
 
+    static func namesDuckDBPragmaReachingOutside(_ code: StatementCode, grammar: SQLLexicalGrammar) -> Bool {
+        guard let keyword = code.tokens.firstIndex(where: { $0.kind != .open }), code.tokens[keyword].word == "PRAGMA",
+              code.tokens.indices.contains(keyword + 1)
+        else { return false }
+        let name = code.tokens[keyword + 1]
+        switch name.kind {
+        case .word(let word):
+            return duckDBPragmasReachingOutside.contains(word)
+        case .quoted:
+            guard let span = SQLNonCodeSpan.span(at: name.location, in: code.text, grammar: grammar),
+                  identifierQuotes.contains(code.text.character(at: span.start))
+            else { return false }
+            let inner = NSRange(location: span.start + 1, length: max(0, span.contentEnd - span.start - 1))
+            return duckDBPragmasReachingOutside.contains(code.text.substring(with: inner).uppercased())
+        default:
+            return false
+        }
+    }
+
     func reachesOutsideDatabase(
         _ code: StatementCode,
         calls: [SQLFunctionCallScanner.Call],
@@ -128,7 +156,9 @@ extension SQLStatementTiering {
             return true
         }
         guard let names = Self.functionsReachingOutside[databaseTypeId] else { return false }
-        if databaseTypeId == Self.duckDB, SQLFileNamedAsTable.appears(in: code.statement, grammar: grammar) {
+        if databaseTypeId == Self.duckDB,
+           SQLFileNamedAsTable.appears(in: code.statement, grammar: grammar)
+               || Self.namesDuckDBPragmaReachingOutside(code, grammar: grammar) {
             return true
         }
         let families = Self.functionFamiliesReachingOutside[databaseTypeId] ?? []
@@ -138,6 +168,18 @@ extension SQLStatementTiering {
             return names.contains(function) || families.contains(where: function.hasPrefix)
         }
     }
+
+    // SurrealQL's fn:: and api:: calls run a body the database stores, which can define, grant or write, and file::
+    // reads and writes a bucket. Measured on 2.7.0 and 3.3.5: `SELECT fn::mk()` ran the DEFINE TABLE in its body.
+    func callsSurrealStoredCode(_ code: StatementCode) -> Bool {
+        guard databaseTypeId == Self.surrealDB else { return false }
+        return code.tokens.indices.contains { index in
+            code.tokens[index].word.map(Self.surrealStoredCodeNamespaces.contains) == true
+                && code.isSymbol(Self.colon, at: index + 1) && code.isSymbol(Self.colon, at: index + 2)
+        }
+    }
+
+    private static let surrealStoredCodeNamespaces: Set<String> = ["FN", "API", "FILE"]
 
     // KingbaseES has it in Oracle mode only, and its type id cannot say which mode a server runs.
     static let enginesWithSequencePseudoColumns: Set<String> = [
@@ -176,6 +218,17 @@ extension SQLStatementTiering {
             in: code.text, tokens: code.tokens, grammar: grammar
         )
         return namesTable ? .write : .safe
+    }
+
+    // Whatever keyword runs it; an EXPLAIN is tiered by the statement it runs, and a routine's body runs later.
+    func callsDuckDBDestructiveFunction(_ code: StatementCode, calls: [SQLFunctionCallScanner.Call]) -> Bool {
+        guard databaseTypeId == Self.duckDB, !SQLExplainStatement.keywords.contains(code.keyword),
+              !Self.definesRoutine(code)
+        else { return false }
+        return calls.contains { call in
+            guard case .named(let name, _) = call.callee else { return true }
+            return SQLStateChangingFunctions.isDuckDBDestructiveCall(name)
+        }
     }
 
     /// A MySQL `/*! ... */` runs its body, so it is tiered by what the body says whatever the grammar thinks of it, and

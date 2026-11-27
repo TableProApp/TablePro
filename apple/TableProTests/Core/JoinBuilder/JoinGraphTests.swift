@@ -27,7 +27,7 @@ struct JoinGraphTests {
         foreignKeys: [String: [ForeignKeyInfo]] = foreignKeys,
         isLocal: (ForeignKeyInfo) -> Bool = { _ in true }
     ) -> JoinGraph {
-        JoinGraph(columns: columns, foreignKeys: foreignKeys, isLocal: isLocal)
+        JoinGraph(columns: columns.keyedByCatalogName, foreignKeys: foreignKeys.keyedByCatalogName, isLocal: isLocal)
     }
 
     @Test("A key between two picked tables is found from either side")

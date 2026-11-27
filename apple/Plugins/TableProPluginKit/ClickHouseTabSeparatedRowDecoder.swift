@@ -25,6 +25,7 @@ public struct ClickHouseTabSeparatedRowDecoder: Sendable {
     // The pending bytes already searched for a separator, so a line split over many chunks is scanned once.
     private var searchedCount = 0
     private var columnNames: [String]?
+    private var literalSyntaxColumns: [Bool] = []
 
     public init() {}
 
@@ -69,27 +70,31 @@ public struct ClickHouseTabSeparatedRowDecoder: Sendable {
     }
 
     private mutating func ingest(_ line: ArraySlice<UInt8>) -> [PluginCellValue]? {
+        line.withUnsafeBufferPointer { ingest($0) }
+    }
+
+    private mutating func ingest(_ line: UnsafeBufferPointer<UInt8>) -> [PluginCellValue]? {
         guard let columnNames else {
-            self.columnNames = ClickHouseTabSeparatedBytes.fields(line).map(ClickHouseTabSeparatedBytes.headerText)
+            self.columnNames = ClickHouseTabSeparatedBytes.headerTexts(line)
             return nil
         }
         guard header != nil else {
-            header = Header(
-                columns: columnNames,
-                columnTypeNames: ClickHouseTabSeparatedBytes.fields(line).map(ClickHouseTabSeparatedBytes.headerText)
-            )
+            let types = ClickHouseTabSeparatedBytes.headerTexts(line)
+            header = Header(columns: columnNames, columnTypeNames: types)
+            literalSyntaxColumns = types.map(ClickHouseTabSeparatedBytes.writesLiteralSyntax)
             return nil
         }
-        guard !line.isEmpty, let types = header?.columnTypeNames else { return nil }
-        return ClickHouseTabSeparatedBytes.fields(line).enumerated().map { index, field in
-            Self.cellValue(field, columnType: index < types.count ? types[index] : "")
+        guard !line.isEmpty else { return nil }
+        let literalSyntaxColumns = literalSyntaxColumns
+        var row: [PluginCellValue] = []
+        row.reserveCapacity(literalSyntaxColumns.count)
+        ClickHouseTabSeparatedBytes.forEachField(line) { field in
+            let index = row.count
+            row.append(ClickHouseTabSeparatedBytes.cellValue(
+                field,
+                writesLiteralSyntax: index < literalSyntaxColumns.count && literalSyntaxColumns[index]
+            ))
         }
-    }
-
-    private static func cellValue(_ field: ArraySlice<UInt8>, columnType: String) -> PluginCellValue {
-        guard !ClickHouseTabSeparatedBytes.isNullMarker(field) else { return .null }
-        let value = ClickHouseTabSeparatedBytes.value(field, columnType: columnType)
-        guard let text = String(bytes: value, encoding: .utf8) else { return .bytes(Data(value)) }
-        return .text(text)
+        return row
     }
 }

@@ -55,6 +55,34 @@ pub struct ColumnPaint {
     /// The column lines its values up on the last digit. An untyped column
     /// does once every value it holds is a number.
     pub numbers: Cell<bool>,
+    pub wrap: Rc<WrapState>,
+}
+
+/// Whether a grid wraps its text, which its cells read as they draw. The
+/// grid makes one and every column's paint shares it.
+#[derive(Debug, Default)]
+pub struct WrapState {
+    on: Cell<bool>,
+    /// The widest a character of the cells' font is taken to be, in pixels.
+    wide_px: Cell<i32>,
+}
+
+impl WrapState {
+    pub fn on(&self) -> bool {
+        self.on.get()
+    }
+
+    /// The state it had.
+    pub(super) fn set(&self, on: bool) -> bool {
+        self.on.replace(on)
+    }
+
+    /// Whether text of `bytes` can be wider than `width`, so a short value
+    /// costs no layout. A character takes a byte or more.
+    pub fn may_overflow(&self, bytes: usize, width: i32) -> bool {
+        let wide = i64::from(self.wide_px.get());
+        wide <= 0 || i64::try_from(bytes).unwrap_or(i64::MAX).saturating_mul(wide) > i64::from(width)
+    }
 }
 
 /// What the pages read under a column set have held so far.
@@ -168,6 +196,7 @@ impl DataGrid {
                     .map(|config| config.settings.grid_preferences().clone())
                     .unwrap_or_default(),
                 numbers: Cell::new(column.display() == CellDisplay::Number),
+                wrap: self.imp().wrap.clone(),
             });
             built.view_columns.push(self.build_column(&paint, sorting));
             built.paints.push(paint);
@@ -239,6 +268,7 @@ impl DataGrid {
             }
         });
         let column = &paint.column;
+        let offers_wrap = self.config().is_some_and(|config| config.wrap_text);
         let view_column = gtk::ColumnViewColumn::builder()
             .title(&column.name)
             .factory(&factory)
@@ -246,7 +276,7 @@ impl DataGrid {
             .build();
         view_column.set_id(Some(&format!("column-{}", column.index)));
         view_column.set_sorter(self.sorter_for(column, sorting).as_ref());
-        view_column.set_header_menu(Some(&grid_menu::header_menu(column, sorting)));
+        view_column.set_header_menu(Some(&grid_menu::header_menu(column, sorting, offers_wrap)));
         view_column
     }
 
@@ -274,6 +304,19 @@ impl DataGrid {
     pub(super) fn fonts_changed(&self) {
         self.size_columns(Measure::Again);
         row_number_column::fit(self);
+        self.measure_wrap_glyph();
+    }
+
+    /// Twice the font's usual character, so a double-width one is counted.
+    pub(super) fn measure_wrap_glyph(&self) {
+        let wrap = &self.imp().wrap;
+        if !wrap.on() {
+            return;
+        }
+        let context = self.column_view().create_pango_context();
+        let metrics = context.metrics(Some(&value_font(&context, self.cell_font().as_deref())), None);
+        let usual = metrics.approximate_char_width().max(metrics.approximate_digit_width());
+        wrap.wide_px.set((pango::units_to_double(usual) * 2.0).ceil() as i32);
     }
 
     /// A grid out of any window hears of no font change, and one sized
@@ -978,7 +1021,7 @@ fn sampled_width(context: &pango::Context, font: &pango::FontDescription, texts:
         if !lines.is_empty() {
             lines.push('\n');
         }
-        let drawn = super::special_marks::drawn(text, None, marks);
+        let drawn = super::special_marks::drawn(text, None, marks, true);
         let offset = u32::try_from(lines.len()).unwrap_or(u32::MAX);
         for mut attribute in drawn.attributes.iter().flat_map(pango::AttrList::attributes) {
             attribute.set_start_index(attribute.start_index().saturating_add(offset));

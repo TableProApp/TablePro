@@ -16,8 +16,8 @@ internal struct BigQueryTypeMapper {
         guard let rows = response.rows, let fields = schema.fields else { return [] }
         return rows.map { row in
             let stringCells = flattenRow(cells: row.f ?? [], fields: fields)
-            return stringCells.enumerated().map { index, raw -> PluginCellValue in
-                guard let value = raw else { return .null }
+            return stringCells.indices.map { index -> PluginCellValue in
+                guard let value = stringCells[index] else { return .null }
                 let isBinary = (index < fields.count) && fields[index].type.uppercased() == "BYTES"
                 if isBinary, let data = Data(base64Encoded: value) {
                     return .bytes(data)

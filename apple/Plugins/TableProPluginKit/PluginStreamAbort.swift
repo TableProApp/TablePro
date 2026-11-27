@@ -90,7 +90,21 @@ public enum PluginRowStream {
         to continuation: AsyncThrowingStream<Element, Error>.Continuation,
         stops: () -> Bool = { false }
     ) -> Bool {
+        deliverBlocking(element, to: continuation, stops: stops, keepingAliveEvery: .infinity) {}
+    }
+
+    // For a server that ends a read nobody reads from: while the buffer stays full, `keepAlive` runs on the producer's
+    // thread every `interval` seconds, so the server holds the read for as long as the reader holds the stream. Its
+    // error ends the wait and is thrown.
+    public static func deliverBlocking<Element: Sendable>(
+        _ element: Element,
+        to continuation: AsyncThrowingStream<Element, Error>.Continuation,
+        stops: () -> Bool = { false },
+        keepingAliveEvery interval: TimeInterval,
+        _ keepAlive: () throws -> Void
+    ) rethrows -> Bool {
         var pending = element
+        var lastContact = ContinuousClock.now
         while true {
             switch continuation.yield(pending) {
             case .enqueued:
@@ -98,6 +112,10 @@ public enum PluginRowStream {
             case .dropped(let refused):
                 guard !stops() else { return false }
                 pending = refused
+                if isDue(since: lastContact, every: interval) {
+                    try keepAlive()
+                    lastContact = .now
+                }
                 usleep(pollMicroseconds)
             case .terminated:
                 return false
@@ -112,13 +130,28 @@ public enum PluginRowStream {
         _ element: Element,
         to continuation: AsyncThrowingStream<Element, Error>.Continuation
     ) async -> Bool {
+        await deliver(element, to: continuation, keepingAliveEvery: .infinity) {}
+    }
+
+    // `deliverBlocking` with a keep-alive, for a producer running as a task.
+    public static func deliver<Element: Sendable>(
+        _ element: Element,
+        to continuation: AsyncThrowingStream<Element, Error>.Continuation,
+        keepingAliveEvery interval: TimeInterval,
+        _ keepAlive: () async throws -> Void
+    ) async rethrows -> Bool {
         var pending = element
+        var lastContact = ContinuousClock.now
         while true {
             switch continuation.yield(pending) {
             case .enqueued:
                 return true
             case .dropped(let refused):
                 pending = refused
+                if isDue(since: lastContact, every: interval) {
+                    try await keepAlive()
+                    lastContact = .now
+                }
                 do {
                     try await Task.sleep(nanoseconds: UInt64(pollMicroseconds) * 1_000)
                 } catch {
@@ -130,6 +163,12 @@ public enum PluginRowStream {
                 return false
             }
         }
+    }
+
+    // Compared as seconds, so an infinite interval is never due and any interval converts without trapping.
+    private static func isDue(since lastContact: ContinuousClock.Instant, every interval: TimeInterval) -> Bool {
+        let elapsed = (ContinuousClock.now - lastContact).components
+        return Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18 >= interval
     }
 
     private static let pollMicroseconds: UInt32 = 2_000

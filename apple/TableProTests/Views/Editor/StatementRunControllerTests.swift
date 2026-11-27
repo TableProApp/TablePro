@@ -13,6 +13,7 @@ import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -249,6 +250,63 @@ struct StatementRunControllerTests {
         #expect(subject.caretIndexUnitsScanned - warmed <= moves * (SQLStatementCursorIndex.defaultCheckpointSpacing + 20))
     }
 
+    // A document past the synchronous limit: a full pass of it on the keystroke's turn is what stalled typing.
+    private var largeScript: String {
+        String(repeating: "SELECT id, name FROM users WHERE id = 1;\n", count: 2_000)
+    }
+
+    private func freshControls(in controller: TextViewController) -> [NSRange] {
+        SQLStatementScanner.navigableStatements(in: controller.textView.string, grammar: TestGrammar.standard)
+            .map(\.contentRange)
+    }
+
+    @Test("A large document's controls are scanned off the main thread and then equal a fresh scan")
+    func largeDocumentControlsArriveFromABackgroundScan() async throws {
+        let controller = makeController(text: largeScript)
+        try #require(controller.textView.textStorage.length > StatementRunController.synchronousRefreshLimit)
+        let subject = makeSubject()
+
+        subject.install(on: controller)
+        #expect(controller.runnableStatements.isEmpty)
+
+        try await waitUntil { !controller.runnableStatements.isEmpty }
+        #expect(controller.runnableStatements.map(\.range) == freshControls(in: controller))
+    }
+
+    @Test("A large document's refresh asked for before an edit reads the edited text")
+    func largeRefreshReadsTheTextAfterTheEdit() async throws {
+        let controller = makeController(text: largeScript)
+        let subject = makeSubject()
+        subject.install(on: controller)
+        try await waitUntil { !controller.runnableStatements.isEmpty }
+
+        subject.refreshControls(in: controller)
+        controller.textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "SELECT 0;\n")
+
+        try await waitUntil { controller.runnableStatements.count == 2_001 }
+        #expect(controller.runnableStatements.map(\.range) == freshControls(in: controller))
+    }
+
+    @Test("The statement start keyword case reads from is the statement's own, and costs one statement's scan")
+    func statementStartForKeywordCaseIsBounded() {
+        let script = String(repeating: "SELECT 1;\n", count: 40_000)
+        let controller = makeController(text: script)
+        let subject = makeSubject()
+        subject.install(on: controller)
+        let textView = controller.textView!
+        let end = textView.textStorage.length
+        _ = subject.statementStart(containing: end, in: textView, grammar: TestGrammar.standard)
+        let warmed = subject.caretIndexUnitsScanned
+
+        textView.replaceCharacters(in: NSRange(location: end, length: 0), with: "select")
+        let start = subject.statementStart(containing: end + 6, in: textView, grammar: TestGrammar.standard)
+
+        let fresh = SQLStatementScanner.locatedStatementAtCursor(in: textView.string, cursorPosition: end + 6)
+        #expect(start == fresh.offset)
+        #expect(subject.caretIndexUnitsScanned - warmed <= SQLStatementCursorIndex.defaultCheckpointSpacing + 20)
+        #expect(subject.statementStart(containing: end, in: textView, grammar: TestGrammar.mysql) == 0)
+    }
+
     // MARK: - Callback
 
     @Test("Pressing a control reports that control's own statement, not the caret's")
@@ -313,5 +371,237 @@ struct StatementRunControllerTests {
             )
             #expect(controller.textView.string == threeStatements, "result \(index)")
         }
+    }
+
+    // MARK: - Completion's statement
+
+    private static let mixedScript = """
+    SELECT 'a;b' FROM t;
+    -- a note; still a comment
+    INSERT INTO t VALUES (1);
+    /* block ; */ UPDATE t SET x = "q;" WHERE y = 1;
+    CREATE PROCEDURE p() BEGIN SELECT 1; END;
+    SELECT $$ dollar ; body $$;
+    SELECT 1 # hash ; comment
+    ;
+
+    """
+
+    private static let completionGrammars: [SQLLexicalGrammar] = [
+        TestGrammar.standard, TestGrammar.mysql, TestGrammar.postgres, TestGrammar.sqlite,
+        TestGrammar.sqlServer, TestGrammar.oracle,
+    ]
+
+    private func expectFreshScan(
+        _ statement: SQLStatementScanner.LocatedStatement?,
+        at caret: Int,
+        in text: String,
+        grammar: SQLLexicalGrammar,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        let fresh = SQLStatementScanner.locatedStatementAtCursor(in: text, cursorPosition: caret, grammar: grammar)
+        #expect(statement?.range == fresh.range, "caret \(caret)", sourceLocation: sourceLocation)
+        #expect(statement?.hasContent == fresh.hasContent, "caret \(caret)", sourceLocation: sourceLocation)
+    }
+
+    @Test("Completion's statement equals a fresh scan at any caret, across edits", arguments: 0..<6)
+    func maintainedStatementEqualsAFreshScan(grammarIndex: Int) throws {
+        let grammar = Self.completionGrammars[grammarIndex]
+        let controller = makeController(text: String(repeating: Self.mixedScript, count: 30))
+        let subject = makeSubject(grammar: grammar)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+        let insertions = ["x", ";", "'", "\n", "--", "/*", "*/", " ", "$$", "#"]
+        var seed: UInt64 = 0x9E37_79B9_7F4A_7C15 &+ UInt64(grammarIndex)
+        func next(_ bound: Int) -> Int {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((seed >> 33) % UInt64(max(bound, 1)))
+        }
+
+        for _ in 0..<40 {
+            let length = storage.length
+            if next(3) == 0, length > 3 {
+                controller.textView.replaceCharacters(in: NSRange(location: next(length - 3), length: next(3) + 1), with: "")
+            } else {
+                controller.textView.replaceCharacters(
+                    in: NSRange(location: next(length + 1), length: 0),
+                    with: insertions[next(insertions.count)]
+                )
+            }
+            let text = controller.textView.string
+            for _ in 0..<5 {
+                let caret = next((text as NSString).length + 1)
+                if next(2) == 0 {
+                    _ = band(at: caret, in: controller, subject: subject)
+                }
+                let found = subject.maintainedStatement(at: caret, in: text, storage: storage)
+                #expect(found?.grammar == grammar)
+                expectFreshScan(found?.statement, at: caret, in: text, grammar: grammar)
+            }
+        }
+    }
+
+    @Test("Completion gets no statement where the band does not keep the index")
+    func maintainedStatementOnlyWhereTheBandKeepsTheIndex() throws {
+        let controller = makeController(text: threeStatements)
+        let storage = try #require(controller.textView.textStorage)
+        let text = controller.textView.string
+
+        for model in [QueryStatementModel.redis, .javascript] {
+            let subject = makeSubject()
+            subject.statementModel = model
+            subject.install(on: controller)
+            #expect(subject.maintainedStatement(at: 3, in: text, storage: storage) == nil)
+        }
+
+        let bandOff = makeSubject()
+        bandOff.isHighlightEnabled = false
+        #expect(bandOff.maintainedStatement(at: 3, in: text, storage: storage) == nil)
+
+        let tooLong = makeSubject(sizeLimit: 10)
+        #expect(tooLong.maintainedStatement(at: 3, in: text, storage: storage) == nil)
+
+        #expect(makeSubject().maintainedStatement(at: 3, in: text, storage: storage) != nil)
+    }
+
+    @Test("Asking for the caret the band just resolved scans nothing")
+    func secondAskForTheSameCaretScansNothing() throws {
+        let controller = makeController(text: String(repeating: "SELECT 1;\n", count: 5_000) + "SELECT * FROM t WHERE ")
+        let subject = makeSubject()
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+        let text = controller.textView.string
+        let caret = storage.length
+
+        _ = band(at: caret, in: controller, subject: subject)
+        let scanned = subject.caretIndexUnitsScanned
+        let found = subject.maintainedStatement(at: caret, in: text, storage: storage)
+
+        #expect(subject.caretIndexUnitsScanned == scanned)
+        expectFreshScan(found?.statement, at: caret, in: text, grammar: TestGrammar.standard)
+    }
+
+    @Test("An edit, a grammar change and another storage each drop the remembered statement")
+    func rememberedStatementIsDroppedWhenTheTextOrSplitChanges() throws {
+        let script = "SELECT 1 # note ; still the note\nSELECT 2;\nSELECT * FROM t"
+        let controller = makeController(text: script)
+        let subject = makeSubject(grammar: TestGrammar.mysql)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+        let caret = (script as NSString).range(of: "still").location
+
+        let first = subject.maintainedStatement(at: caret, in: controller.textView.string, storage: storage)
+        expectFreshScan(first?.statement, at: caret, in: controller.textView.string, grammar: TestGrammar.mysql)
+
+        subject.grammar = TestGrammar.standard
+        let regrammared = subject.maintainedStatement(at: caret, in: controller.textView.string, storage: storage)
+        expectFreshScan(regrammared?.statement, at: caret, in: controller.textView.string, grammar: TestGrammar.standard)
+        #expect(regrammared?.statement.range != first?.statement.range)
+
+        controller.textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "SELECT 0;")
+        let edited = subject.maintainedStatement(at: caret, in: controller.textView.string, storage: storage)
+        expectFreshScan(edited?.statement, at: caret, in: controller.textView.string, grammar: TestGrammar.standard)
+
+        let other = makeController(text: "SELECT 9;\nSELECT 8; SELECT 7; SELECT 6; SELECT 5; SELECT 4;")
+        let otherStorage = try #require(other.textView.textStorage)
+        let swapped = subject.maintainedStatement(at: caret, in: other.textView.string, storage: otherStorage)
+        expectFreshScan(swapped?.statement, at: caret, in: other.textView.string, grammar: TestGrammar.standard)
+    }
+
+    // MARK: - Completion's statement where the band does not keep the index
+
+    @Test("Past the size limit completion's statement is warmed off the main thread and equals a fresh scan")
+    func warmedStatementPastTheSizeLimitEqualsAFreshScan() async throws {
+        let controller = makeController(text: String(repeating: Self.mixedScript, count: 30))
+        let subject = makeSubject(grammar: TestGrammar.mysql, sizeLimit: 100)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+        var seed: UInt64 = 0x51_7CC1_B727_220A
+        func next(_ bound: Int) -> Int {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((seed >> 33) % UInt64(max(bound, 1)))
+        }
+
+        for _ in 0..<20 {
+            controller.textView.replaceCharacters(
+                in: NSRange(location: next(storage.length + 1), length: 0),
+                with: [";", "'", "x", "\n", "#"][next(5)]
+            )
+            let text = controller.textView.string
+            for _ in 0..<3 {
+                let caret = next((text as NSString).length + 1)
+                let statement = await subject.warmedStatement(
+                    at: caret, in: text, storage: storage, grammar: TestGrammar.mysql
+                )
+                expectFreshScan(statement, at: caret, in: text, grammar: TestGrammar.mysql)
+            }
+        }
+    }
+
+    @Test("A warmed index is kept, so the next request near the caret rescans only near it")
+    func warmedIndexIsKeptForTheNextRequest() async throws {
+        let controller = makeController(text: String(repeating: "SELECT 1;\n", count: 5_000))
+        let subject = makeSubject(sizeLimit: 100)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+        _ = await subject.warmedStatement(
+            at: storage.length, in: controller.textView.string, storage: storage, grammar: TestGrammar.standard
+        )
+        let warmed = subject.caretIndexUnitsScanned
+        #expect(warmed >= storage.length)
+
+        controller.textView.replaceCharacters(in: NSRange(location: storage.length, length: 0), with: "SELECT ")
+        let text = controller.textView.string
+        let statement = await subject.warmedStatement(
+            at: storage.length, in: text, storage: storage, grammar: TestGrammar.standard
+        )
+
+        expectFreshScan(statement, at: storage.length, in: text, grammar: TestGrammar.standard)
+        #expect(subject.caretIndexUnitsScanned - warmed <= SQLStatementCursorIndex.defaultCheckpointSpacing + 40)
+    }
+
+    @Test("An edit made while a warm runs trims the index it leaves to the text as it is now")
+    func editDuringAWarmTrimsTheIndex() throws {
+        let script = String(repeating: "SELECT 1;\n", count: 3_000)
+        let controller = makeController(text: script)
+        let subject = makeSubject(sizeLimit: 100)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+        let caret = storage.length
+
+        let ticket = subject.beginWarm(storage: storage)
+        var warmed = ticket.index
+        let statement = warmed.statementAtCursor(caret, in: script)
+        controller.textView.replaceCharacters(in: NSRange(location: 15_000, length: 0), with: "/*")
+        subject.finishWarm(ticket, warmed: warmed, cursor: caret, statement: statement)
+
+        let text = controller.textView.string
+        let ends = [storage.length, 20_000, 14_000]
+        for end in ends {
+            expectFreshScan(
+                subject.statement(at: end, in: text, storage: storage),
+                at: end, in: text, grammar: TestGrammar.standard
+            )
+        }
+    }
+
+    @Test("A warm that comes back after the grammar changed is not kept, and another grammar gets no statement")
+    func warmAcrossAGrammarChangeIsDropped() async throws {
+        let controller = makeController(text: String(repeating: "SELECT 1;\n", count: 1_000))
+        let subject = makeSubject(sizeLimit: 100)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+
+        let ticket = subject.beginWarm(storage: storage)
+        var warmed = ticket.index
+        let statement = warmed.statementAtCursor(storage.length, in: controller.textView.string)
+        subject.grammar = TestGrammar.mysql
+        subject.finishWarm(ticket, warmed: warmed, cursor: storage.length, statement: statement)
+
+        #expect(subject.caretIndexUnitsScanned == 0)
+        let other = await subject.warmedStatement(
+            at: 0, in: controller.textView.string, storage: storage, grammar: TestGrammar.standard
+        )
+        #expect(other == nil)
     }
 }

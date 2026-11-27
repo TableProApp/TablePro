@@ -77,6 +77,27 @@ struct UnloadedValueReaderTests {
         #expect(values[["1"]] == [.bytes(Data([1]))])
         #expect(values[["2"]] == [.bytes(Data([2]))])
     }
+
+    @Test("A key that comes back on two rows is left out, so no row gets another row's value")
+    func sharedKeyIsLeftOut() async throws {
+        let reader = Self.reader { _ in
+            [["1", .bytes(Data([1]))], ["2", .bytes(Data([2]))], ["1", .bytes(Data([9]))]]
+        }
+        let values = try await reader.read(
+            columns: ["data"],
+            requests: [.init(key: ["1"], byteCount: 1), .init(key: ["2"], byteCount: 1)]
+        )
+        #expect(values[["1"]] == nil)
+        #expect(values[["2"]] == [.bytes(Data([2]))])
+    }
+
+    @Test("The same row read again by a later statement keeps its value")
+    func rowReadInTwoStatementsKeepsItsValue() async throws {
+        let requests = (0..<101).map { _ in UnloadedValueReader.Request(key: ["1"], byteCount: 1) }
+        let reader = Self.reader { _ in [["1", .bytes(Data([1]))]] }
+        let values = try await reader.read(columns: ["data"], requests: requests)
+        #expect(values[["1"]] == [.bytes(Data([1]))])
+    }
 }
 
 private final class BlobAnsweringDriver: DatabaseDriver, @unchecked Sendable {
@@ -117,13 +138,11 @@ private final class BlobAnsweringDriver: DatabaseDriver, @unchecked Sendable {
     func ping() async throws {}
     func cancelQuery() throws {}
     func applyQueryTimeout(_ seconds: Int) async throws {}
-    func fetchTables() async throws -> [TableInfo] { [] }
     func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] { [:] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]] { [:] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
     func fetchDatabases() async throws -> [String] { [] }
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         DatabaseMetadata(
@@ -131,14 +150,14 @@ private final class BlobAnsweringDriver: DatabaseDriver, @unchecked Sendable {
             lastAccessed: nil, isSystemDatabase: false, icon: "cylinder"
         )
     }
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil, avgRowLength: nil,
             rowCount: nil, comment: nil, engine: nil, collation: nil, createTime: nil, updateTime: nil
         )
     }
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
@@ -171,6 +190,33 @@ struct UnloadedValueLoadTests {
         #expect(rows.value(at: 1, column: 1) == .bytes(Data([7, 7])))
         #expect(rows.unloadedByteCount(row: 1, column: 1) == nil)
         #expect(rows.unloadedByteCount(row: 0, column: 1) == 10)
+    }
+
+    @Test("A value loaded for a tab in the background completes that tab's staged deletion")
+    func backgroundTabDeletionTakesTheLoadedValue() async {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let driver = BlobAnsweringDriver(connection: connection, rows: [["2", .bytes(Data([7, 7]))]])
+        let fixture = CoordinatorFixture(connection: connection, driver: driver)
+        var tab = QueryTab(title: "files", query: "", tabType: .table, tableName: "files")
+        tab.tableContext.primaryKeyColumns = ["id"]
+        fixture.addTab(tab, rows: TableRows.from(
+            queryRows: [["1", .null], ["2", .null]],
+            columns: ["id", "data"],
+            columnTypes: [.integer(rawType: "INT"), .blob(rawType: "LONGBLOB")],
+            unloadedCells: [0: [1: 10], 1: [1: 20]]
+        ))
+        let edits = fixture.coordinator.changeManager(forTab: tab.id)
+        edits.recordRowDeletion(rowID: .existing(1), originalRow: ["2", .null])
+        let other = fixture.addTab(QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query))
+
+        let loaded = await fixture.coordinator.loadUnloadedValues(
+            tabId: tab.id, rowIDs: [.existing(1)], columns: IndexSet(integer: 1)
+        )
+
+        #expect(loaded)
+        #expect(fixture.tabManager.selectedTabId == other.id)
+        #expect(edits.changes.first?.originalRow == ["2", .bytes(Data([7, 7]))])
+        #expect(fixture.coordinator.existingChangeManager(forTab: other.id)?.hasChanges != true)
     }
 
     @Test("A row the table no longer holds leaves its cell unloaded and reports it")
@@ -228,7 +274,7 @@ struct UnloadedValueExportTests {
             driver: nil,
             fillUnloaded: { rows in
                 batches.counts.append(rows.count)
-                return Dictionary(uniqueKeysWithValues: rows.map { ($0.id, [1: PluginCellValue.bytes(Data([1]))]) })
+                return Dictionary(uniqueKeysWithValues: rows.map { ($0.row.id, [1: PluginCellValue.bytes(Data([1]))]) })
             }
         )
 

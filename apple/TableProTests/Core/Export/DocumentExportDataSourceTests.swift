@@ -166,8 +166,8 @@ struct DocumentExportDataSourceTests {
         let source = QueryResultExportDataSource(detachedRows: rows, databaseTypeId: "MongoDB")
         let documents = try await collect(source)
         #expect(documents?.first?.fields.first?.canonicalJSON == "null")
-        #expect(rows.rows[0].exportSnapshot?.values == [.null])
-        #expect(rows.rows[0].exportSnapshot?.document.canonicalJSON.contains("secret") == false)
+        #expect(rows.exportSnapshot(of: rows.rows[0].id)?.values == [.null])
+        #expect(rows.exportSnapshot(of: rows.rows[0].id)?.document.canonicalJSON.contains("secret") == false)
     }
 
     @Test func documentMaskingPreservesOrGrowsTheSizeBound() {
@@ -218,6 +218,34 @@ struct DocumentExportDataSourceTests {
         rows.replace(rows: [[.text("42")]], exportDocuments: [document])
         let documents = try await collect(QueryResultExportDataSource(detachedRows: rows, databaseTypeId: "MongoDB"))
         #expect(documents?.first?.fields.first?.canonicalJSON == #""••••""#)
+    }
+
+    @Test("With nothing to mask a document is kept as read, and a mask added later still reaches it")
+    func unmaskedDocumentKeptAsRead() async throws {
+        let document = PluginExportDocument(
+            fields: [field("value", #""secret""#, cell: .text("secret"))], bsonSizeUpperBound: 40
+        )
+        var rows = TableRows.from(
+            queryRows: [[.text("secret")]], columns: ["value"], columnTypes: [.text(rawType: "VARCHAR")],
+            exportDocuments: [document]
+        )
+        #expect(try await collect(QueryResultExportDataSource(detachedRows: rows, databaseTypeId: "MongoDB")) == [document])
+
+        rows.addMasks(ColumnMasks(styles: [0: .full]), policy: .none)
+        let masked = try #require(try await collect(QueryResultExportDataSource(detachedRows: rows, databaseTypeId: "MongoDB")))
+        #expect(masked.count == 1)
+        #expect(masked.first?.fields.first?.cellValue != .text("secret"))
+    }
+
+    @Test("A policy alone masks a document's field at read, as before")
+    func policyMasksAtRead() async throws {
+        let document = PluginExportDocument(fields: [field("email", #""a@b.c""#, cell: .text("a@b.c"))])
+        let rows = TableRows.from(
+            queryRows: [[.text("a@b.c")]], columns: ["email"], columnTypes: [.text(rawType: "VARCHAR")],
+            exportDocuments: [document], exportPolicy: MaskingPolicy(rules: [MaskingRule(pattern: "email")])
+        )
+        let masked = try #require(try await collect(QueryResultExportDataSource(detachedRows: rows, databaseTypeId: "MongoDB")))
+        #expect(masked.first?.fields.first?.cellValue != .text("a@b.c"))
     }
 
     @Test func editsAndAbsentChangesRequireSavedDocumentsButUndoRestoresThem() async throws {

@@ -67,6 +67,18 @@ struct AgentAttentionNotifierTests {
         #expect(request.content.body == "The agent is waiting for your answer.")
     }
 
+    @Test("The notification carries the default sound, so the system Play sound switch decides")
+    func notificationCarriesDefaultSound() async throws {
+        let session = makeSession()
+        session.mark(.waitingOnYou)
+        let notifier = makeNotifier()
+
+        await notifier.statusChanged(session, to: .waitingOnYou)?.value
+
+        let request = try #require(presenter.posted.first)
+        #expect(request.content.sound == .default)
+    }
+
     @Test("A failed reply out of sight notifies too")
     func failedNotifies() async {
         let session = makeSession()

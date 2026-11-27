@@ -23,6 +23,10 @@ enum PluginBundleLoader {
         }
     }
 
+    static var missingArchitectureReason: String {
+        String(localized: "The plugin doesn't include a build for this Mac's processor architecture.")
+    }
+
     static func describeLoadFailure(_ error: NSError) -> String {
         switch error.code {
         case NSFileNoSuchFileError:
@@ -30,7 +34,7 @@ enum PluginBundleLoader {
         case NSExecutableNotLoadableError:
             return String(localized: "The plugin's executable couldn't be loaded. It may be damaged or improperly signed.")
         case NSExecutableArchitectureMismatchError:
-            return String(localized: "The plugin doesn't include a build for this Mac's processor architecture.")
+            return missingArchitectureReason
         case NSExecutableRuntimeMismatchError:
             return String(localized: "The plugin was built for an incompatible runtime.")
         case NSExecutableLoadError:

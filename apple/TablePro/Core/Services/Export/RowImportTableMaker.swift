@@ -81,17 +81,16 @@ internal struct RowImportTableMaker {
                 )
             }
         }
-        for step in steps {
-            switch step {
-            case .create(let table, let statements, let sql):
-                for statement in statements {
-                    try await runOnLeasedDriver(statement, scope: scope, table: table, clearing: false, run: importRun)
-                    createdAny = true
-                }
-                onCreated(table, sql)
-            case .clear(let table, let sql):
-                try await runOnLeasedDriver(sql, scope: scope, table: table, clearing: true, run: importRun)
+        // Every create before any clear: on Teradata ANSI a clear leaves its DELETE pending, which refuses a later create.
+        for case .create(let table, let statements, let sql) in steps {
+            for statement in statements {
+                try await runOnLeasedDriver(statement, scope: scope, table: table, clearing: false, run: importRun)
+                createdAny = true
             }
+            onCreated(table, sql)
+        }
+        for case .clear(let table, let sql) in steps {
+            try await runOnLeasedDriver(sql, scope: scope, table: table, clearing: true, run: importRun)
         }
         return receipt
     }
@@ -173,19 +172,37 @@ internal struct RowImportTableMaker {
         if let run { _ = try await run.admit(.data) }
         defer { run?.release() }
         let route = DatabaseManager.shared.executionRoute(for: scope)
+        let refusesOpenTransaction = !route.isPooled
         try await DatabaseManager.shared.withScopedDriver(
             scope: scope, route: route, cancellation: .protectedWrite
         ) { driver in
             if let run {
-                try await Self.executePreparation(sql, table: table, clearing: clearing, driver: driver, run: run)
+                try await Self.executePreparation(
+                    sql, table: table, clearing: clearing, refusesOpenTransaction: refusesOpenTransaction,
+                    driver: driver, run: run
+                )
             } else {
-                _ = try await driver.execute(query: sql)
+                try await Self.executeStep(sql, clearing: clearing, refusesOpenTransaction: refusesOpenTransaction, on: driver)
             }
         }
     }
 
+    // A clear belongs to the import's own transaction; only a table this makes is committed on its own.
+    nonisolated private static func executeStep(
+        _ sql: String, clearing: Bool, refusesOpenTransaction: Bool, on driver: DatabaseDriver
+    ) async throws {
+        guard !clearing else {
+            _ = try await driver.execute(query: sql)
+            return
+        }
+        _ = try await AppDefinitionCommit.run(on: driver, refusesOpenTransaction: refusesOpenTransaction) {
+            try await driver.execute(query: sql)
+        }
+    }
+
     nonisolated private static func executePreparation(
-        _ sql: String, table: TableScope, clearing: Bool, driver: DatabaseDriver, run: ImportRun
+        _ sql: String, table: TableScope, clearing: Bool, refusesOpenTransaction: Bool, driver: DatabaseDriver,
+        run: ImportRun
     ) async throws {
         let id = UUID()
         let rollback: ImportTableRollback
@@ -208,7 +225,7 @@ internal struct RowImportTableMaker {
             $0.preparations[id] = ImportPreparationEffect(table: table, clearing: clearing)
         }
         do {
-            _ = try await driver.execute(query: sql)
+            try await executeStep(sql, clearing: clearing, refusesOpenTransaction: refusesOpenTransaction, on: driver)
             let state = driver.supportsTransactions
                 ? ImportSessionState(await driver.heldSessionTransactionState()) : .idle
             run.record {

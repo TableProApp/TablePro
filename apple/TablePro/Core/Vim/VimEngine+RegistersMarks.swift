@@ -13,9 +13,12 @@ struct VimDocumentMarks {
     var lastVisualLinewise = false
     var lastJumpOrigin: Int?
     var lastInsertOffset: Int?
+    var markColumns: [Character: Int] = [:]
+    var editJournal: [VimEditRecord] = []
 
     var isEmpty: Bool {
         marks.isEmpty && lastVisualStart == nil && lastVisualEnd == nil && lastJumpOrigin == nil && lastInsertOffset == nil
+            && editJournal.isEmpty
     }
 }
 
@@ -27,12 +30,17 @@ extension VimEngine {
             lastVisualEnd: lastVisualEnd,
             lastVisualLinewise: lastVisualLinewise,
             lastJumpOrigin: lastJumpOrigin,
-            lastInsertOffset: lastInsertOffset
+            lastInsertOffset: lastInsertOffset,
+            markColumns: markColumns,
+            editJournal: editJournal
         )
     }
 
     func restoreDocumentMarks(_ saved: VimDocumentMarks) {
         marks = saved.marks
+        markColumns = saved.markColumns
+        editJournal = saved.editJournal
+        editJournalTextLength = saved.editJournal.reduce(0) { $0 + $1.textLength }
         lastVisualStart = saved.lastVisualStart
         lastVisualEnd = saved.lastVisualEnd
         lastVisualLinewise = saved.lastVisualLinewise
@@ -81,39 +89,32 @@ extension VimEngine {
         return register
     }
 
+    // `'` goes to the first non-blank of the mark's line and takes whole lines after an operator; `` ` `` goes to
+    // the mark itself. An unset mark ends the command.
     func jumpToMark(_ name: Character, exact: Bool, in buffer: VimTextBuffer) {
-        if name == "'" || name == "`" {
-            if let origin = lastJumpOrigin {
-                let originPos = buffer.selectedRange().location
-                let clamped = min(max(0, origin), buffer.length)
-                buffer.setSelectedRange(NSRange(location: clamped, length: 0))
-                lastJumpOrigin = originPos
-            }
+        let offset: Int?
+        switch name {
+        case "'", "`": offset = lastJumpOrigin
+        case "<": offset = lastVisualStart
+        case ">": offset = lastVisualEnd
+        default: offset = marks[name]
+        }
+        guard let offset else {
+            applyMotion(to: nil, kind: .exclusive, in: buffer)
             return
         }
-        if name == "<", let start = lastVisualStart {
-            let originPos = buffer.selectedRange().location
-            buffer.setSelectedRange(NSRange(location: min(max(0, start), buffer.length), length: 0))
-            lastJumpOrigin = originPos
-            return
+        var clamped = min(max(0, offset), buffer.length)
+        if let column = markColumns[name] {
+            let lineStart = buffer.lineRange(forOffset: clamped).location
+            let lastCharacter = max(lineStart, contentEnd(ofLineAt: clamped, in: buffer) - 1)
+            clamped = min(lineStart + column, lastCharacter)
         }
-        if name == ">", let end = lastVisualEnd {
-            let originPos = buffer.selectedRange().location
-            buffer.setSelectedRange(NSRange(location: min(max(0, end), buffer.length), length: 0))
-            lastJumpOrigin = originPos
-            return
-        }
-        guard let offset = marks[name] else { return }
-        let originPos = buffer.selectedRange().location
-        let clamped = min(max(0, offset), buffer.length)
         if exact {
-            buffer.setSelectedRange(NSRange(location: clamped, length: 0))
+            applyMotion(to: clamped, kind: .exclusive, jump: true, in: buffer)
         } else {
             let lineStart = buffer.lineRange(forOffset: clamped).location
-            let target = firstNonBlankOffset(from: lineStart, in: buffer)
-            buffer.setSelectedRange(NSRange(location: target, length: 0))
+            applyMotion(to: firstNonBlankOffset(from: lineStart, in: buffer), kind: .linewise, jump: true, in: buffer)
         }
-        lastJumpOrigin = originPos
     }
 
     func recordVisualSelection(linewise: Bool, in buffer: VimTextBuffer) {
@@ -144,15 +145,258 @@ extension VimEngine {
         }
     }
 
-    func adjustMarksForEdit(in editRange: NSRange, replacementLength: Int) {
-        let delta = replacementLength - editRange.length
-        guard delta != 0 else { return }
-        for (key, offset) in marks {
-            if offset >= editRange.location + editRange.length {
-                marks[key] = offset + delta
-            } else if offset >= editRange.location {
-                marks[key] = editRange.location
+    func setMark(_ name: Character, at offset: Int, in buffer: VimTextBuffer) {
+        marks[name] = offset
+        markColumns[name] = offset - buffer.lineRange(forOffset: offset).location
+    }
+
+    var positionSnapshot: VimPositionSnapshot {
+        VimPositionSnapshot(
+            marks: marks,
+            markColumns: markColumns,
+            lastJumpOrigin: lastJumpOrigin,
+            lastInsertOffset: lastInsertOffset,
+            lastVisualStart: lastVisualStart,
+            lastVisualEnd: lastVisualEnd
+        )
+    }
+
+    // Called before every edit, typed, pasted, undone or the engine's own. A mark keeps its line and column, as Vim's
+    // do (`:help mark-motions`): lines added or removed before it move it, a join carries it with its text, and
+    // removing its whole line removes a named mark. Each edit is kept with the positions from before it, so an undo or
+    // redo that reverses it puts them back, as Vim's undo restores its marks. Typing the same text back is not undo,
+    // and an undo reverses only edits, a redo only undos.
+    func textWillChange(in range: NSRange, with replacement: String, source: VimEditSource = .edit) {
+        // An undo inside an open step would leave the next edits joining the step before it.
+        if source != .edit { closeInsertUndoStep() }
+        noteInsertedText(in: range, with: replacement)
+        guard let buffer else { return }
+        let hasPositions = !marks.isEmpty || lastJumpOrigin != nil || lastInsertOffset != nil
+            || lastVisualStart != nil || lastVisualEnd != nil
+        guard hasPositions || !editJournal.isEmpty else { return }
+        let removedText = buffer.string(in: range)
+        let before = positionSnapshot
+        var restored: VimPositionSnapshot?
+        if source != .edit, let index = reversedJournalIndex(range: range, replacement: replacement, source: source) {
+            restored = editJournal[index].positions
+            editJournalTextLength -= editJournal[index...].reduce(0) { $0 + $1.textLength }
+            editJournal.removeSubrange(index...)
+        }
+        let change = VimMarkChange(range: range, replacement: replacement, in: buffer)
+        for (name, offset) in marks {
+            let mapped = change.map(offset, removable: true, in: buffer)
+            if mapped?.keepsColumn != true { markColumns[name] = nil }
+            marks[name] = mapped?.offset
+        }
+        lastJumpOrigin = lastJumpOrigin.flatMap { change.map($0, removable: false, in: buffer)?.offset }
+        lastInsertOffset = lastInsertOffset.flatMap {
+            change.map($0, removable: false, isInsertionPoint: true, in: buffer)?.offset
+        }
+        lastVisualStart = lastVisualStart.flatMap { change.map($0, removable: false, in: buffer)?.offset }
+        lastVisualEnd = lastVisualEnd.flatMap { change.map($0, removable: false, in: buffer)?.offset }
+        if let restored { restorePositions(restored) }
+        editJournal.append(VimEditRecord(
+            location: range.location,
+            removedText: removedText,
+            insertedText: replacement,
+            positions: before,
+            isUndo: source == .undo
+        ))
+        // An undo step can hold a long run of typing, so the journal keeps thousands of edits, bounded by the text they
+        // hold rather than their number.
+        editJournalTextLength += editJournal.last?.textLength ?? 0
+        while editJournal.count > 10_000 || editJournalTextLength > 1_000_000, let oldest = editJournal.first {
+            editJournalTextLength -= oldest.textLength
+            editJournal.removeFirst()
+        }
+    }
+
+    // Undo reverses the newest step first, so only the newest records, folded together, can match. An editor may undo
+    // a run of keys, such as backspaces, as one edit, which is why more than one record may be folded. Records of the other direction are passed over:
+    // each is an undo of an edit already gone from the journal, so the two cancel out.
+    private func reversedJournalIndex(range: NSRange, replacement: String, source: VimEditSource) -> Int? {
+        let reversesUndo = source == .redo
+        var folded: VimEditRecord?
+        for index in editJournal.indices.reversed() where editJournal[index].isUndo == reversesUndo {
+            let record = editJournal[index]
+            var combined = record
+            if let next = folded {
+                guard let joined = record.followed(by: next) else { return nil }
+                combined = joined
+            }
+            if combined.isReversed(by: range, replacement: replacement) { return index }
+            folded = combined
+        }
+        return nil
+    }
+
+    // A mark set since the reversed edit keeps its place, as Vim restores only the marks its undo step saved.
+    private func restorePositions(_ saved: VimPositionSnapshot) {
+        for (name, offset) in saved.marks {
+            marks[name] = offset
+            markColumns[name] = saved.markColumns[name]
+        }
+        lastJumpOrigin = saved.lastJumpOrigin ?? lastJumpOrigin
+        lastInsertOffset = saved.lastInsertOffset ?? lastInsertOffset
+        lastVisualStart = saved.lastVisualStart ?? lastVisualStart
+        lastVisualEnd = saved.lastVisualEnd ?? lastVisualEnd
+    }
+}
+
+// Where the marks were before one edit.
+struct VimPositionSnapshot {
+    var marks: [Character: Int]
+    var markColumns: [Character: Int]
+    var lastJumpOrigin: Int?
+    var lastInsertOffset: Int?
+    var lastVisualStart: Int?
+    var lastVisualEnd: Int?
+}
+
+// One edit, and the positions from before it. Undo reverses edits newest first, so the reversing edit finds its
+// record at the end of the journal, past any whose undo the editor folded into one step.
+enum VimEditSource {
+    case edit, undo, redo
+}
+
+struct VimEditRecord {
+    let location: Int
+    let removedText: String
+    let insertedText: String
+    let positions: VimPositionSnapshot
+    // An undo's own edit, which only a redo reverses.
+    let isUndo: Bool
+
+    func isReversed(by range: NSRange, replacement: String) -> Bool {
+        range.location == location && range.length == (insertedText as NSString).length && replacement == removedText
+    }
+
+    var textLength: Int {
+        (removedText as NSString).length + (insertedText as NSString).length
+    }
+
+    // This edit and the next as one, when the next touches the text this one left, with this one's positions.
+    func followed(by next: VimEditRecord) -> VimEditRecord? {
+        let removed = removedText as NSString
+        let inserted = insertedText as NSString
+        let nextRemoved = next.removedText as NSString
+        let nextInserted = next.insertedText as NSString
+        let end = location + inserted.length
+        let nextEnd = next.location + nextRemoved.length
+        guard next.location <= end, nextEnd >= location else { return nil }
+        let before = next.location < location ? nextRemoved.substring(to: location - next.location) : ""
+        let after = nextEnd > end ? nextRemoved.substring(from: end - next.location) : ""
+        let keptHead = next.location > location ? inserted.substring(to: next.location - location) : ""
+        let keptTail = nextEnd < end ? inserted.substring(from: nextEnd - location) : ""
+        return VimEditRecord(
+            location: min(location, next.location),
+            removedText: before + (removed as String) + after,
+            insertedText: keptHead + (nextInserted as String) + keptTail,
+            positions: positions,
+            isUndo: isUndo
+        )
+    }
+}
+
+// One edit, read from the text before it, as Vim's line-based mark adjustment sees it.
+@MainActor
+struct VimMarkChange {
+    private let location: Int
+    private let end: Int
+    private let delta: Int
+    private let removed: [unichar]
+    private let inserted: [unichar]
+    private let insertedBreaks: Int
+    private let removesLineBreak: Bool
+    // Whole lines removed or inserted at a line start, as `dd`, `p` and `O` and their undo make.
+    private let isLinewise: Bool
+    // As many line breaks go in as come out, so every line keeps its marks, as a shift or a case change does.
+    private let keepsLines: Bool
+    private let firstLineStart: Int
+    // Where the line holding the end of the removed text ends, in the text before the edit.
+    private let endLineEnd: Int
+    // Where the line holding the end of the inserted text ends, before its break, once the edit is in.
+    private let lastLineContentEnd: Int
+
+    init(range: NSRange, replacement: String, in buffer: VimTextBuffer) {
+        location = range.location
+        end = NSMaxRange(range)
+        removed = Array(buffer.string(in: range).utf16)
+        inserted = Array(replacement.utf16)
+        delta = inserted.count - removed.count
+        let removedBreaks = removed.filter { $0 == 0x0A }.count
+        insertedBreaks = inserted.filter { $0 == 0x0A }.count
+        removesLineBreak = removedBreaks > 0
+        keepsLines = removedBreaks == insertedBreaks
+        let firstLine = buffer.lineRange(forOffset: range.location)
+        firstLineStart = firstLine.location
+        let removedEndsWithBreak = removed.last.map { $0 == 0x0A } ?? true
+        let insertedEndsWithBreak = inserted.last.map { $0 == 0x0A } ?? true
+        isLinewise = range.location == firstLine.location && removedEndsWithBreak && insertedEndsWithBreak
+        let endLine = buffer.lineRange(forOffset: end)
+        endLineEnd = NSMaxRange(endLine)
+        let endLineHasBreak = endLineEnd > endLine.location && buffer.character(at: endLineEnd - 1) == 0x0A
+        lastLineContentEnd = (endLineHasBreak ? endLineEnd - 1 : endLineEnd) + delta
+    }
+
+    // Nil when the edit removes the line of a removable mark. `keepsColumn` is false where the mark moved onto
+    // another line's text, as a join moves it.
+    // An insertion point may sit after a line's last character; a mark sits on a character.
+    func map(
+        _ offset: Int,
+        removable: Bool,
+        isInsertionPoint: Bool = false,
+        in buffer: VimTextBuffer
+    ) -> (offset: Int, keepsColumn: Bool)? {
+        let lineEndSlack = isInsertionPoint ? 1 : 0
+        let onFirstLine = { self.keepingColumnOnFirstLine($0, lineEndSlack: lineEndSlack) }
+        if offset < location { return (offset, true) }
+        if offset >= endLineEnd { return (offset + delta, true) }
+        if keepsLines { return (keepingLineAndColumn(offset, lineEndSlack: lineEndSlack), true) }
+        if isLinewise {
+            if offset >= end { return (offset + delta, true) }
+            return removable ? nil : (location, false)
+        }
+        if offset >= end {
+            return removesLineBreak ? (offset + delta, false) : (onFirstLine(offset), true)
+        }
+        if removesLineBreak {
+            let line = buffer.lineRange(forOffset: offset)
+            if line.location > firstLineStart {
+                if NSMaxRange(line) <= end { return removable ? nil : (location, false) }
+                return (end + delta, false)
             }
         }
+        return (onFirstLine(offset), true)
+    }
+
+    // The first line keeps its start, so the offset keeps its column, up to the line's new last character.
+    private func keepingColumnOnFirstLine(_ offset: Int, lineEndSlack: Int) -> Int {
+        let firstBreak = inserted.firstIndex(of: 0x0A)
+        let contentEnd = firstBreak.map { location + $0 } ?? lastLineContentEnd
+        return min(offset, max(firstLineStart, contentEnd - 1 + lineEndSlack))
+    }
+
+    // The mark's line is the same line of the new text, at the same column up to that line's last character.
+    private func keepingLineAndColumn(_ offset: Int, lineEndSlack: Int) -> Int {
+        var line = 0
+        var lineStart = firstLineStart
+        for index in 0..<min(offset - location, removed.count) where removed[index] == 0x0A {
+            line += 1
+            lineStart = location + index + 1
+        }
+        let column = offset - lineStart
+        let newStart = line == 0 ? firstLineStart : location + nthBreak(line) + 1
+        let newContentEnd = line < insertedBreaks ? location + nthBreak(line + 1) : lastLineContentEnd
+        return newStart + min(column, max(0, newContentEnd - newStart - 1 + lineEndSlack))
+    }
+
+    private func nthBreak(_ count: Int) -> Int {
+        var seen = 0
+        for (index, unit) in inserted.enumerated() where unit == 0x0A {
+            seen += 1
+            if seen == count { return index }
+        }
+        return inserted.count
     }
 }

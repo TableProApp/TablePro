@@ -80,4 +80,15 @@ struct MaskingRule: Codable, Hashable, Identifiable, Sendable {
     var trimmedPattern: String {
         pattern.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    // What the rule does, without its id: a rule stored without one gets a new id on every read.
+    struct Effect: Equatable, Sendable {
+        let pattern: String
+        let target: MaskingTarget
+        let style: MaskingStyle
+    }
+
+    var effect: Effect {
+        Effect(pattern: pattern, target: target, style: style)
+    }
 }

@@ -82,6 +82,7 @@ struct MCPAnswerBudgetPayloadTests {
                 historyRecorder: RecordingQueryHistory(),
                 executionGate: AlwaysAllowGate()
             ),
+            chatMode: .agent,
             policyLookup: { _ in .alwaysAllow }
         )
 

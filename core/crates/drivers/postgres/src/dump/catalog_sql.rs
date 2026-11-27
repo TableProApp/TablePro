@@ -5,7 +5,7 @@
 /// The schemas a dump covers, the server's own left out.
 macro_rules! in_scope {
     () => {
-        "n.nspname <> 'information_schema' AND NOT pg_catalog.starts_with(n.nspname, 'pg_')
+        "n.nspname <> 'information_schema' AND pg_catalog.left(n.nspname::text, 3) <> 'pg_'
   AND ($1 = 'all' OR n.nspname = $2)"
     };
 }
@@ -115,8 +115,8 @@ ORDER BY n.nspname, t.typname, k.conname"
 macro_rules! functions_sql {
     ($sql_body:expr) => {
         concat!(
-            "SELECT n.nspname::text, p.proname::text, p.prokind::text,
-       CASE WHEN p.prokind <> 'a' THEN pg_catalog.pg_get_functiondef(p.oid)::text END,
+            "SELECT n.nspname::text, p.proname::text, {p.prokind}::text,
+       CASE WHEN {p.prokind} <> 'a' THEN pg_catalog.pg_get_functiondef(p.oid)::text END,
        ",
             $sql_body,
             "
@@ -153,12 +153,7 @@ macro_rules! after_tables {
     };
 }
 
-pub(crate) const FUNCTIONS_SQL: &str = functions_sql!(after_tables!(
-    "(p.prosqlbody IS NOT NULL AND EXISTS (SELECT 1 FROM pg_catalog.pg_depend dep
-       WHERE dep.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND dep.objid = p.oid
-         AND dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass))"
-));
-pub(crate) const FUNCTIONS_SQL_BEFORE_14: &str = functions_sql!(after_tables!("false"));
+pub(crate) const FUNCTIONS_SQL: &str = functions_sql!(after_tables!("{p.sql_body_reads_a_table}"));
 
 /// Every sequence, with the column that owns it (`a`) or whose identity
 /// it is (`i`), and its position read from the sequence itself:
@@ -240,7 +235,7 @@ pub(crate) const COLUMNS_SQL: &str = concat!(
        pg_catalog.format_type(a.atttypid, a.atttypmod)::text,
        cn.nspname::text, co.collname::text,
        pg_catalog.pg_get_expr(d.adbin, d.adrelid)::text,
-       a.attidentity::text, a.attgenerated::text, a.attnotnull,
+       a.attidentity::text, {a.attgenerated}::text, a.attnotnull,
        pg_catalog.col_description(a.attrelid, a.attnum::pg_catalog.int4)::text
 FROM pg_catalog.pg_attribute a
 JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
@@ -268,7 +263,7 @@ WHERE c.relkind IN ('r', 'p') AND ",
     in_scope!(),
     "
   AND ((k.contype = 'c' AND k.conislocal)
-       OR (k.contype IN ('f', 'p', 'u', 'x') AND k.conparentid = 0::pg_catalog.oid))
+       OR (k.contype IN ('f', 'p', 'u', 'x') AND {k.conparentid} = 0::pg_catalog.oid))
 ORDER BY n.nspname, c.relname, k.conname"
 );
 
@@ -322,7 +317,7 @@ pub(crate) const TRIGGERS_SQL: &str = concat!(
 FROM pg_catalog.pg_trigger t
 JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-WHERE NOT t.tgisinternal AND t.tgparentid = 0::pg_catalog.oid AND c.relkind IN ('r', 'p', 'v') AND ",
+WHERE NOT t.tgisinternal AND {t.tgparentid} = 0::pg_catalog.oid AND c.relkind IN ('r', 'p', 'v') AND ",
     in_scope!(),
     "
   AND ",

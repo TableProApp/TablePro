@@ -24,7 +24,7 @@ struct OutputLimitSignalTests {
     ] as [(String, [ChatOutputLimit])])
     func anthropicStopReason(reason: String, expected: [ChatOutputLimit]) throws {
         var state = AnthropicStreamState()
-        let events = try AnthropicProvider.parseChunk([
+        let events = try AnthropicStreamWire().events(from: [
             "type": "message_delta",
             "delta": ["stop_reason": reason],
             "usage": ["output_tokens": 12],
@@ -40,27 +40,27 @@ struct OutputLimitSignalTests {
     ] as [(String, [ChatOutputLimit])])
     func chatCompletionsFinishReason(reason: String, expected: [ChatOutputLimit]) {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = ChatCompletionsStreamWire(ollama: false).parse([
             "choices": [["delta": [:] as [String: Any], "finish_reason": reason]],
         ], state: &state)
-        #expect(limits(result.events) == expected)
+        #expect(limits(events) == expected)
     }
 
     @Test("Ollama's done_reason length is reported")
     func ollamaDoneReason() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = ChatCompletionsStreamWire(ollama: true).parse([
             "message": ["content": ""],
             "done": true,
             "done_reason": "length",
         ], state: &state)
-        #expect(limits(result.events) == [.outputTokens])
+        #expect(limits(events) == [.outputTokens])
     }
 
     @Test("A Responses stream that ends incomplete at max_output_tokens is reported, with its usage")
     func responsesIncomplete() throws {
         var state = ResponsesStreamState()
-        let events = try OpenAIResponsesProvider.parseEvent([
+        let events = try ResponsesStreamWire().events(from: [
             "type": "response.incomplete",
             "response": [
                 "status": "incomplete",
@@ -76,7 +76,7 @@ struct OutputLimitSignalTests {
     @Test("A Responses stream cut by its content filter is not an output limit")
     func responsesContentFilter() throws {
         var state = ResponsesStreamState()
-        let events = try OpenAIResponsesProvider.parseEvent([
+        let events = try ResponsesStreamWire().events(from: [
             "type": "response.incomplete",
             "response": ["incomplete_details": ["reason": "content_filter"]],
         ], state: &state)
@@ -89,9 +89,9 @@ struct OutputLimitSignalTests {
     ] as [(String, [ChatOutputLimit])])
     func geminiFinishReason(reason: String, expected: [ChatOutputLimit]) {
         var state = GeminiStreamState()
-        let events = GeminiProvider.parseChunk([
+        let events = GeminiStreamWire(idGenerator: { "id" }).parse([
             "candidates": [["content": ["parts": [["text": "partial"]]], "finishReason": reason]],
-        ], state: &state, idGenerator: { "id" })
+        ], state: &state)
         #expect(limits(events) == expected)
     }
 

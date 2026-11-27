@@ -37,6 +37,8 @@ env:
   CARGO_SHEAR_VERSION: 1.13.4
   LYCHEE_VERSION: 0.24.2
   LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+  # The fixtures' Docker Hub images, as the job images below (.claude/rules/ci.md, Writing workflow and lint code).
+  TABLEPRO_TEST_DOCKER_HUB_MIRROR: mirror.gcr.io
 
 jobs:
   docs:
@@ -70,7 +72,7 @@ jobs:
     # ubuntu:26.04 gives GLib 2.88 plus the meson, appstream and
     # desktop-file-utils packages the data suite validates with.
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
     defaults:
@@ -256,7 +258,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
     defaults:
@@ -294,7 +296,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
     # The runner passes a step's working directory to docker exec unquoted,
@@ -343,7 +345,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-shear@${{ env.CARGO_SHEAR_VERSION }},cargo-about@${{ env.CARGO_ABOUT_VERSION }}
       - name: Bans, licenses and sources
@@ -384,7 +386,7 @@ jobs:
     # 0.26 read Rust but skip those calls, and an older one falls back to
     # its C lexer.
     container:
-      image: ubuntu:26.10
+      image: mirror.gcr.io/library/ubuntu:26.10
       env:
         DEBIAN_FRONTEND: noninteractive
     defaults:
@@ -460,6 +462,10 @@ jobs:
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
       options: --privileged
+      # Docker copies the image's runtimes into the volume. On AWS-hosted runners, updating a runtime that sits in
+      # an image layer fails with "Invalid cross-device link" (run 43615225881).
+      volumes:
+        - flatpak-system:/var/lib/flatpak
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -543,7 +549,7 @@ jobs:
           add-job-id-key: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - &docker-nextest
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       - &docker-available
@@ -659,7 +665,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
       options: -v /var/run/docker.sock:/var/run/docker.sock
@@ -697,7 +703,7 @@ jobs:
           workspaces: .
           key: tablepro-session
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       - name: Verify docker is available
@@ -723,7 +729,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
-      image: ubuntu:26.04
+      image: mirror.gcr.io/library/ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
       options: -v /var/run/docker.sock:/var/run/docker.sock
@@ -772,7 +778,7 @@ jobs:
       # As in the fast job: the cache restores DuckDB's sources without files.
       - name: Drop the emptied DuckDB sources
         run: rm -rf ../target/duckdb-sources
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       - name: Verify docker is available

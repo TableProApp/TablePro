@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProSQLVocabulary
 import TableProUtilities
 
@@ -20,17 +21,12 @@ extension PluginMetadataRegistry {
     // their driver creates is a SQLite database.
     static let sqliteFileExtensions = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
 
-    // Engines where a function a SELECT calls can change data: an autonomous-transaction function on Oracle and Dameng,
-    // a stored function on MySQL, MariaDB and OceanBase, PL/pgSQL on the PostgreSQL family. Read-Only asks before such a
-    // call only when the live driver cannot run the statement in the engine's read-only mode. MySQL and MariaDB are
-    // listed by type because an OceanBase server answers as MySQL, so only the driver's own bit tells them apart. TiDB,
-    // StarRocks and Databend have no stored function or UDF that writes; SQL Server, Snowflake, BigQuery, Trino and
-    // Redshift refuse a write from a function a query calls; ClickHouse, the SQLite engines and Cassandra have none.
-    static let queryFunctionsCanWrite: Set<DatabaseType> = [
-        .oracle, .dameng,
-        .mysql, .mariadb, .oceanbase,
-        .postgresql, .cockroachdb, .pglite, .kingbasees,
-    ]
+    // Engines where a function a SELECT calls can change data. Read-Only refuses a call off the built-in list only when
+    // the live driver cannot run the statement in the engine's read-only mode. MySQL and MariaDB are listed by type
+    // because an OceanBase server answers as MySQL, so only the driver's own bit tells them apart.
+    static let queryFunctionsCanWrite = Set(
+        SQLReadOnlyFunctionCalls.queryFunctionsCanWrite.map(DatabaseType.init(rawValue:))
+    )
 
     // swiftlint:disable:next function_body_length
     static func curatedDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
@@ -78,22 +74,7 @@ extension PluginMetadataRegistry {
 
         let postgresqlDialect = SQLDialectDescriptor(
             identifierQuote: "\"",
-            keywords: [
-                "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "FULL",
-                "ON", "USING", "AND", "OR", "NOT", "IN", "LIKE", "ILIKE", "BETWEEN", "AS",
-                "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "FETCH", "FIRST", "ROWS", "ONLY",
-                "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-                "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA",
-                "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CONSTRAINT",
-                "ADD", "MODIFY", "COLUMN", "RENAME",
-                "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL", "ANY", "SOME",
-                "CASE", "WHEN", "THEN", "ELSE", "END", "COALESCE", "NULLIF",
-                "UNION", "INTERSECT", "EXCEPT",
-                "RETURNING", "WITH", "RECURSIVE", "MATERIALIZED",
-                "EXPLAIN", "ANALYZE", "VERBOSE",
-                "WINDOW", "OVER", "PARTITION",
-                "LATERAL", "ORDINALITY"
-            ],
+            keywords: SQLEngineVocabulary.postgreSQL.keywords,
             functions: SQLEngineVocabulary.postgreSQL.functions,
             dataTypes: SQLEngineVocabulary.postgreSQL.dataTypes,
             tableOptions: SQLEngineVocabulary.postgreSQL.tableOptions,
@@ -103,7 +84,7 @@ extension PluginMetadataRegistry {
             paginationStyle: .limit,
             caseSensitivityStyle: .ilikeOperator,
             operators: SQLEngineVocabulary.postgreSQL.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
-            textCastTypeName: nil,
+            textCastTypeName: "TEXT",
             functionNamesAreCaseInsensitive: SQLEngineVocabulary.postgreSQL.functionNamesAreCaseInsensitive,
             typeNamesAreCaseInsensitive: true
         )
@@ -259,7 +240,6 @@ extension PluginMetadataRegistry {
                     supportsRenameView: true,
                     supportsRenameDatabase: false,
                     supportsRenameSchema: false,
-                    supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
                     supportsCheckConstraints: true,
@@ -269,7 +249,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH",
+                    largeValueFunctions: .mySQL,
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -341,7 +322,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH",
+                    largeValueFunctions: .mySQL,
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -392,6 +374,7 @@ extension PluginMetadataRegistry {
                 ),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -410,7 +393,6 @@ extension PluginMetadataRegistry {
                     supportsCreateSchema: true,
                     supportsSchemaOwner: true,
                     supportsSchemaPrivileges: true,
-                    supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
                     supportsCheckConstraints: true,
@@ -421,6 +403,8 @@ extension PluginMetadataRegistry {
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .preferred,
                     verifiesServerWithSystemTrust: true,
+                    largeValueFunctions: .postgreSQL,
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -446,7 +430,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField, connectionOptionsField] + postgresqlAuthFields,
+                    additionalConnectionFields: [pgpassField] + postgresqlAuthFields + [connectionOptionsField],
                     category: .relational,
                     tagline: String(localized: "Advanced object-relational SQL"),
                     defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432",
@@ -465,6 +449,7 @@ extension PluginMetadataRegistry {
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -533,6 +518,7 @@ extension PluginMetadataRegistry {
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -606,6 +592,7 @@ extension PluginMetadataRegistry {
                 ),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: false,
@@ -633,6 +620,7 @@ extension PluginMetadataRegistry {
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .disabled,
                     supportsConnectionPooling: false,
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -691,18 +679,19 @@ extension PluginMetadataRegistry {
                     supportsRenameView: false,
                     supportsRenameDatabase: false,
                     supportsRenameSchema: false,
-                    supportsModifyColumn: false,
-                    supportsRenameColumn: true,
-                    supportsModifyPrimaryKey: false,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
                     supportsCheckConstraints: true,
+                    // The plugin's SQLite (scripts/build-sqlite.sh) is 3.53 or later, which edits CHECK constraints.
+                    supportsCheckConstraintEditing: true,
                     supportsGeneratedColumns: true,
                     supportsDatabaseTriggerBrowse: true,
                     localFilePathField: .database,
                     newDatabaseFileExtensions: Self.sqliteFileExtensions,
                     supportsRemoteDatabaseFile: true,
                     supportsRemoteDatabaseSession: true,
+                    largeValueFunctions: .sqlite,
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .engineEnforced
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -718,8 +707,7 @@ extension PluginMetadataRegistry {
                     fileSignatures: [.magic("SQLite format 3\u{0}")],
                     databaseGroupingStrategy: .flat,
                     structureColumnFields: [
-                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
-                        .autoIncrement, .comment
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .autoIncrement
                     ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(

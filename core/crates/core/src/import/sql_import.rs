@@ -5,9 +5,11 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use tokio_util::bytes::Bytes;
 use tokio_util::sync::CancellationToken;
 
 use crate::call_options::CallOptions;
+use crate::copy_in::{CopyInPiece, CopyInSummary};
 use crate::dialect::SqlDialect;
 use crate::dump::DumpDialect;
 use crate::editor_session::EditorSession;
@@ -37,6 +39,9 @@ const KEPT_STATEMENT_CHARS: usize = 2_000;
 
 /// Units read ahead of the one running.
 const UNITS_AHEAD: usize = 8;
+
+/// Pieces of COPY rows handed to the session ahead of the one it sends.
+const PIECES_AHEAD: usize = 2;
 
 /// How long a rollback or commit after the file may take.
 const FINISH_DEADLINE: Duration = Duration::from_secs(120);
@@ -142,7 +147,7 @@ pub async fn run_sql_import(
     let started = Instant::now();
     let grammar = dialect.grammar();
     let settings = session_settings(editor, grammar, cancel).await;
-    let reader = SqlFileReader::new(file, grammar, dialect.insert_overriding_clause()).with_settings(settings);
+    let reader = SqlFileReader::new(file, grammar).with_settings(settings);
     let mut file = FileUnits::start(reader);
     let transaction = dialect.dump().filter(|dump| {
         options.one_transaction && dump.transactional_ddl() && options.on_error == SqlImportErrorPolicy::Stop
@@ -352,10 +357,94 @@ impl<'a> Run<'a> {
                 break;
             };
             match next {
+                Ok(unit) if unit.kind == ScriptUnitKind::CopyFromStdin => {
+                    first = self.copy(unit, file, progress, cancel).await.map(Ok);
+                }
                 Ok(unit) => self.unit(unit, cancel).await,
                 Err(error) => self.report.end = SqlImportEnd::File(error),
             }
             progress(file.progress(&self.report));
+        }
+    }
+
+    /// Run a `COPY ... FROM STDIN` with the rows after it, sent on as the
+    /// file is read. It counts as one statement, and one that fails loses
+    /// its whole block, as in psql. Returns a unit it read past its rows,
+    /// which runs next.
+    async fn copy(
+        &mut self,
+        unit: ScriptUnit,
+        file: &mut FileUnits,
+        progress: &mut (dyn FnMut(SqlImportProgress) + Send),
+        cancel: &CancellationToken,
+    ) -> Option<ScriptUnit> {
+        if cancel.is_cancelled() {
+            self.report.end = SqlImportEnd::Cancelled;
+            return None;
+        }
+        let (sender, rows) = mpsc::channel(PIECES_AHEAD);
+        let editor = self.editor;
+        let copying = editor.copy_in(
+            UserSql::new(unit.text.as_str()),
+            rows,
+            RunOptions::new(cancel.child_token()),
+        );
+        let feeding = feed(file, sender, &self.report, progress, cancel);
+        let (copied, fed) = tokio::join!(copying, feeding);
+        let (rows_left, past_rows) = match fed {
+            Fed::Cancelled => {
+                self.report.end = SqlImportEnd::Cancelled;
+                return None;
+            }
+            Fed::File(error) => {
+                self.report.end = SqlImportEnd::File(error);
+                return None;
+            }
+            Fed::Ended => (false, None),
+            Fed::Refused { rows_left } => (rows_left, None),
+            Fed::Unfinished(past_rows) => (false, past_rows),
+        };
+        match copy_answer(copied) {
+            CopyAnswer::Done => self.report.statements += 1,
+            CopyAnswer::Failed(error) => {
+                self.failure(&unit, SqlImportFault::Statement(error));
+                if rows_left && matches!(self.report.end, SqlImportEnd::Completed) {
+                    return self.skip_rows(file, progress, cancel).await;
+                }
+            }
+            CopyAnswer::Ends(end) => self.report.end = end,
+        }
+        past_rows
+    }
+
+    /// Pass over the rest of the rows of a COPY that failed before it
+    /// took them all, up to their end. Returns a unit that is not one of
+    /// them.
+    async fn skip_rows(
+        &mut self,
+        file: &mut FileUnits,
+        progress: &mut (dyn FnMut(SqlImportProgress) + Send),
+        cancel: &CancellationToken,
+    ) -> Option<ScriptUnit> {
+        loop {
+            let next = tokio::select! {
+                () = cancel.cancelled() => {
+                    self.report.end = SqlImportEnd::Cancelled;
+                    return None;
+                }
+                next = file.units.recv() => next,
+            };
+            progress(file.progress(&self.report));
+            match next {
+                Some(Ok(unit)) if unit.kind == ScriptUnitKind::CopyData => {}
+                Some(Ok(unit)) if unit.kind == ScriptUnitKind::CopyEnd => return None,
+                Some(Ok(unit)) => return Some(unit),
+                None => return None,
+                Some(Err(error)) => {
+                    self.report.end = SqlImportEnd::File(error);
+                    return None;
+                }
+            }
         }
     }
 
@@ -416,6 +505,9 @@ impl<'a> Run<'a> {
             }
             ScriptUnitKind::Refused(refused) => Some(refused.clone()),
             ScriptUnitKind::Run => None,
+            // Rows come only after their COPY, which `copy` reads to their
+            // end.
+            ScriptUnitKind::CopyFromStdin | ScriptUnitKind::CopyData | ScriptUnitKind::CopyEnd => return,
         };
         if let Some(refused) = refused {
             self.failure(&unit, SqlImportFault::Refused(refused));
@@ -571,6 +663,85 @@ impl<'a> Run<'a> {
             Ok(TransactionState::Idle) => Some(false),
             Ok(TransactionState::Unknown) | Err(_) => None,
         }
+    }
+}
+
+/// How handing a COPY its rows ended.
+enum Fed {
+    /// Every row went, and then the end.
+    Ended,
+    /// The session stopped taking rows. `rows_left` once the file still
+    /// holds some of them, false when the refused piece was their end.
+    Refused {
+        rows_left: bool,
+    },
+    Cancelled,
+    File(SqlFileError),
+    /// The file's units stopped short of the end of the rows, with the
+    /// unit read in their place.
+    Unfinished(Option<ScriptUnit>),
+}
+
+/// Hand the session the rows that follow a COPY, a piece at a time, up to
+/// their end. Dropping `sender` before the end abandons the copy.
+async fn feed(
+    file: &mut FileUnits,
+    sender: mpsc::Sender<CopyInPiece>,
+    report: &SqlImportReport,
+    progress: &mut (dyn FnMut(SqlImportProgress) + Send),
+    cancel: &CancellationToken,
+) -> Fed {
+    loop {
+        let next = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Fed::Cancelled,
+            next = file.units.recv() => next,
+        };
+        let piece = match next {
+            Some(Ok(unit)) if unit.kind == ScriptUnitKind::CopyData => CopyInPiece::Data(Bytes::from(unit.text)),
+            Some(Ok(unit)) if unit.kind == ScriptUnitKind::CopyEnd => CopyInPiece::End,
+            Some(Ok(unit)) => return Fed::Unfinished(Some(unit)),
+            None => return Fed::Unfinished(None),
+            Some(Err(error)) => return Fed::File(error),
+        };
+        let last = piece == CopyInPiece::End;
+        let sent = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Fed::Cancelled,
+            sent = sender.send(piece) => sent,
+        };
+        progress(file.progress(report));
+        match (sent, last) {
+            (Err(_), last) => return Fed::Refused { rows_left: !last },
+            (Ok(()), true) => return Fed::Ended,
+            (Ok(()), false) => {}
+        }
+    }
+}
+
+/// What a copy's answer means to the import.
+enum CopyAnswer {
+    Done,
+    /// A failure the error policy decides on.
+    Failed(DriverError),
+    Ends(SqlImportEnd),
+}
+
+fn copy_answer(copied: Result<CopyInSummary, DriverError>) -> CopyAnswer {
+    match copied {
+        Ok(summary) => match summary.end {
+            RunEnd::Completed => CopyAnswer::Done,
+            RunEnd::Failed(error) => CopyAnswer::Failed(error),
+            RunEnd::TimedOut { server_cancelled } => CopyAnswer::Failed(DriverError::Timeout {
+                phase: TimeoutPhase::Statement,
+                server_cancelled,
+            }),
+            RunEnd::Cancelled => CopyAnswer::Ends(SqlImportEnd::Cancelled),
+        },
+        // The session cannot send COPY data, which fails this statement,
+        // not the session.
+        Err(error @ DriverError::Unsupported { .. }) => CopyAnswer::Failed(error),
+        Err(error) => CopyAnswer::Ends(SqlImportEnd::Session(error)),
     }
 }
 

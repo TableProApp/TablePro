@@ -16,29 +16,43 @@ nonisolated internal enum LibSSH2ChannelFree {
     // The keep-alive's own limit: a packet still unsent by then holds every other send on the session.
     static let deadlineSeconds: TimeInterval = 30
 
-    // Another relay can read the CLOSE reply off the shared socket and leave it quiet, so free runs
-    // again after every wait. An EOF that would block is sent again first: libssh2 keeps it as the
-    // session's next packet and turns every other send away until the same call sends it.
+    // Another relay can read the CLOSE reply off the shared socket and leave it quiet, so free runs again after
+    // every wait. The EOF goes first, on its own: channel_close would send it anyway, from a packet on its stack
+    // that a retry from another frame cannot finish (stackPacketReadiness), so it waits for room to go whole. A
+    // wait on another packet is bounded by the poll timeout, as only that packet's own call can finish it.
     static func run(
         channel: OpaquePointer,
         session: OpaquePointer,
-        sessionQueue: DispatchQueue,
+        pump: SSHSessionPump,
         transportFD: Int32,
-        sendEOF: Bool = false,
         deadline: Date = Date().addingTimeInterval(deadlineSeconds),
         isActive: @escaping () -> Bool
     ) -> SSHChannelFreeOutcome {
-        var eofPending = sendEOF
+        var eofSent = false
+        let turn = SSHSendTurn(pump: pump)
+        defer { turn.end() }
         return SSHChannelFreePump(
             attemptFree: {
-                sessionQueue.sync {
-                    if eofPending {
+                let attempt: SSHChannelFreeAttempt = pump.perform {
+                    if !eofSent {
+                        switch stackPacketReadiness(session: session, transportFD: transportFD) {
+                        case .socketFull: return .wouldBlock(.outbound)
+                        case .sendPending: return .wouldBlock(.inbound)
+                        case .ready, .gone: break
+                        }
                         guard libssh2_channel_send_eof(channel) != LIBSSH2_ERROR_EAGAIN else { return blocked(session) }
-                        eofPending = false
+                        eofSent = true
                     }
                     guard libssh2_channel_free(channel) == LIBSSH2_ERROR_EAGAIN else { return .finished }
                     return blocked(session)
                 }
+                // Past the EOF and the CLOSE the free only waits for the server's reply.
+                if case .wouldBlock(let directions) = attempt {
+                    turn.waitsToSend(!eofSent || directions.contains(.outbound))
+                } else {
+                    turn.end()
+                }
+                return attempt
             },
             isActive: isActive,
             deadline: deadline,

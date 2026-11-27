@@ -250,21 +250,28 @@ extension PluginManager {
 
     func importPlugins(for databaseType: DatabaseType) -> [any ImportFormatPlugin] {
         guard supportsImport(for: databaseType) else { return [] }
-        let typeId = databaseType.rawValue
+        let writesRows = ImportDataSinkAdapter.canWriteRows(into: databaseType)
         return allImportPlugins()
-            .filter { plugin in
-                let supported = type(of: plugin).supportedDatabaseTypeIds
-                let excluded = type(of: plugin).excludedDatabaseTypeIds
-                if !supported.isEmpty && !supported.contains(typeId) { return false }
-                if excluded.contains(typeId) { return false }
-                return true
-            }
+            .filter { Self.offers(type(of: $0), to: databaseType, writesRows: writesRows) }
             .sorted { lhs, rhs in
                 let lhsRowBased = type(of: lhs).requiresTargetTable
                 let rhsRowBased = type(of: rhs).requiresTargetTable
                 if lhsRowBased != rhsRowBased { return !lhsRowBased }
                 return type(of: lhs).formatDisplayName < type(of: rhs).formatDisplayName
             }
+    }
+
+    // A row format writes through the import sink, which has no statement to write without a SQL dialect (MongoDB).
+    static func offers(
+        _ format: any ImportFormatPlugin.Type,
+        to databaseType: DatabaseType,
+        writesRows: Bool
+    ) -> Bool {
+        let typeId = databaseType.rawValue
+        let supported = format.supportedDatabaseTypeIds
+        if !supported.isEmpty && !supported.contains(typeId) { return false }
+        if format.excludedDatabaseTypeIds.contains(typeId) { return false }
+        return !format.requiresTargetTable || writesRows
     }
 
     func importFormatOptions(for databaseType: DatabaseType) -> [ImportFormatOption] {
@@ -326,6 +333,16 @@ extension PluginManager {
     func supportsSchemaSwitching(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsSchemaSwitching ?? false
+    }
+
+    func statementsCanSwitchDatabase(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.statementsCanSwitchDatabase ?? true
+    }
+
+    func schemaSwitchScopesUnqualifiedNames(for databaseType: DatabaseType) -> Bool {
+        supportsSchemaSwitching(for: databaseType)
+            && PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+                .capabilities.schemaSwitchScopesUnqualifiedNames ?? false
     }
 
     /// Every container dimension the engine can switch, ordered outermost first. An engine can have
@@ -639,8 +656,12 @@ extension PluginManager {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchTextTypePrefixes ?? []
     }
 
-    func binaryLengthFunction(for databaseType: DatabaseType) -> String? {
-        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.binaryLengthFunction
+    func largeValueFunctions(for databaseType: DatabaseType) -> LargeValueFunctions? {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.largeValueFunctions
+    }
+
+    func readsCheckListsFromDDL(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.readsCheckListsFromDDL ?? true
     }
 
     func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {

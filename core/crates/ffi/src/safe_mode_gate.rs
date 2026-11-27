@@ -80,9 +80,9 @@ mod tests {
         let update = gate(
             "UPDATE t SET a = 1 WHERE id = 2",
             SqlGrammar::PostgreSql,
-            SafeModeLevel::ConfirmWrites,
+            SafeModeLevel::Alert,
         );
-        let select = gate("SELECT * FROM t", SqlGrammar::PostgreSql, SafeModeLevel::ConfirmWrites);
+        let select = gate("SELECT * FROM t", SqlGrammar::PostgreSql, SafeModeLevel::Alert);
 
         assert_eq!(update.confirm, ["UPDATE t SET a = 1 WHERE id = 2"]);
         assert!(!update.destructive);
@@ -95,7 +95,7 @@ mod tests {
         let run = gate(
             "SELECT 1; INSERT INTO t VALUES (1); SELECT 2; DELETE FROM t",
             SqlGrammar::MySql,
-            SafeModeLevel::ConfirmWrites,
+            SafeModeLevel::Alert,
         );
 
         assert_eq!(run.confirm.len(), 2);
@@ -106,8 +106,8 @@ mod tests {
 
     #[test]
     fn off_asks_only_before_a_destructive_statement() {
-        let write = gate("INSERT INTO t VALUES (1)", SqlGrammar::Sqlite, SafeModeLevel::Off);
-        let drop = gate("DROP TABLE t", SqlGrammar::Sqlite, SafeModeLevel::Off);
+        let write = gate("INSERT INTO t VALUES (1)", SqlGrammar::Sqlite, SafeModeLevel::Silent);
+        let drop = gate("DROP TABLE t", SqlGrammar::Sqlite, SafeModeLevel::Silent);
 
         assert_eq!(write, RunGate::default());
         assert_eq!(drop.confirm, ["DROP TABLE t"]);
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn a_byte_order_mark_does_not_hide_a_sqlite_statement_from_the_question() {
-        let drop = gate("\u{feff}DROP TABLE t", SqlGrammar::Sqlite, SafeModeLevel::Off);
+        let drop = gate("\u{feff}DROP TABLE t", SqlGrammar::Sqlite, SafeModeLevel::Silent);
 
         assert_eq!(drop.confirm.len(), 1);
         assert!(drop.destructive);
@@ -127,7 +127,7 @@ mod tests {
         let run = gate(
             "UPDATE accounts SET balance = balance - 10 WHERE id = 1\nGO 100",
             SqlGrammar::MsSql,
-            SafeModeLevel::ConfirmWrites,
+            SafeModeLevel::Alert,
         );
 
         assert_eq!(
@@ -151,11 +151,36 @@ mod tests {
     }
 
     #[test]
+    fn read_only_keeps_back_a_statement_that_turns_read_only_off() {
+        for (grammar, sql) in [
+            (
+                SqlGrammar::PostgreSql,
+                "BEGIN; SET TRANSACTION READ WRITE; DELETE FROM t",
+            ),
+            (
+                SqlGrammar::PostgreSql,
+                "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE",
+            ),
+            (
+                SqlGrammar::PostgreSql,
+                "SELECT set_config('default_transaction_read_only', 'off', false)",
+            ),
+            (SqlGrammar::MySql, "SET SESSION transaction_read_only = 0"),
+            (SqlGrammar::MySql, "START TRANSACTION READ WRITE"),
+        ] {
+            assert!(
+                gate(sql, grammar, SafeModeLevel::ReadOnly).refused,
+                "{grammar:?}: {sql}"
+            );
+        }
+    }
+
+    #[test]
     fn a_mysql_executable_comment_is_read_as_the_server_reads_it() {
         // MySQL 8.0 skips the second comment past its nested `/* */` and runs the DROP after it.
         let script = "/*!40103 SET TIME_ZONE='+00:00' */;\nSELECT 1 /*!99999 /* */ ' */ ; DROP TABLE orders; -- '";
 
-        let off = gate(script, SqlGrammar::MySql, SafeModeLevel::Off);
+        let off = gate(script, SqlGrammar::MySql, SafeModeLevel::Silent);
         let read_only = gate(script, SqlGrammar::MySql, SafeModeLevel::ReadOnly);
 
         assert_eq!(off.confirm, ["SELECT 1 /*!99999 /* */ ' */ ; DROP TABLE orders; -- '"]);
@@ -168,18 +193,22 @@ mod tests {
         // A PostgreSQL session can turn backslash escapes on, and then the first string runs on and DROP is code.
         let sql = "SELECT 'x\\'; SELECT '; DROP TABLE t; --'";
 
-        let run = gate(sql, SqlGrammar::PostgreSql, SafeModeLevel::ConfirmWrites);
+        let run = gate(sql, SqlGrammar::PostgreSql, SafeModeLevel::Alert);
 
         assert_eq!(run.confirm, [sql]);
         assert!(run.destructive);
     }
 
     #[test]
-    fn a_mysql_read_script_with_delimiter_lines_runs_at_every_level() {
+    fn a_mysql_read_script_with_delimiter_lines_runs_at_every_level_that_lets_reads_through() {
         let script = "DELIMITER //\nSELECT 1//\nDELIMITER ;\nSELECT 2;";
 
         for level in SafeModeLevel::ALL {
-            assert_eq!(gate(script, SqlGrammar::MySql, level), RunGate::default(), "{level:?}");
+            let run = gate(script, SqlGrammar::MySql, level);
+            match level.confirms_reads() {
+                true => assert!(!run.confirm.is_empty() && !run.refused, "{level:?}"),
+                false => assert_eq!(run, RunGate::default(), "{level:?}"),
+            }
         }
     }
 }

@@ -3,8 +3,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using TablePro.Editor.Model;
+using TablePro.Graphics;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
+using Windows.Storage;
 using Windows.System;
 using static TerraFX.Interop.Windows.SM;
 using static TerraFX.Interop.Windows.SPI;
@@ -26,7 +28,7 @@ public sealed partial class SqlEditor
 
     private DragMode _drag;
     private Selection _dragOrigin;
-    private int _columnAnchorLine;
+    private int _columnAnchorRow;
     private int _columnAnchorColumn;
     private Point _pressPoint;
     private ulong _lastClickTime;
@@ -40,6 +42,7 @@ public sealed partial class SqlEditor
         PointerMoved += OnPointerMoved;
         PointerReleased += OnPointerReleased;
         PointerCaptureLost += (_, _) => _drag = DragMode.None;
+        PointerExited += (_, _) => ShowChevrons(false);
         PointerWheelChanged += OnPointerWheelChanged;
         AllowDrop = true;
         DragOver += OnDragOver;
@@ -58,7 +61,14 @@ public sealed partial class SqlEditor
         }
         Focus(FocusState.Pointer);
         RestartBlink();
+        // A click splits an insert's undo step, as Vim splits it where the caret moves.
+        _vim?.BreakInsertUndo();
         var position = point.Position;
+        if (FoldClickedAt(position))
+        {
+            e.Handled = true;
+            return;
+        }
         CountClick(point.Timestamp, position);
         var offset = OffsetAt(position);
         var shift = (e.KeyModifiers & VirtualKeyModifiers.Shift) != 0;
@@ -69,9 +79,7 @@ public sealed partial class SqlEditor
 
         if (alt && _clickCount == 1)
         {
-            var line = Document.GetLineFromOffset(offset);
-            _columnAnchorLine = line;
-            _columnAnchorColumn = VisualColumnAt(line, position.X);
+            (_columnAnchorRow, _columnAnchorColumn) = _model.RowColumnOf(offset);
             _model.AddSelection(Selection.Caret(offset));
             _drag = DragMode.Column;
             return;
@@ -112,6 +120,8 @@ public sealed partial class SqlEditor
     {
         if (_drag == DragMode.None)
         {
+            var at = e.GetCurrentPoint(_panel).Position;
+            ShowChevrons(at.X >= 0 && at.X < GutterWidth && at.Y >= 0 && at.Y < ViewHeight);
             return;
         }
         var position = e.GetCurrentPoint(_panel).Position;
@@ -128,8 +138,8 @@ public sealed partial class SqlEditor
                 }
                 return;
             case DragMode.Column:
-                var line = Math.Clamp((int)Math.Floor((position.Y + _scrollY) / LineHeight), 0, Document.LineCount - 1);
-                _model.SetColumnSelection(_columnAnchorLine, _columnAnchorColumn, line, VisualColumnAt(line, position.X));
+                var (row, column) = _model.RowColumnOf(offset);
+                _model.SetRowColumnSelection(_columnAnchorRow, _columnAnchorColumn, row, column);
                 break;
             case DragMode.Characters:
                 _model.SetSelection(_dragOrigin.Anchor, offset);
@@ -175,6 +185,43 @@ public sealed partial class SqlEditor
             ScrollBy(0, -delta * WheelLines() * LineHeight);
         }
         e.Handled = true;
+    }
+
+    // The chevrons show while the pointer is over the gutter, as the macOS editor and VS Code reveal them.
+    private void ShowChevrons(bool show)
+    {
+        if (_pointerInGutter == show)
+        {
+            return;
+        }
+        _pointerInGutter = show;
+        if (_foldingEnabled && RegionsNow().Count > 0)
+        {
+            Invalidate();
+        }
+    }
+
+    // A chevron in the gutter folds or opens its region, and a click on a folded line's chip opens it.
+    private bool FoldClickedAt(Windows.Foundation.Point position)
+    {
+        if (!_foldingEnabled || _layouts is null)
+        {
+            return false;
+        }
+        foreach (var (box, line) in _chips)
+        {
+            if (box.Contains(position))
+            {
+                return _model.Rows.Folds.Unfold(line);
+            }
+        }
+        var left = NumbersRight + 4;
+        if (position.X < left || position.X >= GutterWidth)
+        {
+            return false;
+        }
+        var (rowLine, rowStart, _) = _model.Rows.RowSpan(RowAt(position.Y));
+        return rowStart == Document.GetLineStart(rowLine) && ToggleFold(rowLine);
     }
 
     private void ExtendByUnit(int offset)
@@ -250,6 +297,12 @@ public sealed partial class SqlEditor
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
+        if (TakesFiles(e.DataView))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.Handled = true;
+            return;
+        }
         if (!e.DataView.Contains(StandardDataFormats.Text))
         {
             return;
@@ -261,6 +314,11 @@ public sealed partial class SqlEditor
 
     private async void OnDrop(object sender, DragEventArgs e)
     {
+        if (TakesFiles(e.DataView))
+        {
+            await DropFilesAsync(e);
+            return;
+        }
         if (!e.DataView.Contains(StandardDataFormats.Text))
         {
             return;
@@ -293,25 +351,98 @@ public sealed partial class SqlEditor
         }
     }
 
+    // Only when the host listens, so a drop it would ignore is refused instead.
+    private bool TakesFiles(DataPackageView data) =>
+        FilesDropped is not null && !_draggingTextOut && data.Contains(StandardDataFormats.StorageItems);
+
+    private async Task DropFilesAsync(DragEventArgs e)
+    {
+        e.Handled = true;
+        var deferral = e.GetDeferral();
+        List<string> paths;
+        try
+        {
+            var items = await e.DataView.GetStorageItemsAsync();
+            paths = items.Where(item => item.IsOfType(StorageItemTypes.File) && !string.IsNullOrEmpty(item.Path))
+                .Select(item => item.Path)
+                .ToList();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // The program the files were dragged from no longer answers, so nothing is dropped.
+            return;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+        if (paths.Count > 0)
+        {
+            FilesDropped?.Invoke(this, paths);
+        }
+    }
+
     private MenuFlyout BuildContextMenu()
     {
         var menu = new MenuFlyout();
-        // The editor handles these keys itself, so the items only show them.
-        void Add(string text, string keys, Action action)
+        var keyed = new List<(MenuFlyoutItem Item, EditorCommand Command)>();
+        // The editor handles these keys itself, so the items only show them; a space keeps a moved key's old text away.
+        MenuFlyoutItem Add(string name, EditorCommand? command, Action action)
         {
-            var item = new MenuFlyoutItem { Text = text, KeyboardAcceleratorTextOverride = keys };
+            var item = new MenuFlyoutItem { Text = HostStrings.Get(name) };
+            if (command is { } keyedCommand)
+            {
+                keyed.Add((item, keyedCommand));
+            }
             item.Click += (_, _) => action();
             menu.Items.Add(item);
+            return item;
         }
-        Add("Undo", "Ctrl+Z", () => Edit(_model.Undo));
-        Add("Redo", "Ctrl+Y", () => Edit(_model.Redo));
+        Add("EditorMenuUndo", EditorCommand.Undo, () => Run(EditorCommand.Undo));
+        Add("EditorMenuRedo", EditorCommand.Redo, () => Run(EditorCommand.Redo));
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("Cut", "Ctrl+X", Cut);
-        Add("Copy", "Ctrl+C", Copy);
-        Add("Paste", "Ctrl+V", () => _ = PasteAsync());
+        Add("EditorMenuCut", EditorCommand.Cut, () => Run(EditorCommand.Cut));
+        Add("EditorMenuCopy", EditorCommand.Copy, () => Run(EditorCommand.Copy));
+        Add("EditorMenuPaste", EditorCommand.Paste, () => Run(EditorCommand.Paste));
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("Select All", "Ctrl+A", () => _model.SelectAll());
-        Add("Toggle Line Comment", "Ctrl+/", () => Edit(_model.ToggleLineComment));
+        Add("EditorMenuSelectAll", EditorCommand.SelectAll, () => Run(EditorCommand.SelectAll));
+        Add("EditorMenuToggleComment", EditorCommand.ToggleComment, () => Run(EditorCommand.ToggleComment));
+        var format = Add("EditorMenuFormat", EditorCommand.FormatQuery, () => Run(EditorCommand.FormatQuery));
+        var foldSeparator = new MenuFlyoutSeparator();
+        menu.Items.Add(foldSeparator);
+        var fold = Add("EditorMenuFold", EditorCommand.Fold, () => Run(EditorCommand.Fold));
+        var unfold = Add("EditorMenuUnfold", EditorCommand.Unfold, () => Run(EditorCommand.Unfold));
+        var foldAll = Add("EditorMenuFoldAll", null, () => FoldAll());
+        var unfoldAll = Add("EditorMenuUnfoldAll", null, () => UnfoldAll());
+        var own = menu.Items.Count;
+        menu.Opening += (_, _) =>
+        {
+            while (menu.Items.Count > own)
+            {
+                menu.Items.RemoveAt(menu.Items.Count - 1);
+            }
+            foreach (var (item, command) in keyed)
+            {
+                var keys = KeyLabel(command);
+                item.KeyboardAcceleratorTextOverride = keys.Length == 0 ? " " : keys;
+            }
+            format.Visibility = CanFormat ? Visibility.Visible : Visibility.Collapsed;
+            // Fold reads the caret's line, as Ctrl+Shift+[ does; Unfold opens the fold on it.
+            var regions = RegionsNow();
+            var folding = _foldingEnabled && regions.Count > 0;
+            var shown = folding ? Visibility.Visible : Visibility.Collapsed;
+            foldSeparator.Visibility = shown;
+            fold.Visibility = shown;
+            unfold.Visibility = shown;
+            foldAll.Visibility = shown;
+            unfoldAll.Visibility = shown;
+            var line = Document.GetLineFromOffset(_model.Primary.Active);
+            fold.IsEnabled = regions.Any(region => region.StartLine <= line && line <= region.EndLine
+                && !_model.Rows.Folds.IsFolded(region.StartLine));
+            unfold.IsEnabled = _model.Rows.Folds.IsFolded(line);
+            unfoldAll.IsEnabled = _model.Rows.Folds.Count > 0;
+            ContextMenuOpening?.Invoke(this, menu.Items);
+        };
         return menu;
     }
 }

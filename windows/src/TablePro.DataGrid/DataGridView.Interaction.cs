@@ -68,7 +68,7 @@ public sealed partial class DataGridView
                 {
                     return false;
                 }
-                BeginEditAfterKey();
+                BeginEditAfterKey(inPlace: false);
                 return true;
             case VirtualKey.Delete when !control && !shift:
                 if (!IsEditable)
@@ -80,7 +80,7 @@ public sealed partial class DataGridView
             default:
                 return false;
         }
-        var page = GridNavigation.PageRows(VisibleArea().Height, _rowHeight);
+        var page = move is GridKey.PageUp or GridKey.PageDown ? PageRows(move == GridKey.PageDown) : 1;
         var (row, column) = GridNavigation.Move(move, control, _selection.FocusRow, _selection.FocusColumn, RowCount, ColumnCount, page);
         SelectCell(row, column, shift);
         return true;
@@ -138,8 +138,21 @@ public sealed partial class DataGridView
                 x = Math.Min(left, right - visible.Width);
             }
         }
-        var top = row * _rowHeight;
-        var bottom = top + _rowHeight;
+        if (_heights is not null)
+        {
+            // The rows that will share the view with this one, so their heights are known before the offset is.
+            MeasureRows(row, -1, visible.Height);
+            y = _viewY;
+            visible = VisibleArea();
+            if (_content.Height != TotalHeight)
+            {
+                // ScrollTo clamps to the ScrollViewer's extent, which follows the new height after a layout pass.
+                UpdateExtent();
+                _scroller.UpdateLayout();
+            }
+        }
+        var top = RowTop(row);
+        var bottom = top + RowHeightOf(row);
         if (top < visible.Top)
         {
             y = top;
@@ -148,7 +161,7 @@ public sealed partial class DataGridView
         {
             y = bottom - visible.Height;
         }
-        if (x != _viewX || y != _viewY)
+        if (x != _viewX || y != _viewY || _unsynced)
         {
             ScrollTo(x, y);
         }
@@ -220,6 +233,7 @@ public sealed partial class DataGridView
         _columns.SetWidth(column, width);
         _sizedByUser[column] = true;
         ColumnsChanged();
+        ColumnResized?.Invoke(this, column);
     }
 
     // Fits a column to its header and the rows in view; a result set may hold far more rows than can be read here.
@@ -236,30 +250,38 @@ public sealed partial class DataGridView
         {
             return false;
         }
-        var rows = Math.Min(RowCount, ColumnCount > ContentSampleWideColumns ? ContentSampleRowsWide : ContentSampleRows);
+        var rows = ContentSampleRowCount;
         for (var column = 0; column < ColumnCount; column++)
         {
             if (!_sizedByUser[column])
             {
-                _columns.SetWidth(column, Math.Clamp(ContentWidth(column, 0, rows - 1, ContentSampleCharacters),
-                    ContentMinimumWidth, ContentMaximumWidth));
+                SizeColumnToContent(column, rows);
             }
         }
         _sizedToRows = rows > 0;
         return true;
     }
 
+    private int ContentSampleRowCount =>
+        Math.Min(RowCount, ColumnCount > ContentSampleWideColumns ? ContentSampleRowsWide : ContentSampleRows);
+
+    private void SizeColumnToContent(int column, int rows) =>
+        _columns.SetWidth(column, Math.Clamp(ContentWidth(column, 0, rows - 1, ContentSampleCharacters),
+            ContentMinimumWidth, Math.Max(ContentMinimumWidth, MaximumContentColumnWidth)));
+
     private double ContentWidth(int column, int firstRow, int lastRow, int maxCharacters)
     {
         var painter = Painter;
-        // Room for the sort glyph.
-        var widest = painter.Measure(Head(_names[column], maxCharacters)) + 24;
+        // Room for the sort glyph, and for the masked mark on a column that has one.
+        var widest = painter.Measure(Head(_names[column], maxCharacters)) + 24 + (MaskNote(column) is null ? 0 : 20);
         for (var row = firstRow; row <= lastRow; row++)
         {
             var cell = Cell(row, column);
             widest = Math.Max(widest, cell.IsNull
-                ? painter.Measure(CellPainter.NullText, placeholder: true)
-                : cell.IsDefault ? painter.MeasureDefault() : painter.Measure(Head(cell.Text, maxCharacters)));
+                ? painter.Measure(_nullText, placeholder: true)
+                : cell.IsDefault ? painter.MeasureDefault()
+                : (cell.State & CellState.Unreadable) != 0 ? painter.Measure(ShownText(cell), placeholder: true)
+                : painter.Measure(Head(cell.Text, maxCharacters)));
         }
         return Math.Ceiling(widest + (CellPainter.Padding * 2) + 2);
     }
@@ -309,6 +331,21 @@ public sealed partial class DataGridView
     internal bool HasFocusedCell(int row, int column) =>
         FocusState != FocusState.Unfocused && _selection.FocusRow == row && _selection.FocusColumn == column;
 
+    // Where a menu opened from the keyboard (Shift+F10, the Menu key) goes: under the focused cell, in this grid's
+    // coordinates, as a pointer's menu opens where it was clicked. Null when the cell is scrolled out of view.
+    public Point? FocusedCellMenuPoint()
+    {
+        var (row, column) = (_selection.FocusRow, _selection.FocusColumn);
+        if (!IsCellVisible(row, column) || XamlRoot is null)
+        {
+            return null;
+        }
+        var pane = column < _columns.FrozenCount ? (UIElement)_frozenContent : _content;
+        var bounds = pane.TransformToVisual(this).TransformBounds(new Rect(_columns.PaneX(column), RowTop(row),
+            _columns.Width(column), RowHeightOf(row)));
+        return new Point(bounds.Left, bounds.Bottom);
+    }
+
     // Physical pixels from the window's client area, which is what XAML's UIA bridge expects of a peer.
     internal Rect CellBoundsPhysical(int row, int column)
     {
@@ -317,30 +354,10 @@ public sealed partial class DataGridView
             return default;
         }
         var pane = column < _columns.FrozenCount ? (UIElement)_frozenContent : _content;
-        var bounds = pane.TransformToVisual(null).TransformBounds(new Rect(_columns.PaneX(column), row * _rowHeight,
-            _columns.Width(column), _rowHeight));
+        var bounds = pane.TransformToVisual(null).TransformBounds(new Rect(_columns.PaneX(column), RowTop(row),
+            _columns.Width(column), RowHeightOf(row)));
         var scale = XamlRoot.RasterizationScale;
         return new Rect(bounds.X * scale, bounds.Y * scale, bounds.Width * scale, bounds.Height * scale);
-    }
-
-    internal AutomationPeer? CellPeerAt(Point physical)
-    {
-        if (XamlRoot is null || FrameworkElementAutomationPeer.CreatePeerForElement(this) is not DataGridAutomationPeer peer)
-        {
-            return null;
-        }
-        var scale = XamlRoot.RasterizationScale;
-        var point = new Point(physical.X / scale, physical.Y / scale);
-        foreach (var frozen in new[] { true, false })
-        {
-            var pane = frozen ? (UIElement)_frozenContent : _content;
-            var local = pane.TransformToVisual(null).Inverse.TransformPoint(point);
-            if (HitTest(frozen, local) is { Column: >= 0 } hit && IsCellVisible(hit.Row, hit.Column))
-            {
-                return peer.Cell(hit.Row, hit.Column);
-            }
-        }
-        return null;
     }
 
     protected override void OnKeyDown(KeyRoutedEventArgs e)
@@ -350,6 +367,12 @@ public sealed partial class DataGridView
         if (e.Handled || (_editor is not null && ReferenceEquals(e.OriginalSource, _editor)))
         {
             base.OnKeyDown(e);
+            return;
+        }
+        if (e.Key == VirtualKey.Escape && IsMovingColumn)
+        {
+            CancelColumnMove();
+            e.Handled = true;
             return;
         }
         if (HandleKey(e.Key, IsDown(VirtualKey.Control), IsDown(VirtualKey.Shift)))
@@ -429,6 +452,7 @@ public sealed partial class DataGridView
     // A press picks a cell, or a row on the row numbers; Shift extends from the anchor. Dragging extends too.
     private void OnPanePressed(PointerRoutedEventArgs e, bool frozen)
     {
+        ClearCellTip();
         var pane = frozen ? (UIElement)_frozenContent : _content;
         var point = e.GetCurrentPoint(pane);
         if (!point.Properties.IsLeftButtonPressed)
@@ -446,11 +470,15 @@ public sealed partial class DataGridView
 
     private void OnPaneMoved(PointerRoutedEventArgs e, bool frozen)
     {
+        var pane = frozen ? (UIElement)_frozenContent : _content;
+        if (!_dragging)
+        {
+            TrackCellTip(frozen, HitTest(frozen, e.GetCurrentPoint(pane).Position));
+        }
         if (!_dragging || frozen != _dragFrozen)
         {
             return;
         }
-        var pane = frozen ? (UIElement)_frozenContent : _content;
         if (HitTest(frozen, e.GetCurrentPoint(pane).Position) is not { } hit)
         {
             return;
@@ -492,7 +520,7 @@ public sealed partial class DataGridView
         {
             return null;
         }
-        var row = Math.Clamp((int)Math.Floor(point.Y / _rowHeight), 0, RowCount - 1);
+        var row = Math.Clamp(RowAt(point.Y), 0, RowCount - 1);
         if (frozen)
         {
             return point.X < 0 || point.X >= _columns.FrozenWidth ? null : (row, _columns.FrozenColumnAt(point.X));
@@ -514,9 +542,8 @@ public sealed partial class DataGridView
         {
             return (0, -1);
         }
-        var first = Math.Clamp((int)Math.Floor(visible.Top / _rowHeight), 0, RowCount - 1);
-        var last = Math.Clamp((int)Math.Ceiling(visible.Bottom / _rowHeight) - 1, first, RowCount - 1);
-        return (first, last);
+        var first = Math.Clamp(RowAt(visible.Top), 0, RowCount - 1);
+        return (first, LastRowAbove(visible.Bottom, first));
     }
 
     private void SelectionChanged()
@@ -545,6 +572,7 @@ public sealed partial class DataGridView
         {
             peer.Cell(_selection.FocusRow, _selection.FocusColumn).RaiseAutomationEvent(AutomationEvents.SelectionItemPatternOnElementSelected);
         }
+        SelectedCellsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RaiseFocusChanged()
@@ -570,8 +598,8 @@ public sealed partial class DataGridView
             _frozenSelectionBox.Visibility = Visibility.Collapsed;
             return;
         }
-        var top = (rows.First * _rowHeight) - _originY;
-        var height = (rows.Last - rows.First + 1) * _rowHeight;
+        var top = RowTop(rows.First) - _originY;
+        var height = RowsHeight(rows.First, rows.Last);
         PlaceSelection(_frozenSelectionBox, range.FirstColumn, Math.Min(range.LastColumn, _columns.FrozenCount - 1), frozen: true, top, height);
         PlaceSelection(_selectionBox, Math.Max(range.FirstColumn, _columns.FrozenCount), range.LastColumn, frozen: false, top, height);
     }
@@ -608,9 +636,9 @@ public sealed partial class DataGridView
             return;
         }
         Canvas.SetLeft(box, _columns.PaneX(column));
-        Canvas.SetTop(box, (row * _rowHeight) - _originY);
+        Canvas.SetTop(box, RowTop(row) - _originY);
         box.Width = _columns.Width(column);
-        box.Height = _rowHeight;
+        box.Height = RowHeightOf(row);
         box.Visibility = Visibility.Visible;
     }
 }

@@ -13,6 +13,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
     private let forcesWriteResolver: @Sendable (DatabaseType) async -> Bool
     private let connectionNameResolver: @Sendable (UUID) async -> String?
     private let readOnlyFunctionPolicyResolver: @Sendable (UUID, DatabaseType) async -> ReadOnlyFunctionPolicy
+    private let bareNameCallResolver: @Sendable (OperationRequest, SQLBareNameReading) async -> Bool
     private let auditLog: any ExecutionAuditLogging
 
     /// The end of a sentence macOS writes, not a sentence of its own. `LAContext` shows the reason
@@ -33,6 +34,9 @@ internal actor DefaultExecutionGate: ExecutionGate {
         readOnlyFunctionPolicyResolver: @escaping @Sendable (UUID, DatabaseType) async -> ReadOnlyFunctionPolicy = { _, _ in
             ReadOnlyFunctionPolicy()
         },
+        bareNameCallResolver: @escaping @Sendable (OperationRequest, SQLBareNameReading) async -> Bool = { _, reading in
+            reading.callsOutright
+        },
         auditLog: any ExecutionAuditLogging = ExecutionAuditLog.shared
     ) {
         self.confirming = confirming
@@ -41,6 +45,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
         self.forcesWriteResolver = forcesWriteResolver
         self.connectionNameResolver = connectionNameResolver
         self.readOnlyFunctionPolicyResolver = readOnlyFunctionPolicyResolver
+        self.bareNameCallResolver = bareNameCallResolver
         self.auditLog = auditLog
     }
 
@@ -140,40 +145,30 @@ internal actor DefaultExecutionGate: ExecutionGate {
     }
 
     // The classifier tiers `SELECT purge_orders()` as a read. Where the driver cannot run it in the engine's read-only
-    // mode and a function on the engine can write, a call off the built-in list is asked about, or refused when a
-    // profile or the engine floor holds the level, since an answer there would let a write past them. Nil runs it.
+    // mode and a function on the engine can write, a call off the built-in list is one the gate cannot tell from a
+    // write, so Read-Only refuses it like one, whatever the caller was cleared for. Oracle and Dameng also call a
+    // function named bare, as in `SELECT purge_orders FROM dual`, which the session's catalog tells from a column.
+    // Nil runs it.
     private func readOnlyFunctionRefusal(_ request: OperationRequest, sql: String) async -> OperationDecision? {
         let policy = await readOnlyFunctionPolicyResolver(request.connectionId, request.databaseType)
-        guard policy.functionsCanWrite,
-              ReadOnlyFunctionCalls.callsUnlistedFunction(sql, databaseType: request.databaseType)
-        else { return nil }
-        if policy.levelIsHeld {
+        guard policy.functionsCanWrite else { return nil }
+        var callsFunction = ReadOnlyFunctionCalls.callsUnlistedFunction(sql, databaseType: request.databaseType)
+        if !callsFunction, let reading = ReadOnlyFunctionCalls.bareNameReading(sql, databaseType: request.databaseType),
+           !reading.namesNothing {
+            callsFunction = await bareNameCallResolver(request, reading)
+        }
+        guard callsFunction else { return nil }
+        guard let level = policy.levelThatRunsIt else {
             return .denied(reason: String(
                 localized: "Cannot run this query: it calls a function that can change data, and Safe Mode is held at Read-Only for this connection."
             ))
         }
-        let caps = request.capabilities
-        guard !caps.contains(.preCleared), !caps.contains(.confirmationPreCleared) else { return nil }
-        if caps.contains(.cannotPrompt) {
-            return .denied(reason: String(localized: "Confirmation is required for this operation"))
-        }
-        let confirmed = await confirming.confirm(
-            OperationConfirmationRequest(
-                sql: request.sql,
-                operationDescription: String(localized: "This query calls a function that can change data"),
-                connectionId: request.connectionId,
-                connectionName: await connectionNameResolver(request.connectionId),
-                databaseType: request.databaseType,
-                caller: request.caller,
-                isDestructive: false,
-                scope: request.scope,
-                statements: request.statements
-            )
-        )
-        guard confirmed else {
-            return .denied(reason: String(localized: "Operation cancelled by user"), cause: .cancelledByUser)
-        }
-        return nil
+        return .denied(reason: String(
+            format: String(
+                localized: "Cannot run this query at Read-Only: it calls a function that can change data. Switch Safe Mode to %@ to run it."
+            ),
+            level.displayName
+        ))
     }
 
     private func resolveEffectiveWrite(_ request: OperationRequest, tier: QueryTier?) async -> Bool {

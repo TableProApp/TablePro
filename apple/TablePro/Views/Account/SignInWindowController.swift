@@ -11,23 +11,36 @@ import SwiftUI
 @MainActor
 internal final class SignInWindowController: NSWindowController, NSWindowDelegate {
     private static var shared: SignInWindowController?
+    private var model: SignInModel?
 
     private final class WindowBox {
         weak var window: NSWindow?
     }
 
-    internal static func present(purpose: SignInView.Purpose = .requested, services: AccountServices = .shared) {
-        let controller = shared ?? SignInWindowController(purpose: purpose, services: services)
+    internal static func present(
+        purpose: SignInView.Purpose = .requested,
+        entersCompanyServer: Bool = false,
+        services: AccountServices = .shared
+    ) {
+        let controller = shared ?? SignInWindowController(
+            purpose: purpose,
+            entersCompanyServer: entersCompanyServer,
+            services: services
+        )
         shared = controller
+        if entersCompanyServer {
+            controller.model?.showCompanyServer()
+        }
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
         AppActivationPolicyController.shared.activate()
     }
 
-    private convenience init(purpose: SignInView.Purpose, services: AccountServices) {
+    private convenience init(purpose: SignInView.Purpose, entersCompanyServer: Bool, services: AccountServices) {
         let box = WindowBox()
+        let model = SignInModel(services: services, entersCompanyServer: entersCompanyServer)
         let view = SignInView(
-            model: SignInModel(services: services),
+            model: model,
             purpose: purpose,
             authenticator: { WebAuthenticationSessionAuthenticator(anchor: { box.window }) },
             onClose: { box.window?.close() }
@@ -44,6 +57,7 @@ internal final class SignInWindowController: NSWindowController, NSWindowDelegat
         window.center()
         box.window = window
         self.init(window: window)
+        self.model = model
         window.delegate = self
     }
 

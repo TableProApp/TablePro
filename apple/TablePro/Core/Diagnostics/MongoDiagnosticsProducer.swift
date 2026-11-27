@@ -16,7 +16,7 @@ struct MongoDiagnosticsProducer: QueryDiagnosticsProducing {
         // The bracket scanner has no regex state, so `db.c.find({x:/[)]/})` reads as an unmatched
         // closer. The syntax checker below knows JavaScript properly, so the structural pass is
         // only there to stay quiet while a query is still being typed.
-        let structure = QueryBracketScanner.scan(source, comments: .javaScript)
+        let structure = QueryBracketScanner.scan(source, language: .javaScript)
         let hasRegexLiteral = source.range(of: "/", options: .literal).location != NSNotFound
 
         if let range = structure.unmatchedClose, !hasRegexLiteral {

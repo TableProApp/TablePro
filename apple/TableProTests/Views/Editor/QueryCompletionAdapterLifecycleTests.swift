@@ -5,11 +5,13 @@
 // caused the original dropout is an AppKit lifecycle behaviour and is not
 // deterministically unit-testable; these tests cover the logic the fix relies on.
 
+import AppKit
 import Foundation
 @testable import TablePro
 @testable import TableProAutocomplete
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
@@ -519,6 +521,148 @@ extension GlobalStateSuites {
             #expect(controller.textView.selectionManager.textSelections.map { $0.range } == [NSRange(location: 21, length: 0)])
         }
 
+        // MARK: - The band's statement
+
+        @MainActor
+        private func locator(
+            for band: StatementRunController
+        ) -> @MainActor (String, Int, NSTextStorage, SQLLexicalGrammar) async -> QueryStatementHint? {
+            { text, offset, storage, grammar in
+                await band.warmedStatement(at: offset, in: text, storage: storage, grammar: grammar).map {
+                    QueryStatementHint(range: $0.range, grammar: grammar)
+                }
+            }
+        }
+
+        @MainActor
+        @Test("typing at the end of a long script hands completion the statement the band resolved, with no scan of its own")
+        func longScriptCompletionReadsTheBandStatement() async throws {
+            let grammar = DatabaseType.mysql.lexicalGrammar
+            let controller = EditorControllerFixture.make(
+                string: String(repeating: "SELECT id FROM t WHERE id = 1;\n", count: 10_000)
+            )
+            let band = StatementRunController()
+            band.grammar = grammar
+            band.install(on: controller)
+            let service = StatementRecordingCompletionService()
+            let adapter = QueryCompletionAdapter(serviceForTesting: service)
+            adapter.statementLocator = locator(for: band)
+            let keys = 30
+            var scannedByCompletion = 0
+            let documentEnd = controller.textView.textStorage.length
+            controller.setCursorPositions([CursorPosition(range: NSRange(location: documentEnd, length: 0))])
+            band.refreshHighlight(in: controller)
+            let scannedBeforeTyping = band.caretIndexUnitsScanned
+
+            for _ in 0..<keys {
+                let end = controller.textView.textStorage.length
+                controller.textView.replaceCharacters(in: NSRange(location: end, length: 0), with: "s")
+                let caret = CursorPosition(range: NSRange(location: end + 1, length: 0))
+                controller.setCursorPositions([caret])
+                band.refreshHighlight(in: controller)
+                let scannedBeforeRequest = band.caretIndexUnitsScanned
+                _ = await adapter.completionSuggestionsRequested(textView: controller, cursorPosition: caret, isManualTrigger: true)
+                scannedByCompletion += band.caretIndexUnitsScanned - scannedBeforeRequest
+            }
+
+            let text = controller.textView.string
+            let fresh = SQLStatementScanner.locatedStatementAtCursor(
+                in: text, cursorPosition: (text as NSString).length, grammar: grammar
+            )
+            #expect(scannedByCompletion == 0)
+            #expect(service.statements.count == keys)
+            #expect(service.statements.allSatisfy { $0?.grammar == grammar })
+            #expect(service.statements.last??.range == fresh.range)
+            #expect(
+                band.caretIndexUnitsScanned - scannedBeforeTyping
+                    <= keys * (SQLStatementCursorIndex.defaultCheckpointSpacing + 40)
+            )
+        }
+
+        @MainActor
+        @Test("a Redis editor, split into commands, passes completion no statement")
+        func redisEditorPassesNoStatement() async {
+            let controller = EditorControllerFixture.make(string: "SET a 1\nGET ")
+            let band = StatementRunController()
+            band.statementModel = .redis
+            band.install(on: controller)
+            let service = StatementRecordingCompletionService()
+            let adapter = QueryCompletionAdapter(serviceForTesting: service)
+            adapter.statementLocator = locator(for: band)
+
+            _ = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: "SET a 1\nGET "),
+                isManualTrigger: true
+            )
+
+            #expect(service.statements == [nil])
+        }
+
+        @MainActor
+        @Test("with the band off, completion still reads the caret's statement and rescans only near the caret")
+        func bandOffCompletionWarmsTheIndex() async throws {
+            let grammar = DatabaseType.mysql.lexicalGrammar
+            let controller = EditorControllerFixture.make(
+                string: String(repeating: "SELECT id FROM t WHERE id = 1;\n", count: 10_000)
+            )
+            let band = StatementRunController()
+            band.grammar = grammar
+            band.isHighlightEnabled = false
+            band.install(on: controller)
+            let service = StatementRecordingCompletionService(grammar: grammar)
+            let adapter = QueryCompletionAdapter(serviceForTesting: service)
+            adapter.statementLocator = locator(for: band)
+            let first = CursorPosition(range: NSRange(location: controller.textView.textStorage.length, length: 0))
+            controller.setCursorPositions([first])
+            _ = await adapter.completionSuggestionsRequested(textView: controller, cursorPosition: first, isManualTrigger: true)
+            let scannedAfterWarming = band.caretIndexUnitsScanned
+            let keys = 20
+
+            for _ in 0..<keys {
+                let end = controller.textView.textStorage.length
+                controller.textView.replaceCharacters(in: NSRange(location: end, length: 0), with: "s")
+                let caret = CursorPosition(range: NSRange(location: end + 1, length: 0))
+                controller.setCursorPositions([caret])
+                _ = await adapter.completionSuggestionsRequested(textView: controller, cursorPosition: caret, isManualTrigger: true)
+            }
+
+            let text = controller.textView.string
+            let fresh = SQLStatementScanner.locatedStatementAtCursor(
+                in: text, cursorPosition: (text as NSString).length, grammar: grammar
+            )
+            #expect(service.statements.count == keys + 1)
+            #expect(service.statements.allSatisfy { $0 != nil })
+            #expect(service.statements.last??.range == fresh.range)
+            #expect(scannedAfterWarming > 0)
+            #expect(
+                band.caretIndexUnitsScanned - scannedAfterWarming
+                    <= keys * (SQLStatementCursorIndex.defaultCheckpointSpacing + 40)
+            )
+        }
+
+        // The band reads MySQL with no database type while completion reads ANSI, so no statement is passed.
+        @MainActor
+        @Test("an editor with no database type completes as it does with no statement passed")
+        func editorWithNoDatabaseTypeCompletesAsWithoutAStatement() async {
+            let script = "SELECT 1 # note ; FROM t\nSELECT * FROM t WHERE "
+            let controller = EditorControllerFixture.make(string: script)
+            let band = StatementRunController()
+            band.grammar = DatabaseType.mysql.lexicalGrammar
+            band.install(on: controller)
+            let withBand = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
+            withBand.statementLocator = locator(for: band)
+            let without = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
+            let caret = cursor(atEndOf: script)
+            controller.setCursorPositions([caret])
+
+            let hinted = await withBand.completionSuggestionsRequested(textView: controller, cursorPosition: caret, isManualTrigger: true)
+            let plain = await without.completionSuggestionsRequested(textView: controller, cursorPosition: caret, isManualTrigger: true)
+
+            #expect(hinted?.items.map(\.label) == plain?.items.map(\.label))
+            #expect(hinted?.prefix == plain?.prefix)
+        }
+
         // MARK: - Helpers
 
         @MainActor
@@ -568,6 +712,7 @@ private extension Trait where Self == AppSettingsTrait {
 private final class TokenBoundCompletionService: QueryCompletionService {
     private let items: [SQLCompletionItem]
     var whileAnswering: (@MainActor () -> Void)?
+    var statementGrammar: SQLLexicalGrammar? { nil }
 
     init(labels: [String]) {
         items = labels.map { SQLCompletionItem.keyword($0) }
@@ -578,9 +723,10 @@ private final class TokenBoundCompletionService: QueryCompletionService {
     func completions(
         in text: NSString,
         at offset: Int,
+        statement: QueryStatementHint?,
         isManualTrigger: Bool
     ) async -> QueryCompletionSession? {
-        _ = isManualTrigger
+        _ = (statement, isManualTrigger)
         let start = tokenStart(in: text, endingAt: offset)
         whileAnswering?()
         return QueryCompletionSession(
@@ -611,6 +757,7 @@ private final class RankingInputRecordingCompletionService: QueryCompletionServi
     private let items: [SQLCompletionItem]
     private let poolLimit: Int
     private(set) var rankingInputCounts: [Int] = []
+    var statementGrammar: SQLLexicalGrammar? { nil }
 
     init(items: [SQLCompletionItem], poolLimit: Int) {
         self.items = items
@@ -622,9 +769,10 @@ private final class RankingInputRecordingCompletionService: QueryCompletionServi
     func completions(
         in text: NSString,
         at offset: Int,
+        statement: QueryStatementHint?,
         isManualTrigger: Bool
     ) async -> QueryCompletionSession? {
-        _ = (text, offset, isManualTrigger)
+        _ = (text, offset, statement, isManualTrigger)
         return QueryCompletionSession(
             items: Array(items.prefix(40)),
             candidates: Array(items.prefix(poolLimit)),
@@ -641,6 +789,44 @@ private final class RankingInputRecordingCompletionService: QueryCompletionServi
     func tokenStart(in text: NSString, endingAt offset: Int) -> Int {
         _ = (text, offset)
         return 0
+    }
+
+    func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
+        _ = keywords
+    }
+}
+
+@MainActor
+private final class StatementRecordingCompletionService: QueryCompletionService {
+    private(set) var statements: [QueryStatementHint?] = []
+    let statementGrammar: SQLLexicalGrammar?
+
+    init(grammar: SQLLexicalGrammar? = DatabaseType.mysql.lexicalGrammar) {
+        statementGrammar = grammar
+    }
+
+    var triggerCharacters: Set<String> { [] }
+
+    func completions(
+        in text: NSString,
+        at offset: Int,
+        statement: QueryStatementHint?,
+        isManualTrigger: Bool
+    ) async -> QueryCompletionSession? {
+        _ = (text, isManualTrigger)
+        statements.append(statement)
+        let item = SQLCompletionItem.keyword("SELECT")
+        return QueryCompletionSession(items: [item], candidates: [item], replacementRange: NSRange(location: offset, length: 0))
+    }
+
+    func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+        _ = prefix
+        return items
+    }
+
+    func tokenStart(in text: NSString, endingAt offset: Int) -> Int {
+        _ = text
+        return offset
     }
 
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {

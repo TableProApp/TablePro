@@ -22,6 +22,9 @@ internal static class Program
             return;
         }
 
+        // Only the process that owns the data folder, so a launch that handed over is never started again.
+        AppRestart.Register();
+
         AppInstance? current = null;
         Application.Start(_ =>
         {
@@ -33,19 +36,36 @@ internal static class Program
         GC.KeepAlive(current);
     }
 
-    // Raised off the UI thread, when another launch on this data folder hands over.
+    // Raised off the UI thread, when another launch on this data folder hands over, with the links and files it carries.
     private static AppInstance? Listen(App app, DispatcherQueue queue)
     {
         try
         {
             var current = AppInstance.GetCurrent();
-            current.Activated += (_, _) => queue.TryEnqueue(app.BringToFront);
+            current.Activated += (_, activation) =>
+            {
+                var request = RequestOf(activation);
+                queue.TryEnqueue(() => app.Activate(request));
+            };
             return current;
         }
         catch (Exception exception)
         {
             CrashLog.Write(exception);
             return null;
+        }
+    }
+
+    private static ActivationRequest RequestOf(AppActivationArguments activation)
+    {
+        try
+        {
+            return ActivationRequests.Of(activation);
+        }
+        catch (Exception exception)
+        {
+            CrashLog.Write(exception);
+            return ActivationRequest.None;
         }
     }
 }

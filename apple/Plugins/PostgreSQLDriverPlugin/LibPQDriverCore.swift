@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 import TableProPostgreSQLCore
 
@@ -23,10 +24,34 @@ final class LibPQDriverCore: @unchecked Sendable {
         connectionLock.withLock { _libpqConnection }
     }
 
-    var currentSchema: String = "public"
-    private var selectedSchema: String?
+    private struct SchemaState {
+        var current = "public"
+        var selected: String?
+    }
+
+    // Read by statement generation on any thread while a connect or a schema switch writes it.
+    private let schemaState = OSAllocatedUnfairLock(initialState: SchemaState())
+
+    var currentSchema: String { schemaState.withLock { $0.current } }
+    private var selectedSchema: String? { schemaState.withLock { $0.selected } }
+
+    // Where a connect lands: the schema the user chose on this core, which a reconnect sets again, else the one the
+    // host asked to start in, which it names only when no startup command of the user's could move the path after it.
+    private var schemaLanding: LibPQSchemaLanding? {
+        if let selectedSchema { return .selected(selectedSchema) }
+        guard let initial = config.additionalFields["initialSchema"], !initial.isEmpty else { return nil }
+        return .initial(initial)
+    }
 
     var onPostConnect: (@Sendable () async throws -> Void)?
+    var connectPlan: LibPQConnectPlan?
+    var directTLSMemory: LibPQDirectTLSMemory?
+
+    // Guarded by `connectionLock`. Answers the connect's first flight already carries, for `onPostConnect` to read.
+    private var connectAnswers: [String: Result<PluginQueryResult, Error>] = [:]
+    // Guarded by `connectionLock`. Set by a connect whose first flight applied the host's timeout, spent by the host's
+    // first `applyQueryTimeout`.
+    private var connectAppliedTimeoutMilliseconds: Int?
 
     /// Set by `LibPQBackedDriver` for the span of one connect, so every driver built on this
     /// core reports its handshake steps without having to thread a parameter through its own
@@ -100,8 +125,14 @@ final class LibPQDriverCore: @unchecked Sendable {
             connectTimeout: LibPQConnectTimeout(milliseconds: timeout.milliseconds - elapsedMilliseconds),
             kerberos: kerberos,
             serverName: config.tunneledServerName,
-            pinsCatalogSearchPath: pinsCatalogSearchPath
+            pinsCatalogSearchPath: pinsCatalogSearchPath,
+            directTLS: directTLSMemory
         )
+        connectionLock.withLock {
+            connectAnswers = [:]
+            connectAppliedTimeoutMilliseconds = nil
+        }
+        defer { connectionLock.withLock { connectAnswers = [:] } }
 
         do {
             try await withTaskCancellationHandler {
@@ -113,23 +144,42 @@ final class LibPQDriverCore: @unchecked Sendable {
                     _lostConnection = false
                 }
 
-                switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
+                let landing = schemaLanding
+                let sessionSchema: PostgreSQLSchemaProbe
+                var targetApplied = false
+                if let connectPlan {
+                    (sessionSchema, targetApplied) = await runConnectPlan(connectPlan, landing: landing, on: pqConn)
+                } else {
+                    sessionSchema = await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema)
+                }
+                // A session that already starts in its initial schema keeps its path, which may name more schemas.
+                let startsThere = landing?.startsIn(sessionSchema) == true
+                if startsThere { targetApplied = true }
+                switch sessionSchema {
                 case .schema(let schema):
-                    currentSchema = schema
-                case .empty:
+                    schemaState.withLock { $0.current = schema }
+                case .empty where !targetApplied:
                     if let fallback = await firstFallbackSchema(pqConn) {
-                        currentSchema = fallback
+                        schemaState.withLock { $0.current = fallback }
                         _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
                     }
-                case .failed:
+                case .empty, .failed:
                     break
                 }
 
-                if let selectedSchema,
-                   (try? await pqConn.executeQuery(
-                       PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema)
-                   )) != nil {
-                    currentSchema = selectedSchema
+                if let landing {
+                    if !targetApplied {
+                        targetApplied = (try? await pqConn.executeQuery(
+                            PostgreSQLSchemaQueries.setSearchPath(toSchema: landing.schema)
+                        )) != nil
+                    }
+                    if targetApplied {
+                        schemaState.withLock {
+                            $0.current = landing.schema
+                            // A path this connect set is the one a reconnect of this core sets again.
+                            if !startsThere { $0.selected = landing.schema }
+                        }
+                    }
                 }
 
                 try await onPostConnect?()
@@ -145,6 +195,76 @@ final class LibPQDriverCore: @unchecked Sendable {
             pqConn.disconnect()
             throw error
         }
+    }
+
+    // The settings go last: a statement that fails rolls back every `SET` before it in the implicit transaction, and
+    // the reads have answered by then. The schema rides in the same Query, so it costs no round trip of its own, and
+    // works behind a pooler that refuses the startup `options` parameter. An initial schema goes right after the
+    // schema read, before any read pins the path, so it can compare against the session's own current schema and
+    // leave a path that already starts there alone. A schema the user chose is set as a `SET` would set it. Neither
+    // fails on a schema that is not there. Answers whether the schema stands, which it does not when a read failed.
+    private func runConnectPlan(
+        _ plan: LibPQConnectPlan,
+        landing: LibPQSchemaLanding?,
+        on pqConn: LibPQPluginConnection
+    ) async -> (probe: PostgreSQLSchemaProbe, schemaApplied: Bool) {
+        var leading = [PostgreSQLSchemaQueries.currentSchema]
+        var settings: [String] = []
+        switch landing {
+        case .initial(let schema):
+            leading.append(PostgreSQLSchemaQueries.setSearchPathUnlessCurrent(toSchema: schema))
+        case .selected(let schema):
+            settings.append(PostgreSQLSchemaQueries.setSearchPath(toSchema: schema))
+        case nil:
+            break
+        }
+        if let milliseconds = plan.statementTimeoutMilliseconds {
+            settings.append(LibPQConnectPlan.statementTimeout(milliseconds: milliseconds))
+        }
+        let scanSetting = plan.stabilizesBrowseScans
+            ? LibPQConnectPlan.browseScanSetting(backendProcessID: pqConn.backendProcessID)
+            : nil
+        if let scanSetting { settings.append(scanSetting) }
+
+        let batch = LibPQCatalogBatch(leading: leading, reads: plan.reads, trailing: settings)
+        let startTime = Date()
+        guard let answered = try? await pqConn.executeStatementBatch(batch.text) else { return (.failed, false) }
+        let executionTime = Date().timeIntervalSince(startTime)
+
+        var answers: [String: Result<PluginQueryResult, Error>] = [:]
+        for (read, index) in zip(plan.reads, batch.readResultIndexes) where index < answered.count {
+            answers[read.statement] = answered[index].map { Self.pluginResult($0, executionTime: executionTime) }
+        }
+        let committed = answered.count == batch.statementCount && answered.allSatisfy { (try? $0.get()) != nil }
+        // Only a Query that ran to the end committed its settings: a later failure rolled the `SET` back.
+        let schemaApplied = landing != nil && committed
+        connectionLock.withLock {
+            connectAnswers = answers
+            connectAppliedTimeoutMilliseconds = committed ? plan.statementTimeoutMilliseconds : nil
+        }
+
+        if let scanSetting {
+            await finishBrowseScanSetting(scanSetting, answered: answered, batch: batch, on: pqConn)
+        }
+        let schemaRows = answered.first.flatMap { try? $0.get().rows }
+        return (PostgreSQLSchemaQueries.probe(rows: schemaRows), schemaApplied)
+    }
+
+    // A read that failed ended the Query before the setting, so it goes alone. One the server refused stays refused.
+    private func finishBrowseScanSetting(
+        _ statement: String,
+        answered: [Result<LibPQPluginQueryResult, Error>],
+        batch: LibPQCatalogBatch,
+        on pqConn: LibPQPluginConnection
+    ) async {
+        let rows: [[PluginCellValue]]?
+        if answered.count == batch.statementCount {
+            rows = answered.last.flatMap { try? $0.get().rows }
+        } else {
+            rows = (try? await pqConn.executeQuery(statement))?.rows
+        }
+        guard rows?.isEmpty == false else { return }
+        await pqConn.noteDirectBackend()
     }
 
     private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {
@@ -182,8 +302,10 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     func applySchema(_ schema: String) async throws {
         _ = try await execute(query: PostgreSQLSchemaQueries.setSearchPath(toSchema: schema))
-        selectedSchema = schema
-        currentSchema = schema
+        schemaState.withLock {
+            $0.selected = schema
+            $0.current = schema
+        }
     }
 
     func disconnect() {
@@ -206,10 +328,10 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func execute(query: String) async throws -> PluginQueryResult {
+    func execute(query: String, probesBeforeBlock: Bool = false) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
-        let result = try await pqConn.executeQuery(query)
+        let result = try await pqConn.executeQuery(query, probesBeforeBlock: probesBeforeBlock)
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
@@ -220,10 +342,10 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
-    func executeSingleStatement(query: String) async throws -> PluginQueryResult {
+    func executeSingleStatement(query: String, probesBeforeBlock: Bool = false) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
-        let result = try await pqConn.executeSingleStatement(query)
+        let result = try await pqConn.executeSingleStatement(query, probesBeforeBlock: probesBeforeBlock)
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
@@ -246,47 +368,77 @@ final class LibPQDriverCore: @unchecked Sendable {
         return try await executeTransactionScopedRead(path + statement)
     }
 
-    // The server runs one Query's statements as one implicit transaction, so one `SET LOCAL` covers every read.
-    func executeCatalogReads(_ statements: [String]) async -> [Result<PluginQueryResult, Error>] {
-        guard pinsCatalogSearchPath, statements.count > 1, let pqConn = libpqConnection else {
-            return await catalogReadsOneByOne(statements)
+    func makeConnectPlan(reads: [PostgreSQLCatalogRead], stabilizesBrowseScans: Bool) -> LibPQConnectPlan {
+        let options = config.additionalFields["connectionOptions"] ?? ""
+        let namesScanSetting = LibPQConnectionString.settingNames(in: options).contains("synchronize_seqscans")
+        return LibPQConnectPlan(
+            reads: reads,
+            statementTimeoutMilliseconds: config.additionalFields["queryTimeoutSeconds"]
+                .flatMap { Int($0) }
+                .map(PluginQueryTimeout.milliseconds),
+            stabilizesBrowseScans: stabilizesBrowseScans && !namesScanSetting
+        )
+    }
+
+    // The server runs one Query's statements as one implicit transaction, so one `SET LOCAL` covers every read up to
+    // the next. A read the batch never reached is sent alone, unless the caller stops at the first failure anyway.
+    func executeCatalogReads(
+        _ reads: [PostgreSQLCatalogRead],
+        stopsAtFirstFailure: Bool = false
+    ) async -> [Result<PluginQueryResult, Error>] {
+        let prefetched = connectionLock.withLock { connectAnswers }
+        if !prefetched.isEmpty {
+            var answers: [Result<PluginQueryResult, Error>] = []
+            for read in reads {
+                if let answer = prefetched[read.statement] {
+                    answers.append(answer)
+                } else {
+                    answers.append(await catalogReadResult(read))
+                }
+            }
+            return answers
         }
+        guard pinsCatalogSearchPath, reads.count > 1, let pqConn = libpqConnection else {
+            return await catalogReadsOneByOne(reads)
+        }
+
+        let batch = LibPQCatalogBatch(reads: reads)
         let startTime = Date()
         let answered: [Result<LibPQPluginQueryResult, Error>]
         do {
-            let text = PostgreSQLCatalogSearchPath.pinned + statements.joined(separator: ";\n")
-            guard let batch = try await pqConn.executeConnectStatements(text) else {
-                return await catalogReadsOneByOne(statements)
+            guard let results = try await pqConn.executeStatementBatch(batch.text) else {
+                return await catalogReadsOneByOne(reads)
             }
-            // The first result is the pinned path's own.
-            answered = Array(batch.dropFirst())
+            answered = results
         } catch {
-            // A round trip that failed fails the connect in `finishConnecting`, so no read is sent again.
-            return statements.map { _ in .failure(error) }
+            return reads.map { _ in .failure(error) }
         }
         let executionTime = Date().timeIntervalSince(startTime)
-        var reads: [Result<PluginQueryResult, Error>] = []
-        for (index, statement) in statements.enumerated() {
-            guard index < answered.count else {
-                reads.append(await catalogReadResult(statement))
-                continue
+
+        var answers: [Result<PluginQueryResult, Error>] = []
+        for (read, index) in zip(reads, batch.readResultIndexes) {
+            if index < answered.count {
+                answers.append(answered[index].map { Self.pluginResult($0, executionTime: executionTime) })
+            } else if stopsAtFirstFailure, let failed = answers.first(where: { (try? $0.get()) == nil }) {
+                answers.append(failed)
+            } else {
+                answers.append(await catalogReadResult(read))
             }
-            reads.append(answered[index].map { Self.pluginResult($0, executionTime: executionTime) })
         }
-        return reads
+        return answers
     }
 
-    private func catalogReadsOneByOne(_ statements: [String]) async -> [Result<PluginQueryResult, Error>] {
-        var reads: [Result<PluginQueryResult, Error>] = []
-        for statement in statements {
-            reads.append(await catalogReadResult(statement))
+    private func catalogReadsOneByOne(_ reads: [PostgreSQLCatalogRead]) async -> [Result<PluginQueryResult, Error>] {
+        var answers: [Result<PluginQueryResult, Error>] = []
+        for read in reads {
+            answers.append(await catalogReadResult(read))
         }
-        return reads
+        return answers
     }
 
-    private func catalogReadResult(_ statement: String) async -> Result<PluginQueryResult, Error> {
+    private func catalogReadResult(_ read: PostgreSQLCatalogRead) async -> Result<PluginQueryResult, Error> {
         do {
-            return .success(try await executeCatalogRead(statement))
+            return .success(try await executeCatalogRead(read.statement, namesRelativeTo: read.namesRelativeTo))
         } catch {
             return .failure(error)
         }
@@ -331,14 +483,18 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    func executePipeline(_ statements: [LibPQPipelineStatement]) async throws -> [PluginBatchStatementOutcome]? {
+        try await connection().executePipeline(statements)
+    }
+
     func executeReadOnly(
         query: String,
         parameters: [PluginCellValue]?,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
-        let result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters, reason: reason)
+        let result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters, scope: scope)
         return Self.answer(result, since: startTime)
     }
 
@@ -346,38 +502,51 @@ final class LibPQDriverCore: @unchecked Sendable {
         query: String,
         parameters: [PluginCellValue]?,
         bound: LibPQReadBound,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
-        let result = try await pqConn.boundedReadOnlyStatement(query, parameters: parameters, bound: bound, reason: reason)
+        let result = try await pqConn.boundedReadOnlyStatement(query, parameters: parameters, bound: bound, scope: scope)
         return Self.answer(result, since: startTime)
     }
 
     // The statement an external caller approved, sent as `executeReadOnly`, `executeBoundedReadOnly`,
     // `executeParameterized` or `executeSingleStatement` sends it, with the relation column each result column reads.
-    // Only a read-only read takes `bound`: stopping a write would cancel what the caller approved to run to its end.
+    // Only a read-only read stops at `bound`: stopping a write would cancel what the caller approved to run to its end.
+    // Any other keeps only the rows the bound needs.
     func executeExternalStatement(
         query: String,
         parameters: [PluginCellValue]?,
-        readOnly: LibPQReadOnlyTransaction.Reason?,
+        readOnly: LibPQReadOnlyTransaction.Scope?,
         bound: LibPQReadBound?
     ) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
+        let keeping = bound.map { LibPQReadBound.keepLimit(rowCap: $0.rowCap) } ?? PluginRowLimits.emergencyMax
         let result: LibPQPluginQueryResult
         if let readOnly, let bound {
-            result = try await pqConn.boundedReadOnlyStatement(query, parameters: parameters, bound: bound, reason: readOnly)
+            result = try await pqConn.boundedReadOnlyStatement(query, parameters: parameters, bound: bound, scope: readOnly)
         } else if let readOnly {
-            result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters, reason: readOnly)
+            result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters, scope: readOnly)
         } else if let parameters {
-            result = try await pqConn.executeParameterizedQuery(query, parameters: parameters)
+            result = try await pqConn.executeParameterizedQuery(query, parameters: parameters, keeping: keeping)
         } else {
-            result = try await pqConn.executeSingleStatement(query)
+            result = try await pqConn.executeSingleStatement(query, keeping: keeping)
         }
         var answer = Self.answer(result, since: startTime)
         answer.columnOrigins = await columnOrigins(for: result.columnSources)
         return answer
+    }
+
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        readOnly: LibPQReadOnlyTransaction.Reason?
+    ) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let result = try await pqConn.copyFromStandardInput(statement, rows: rows, readOnly: readOnly)
+        return Self.answer(result, since: startTime)
     }
 
     private static func answer(_ result: LibPQPluginQueryResult, since startTime: Date) -> PluginQueryResult {
@@ -418,9 +587,29 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    // Runs to its end and decodes only the rows the cap needs. A cancel at the cap would roll back what the statement
+    // writes through a function, a view or `RETURNING`, so stopping at the source waits for a read the engine holds
+    // read-only.
+    func executeCappedUserQuery(
+        query: String,
+        rowCap: Int,
+        parameters: [PluginCellValue]?
+    ) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let keeping = LibPQReadBound.keepLimit(rowCap: rowCap)
+        let result: LibPQPluginQueryResult
+        if let parameters {
+            result = try await pqConn.executeParameterizedQuery(query, parameters: parameters, keeping: keeping)
+        } else {
+            result = try await pqConn.executeSingleStatement(query, keeping: keeping, probesBeforeBlock: true)
+        }
+        return Self.answer(result, since: startTime)
+    }
+
     func streamRows(
         query: String,
-        readOnly: LibPQReadOnlyTransaction.Reason? = nil
+        readOnly: LibPQReadOnlyTransaction.Scope? = nil
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let pqConn = libpqConnection else {
             return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
@@ -464,7 +653,12 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     func applyQueryTimeout(_ seconds: Int) async throws {
         let ms = PluginQueryTimeout.milliseconds(seconds)
-        _ = try await execute(query: "SET statement_timeout = \(ms)")
+        let alreadyApplied = connectionLock.withLock {
+            defer { connectAppliedTimeoutMilliseconds = nil }
+            return connectAppliedTimeoutMilliseconds == ms
+        }
+        guard !alreadyApplied else { return }
+        _ = try await execute(query: LibPQConnectPlan.statementTimeout(milliseconds: ms))
     }
 
     func executeSessionSetting(
@@ -508,6 +702,23 @@ protocol LibPQBackedDriver: PluginDatabaseDriver {
 extension LibPQBackedDriver {
     var sessionLexicalState: PluginSessionLexicalState? {
         core.sessionLexicalState
+    }
+
+    // Every libpq engine here reaches this through one conformance, so a sibling that does not declare the capability
+    // (Redshift, whose COPY reads only its cloud sources) refuses here.
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard capabilities.contains(.copyFromStandardInput) else {
+            throw PluginDriverUnsupportedOperation.copyFromStandardInput
+        }
+        return try await core.copyFromStandardInput(
+            statement: statement,
+            rows: rows,
+            readOnly: LibPQReadOnlyTransaction.reason(for: context, capabilities: capabilities)
+        )
     }
 
     /// The new name must be bare. Every libpq engine here rejects a qualified one, because this
@@ -582,7 +793,7 @@ extension LibPQBackedDriver {
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
-        try await core.execute(query: query)
+        try await core.execute(query: query, probesBeforeBlock: true)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -591,13 +802,14 @@ extension LibPQBackedDriver {
 
     // The host sends a user's statements one at a time, so each goes through the extended query protocol.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
-        let raw: PluginQueryResult
-        if let parameters {
-            raw = try await executeParameterized(query: query, parameters: parameters)
-        } else {
-            raw = try await core.executeSingleStatement(query: query)
+        if let cap = rowCap, cap > 0 {
+            let read = try await core.executeCappedUserQuery(query: query, rowCap: cap, parameters: parameters)
+            return Self.capped(read, rowCap: cap)
         }
-        return Self.capped(raw, rowCap: rowCap)
+        if let parameters {
+            return try await executeParameterized(query: query, parameters: parameters)
+        }
+        return try await core.executeSingleStatement(query: query, probesBeforeBlock: true)
     }
 
     func executeUserQuery(
@@ -606,7 +818,7 @@ extension LibPQBackedDriver {
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        let readOnly = readOnlyReason(context)
+        let readOnly = readOnlyScope(context)
         if context.origin == .external {
             let answer = try await core.executeExternalStatement(
                 query: query,
@@ -620,7 +832,7 @@ extension LibPQBackedDriver {
             return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
         }
         let answer = try await readOnlyRead(
-            query: query, parameters: parameters, rowCap: rowCap, context: context, reason: readOnly
+            query: query, parameters: parameters, rowCap: rowCap, context: context, scope: readOnly
         )
         return Self.capped(answer, rowCap: rowCap)
     }
@@ -628,8 +840,8 @@ extension LibPQBackedDriver {
     // An app read the host marked `readOnly` alone, a catalog read among them, has no read-only reason and keeps its pin.
     // One that also sets `enforcesReadOnly` runs read-only and unpinned.
     func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
-        if let readOnly = readOnlyReason(context) {
-            return try await readOnlyRead(query: query, parameters: nil, rowCap: nil, context: context, reason: readOnly)
+        if let readOnly = readOnlyScope(context) {
+            return try await readOnlyRead(query: query, parameters: nil, rowCap: nil, context: context, scope: readOnly)
         }
         // The catalog entry runs its text as a multi-statement string, so it takes only the app's own SQL.
         if context.readsCatalog, context.origin == .app { return try await catalogRead(query) }
@@ -641,14 +853,62 @@ extension LibPQBackedDriver {
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        guard let readOnly = readOnlyReason(context) else {
+        guard let readOnly = readOnlyScope(context) else {
             return try await executeParameterized(query: query, parameters: parameters)
         }
-        return try await readOnlyRead(query: query, parameters: parameters, rowCap: nil, context: context, reason: readOnly)
+        return try await readOnlyRead(query: query, parameters: parameters, rowCap: nil, context: context, scope: readOnly)
     }
 
-    private func readOnlyReason(_ context: PluginStatementContext) -> LibPQReadOnlyTransaction.Reason? {
-        LibPQReadOnlyTransaction.reason(for: context, capabilities: capabilities)
+    // Each stretch a pipeline admits goes as one, every other statement alone, and the first failure ends the run.
+    func executeStatements(_ statements: [PluginBatchStatement]) async throws -> [PluginBatchStatementOutcome]? {
+        guard capabilities.contains(.statementBatches),
+              statements.allSatisfy({ readOnlyScope($0.context) == nil && !$0.context.readsCatalog && $0.context.origin == .app }),
+              await sessionTransactionState() == .inTransaction
+        else { return nil }
+        var outcomes: [PluginBatchStatementOutcome] = []
+        var index = 0
+        while index < statements.count {
+            // Read again each time: a statement sent alone may have changed how the session reads a literal.
+            let admission = LibPQPipelineAdmission(session: sessionLexicalState)
+            var end = index
+            while end < statements.count, admission.admits(statements[end].query) { end += 1 }
+            if end - index > 1 {
+                let stretch = statements[index..<end].map {
+                    LibPQPipelineStatement(query: $0.query, parameters: $0.parameters ?? [])
+                }
+                let answered: [PluginBatchStatementOutcome]?
+                do {
+                    answered = try await core.executePipeline(stretch)
+                } catch {
+                    return outcomes + [.failed(error)]
+                }
+                if let answered {
+                    outcomes += answered
+                    let failed = answered.contains { if case .failed = $0 { true } else { false } }
+                    guard answered.count == stretch.count, !failed else { return outcomes }
+                    index = end
+                    continue
+                }
+            }
+            let startedAt = Date()
+            do {
+                let statement = statements[index]
+                let result = if let parameters = statement.parameters {
+                    try await executeParameterized(query: statement.query, parameters: parameters, context: statement.context)
+                } else {
+                    try await execute(query: statement.query, context: statement.context)
+                }
+                outcomes.append(.succeeded(rowsAffected: result.rowsAffected, executionTime: Date().timeIntervalSince(startedAt)))
+            } catch {
+                return outcomes + [.failed(error)]
+            }
+            index += 1
+        }
+        return outcomes
+    }
+
+    private func readOnlyScope(_ context: PluginStatementContext) -> LibPQReadOnlyTransaction.Scope? {
+        LibPQReadOnlyTransaction.scope(for: context, capabilities: capabilities)
     }
 
     // Bounded at the source when the caller set a row cap or a byte limit, whole otherwise.
@@ -657,12 +917,12 @@ extension LibPQBackedDriver {
         parameters: [PluginCellValue]?,
         rowCap: Int?,
         context: PluginStatementContext,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> PluginQueryResult {
         guard let bound = LibPQReadBound.ifSet(rowCap: rowCap, byteLimit: context.resultByteLimit) else {
-            return try await core.executeReadOnly(query: query, parameters: parameters, reason: reason)
+            return try await core.executeReadOnly(query: query, parameters: parameters, scope: scope)
         }
-        return try await core.executeBoundedReadOnly(query: query, parameters: parameters, bound: bound, reason: reason)
+        return try await core.executeBoundedReadOnly(query: query, parameters: parameters, bound: bound, scope: scope)
     }
 
     private static func capped(_ raw: PluginQueryResult, rowCap: Int?) -> PluginQueryResult {
@@ -690,7 +950,7 @@ extension LibPQBackedDriver {
         rowCap: Int,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult? {
-        guard let readOnly = readOnlyReason(context) else {
+        guard let readOnly = readOnlyScope(context) else {
             guard !context.enforcesReadOnly, !context.readOnly, !context.readsCatalog,
                   context.allowsDestructive, context.allowsServerCode
             else { return nil }
@@ -700,7 +960,7 @@ extension LibPQBackedDriver {
         guard context.origin == .app else {
             return try await core.executeExternalStatement(query: query, parameters: nil, readOnly: readOnly, bound: bound)
         }
-        return try await core.executeBoundedReadOnly(query: query, parameters: nil, bound: bound, reason: readOnly)
+        return try await core.executeBoundedReadOnly(query: query, parameters: nil, bound: bound, scope: readOnly)
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -708,7 +968,7 @@ extension LibPQBackedDriver {
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let readOnly = readOnlyReason(context) else { return streamRows(query: query) }
+        guard let readOnly = readOnlyScope(context) else { return streamRows(query: query) }
         return core.streamRows(query: query, readOnly: readOnly)
     }
 
@@ -740,8 +1000,9 @@ extension LibPQBackedDriver {
         try await beginTransaction(mode: .serverDefault)
     }
 
+    // Manual Commit and an agent's guard open the user's block here, and capped reads inside it need the probe's answer.
     func beginTransaction(mode: PluginTransactionAccessMode) async throws {
-        _ = try await execute(query: postgresBeginTransactionStatement(mode: mode))
+        _ = try await core.execute(query: postgresBeginTransactionStatement(mode: mode), probesBeforeBlock: true)
     }
 
     var serverVersion: String? { core.serverVersion }
@@ -755,5 +1016,22 @@ extension LibPQBackedDriver {
     /// statement this plugin builds goes through that instead.
     func escapeStringLiteral(_ value: String) -> String {
         LibPQStringConformance.escape(value, standardConformingStrings: core.standardConformingStrings)
+    }
+}
+
+// Which schema a connect lands on, and how it is set there.
+nonisolated enum LibPQSchemaLanding: Equatable, Sendable {
+    case selected(String)
+    case initial(String)
+
+    var schema: String {
+        switch self {
+        case .selected(let schema), .initial(let schema): return schema
+        }
+    }
+
+    func startsIn(_ probe: PostgreSQLSchemaProbe) -> Bool {
+        guard case .initial(let schema) = self, case .schema(let current) = probe else { return false }
+        return current.utf8.elementsEqual(schema.utf8)
     }
 }

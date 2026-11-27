@@ -20,4 +20,9 @@
     <ProjectReference Include="../../src/TablePro.App.Model/TablePro.App.Model.csproj" />
   </ItemGroup>
 
+  <!-- LocalizationTests read the app's XAML, code and strings from here. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="Sources" Value="$(MSBuildThisFileDirectory)../../src" />
+  </ItemGroup>
+
 </Project>

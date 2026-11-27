@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use sqlx::{Connection as _, Executor as _};
+use tablepro_core::meta::TableRef;
 use tablepro_core::{
     CallOptions, DriverError, EditorSessionOptions, EditorSessionState, RunEnd, RunOptions, Value, WriteKind,
 };
@@ -100,5 +101,44 @@ async fn an_editor_run_waiting_for_a_lock_stops_and_the_next_run_starts() {
     assert!(elapsed < PROMPT, "the stop and the next run took {elapsed:?}");
     assert_eq!(session.state(), EditorSessionState::Ready);
     session.close().await;
+    connection.close().await.unwrap();
+}
+
+// A catalog read runs in one transaction; the stop that cuts its lock wait short still reads as the stop.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_catalog_read_waiting_for_a_lock_stops_as_the_stop_it_was() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(connection.as_ref(), &["CREATE TABLE t (a)"]).await.unwrap();
+    let mut holder = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    holder.execute("BEGIN EXCLUSIVE").await.unwrap();
+    let table = TableRef::unqualified("t");
+
+    let cancelled = connection
+        .fetch_columns(&table, CallOptions::new(None, cancel_after(Duration::from_millis(200))))
+        .await
+        .map(|_| ());
+    let deadline = Instant::now() + Duration::from_millis(200);
+    let timed_out = connection
+        .fetch_columns(&table, CallOptions::new(Some(deadline), CancellationToken::new()))
+        .await
+        .map(|_| ());
+    holder.execute("ROLLBACK").await.unwrap();
+    holder.close().await.unwrap();
+
+    assert_eq!(cancelled, Err(DriverError::Cancelled));
+    assert!(matches!(timed_out, Err(DriverError::Timeout { .. })), "{timed_out:?}");
+    let columns = connection
+        .fetch_columns(&table, CallOptions::new(None, CancellationToken::new()))
+        .await;
+    assert_eq!(
+        columns.map(|columns| columns.len()),
+        Ok(1),
+        "the next read starts clean"
+    );
+    let written = apply(connection.as_ref(), &["INSERT INTO t VALUES (1)"]).await;
+    assert!(written.is_ok(), "the read left no lock behind: {written:?}");
     connection.close().await.unwrap();
 }

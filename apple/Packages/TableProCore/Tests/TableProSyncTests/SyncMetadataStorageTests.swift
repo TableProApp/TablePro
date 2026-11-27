@@ -179,6 +179,16 @@ struct SyncMetadataStorageTests {
         #expect(storage.lastAccountId == "account")
     }
 
+    @Test("The subscribed account round-trips and a full reset forgets it")
+    func subscribedAccountIdRoundTrips() {
+        let storage = makeStorage()
+        #expect(storage.subscribedAccountId == nil)
+        storage.subscribedAccountId = "account"
+        #expect(storage.subscribedAccountId == "account")
+        storage.clearAll()
+        #expect(storage.subscribedAccountId == nil)
+    }
+
     @Test("The first account seen on a device that never synced is recorded and nothing queued is dropped")
     func firstAccountIsRecorded() {
         let defaults = ScratchDefaults.make() ?? .standard
@@ -291,5 +301,77 @@ struct SyncMetadataStorageTests {
         #expect(defaults.stringArray(forKey: "com.TablePro.sync.dirty.Connection") == ["a"])
         #expect(defaults.data(forKey: "com.TablePro.sync.tombstones.Connection") != nil)
         #expect(defaults.string(forKey: "com.TablePro.sync.lastAccountId") == "account")
+    }
+
+    // MARK: - Copies this device cannot read
+
+    @Test("A connection's standing follows the last read of it, is kept while it cannot be read, and goes with it")
+    func connectionStandingFollowsReads() throws {
+        let storage = makeStorage()
+        let synced = UUID()
+        let localOnly = UUID()
+        let never = UUID()
+        storage.recordConnectionStanding(syncing: [synced], keptOff: [localOnly], unreadable: [])
+
+        storage.recordConnectionStanding(syncing: [], keptOff: [], unreadable: [synced, localOnly, never])
+
+        #expect(storage.standing(ofConnection: synced) == .syncs)
+        #expect(storage.standing(ofConnection: localOnly) == .keptOff)
+        #expect(storage.standing(ofConnection: never) == .unknown)
+
+        storage.recordConnectionStanding(syncing: [], keptOff: [], unreadable: [])
+        #expect(storage.standing(ofConnection: synced) == .unknown)
+        #expect(storage.standing(ofConnection: localOnly) == .unknown)
+    }
+
+    @Test("A deletion removes an unread copy that syncs, leaves a Local only one, and holds one with no standing")
+    func deletionOfUnreadCopiesFollowsStanding() {
+        let storage = makeStorage()
+        let synced = UUID()
+        let localOnly = UUID()
+        let unknown = UUID()
+        storage.recordConnectionStanding(syncing: [synced], keptOff: [localOnly], unreadable: [])
+
+        let removed = storage.unreadableConnectionsRemoved(byDeletionOf: [synced, localOnly, unknown])
+
+        #expect(removed == [synced])
+        #expect(storage.deletionsHeldForUnreadableCopies == [SyncRecordType.connection.recordName(for: unknown.uuidString)])
+    }
+
+    @Test("A held change is fetched once its copy reads, and dropped once its copy is gone or no longer syncs")
+    func heldChangesWaitForAReadableCopy() {
+        let storage = makeStorage()
+        storage.changesHeldForUnreadableCopies = ["Connection_A", "Connection_B", "Connection_C"]
+
+        let readable = storage.readableHeldChanges(syncing: ["Connection_A", "Connection_B"], unreadable: ["Connection_B"])
+
+        #expect(readable == ["Connection_A"])
+        #expect(storage.changesHeldForUnreadableCopies == ["Connection_A", "Connection_B"])
+    }
+
+    @Test("Records held for unread copies belong to the account that sent them, so switching accounts drops them")
+    func heldRecordsGoWithTheAccount() {
+        let storage = makeStorage()
+        _ = storage.adoptAccount("first")
+        storage.changesHeldForUnreadableCopies = ["Connection_A"]
+        storage.deletionsHeldForUnreadableCopies = ["Connection_B"]
+        storage.removalsPendingForUnreadableCopies = ["Connection_C"]
+
+        _ = storage.adoptAccount("second")
+
+        #expect(storage.changesHeldForUnreadableCopies.isEmpty)
+        #expect(storage.deletionsHeldForUnreadableCopies.isEmpty)
+        #expect(storage.removalsPendingForUnreadableCopies.isEmpty)
+    }
+
+    @Test("A held deletion falls due once its copy reads, and settles unapplied when the server sent the record again")
+    func heldDeletionsFallDueWhenReadable() {
+        let storage = makeStorage()
+        storage.deletionsHeldForUnreadableCopies = ["Connection_A", "Connection_B", "Connection_C"]
+
+        let held = storage.heldDeletions(live: ["Connection_C"], unreadable: ["Connection_B"])
+
+        #expect(held.due == ["Connection_A"])
+        #expect(held.settled == ["Connection_A", "Connection_C"])
     }
 }

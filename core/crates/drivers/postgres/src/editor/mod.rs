@@ -2,11 +2,14 @@
 // with the transaction status followed statement by statement.
 
 mod actor;
+mod copy_flight;
 mod cursor_flight;
 mod editor_dispatch;
 mod editor_session;
 mod notice_queue;
 mod result_origin;
+#[cfg(test)]
+pub(crate) use result_origin::ORIGIN_SQL;
 mod run;
 mod session_core;
 mod session_status;

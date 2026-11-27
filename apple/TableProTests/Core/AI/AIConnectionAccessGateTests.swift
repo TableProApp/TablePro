@@ -232,6 +232,7 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
         let manager = DatabaseManager(connectionStorage: storage)
         manager.injectSession(ConnectionSession(connection: makeConnection(id: id, policy: .alwaysAllow)), for: id)
         defer { manager.removeSession(for: id) }
+        try FileManager.default.removeItem(at: fileURL.appendingPathExtension("backup"))
         try Data("not json".utf8).write(to: fileURL)
         storage.invalidateCache()
 
@@ -287,7 +288,6 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
         let coordinator = MainContentCoordinator(
             connection: makeConnection(id: id, policy: held),
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState(),
             services: services(manager: DatabaseManager(connectionStorage: storage))
         )
@@ -300,7 +300,8 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
         return ChatToolContext(
             connectionId: connectionId,
             bridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
+            authPolicy: MCPAuthPolicy(),
+            chatMode: .agent
         ) { id in
             await MainActor.run {
                 AIConnectionAccessGate.policy(

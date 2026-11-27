@@ -133,6 +133,7 @@ internal struct TransferProgress: Equatable, Sendable {
     internal var unit: TransferUnit
     internal var isEstimate: Bool
     internal var note: String?
+    internal var fileFraction: Double?
     internal var isStopping: Bool
 
     internal init(
@@ -144,6 +145,7 @@ internal struct TransferProgress: Equatable, Sendable {
         unit: TransferUnit,
         isEstimate: Bool = false,
         note: String? = nil,
+        fileFraction: Double? = nil,
         isStopping: Bool = false
     ) {
         self.job = job
@@ -154,6 +156,7 @@ internal struct TransferProgress: Equatable, Sendable {
         self.unit = unit
         self.isEstimate = isEstimate
         self.note = note.flatMap { $0.isEmpty ? nil : $0 }
+        self.fileFraction = fileFraction
         self.isStopping = isStopping
     }
 
@@ -161,8 +164,11 @@ internal struct TransferProgress: Equatable, Sendable {
 
     internal var stopPolicy: TransferStopPolicy { job.stopPolicy }
 
-    // An estimate stops short of the end, so a bar never reads done while the job still runs.
+    // An estimate stops short of the end, so a bar never reads done while the job still runs. So does a file read to
+    // its end: its last statements still run.
     internal var fraction: Double? {
+        // A statement count cannot move while one COPY streams its rows, and the file's bytes read can.
+        if let fileFraction { return min(0.99, max(0.0, fileFraction)) }
         guard let total else { return nil }
         let ceiling = isEstimate ? 0.95 : 1.0
         return min(ceiling, Double(completed) / Double(total))

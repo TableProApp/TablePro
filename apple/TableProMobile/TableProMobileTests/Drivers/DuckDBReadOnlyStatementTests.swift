@@ -1,14 +1,10 @@
-//
-//  DuckDBReadOnlyStatementTests.swift
-//  TableProMobileTests
-//
-//  Plugins/DuckDBDriverPlugin/DuckDBReadOnlyStatement.swift, compiled into this target: the Mac plugin is a registry
-//  plugin with no test bundle of its own.
-//
+// Plugins/DuckDBDriverPlugin/DuckDBReadOnlyStatement.swift, which the app compiles: the Mac plugin is a registry plugin
+// with no test bundle of its own.
 
 import CDuckDB
 import Foundation
 import TableProPluginKit
+@testable import TableProMobile
 import Testing
 
 struct DuckDBReadOnlyStatementTests {

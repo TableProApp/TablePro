@@ -1,24 +1,31 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::HistoryRecording;
 use tablepro_session::Session;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::query_history::{
     Entry, HistoryCursor, HistoryPageRequest, HistoryQuery, MAX_PAGE_SIZE, MAX_QUERY_BYTES, NewEntry, Outcome,
 };
-use tablepro_storage::{QueryHistory, StoragePaths};
+use tablepro_storage::{ConnectionStore, QueryHistory, StoragePaths};
 use uuid::Uuid;
 
 use crate::error::CoreError;
-use crate::library::parse_id;
+use crate::export::write_whole_file;
+use crate::favourites::FavouriteStore;
+use crate::library::{optional_id, parse_id};
 use crate::runtime::on_runtime;
+use crate::saved_queries::SavedQueryStore;
 use crate::session::DatabaseSession;
+use crate::table_folders::TableFolderStore;
 
 #[derive(uniffi::Object)]
 pub struct QueryHistoryStore {
-    history: QueryHistory,
-    tasks: Tasks,
+    pub(crate) history: QueryHistory,
+    pub(crate) tasks: Tasks,
+    // Read to turn a project into its connections; None for a core with no library.
+    connections: Option<ConnectionStore>,
 }
 
 // A run as the editor saw it end. Times are milliseconds from the Unix epoch; the store keeps whole seconds.
@@ -40,7 +47,10 @@ pub enum HistoryOutcomeTag {
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct HistoryEntryInfo {
+    // The rowid pages, pins and deletes name; it never leaves the device.
     pub id: i64,
+    // The id the entry syncs under, UUID text (core ADR 0052).
+    pub record_id: String,
     pub sql: String,
     // None for a run stored without one.
     pub connection_id: Option<String>,
@@ -60,6 +70,13 @@ pub struct HistoryPageInfo {
     pub next: Option<HistoryCursorArg>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum HistoryExportFormat {
+    // Each run as it ran, under comments that say where and when.
+    Sql,
+    Csv,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
 pub struct HistoryCursorArg {
     pub pinned: bool,
@@ -69,7 +86,15 @@ pub struct HistoryCursorArg {
 
 impl QueryHistoryStore {
     // The prune keeps every entry however old and drops the oldest past the store's cap.
-    pub(crate) async fn open(paths: StoragePaths, tasks: Tasks) -> Result<Arc<Self>, CoreError> {
+    pub(crate) fn saved_query_rows(&self) -> tablepro_storage::SavedQueries {
+        self.history.saved_queries()
+    }
+
+    pub(crate) async fn open(
+        paths: StoragePaths,
+        tasks: Tasks,
+        connections: Option<ConnectionStore>,
+    ) -> Result<Arc<Self>, CoreError> {
         let history = QueryHistory::open(&paths).await?;
         match history.prune(0).await {
             Ok(report) if report.removed_anything() => {
@@ -78,7 +103,23 @@ impl QueryHistoryStore {
             Ok(_) => {}
             Err(error) => tracing::warn!(%error, "could not prune the query history"),
         }
-        Ok(Arc::new(Self { history, tasks }))
+        Ok(Arc::new(Self {
+            history,
+            tasks,
+            connections,
+        }))
+    }
+}
+
+impl QueryHistoryStore {
+    // A statement an MCP client ran, under the editor's rules.
+    pub(crate) async fn record_entry(&self, entry: NewEntry, dialect: Arc<dyn SqlDialect>) {
+        if withheld(entry.connection_id, &entry.query, dialect.as_ref()) {
+            return;
+        }
+        if let Err(error) = self.history.record(entry).await {
+            tracing::warn!(%error, "could not record an MCP client's statement");
+        }
     }
 }
 
@@ -97,14 +138,18 @@ impl QueryHistoryStore {
         .await
     }
 
-    // Every word of `text` appears in the entry, in any case. Pinned entries first, then newest.
+    // Every word of `text` appears in the entry, in any case. Pinned entries first, then newest. `project_id`
+    // keeps the runs of the connections that project holds now, so a run whose connection was deleted shows only
+    // without one; None, and an id no project holds, keep every run.
     pub async fn search(
         &self,
         text: String,
         connection_id: Option<String>,
+        project_id: Option<String>,
         after: Option<HistoryCursorArg>,
         limit: u32,
     ) -> Result<HistoryPageInfo, CoreError> {
+        let project = optional_id(project_id.as_deref())?;
         let mut query = HistoryQuery::from_input(&text);
         query.connection = connection_id
             .as_deref()
@@ -116,7 +161,15 @@ impl QueryHistoryStore {
             limit: usize::try_from(limit).unwrap_or(MAX_PAGE_SIZE).min(MAX_PAGE_SIZE),
         };
         let history = self.history.clone();
+        let connections = self.connections.clone();
+        let tasks = self.tasks.clone();
         on_runtime(&self.tasks, async move {
+            if let (Some(project), Some(store)) = (project, connections) {
+                query.connections = tasks
+                    .spawn_blocking_task(move || members(&store, project))
+                    .await
+                    .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
+            }
             let page = history.search_page(&query, request).await?;
             let next = page.next.and(page.entries.last()).map(HistoryCursorArg::after);
             Ok(HistoryPageInfo {
@@ -136,6 +189,20 @@ impl QueryHistoryStore {
         .await
     }
 
+    // Drops unpinned entries older than `retention_days` (0 keeps every age), then the oldest past `max_entries`
+    // (0 keeps the store's own cap). Returns how many went.
+    pub async fn prune(&self, retention_days: u32, max_entries: u32) -> Result<u64, CoreError> {
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move {
+            let report = match max_entries {
+                0 => history.prune(retention_days).await?,
+                kept => history.prune_keeping(retention_days, kept).await?,
+            };
+            Ok(report.total())
+        })
+        .await
+    }
+
     pub async fn clear(&self) -> Result<(), CoreError> {
         let history = self.history.clone();
         on_runtime(&self.tasks, async move {
@@ -144,6 +211,58 @@ impl QueryHistoryStore {
         })
         .await
     }
+
+    // A pinned run comes first in every search and stays through the store's pruning.
+    pub async fn set_pinned(&self, id: i64, pinned: bool) -> Result<(), CoreError> {
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move { Ok(history.set_pinned(id, pinned).await?) }).await
+    }
+
+    // The runs `ids` names, pinned first then newest, into the file at `path`, which appears only once whole.
+    pub async fn export(&self, ids: Vec<i64>, format: HistoryExportFormat, path: String) -> Result<(), CoreError> {
+        let history = self.history.clone();
+        let tasks = self.tasks.clone();
+        on_runtime(&self.tasks, async move {
+            let text = match format {
+                HistoryExportFormat::Sql => history.export_sql(&ids).await?,
+                HistoryExportFormat::Csv => history.export_csv(&ids).await?,
+            };
+            tasks
+                .spawn_blocking_task(move || write_whole_file(&path, text.as_bytes()))
+                .await
+                .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))?
+        })
+        .await
+    }
+
+    // The same database, so a store that opened serves both.
+    pub fn saved_queries(&self) -> Arc<SavedQueryStore> {
+        SavedQueryStore::new(
+            self.history.saved_queries(),
+            self.history.saved_query_folders(),
+            self.tasks.clone(),
+        )
+    }
+
+    pub fn favourites(&self) -> Arc<FavouriteStore> {
+        FavouriteStore::new(self.history.favourites(), self.tasks.clone())
+    }
+
+    pub fn table_folders(&self) -> Arc<TableFolderStore> {
+        TableFolderStore::new(self.history.table_folders(), self.tasks.clone())
+    }
+}
+
+// None when no project holds the id, which is every connection.
+fn members(store: &ConnectionStore, project: Uuid) -> Result<Option<Vec<Uuid>>, CoreError> {
+    let list = store.list_blocking()?;
+    Ok(list.resolved_scope(Some(project)).map(|project| {
+        list.scoped(Some(project))
+            .connections
+            .iter()
+            .map(|connection| connection.id)
+            .collect()
+    }))
 }
 
 // Without a dialect nobody can say which statements hold a secret, so nothing is kept.
@@ -153,17 +272,12 @@ fn kept(session: &Session, run: HistoryRun) -> Option<NewEntry> {
         tracing::debug!(%connection, "no dialect, so the run is not recorded");
         return None;
     };
-    // The store refuses it anyway, and reading it for secrets would lex it once per way the server may read it.
-    if run.sql.len() > MAX_QUERY_BYTES {
-        tracing::debug!(%connection, "a run too large for the history was not recorded");
-        return None;
-    }
-    if let HistoryRecording::Withhold(reason) = dialect.history_recording(&run.sql) {
-        tracing::debug!(%connection, ?reason, "a run was kept out of the history");
+    if withheld(connection, &run.sql, dialect.as_ref()) {
         return None;
     }
     let metadata = session.metadata();
     Some(NewEntry {
+        record_id: Uuid::new_v4(),
         query: run.sql,
         driver_id: metadata.driver_id.clone(),
         connection_id: metadata.id,
@@ -188,6 +302,7 @@ impl HistoryCursorArg {
     fn cursor(&self) -> HistoryCursor {
         HistoryCursor::after(&Entry {
             id: self.id,
+            record_id: Uuid::nil(),
             query: String::new(),
             driver_id: String::new(),
             connection_id: Uuid::nil(),
@@ -214,6 +329,7 @@ impl From<Entry> for HistoryEntryInfo {
         };
         Self {
             id: entry.id,
+            record_id: entry.record_id.to_string(),
             sql: entry.query,
             connection_id: (!entry.connection_id.is_nil()).then(|| entry.connection_id.to_string()),
             connection_name: entry.connection_name,
@@ -238,7 +354,7 @@ impl From<HistoryOutcomeTag> for Outcome {
 }
 
 // A time past what the clock holds lands on the epoch rather than panicking.
-fn from_millis(millis: i64) -> SystemTime {
+pub(crate) fn from_millis(millis: i64) -> SystemTime {
     from_epoch(Duration::from_millis(millis.unsigned_abs()), millis < 0)
 }
 
@@ -254,7 +370,7 @@ fn from_epoch(span: Duration, before: bool) -> SystemTime {
     time.unwrap_or(UNIX_EPOCH)
 }
 
-fn millis(time: SystemTime) -> i64 {
+pub(crate) fn millis(time: SystemTime) -> i64 {
     match time.duration_since(UNIX_EPOCH) {
         Ok(after) => i64::try_from(after.as_millis()).unwrap_or(i64::MAX),
         Err(before) => i64::try_from(before.duration().as_millis()).map_or(i64::MIN, |value| -value),
@@ -275,4 +391,17 @@ impl std::fmt::Debug for QueryHistoryStore {
             .field("path", &self.history.path())
             .finish_non_exhaustive()
     }
+}
+
+fn withheld(connection: Uuid, sql: &str, dialect: &dyn SqlDialect) -> bool {
+    // The store refuses it anyway, and reading it for secrets would lex it once per way the server may read it.
+    if sql.len() > MAX_QUERY_BYTES {
+        tracing::debug!(%connection, "a run too large for the history was not recorded");
+        return true;
+    }
+    if let HistoryRecording::Withhold(reason) = dialect.history_recording(sql) {
+        tracing::debug!(%connection, ?reason, "a run was kept out of the history");
+        return true;
+    }
+    false
 }

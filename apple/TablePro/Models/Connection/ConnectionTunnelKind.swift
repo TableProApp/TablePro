@@ -98,12 +98,12 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
             return String(localized: "Opens the database file on this Mac.")
         }
         if localSocketSkipsTLS {
-            return String(localized: "Connects through the socket on the General tab. PostgreSQL sends no SSL over a socket, which stays on this Mac.")
+            return String(localized: "Connects through the socket set in General. PostgreSQL sends no SSL over a socket, which stays on this Mac.")
         }
         if usesLocalSocket {
-            return String(localized: "Connects through the socket file on the General tab.")
+            return String(localized: "Connects through the socket file set in General.")
         }
-        return String(localized: "Connects straight to the host and port on the General tab.")
+        return String(localized: "Connects straight to the host and port set in General.")
     }
 }
 

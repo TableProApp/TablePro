@@ -80,8 +80,9 @@ jobs:
         run: |
           cargo check --locked --target "$TARGET" --features "$FEATURES" --features "$IN_PROCESS_SSH" \
             -p tablepro-core -p tablepro-net -p tablepro-storage -p tablepro-ssh -p tablepro-session \
-            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-account -p tablepro-cli \
-            -p tablepro-test-support -p tablepro-test-fixtures \
+            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-cloud-api -p tablepro-account -p tablepro-keys \
+            -p tablepro-records -p tablepro-sync -p tablepro-cli \
+            -p tablepro-test-support -p tablepro-test-fixtures -p tablepro-sync-testing \
             -p tablepro-driver-cassandra -p tablepro-driver-clickhouse -p tablepro-driver-duckdb \
             -p tablepro-driver-mongodb -p tablepro-driver-mssql -p tablepro-driver-mysql \
             -p tablepro-driver-postgres -p tablepro-driver-redis -p tablepro-driver-sqlite
@@ -98,7 +99,13 @@ jobs:
           cargo test --locked --target "$TARGET" --features tablepro-ssh/in-process -p tablepro-ssh --lib in_process
       # The sign-in's loopback listener and the token's file on each platform.
       - name: Account unit tests
-        run: cargo test --locked --target "$TARGET" -p tablepro-account --lib
+        run: cargo test --locked --target "$TARGET" -p tablepro-cloud-api -p tablepro-account --lib
+      # The key vectors, RFC 9180's and Wycheproof's through aws-lc as each platform builds it.
+      - name: Key unit tests
+        run: cargo test --locked --target "$TARGET" -p tablepro-keys --lib
+      # DuckDB recurses on threads whose stack each platform sizes (core/docs/decisions/0031-duckdb-expression-depth.md).
+      - name: DuckDB's deepest expressions
+        run: cargo test --locked --target "$TARGET" -p tablepro-driver-duckdb --test deep_expressions
       # The Arm64 image has no OpenSSH Server, and installing it takes about 20 minutes, so Arm64 runs these nightly.
       - name: Start Windows' OpenSSH Server
         id: sshd
@@ -118,13 +125,22 @@ jobs:
       # Each importer reads its app's files from this platform's own places.
       - name: Importers from other apps
         run: cargo test --locked --target "$TARGET" -p tablepro-foreign-import
-      # Release with fat LTO, without the engines (core/docs/decisions/0010-macos-on-the-core.md).
-      - name: Build the static library and its Swift bindings
+      # Release with fat LTO, without the engines (core/docs/decisions/0010-macos-on-the-core.md). The iOS slice proves
+      # the core builds for an iPhone at the iOS app's floor on the system SQLite; ios-tests.yml builds the Simulator's.
+      - name: Build the static libraries and their Swift bindings
         if: ${{ !cancelled() && matrix.swift }}
-        run: apple/scripts/build-core.sh arm64
+        run: apple/scripts/build-core.sh arm64 ios
       - name: Swift binding tests
         if: ${{ !cancelled() && matrix.swift }}
         run: swift test --package-path apple/Packages/TableProFFI
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        if: ${{ !cancelled() && matrix.swift }}
+        with:
+          tool: cargo-about@0.9.2
+      # The macOS app ships the notices of every crate its core library links.
+      - name: The macOS app's core notices match Cargo.lock
+        if: ${{ !cancelled() && matrix.swift }}
+        run: apple/scripts/update-core-licenses.sh --check
 
   sql-server-windows:
     name: SQL Server integrated login (Windows x64)

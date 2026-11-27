@@ -76,7 +76,7 @@ internal enum TableLoadOpenTabBucket: String, Sendable, CaseIterable {
     }
 }
 
-/// The build and the OS the measurement came from, so a history that spans an app update can say
+/// The build and the OS the measurement came from, so a comparison that spans an app update can say
 /// whether performance changed with it. Resolved once per process rather than per record.
 internal struct TableLoadRuntimeStamp: Sendable, Equatable {
     internal static let current = TableLoadRuntimeStamp(
@@ -95,17 +95,15 @@ internal struct TableLoadRuntimeStamp: Sendable, Equatable {
     }
 }
 
-/// One persisted line of the local performance history.
+/// One finished table load, as `TableLoadStandardErrorSink` writes it for a benchmark.
 ///
 /// Everything here is either a duration, a coarse bucket, or a version string. The trace it comes
 /// from knows the table name, and the connection behind it knows a host, a port and a username; none
-/// of that is reachable from this type, because a diagnostics file that accumulates for a week has to
-/// be something a user can hand over without reading it first.
+/// of that is reachable from this type, so a benchmark log can be shared without reading it first.
 ///
-/// The buckets are stored as their raw strings rather than as the enums, so a record written by an
-/// older build still decodes after a bucket is renamed or added. A trace that never fetched a result
-/// leaves the three result buckets absent rather than reporting an empty one, which would be a
-/// measurement it never took.
+/// The buckets are their raw strings rather than the enums, so a benchmark comparing two builds reads
+/// both after a bucket is renamed or added. A trace that never fetched a result leaves the three
+/// result buckets absent rather than reporting an empty one, which would be a measurement it never took.
 internal struct TableLoadPerformanceRecord: Codable, Sendable, Equatable {
     internal let recordedAt: Date
     internal let appVersion: String
@@ -122,6 +120,11 @@ internal struct TableLoadPerformanceRecord: Codable, Sendable, Equatable {
     internal let resultApplyMs: Double?
     internal let gridReloadMs: Double?
     internal let mainRunLoopIdleMs: Double?
+    // Optional and new: a line from an older build has none, and an older build skips the keys.
+    internal let leaseWaitMs: Double?
+    internal let pinMs: Double?
+    internal let firstRowMs: Double?
+    internal let phase2Ms: Double?
     internal let rowBucket: String?
     internal let columnBucket: String?
     internal let resultSizeBucket: String?
@@ -143,11 +146,37 @@ internal struct TableLoadPerformanceRecord: Codable, Sendable, Equatable {
         self.resultApplyMs = summary.resultApply.map(TableLoadDuration.milliseconds)
         self.gridReloadMs = summary.gridReload.map(TableLoadDuration.milliseconds)
         self.mainRunLoopIdleMs = summary.mainRunLoopIdle.map(TableLoadDuration.milliseconds)
+        self.leaseWaitMs = summary.leaseWait.map(TableLoadDuration.milliseconds)
+        self.pinMs = summary.pin.map(TableLoadDuration.milliseconds)
+        self.firstRowMs = summary.firstRow.map(TableLoadDuration.milliseconds)
+        self.phase2Ms = summary.phase2.map(TableLoadDuration.milliseconds)
         self.rowBucket = summary.resultMetrics.map { TableLoadRowBucket(rowCount: $0.rowCount).rawValue }
         self.columnBucket = summary.resultMetrics.map { TableLoadColumnBucket(columnCount: $0.columnCount).rawValue }
         self.resultSizeBucket = summary.resultMetrics.map {
             TableLoadResultSizeBucket(byteCount: $0.estimatedBytes).rawValue
         }
         self.openTabBucket = TableLoadOpenTabBucket(tabCount: summary.environment.openTabCount).rawValue
+    }
+
+    // Fractional seconds: whole seconds cannot order a burst of navigation.
+    private static let timestamps = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+
+    internal static func makeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(timestamps.format(date))
+        }
+        return encoder
+    }
+
+    internal static func makeDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            return try Date(text, strategy: timestamps)
+        }
+        return decoder
     }
 }

@@ -126,6 +126,15 @@ extension MainSplitViewController {
         commandActions?.exportQueryResults()
     }
 
+    // The Favorites list answers this first when it has focus and a saved query selected.
+    @objc func shareQuery(_ sender: Any?) {
+        commandActions?.shareQuery()
+    }
+
+    @objc func shareQueryResult(_ sender: Any?) {
+        commandActions?.shareQueryResult()
+    }
+
     @objc func importData(_ sender: Any?) {
         commandActions?.importData()
     }

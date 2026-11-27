@@ -14,7 +14,6 @@ final class SidebarViewModel: ObservableObject {
     private var searchTextObservation: AnyCancellable?
     private static let logger = Logger(subsystem: "com.TablePro", category: "SidebarViewModel")
     private static var registry: [UUID: SidebarViewModel] = [:]
-    private static let searchDebounce: Duration = .milliseconds(150)
 
     static func shared(
         connectionId: UUID,
@@ -140,6 +139,25 @@ final class SidebarViewModel: ObservableObject {
     private var listingDemandObservations: [AnyCancellable] = []
 
     private var filterDebounceTask: Task<Void, Never>?
+    private var filterPacer = SidebarFilterPacer()
+    private var refreshTiming: RefreshTiming?
+    private var refreshTimingGeneration = 0
+
+    /// One applied query, timed from its write to the end of the run loop turn that rebuilt the
+    /// outline for it. Every window of the connection rebuilds in that same turn, so one timing
+    /// covers them all.
+    private struct RefreshTiming {
+        enum Phase {
+            case awaitingRebuild(inWriteTurn: Bool)
+            case rebuiltInWriteTurn
+            case rebuiltLater
+        }
+
+        let generation: Int
+        let query: String
+        var start: Duration
+        var phase: Phase
+    }
 
     @Published var expanded: ExpansionState {
         didSet { persistExpansion(oldValue: oldValue) }
@@ -179,9 +197,11 @@ final class SidebarViewModel: ObservableObject {
 
     // MARK: - Binding Storage
 
-    @Published private var pendingTruncatesBinding: Binding<Set<DatabaseTreeTableRef>>
-    @Published private var pendingDeletesBinding: Binding<Set<DatabaseTreeTableRef>>
-    @Published private var tableOperationOptionsBinding: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
+    // Plumbing, not drawn state: `SidebarView.init` hands them over on every evaluation of its parent, and a publish
+    // there would redraw the sidebar, and repeat its search, each time.
+    private var pendingTruncatesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var pendingDeletesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var tableOperationOptionsBinding: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     let databaseType: DatabaseType
 
     // MARK: - Dependencies
@@ -189,6 +209,8 @@ final class SidebarViewModel: ObservableObject {
     private let connectionId: UUID
     private let defaults: UserDefaults
     private let clock: any Clock<Duration>
+    private let elapsed: @MainActor () -> Duration
+    private let onTurnEnd: @MainActor (@escaping @MainActor () -> Void) -> Void
 
     /// The single connection-scoped state holder. Search text and the Redis key
     /// tree live here so this view model and the sidebar views share one source.
@@ -225,7 +247,8 @@ final class SidebarViewModel: ObservableObject {
         databaseType: DatabaseType,
         connectionId: UUID,
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        clock: any Clock<Duration> = ContinuousClock()
+        clock: any Clock<Duration> = ContinuousClock(),
+        onTurnEnd: @escaping @MainActor (@escaping @MainActor () -> Void) -> Void = RunLoopTurn.onEnd
     ) {
         self.pendingTruncatesBinding = pendingTruncates
         self.pendingDeletesBinding = pendingDeletes
@@ -234,6 +257,8 @@ final class SidebarViewModel: ObservableObject {
         self.connectionId = connectionId
         self.defaults = defaults
         self.clock = clock
+        self.elapsed = Self.timeline(on: clock)
+        self.onTurnEnd = onTurnEnd
         self.sharedState = SharedSidebarState.forConnection(connectionId)
         self.expanded = Self.loadInitialExpansion(connectionId: connectionId, defaults: defaults)
         self.isRedisKeysExpanded = Self.loadExpansion(
@@ -262,6 +287,11 @@ final class SidebarViewModel: ObservableObject {
         self.filterQuery = self.sharedState.searchText
         observeSearchText()
         observeListingDemand()
+    }
+
+    private static func timeline<C: Clock>(on clock: C) -> @MainActor () -> Duration where C.Duration == Duration {
+        let origin = clock.now
+        return { origin.duration(to: clock.now) }
     }
 
     private func observeListingDemand() {
@@ -389,10 +419,8 @@ final class SidebarViewModel: ObservableObject {
     private func tableOperationEligibility(
         for targets: [DatabaseTreeTableRef]
     ) -> TableOperationEligibility.Context? {
-        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else {
-            return nil
-        }
-        return adapter.tableOperationEligibility(for: targets, isReadOnly: false)
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return nil }
+        return driver.tableOperationEligibility(for: targets, isReadOnly: false)
     }
 
     private func unstage(_ targets: [DatabaseTreeTableRef], from queue: inout Set<DatabaseTreeTableRef>) {
@@ -435,45 +463,62 @@ final class SidebarViewModel: ObservableObject {
 
     // MARK: - Filtering
 
+    // The bodies around the outline ask for the same container verdicts on every evaluation; each filters a container
+    // once per query and catalog buffer. Plain storage, since a verdict is derived and never drawn by itself. Emptied
+    // when the query changes, so a container read under an earlier query does not keep its rows alive.
+    private var containerBucketMemo = DatabaseTreeBucketMemo<DatabaseTreeContainerSlot>()
+    private var containerBucketQuery = ""
+
+    func containerBuckets(database: String, schema: String?, source: DatabaseTreeBucketSource) -> DatabaseTreeObjectBuckets {
+        if source.searchText != containerBucketQuery {
+            containerBucketMemo = DatabaseTreeBucketMemo()
+            containerBucketQuery = source.searchText
+        }
+        return containerBucketMemo.buckets(for: DatabaseTreeContainerSlot(database: database, schema: schema), source: source)
+    }
+
+    // Keyed by the rows themselves: a catalog commits its side lists before the generation moves.
+    private struct FilterKey<Element>: Equatable {
+        let rows: SameRows<Element>
+        let query: String
+        let database: String?
+    }
+
     private var cachedKindBuckets: [SidebarObjectKind: [TableInfo]] = [:]
-    private var cachedKindFingerprint: (count: Int, generation: Int)?
+    private var cachedKindRows: SameRows<TableInfo>?
 
     private var cachedFilteredByKind: [SidebarObjectKind: [TableInfo]] = [:]
-    private var cachedFilteredByKindFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredByKindKey: FilterKey<TableInfo>?
 
     private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
-    private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredRoutinesKey: FilterKey<RoutineInfo>?
     private var cachedFilteredTriggers: [TriggerInfo] = []
-    private var cachedFilteredTriggersFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredTriggersKey: FilterKey<TriggerInfo>?
     private var cachedFilteredUserTypes: [UserDefinedTypeInfo] = []
-    private var cachedFilteredUserTypesFingerprint: (count: Int, generation: Int, query: String)?
-    private var cachedFilteredServerObjects: [String: (count: Int, generation: Int, query: String, objects: [ServerObjectInfo])] = [:]
+    private var cachedFilteredUserTypesKey: FilterKey<UserDefinedTypeInfo>?
+    private var cachedFilteredServerObjects: [String: (key: FilterKey<ServerObjectInfo>, objects: [ServerObjectInfo])] = [:]
 
-    private var schemaGeneration: Int {
-        SchemaService.shared.generationToken(for: connectionId)
+    private func filterKey<Element>(_ rows: [Element]) -> FilterKey<Element> {
+        FilterKey(rows: SameRows(rows: rows), query: filterQuery, database: browsedDatabase)
     }
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
         guard kind.category == .table else { return [] }
-        let fingerprint = (count: tables.count, generation: schemaGeneration)
-        if cachedKindFingerprint?.count != fingerprint.count
-            || cachedKindFingerprint?.generation != fingerprint.generation {
+        let rows = SameRows(rows: tables)
+        if cachedKindRows != rows {
             rebuildKindBuckets(from: tables)
-            cachedKindFingerprint = fingerprint
+            cachedKindRows = rows
         }
         return cachedKindBuckets[kind] ?? []
     }
 
     func filteredTables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
-        let query = filterQuery
-        let fingerprint = (count: tables.count, generation: schemaGeneration, query: query)
-        if cachedFilteredByKindFingerprint?.count != fingerprint.count
-            || cachedFilteredByKindFingerprint?.generation != fingerprint.generation
-            || cachedFilteredByKindFingerprint?.query != fingerprint.query {
+        let key = filterKey(tables)
+        if cachedFilteredByKindKey != key {
             for tableKind in SidebarObjectKind.builtIn where tableKind.category == .table {
-                cachedFilteredByKind[tableKind] = applyQuery(query, to: self.tables(of: tableKind, from: tables))
+                cachedFilteredByKind[tableKind] = applyQuery(key.query, to: self.tables(of: tableKind, from: tables))
             }
-            cachedFilteredByKindFingerprint = fingerprint
+            cachedFilteredByKindKey = key
         }
         return cachedFilteredByKind[kind] ?? []
     }
@@ -486,55 +531,42 @@ final class SidebarViewModel: ObservableObject {
     }
 
     func filteredRoutines(of kind: SidebarObjectKind, from routines: [RoutineInfo]) -> [RoutineInfo] {
-        let query = filterQuery
-        let fingerprint = (count: routines.count, generation: schemaGeneration, query: query)
-        if cachedFilteredRoutinesFingerprint?.count != fingerprint.count
-            || cachedFilteredRoutinesFingerprint?.generation != fingerprint.generation
-            || cachedFilteredRoutinesFingerprint?.query != fingerprint.query {
+        let key = filterKey(routines)
+        if cachedFilteredRoutinesKey != key {
             let procs = routines.filter { $0.kind == .procedure }
             let funcs = routines.filter { $0.kind == .function }
-            cachedFilteredRoutines[.procedure] = applyRoutineQuery(query, to: procs)
-            cachedFilteredRoutines[.function] = applyRoutineQuery(query, to: funcs)
-            cachedFilteredRoutinesFingerprint = fingerprint
+            cachedFilteredRoutines[.procedure] = applyRoutineQuery(key.query, to: procs)
+            cachedFilteredRoutines[.function] = applyRoutineQuery(key.query, to: funcs)
+            cachedFilteredRoutinesKey = key
         }
         return cachedFilteredRoutines[kind] ?? []
     }
 
     func filteredTriggers(from triggers: [TriggerInfo]) -> [TriggerInfo] {
-        let query = filterQuery
-        let fingerprint = (count: triggers.count, generation: schemaGeneration, query: query)
-        if cachedFilteredTriggersFingerprint?.count != fingerprint.count
-            || cachedFilteredTriggersFingerprint?.generation != fingerprint.generation
-            || cachedFilteredTriggersFingerprint?.query != fingerprint.query {
-            cachedFilteredTriggers = DatabaseTreeFilter.filteredTriggers(triggers, searchText: query, database: browsedDatabase)
-            cachedFilteredTriggersFingerprint = fingerprint
+        let key = filterKey(triggers)
+        if cachedFilteredTriggersKey != key {
+            cachedFilteredTriggers = DatabaseTreeFilter.filteredTriggers(triggers, searchText: key.query, database: key.database)
+            cachedFilteredTriggersKey = key
         }
         return cachedFilteredTriggers
     }
 
     func filteredUserTypes(from types: [UserDefinedTypeInfo]) -> [UserDefinedTypeInfo] {
-        let query = filterQuery
-        let fingerprint = (count: types.count, generation: schemaGeneration, query: query)
-        if cachedFilteredUserTypesFingerprint?.count != fingerprint.count
-            || cachedFilteredUserTypesFingerprint?.generation != fingerprint.generation
-            || cachedFilteredUserTypesFingerprint?.query != fingerprint.query {
-            cachedFilteredUserTypes = DatabaseTreeFilter.filteredUserTypes(
-                types, searchText: query, database: browsedDatabase
-            )
-            cachedFilteredUserTypesFingerprint = fingerprint
+        let key = filterKey(types)
+        if cachedFilteredUserTypesKey != key {
+            cachedFilteredUserTypes = DatabaseTreeFilter.filteredUserTypes(types, searchText: key.query, database: key.database)
+            cachedFilteredUserTypesKey = key
         }
         return cachedFilteredUserTypes
     }
 
     func filteredServerObjects(kindId: String, from objects: [ServerObjectInfo]) -> [ServerObjectInfo] {
-        let query = filterQuery
-        let generation = schemaGeneration
-        if let cached = cachedFilteredServerObjects[kindId],
-           cached.count == objects.count, cached.generation == generation, cached.query == query {
+        let key = filterKey(objects)
+        if let cached = cachedFilteredServerObjects[kindId], cached.key == key {
             return cached.objects
         }
-        let filtered = DatabaseTreeFilter.filteredServerObjects(objects, searchText: query, database: browsedDatabase)
-        cachedFilteredServerObjects[kindId] = (objects.count, generation, query, filtered)
+        let filtered = DatabaseTreeFilter.filteredServerObjects(objects, searchText: key.query, database: key.database)
+        cachedFilteredServerObjects[kindId] = (key, filtered)
         return filtered
     }
 
@@ -660,31 +692,103 @@ final class SidebarViewModel: ObservableObject {
 
     private func invalidateFilterCaches() {
         cachedFilteredByKind = [:]
-        cachedFilteredByKindFingerprint = nil
+        cachedFilteredByKindKey = nil
         cachedFilteredRoutines = [:]
-        cachedFilteredRoutinesFingerprint = nil
+        cachedFilteredRoutinesKey = nil
         cachedFilteredServerObjects = [:]
+        // Here and not only at the next lookup: once the search is cleared no container asks again, and the memo would
+        // keep the last search's catalog buffers alive.
+        containerBucketMemo = DatabaseTreeBucketMemo()
+        containerBucketQuery = filterQuery
     }
 
     /// Clearing the field, or typing the first character into an empty one, changes what the list
-    /// shows wholesale, so it applies at once. Editing an existing query only narrows it, which is
-    /// worth waiting a moment for.
+    /// shows wholesale, so it applies at once. Any other key applies at once too unless the last
+    /// refresh's own cost has not passed since it ended; then it waits that long and applies the
+    /// text the field holds by then. A write to the shared state while a key waits, a recent table
+    /// or the field's focus, leaves the wait as it is.
     private func scheduleFilterQueryUpdate(oldValue: String) {
-        guard filterQuery != searchText else { return }
-        if searchText.isEmpty || oldValue.isEmpty {
+        guard filterQuery != searchText else {
+            // Typed back to what the list shows, so nothing is left to apply.
             filterDebounceTask?.cancel()
             filterDebounceTask = nil
-            filterQuery = searchText
             return
         }
-        filterDebounceTask?.cancel()
+        if searchText.isEmpty || oldValue.isEmpty {
+            applyFilterQuery()
+            return
+        }
+        guard filterDebounceTask == nil else { return }
+        let delay = filterPacer.delay(at: elapsed())
+        guard delay > .zero else {
+            applyFilterQuery()
+            return
+        }
         let clock = clock
         filterDebounceTask = Task { @MainActor [weak self] in
-            try? await clock.sleep(for: Self.searchDebounce)
-            guard !Task.isCancelled else { return }
-            guard let self else { return }
-            self.filterQuery = self.searchText
+            try? await clock.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.filterDebounceTask = nil
+            guard self.filterQuery != self.searchText else { return }
+            self.applyFilterQuery()
         }
+    }
+
+    private func applyFilterQuery() {
+        filterDebounceTask?.cancel()
+        filterDebounceTask = nil
+        let query = searchText
+        refreshTimingGeneration += 1
+        let generation = refreshTimingGeneration
+        refreshTiming = RefreshTiming(
+            generation: generation,
+            query: query,
+            start: elapsed(),
+            phase: .awaitingRebuild(inWriteTurn: true)
+        )
+        onTurnEnd { [weak self] in self?.endWriteTurn(generation: generation) }
+        filterQuery = query
+    }
+
+    /// Called by each outline as it starts the rebuild a new `filterQuery` asked for. The first
+    /// call for a query times it; the other windows of the connection rebuild in the same turn.
+    func noteSearchRebuild(for query: String) {
+        guard var timing = refreshTiming, timing.query == query else { return }
+        switch timing.phase {
+        case .awaitingRebuild(inWriteTurn: true):
+            timing.phase = .rebuiltInWriteTurn
+        case .awaitingRebuild(inWriteTurn: false):
+            // Idle time between the write's turn and this one is not the refresh's cost.
+            timing.start = elapsed()
+            timing.phase = .rebuiltLater
+            let generation = timing.generation
+            onTurnEnd { [weak self] in self?.endRebuildTurn(generation: generation) }
+        case .rebuiltInWriteTurn, .rebuiltLater:
+            return
+        }
+        refreshTiming = timing
+    }
+
+    private func endWriteTurn(generation: Int) {
+        guard var timing = refreshTiming, timing.generation == generation else { return }
+        filterPacer.recordRefresh(start: timing.start, end: elapsed())
+        switch timing.phase {
+        case .rebuiltInWriteTurn:
+            refreshTiming = nil
+        case .awaitingRebuild:
+            // No outline rebuilt in this turn, as when "No Results" replaces it. The turn's cost
+            // stands until an outline that rebuilds later reports.
+            timing.phase = .awaitingRebuild(inWriteTurn: false)
+            refreshTiming = timing
+        case .rebuiltLater:
+            return
+        }
+    }
+
+    private func endRebuildTurn(generation: Int) {
+        guard let timing = refreshTiming, timing.generation == generation else { return }
+        filterPacer.recordRefresh(start: timing.start, end: elapsed())
+        refreshTiming = nil
     }
 
     deinit {

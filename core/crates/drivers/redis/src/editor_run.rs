@@ -6,7 +6,7 @@ use tablepro_core::sql_syntax::StatementAccess;
 use tablepro_core::sql_syntax::redis::{EditorUse, command_access, editor_use, split_commands};
 use tablepro_core::{
     DriverError, ReadOnlyRefusal, ResultSink, RunEnd, RunOptions, RunSummary, SinkFlow, TransactionState,
-    UnsupportedFeature, UserSql,
+    UnsupportedFeature, UserSql, deadline_elapsed,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -15,6 +15,7 @@ use crate::endpoint::RedisEndpoint;
 use crate::errors::{invalid_arguments, is_unblocked};
 use crate::link::{Link, command};
 use crate::reply_rows::{ReplyShape, emit, reply_shape};
+use crate::session_database::SessionDatabase;
 
 /// Why a run stopped before its command did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +49,7 @@ pub(crate) struct EditorRun {
     pub(crate) statement_timeout: Option<Duration>,
     pub(crate) shutdown: CancellationToken,
     pub(crate) transaction: Arc<Mutex<TransactionState>>,
+    pub(crate) database: Arc<Mutex<SessionDatabase>>,
 }
 
 impl EditorRun {
@@ -171,7 +173,7 @@ impl EditorRun {
             flow = emit(sink, shape, Some(options.row_limit)) => Ok(flow),
             () = options.cancel.cancelled() => Err(Interrupt::Cancelled),
             () = self.shutdown.cancelled() => Err(Interrupt::Cancelled),
-            () = until(deadline) => Err(Interrupt::DeadlineElapsed),
+            () = deadline_elapsed(deadline) => Err(Interrupt::DeadlineElapsed),
         }
     }
 
@@ -191,7 +193,7 @@ impl EditorRun {
             },
             () = cancel.cancelled() => Interrupt::Cancelled,
             () = self.shutdown.cancelled() => Interrupt::Cancelled,
-            () = until(deadline) => Interrupt::DeadlineElapsed,
+            () = deadline_elapsed(deadline) => Interrupt::DeadlineElapsed,
         };
         let grace_ends = Instant::now() + self.endpoint.liveness().cancel_grace;
         let control = tokio::time::timeout_at(grace_ends, self.endpoint.open())
@@ -232,6 +234,10 @@ impl EditorRun {
             .unwrap_or_default();
         let mut state = self.transaction.lock().unwrap_or_else(PoisonError::into_inner);
         *state = next_transaction_state(&name, reply, *state);
+        self.database
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .observe(arguments, reply);
     }
 
     fn forget_transaction(&self) {
@@ -294,13 +300,6 @@ fn in_step_after_stop(reply: Option<&Reply>, settled: bool) -> bool {
 
 fn is_unblocked_reply(error: &redis::ServerError) -> bool {
     is_unblocked(&crate::errors::server_error(error))
-}
-
-async fn until(deadline: Option<Instant>) {
-    match deadline {
-        Some(deadline) => tokio::time::sleep_until(deadline).await,
-        None => std::future::pending().await,
-    }
 }
 
 #[cfg(test)]

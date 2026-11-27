@@ -26,11 +26,16 @@ internal enum TableLoadStage: String, Sendable {
     case executeRequested
     case executeStarted
     case driverFetchBegin
+    case leaseAcquired
+    case pinFinished
+    case firstRow
     case driverFetchEnd
     case applyResultBegin
     case gridReloadBegin
     case gridReloadEnd
     case mainRunLoopIdle
+    case phase2Begin
+    case phase2End
 }
 
 internal enum TableLoadAnomaly: String, Sendable {
@@ -88,6 +93,14 @@ internal struct TableLoadTraceRecorder {
         var resultMetrics: TableLoadResultMetrics?
         var wasSuperseded = false
         var isSummarized = false
+        var isPhase2Running = false
+        var heldEnding: Ending?
+    }
+
+    // How a load ended while its phase 2 was still reading, kept so the summary can carry both.
+    internal struct Ending: Equatable {
+        let outcome: TableLoadOutcome
+        let at: ContinuousClock.Instant
     }
 
     internal static let retainedTraceLimit = 32
@@ -108,7 +121,7 @@ internal struct TableLoadTraceRecorder {
         return evictedSequences
     }
 
-    /// The same channel for the persisted history. A trace ends four ways and only one of them is
+    /// The same channel for the summaries. A trace ends four ways and only one of them is
     /// `finish`, so the summary is built where the entry actually leaves the live set rather than at
     /// any single caller, and `isSummarized` makes that at most once per trace whichever path wins.
     internal mutating func takeCompletedSummaries() -> [TableLoadTraceSummary] {
@@ -167,7 +180,7 @@ internal struct TableLoadTraceRecorder {
     }
 
     /// Anomalies belong to the trace, not only to the log line, so they are recorded here rather than
-    /// measured and thrown away: "how often did a load report this" is the question the history exists
+    /// measured and thrown away: "how often did a load report this" is the question the summary exists
     /// to answer. Repeats are folded, because one navigation can be blocked several times.
     internal mutating func note(
         _ anomaly: TableLoadAnomaly,
@@ -224,13 +237,33 @@ internal struct TableLoadTraceRecorder {
         return measure(token: entry.token, at: instant)
     }
 
+    internal mutating func beginPhase2(token: TableLoadTraceToken, at instant: ContinuousClock.Instant) -> TableLoadTiming? {
+        guard let timing = record(.phase2Begin, token: token, at: instant) else { return nil }
+        entries[token.sequence]?.isPhase2Running = true
+        return timing
+    }
+
+    internal mutating func endPhase2(token: TableLoadTraceToken, at instant: ContinuousClock.Instant) -> TableLoadTiming? {
+        guard entries[token.sequence]?.isPhase2Running == true,
+              let timing = record(.phase2End, token: token, at: instant) else { return nil }
+        entries[token.sequence]?.isPhase2Running = false
+        if let ending = entries[token.sequence]?.heldEnding {
+            summarize(sequence: token.sequence, outcome: ending.outcome, at: ending.at)
+        }
+        return timing
+    }
+
     internal mutating func finish(
         token: TableLoadTraceToken,
         outcome: TableLoadOutcome,
         at instant: ContinuousClock.Instant
     ) -> TableLoadTiming? {
         guard let timing = measure(token: token, at: instant) else { return nil }
-        summarize(sequence: token.sequence, outcome: outcome, at: instant)
+        if entries[token.sequence]?.isPhase2Running == true {
+            entries[token.sequence]?.heldEnding = Ending(outcome: outcome, at: instant)
+        } else {
+            summarize(sequence: token.sequence, outcome: outcome, at: instant)
+        }
         entries[token.sequence]?.isFinished = true
         entries[token.sequence]?.lastEventAt = instant
         if activeSequenceByTab[token.tabId] == token.sequence {
@@ -269,8 +302,9 @@ internal struct TableLoadTraceRecorder {
         var evicted: Set<Int> = []
         while overflow > 0, !evictable.isEmpty {
             let sequence = evictable.removeFirst()
+            let held = entries[sequence]?.heldEnding
             let outcome: TableLoadOutcome = entries[sequence]?.wasSuperseded == true ? .superseded : .evicted
-            summarize(sequence: sequence, outcome: outcome, at: instant)
+            summarize(sequence: sequence, outcome: held?.outcome ?? outcome, at: held?.at ?? instant)
             entries[sequence] = nil
             evicted.insert(sequence)
             overflow -= 1
@@ -283,7 +317,7 @@ internal struct TableLoadTraceRecorder {
 
     /// A superseded trace stays addressable so its late result can still report against it, and that
     /// late report is the only source of `resultTableMismatch` and `staleResultDropped`, the two
-    /// findings a history of this kind exists to count. Summarizing here would freeze the record
+    /// findings a summary of this kind exists to count. Summarizing here would freeze the record
     /// before either could arrive, so a trace whose query is still on its way back is left to the
     /// ending that result gives it. One that never executed can never report again, so it is
     /// summarized now rather than waiting for an eviction that may never come.
@@ -336,7 +370,11 @@ internal struct TableLoadTraceRecorder {
             driverFetch: elapsed(.driverFetchBegin, .driverFetchEnd),
             resultApply: elapsed(.applyResultBegin, .gridReloadBegin),
             gridReload: elapsed(.gridReloadBegin, .gridReloadEnd),
-            mainRunLoopIdle: elapsed(.gridReloadEnd, .mainRunLoopIdle)
+            mainRunLoopIdle: elapsed(.gridReloadEnd, .mainRunLoopIdle),
+            leaseWait: elapsed(.driverFetchBegin, .leaseAcquired),
+            pin: elapsed(.leaseAcquired, .pinFinished),
+            firstRow: elapsed(.pinFinished, .firstRow),
+            phase2: elapsed(.phase2Begin, .phase2End)
         )
     }
 }

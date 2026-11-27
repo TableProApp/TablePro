@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use secrecy::SecretString;
+use tablepro_account::{RefreshTokenVault, RefreshTokenVaults, SignInKey};
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
@@ -52,12 +53,17 @@ pub enum SecretKindTag {
     SshPassphrase,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum SecretItemTag {
     McpToken,
     AnthropicKey,
     OpenAiKey,
     OpenAiCompatibleKey,
+    // tablepro.app's account refresh token, which only the account asks for (core ADR 0016). On the Mac it is the
+    // Keychain item com.TablePro.account.refreshToken, which signed-in Macs already hold.
+    AccountRefreshToken,
+    // Another server's, one item per sign-in, so a company server's never lands in tablepro.app's (core ADR 0046).
+    AccountRefreshTokenFor { sign_in_key: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
@@ -192,6 +198,47 @@ impl SecretItems for HostSecretStore {
     }
 }
 
+// The host's item for each sign-in.
+pub(crate) struct HostRefreshTokens(pub(crate) Arc<HostSecretStore>);
+
+impl RefreshTokenVaults for HostRefreshTokens {
+    fn vault(&self, sign_in: &SignInKey) -> Arc<dyn RefreshTokenVault> {
+        let item = match sign_in.production {
+            true => SecretItemTag::AccountRefreshToken,
+            false => SecretItemTag::AccountRefreshTokenFor {
+                sign_in_key: sign_in.key.clone(),
+            },
+        };
+        Arc::new(HostRefreshToken {
+            store: self.0.clone(),
+            item,
+        })
+    }
+}
+
+struct HostRefreshToken {
+    store: Arc<HostSecretStore>,
+    item: SecretItemTag,
+}
+
+#[async_trait]
+impl RefreshTokenVault for HostRefreshToken {
+    async fn load_refresh_token(&self) -> Result<Option<SecretString>, SecretError> {
+        let item = self.item.clone();
+        self.store.call(move |host| host.load_item(item)).await
+    }
+
+    async fn store_refresh_token(&self, token: &SecretString) -> Result<(), SecretError> {
+        let (item, token) = (self.item.clone(), token.clone());
+        self.store.call(move |host| host.store_item(item, token)).await
+    }
+
+    async fn delete_refresh_token(&self) -> Result<(), SecretError> {
+        let item = self.item.clone();
+        self.store.call(move |host| host.delete_item(item)).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -301,6 +348,81 @@ mod tests {
         assert_eq!(
             found.map(|secret| secret.expose_secret().to_owned()),
             Some("sk-test".to_owned())
+        );
+    }
+
+    #[tokio::test]
+    async fn the_account_s_refresh_token_is_an_item_of_its_own() {
+        let store = Arc::new(store(MemorySecrets::default()));
+        let ai = SecretItem::AiKey(AiProvider::Anthropic);
+        store.store_item(ai, &SecretString::from("sk-test")).await.unwrap();
+        let production = HostRefreshTokens(store.clone()).vault(&SignInKey {
+            key: "e6989de2b8e8cbc0".to_owned(),
+            production: true,
+        });
+
+        production
+            .store_refresh_token(&SecretString::from("refresh"))
+            .await
+            .unwrap();
+        let found = production.load_refresh_token().await.unwrap();
+        production.delete_refresh_token().await.unwrap();
+        let gone = production.load_refresh_token().await.unwrap();
+        let kept = store.load_item(ai).await.unwrap();
+
+        assert_eq!(
+            found.map(|token| token.expose_secret().to_owned()),
+            Some("refresh".to_owned())
+        );
+        assert!(gone.is_none());
+        assert_eq!(
+            kept.map(|secret| secret.expose_secret().to_owned()),
+            Some("sk-test".to_owned())
+        );
+    }
+
+    #[tokio::test]
+    async fn tablepro_app_keeps_its_fixed_item_and_another_server_one_by_its_sign_in_key() {
+        let host = MemorySecrets::default();
+        let store = Arc::new(store(host));
+        let vaults = HostRefreshTokens(store.clone());
+        let production = vaults.vault(&SignInKey {
+            key: "e6989de2b8e8cbc0".to_owned(),
+            production: true,
+        });
+        let company = vaults.vault(&SignInKey {
+            key: "0123456789abcdef".to_owned(),
+            production: false,
+        });
+
+        production
+            .store_refresh_token(&SecretString::from("tablepro"))
+            .await
+            .unwrap();
+        company
+            .store_refresh_token(&SecretString::from("company"))
+            .await
+            .unwrap();
+        let fixed = store
+            .call(|host| host.load_item(SecretItemTag::AccountRefreshToken))
+            .await
+            .unwrap();
+        let keyed = store
+            .call(|host| {
+                host.load_item(SecretItemTag::AccountRefreshTokenFor {
+                    sign_in_key: "0123456789abcdef".to_owned(),
+                })
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            fixed.map(|token| token.expose_secret().to_owned()).as_deref(),
+            Some("tablepro")
+        );
+        assert_eq!(
+            keyed.map(|token| token.expose_secret().to_owned()).as_deref(),
+            Some("company")
         );
     }
 

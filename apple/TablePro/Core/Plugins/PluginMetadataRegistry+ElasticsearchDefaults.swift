@@ -12,7 +12,7 @@ extension PluginMetadataRegistry {
             ("Elasticsearch", PluginMetadataSnapshot(
                 displayName: "Elasticsearch", iconName: "elasticsearch-icon", defaultPort: 9_200,
                 requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "elasticsearch", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
                 brandColorHex: "#FEC514",
@@ -30,14 +30,21 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsOpportunisticTLS: false
+                    supportsAddColumn: false,
+                    supportsModifyColumn: false,
+                    supportsDropColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsModifyPrimaryKey: false,
+                    supportsOpportunisticTLS: false,
+                    dataCommands: elasticsearchDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
+                    defaultSchemaName: "public",
                     defaultGroupName: "default",
                     tableEntityName: "Indices",
                     containerEntityName: "Cluster",
-                    defaultPrimaryKeyColumn: "_id",
+                    defaultPrimaryKeyColumn: nil,
                     immutableColumns: ["_id", "_index", "_score"],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
@@ -74,6 +81,18 @@ private let elasticsearchCompletions: [CompletionEntry] = [
     CompletionEntry(label: "bool", insertText: "\"bool\": {\n  \"must\": [],\n  \"filter\": [],\n  \"must_not\": [],\n  \"should\": []\n}"),
     CompletionEntry(label: "exists", insertText: "\"exists\": { \"field\": \"field\" }"),
     CompletionEntry(label: "aggs", insertText: "\"aggs\": {\n  \"name\": {\n    \"terms\": { \"field\": \"field\" }\n  }\n}"),
+]
+
+// The Document APIs of the REST API spec, 8.19: index, create, update, delete, bulk, update and delete by query.
+// `_reindex` is left out: it can create its destination index and make the cluster fetch from another host.
+private let elasticsearchDataCommands: Set<String> = [
+    "PUT /{target}/_doc/{id}", "POST /{target}/_doc/{id}", "POST /{target}/_doc",
+    "PUT /{target}/_create/{id}", "POST /{target}/_create/{id}",
+    "POST /{target}/_update/{id}",
+    "DELETE /{target}/_doc/{id}",
+    "POST /_bulk", "PUT /_bulk", "POST /{target}/_bulk", "PUT /{target}/_bulk",
+    "POST /{target}/_update_by_query",
+    "POST /{target}/_delete_by_query",
 ]
 
 private let elasticsearchColumnTypes: [String: [String]] = [

@@ -328,8 +328,21 @@ internal struct CompareRunner {
             $0.snapshot?.droppingCatalogSpellings(ownSchema: context.target.schema)
         }
 
-        let engine = StructureDiffEngine(options: session.structureOptions)
-        let tableReport = engine.compare(source: sourceSnapshots, target: targetSnapshots)
+        let options = session.structureOptions
+        let sourceSchema = StructureCompareOptions.listedSchema(
+            endpoint: context.source.schema, tableSchemas: sourceTables.map(\.table.schema)
+        )
+        let targetSchema = StructureCompareOptions.listedSchema(
+            endpoint: context.target.schema, tableSchemas: targetTables.map(\.table.schema)
+        )
+        let tableReport = StructureDiffEngine(options: options).compare(
+            source: sourceSnapshots,
+            target: targetSnapshots,
+            sourceSchema: sourceSchema,
+            targetSchema: targetSchema,
+            unreadableSource: sourceTables.filter { $0.failure != nil }.map { (name: $0.table.name, schema: $0.table.schema) },
+            unreadableTarget: targetTables.filter { $0.failure != nil }.map { (name: $0.table.name, schema: $0.table.schema) }
+        )
 
         let sourceByName = Dictionary(
             sourceSnapshots.map { ($0.qualifiedName, $0) }, uniquingKeysWith: { first, _ in first }
@@ -337,12 +350,20 @@ internal struct CompareRunner {
         let targetByName = Dictionary(
             targetSnapshots.map { ($0.qualifiedName, $0) }, uniquingKeysWith: { first, _ in first }
         )
+        // A pair across two schemas carries the source's name, so its target is found the way the engine paired it.
+        let targetByKey = Dictionary(
+            targetSnapshots.map { (options.matchKey(name: $0.name, schema: $0.schema, listedIn: targetSchema), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         var results = tableReport.results.map { result -> CompareObjectResult in
-            CompareObjectResult.from(
+            let target = result.status == .onlyInTarget
+                ? targetByName[result.id]
+                : targetByKey[options.matchKey(name: result.tableName, schema: result.schema, listedIn: sourceSchema)]
+            return CompareObjectResult.from(
                 result,
                 sourceDefinition: sourceByName[result.id].map(TableDefinitionRenderer.lines) ?? [],
-                targetDefinition: targetByName[result.id].map(TableDefinitionRenderer.lines) ?? []
+                targetDefinition: target.map(TableDefinitionRenderer.lines) ?? []
             )
         }
         results += unreadableResults(sourceTables, targetTables)
@@ -407,7 +428,7 @@ internal struct CompareRunner {
             async let targetDefinitions = metadataService.viewDefinitions(
                 for: context.target, connection: context.targetConnection, views: targetViews
             )
-            results += try await diffEngine.compare(source: sourceDefinitions, target: targetDefinitions)
+            results += try await Self.compare(sourceDefinitions, targetDefinitions, with: diffEngine, context)
         }
 
         if includedKinds.contains(.procedure) || includedKinds.contains(.function) {
@@ -417,7 +438,7 @@ internal struct CompareRunner {
             async let targetRoutines = metadataService.routineReads(
                 for: context.target, connection: context.targetConnection
             )
-            results += try await diffEngine.compare(source: sourceRoutines, target: targetRoutines)
+            results += try await Self.compare(sourceRoutines, targetRoutines, with: diffEngine, context)
         }
 
         if includedKinds.contains(.trigger) {
@@ -432,10 +453,24 @@ internal struct CompareRunner {
                 connection: context.targetConnection,
                 tables: targetReads.map(\.table.name)
             )
-            results += try await diffEngine.compare(source: sourceTriggers, target: targetTriggers)
+            results += try await Self.compare(sourceTriggers, targetTriggers, with: diffEngine, context)
         }
 
         return results.filter { includedKinds.contains($0.identity.kind) }
+    }
+
+    private static func compare(
+        _ source: [RoutineSourceRead],
+        _ target: [RoutineSourceRead],
+        with engine: SourceObjectDiffEngine,
+        _ context: Context
+    ) -> [CompareObjectResult] {
+        engine.compare(
+            source: source,
+            target: target,
+            sourceSchema: StructureCompareOptions.listedSchema(endpoint: context.source.schema, tableSchemas: source.map(\.schema)),
+            targetSchema: StructureCompareOptions.listedSchema(endpoint: context.target.schema, tableSchemas: target.map(\.schema))
+        )
     }
 
     private func structureStatements(_ context: Context) async throws -> [SyncStatement] {
@@ -449,7 +484,11 @@ internal struct CompareRunner {
             case .skip: return nil
             case .create:
                 guard let snapshot = snapshots[result.identity.qualifiedName] else { return nil }
-                return .createTable(snapshot)
+                return .createTable(snapshot.placingReferences(
+                    from: snapshot.schema ?? context.source.schema,
+                    into: context.target.schema,
+                    options: session.structureOptions
+                ))
             case .drop:
                 return .dropTable(name: result.identity.name, schema: result.identity.schema)
             case .alter:
@@ -471,6 +510,7 @@ internal struct CompareRunner {
             in: Self.referenceNamespace(of: context.target)
         )
 
+        let targetSchema = context.target.scope.schema
         return try await DatabaseManager.shared.withMetadataDriver(scope: context.target.scope) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
                 throw CompareSyncError.unsupportedOperation(
@@ -478,7 +518,7 @@ internal struct CompareRunner {
                 )
             }
             var statements = try SchemaSyncScriptBuilder(
-                targetDriver: plugin, targetDatabaseType: driver.connection.type
+                targetDriver: plugin, targetDatabaseType: driver.connection.type, targetSchema: targetSchema
             ).build(operations: tableOperations, foreignKeysByTable: foreignKeys)
             let sourceBuilder = SourceObjectSyncBuilder(
                 targetDriver: plugin,

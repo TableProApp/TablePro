@@ -12,7 +12,7 @@ extension PluginMetadataRegistry {
             ("Typesense", PluginMetadataSnapshot(
                 displayName: "Typesense", iconName: "typesense-icon", defaultPort: 8_108,
                 requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "typesense", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
                 brandColorHex: "#1035BC",
@@ -30,14 +30,21 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsOpportunisticTLS: false
+                    supportsAddColumn: false,
+                    supportsModifyColumn: false,
+                    supportsDropColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsModifyPrimaryKey: false,
+                    supportsOpportunisticTLS: false,
+                    dataCommands: typesenseDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
+                    defaultSchemaName: "public",
                     defaultGroupName: "default",
                     tableEntityName: "Collections",
                     containerEntityName: "Cluster",
-                    defaultPrimaryKeyColumn: "id",
+                    defaultPrimaryKeyColumn: nil,
                     immutableColumns: ["id"],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
@@ -60,6 +67,16 @@ extension PluginMetadataRegistry {
         ]
     }
 }
+
+// The document routes of the Typesense server, v26.0 to v30.2.
+private let typesenseDataCommands: Set<String> = [
+    "POST /collections/{collection}/documents",
+    "POST /collections/{collection}/documents/import",
+    "PATCH /collections/{collection}/documents/{id}",
+    "PATCH /collections/{collection}/documents",
+    "DELETE /collections/{collection}/documents/{id}",
+    "DELETE /collections/{collection}/documents",
+]
 
 private let typesenseCompletions: [CompletionEntry] = [
     CompletionEntry(label: "GET /collections", insertText: "GET /collections"),

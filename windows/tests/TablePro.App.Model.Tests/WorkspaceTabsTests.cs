@@ -52,6 +52,23 @@ public sealed class WorkspaceTabsTests
     }
 
     [Fact]
+    public async Task ATabOfADroppedTableClosesWithoutAskingAndIsNotKeptToReopen()
+    {
+        var edited = new FakeTab("Artist", TabKind.Table) { HasUnsavedChanges = true, ClosesUnsaved = false };
+        _strip.Tabs.Add(edited);
+        var emptied = 0;
+        _tabs.Emptied += (_, _) => emptied++;
+
+        await _tabs.DiscardAsync(edited);
+
+        Assert.Equal(1, edited.Closes);
+        Assert.Empty(_strip.Asked);
+        Assert.Empty(_strip.Tabs);
+        Assert.Equal(0, _tabs.ClosedCount);
+        Assert.Equal(1, emptied);
+    }
+
+    [Fact]
     public async Task ASecondCloseWhileTheFirstIsClosingTheTabDoesNothing()
     {
         var closing = new Gate();
@@ -201,6 +218,20 @@ public sealed class WorkspaceTabsTests
     }
 
     [Fact]
+    public void AQueryRunningOrAPageLoadingKeepsTheWorkspaceBusy()
+    {
+        var idle = new FakeTab("Query 1");
+        var loading = new FakeTab("Artist", TabKind.Table);
+        _strip.Tabs.AddRange([idle, loading]);
+
+        Assert.False(_tabs.AnyRunning);
+
+        loading.IsRunning = true;
+
+        Assert.True(_tabs.AnyRunning);
+    }
+
+    [Fact]
     public async Task AClosedWindowsTabsReopenInTheirOrderAndOnlyADisconnectForgetsThem()
     {
         _tabs.KeepClosed([new SessionTab { Title = "Query 1" }, new SessionTab { Title = "Query 2" }]);
@@ -218,6 +249,75 @@ public sealed class WorkspaceTabsTests
 
         Assert.Equal(0, _tabs.ClosedCount);
     }
+
+    [Fact]
+    public async Task AClosedQueryTabKeepsItsTypedNameApartFromItsNumberToReopen()
+    {
+        var strip = new QueryStrip();
+        var tabs = new WorkspaceTabs<QueryTab>(strip);
+        var tab = new QueryTab(
+            "Query 2",
+            new FakeSession(),
+            new FakeQueryView(),
+            new FakeResults(),
+            DataModel.Relational,
+            () => new AppSettings());
+        tab.Rename("Monthly report");
+        strip.Tabs.Add(tab);
+
+        await tabs.CloseAsync(tab);
+
+        var closed = tabs.TakeClosed()!.Tab;
+        Assert.Equal(("Query 2", "Monthly report"), (closed.Title, closed.CustomTitle));
+    }
+
+    // Ctrl+T gives the lowest free number, so a tab closed and reopened after it would read the same.
+    [Fact]
+    public void AReopenedTabWhoseNumberWasTakenMeanwhileTakesTheNextFreeOne()
+    {
+        var taken = new HashSet<string> { "Query 1", "Query 2" };
+        var plain = new SessionTab { Kind = TabKind.Query, Title = "Query 2", Sql = "select 2" };
+        var named = plain with { CustomTitle = "Monthly report" };
+
+        var renamed = QueryTitles.Reopened(named, taken, "Query {0}");
+
+        Assert.Equal("Query 3", QueryTitles.Reopened(plain, taken, "Query {0}").Title);
+        Assert.Equal(("Query 3", "Monthly report", "select 2"), (renamed.Title, renamed.CustomTitle, renamed.Sql));
+        Assert.Same(plain, QueryTitles.Reopened(plain, new HashSet<string> { "Query 1" }, "Query {0}"));
+    }
+
+    // A file names its tab, and a title the app did not number is no number to give back.
+    [Fact]
+    public void AReopenedTabKeepsATitleItsNumberDidNotWrite()
+    {
+        var taken = new HashSet<string> { "Query 2", "report.sql", "Report" };
+        SessionTab[] kept =
+        [
+            new() { Kind = TabKind.Query, Title = "report.sql", FilePath = @"C:\sql\report.sql" },
+            new() { Kind = TabKind.Query, Title = "Query 2", FilePath = @"C:\sql\Query 2" },
+            new() { Kind = TabKind.Query, Title = "Report" },
+            new() { Kind = TabKind.Table, Title = "Query 2", Table = "Query 2" },
+        ];
+
+        Assert.All(kept, tab => Assert.Same(tab, QueryTitles.Reopened(tab, taken, "Query {0}")));
+    }
+}
+
+internal sealed class QueryStrip : IWorkspaceTabsView<QueryTab>
+{
+    public List<QueryTab> Tabs { get; } = [];
+
+    public IReadOnlyList<QueryTab> Items => [.. Tabs];
+
+    public IWorkspaceTab? ContentOf(QueryTab item) => item;
+
+    public void SelectTab(QueryTab item)
+    {
+    }
+
+    public Task<bool> ConfirmCloseHeldAsync(IWorkspaceTab tab) => Task.FromResult(true);
+
+    public void Remove(QueryTab item) => Tabs.Remove(item);
 }
 
 internal sealed class FakeTab(string title, TabKind kind = TabKind.Query) : IWorkspaceTab
@@ -251,6 +351,8 @@ internal sealed class FakeTab(string title, TabKind kind = TabKind.Query) : IWor
     }
 
     public SessionTab Snapshot() => new() { Kind = Kind, Title = Title };
+
+    public SessionTab WithPendingWork(SessionTab snapshot) => snapshot;
 
     public async Task CloseAsync()
     {

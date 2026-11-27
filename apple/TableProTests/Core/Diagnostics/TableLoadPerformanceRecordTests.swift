@@ -205,7 +205,7 @@ struct TableLoadPerformanceRecordTests {
         #expect(record.openTabBucket == TableLoadOpenTabBucket.upTo5.rawValue)
     }
 
-    @Test("A record round-trips through the encoding the store writes")
+    @Test("A record round-trips through the encoding the benchmark line uses")
     func roundTripsThroughJSON() throws {
         let metrics = TableLoadResultMetrics(rowCount: 12, columnCount: 3, estimatedBytes: 900)
         let record = TableLoadPerformanceRecord(
@@ -214,15 +214,29 @@ struct TableLoadPerformanceRecordTests {
             recordedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
-        let encoder = TableLoadHistoryStore.makeEncoder()
-        let decoder = TableLoadHistoryStore.makeDecoder()
+        let encoder = TableLoadPerformanceRecord.makeEncoder()
+        let decoder = TableLoadPerformanceRecord.makeDecoder()
         let decoded = try decoder.decode(TableLoadPerformanceRecord.self, from: encoder.encode(record))
 
         #expect(decoded == record)
     }
 
+    @Test("The lease, pin, first row and phase 2 timings reach the record")
+    func carriesTheLeaseTimings() {
+        var traced = summary()
+        traced.leaseWait = .milliseconds(30)
+        traced.pin = .milliseconds(200)
+        traced.firstRow = .milliseconds(205)
+        traced.phase2 = .milliseconds(1_200)
+        let record = TableLoadPerformanceRecord(summary: traced, stamp: Self.stamp, recordedAt: .now)
+        #expect(record.leaseWaitMs == 30)
+        #expect(record.pinMs == 200)
+        #expect(record.firstRowMs == 205)
+        #expect(record.phase2Ms == 1_200)
+    }
+
     /// The trace this record comes from knows a table name and the connection behind it knows a host,
-    /// a port and a username. None of them may survive into a file that accumulates for a week.
+    /// a port and a username. None of them may survive into a benchmark log.
     @Test("Nothing identifying the query, the table or the server survives into the record")
     func carriesNothingIdentifying() throws {
         let secrets = [
@@ -242,7 +256,7 @@ struct TableLoadPerformanceRecordTests {
             recordedAt: .now
         )
 
-        let data = try TableLoadHistoryStore.makeEncoder().encode(record)
+        let data = try TableLoadPerformanceRecord.makeEncoder().encode(record)
         let json = try #require(String(data: data, encoding: .utf8))
 
         for secret in secrets {

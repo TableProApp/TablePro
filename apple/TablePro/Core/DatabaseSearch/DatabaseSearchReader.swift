@@ -60,7 +60,7 @@ internal final class DatabaseSearchLiveReader: DatabaseSearchReading {
         let rowCap = Self.rowCap
         let scope = DatabaseScope(connectionId: connection.id, database: database, schema: target.schema)
         return try await manager.withCancellableRead(
-            scope: scope, route: manager.metadataRoute(for: scope), ownsSessionState: false
+            scope: scope, route: manager.metadataRoute(for: scope), sessionWork: .independent
         ) { driver in
             let classifier = ColumnTypeClassifier(family: family)
             let columns = try await driver.fetchColumns(table: target.name, schema: target.schema).map { info in

@@ -51,6 +51,25 @@ public sealed class AutomationTests
         Assert.Equal((999_999, 199), (grid.FocusedRow, grid.FocusedColumn));
     });
 
+    // UIA reads what a NULL cell shows; empty text is the word NULL again.
+    [Fact]
+    public Task ANullCellReadsTheGridsNullText() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+        var peer = (DataGridAutomationPeer)FrameworkElementAutomationPeer.CreatePeerForElement(grid);
+        var cell = peer.Cell(0, 3);
+        Assert.Equal("NULL", cell.GetName());
+
+        grid.NullText = "(null)";
+        Assert.Equal("(null)", cell.GetName());
+        Assert.Equal("(null)", grid.Painter.NullText);
+        Assert.Equal("r1c3", peer.Cell(1, 3).GetName());
+
+        grid.NullText = "";
+        Assert.Equal("NULL", grid.NullText);
+        Assert.Equal("NULL", cell.GetName());
+    });
+
     // A cell peer held across a new result reads the new data, or empty and off screen where the data lacks it.
     [Fact]
     public Task ACellPeerReadsTheNewDataAfterTheOldSetIsReleased() => WinUiHost.RunAsync(async () =>
@@ -105,6 +124,16 @@ public sealed class AutomationTests
         Assert.Equal(9, selected.Length);
         grid.SelectAll();
         Assert.Equal(DataGridAutomationPeer.MaxSelectionPeers, peer.GetSelection().Length);
+    });
+
+    // The model keeps an unreadable value's type; the grid words it from the app's strings, as it draws and reads it.
+    [Fact]
+    public Task AValueTheDriverCouldNotReadIsWordedFromTheAppsStrings() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+
+        Assert.Equal("<unreadable money>", grid.ShownText(new Model.CellText("money", Model.CellState.Unreadable)));
+        Assert.Equal("money", grid.ShownText(new Model.CellText("money", Model.CellState.None)));
     });
 
     // UIA's HeaderItem control type gives a header's sort order as its ItemStatus.

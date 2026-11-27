@@ -16,7 +16,7 @@ public enum CellState : ushort
     // Outside what the data held when the block was read.
     Missing = 8,
 
-    // The core shows control characters as spaces, so a copy reads text with a space whole.
+    // The core shows control characters as spaces and a kept line break as LF, so a copy reads such text whole.
     Lossy = 16,
 
     // A cell of a data row the user changed.
@@ -30,6 +30,9 @@ public enum CellState : ushort
 
     // The server's value, with no text: the grid draws its DefaultText.
     Default = 256,
+
+    // A value the driver could not read: the text is its type's name, and a copy leaves it out.
+    Unreadable = 512,
 }
 
 public readonly ref struct CellText(ReadOnlySpan<char> text, CellState state)
@@ -68,13 +71,18 @@ public sealed class CellBlock
 
     public int MaxCharacters { get; private set; }
 
+    // Line breaks stay in the text as LF, for a grid that wraps its cells; off, they are spaces.
+    public bool KeepsLineBreaks { get; private set; }
+
     internal long LastUse { get; set; }
 
     public bool Covers(int row, int column) =>
         row >= FirstRow && row < FirstRow + RowCount && column >= FirstColumn && column < FirstColumn + ColumnCount;
 
-    public void Reset(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters)
+    public void Reset(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters,
+        bool keepsLineBreaks = false)
     {
+        KeepsLineBreaks = keepsLineBreaks;
         FirstRow = firstRow;
         RowCount = Math.Max(0, rowCount);
         FirstColumn = firstColumn;
@@ -94,6 +102,15 @@ public sealed class CellBlock
     public void AddNull(CellState marks = CellState.None) => Close(CellState.Null | marks);
 
     public void AddDefault(CellState marks = CellState.None) => Close(CellState.Default | marks);
+
+    // The type's name alone: the grid words what the cell shows around it.
+    public void AddUnreadable(ReadOnlySpan<byte> typeName)
+    {
+        Reserve(Encoding.UTF8.GetMaxCharCount(typeName.Length));
+        var start = _length;
+        _length += Encoding.UTF8.GetChars(typeName, _chars.AsSpan(_length));
+        Finish(start, truncated: false, lossy: false, CellState.Unreadable);
+    }
 
     // Grows the buffer once for a window's text, where adding cell by cell would grow it several times.
     public void EnsureCapacity(int characters) => Reserve(characters - _length, exact: true);
@@ -124,7 +141,7 @@ public sealed class CellBlock
         Finish(start, truncated, lossy, CellState.None);
     }
 
-    // Text the user typed, shown as the core shows a value: cut at the block's cap, control characters as spaces.
+    // Text the user typed, shown as the core shows a value: cut at the cap, control characters and breaks as spaces.
     public void AddTyped(ReadOnlySpan<char> text, CellState marks)
     {
         var cut = MaxCharacters > 0 && text.Length > MaxCharacters;
@@ -136,14 +153,39 @@ public sealed class CellBlock
         Reserve(text.Length + 1);
         var start = _length;
         var lossy = false;
-        foreach (var character in text)
+        for (var index = 0; index < text.Length; index++)
         {
-            var control = char.IsControl(character);
-            lossy |= control;
-            _chars[_length++] = control ? ' ' : character;
+            var character = text[index];
+            if (KeepsLineBreaks && IsLineBreak(character))
+            {
+                if (character == '\r' && index + 1 < text.Length && text[index + 1] == '\n')
+                {
+                    index++;
+                }
+                // A copy takes the break the user typed, not the LF it shows as.
+                lossy = true;
+                _chars[_length++] = '\n';
+                continue;
+            }
+            var shown = IsLineBreak(character) || char.IsControl(character) ? ' ' : character;
+            // In a block that keeps breaks a space may stand for a tab, as in the core's text.
+            lossy |= shown != character || (KeepsLineBreaks && shown == ' ');
+            _chars[_length++] = shown;
+        }
+        if (!cut)
+        {
+            _length = start + TrimLastBreak(_chars.AsSpan(start, _length - start)).Length;
         }
         Finish(start, cut, lossy, marks);
     }
+
+    // The forms every TablePro grid breaks a line at: LF, VT, FF, CR, NEL and the line and paragraph separators.
+    public static bool IsLineBreak(char character) =>
+        character is (>= '\n' and <= '\r') or '\u0085' or '\u2028' or '\u2029';
+
+    // A value's last line break starts no line of its own in a wrapped cell.
+    public static ReadOnlySpan<char> TrimLastBreak(ReadOnlySpan<char> text) =>
+        text.Length > 0 && text[^1] == '\n' ? text[..^1] : text;
 
     // The span stays valid until the block is refilled.
     public CellText Get(int row, int column)

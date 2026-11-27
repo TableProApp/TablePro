@@ -58,6 +58,27 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var issuedStagingTokens: Set<String> = []
     private static let maxIssuedStagingTokens = 10_000
 
+    // The key browses paged forward, by what they list, so the next page continues each from its saved cursor.
+    private let keyBrowseLock = NSLock()
+    private var keyBrowseWalks: [RedisKeyBrowseWalk.Scope: RedisKeyBrowseWalk] = [:]
+    private var keyBrowseOrder: [RedisKeyBrowseWalk.Scope] = []
+    private static let maxKeyBrowseWalks = 8
+
+    func savedKeyBrowseWalk(for scope: RedisKeyBrowseWalk.Scope) -> RedisKeyBrowseWalk? {
+        keyBrowseLock.withLock { keyBrowseWalks[scope] }
+    }
+
+    func saveKeyBrowseWalk(_ walk: RedisKeyBrowseWalk) {
+        keyBrowseLock.withLock {
+            keyBrowseWalks[walk.scope] = walk
+            keyBrowseOrder.removeAll { $0 == walk.scope }
+            keyBrowseOrder.append(walk.scope)
+            while keyBrowseOrder.count > Self.maxKeyBrowseWalks {
+                keyBrowseWalks[keyBrowseOrder.removeFirst()] = nil
+            }
+        }
+    }
+
     var serverVersion: String? {
         redisConnection?.serverVersion()
     }
@@ -167,9 +188,13 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// cleanly and then fails on every real command. INFO says which kind of server answered, so
     /// the mismatch is reported once, at connect, naming the field to change.
     private func verifyServerMode(_ expected: RedisConnectionMode, on channel: any RedisCommandChannel) async throws {
-        let reply = try await channel.executeCommand(["INFO", "server"], scope: .outsideBlock)
-        guard let info = reply.stringValue,
-              let actual = RedisServerInfo.mode(from: info) else { return }
+        let info: String?
+        if let kept = channel.connectServerInfo {
+            info = kept
+        } else {
+            info = try await channel.executeCommand(["INFO", "server"], scope: .outsideBlock).stringValue
+        }
+        guard let info, let actual = RedisServerInfo.mode(from: info) else { return }
         let isTunneled = config.additionalFields["preTunnelHost"]?.isEmpty == false
         guard let message = RedisTopologyDiagnostics.mismatch(
             expected: expected, actual: actual, isTunneled: isTunneled
@@ -311,6 +336,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let tables = try await fetchTables(schema: schema)
+        try PluginNameSpellings.requireDistinctSpellings(tables.map(\.name))
         let columns = try await fetchColumns(table: "", schema: schema)
         var result: [String: [PluginColumnInfo]] = [:]
         for table in tables {

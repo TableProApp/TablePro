@@ -10,29 +10,43 @@ extension AccountServices {
     static func live() -> AccountServices {
         let environment = AppStorageEnvironment.shared
         let machine = MachineDescription.current()
-        let session = liveSession()
-        return AccountServices(
-            configuration: .current(),
-            machine: machine,
-            transport: AccountAPI.transport(session: session),
-            send: { request in try await session.data(for: request) },
-            keychain: environment.deviceOnlyKeychain,
-            entitlementFile: environment.supportDirectory
-                .appendingPathComponent("Account", isDirectory: true)
-                .appendingPathComponent("entitlement.jwt"),
-            legacy: LegacyLicenseStore(
+        let setup = AccountCoreSetup.make(
+            supportDirectory: environment.supportDirectory,
+            machineID: machine.machineID,
+            policy: ManagedPolicyCenter.shared.snapshot,
+            environment: ProcessInfo.processInfo.environment,
+            isDebugBuild: isDebugBuild
+        )
+        let backend = CoreAccountBackend(
+            config: setup.accountConfig(machine: machine),
+            appVersion: machine.appVersion,
+            keychain: AccountKeychain(keychain: environment.deviceOnlyKeychain)
+        )
+        let services = AccountServices(
+            backend: backend,
+            transport: AccountAPI.transport(session: liveSession()),
+            storedKey: StoredLicenseKey(
                 keychain: environment.keychain,
                 defaults: environment.defaults,
-                machineID: machine.machineID,
-                verify: { try LicenseSignatureVerifier.shared.verify(payload: $0) }
+                machineID: machine.machineID
             ),
-            access: .shared
+            access: .shared,
+            sharedLinkServer: setup.developmentStack.flatMap { URL(string: $0.apiBase) } ?? AccountServer.production.apiBaseURL
         )
+        backend.setListener(services)
+        return services
     }
 
-    // A token request's body carries the refresh token or a license key, and URLSession resends a 307's body to
-    // wherever the redirect points.
+    // A request carries the bearer, and URLSession resends a 307's headers and body to wherever the redirect points.
     nonisolated static func liveSession() -> URLSession {
         URLSession(configuration: .ephemeral, delegate: SameOriginRedirects.shared, delegateQueue: nil)
+    }
+
+    private static var isDebugBuild: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
     }
 }

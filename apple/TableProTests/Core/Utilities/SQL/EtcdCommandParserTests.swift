@@ -392,6 +392,23 @@ struct EtcdCommandParserDelTests {
             try EtcdCommandParser.parse("del")
         }
     }
+
+    @Test("A del of one key is a write, and a del of a prefix is destructive")
+    func delTier() throws {
+        #expect(try EtcdCommandParser.parse("del mykey").tier == .write)
+        #expect(try EtcdCommandParser.parse("delete mykey").tier == .write)
+        #expect(try EtcdCommandParser.parse("del --prefix -- --cache/").tier == .destructive)
+        #expect(try EtcdCommandParser.parse("del /app/ --prefix").tier == .destructive)
+        #expect(try EtcdCommandParser.parse(#"del "" --prefix"#).tier == .destructive)
+    }
+
+    @Test("A del etcdctl reads as a range is refused, and graded destructive", arguments: [
+        "del /a /z", "del --from-key /a", "del /a --from-key=true", "del /a --prefix=true", "del /a --prefix=false",
+    ])
+    func delOfARangeIsRefused(line: String) {
+        #expect(throws: EtcdParseError.self) { try EtcdCommandParser.parse(line) }
+        #expect(QueryClassifier.classifyTier(line, databaseType: .etcd) == .destructive)
+    }
 }
 
 struct EtcdCommandParserWatchTests {
@@ -1162,10 +1179,10 @@ private let etcdReadLines = [
 ]
 private let etcdWriteLines = [
     "put /a v", "lease grant 60", "lease keep-alive 1", "auth enable", "user add bob pw", "role add readers",
-    "user grant-role bob readers", "user revoke-role bob readers", "create /a v",
+    "user grant-role bob readers", "user revoke-role bob readers", "create /a v", "del /a", "delete /a",
 ]
 private let etcdDeleteLines = [
-    "del /a", #"del "" --prefix"#, "del /app/ --prefix", "compaction 5", "lease revoke 1", "auth disable",
+    #"del "" --prefix"#, "del /app/ --prefix", "compaction 5", "lease revoke 1", "auth disable",
     "user delete bob", "role delete readers", "mv /a /b v --mod-rev=3", "mv /a /b v",
 ]
 

@@ -18,9 +18,11 @@ jobs:
   ios:
     name: iOS and Package Tests
     runs-on: xcode-27
-    timeout-minutes: 50
+    # The core's release build takes part of it when its cache is cold, and a runtime download part of the
+    # simulator step's 20 minutes.
+    timeout-minutes: 85
     env:
-      DESTINATION: platform=iOS Simulator,name=iPhone 18 Pro
+      SIMULATOR: iPhone 18 Pro
     defaults:
       run:
         working-directory: apple
@@ -38,6 +40,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh
 
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+          targets: aarch64-apple-ios-sim
+
+      # Saved from main only, like core.yml's: a pull request's cache serves that pull request alone.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: apple-core-ios-simulator
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The app links the core for the TablePro account, and SwiftPM resolves nothing until its binary target exists.
+      - name: Build the shared core
+        run: scripts/build-core.sh ios-simulator
+
       - name: Generate the Xcode project
         run: scripts/generate-project.sh ios
 
@@ -49,25 +66,41 @@ jobs:
           key: spm-ios-${{ runner.os }}-${{ hashFiles('apple/TableProMobile/TableProMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: spm-ios-${{ runner.os }}-
 
-      # The image ships the iOS 27.0 runtime. Downloading the one for Xcode's newer SDK costs minutes.
-      - name: Make sure the simulator exists
+      # Built for no device, so the simulator is picked after the build. The prebuilt iOS libraries have arm64
+      # simulator slices only, and a generic destination builds every architecture.
+      - name: Build for testing
         run: |
-          if ! xcrun simctl list devices available | grep -F "iPhone 18 Pro (" > /dev/null; then
-            xcodebuild -downloadPlatform iOS
-          fi
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project TableProMobile/TableProMobile.xcodeproj -scheme TableProMobile \
+            -destination "generic/platform=iOS Simulator" -clonedSourcePackagesDirPath ~/.spm-cache-ios \
+            -skipPackagePluginValidation -resultBundlePath Build.xcresult \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
+            | xcbeautify --renderer github-actions
+
+      # The image can unmount a simulator runtime mid-job (actions/runner-images#14946). xcodebuild then finds
+      # the device and fails to install on it, so the runtime is checked here, right before the tests. The
+      # script stops at 15 minutes; the limit is for a hung simctl.
+      - name: Boot a simulator the tests can install on
+        id: simulator
+        timeout-minutes: 20
+        run: |
+          udid="$(python3 scripts/ci/boot-ios-simulator.py "$SIMULATOR")"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
       # One simulator, not clones: on a 3-core runner a second booted simulator killed runs with
       # "(ipc/mig) server died", and TableProMobileTests is one bundle that never split anyway.
       - name: Run the iOS tests
         id: tests
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
         run: |
           set -o pipefail
-          xcodebuild test \
+          xcodebuild test-without-building \
             -project TableProMobile/TableProMobile.xcodeproj -scheme TableProMobile \
-            -destination "$DESTINATION" -only-testing:TableProMobileTests \
+            -destination "id=$UDID" -only-testing:TableProMobileTests \
             -parallel-testing-enabled NO -clonedSourcePackagesDirPath ~/.spm-cache-ios \
             -skipPackagePluginValidation -resultBundlePath iOS.xcresult \
-            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
             | xcbeautify --renderer github-actions
 
       # Saved by a push or the nightly only: a cache saved on a pull request ref is visible to it alone.
@@ -101,14 +134,14 @@ jobs:
       # Fails the job when a bundle or a package ran zero tests, which both tools report as success.
       - name: Summarize the results
         if: ${{ !cancelled() }}
-        run: scripts/ci/summarize-xcresult.sh iOS.xcresult Core.xml Oracle.xml
+        run: scripts/ci/summarize-xcresult.sh Build.xcresult iOS.xcresult Core.xml Oracle.xml
 
-      - name: Upload the result bundle
+      - name: Upload the result bundles
         if: ${{ failure() }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-tests-${{ github.run_attempt }}
-          path: apple/iOS.xcresult
+          path: apple/*.xcresult
           if-no-files-found: ignore
           retention-days: 7

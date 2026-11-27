@@ -1,8 +1,3 @@
-//
-//  AppDelegate.swift
-//  TablePro
-//
-
 import AppKit
 import Combine
 import os
@@ -16,16 +11,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var hasRunPostLaunchActivation = false
 
-    // MARK: - URL & File Open
-
     func applicationWillFinishLaunching(_ notification: Notification) {
         LaunchTracer.shared.mark(.willFinishLaunchingBegan)
+        // First: the migration below writes the flag that tells an existing install from a new one.
+        AppModule.recordDefaults(
+            in: AppStorageEnvironment.shared.defaults,
+            isExistingInstall: AppSettingsStorage.shared.hasLaunchedBefore()
+        )
         AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
         AppSettingsStorage.shared.removeRetiredFieldHeightKeys()
         AIProviderRegistration.registerAll()
+        // Before sync can pull a language change, and not earlier: settings built before the migrations above would miss them.
+        LanguageLaunchState.record()
 
-        /// Installed before any window exists, so the bar is correct from the first frame.
-        /// Nothing else owns it now that the app no longer runs a SwiftUI `App`.
+        // Before any window exists, so the bar is right from the first frame.
         MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
         MainMenuBuilder.syncKeyEquivalentsOnKeyWindowChange()
         LaunchTracer.shared.mark(.menuInstalled)
@@ -56,8 +55,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AppLaunchCoordinator.shared.handleReopen(hasVisibleWindows: flag)
     }
 
-    // MARK: - Lifecycle
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         LaunchTracer.shared.mark(.didFinishLaunchingBegan)
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
@@ -65,8 +62,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        /// `AppSettingsManager.init` has already resolved the theme from these same three values.
-        /// Only a screenshot run overrides the mode, so only a screenshot run resolves it twice.
+        // AppSettingsManager.init already resolved the theme; only a screenshot run overrides the mode and resolves again.
         if let screenshotMode = ScreenshotEnvironment.appearanceMode {
             let appearanceSettings = AppSettingsManager.shared.appearance
             ThemeEngine.shared.apply(
@@ -78,10 +74,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSWindow.allowsAutomaticWindowTabbing = true
         WindowOpener.shared.setWelcomePresenter { WelcomeWindowController.present() }
-        WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
+        WindowOpener.shared.setConnectionFormPresenter { ConnectionEditorWindowController.present($0, facet: $1) }
         WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
-        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
-        WindowOpener.shared.setCompareSyncPresenter { CompareSyncWindowController.present(prefillSource: $0) }
+        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present($0) }
         KeyRepeatFilter.shared.install()
         TableClickFocus.shared.install()
         RecentTabSwitcherController.installEditorKeyClaim()
@@ -92,20 +87,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DatabaseManager.shared.startObservingSystemEvents()
         DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
 
-        /// A notification the person acted on to launch the app is delivered as soon as
-        /// `applicationDidFinishLaunching` returns, before any window has a frame. Apple documents
-        /// the delegate assignment for that reason, and the two services below own the categories
-        /// `NotificationRouter` looks the action up in, so deferring either drops the action.
+        // Not deferred: a launching notification's action arrives as soon as this returns, and these services own its categories.
         UNUserNotificationCenter.current().delegate = self
         PluginNotificationService.shared.setUp()
         OperationCompletionReporter.shared.setUp()
         AgentAttentionNotifier.shared.setUp()
         ChatToolBootstrap.register()
 
-        /// Prerequisites for a connection, not post-launch work: a `cloudflared` or
-        /// `cloud-sql-proxy` left behind by a crash still holds its local port, and a restored
-        /// connection reaches `ensureConnected` while intents are routing. Both hop straight off
-        /// the main actor, so starting them here costs the first frame nothing.
+        // Not post-launch work: a crashed run's tunnel still holds its port when a restored connection reconnects.
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
         Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
         Task { await TunnelCommandManager.shared.sweepStalePidsIfNeeded() }
@@ -154,14 +143,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ConnectionStorage.shared.keepLocalOnlySecretsOnDeviceIfNeeded()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
+        ManagedPolicyCenter.shared.startMonitoring()
         // Before the account starts, so a stored key's migration reaches it as a sign-in.
         Telemetry.shared.start(
-            sharesUsageData: AppSettingsManager.shared.$general.map(\.shareAnalytics).eraseToAnyPublisher(),
+            sharesUsageData: Telemetry.sharesUsageData(
+                setting: AppSettingsManager.shared.generalSlice.publisher.map(\.shareAnalytics).eraseToAnyPublisher(),
+                policy: ManagedPolicyCenter.shared.$snapshot.eraseToAnyPublisher()
+            ),
             account: AccountServices.shared
         )
         AccountServices.shared.start()
+        // Before sync starts, so a profile's provider is the switch's first state.
+        SyncProviderPolicy.shared.start()
         SyncCoordinator.shared.start()
-        LinkedFolderWatcher.shared.start()
+        // Its gate reads the sign-in the core restores after launch.
+        Task {
+            await AccountServices.shared.waitUntilRestored()
+            LinkedFolderWatcher.shared.start()
+        }
         TeamLibrarySync.shared.start()
         SupportAskCoordinator.shared.start()
     }
@@ -170,34 +169,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
-    /// Unhiding is the one way a window comes back without any window notification firing, and the
-    /// app reports every window it owns as invisible while it is hidden.
+    func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        SyncCoordinator.shared.pushRegistrationDidFinish(registered: true)
+    }
+
+    func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
+        Self.logger.warning("Push registration failed: \(error.localizedDescription, privacy: .private)")
+        SyncCoordinator.shared.pushRegistrationDidFinish(registered: false)
+    }
+
+    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
+        SyncCoordinator.shared.handleRemoteNotification(userInfo)
+    }
+
+    // Unhiding brings windows back with no window notification, and while hidden every window reports invisible.
     func applicationDidUnhide(_ notification: Notification) {
         AppActivationPolicyController.shared.reevaluate()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard QuitApproval.approve() else {
+        // The connection editors first: their Cancel keeps the app open before anything else is asked or stopped.
+        guard ConnectionEditorWindowController.prepareToTerminate(), let plan = QuitApproval.approve() else {
             AppRelauncher.shared.terminationWasCancelled()
             return .terminateCancel
         }
 
         Task {
-            // First, while the drivers are open: a debug stop rolls back the routine's transaction.
-            await AppModuleTermination.stopModuleWork()
-            await MCPServerManager.shared.stop()
-            await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
-            // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
-            await VaultDatabaseCredentials.shared.revokeAllLeases()
+            // Team Library edits not uploaded live only in memory, so they are asked about while a Cancel changes nothing.
+            let quits = await TeamLibraryUnsentChanges.quit {
+                // Before anything the app could not take back if it stays open.
+                guard await QuitApproval.commitBeforeQuitting(plan) else { return false }
+                RunningWorkRegistry.shared.cancel(plan.work)
+                // While the drivers are open: a debug stop rolls back the routine's transaction.
+                await AppModuleTermination.stopModuleWork()
+                await MCPServerManager.shared.stop()
+                await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
+                // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
+                await VaultDatabaseCredentials.shared.revokeAllLeases()
+                return true
+            }
+            guard quits else {
+                NSApp.reply(toApplicationShouldTerminate: false)
+                AppRelauncher.shared.terminationWasCancelled()
+                return
+            }
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // The quit is committed: what its question said to discard goes now, not before a step that could stop it.
+        TeamLibrarySync.shared.discardHeld()
+        ConnectionEditorWindowController.closeAllForTermination()
         SessionRecoveryTracker.saveOnQuit()
-        /// Synchronously, because an actor hop at terminate may never be scheduled: a session killed
-        /// mid-reply used to come back with its last turn missing.
+        // Synchronously: an actor hop at terminate may never run, which lost a killed session's last turn.
         AgentSessionRegistry.shared.persistSynchronouslyForTermination()
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
@@ -212,9 +238,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func handleSystemDidWake(_ notification: Notification) {
         SQLFolderWatcher.shared.reload()
     }
-
-
-    // MARK: - Window Notifications
 
     @objc func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
@@ -237,12 +260,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             csvLogger.debug("AppDelegate.windowWillClose - non-main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing")
         }
-        /// Any window, not only a primary one: a machine-started session can have nothing on screen
-        /// but a settings window, and closing it leaves the process with no user interface again.
+        // Any window: a machine-started session may show only a settings window, and closing it leaves no UI.
         AppActivationPolicyController.shared.reevaluate(excluding: window)
     }
-
-    // MARK: - Dock Menu
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let menu = NSMenu()
@@ -255,7 +275,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         welcomeItem.target = self
         menu.addItem(welcomeItem)
 
-        let connections = ConnectionStorage.shared.loadConnections()
+        let connections = ConnectionScope.shared.connections
         if !connections.isEmpty {
             let connectionsItem = NSMenuItem(title: String(localized: "Open Connection"), action: nil, keyEquivalent: "")
             let submenu = NSMenu()
@@ -306,8 +326,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Carries a UserNotifications callback from the delegate thread to the main actor.
-/// UNUserNotificationCenter hands each one over exactly once and keeps no reference.
+// The center hands each callback over exactly once and keeps no reference, so carrying it to the main actor is safe.
 private struct NotificationDelivery<Payload>: @unchecked Sendable {
     let payload: Payload
     let complete: () -> Void

@@ -234,13 +234,18 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
 
         let ceiling = MongoDBFindLimitPolicy.fetchLimit(parsedLimit: nil, rowCap: rowCap)
         do {
-            let outcome = try await runtime.evaluate(
-                statement: MongoShellCommandLine.rewrite(statement),
-                database: currentDb,
-                valueCeiling: ceiling,
-                access: MongoScriptAccess(context),
-                shell: MongoScriptRuntime.Shell(context)
-            )
+            let shell = MongoReadTrace.signposter.beginInterval("Shell")
+            let outcome: MongoScriptStatementResult
+            do {
+                defer { MongoReadTrace.signposter.endInterval("Shell", shell) }
+                outcome = try await runtime.evaluate(
+                    statement: MongoShellCommandLine.rewrite(statement),
+                    database: currentDb,
+                    valueCeiling: ceiling,
+                    access: MongoScriptAccess(context),
+                    shell: MongoScriptRuntime.Shell(context)
+                )
+            }
             if let switched = outcome.databaseSwitch { currentDb = switched }
             let declared = try await declaredColumns(for: outcome)
             return capToRowCap(
@@ -437,6 +442,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         }
 
         let tables = try await fetchTables(schema: schema)
+        try PluginNameSpellings.requireDistinctSpellings(tables.map(\.name))
         let concurrencyLimit = 4
         var result: [String: [PluginColumnInfo]] = [:]
 
@@ -476,15 +482,19 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             throw MongoDBPluginError.notConnected
         }
 
-        return try await indexEntries(of: table, conn: conn).map(\.pluginIndexInfo)
+        return try await indexEntries(of: table, in: currentDb, conn: conn).map(\.pluginIndexInfo)
     }
 
     /// A view has no indexes, and the server says so by refusing `listIndexes` with
     /// CommandNotSupportedOnView. libmongoc answers a missing collection the same way, with an
     /// empty list, which is what the Enumerate Indexes spec asks for.
-    private func indexEntries(of collection: String, conn: MongoDBConnection) async throws -> [MongoDBIndexEntry] {
+    private func indexEntries(
+        of collection: String,
+        in database: String,
+        conn: MongoDBConnection
+    ) async throws -> [MongoDBIndexEntry] {
         do {
-            return try await conn.listIndexes(database: currentDb, collection: collection)
+            return try await conn.listIndexes(database: database, collection: collection)
                 .compactMap(MongoDBIndexEntry.init(json:))
         } catch let error as MongoDBError where error.code == MongoDBServerErrorCode.commandNotSupportedOnView {
             return []
@@ -549,10 +559,12 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
         }
+        // An export names the collection's database, which need not be the one the session is on.
+        let database = schema?.nilIfEmpty ?? currentDb
 
         let entry: MongoDBNamespaceEntry?
         do {
-            entry = try await namespaceEntry(named: table, conn: conn)
+            entry = try await namespaceEntry(named: table, in: database, conn: conn)
         } catch {
             Self.logger.debug("Failed to fetch collection info for \(table): \(error.localizedDescription)")
             entry = nil
@@ -563,7 +575,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
 
         let indexes: [MongoDBIndexEntry]
         do {
-            indexes = try await indexEntries(of: table, conn: conn)
+            indexes = try await indexEntries(of: table, in: database, conn: conn)
         } catch {
             Self.logger.debug("Failed to fetch indexes for \(table): \(error.localizedDescription)")
             indexes = []
@@ -577,14 +589,18 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
         }
-        guard let statement = try await namespaceEntry(named: view, conn: conn)?.collModStatement() else {
+        guard let statement = try await namespaceEntry(named: view, in: currentDb, conn: conn)?.collModStatement() else {
             throw MongoDBPluginError.viewNotFound(view)
         }
         return statement
     }
 
-    private func namespaceEntry(named name: String, conn: MongoDBConnection) async throws -> MongoDBNamespaceEntry? {
-        try await conn.listNamespaces(database: currentDb, named: name)
+    private func namespaceEntry(
+        named name: String,
+        in database: String,
+        conn: MongoDBConnection
+    ) async throws -> MongoDBNamespaceEntry? {
+        try await conn.listNamespaces(database: database, named: name)
             .lazy
             .compactMap(MongoDBNamespaceEntry.init(json:))
             .first { $0.name == name }
@@ -933,7 +949,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         }
         let timeout = conn.queryTimeoutMS
 
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)) { continuation in
             let work = Task {
                 do {
                     switch try await runtime.exportPlan(for: trimmed, database: db, access: access, shell: shell) {
@@ -965,7 +981,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                         do {
                             for try await element in inner {
                                 try Task.checkCancellation()
-                                continuation.yield(element)
+                                guard await PluginRowStream.deliver(element, to: continuation) else { break }
                             }
                         } catch {
                             throw MongoScriptStatementFailure.carrying(
@@ -974,7 +990,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                         }
                     case .result(let outcome):
                         if let switched = outcome.databaseSwitch { self.currentDb = switched }
-                        self.yieldMaterialised(outcome, into: continuation)
+                        await self.deliverMaterialised(outcome, to: continuation)
                     }
                     continuation.finish()
                 } catch {
@@ -1014,10 +1030,10 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     /// Hands over a statement that had already run by the time the export asked, rather than
     /// running it a second time. Nested values render the way a streamed cursor renders them, so
     /// one export never mixes two spellings.
-    private func yieldMaterialised(
+    private func deliverMaterialised(
         _ outcome: MongoScriptStatementResult,
-        into continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation
-    ) {
+        to continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation
+    ) async {
         let result = MongoScriptResultBuilder.result(
             for: outcome,
             startTime: Date(),
@@ -1033,10 +1049,10 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         if !result.columns.isEmpty {
             var header = PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames)
             if result.isTruncated { header.rowLimit = result.rows.count }
-            continuation.yield(.header(header))
+            guard await PluginRowStream.deliver(.header(header), to: continuation) else { return }
         }
         if !result.rows.isEmpty {
-            continuation.yield(.rows(result.rows, documents: result.exportDocuments))
+            _ = await PluginRowStream.deliver(.rows(result.rows, documents: result.exportDocuments), to: continuation)
         }
     }
 
@@ -1051,6 +1067,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         recordsKinds: Bool = false,
         filteredFields: Set<String> = []
     ) -> PluginQueryResult {
+        let interval = MongoReadTrace.signposter.beginInterval("Build result", "\(read.dictionaries.count) documents")
+        defer { MongoReadTrace.signposter.endInterval("Build result", interval) }
         let documents = read.dictionaries
         if documents.isEmpty {
             return PluginQueryResult(
@@ -1081,7 +1099,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             + unseen.map { declaredTypeName(of: $0, in: declared) }
         let rows = BsonDocumentFlattener.flatten(
             documents: documents, columns: columns, kinds: kinds,
-            representation: uuidRepresentation, storedTexts: read.texts
+            representation: uuidRepresentation, stored: read.canonical
         )
 
         var result = PluginQueryResult(

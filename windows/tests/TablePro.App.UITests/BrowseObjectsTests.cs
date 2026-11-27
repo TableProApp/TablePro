@@ -18,12 +18,12 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         var tree = app.Find("ObjectTree");
         app.FindByName("Track", tree);
         app.TypeInto("Query 1", CreateTrigger);
         app.Chord(
-            () => app.Find("QueryStatus").Name.StartsWith("Done", StringComparison.Ordinal),
+            () => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Done", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.ENTER);
 
@@ -57,11 +57,11 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", CountTracks);
         app.Chord(
-            () => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
+            () => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.ENTER);
         Assert.Equal("3503", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "3503"));
@@ -92,8 +92,7 @@ public sealed partial class ShellTests
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            app.Front();
-            run.DoubleClick();
+            app.DoubleClick(run);
             if (Retry.WhileNull(
                     () => app.Window.FindFirstDescendant(condition =>
                         condition.ByAutomationId("SqlEditor").And(condition.ByName($"SQL editor, {tab}"))),

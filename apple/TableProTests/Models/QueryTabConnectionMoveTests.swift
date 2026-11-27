@@ -79,7 +79,6 @@ struct QueryTabConnectionMoveTests {
             source: .user
         )
         tab.selectionSnapshot = GridSelectionSnapshot(rowIDs: [.existing(2)], rectangles: [], activeCell: nil, anchor: nil)
-        tab.pendingChanges.deletedRowIDs = [.existing(0)]
 
         let moved = move(tab)
 
@@ -90,7 +89,6 @@ struct QueryTabConnectionMoveTests {
         #expect(moved.pendingRestoredSort == nil)
         #expect(moved.restoredSortSource == .unset)
         #expect(moved.selectionSnapshot.isEmpty)
-        #expect(!moved.pendingChanges.hasChanges)
         #expect(moved.display.resultSets.isEmpty)
     }
 
@@ -118,6 +116,25 @@ struct QueryTabConnectionMoveTests {
         let existing = [QueryTab(title: "Monthly report", tabType: .query)]
 
         #expect(move(tab, existingTabs: existing).title == "Monthly report")
+    }
+
+    @Test("A tab the user named Query 1 keeps the name on a move, and stays named")
+    func typedDefaultTitleIsKept() {
+        var tab = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        tab.automaticTitle = "Query 4"
+
+        let moved = move(tab, existingTabs: [QueryTab(title: "Query 1", tabType: .query)])
+
+        #expect(moved.title == "Query 1")
+        #expect(moved.automaticTitle == "Query 4")
+    }
+
+    @Test("A file tab titled Query 1 keeps the file's name on a move")
+    func fileTabTitleIsKept() {
+        var tab = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        tab.content.sourceFileURL = URL(fileURLWithPath: "/tmp/Query 1")
+
+        #expect(move(tab, existingTabs: [QueryTab(title: "Query 1", tabType: .query)]).title == "Query 1")
     }
 
     @Test("Only numbered Query titles count as defaults")

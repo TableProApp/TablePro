@@ -13,21 +13,15 @@ internal protocol LoadableExtensionApproving {
     func approve(_ extensions: [LoadableExtension], for connectionId: UUID)
 }
 
-/// The SQLite extensions a person has agreed to load on this Mac, per connection.
-///
-/// An extension is native code that runs inside TablePro, and a connection's list travels through
-/// iCloud, exports, `tablepro://` links, linked folders and the team library. So the list alone
-/// never authorizes a load: an entry loads only once it was added in the connection form on this
-/// Mac or confirmed in the prompt a connect shows. Approval is keyed to the connection as well as
-/// the file, so trusting a library for one connection does not quietly approve it for another one
-/// that arrives later naming the same path. It is never synced, which is what makes a list that
-/// arrived from elsewhere ask first.
+// Never synced and keyed per connection: a list that arrived from iCloud, an export, a link or the team library asks before it loads.
 @MainActor
 internal final class LoadableExtensionApprovalStore: LoadableExtensionApproving {
     internal static let shared = LoadableExtensionApprovalStore()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LoadableExtensionApprovalStore")
-    private static let storageKey = "com.TablePro.loadableExtensionApprovals"
+    private static let storageKey = JSONDefaultsKey<[String: Set<LoadableExtension>]>(
+        "com.TablePro.loadableExtensionApprovals"
+    )
 
     private let defaults: UserDefaults
 
@@ -68,22 +62,15 @@ internal final class LoadableExtensionApprovalStore: LoadableExtensionApproving 
     }
 
     private func approvals() -> [String: Set<LoadableExtension>] {
-        guard let data = defaults.data(forKey: Self.storageKey),
-              let decoded = try? JSONDecoder().decode([String: Set<LoadableExtension>].self, from: data)
-        else { return [:] }
-        return decoded
+        defaults.read(Self.storageKey).value ?? [:]
     }
 
     private func save(_ approvals: [String: Set<LoadableExtension>]) {
         let kept = approvals.filter { !$0.value.isEmpty }
         guard !kept.isEmpty else {
-            defaults.removeObject(forKey: Self.storageKey)
+            defaults.removeValue(for: Self.storageKey)
             return
         }
-        guard let data = try? JSONEncoder().encode(kept) else {
-            Self.logger.error("Could not encode SQLite extension approvals")
-            return
-        }
-        defaults.set(data, forKey: Self.storageKey)
+        try? defaults.write(kept, to: Self.storageKey)
     }
 }

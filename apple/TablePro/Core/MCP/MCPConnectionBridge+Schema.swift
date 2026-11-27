@@ -30,7 +30,7 @@ extension MCPConnectionBridge {
         ) { driver in
             var resolved: [String: Int] = [:]
             for name in names {
-                if let count = try? await driver.fetchApproximateRowCount(table: name) {
+                if let count = try? await driver.fetchApproximateRowCount(table: name, schema: scope.schema) {
                     resolved[name] = count
                 }
             }
@@ -166,7 +166,7 @@ extension MCPConnectionBridge {
 
     static func indexEntries(using driver: DatabaseDriver, schema: String?, table: String?) async throws -> [JsonValue] {
         let targets: [String]
-        let bulkIndexes: [String: [IndexInfo]]?
+        let bulkIndexes: [CatalogName: [IndexInfo]]?
         if let table {
             targets = [table]
             bulkIndexes = nil
@@ -178,9 +178,9 @@ extension MCPConnectionBridge {
         for target in targets {
             let indexes: [IndexInfo]
             if let bulkIndexes {
-                indexes = bulkIndexes[target] ?? []
+                indexes = bulkIndexes[CatalogName(target)] ?? []
             } else {
-                indexes = (try? await driver.fetchIndexes(table: target)) ?? []
+                indexes = (try? await driver.fetchIndexes(table: target, schema: schema)) ?? []
             }
             guard !indexes.isEmpty else { continue }
             entries.append(.object([
@@ -191,14 +191,15 @@ extension MCPConnectionBridge {
         return entries
     }
 
-    // Nil sends the caller to the per-table reads: the driver has no single-query form, or it failed.
-    private static func schemaIndexes(using driver: DatabaseDriver, schema: String?) async throws -> [String: [IndexInfo]]? {
+    // Nil sends the caller to the per-table reads: the driver has no single-query form, or it failed, which a schema
+    // holding two names Swift's String equates makes it do.
+    private static func schemaIndexes(using driver: DatabaseDriver, schema: String?) async throws -> [CatalogName: [IndexInfo]]? {
         guard let plugin = CompareMetadataService.pluginDriver(from: driver), plugin.providesBulkIndexFetch else {
             return nil
         }
         do {
             let indexes = try await plugin.fetchAllIndexes(schema: schema ?? plugin.currentSchema)
-            return indexes.mapValues { $0.map(IndexInfo.init) }
+            return indexes.keyedByCatalogName.mapValues { $0.map(IndexInfo.init) }
         } catch let cancellation as CancellationError {
             throw cancellation
         } catch {
@@ -215,17 +216,17 @@ extension MCPConnectionBridge {
             workload: table == nil ? .bulk : .interactive
         ) { driver in
             if let table {
-                let keys = try await driver.fetchForeignKeys(table: table)
-                return [table: keys]
+                let keys = try await driver.fetchForeignKeys(table: table, schema: schema)
+                return [CatalogName(table): keys]
             }
             let names = try await driver.fetchTables(schema: schema).map(\.name)
-            return try await driver.fetchForeignKeys(forTables: names)
+            return try await driver.fetchForeignKeys(forTables: names, schema: schema)
         }
 
         let payload: [JsonValue] = entries.keys.sorted().compactMap { key in
             guard let keys = entries[key], !keys.isEmpty else { return nil }
             return .object([
-                "table": .string(key),
+                "table": .string(key.text),
                 "foreign_keys": .array(keys.map(MCPConnectionBridge.encode(foreignKey:)))
             ])
         }
@@ -243,7 +244,7 @@ extension MCPConnectionBridge {
         let schema = scope.schema
         let triggers = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             if let table {
-                return try await driver.fetchTriggers(table: table)
+                return try await driver.fetchTriggers(table: table, schema: schema)
             }
             return try await driver.fetchAllTriggers(schema: schema)
         }
@@ -283,7 +284,7 @@ extension MCPConnectionBridge {
     func getViewDefinition(scope: DatabaseScope, view: String) async throws -> JsonValue {
         try await ensureConnected(scope.connectionId)
         let definition = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await driver.fetchViewDefinition(view: view)
+            try await driver.fetchViewDefinition(view: view, schema: scope.schema)
         }
         return .object([
             "view": .string(view),
@@ -378,7 +379,7 @@ extension MCPConnectionBridge {
     func tableMetadata(scope: DatabaseScope, table: String) async throws -> JsonValue {
         try await ensureConnected(scope.connectionId)
         let metadata = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await driver.fetchTableMetadata(tableName: table)
+            try await driver.fetchTableMetadata(tableName: table, schema: scope.schema)
         }
         var fields: [String: JsonValue] = ["table": .string(metadata.tableName)]
         if let value = metadata.dataSize { fields["data_size_bytes"] = .int(Int(value)) }

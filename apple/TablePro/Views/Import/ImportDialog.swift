@@ -8,6 +8,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSQLFile
 import TableProSQLGrammar
 import TableProUtilities
 
@@ -31,55 +32,59 @@ struct ImportDialog: View {
     @State private var fileURL: URL?
     @State private var filePreview: String = ""
     @State private var fileSize: Int64 = 0
-    @State private var statementCount: Int = 0
-    @State private var isCountingStatements = false
     @State private var selectedEncoding: ImportEncoding
     @State private var detectedEncoding: ImportEncoding?
     @State private var selectedFormatId: String = "sql"
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var importSucceeded = false
-    @State private var showProgressDialog = false
-    @State private var showSuccessDialog = false
-    @State private var showErrorDialog = false
-    @State private var importResult: PluginImportResult?
-    @State private var importError: (any Error)?
+    @State private var phase: Phase = .form
 
     @State private var hostWindow: NSWindow?
 
     @State private var hasPreviewError = false
-    @State private var tempPreviewURL: URL?
     @State private var loadFileTask: Task<Void, Never>?
-    @State private var countStatementsTask: Task<Void, Never>?
     @State private var importTask: Task<Void, Never>?
 
     // MARK: - Import Service
 
     @State private var importService: ImportService?
 
+    private enum Phase {
+        case form
+        case running
+        case finished(TransferResult)
+    }
+
     // MARK: - Body
 
+    // A ZStack, not a Group, whose modifiers reach each phase view: a phase switch must not run onDisappear.
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                fileInfoView
-
-                Divider()
-
-                if availableFormats.count > 1 {
-                    formatPickerView
-                    Divider()
+        ZStack {
+            switch phase {
+            case .form:
+                formView
+            case .running:
+                if let service = importService {
+                    ImportProgressView(service: service)
                 }
-
-                filePreviewView
-
-                optionsView
+            case .finished(let result):
+                TransferResultView(
+                    result,
+                    onBack: result.returnsToForm ? { phase = .form } : nil,
+                    onDone: { closeAfterRun() }
+                ) {
+                    if let report = result.errorReport {
+                        Button("Save Report…") {
+                            TransferResults.saveErrorReport(
+                                report,
+                                sourceFileName: fileURL?.lastPathComponent ?? "",
+                                targetTable: nil,
+                                window: hostWindow
+                            )
+                        }
+                    }
+                }
             }
-            .padding(16)
-            .frame(width: 600, height: 550)
-
-            Divider()
-
-            footerView
         }
         .background {
             WindowAccessor { window in
@@ -95,53 +100,60 @@ struct ImportDialog: View {
             }
             captureSettingsSnapshot()
         }
+        // While running, the Stop button owns Escape and asks first.
         .onExitCommand {
-            if !(importService?.state.isImporting ?? false) {
+            switch phase {
+            case .form:
                 isPresented = false
+            case .running:
+                break
+            case .finished:
+                closeAfterRun()
             }
         }
         .task {
             if let initialURL = initialFileURL, fileURL == nil {
-                // Tracked like a picked file, so a pick made during a long decompression cancels this load.
+                // Tracked like a picked file, so a pick made during a slow preview read cancels this load.
                 let load = Task { await loadFile(initialURL) }
                 loadFileTask = load
                 await load.value
             }
         }
+        .onChange(of: selectedEncoding) { _ in
+            loadFileTask?.cancel()
+            if let url = fileURL {
+                loadFileTask = Task {
+                    await loadFile(url)
+                }
+            }
+        }
         .onDisappear {
             loadFileTask?.cancel()
-            countStatementsTask?.cancel()
             importTask?.cancel()
-            cleanupTempFiles()
             if !importSucceeded {
                 restoreSettingsSnapshot()
             }
         }
-        .sheet(isPresented: $showProgressDialog) {
-            if let service = importService {
-                ImportProgressView(service: service)
+    }
+
+    private var formView: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 16) {
+                fileInfoView
+
+                Divider()
+
+                filePreviewView
+
+                optionsView
             }
+            .padding(16)
+
+            Divider()
+
+            footerView
         }
-        .onChange(of: showSuccessDialog) { isShowing in
-            guard isShowing else { return }
-            TransferResultAlert.presentImportSuccess(
-                result: importResult,
-                runResult: importService?.stopResult,
-                window: hostWindow,
-                sourceFileName: fileURL?.lastPathComponent ?? "",
-                targetTable: nil
-            ) {
-                showSuccessDialog = false
-                isPresented = false
-                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
-            }
-        }
-        .onChange(of: showErrorDialog) { isShowing in
-            guard isShowing else { return }
-            TransferResultAlert.presentImportFailure(error: importError, result: importService?.stopResult, window: hostWindow) {
-                showErrorDialog = false
-            }
-        }
+        .frame(width: 600)
     }
 
     // MARK: - Plugin Helpers
@@ -188,50 +200,15 @@ struct ImportDialog: View {
                     .font(.callout)
                 }
 
-                HStack(spacing: 16) {
-                    Label(
-                        ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file),
-                        systemImage: "chart.bar.doc.horizontal"
-                    )
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                    if isCountingStatements {
-                        HStack(spacing: 4) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Counting…")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if statementCount > 0 {
-                        Label("\(statementCount) statements", systemImage: "list.bullet")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Label(
+                    ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file),
+                    systemImage: "chart.bar.doc.horizontal"
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var formatPickerView: some View {
-        HStack(spacing: 8) {
-            Text("Format:")
-                .font(.body)
-                .frame(width: 80, alignment: .leading)
-
-            Picker(String(localized: "Format"), selection: $selectedFormatId) {
-                ForEach(availableFormats.map { (id: type(of: $0).formatId, name: type(of: $0).formatDisplayName) }, id: \.id) { item in
-                    Text(item.name).tag(item.id)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .frame(width: 120)
-
-            Spacer()
-        }
     }
 
     private var filePreviewView: some View {
@@ -241,7 +218,7 @@ struct ImportDialog: View {
                 .foregroundStyle(.primary)
 
             SQLCodePreview(text: $filePreview)
-                .frame(height: availableFormats.count > 1 ? 220 : 280)
+                .frame(height: 280)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
@@ -266,37 +243,30 @@ struct ImportDialog: View {
                 .font(.callout)
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text("Encoding:")
-                        .font(.body)
-                        .frame(width: 80, alignment: .leading)
-
-                    Picker(String(localized: "Encoding"), selection: $selectedEncoding) {
-                        ForEach(ImportEncoding.allCases) { enc in
-                            Text(enc.label).tag(enc)
+            // A plugin view of flat rows lines up with these rows; one wrapped in a VStack is a single row.
+            Form {
+                if availableFormats.count > 1 {
+                    Picker("Format:", selection: $selectedFormatId) {
+                        ForEach(availableFormats.map { (id: type(of: $0).formatId, name: type(of: $0).formatDisplayName) }, id: \.id) { item in
+                            Text(item.name).tag(item.id)
                         }
                     }
                     .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(width: 120)
-                    .onChange(of: selectedEncoding) { _ in
-                        loadFileTask?.cancel()
-                        if let url = fileURL {
-                            loadFileTask = Task {
-                                await loadFile(url)
-                            }
-                        }
-                    }
-
-                    Spacer()
                 }
+
+                Picker("Encoding:", selection: $selectedEncoding) {
+                    ForEach(ImportEncoding.allCases) { enc in
+                        Text(enc.label).tag(enc)
+                    }
+                }
+                .pickerStyle(.menu)
 
                 if let settable = currentPlugin as? any SettablePluginDiscoverable,
                    let pluginView = settable.settingsView() {
                     pluginView
                 }
             }
+            .formStyle(.columns)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -346,6 +316,12 @@ struct ImportDialog: View {
         settingsSnapshot = nil
     }
 
+    private func closeAfterRun() {
+        isPresented = false
+        guard importSucceeded else { return }
+        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+    }
+
     @MainActor
     private func selectFile() async {
         guard let window = hostWindow else {
@@ -378,12 +354,6 @@ struct ImportDialog: View {
 
     @MainActor
     private func loadFile(_ url: URL) async {
-        // The previous file's count must not land under this one, even when this one fails before counting.
-        countStatementsTask?.cancel()
-        countStatementsTask = nil
-        statementCount = 0
-        isCountingStatements = false
-        cleanupTempFiles()
         hasPreviewError = false
 
         var isDirectory: ObjCBool = false
@@ -405,51 +375,27 @@ struct ImportDialog: View {
             fileSize = 0
         }
 
-        let urlToRead: URL
+        // A `.gz` is previewed from its first inflated bytes; the import inflates it as it reads, so no expanded copy is
+        // written and no up-front pass lexes the whole file.
         do {
-            urlToRead = try await FileDecompressor.decompressIfNeeded(url)
-            // A newer pick owns the dialog now; its import must not read this file's copy.
-            guard !Task.isCancelled else {
-                if urlToRead != url {
-                    try? FileManager.default.removeItem(at: urlToRead)
-                }
-                return
-            }
-            if urlToRead != url {
-                tempPreviewURL = urlToRead
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            filePreview = String(format: String(localized: "Failed to decompress file: %@"), error.localizedDescription)
-            hasPreviewError = true
-            return
-        }
-
-        do {
-            let handle = try FileHandle(forReadingFrom: urlToRead)
-            defer {
-                do {
-                    try handle.close()
-                } catch {
-                    Self.logger.warning("Failed to close file handle for preview: \(error.publicLogShape, privacy: .public)")
-                }
-            }
-
             let maxPreviewSize = 5 * 1_024 * 1_024
-            let previewData = handle.readData(ofLength: maxPreviewSize)
+            let leading = try await Self.leadingBytes(of: url, limit: maxPreviewSize)
+            // A newer pick owns the dialog now.
+            guard !Task.isCancelled else { return }
+            let previewData = leading.data
 
-            var decoder = SQLChunkDecoder(encoding: selectedEncoding.encoding)
-            if let preview = decoder.decode(previewData) {
+            if let preview = SQLDumpEncodingChoice.decodedPreview(
+                previewData, as: selectedEncoding.encoding, isWholeFile: leading.isWholeFile
+            ) {
                 filePreview = preview
                 hasPreviewError = false
             } else if let detected = SQLDumpEncodingChoice.encoding(
-                replacing: selectedEncoding,
+                replacing: selectedEncoding.encoding,
                 forPreview: previewData,
-                isWholeFile: previewData.count < maxPreviewSize,
-                family: TransactionEngineFamily.of(connection.type),
+                isWholeFile: leading.isWholeFile,
+                family: TransactionEngineFamily.of(connection.type).dumpFamily,
                 grammar: sessionGrammar
-            ) {
+            ).flatMap({ found in ImportEncoding.allCases.first { $0.encoding == found } }) {
                 Self.logger.info("Preview did not decode as \(selectedEncoding.rawValue, privacy: .public); switching to the detected \(detected.rawValue, privacy: .public)")
                 detectedEncoding = detected
                 selectedEncoding = detected
@@ -462,39 +408,17 @@ struct ImportDialog: View {
             filePreview = String(format: String(localized: "Failed to load preview: %@"), error.localizedDescription)
             hasPreviewError = true
         }
+    }
 
-        countStatementsTask?.cancel()
-        countStatementsTask = Task {
-            await countStatements(url: urlToRead)
-        }
+    // Off the main actor: inflating the first 5 MB of a `.gz` takes a moment.
+    @concurrent
+    nonisolated private static func leadingBytes(of url: URL, limit: Int) async throws -> (data: Data, isWholeFile: Bool) {
+        try SQLFileByteReader.leadingBytes(of: url, limit: limit)
     }
 
     @MainActor
     private var sessionGrammar: SQLLexicalGrammar {
         SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id)
-    }
-
-    @MainActor
-    private func countStatements(url: URL) async {
-        isCountingStatements = true
-        statementCount = 0
-
-        do {
-            let count = try await ImportStatementCount.count(
-                url,
-                encoding: selectedEncoding.encoding,
-                grammar: sessionGrammar
-            )
-            // A new file or encoding cancelled this count and started its own, which owns the result.
-            guard !Task.isCancelled else { return }
-            statementCount = count
-        } catch {
-            guard !Task.isCancelled else { return }
-            Self.logger.warning("Failed to count statements: \(error.publicLogShape, privacy: .public)")
-            statementCount = 0
-        }
-
-        isCountingStatements = false
     }
 
     private func performImport() {
@@ -503,11 +427,7 @@ struct ImportDialog: View {
         let service = ImportService(connection: connection)
         importService = service
 
-        let decompressedURL = tempPreviewURL
-        let ownsDecompressedFile = decompressedURL != nil
-        tempPreviewURL = nil
-
-        showProgressDialog = true
+        phase = .running
 
         importTask = Task {
             do {
@@ -518,74 +438,32 @@ struct ImportDialog: View {
                     from: url,
                     formatId: selectedFormatId,
                     encoding: selectedEncoding.encoding,
-                    scope: scope,
-                    decompressedURL: decompressedURL,
-                    ownsDecompressedFile: ownsDecompressedFile,
-                    knownStatementCount: statementCount > 0 ? statementCount : nil
+                    scope: scope
                 )
 
                 await MainActor.run {
-                    showProgressDialog = false
-                    importResult = result
                     recordSuccessfulImport()
-                    showSuccessDialog = true
+                    phase = .finished(TransferResults.importSucceeded(result: result, runResult: service.stopResult))
                 }
             } catch is PluginImportCancellationError {
                 await MainActor.run {
-                    showProgressDialog = false
-                    TransferResultAlert.presentImportCancelled(
-                        result: service.stopResult,
-                        window: hostWindow
-                    ) {}
+                    phase = .finished(TransferResults.importStopped(service.stopResult))
                 }
             } catch let refusal as ExecutionGateError {
                 await MainActor.run {
-                    showProgressDialog = false
-                    guard case .denied = refusal else { return }
-                    importError = refusal
-                    showErrorDialog = true
+                    guard case .denied = refusal else {
+                        phase = .form
+                        return
+                    }
+                    phase = .finished(TransferResults.importFailed(error: refusal, result: service.stopResult))
                 }
                 return
             } catch {
                 await MainActor.run {
-                    showProgressDialog = false
-                    importError = error
-                    showErrorDialog = true
+                    phase = .finished(TransferResults.importFailed(error: error, result: service.stopResult))
                 }
             }
             CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
-        }
-    }
-
-    private func cleanupTempFiles() {
-        if let tempURL = tempPreviewURL {
-            do {
-                try FileManager.default.removeItem(at: tempURL)
-            } catch {
-                Self.logger.error(
-                    "cleanupTempFiles: Failed to remove tempPreviewURL at \(tempURL.path(percentEncoded: false), privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
-                )
-            }
-            tempPreviewURL = nil
-        }
-    }
-}
-
-enum ImportStatementCount {
-    // Detached keeps the scan off the main actor but ignores the caller's cancel, so the cancel is passed on.
-    static func count(
-        _ url: URL,
-        encoding: String.Encoding,
-        grammar: SQLLexicalGrammar,
-        parser: SQLFileParser = SQLFileParser()
-    ) async throws -> Int {
-        let counting = Task.detached {
-            try await parser.countStatements(url: url, encoding: encoding, grammar: grammar)
-        }
-        return try await withTaskCancellationHandler {
-            try await counting.value
-        } onCancel: {
-            counting.cancel()
         }
     }
 }

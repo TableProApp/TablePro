@@ -52,20 +52,31 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     // MARK: - Schema
 
-    /// Refreshed from `onPostConnect` and whenever the schema list is loaded, so
-    /// a schema created mid-session is classified without a reconnect. A failed
-    /// probe leaves the previous answer in place rather than replacing it with
-    /// an empty one. A cluster with no external catalog answers in one cheap read.
+    // Refreshed on connect and with every schema list, so a schema made mid-session is classified; a failed probe
+    // keeps the previous answer.
     private func probeExternalSchemas() async {
         do {
-            let result = try await catalogRead(RedshiftExternalSchemaQueries.listExternalSchemaNames)
-            let names = Set(result.rows.compactMap { $0.first?.asText })
+            let names = try await RedshiftCatalogExport.externalSchemaNames(read: catalogRows)
             externalSchemaLock.withLock { externalSchemaCache = names }
         } catch {
             Self.logger.warning(
                 "Could not read svv_external_schemas; external schemas stay unresolved: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
         }
+    }
+
+    private var catalogRows: RedshiftCatalogExport.Read {
+        { [self] statement in try await catalogRead(statement).rows }
+    }
+
+    var exportCatalog: RedshiftCatalogExport {
+        RedshiftCatalogExport(
+            read: catalogRows,
+            currentSchema: core.currentSchema,
+            database: connectedDatabase,
+            serverVersionNumber: core.serverVersionNumber,
+            externalSchemas: externalSchemaLock.withLock { externalSchemaCache } ?? []
+        )
     }
 
     func fetchExternalSchemaNames() async throws -> Set<String> {
@@ -78,257 +89,39 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let resolvedSchema = schema ?? core.currentSchema
-        let result = try await catalogRead(RedshiftTableCatalog.listingQuery(schema: resolvedSchema))
-        let localTables = result.rows.compactMap { RedshiftTableCatalog.table(fromListingRow: $0.map(\.asText)) }
-
-        guard isExternalSchema(resolvedSchema) else { return localTables }
-
-        let externalTables = await fetchExternalTables(schema: resolvedSchema)
-        guard !externalTables.isEmpty else { return localTables }
-
-        let localNames = Set(localTables.map(\.name))
-        let merged = localTables + externalTables.filter { !localNames.contains($0.name) }
-        return merged.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        try await exportCatalog.fetchTables(schema: schema)
     }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
-        guard !schemas.isEmpty else { return [] }
-        let result = try await catalogRead(RedshiftTableCatalog.listingQuery(inSchemas: schemas))
-        var tables = result.rows.compactMap { RedshiftTableCatalog.table(fromListingRow: $0.map(\.asText)) }
-        for schema in schemas where isExternalSchema(schema) {
-            let localNames = Set(tables.lazy.filter { $0.schema == schema }.map(\.name))
-            tables += await fetchExternalTables(schema: schema).filter { !localNames.contains($0.name) }
-        }
-        return tables
-    }
-
-    private func fetchExternalTables(schema: String) async -> [PluginTableInfo] {
-        do {
-            let result = try await catalogRead(
-                RedshiftExternalSchemaQueries.listExternalTables(
-                    schema: schema,
-                    database: connectedDatabase
-                )
-            )
-            return result.rows.compactMap { row -> PluginTableInfo? in
-                guard let name = row[0].asText else { return nil }
-                let rawType = row.count > 1 ? row[1].asText : nil
-                return PluginTableInfo(
-                    name: name,
-                    type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: rawType),
-                    schema: schema
-                )
-            }
-        } catch {
-            Self.logger.warning(
-                "svv_external_tables failed for schema \(schema, privacy: .private(mask: .hash)); listing local tables only: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
-            )
-            return []
-        }
+        try await exportCatalog.fetchTables(inSchemas: schemas)
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let resolvedSchema = schema ?? core.currentSchema
-        if isExternalSchema(resolvedSchema) {
-            let external = await fetchExternalColumns(schema: resolvedSchema, table: table)
-            if !external.isEmpty { return external }
-        }
-        return try await fetchLocalColumns(table: table, schema: resolvedSchema)
-    }
-
-    private func fetchExternalColumns(schema: String, table: String) async -> [PluginColumnInfo] {
-        do {
-            let result = try await catalogRead(
-                RedshiftExternalSchemaQueries.listExternalColumns(
-                    schema: schema,
-                    table: table,
-                    database: connectedDatabase
-                )
-            )
-            return result.rows.compactMap { row -> PluginColumnInfo? in
-                guard row.count >= 2, let name = row[0].asText, let dataType = row[1].asText else { return nil }
-                return Self.externalColumn(name: name, dataType: dataType, row: row, typeIndex: 1)
-            }
-        } catch {
-            Self.logger.warning(
-                "svv_external_columns failed for schema \(schema, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
-            )
-            return []
-        }
-    }
-
-    /// External columns carry no default, charset, collation, comment, or key
-    /// information, and `external_type` is an opaque Hive type string that must
-    /// reach the UI unparsed so nested `struct`/`array` declarations survive.
-    private static func externalColumn(
-        name: String,
-        dataType: String,
-        row: [PluginCellValue],
-        typeIndex: Int
-    ) -> PluginColumnInfo {
-        let nullableIndex = typeIndex + 1
-        let partKeyIndex = typeIndex + 2
-        let rawNullable = row.count > nullableIndex ? row[nullableIndex].asText : nil
-        let rawPartKey = row.count > partKeyIndex ? row[partKeyIndex].asText : nil
-        return PluginColumnInfo(
-            name: name,
-            dataType: dataType,
-            isNullable: RedshiftExternalSchemaQueries.classifyIsNullable(raw: rawNullable),
-            isPrimaryKey: false,
-            extra: RedshiftExternalSchemaQueries.partitionKeyDescription(rawPartKey: rawPartKey)
-        )
-    }
-
-    private func fetchLocalColumns(table: String, schema: String) async throws -> [PluginColumnInfo] {
-        let query = RedshiftSchemaQueries.columnsQuery(schema: schema, table: table)
-        let result = try await catalogRead(query)
-        return result.rows.compactMap { row -> PluginColumnInfo? in
-            guard row.count >= 4,
-                  let name = row[0].asText,
-                  let rawDataType = row[1].asText
-            else { return nil }
-
-            let udtName = row.count > 6 ? row[6].asText : nil
-            let dataType: String
-            if rawDataType.uppercased() == "USER-DEFINED", let udt = udtName {
-                dataType = "ENUM(\(udt))"
-            } else {
-                dataType = rawDataType.uppercased()
-            }
-
-            let isNullable = row[2].asText == "YES"
-            let defaultValue = row[3].asText
-            let collation = row.count > 4 ? row[4].asText : nil
-            let comment = row.count > 5 ? row[5].asText : nil
-            let isPk = row.count > 7 && row[7].asText == "YES"
-
-            let charset: String? = {
-                guard let coll = collation else { return nil }
-                if coll.contains(".") {
-                    return coll.components(separatedBy: ".").last
-                }
-                return nil
-            }()
-
-            return PluginColumnInfo(
-                name: name,
-                dataType: dataType,
-                isNullable: isNullable,
-                isPrimaryKey: isPk,
-                defaultValue: defaultValue,
-                charset: charset,
-                collation: collation,
-                comment: comment?.isEmpty == false ? comment : nil
-            )
-        }
+        try await exportCatalog.fetchColumns(table: table, schema: schema)
     }
 
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let resolvedSchema = schema ?? core.currentSchema
-        if isExternalSchema(resolvedSchema) {
-            let external = await fetchExternalAllColumns(schema: resolvedSchema)
-            if !external.isEmpty { return external }
-        }
-        return try await fetchLocalAllColumns(schema: resolvedSchema)
+        try await exportCatalog.fetchAllColumns(schema: schema)
     }
 
-    private func fetchExternalAllColumns(schema: String) async -> [String: [PluginColumnInfo]] {
-        do {
-            let result = try await catalogRead(
-                RedshiftExternalSchemaQueries.listExternalColumns(
-                    schema: schema,
-                    table: nil,
-                    database: connectedDatabase
-                )
-            )
-            var allColumns: [String: [PluginColumnInfo]] = [:]
-            for row in result.rows {
-                guard row.count >= 3,
-                      let tableName = row[0].asText,
-                      let name = row[1].asText,
-                      let dataType = row[2].asText
-                else { continue }
-                let column = Self.externalColumn(name: name, dataType: dataType, row: row, typeIndex: 2)
-                allColumns[tableName, default: []].append(column)
-            }
-            return allColumns
-        } catch {
-            Self.logger.warning(
-                "svv_external_columns failed for schema \(schema, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
-            )
-            return [:]
-        }
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await exportCatalog.fetchAllColumnsForExport(schema: schema)
     }
 
-    private func fetchLocalAllColumns(schema: String) async throws -> [String: [PluginColumnInfo]] {
-        let query = RedshiftSchemaQueries.columnsQuery(schema: schema, table: nil)
-        let result = try await catalogRead(query)
-        var allColumns: [String: [PluginColumnInfo]] = [:]
-        for row in result.rows {
-            guard row.count >= 5,
-                  let tableName = row[0].asText,
-                  let name = row[1].asText,
-                  let rawDataType = row[2].asText
-            else { continue }
-
-            let udtName = row.count > 7 ? row[7].asText : nil
-            let dataType: String
-            if rawDataType.uppercased() == "USER-DEFINED", let udt = udtName {
-                dataType = "ENUM(\(udt))"
-            } else {
-                dataType = rawDataType.uppercased()
-            }
-
-            let isNullable = row[3].asText == "YES"
-            let defaultValue = row[4].asText
-            let collation = row.count > 5 ? row[5].asText : nil
-            let comment = row.count > 6 ? row[6].asText : nil
-            let isPk = row.count > 8 && row[8].asText == "YES"
-
-            let charset: String? = {
-                guard let coll = collation else { return nil }
-                if coll.contains(".") {
-                    return coll.components(separatedBy: ".").last
-                }
-                return nil
-            }()
-
-            let column = PluginColumnInfo(
-                name: name,
-                dataType: dataType,
-                isNullable: isNullable,
-                isPrimaryKey: isPk,
-                defaultValue: defaultValue,
-                charset: charset,
-                collation: collation,
-                comment: comment?.isEmpty == false ? comment : nil
-            )
-            allColumns[tableName, default: []].append(column)
-        }
-        return allColumns
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await exportCatalog.fetchAllForeignKeysForExport(schema: schema)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let query = RedshiftTableCatalog.keysQuery(schema: schema ?? core.currentSchema, table: table)
-        let result = try await catalogRead(query)
-        return RedshiftTableCatalog.keys(fromRows: result.rows.map { $0.map(\.asText) })
+        try await exportCatalog.fetchIndexes(table: table, schema: schema)
     }
 
-    var tableDDLIncludesForeignKeys: Bool { true }
+    var tableDDLIncludesForeignKeys: Bool { RedshiftCatalogExport.tableDDLIncludesForeignKeys }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let query = PostgreSQLCatalogForeignKeys.query(
-            schema: schema ?? core.currentSchema,
-            table: table,
-            excludesPartitionClones: PostgreSQLCatalogForeignKeys.excludesPartitionClones(
-                serverVersionNumber: core.serverVersionNumber
-            )
-        )
-        let result = try await catalogRead(query)
-        return PostgreSQLCatalogForeignKeys.foreignKeys(from: result.rows.map { $0.map(\.asText) })
+        try await exportCatalog.fetchForeignKeys(table: table, schema: schema)
     }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
@@ -336,133 +129,15 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let resolvedSchema = schema ?? core.currentSchema
-        guard !isExternalSchema(resolvedSchema) else { return nil }
-        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(resolvedSchema)
-        let query = """
-            SELECT tbl_rows
-            FROM svv_table_info
-            WHERE "table" = \(tableLiteral)
-              AND schema = \(schemaLiteral)
-            """
-        let result = try await catalogRead(query)
-        guard let firstRow = result.rows.first, let value = firstRow[0].asText, let count = Int(value) else { return nil }
-        return count >= 0 ? count : nil
+        try await exportCatalog.fetchApproximateRowCount(table: table, schema: schema)
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
-        let resolvedSchema = schema ?? core.currentSchema
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(resolvedSchema)
-        let quotedTable = quoteIdentifier(table)
-        let quotedSchema = quoteIdentifier(resolvedSchema)
-
-        do {
-            let showResult = try await catalogRead("SHOW TABLE \(quotedSchema).\(quotedTable)")
-            if let firstRow = showResult.rows.first, let ddl = firstRow[0].asText, !ddl.isEmpty {
-                return ddl
-            }
-        } catch {
-            Self.logger.debug("SHOW TABLE not available, falling back to manual reconstruction")
-        }
-
-        /// `pg_attribute` lists a view's columns as it lists a table's, so a view is looked up before
-        /// the reconstruction below, which rebuilt a view as a `CREATE TABLE` of its columns.
-        let view = try await catalogRead(Self.viewDefinitionQuery(view: table, schema: resolvedSchema))
-        if let ddl = view.rows.first?[safe: 0]?.asText {
-            return ddl
-        }
-
-        let columnsQuery = """
-            SELECT
-                pg_catalog.quote_ident(a.attname) || ' ' || pg_catalog.format_type(a.atttypid, a.atttypmod) ||
-                CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
-                CASE WHEN a.atthasdef THEN ' DEFAULT ' || pg_catalog.pg_get_expr(d.adbin, d.adrelid) ELSE '' END
-            FROM pg_catalog.pg_attribute a
-            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
-            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
-            WHERE c.relname = \(tableLiteral)
-              AND n.nspname = \(schemaLiteral)
-              AND a.attnum > 0
-              AND NOT a.attisdropped
-            ORDER BY a.attnum
-            """
-        let columnsResult = try await catalogRead(columnsQuery)
-        let columnDefs = columnsResult.rows.compactMap { $0[0].asText }
-        guard !columnDefs.isEmpty else {
-            throw LibPQPluginError(message: "Failed to fetch DDL for table '\(table)'", sqlState: nil, detail: nil)
-        }
-
-        var parts = columnDefs
-        parts.append(contentsOf: try await foreignKeyClauses(table: table, schema: schema))
-
-        let ddl = "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n);"
-
-        do {
-            let indexes = try await fetchIndexes(table: table, schema: schema)
-            var suffixes: [String] = []
-            for idx in indexes {
-                if idx.type == "DISTKEY", let col = idx.columns.first {
-                    suffixes.append("DISTKEY(\(col))")
-                }
-                if idx.type == "SORTKEY" {
-                    suffixes.append("SORTKEY(\(idx.columns.joined(separator: ", ")))")
-                }
-            }
-            if !suffixes.isEmpty {
-                return ddl + "\n" + suffixes.joined(separator: "\n") + ";"
-            }
-        } catch {
-            Self.logger.debug("Could not fetch DISTKEY/SORTKEY info: \(error.localizedDescription)")
-        }
-        return ddl
-    }
-
-    /// `SHOW TABLE` declares foreign keys inline, so the reconstruction below has to as well or
-    /// `tableDDLIncludesForeignKeys` would be true of one path and false of the other, and a SQL
-    /// export would drop every constraint whenever the fallback ran. A failed lookup therefore
-    /// throws rather than returning nothing, because nothing here is indistinguishable from a
-    /// table that has no foreign keys.
-    private func foreignKeyClauses(table: String, schema: String?) async throws -> [String] {
-        let foreignKeys = try await fetchForeignKeys(table: table, schema: schema)
-        var orderedNames: [String] = []
-        var grouped: [String: [PluginForeignKeyInfo]] = [:]
-        for foreignKey in foreignKeys {
-            if grouped[foreignKey.name] == nil { orderedNames.append(foreignKey.name) }
-            grouped[foreignKey.name, default: []].append(foreignKey)
-        }
-        return orderedNames.compactMap { name in
-            guard let group = grouped[name], let first = group.first else { return nil }
-            let columns = group.map { quoteIdentifier($0.column) }.joined(separator: ", ")
-            let referencedColumns = group.map { quoteIdentifier($0.referencedColumn) }.joined(separator: ", ")
-            let referencedSchema = first.referencedSchema.flatMap { $0.isEmpty ? nil : $0 }
-            let referencedTable = referencedSchema.map {
-                "\(quoteIdentifier($0)).\(quoteIdentifier(first.referencedTable))"
-            } ?? quoteIdentifier(first.referencedTable)
-            return "CONSTRAINT \(quoteIdentifier(name)) FOREIGN KEY (\(columns))"
-                + " REFERENCES \(referencedTable) (\(referencedColumns))"
-        }
+        try await exportCatalog.fetchTableDDL(table: table, schema: schema)
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let result = try await catalogRead(Self.viewDefinitionQuery(view: view, schema: schema ?? core.currentSchema))
-        guard let firstRow = result.rows.first, let ddl = firstRow[0].asText else {
-            throw LibPQPluginError(message: "Failed to fetch definition for view '\(view)'", sqlState: nil, detail: nil)
-        }
-        return ddl
-    }
-
-    private static func viewDefinitionQuery(view: String, schema: String) -> String {
-        """
-        SELECT 'CREATE OR REPLACE VIEW ' || pg_catalog.quote_ident(schemaname) || '.' || pg_catalog.quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
-        FROM pg_catalog.pg_views
-        WHERE viewname = \(PostgreSQLObjectQueries.quoteLiteral(view))
-          AND schemaname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
-        """
+        try await exportCatalog.fetchViewDefinition(view: view, schema: schema)
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {

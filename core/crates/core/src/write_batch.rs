@@ -1,5 +1,7 @@
+use crate::error::DriverError;
 use crate::foreign_key_mode::ForeignKeyMode;
 use crate::meta::TableRef;
+use crate::read_only_refusal::ReadOnlyRefusal;
 use crate::statement::GuardedStatement;
 
 /// What a write is changing, which decides how it is wrapped.
@@ -45,5 +47,44 @@ impl WriteBatch {
 
     pub fn len(&self) -> usize {
         self.steps.len()
+    }
+
+    /// Refuse a batch before anything is sent: a read-only connection
+    /// never writes, and only SQLite can suspend foreign keys.
+    pub fn precheck(&self, read_only: bool) -> Result<(), DriverError> {
+        if read_only {
+            return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
+        }
+        self.foreign_keys.require_enforced()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::unsupported_feature::UnsupportedFeature;
+
+    fn batch(foreign_keys: ForeignKeyMode) -> WriteBatch {
+        WriteBatch::new(
+            WriteKind::RowChanges,
+            TableRef::new(None, "t"),
+            Vec::new(),
+            foreign_keys,
+        )
+    }
+
+    #[test]
+    fn a_read_only_connection_and_suspended_foreign_keys_are_refused() {
+        assert_eq!(batch(ForeignKeyMode::Enforced).precheck(false), Ok(()));
+        assert_eq!(
+            batch(ForeignKeyMode::Enforced).precheck(true),
+            Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
+        );
+        assert_eq!(
+            batch(ForeignKeyMode::SuspendedThenVerified { checks: Vec::new() }).precheck(false),
+            Err(DriverError::Unsupported {
+                feature: UnsupportedFeature::ForeignKeySuspension,
+            })
+        );
     }
 }

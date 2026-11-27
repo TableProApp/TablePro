@@ -2,25 +2,21 @@
 //  LastOpenConnectionsStorage.swift
 //  TablePro
 //
-//  Records which connections had open windows at last quit so the
-//  "Reopen Last Session" startup behavior can recover after a crash,
-//  where AppKit's window-restoration archive is never written.
-//
 
 import Foundation
-import os
 
+// Reopen Last Session reads this after a crash too, when AppKit never wrote its window-restoration archive.
 @MainActor
 final class LastOpenConnectionsStorage {
     static let shared = LastOpenConnectionsStorage()
 
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LastOpenConnections")
-
     // The legacy file keeps the [UUID] format older builds read, holding only connections that
     // reconnect, so an older build never dials one the user canceled.
-    private let legacyURL: URL
-    private let sessionURL: URL
+    private let legacyFile: JSONFileStore<[UUID]>
+    private let sessionFile: JSONFileStore<LastSession>
     private var isSealed = false
+    // What both files hold, known only after every write of a save returned.
+    private var lastSaved: LastSession?
 
     private convenience init() {
         let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
@@ -29,45 +25,62 @@ final class LastOpenConnectionsStorage {
 
     init(directory: URL) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        legacyURL = directory.appendingPathComponent("LastOpenConnections.json")
-        sessionURL = directory.appendingPathComponent("LastSession.json")
+        legacyFile = JSONFileStore(url: directory.appendingPathComponent("LastOpenConnections.json"))
+        sessionFile = JSONFileStore(url: directory.appendingPathComponent("LastSession.json"))
     }
 
     // A missing legacy list means an older build removed it, so this never leaves the session alone:
     // a first save writes the list before the session, and every later save writes the session first
     // so one cut short leaves the session the newer file. The list is written even when empty.
+    // A key window and nine other callers save; the same session with both files in place writes nothing.
     func save(_ session: LastSession) {
         guard !isSealed else { return }
         guard !session.connections.isEmpty else {
             clear()
             return
         }
+        let hasLegacy = legacyFile.exists
+        if session == lastSaved, hasLegacy, sessionFile.exists { return }
+        lastSaved = nil
         let reconnecting = session.reconnectingIds
-        let hasLegacy = FileManager.default.fileExists(atPath: legacyURL.path)
+        var wroteAll = true
         if !hasLegacy {
-            write(reconnecting, to: legacyURL)
+            wroteAll = write(reconnecting, to: legacyFile) && wroteAll
         }
-        write(session, to: sessionURL)
+        wroteAll = write(session, to: sessionFile) && wroteAll
         if hasLegacy {
-            write(reconnecting, to: legacyURL)
+            wroteAll = write(reconnecting, to: legacyFile) && wroteAll
+        }
+        if wroteAll {
+            lastSaved = session
+        }
+    }
+
+    private func write<Value: Encodable>(_ value: Value, to file: JSONFileStore<Value>) -> Bool {
+        do {
+            try file.write(value)
+            return true
+        } catch {
+            return false
         }
     }
 
     // An older build rewrites only the legacy file, so when the two disagree the newer one is current.
     func load() -> LastSession {
-        guard let legacy = read([UUID].self, from: legacyURL) else { return .empty }
+        guard let legacy = legacyFile.read().value else { return .empty }
         let legacySession = LastSession(
             connections: legacy.map { LastSession.Connection(id: $0, reconnects: true) },
             shownConnectionId: nil
         )
-        guard let session = read(LastSession.self, from: sessionURL) else { return legacySession }
+        guard let session = sessionFile.read().value else { return legacySession }
         guard session.reconnectingIds != legacy else { return session }
-        return modificationDate(of: legacyURL) > modificationDate(of: sessionURL) ? legacySession : session
+        return modificationDate(of: legacyFile.url) > modificationDate(of: sessionFile.url) ? legacySession : session
     }
 
     func clear() {
-        remove(legacyURL)
-        remove(sessionURL)
+        lastSaved = nil
+        try? legacyFile.remove()
+        try? sessionFile.remove()
     }
 
     // The quit save is the last word: AppKit closes the windows after it, and no coordinator may
@@ -76,32 +89,8 @@ final class LastOpenConnectionsStorage {
         isSealed = true
     }
 
-    private func write(_ value: some Encodable, to url: URL) {
-        do {
-            let data = try JSONEncoder().encode(value)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            Self.logger.error("Failed to save last open connections: \(error.publicLogShape, privacy: .public)")
-        }
-    }
-
-    private func read<Value: Decodable>(_ type: Value.Type, from url: URL) -> Value? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        do {
-            return try JSONDecoder().decode(type, from: Data(contentsOf: url))
-        } catch {
-            Self.logger.error("Failed to load last open connections: \(error.publicLogShape, privacy: .public)")
-            return nil
-        }
-    }
-
     private func modificationDate(of url: URL) -> Date {
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
         return attributes?[.modificationDate] as? Date ?? .distantPast
-    }
-
-    private func remove(_ url: URL) {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        try? FileManager.default.removeItem(at: url)
     }
 }

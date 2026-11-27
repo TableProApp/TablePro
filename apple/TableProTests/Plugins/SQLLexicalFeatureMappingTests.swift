@@ -30,9 +30,10 @@ struct SQLLexicalFeatureMappingTests {
             .backslashEscapesInAngleQuotes, .escapeBytesPrefix, .exponentSignsNeedNoDigits, .formFeedEndsLineComments,
             .atomicRoutineBodies, .triggerBodies, .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
             .withoutDashComments, .escapeStringContinuations, .databendTokens, .psqlScripts, .nonASCIISpacesEndNames,
+            .transactionShortForms, .compoundStatementBodies,
         ]
         #expect(grammarBits.isDisjoint(with: curatedOnly))
-        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 43) - 1)
+        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 45) - 1)
     }
 
     @Test("SAP HANA's SQLScript blocks stay in the app's curated grammar and never reach the kit")
@@ -97,11 +98,13 @@ struct SQLLexicalFeatureMappingTests {
         let curatedOnly: SQLLexicalGrammar = [.atomicRoutineBodies, .escapeStringContinuations, .psqlScripts]
         #expect(grammar.isSuperset(of: curatedOnly))
         #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar.subtracting(curatedOnly))
-        #expect(SQLLexicalGrammar(pluginFeatures: DatabaseType.mysql.lexicalGrammar.pluginFeatures) == DatabaseType.mysql.lexicalGrammar)
+        let mySQL = DatabaseType.mysql.lexicalGrammar
+        #expect(mySQL.contains(.compoundStatementBodies))
+        #expect(SQLLexicalGrammar(pluginFeatures: mySQL.pluginFeatures) == mySQL.subtracting(.compoundStatementBodies))
     }
 
     /// MySQLDriverTests' MySQLLexicalFeatureListTests pins MySQLLexicalFeatures to these same sets.
-    @Test("The grammars the MySQL plugin keeps are the curated ones")
+    @Test("The grammars the MySQL plugin keeps are the curated ones, less the routine body only the app reads")
     func pluginGrammarsMatchTheCuratedTable() {
         let mySQL: SQLLexicalFeatures = [
             .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .hashLineComments,
@@ -110,7 +113,10 @@ struct SQLLexicalFeatureMappingTests {
         let databend: SQLLexicalFeatures = [
             .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .untaggedDollarQuotes,
         ]
-        #expect(SQLLexicalGrammar(pluginFeatures: mySQL) == DatabaseType.mysql.lexicalGrammar)
+        #expect(
+            SQLLexicalGrammar(pluginFeatures: mySQL)
+                == DatabaseType.mysql.lexicalGrammar.subtracting(.compoundStatementBodies)
+        )
         let curatedDatabend = DatabaseType.databend.lexicalGrammar.subtracting([.formFeedEndsLineComments, .databendTokens])
         #expect(SQLLexicalGrammar(pluginFeatures: databend) == curatedDatabend)
     }
@@ -156,6 +162,41 @@ struct SQLLexicalFeatureMappingTests {
             let scanned = SQLStatementScanner.executableStatements(in: sql, grammar: grammar).count
             let split = SQLStatementSplitting.statements(in: sql, lexicalFeatures: grammar.pluginFeatures).count
             #expect(scanned == split, "\(engine.rawValue): \(sql)")
+        }
+    }
+
+    // Each `;` outside what the app's lexer reads as a span ends a piece; a piece of comments and blanks is none.
+    private static func lexicalPieces(_ sql: String, grammar: SQLLexicalGrammar) -> Int {
+        let text = sql as NSString
+        var pieces = 0
+        var holdsCode = false
+        var index = 0
+        while index < text.length {
+            if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) {
+                holdsCode = holdsCode || !span.kind.isComment
+                index = max(span.end, index + 1)
+                continue
+            }
+            let unit = text.character(at: index)
+            if unit == SqlLexer.semicolon {
+                pieces += holdsCode ? 1 : 0
+                holdsCode = false
+            } else if !SqlLexer.isWhitespace(unit) {
+                holdsCode = true
+            }
+            index += 1
+        }
+        return pieces + (holdsCode ? 1 : 0)
+    }
+
+    @Test("The kit's lexer and the app's lexer end every span of the shared script corpus alike")
+    func kitLexerAgreesOnTheSharedCorpus() throws {
+        for testCase in try SharedSQLScriptCorpus.load() {
+            let type = try #require(testCase.databaseType, "\(testCase.dialect)")
+            let features = type.lexicalGrammar.pluginFeatures
+            let split = SQLStatementSplitting.statements(in: testCase.sql, lexicalFeatures: features).count
+            let lexed = Self.lexicalPieces(testCase.sql, grammar: SQLLexicalGrammar(pluginFeatures: features))
+            #expect(split == lexed, "\(testCase.dialect): \(testCase.name)")
         }
     }
 }

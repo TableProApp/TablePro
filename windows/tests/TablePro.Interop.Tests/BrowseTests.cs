@@ -39,6 +39,27 @@ public sealed class BrowseTests
     }
 
     [Fact]
+    public async Task APagesViewSqlSelectsEveryRowItsFilterPicksWithNoPageWindow()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await SqliteDatabase.CreateAsync();
+        var withNote = Rules(new FilterRule("note", FilterOperator.IsNotNull, null));
+
+        var page = await database.Session.ReadTablePageAsync(
+            People, new ColumnSort(1, Ascending: false), withNote, 1, cancellationToken: cancellationToken);
+        page.Run.Dispose();
+        using var view = database.Editor.Run(page.ViewSql!, cancellationToken: cancellationToken);
+        var outcome = await view.Completion;
+        using var every = view.GetResultSet(0);
+
+        Assert.NotNull(page.ViewSql);
+        Assert.DoesNotContain("LIMIT", page.ViewSql, StringComparison.OrdinalIgnoreCase);
+        Assert.IsType<QueryOutcome.Completed>(outcome);
+        Assert.NotNull(every);
+        Assert.Equal(["Zoë 👋", "Grace"], Texts(every, 1));
+    }
+
+    [Fact]
     public async Task ValuesBindAsTheColumnsTypeAndRawSqlJoinsTheRules()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -103,6 +124,23 @@ public sealed class BrowseTests
 
         Assert.Null(before);
         Assert.Equal(new RowEstimate(SqliteDatabase.PeopleRows, IsExact: false), after);
+    }
+
+    [Fact]
+    public async Task ATablesInfoHasItsEstimateAndSizesButSqliteKeepsNoComment()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await SqliteDatabase.CreateAsync();
+        await database.ExecuteAsync("CREATE INDEX people_by_name ON people (name)");
+        await database.ExecuteAsync("ANALYZE");
+
+        var info = await database.Session.GetTableInfoAsync(People, cancellationToken);
+
+        Assert.Equal(new RowEstimate(SqliteDatabase.PeopleRows, IsExact: false), info.Rows);
+        Assert.Null(info.Comment);
+        Assert.True(info.DataBytes > 0);
+        Assert.True(info.IndexBytes > 0);
+        Assert.Equal(info.DataBytes + info.IndexBytes, info.TotalBytes);
     }
 
     [Fact]
@@ -204,7 +242,8 @@ public sealed class BrowseTests
         Assert.Contains("people_noted", source.Sql, StringComparison.Ordinal);
         Assert.True(source.OpensInEditor);
         Assert.Null(source.Database);
-        Assert.Equal("driver.unsupported", function.Code);
+        Assert.Equal("unsupported.object_definitions", function.Code);
+        Assert.Contains("driver.unsupported", function.Error.Codes);
     }
 
     private static TableFilter Rules(params FilterRule[] rules) => new(FilterCombinator.And, rules, null);

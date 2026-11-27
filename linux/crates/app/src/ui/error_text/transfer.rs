@@ -1,3 +1,4 @@
+use tablepro_core::DriverError;
 use tablepro_core::dump::DumpError;
 use tablepro_core::import::{SqlFileError, SqlImportFault};
 use tablepro_core::sql_syntax::script::{RefusedUnit, ScriptReadError};
@@ -36,17 +37,32 @@ pub fn sql_file_message(error: &SqlFileError) -> String {
 /// Why one statement of a SQL file did not run.
 pub fn sql_import_fault_message(fault: &SqlImportFault) -> String {
     match fault {
-        SqlImportFault::Statement(error) => driver_message(error),
+        SqlImportFault::Statement(error) => statement_failure(error),
         SqlImportFault::Refused(RefusedUnit::ClientCommand { command }) => gettext_f(
             "{command} is a psql command, which only psql runs.",
             &[("command", command)],
         ),
-        SqlImportFault::Refused(RefusedUnit::CopyFormat) => {
-            gettext("Only COPY data in the text format pg_dump writes can be imported, with no options.")
+        SqlImportFault::Refused(RefusedUnit::CopyBinary) => {
+            gettext("A SQL file cannot hold COPY rows in the binary format, so these rows were skipped.")
         }
-        SqlImportFault::Refused(RefusedUnit::CopyNotText) => gettext("This COPY row is not UTF-8 text."),
         SqlImportFault::FileEndsTransaction => gettext(
             "The file ends its own transaction, which would end the one the import runs it in. Turn off Run as One Transaction to run it as written.",
         ),
     }
+}
+
+/// The server's context names where in a long statement it failed, such
+/// as the row of a COPY block, which the statement's line alone does not.
+fn statement_failure(error: &DriverError) -> String {
+    let mut message = driver_message(error);
+    if let DriverError::Server(diagnostics) = error
+        && let Some(context) = diagnostics
+            .where_context
+            .as_deref()
+            .filter(|context| !context.is_empty())
+    {
+        message.push('\n');
+        message.push_str(&gettext_f("Context: {context}", &[("context", context)]));
+    }
+    message
 }

@@ -67,12 +67,7 @@ struct ExportDriverMetadataReader: ExportMetadataReading {
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        try await withDriver { driver in
-            if let schema {
-                return try await driver.fetchTables(schema: schema)
-            }
-            return try await driver.fetchTables()
-        }
+        try await withDriver { try await $0.fetchTables(schema: schema) }
     }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? {
@@ -134,7 +129,7 @@ struct ExportDriverMetadataReader: ExportMetadataReading {
     func columnNames(table: String, schema: String?) async -> [String] {
         do {
             return try await withDriver(workload: .interactive) { driver in
-                guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else { return [] }
+                guard let pluginDriver = driver.plugin else { return [] }
                 return try await pluginDriver.fetchColumns(table: table, schema: schema).map(\.name)
             }
         } catch {
@@ -402,7 +397,12 @@ struct ExportTreeBuilder {
             )
         }
         guard !objectItems.isEmpty else { return nil }
-        return ExportDatabaseItem(name: name, objects: objectItems, isExpanded: true)
+        return ExportDatabaseItem(
+            name: name,
+            title: DatabaseEndpoint.label(for: name, type: connection.type),
+            objects: objectItems,
+            isExpanded: true
+        )
     }
 
     /// Reads one container's objects for the kinds the chosen format can write. Principals are
@@ -423,7 +423,7 @@ struct ExportTreeBuilder {
         return await reader.loadObjects(request: request, tables: tables)
     }
 
-    /// Carries a row's checkboxes across a reload, falling back to what the preselection asked for.
+    // Carries a row's checkboxes across a reload, falling back to what the preselection asked for.
     private func restoring(
         _ object: ExportObjectItem,
         priorRows: [String: ExportRowSnapshot],
@@ -439,6 +439,7 @@ struct ExportTreeBuilder {
             kind: object.kind,
             identity: object.identity,
             parentTable: object.parentTable,
+            routineKind: object.routineKind,
             isSelected: priorRow?.isSelected ?? preselection.selects(
                 object: object.name,
                 kind: object.kind,

@@ -1,6 +1,6 @@
 # DuckDB
 
-Driver id `duckdb`, crate `core/crates/drivers/duckdb`. It runs on the duckdb crate 1.20000.1 with `bundled`, so DuckDB 2.0.0 is compiled from the crate's sources into the app, with the `json` and `parquet` extensions linked in ([ADR 0025](../decisions/0025-bundled-duckdb.md), [ADR 0031](../decisions/0031-duckdb-2.md)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `duckdb`, crate `core/crates/drivers/duckdb`. It runs on the duckdb crate 1.20001.0 with `bundled`, so DuckDB 2.0.1 is compiled from the crate's sources into the app, with the `json` and `parquet` extensions linked in ([ADR 0025](../decisions/0025-bundled-duckdb.md), [ADR 0031](../decisions/0031-duckdb-2.md)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 There is no network, login or TLS: the target is a `FileEndpoint`, an absolute path with a `FileOpenMode`. A file is a DuckDB database when it holds `DUCK` at byte 8, which is how a file opened from Files or the command line finds this driver; `.duckdb` and `.ddb` are its suffixes for the file chooser and an empty file. shared-mime-info has no DuckDB type, so the desktop entry does not list one.
 
@@ -21,10 +21,11 @@ The connect reads `version()`, which also proves the file opened. The app names 
 
 ### New databases
 
-`FileOpenMode::CreateNew` builds an empty database next to the target, checkpoints and closes it, sets mode 0600, renames it over the path and syncs the folder. A reader sees the old file or the new one.
+Both modes build an empty database next to the target, checkpoint and close it, set mode 0600, put it at the path and sync the folder.
 
-- The driver takes the lock DuckDB takes on the file it replaces and holds it through the rename. A file another process has open, or this one, is `Busy(FileLocked)`: its writer would go on logging to `<path>.wal` beside the new file.
-- The old file's `<path>.wal` moves aside before the rename and is removed after it, since DuckDB would replay it into the new database. When the rename fails it goes back, so the old database keeps the changes only its log holds.
+- `FileOpenMode::CreateNew` hard links it to the path, which fails on anything there, so a file another program made after the app looked is never replaced: that is `FileExists`, a symbolic link included. A file system without links, such as FAT or the Flatpak document portal, gets a copy through a file made with `create_new` (`O_EXCL`) instead. A `<path>.wal` a deleted database left is removed once the name is taken. A failure never removes the file at the path, which may by then be another program's.
+- `FileOpenMode::Replace`, for a file the save dialog asked about replacing, renames it over the path, so a reader sees the old file or the new one. It takes the lock DuckDB takes on the file it replaces and holds it through the rename. A file another process has open, or this one, is `Busy(FileLocked)`: its writer would go on logging to `<path>.wal` beside the new file.
+- On a replace, the old file's `<path>.wal` moves aside before the rename and is removed after it, since DuckDB would replay it into the new database. When the rename fails it goes back, so the old database keeps the changes only its log holds.
 
 ### Where the file lives
 

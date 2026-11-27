@@ -151,6 +151,8 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 /// Model representing a database connection
 struct DatabaseConnection: Identifiable, Hashable {
     static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
+    // Matches TableProModels.DatabaseConnection, so the same stored value resolves the same on both platforms.
+    static let connectTimeoutSecondsRange = 1 ... 600
     static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
     static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
     static let postDisconnectScriptKey = "postDisconnectScript"
@@ -174,6 +176,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var iconName: String?
     var tagIds: [UUID]
     var groupId: UUID?
+    var projectId: UUID?
     var sshProfileId: UUID?
     var sshTunnelMode: SSHTunnelMode
     var credentialMode: CredentialMode = .inline
@@ -288,14 +291,16 @@ struct DatabaseConnection: Identifiable, Hashable {
 
     var connectTimeoutSeconds: Int? {
         get {
+            // A present common key short-circuits the kafka legacy key, even when it is invalid or
+            // out of range: that keeps "a value was set here" distinct from "fall back to kafka".
             if let common = additionalFields[Self.connectTimeoutSecondsKey] {
-                return Int(common)
+                return Int(common).flatMap { Self.connectTimeoutSecondsRange.contains($0) ? $0 : nil }
             }
             guard type == .kafka else { return nil }
             return additionalFields["kafkaConnectTimeout"].flatMap(Int.init)
         }
         set {
-            if let newValue {
+            if let newValue, Self.connectTimeoutSecondsRange.contains(newValue) {
                 additionalFields[Self.connectTimeoutSecondsKey] = String(newValue)
             } else {
                 additionalFields.removeValue(forKey: Self.connectTimeoutSecondsKey)
@@ -398,6 +403,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         iconName: String? = nil,
         tagIds: [UUID] = [],
         groupId: UUID? = nil,
+        projectId: UUID? = nil,
         sshProfileId: UUID? = nil,
         sshTunnelMode: SSHTunnelMode = .disabled,
         credentialMode: CredentialMode = .inline,
@@ -440,6 +446,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.iconName = iconName
         self.tagIds = tagIds
         self.groupId = groupId
+        self.projectId = projectId
         self.sshProfileId = sshProfileId
         self.credentialMode = credentialMode
         self.preferredSafeModeLevel = safeModeLevel
@@ -541,7 +548,7 @@ internal extension DatabaseConnection {
 extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
-        case sshConfig, sslConfig, color, iconName, tagId, tagIds, groupId, sshProfileId
+        case sshConfig, sslConfig, color, iconName, tagId, tagIds, groupId, projectId, sshProfileId
         case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, socksProxyMode, tunnelCommandMode
         case credentialMode
         case safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
@@ -571,6 +578,7 @@ extension DatabaseConnection: Codable {
             tagIds = decodedTagIds
         }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
+        projectId = try container.decodeIfPresent(UUID.self, forKey: .projectId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
         sshRoute = try container.decodeIfPresent(PublishedSSHRoute.self, forKey: .sshRoute)
         credentialMode = try container.decodeIfPresent(CredentialMode.self, forKey: .credentialMode) ?? .inline
@@ -627,6 +635,7 @@ extension DatabaseConnection: Codable {
             try container.encode(tagIds[0], forKey: .tagId)
         }
         try container.encodeIfPresent(groupId, forKey: .groupId)
+        try container.encodeIfPresent(projectId, forKey: .projectId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
         try container.encodeIfPresent(sshRoute, forKey: .sshRoute)
         try container.encode(credentialMode, forKey: .credentialMode)

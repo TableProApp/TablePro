@@ -3,7 +3,11 @@
 //  TablePro
 //
 
+#if os(iOS)
+import SQLite3
+#else
 import CSQLite
+#endif
 import Foundation
 import os
 import TableProPluginKit
@@ -11,7 +15,7 @@ import TableProSQLGrammar
 import TableProSQLiteCore
 import TableProSQLVocabulary
 
-final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
+nonisolated final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "SQLite Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "SQLite file-based database support"
@@ -105,7 +109,7 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
-private extension SQLOperatorDescriptor {
+nonisolated private extension SQLOperatorDescriptor {
     init?(vocabulary entry: SQLEngineVocabulary.Operator) {
         guard let category = Category(rawValue: entry.category),
               let placement = Placement(rawValue: entry.placement) else { return nil }
@@ -121,7 +125,7 @@ private extension SQLOperatorDescriptor {
 
 // MARK: - SQLite Plugin Driver
 
-final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+nonisolated final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let backend: any SQLiteExecutionBackend
     private let attachmentWarning = OSAllocatedUnfairLock<String?>(initialState: nil)
@@ -131,6 +135,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var connectionWarning: String? { attachmentWarning.withLock { $0 } }
 
     var currentSchema: String? { nil }
+    // The file it opened, as the connection names it, so the host can tell a caller naming it from one naming another.
+    var currentDatabase: String? { config.database }
     var serverVersion: String? { backend.resolvedServerVersion }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
@@ -160,15 +166,26 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sqliteQuoteIdentifier(name)
     }
 
-    init(config: DriverConnectionConfig) {
-        self.config = config
-        self.backend = Self.makeBackend(config: config)
+    func escapeStringLiteral(_ value: String) -> String {
+        sqliteStringLiteralBody(value)
     }
 
-    /// A file-backed connection runs on the app's own SQLite; one whose transport marks it a remote
-    /// session runs on the server's SQLite through the agent. The mark and the token are set by the
-    /// app's transport when it rewrites the effective connection, never by the user.
+    convenience init(config: DriverConnectionConfig) {
+        self.init(config: config, backend: Self.makeBackend(config: config))
+    }
+
+    init(config: DriverConnectionConfig, backend: any SQLiteExecutionBackend) {
+        self.config = config
+        self.backend = backend
+    }
+
+    // A file-backed connection runs on the app's own SQLite; one whose transport marks it a remote session runs on the
+    // server's SQLite through the agent. The mark and the token are set by the Mac's transport when it rewrites the
+    // effective connection, never by the user. iOS has no SSH transport for SQLite, so it builds no agent.
     private static func makeBackend(config: DriverConnectionConfig) -> any SQLiteExecutionBackend {
+        #if os(iOS)
+        return SQLiteLocalBackend(path: config.database)
+        #else
         guard let helloBudget = SQLiteAgentHelloBudget.forAgent(
             additionalFields: config.additionalFields
         ) else {
@@ -181,6 +198,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             token: config.additionalFields[SQLiteAgentProtocol.tokenFieldKey] ?? "",
             helloBudget: helloBudget
         )
+        #endif
     }
 
     // MARK: - Connection
@@ -189,7 +207,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
         let attachments = try AttachedDatabaseList.decode(config.additionalFields[AttachedDatabaseList.fieldId])
         // The paths name files on this Mac; the agent would open whatever sits at them on the server.
-        if !attachments.isEmpty, backend is SQLiteAgentBackend {
+        if !attachments.isEmpty, !(backend is SQLiteLocalBackend) {
             throw AttachedDatabaseError.remoteSession
         }
         try await withTaskCancellationHandler {
@@ -212,6 +230,11 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         Task { await backend.close() }
     }
 
+    // Returns once SQLite has closed the file, for a host that ends its access to the file after.
+    func close() async {
+        await backend.close()
+    }
+
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")
     }
@@ -224,6 +247,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         Self.queryResult(try await backend.executeQuery(query))
+    }
+
+    var catalogRun: SQLiteCatalogReads.Run {
+        { [self] query in try await self.execute(query: query) }
     }
 
     func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
@@ -277,6 +304,11 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         backend.canceller.cancel()
     }
 
+    // Stop for a connection that runs one transfer, so a pulled read's step is the thing to end.
+    func cancelEverything() {
+        (backend as? SQLiteLocalBackend)?.localCanceller.cancelEverything()
+    }
+
     // MARK: - EXPLAIN
 
     func buildExplainQuery(_ sql: String) -> String? {
@@ -311,11 +343,11 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Foreign Key Checks
 
     func foreignKeyDisableStatements() -> [String]? {
-        ["PRAGMA foreign_keys = OFF"]
+        SQLiteCatalogReads.foreignKeyDisableStatements
     }
 
     func foreignKeyEnableStatements() -> [String]? {
-        ["PRAGMA foreign_keys = ON"]
+        SQLiteCatalogReads.foreignKeyEnableStatements
     }
 
     // MARK: - Session Scope
@@ -335,22 +367,19 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return try await boundedQueryFromStream(query: query, rowCap: rowCap)
     }
 
-    /// A capped read from a caller that resolves its own cap, the MCP bridge among them, still
-    /// streams. Routing every uncapped statement through the stream is what made a DML statement
-    /// report no row count, because a stepped statement carries its `sqlite3_changes` nowhere.
+    // An uncapped statement never streams: a stepped one carries its `sqlite3_changes` nowhere, so a write would report
+    // no row count. A capped read with parameters stops in the step loop instead; SQLite makes every change of a
+    // RETURNING statement on its first step, so stopping there loses no write.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
-        if parameters == nil, let cap = rowCap, cap > 0,
-           let bounded = try await executeBoundedQuery(query: query, rowCap: cap) {
-            return bounded
+        guard let parameters else {
+            if let cap = rowCap, cap > 0, let bounded = try await executeBoundedQuery(query: query, rowCap: cap) {
+                return bounded
+            }
+            return Self.capped(try await execute(query: query), to: rowCap)
         }
-
-        let raw: PluginQueryResult
-        if let parameters {
-            raw = try await executeParameterized(query: query, parameters: parameters)
-        } else {
-            raw = try await execute(query: query)
-        }
-        return Self.capped(raw, to: rowCap)
+        let bound = SQLiteReadBound.ifSet(rowCap: Self.returnsRows(query) ? rowCap : nil, byteLimit: nil)
+        let raw = try await backend.executeQuery(query, parameters: parameters, rules: .unrestricted, bound: bound)
+        return Self.capped(Self.queryResult(raw), to: rowCap)
     }
 
     // A capped statement that returns rows stops in the step loop one row past the cap, a read-only one also at the byte
@@ -450,134 +479,33 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeTable = escapeStringLiteral(table)
-        // table_xinfo rather than table_info: table_info omits generated columns entirely, so they
-        // were invisible to the structure editor and to every write path that reads this list.
-        let query = "SELECT * FROM pragma_table_xinfo('\(safeTable)'\(SQLiteMasterQueries.pragmaSchemaArgument(schema)))"
-        let result = try await execute(query: query)
-        let generationExpressions = SQLiteCheckConstraintParser.generationExpressions(
-            inCreateStatement: try await createStatement(forTable: table, schema: schema) ?? ""
-        )
-
-        return result.rows.compactMap { row in
-            guard row.count >= 7,
-                  let name = row[1].asText,
-                  let dataType = row[2].asText else {
-                return nil
-            }
-
-            // hidden: 0 normal, 1 a virtual table's hidden column, 2 VIRTUAL generated,
-            // 3 STORED generated.
-            let hidden = row[6].asText.flatMap { Int($0) } ?? 0
-            guard hidden != 1 else { return nil }
-
-            let isNullable = row[3].asText == "0"
-            // PRAGMA pk column: 0 = not PK, 1+ = position in composite PK
-            let pkText = row[5].asText
-            let isPrimaryKey = pkText != nil && pkText != "0"
-            let defaultValue = sqliteDefaultValueFromCatalog(row[4].asText)
-            let generationKind: GenerationKind? = hidden == 2 ? .virtual : (hidden == 3 ? .stored : nil)
-
-            return PluginColumnInfo(
-                name: name,
-                dataType: dataType,
-                isNullable: isNullable,
-                isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue,
-                isGenerated: generationKind != nil,
-                generationExpression: generationKind == nil ? nil : generationExpressions[name],
-                generationKind: generationKind
-            )
-        }
-    }
-
-    private func createStatement(forTable table: String, schema: String?) async throws -> String? {
-        let query = SQLiteTemporarySchema.definitionQuery(name: table, types: ["table"], schema: schema)
-        let result = try await execute(query: query)
-        return result.rows.first?[safe: 1]?.asText
+        try await SQLiteCatalogReads.columns(table: table, schema: schema, run: catalogRun)
     }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        guard let statement = try await createStatement(forTable: table, schema: schema) else { return [] }
-        return SQLiteCheckConstraintParser.constraints(inCreateStatement: statement).map { parsed in
-            PluginCheckConstraintInfo(name: parsed.name, expression: parsed.expression)
-        }
+        try await SQLiteCatalogReads.checkConstraints(table: table, schema: schema, run: catalogRun)
     }
 
     var providesBulkColumnFetch: Bool { true }
 
-    /// `pragma_table_xinfo`, not `pragma_table_info`, for the same reason `fetchColumns` uses it:
-    /// `table_info` omits generated columns entirely, so the bulk read used to answer with a
-    /// shorter column list than the per-table read for the same table. A caller comparing two
-    /// schemas through the bulk read saw neither side's generated columns and reported them as
-    /// matching. `m.sql` rides along so the generation expressions are parsed from the CREATE
-    /// statement without a second round trip per table.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let query = """
-            SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk,
-                   p.hidden, m.sql
-            FROM \(SQLiteMasterQueries.catalogTable(schema: schema)) m,
-                 pragma_table_xinfo(m.name\(SQLiteMasterQueries.pragmaSchemaArgument(schema))) p
-            WHERE m.type = 'table' AND m.name NOT GLOB 'sqlite_*'
-            ORDER BY m.name, p.cid
-            """
-        let result = try await execute(query: query)
+        try await SQLiteCatalogReads.allColumns(schema: schema, keepsSpellingsApart: true, run: catalogRun)
+    }
 
-        var allColumns: [String: [PluginColumnInfo]] = [:]
-        var expressionsByTable: [String: [String: String]] = [:]
-
-        for row in result.rows {
-            guard row.count >= 9,
-                  let tableName = row[0].asText,
-                  let columnName = row[2].asText,
-                  let dataType = row[3].asText else {
-                continue
-            }
-
-            // hidden: 0 normal, 1 a virtual table's hidden column, 2 VIRTUAL generated,
-            // 3 STORED generated.
-            let hidden = row[7].asText.flatMap { Int($0) } ?? 0
-            guard hidden != 1 else { continue }
-
-            let isNullable = row[4].asText == "0"
-            let defaultValue = sqliteDefaultValueFromCatalog(row[5].asText)
-            // PRAGMA table_xinfo pk column: 0 = not PK, 1+ = position in composite PK
-            let pkText = row[6].asText
-            let isPrimaryKey = pkText != nil && pkText != "0"
-            let generationKind: GenerationKind? = hidden == 2 ? .virtual : (hidden == 3 ? .stored : nil)
-
-            if generationKind != nil, expressionsByTable[tableName] == nil {
-                expressionsByTable[tableName] = SQLiteCheckConstraintParser.generationExpressions(
-                    inCreateStatement: row[8].asText ?? ""
-                )
-            }
-
-            let column = PluginColumnInfo(
-                name: columnName,
-                dataType: dataType,
-                isNullable: isNullable,
-                isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue,
-                isGenerated: generationKind != nil,
-                generationExpression: generationKind == nil ? nil : expressionsByTable[tableName]?[columnName],
-                generationKind: generationKind
-            )
-
-            allColumns[tableName, default: []].append(column)
-        }
-
-        return allColumns
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await SQLiteCatalogReads.allColumns(schema: schema, keepsSpellingsApart: true, run: catalogRun)
     }
 
     var providesBulkForeignKeyFetch: Bool { true }
 
-    var tableDDLIncludesForeignKeys: Bool { true }
+    var tableDDLIncludesForeignKeys: Bool { SQLiteCatalogReads.tableDDLIncludesForeignKeys }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let result = try await execute(
-            query: SQLiteForeignKeyGrouping.schemaForeignKeysQuery(schema: schema, excludingTableGlob: nil)
-        )
-        return SQLiteForeignKeyGrouping.foreignKeysByTable(schema: schema, fromRows: result.rows)
+        try await SQLiteCatalogReads.allForeignKeys(schema: schema, keepsSpellingsApart: true, run: catalogRun)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await SQLiteCatalogReads.allForeignKeys(schema: schema, keepsSpellingsApart: true, run: catalogRun)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -591,7 +519,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        try await sqliteTriggerList(table: table, schema: schema)
+        try await SQLiteCatalogReads.triggers(table: table, schema: schema, run: catalogRun)
     }
 
     var supportsTransactionalDDL: Bool { true }
@@ -609,51 +537,19 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER IF EXISTS \(SQLiteMasterQueries.qualifiedTable(name, schema: schema, quote: quoteIdentifier))"
+        SQLiteCatalogReads.dropTriggerStatement(name: name, schema: schema)
     }
 
-    /// A view's `CREATE VIEW` sits in `sqlite_master` beside the tables, so one read answers both.
-    /// The view goes back exactly as it was written: SQLite keeps a trailing comment in it, which a
-    /// `;` appended here would land inside.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let query = SQLiteTemporarySchema.definitionQuery(name: table, types: ["table", "view"], schema: schema)
-        let result = try await execute(query: query)
-
-        guard let firstRow = result.rows.first,
-              let ddl = firstRow[safe: 1]?.asText else {
-            throw SQLitePluginError.queryFailed("Failed to fetch DDL for table '\(table)'")
-        }
-
-        guard firstRow[safe: 0]?.asText != "view" else { return ddl }
-        return ddl.hasSuffix(";") ? ddl : ddl + ";"
+        try await SQLiteCatalogReads.tableDDL(table: table, schema: schema, run: catalogRun)
     }
 
-    /// `sqlite_master` stores each index's own `CREATE INDEX` text, which is what `sqlite3 .dump`
-    /// replays and which carries a partial predicate, an expression key, a collation and a sort
-    /// direction exactly as written. An index SQLite created for itself to back a UNIQUE or PRIMARY
-    /// KEY constraint has a null `sql`, so testing for that is what keeps `sqlite_autoindex_*` out
-    /// of the dump: those come back with the constraint inside `CREATE TABLE`.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        let result = try await execute(
-            query: SQLiteTemporarySchema.indexDefinitionsQuery(table: table, schema: schema)
-        )
-        return result.rows.compactMap { $0[safe: 0]?.asText }
+        try await SQLiteCatalogReads.indexDDL(table: table, schema: schema, run: catalogRun)
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let safeView = escapeStringLiteral(view)
-        let query = """
-            SELECT sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
-            WHERE type = 'view' AND name = '\(safeView)'
-            """
-        let result = try await execute(query: query)
-
-        guard let firstRow = result.rows.first,
-              let ddl = firstRow[0].asText else {
-            throw SQLitePluginError.queryFailed("Failed to fetch definition for view '\(view)'")
-        }
-
-        return ddl
+        try await SQLiteCatalogReads.viewDefinition(view: view, schema: schema, run: catalogRun)
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -712,25 +608,53 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         stream(query, rules: SQLiteStatementRules(context))
     }
 
-    // Over the SSH agent the stream stays unbounded: a reader waiting for its consumer stops the tunnel relaying the
-    // heartbeats, and the agent's idle watchdog ends the session.
     private func stream(_ query: String, rules: SQLiteStatementRules) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
-        let policy: AsyncThrowingStream<PluginStreamElement, Error>.Continuation.BufferingPolicy = backend is SQLiteLocalBackend
-            ? .bufferingOldest(PluginRowStream.boundedBufferBatches)
-            : .unbounded
-        return AsyncThrowingStream(bufferingPolicy: policy) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)) { continuation in
+            let spill = PluginRowSpill(continuation: continuation)
             let streamTask = Task {
                 do {
-                    try await self.backend.streamQuery(queryToRun, rules: rules, continuation: continuation)
+                    try await self.backend.streamQuery(queryToRun, rules: rules, into: spill)
                 } catch {
-                    continuation.finish(throwing: error)
+                    spill.finish(throwing: error)
                 }
             }
             continuation.onTermination = { @Sendable _ in
+                spill.abandon()
                 streamTask.cancel()
             }
         }
+    }
+
+    // MARK: - Reads that cut values
+
+    // Each value made by `read` from SQLite's own buffer while the row is read, for a host that keeps only a preview of
+    // a long value, a batch at a time to `deliver` until `rowLimit` rows or `deliver` declines. One request holds the
+    // statement, so nothing stays open on the connection after it. Returns the rows a statement with no columns changed;
+    // a caller cancelled before the connection takes it runs nothing.
+    @discardableResult
+    func readValues<Value: Sendable>(
+        query: String,
+        context: PluginStatementContext,
+        rowLimit: Int,
+        reading read: @escaping SQLiteValueReader<Value>,
+        header: @escaping @Sendable (PluginStreamHeader) -> Void,
+        deliver: @escaping @Sendable ([[Value]]) -> Bool
+    ) async throws -> Int {
+        guard let local = backend as? SQLiteLocalBackend else { throw SQLitePluginError.unsupportedOperation }
+        return try await local.readValues(
+            query, rules: SQLiteStatementRules(context), rowLimit: rowLimit, reading: read, header: header, deliver: deliver
+        )
+    }
+
+    // A batch per pull, the statement held between pulls, so the session runs other statements in between. A Stop
+    // interrupts only while this read steps, and a reader that lets go early finalizes the statement.
+    func pulledRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let local = backend as? SQLiteLocalBackend else {
+            return AsyncThrowingStream { $0.finish(throwing: SQLitePluginError.unsupportedOperation) }
+        }
+        let cursor = SQLitePulledRows(backend: local, query: query, rules: SQLiteStatementRules(context))
+        return AsyncThrowingStream(unfolding: { try await cursor.next() })
     }
 
     // MARK: - Create Table DDL
@@ -877,7 +801,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 // MARK: - Errors
 
-enum SQLitePluginError: Error {
+nonisolated enum SQLitePluginError: Error {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)
@@ -887,7 +811,7 @@ enum SQLitePluginError: Error {
     case safeModeReadOnlyStatement
 }
 
-extension SQLitePluginError: PluginDriverError {
+nonisolated extension SQLitePluginError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .connectionFailed(let msg): return msg

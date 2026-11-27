@@ -128,12 +128,7 @@ extension MainContentCoordinator {
         databaseName: String?,
         schemaName: String?
     ) -> EditorTabPayload {
-        let fkFilterState = TabFilterState(
-            filters: [filter],
-            commit: .all,
-            isVisible: true,
-            filterLogicMode: .and
-        )
+        let fkFilterState = TabFilterState.applying([filter], logicMode: .and)
         // Built only when no open tab could take the jump; reusing one would write the FK filter over the user's own filters.
         return EditorTabPayload(
             connectionId: connection.id,
@@ -160,9 +155,9 @@ extension MainContentCoordinator {
             && lhs.value == rhs.value
     }
 
-    // Asks what the rows were fetched with, not appliedFilters, which reads the unapplied draft and claimed a false match.
+    // Asks what the rows were fetched with, never the draft, which claimed a false match.
     private func showsOnlyFKPredicate(_ tab: QueryTab, filter: TableFilter) -> Bool {
-        let applied = tab.filterState.executedFilters
+        let applied = tab.filterState.applied?.filters ?? []
         guard applied.count == 1 else { return false }
         return isSameFKPredicate(applied[0], filter)
     }
@@ -191,14 +186,15 @@ extension MainContentCoordinator {
         return nil
     }
 
-    // One discard guard: applyFilters deferred behind the alert but setFKFilter didn't, so a refusal left a stale filter.
+    // One discard guard over the filter and the history entry, so a refusal writes neither.
     private func refilterSelectedTab(with filter: TableFilter, showsReferenceAlready: Bool) {
+        guard let tabId = tabManager.selectedTabId else { return }
         // Not recorded when the tab already shows this reference, or Back would step through identical entries.
         let departing = showsReferenceAlready ? nil : captureNavigationEntry()
-        confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
             guard let self, confirmed else { return }
-            filterCoordinator.commitReferenceFilter(filter)
-            commitNavigationEntry(departing)
+            filterCoordinator.commitReferenceFilter(filter, forTab: tabId)
+            commitNavigationEntry(departing, inTab: tabId)
         }
     }
 }

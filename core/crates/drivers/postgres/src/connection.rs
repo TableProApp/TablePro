@@ -8,7 +8,7 @@ use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey,
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
-    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -22,7 +22,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use tokio_util::task::TaskTracker;
 
 use crate::cancel::{PgStop, StopProgress};
-use crate::catalog;
+use crate::catalog_release::CatalogRelease;
 use crate::commit_resolution::resolve_op;
 use crate::dialect::PgDialect;
 use crate::dump;
@@ -49,6 +49,7 @@ pub(crate) struct PgConnection {
     settings: WorkspaceSettings,
     server: ServerInfo,
     dialect: Arc<PgDialect>,
+    release: CatalogRelease,
     link: LinkWatch,
     closed: AtomicBool,
 }
@@ -69,6 +70,7 @@ impl PgConnection {
             calls: OwnedCalls::new(grace),
             tracker,
             settings,
+            release: CatalogRelease::of(&server),
             server,
             dialect,
             link: LinkWatch::new(),
@@ -92,13 +94,6 @@ impl PgConnection {
     /// The table's name as `::regclass` resolves it.
     fn relation(&self, table: &TableRef) -> String {
         self.dialect.qualify(table)
-    }
-
-    fn columns_sql(&self) -> &'static str {
-        match self.server.at_least(14, 0, 0) {
-            true => catalog::COLUMNS_SQL,
-            false => catalog::COLUMNS_SQL_BEFORE_14,
-        }
     }
 
     /// Run one read of the user's data, whose names resolve through the
@@ -363,10 +358,11 @@ impl Connection for PgConnection {
     }
 
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
+        let release = self.release;
         let scope = scope.clone();
         self.catalog_read(
             options,
-            read_op(move |client| Box::pin(async move { metadata::list_objects(client, &scope).await })),
+            read_op(move |client| Box::pin(async move { metadata::list_objects(client, release, &scope).await })),
         )
         .await
     }
@@ -376,10 +372,13 @@ impl Connection for PgConnection {
         object: &ObjectInfo,
         options: CallOptions,
     ) -> Result<Option<ObjectDefinition>, DriverError> {
+        let release = self.release;
         let object = object.clone();
         self.catalog_read(
             options,
-            read_op(move |client| Box::pin(async move { metadata::fetch_object_definition(client, &object).await })),
+            read_op(move |client| {
+                Box::pin(async move { metadata::fetch_object_definition(client, release, &object).await })
+            }),
         )
         .await
     }
@@ -388,29 +387,30 @@ impl Connection for PgConnection {
     /// path, under which the server names every object with its schema.
     async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
         let scope = scope.clone();
-        let sql_bodies = self.server.at_least(14, 0, 0);
+        let release = self.release;
         let begin = self.read_preamble(&options).with_dependent_queries();
         self.read_in(
             options,
             begin,
-            read_op(move |client| Box::pin(async move { dump::read_dump_catalog(client, &scope, sql_bodies).await })),
+            read_op(move |client| Box::pin(async move { dump::read_dump_catalog(client, &scope, release).await })),
         )
         .await
     }
 
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let relation = self.relation(table);
-        let columns_sql = self.columns_sql();
+        let release = self.release;
         self.catalog_relation_read(options, relation, move |client, relation| {
-            Box::pin(async move { metadata::fetch_columns(client, columns_sql, &relation).await })
+            Box::pin(async move { metadata::fetch_columns(client, release, &relation).await })
         })
         .await
     }
 
     async fn fetch_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>, DriverError> {
+        let release = self.release;
         let relation = self.relation(table);
         self.catalog_relation_read(options, relation, move |client, relation| {
-            Box::pin(async move { metadata::fetch_indexes(client, &relation).await })
+            Box::pin(async move { metadata::fetch_indexes(client, release, &relation).await })
         })
         .await
     }
@@ -420,9 +420,10 @@ impl Connection for PgConnection {
         table: &TableRef,
         options: CallOptions,
     ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+        let release = self.release;
         let relation = self.relation(table);
         self.catalog_relation_read(options, relation, move |client, relation| {
-            Box::pin(async move { metadata::fetch_foreign_keys(client, &relation).await })
+            Box::pin(async move { metadata::fetch_foreign_keys(client, release, &relation).await })
         })
         .await
     }
@@ -432,9 +433,10 @@ impl Connection for PgConnection {
         table: &TableRef,
         options: CallOptions,
     ) -> Result<Vec<OutboundForeignKey>, DriverError> {
+        let release = self.release;
         let relation = self.relation(table);
         self.catalog_relation_read(options, relation, move |client, relation| {
-            Box::pin(async move { metadata::fetch_outbound_foreign_keys(client, &relation).await })
+            Box::pin(async move { metadata::fetch_outbound_foreign_keys(client, release, &relation).await })
         })
         .await
     }
@@ -444,9 +446,10 @@ impl Connection for PgConnection {
         table: &TableRef,
         options: CallOptions,
     ) -> Result<Vec<InboundForeignKey>, DriverError> {
+        let release = self.release;
         let relation = self.relation(table);
         self.catalog_relation_read(options, relation, move |client, relation| {
-            Box::pin(async move { metadata::fetch_inbound_foreign_keys(client, &relation).await })
+            Box::pin(async move { metadata::fetch_inbound_foreign_keys(client, release, &relation).await })
         })
         .await
     }
@@ -457,26 +460,36 @@ impl Connection for PgConnection {
         options: CallOptions,
     ) -> Result<TableDefinition, DriverError> {
         let relation = self.relation(table);
-        let columns_sql = self.columns_sql();
+        let release = self.release;
         let table = table.clone();
         self.catalog_relation_read(options, relation, move |client, relation| {
-            Box::pin(async move { metadata::fetch_table_definition(client, columns_sql, &table, &relation).await })
+            Box::pin(async move { metadata::fetch_table_definition(client, release, &table, &relation).await })
         })
         .await
     }
 
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
+        let release = self.release;
         let relation = self.relation(table);
         self.catalog_relation_read(options, relation, move |client, relation| {
-            Box::pin(async move { metadata::row_identity(client, &relation).await })
+            Box::pin(async move { metadata::row_identity(client, release, &relation).await })
         })
         .await
     }
 
     async fn table_estimate(&self, table: &TableRef, options: CallOptions) -> Result<TableEstimate, DriverError> {
+        let release = self.release;
         let relation = self.relation(table);
         self.catalog_relation_read(options, relation, move |client, relation| {
-            Box::pin(async move { metadata::table_estimate(client, &relation).await })
+            Box::pin(async move { metadata::table_estimate(client, release, &relation).await })
+        })
+        .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let relation = self.relation(table);
+        self.catalog_relation_read(options, relation, move |client, relation| {
+            Box::pin(async move { metadata::table_info(client, &relation).await })
         })
         .await
     }

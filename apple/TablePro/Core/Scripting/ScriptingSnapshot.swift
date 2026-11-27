@@ -11,12 +11,13 @@ import Foundation
 internal enum ScriptingSnapshot {
     // MARK: - Connections
 
+    // The list follows the active project. A script that names a connection by id still reaches it.
     internal static func connections() -> [ScriptConnection] {
-        ExternalConnectionDirectory.listings().map(ScriptConnection.init(listing:))
+        ExternalConnectionDirectory.listingsInActiveProject().map(ScriptConnection.init(listing:))
     }
 
     internal static func connection(withId id: UUID) -> ScriptConnection? {
-        connections().first { $0.connectionId == id }
+        ExternalConnectionDirectory.listings().first { $0.id == id }.map(ScriptConnection.init(listing:))
     }
 
     // Rechecked on paths that skip `connections()` (current tab). Read from storage: nothing syncs the level onto a live session.
@@ -141,7 +142,6 @@ internal enum ScriptingSnapshot {
         }
 
         // Each data tab's model keeps its own selection, mounted or not, so every tab answers for itself.
-        let isSelectedTab = coordinator.tabManager.selectedTabId == tabId
         let selection = coordinator.existingGridModel(forTab: tabId)?.selection.affectedRows ?? IndexSet()
         let selected = selectedOnly ? Set(selection) : []
         if selectedOnly, selected.isEmpty {
@@ -149,9 +149,7 @@ internal enum ScriptingSnapshot {
         }
 
         // A row marked for deletion stays in the buffer but not in the grid's result, so a script doesn't read it either.
-        let deleted = isSelectedTab
-            ? coordinator.changeManager.deletedRowIDs
-            : tab.pendingChanges.deletedRowIDs
+        let deleted = coordinator.existingChangeManager(forTab: tabId)?.deletedRowIDs ?? []
 
         let tableRows = coordinator.externallyMaskedRows(forTab: tabId)
         let read = DisplayedResultReader.read(

@@ -23,11 +23,29 @@ enum ScopedDriverRoute: Equatable {
     }
 }
 
+// Who hears of a lost session: `.statements`, text someone wrote, and `.app`, work the app builds, each once; never `.independent`.
+enum SessionWork: Sendable {
+    case independent
+    case app
+    case statements
+}
+
 /// What a table read's turn on the session driver came to.
 private enum TableReadTurn: Sendable {
     case ran(any Sendable)
     /// The route decided once the turn came, which is never the session driver.
     case moved(ScopedDriverRoute)
+}
+
+// Throws to refuse work before its lease changes anything on the connection.
+internal typealias ScopedDriverAdmission = @MainActor @Sendable () throws -> Void
+
+// Weak and compared by identity: a reconnect's driver is not the one a pin moved. `moves` is the driver's count of texts
+// that may move its database when the host placed it, so a later one makes the position unknown.
+internal struct ExecutionPosition {
+    weak var driver: AnyObject?
+    let database: String
+    let moves: Int
 }
 
 extension DatabaseManager {
@@ -79,7 +97,7 @@ extension DatabaseManager {
         }
         // A database the user has browsed keeps its own session connection, so its tabs carry on in the transaction,
         // temp tables and settings they left there. A database whose connection ended holding a transaction or session
-        // state takes the session path once more, where that loss is reported before anything runs on a replacement.
+        // state takes the session path once more, where the next statements hear of that loss before they run.
         if usesDatabaseLanes(session) {
             if sessionLanes.parkedDriver(for: scope.connectionId, database: scope.database) != nil {
                 return .sessionDriver
@@ -109,13 +127,16 @@ extension DatabaseManager {
     // `cancellation` decides whether Stop, or a navigation that supersedes a tab, can reach the leased driver. The
     // parameter has no default on purpose: a new call site must state which it is, because getting it wrong silently
     // either makes a query uncancellable or makes a commit killable.
+    // `admit` runs inside the lease, before it takes a lost session's report, opens or closes a connection or pins, so
+    // work it refuses changes nothing on the connection.
     func withScopedDriver<T: Sendable>(
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload = .interactive,
         cancellation: DriverCancellationPolicy,
-        ownsSessionState: Bool = true,
+        sessionWork: SessionWork = .app,
         readsOnly: Bool = false,
+        admit: ScopedDriverAdmission? = nil,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         try await Self.unboxed(
@@ -124,8 +145,9 @@ extension DatabaseManager {
                 route: route,
                 workload: workload,
                 cancellation: cancellation,
-                ownsSessionState: ownsSessionState,
-                readsOnly: readsOnly
+                sessionWork: sessionWork,
+                readsOnly: readsOnly,
+                admit: admit
             ) { driver in
                 try await body(driver)
             }
@@ -138,8 +160,9 @@ extension DatabaseManager {
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload,
         cancellation: DriverCancellationPolicy,
-        ownsSessionState: Bool,
+        sessionWork: SessionWork,
         readsOnly: Bool,
+        admit: ScopedDriverAdmission? = nil,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
     ) async throws -> any Sendable {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
@@ -147,12 +170,14 @@ extension DatabaseManager {
         case .unavailable(let message):
             throw DatabaseError.queryFailed(message)
         case .pooled:
+            // The pool runs on this actor, so nothing lands between the check and its first suspension.
+            try admit?()
             return try await MetadataConnectionPool.shared.withDriver(
                 scope: scope, workload: workload, leased
             )
         case .sessionDriver:
             return try await withPinnedSessionDriver(
-                scope: scope, ownsSessionState: ownsSessionState, readsOnly: readsOnly, leased
+                scope: scope, sessionWork: sessionWork, readsOnly: readsOnly, admit: admit, leased
             )
         }
     }
@@ -170,7 +195,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload = .interactive,
-        ownsSessionState: Bool = true,
+        sessionWork: SessionWork = .app,
         readsOnly: Bool = false,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
@@ -179,7 +204,7 @@ extension DatabaseManager {
                 scope: scope,
                 route: route,
                 workload: workload,
-                ownsSessionState: ownsSessionState,
+                sessionWork: sessionWork,
                 readsOnly: readsOnly
             ) { driver in
                 try await body(driver)
@@ -191,7 +216,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload,
-        ownsSessionState: Bool,
+        sessionWork: SessionWork,
         readsOnly: Bool,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
     ) async throws -> any Sendable {
@@ -203,7 +228,7 @@ extension DatabaseManager {
                 route: route,
                 workload: workload,
                 cancellation: .cancellableRead(owner),
-                ownsSessionState: ownsSessionState,
+                sessionWork: sessionWork,
                 readsOnly: readsOnly,
                 body
             )
@@ -439,12 +464,13 @@ extension DatabaseManager {
 
     private func withPinnedSessionDriver<T: Sendable>(
         scope: DatabaseScope,
-        ownsSessionState: Bool,
+        sessionWork: SessionWork,
         readsOnly: Bool,
+        admit: ScopedDriverAdmission?,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        try await withSessionDriverTurn(scope: scope, ownsSessionState: ownsSessionState, readsOnly: readsOnly) { driver in
-            try await pin(driver, to: scope)
+        try await withSessionDriverTurn(scope: scope, sessionWork: sessionWork, readsOnly: readsOnly, admit: admit) { driver in
+            try await tracedPin(driver, to: scope)
             return try await body(driver)
         }
     }
@@ -456,21 +482,20 @@ extension DatabaseManager {
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
     ) async throws -> TableReadTurn {
-        try await withSessionDriverTurn(scope: scope, ownsSessionState: false, readsOnly: true) { driver in
+        try await withSessionDriverTurn(scope: scope, sessionWork: .independent, readsOnly: true) { driver in
             let route = tableReadRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }
-            try await pin(driver, to: scope)
+            try await tracedPin(driver, to: scope)
             return .ran(try await body(driver))
         }
     }
 
-    // `ownsSessionState` is false for a table read or a metadata read, which depend on nothing the session holds. Such
-    // a turn neither opens a session connection nor takes the report of a lost session, which is kept for the next
-    // turn that owns session state. That turn is refused once with the whole loss, whatever work it is.
+    // Statements and the app's own work each take a lost session's report once; work on a temporary table it took is refused.
     private func withSessionDriverTurn<R>(
         scope: DatabaseScope,
-        ownsSessionState: Bool,
+        sessionWork: SessionWork,
         readsOnly: Bool = false,
+        admit: ScopedDriverAdmission? = nil,
         _ turn: (DatabaseDriver) async throws -> R
     ) async throws -> R {
         let connectionId = scope.connectionId
@@ -506,10 +531,17 @@ extension DatabaseManager {
                 guard isUsable(connectionId), let browsedDriver = activeSessions[connectionId]?.driver else {
                     throw DatabaseError.notConnected
                 }
+                try admit?()
                 guard let lane else {
                     // A driver replaced while it held a transaction or session state, by a reconnect or a Vault lease
                     // rotation.
-                    if ownsSessionState, let lost = sessionLanes.takeAnyLoss(for: connectionId) {
+                    if sessionWork == .statements, let lost = sessionLanes.takeAnyLoss(for: connectionId) {
+                        throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lost.database, loss: lost.loss))
+                    }
+                    if scope.isSessionBound, sessionLanes.anyLossIncludes(.temporaryObjects, for: connectionId) {
+                        throw DatabaseError.connectionFailed(Self.temporaryTableLostMessage(database: scope.database))
+                    }
+                    if sessionWork == .app, let lost = sessionLanes.takeAnyAppLoss(for: connectionId) {
                         throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lost.database, loss: lost.loss))
                     }
                     return try await recordingTransaction(
@@ -521,9 +553,9 @@ extension DatabaseManager {
                 let driver: DatabaseDriver
                 if let held = sessionDriver(for: connectionId, laneDatabase: lane) {
                     driver = held
-                } else if ownsSessionState, !scope.isSessionBound,
+                } else if sessionWork != .independent, !scope.isSessionBound,
                           startsWithoutLane || sessionLanes.wasClosedIdle(database: lane, for: connectionId),
-                          !sessionLanes.hasLoss(database: lane, for: connectionId) {
+                          sessionWork == .app || !sessionLanes.hasLoss(database: lane, for: connectionId) {
                     driver = try await openedLaneDriver(database: lane, for: connectionId)
                 } else {
                     driver = browsedDriver
@@ -531,7 +563,13 @@ extension DatabaseManager {
                 let laneDriver = sessionLanes.isParked(driver, for: connectionId)
                     ? try await verifiedParkedDriver(driver, database: lane, for: connectionId)
                     : driver
-                if ownsSessionState, let loss = sessionLanes.takeLoss(database: lane, for: connectionId) {
+                if sessionWork == .statements, let loss = sessionLanes.takeLoss(database: lane, for: connectionId) {
+                    throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lane, loss: loss))
+                }
+                if scope.isSessionBound, sessionLanes.lossIncludes(.temporaryObjects, database: lane, for: connectionId) {
+                    throw DatabaseError.connectionFailed(Self.temporaryTableLostMessage(database: lane))
+                }
+                if sessionWork == .app, let loss = sessionLanes.takeAppLoss(database: lane, for: connectionId) {
                     throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lane, loss: loss))
                 }
                 sessionLanes.noteOpenedUse(database: lane, for: connectionId)
@@ -612,8 +650,8 @@ extension DatabaseManager {
     }
 
     // A parked connection nobody watched may have died while it sat idle. One that no longer answers is replaced
-    // before the work runs, and if it held a transaction or session state the work is refused once, because running it
-    // on the new connection would carry on as if the server had not just dropped them.
+    // before the work runs, and if it held a transaction or session state the next statements are refused once, because
+    // running them on the new connection would carry on as if the server had not just dropped them.
     private func verifiedParkedDriver(
         _ driver: DatabaseDriver,
         database: String,
@@ -750,12 +788,21 @@ extension DatabaseManager {
         )
     }
 
+    private func tracedPin(_ driver: DatabaseDriver, to scope: DatabaseScope) async throws {
+        TableLoadLeaseTiming.current?.noteLeaseAcquired()
+        try await pin(driver, to: scope)
+        TableLoadLeaseTiming.current?.notePinFinished()
+    }
+
     /// Moves the shared driver onto the scope. It writes no session state, so the
     /// sidebar and the toolbar do not follow a tab's operation.
     ///
-    /// The database switch is issued every time because nothing tracks where the driver
-    /// actually is: a reconnect, a Redis SELECT, another window, or a user typing
-    /// `USE other` all move it. The schema switch asks the driver, which does know.
+    /// The database switch is requested every time because the host does not track where
+    /// the driver actually is: a reconnect, a Redis SELECT, another window, or a user typing
+    /// `USE other` all move it. The driver owns the answer: MySQL and MariaDB leave out the
+    /// `USE` only while the session is proven on that database and its footprint is clean,
+    /// and every case they cannot prove still sends it. The schema switch asks the driver,
+    /// which does know.
     ///
     /// This runs inside the gate, so an engine that cannot move a live connection is
     /// re-checked here rather than trusting the route the caller computed before it
@@ -780,11 +827,37 @@ extension DatabaseManager {
                         )
                     )
                 }
-            } else if let adapter = driver as? PluginDriverAdapter {
-                try await adapter.switchDatabase(to: scope.database)
+            } else if let plugin = driver.plugin {
+                try await plugin.switchDatabase(to: scope.database)
+                noteExecutionDatabase(scope.database, on: driver, for: scope.connectionId)
             }
         }
         guard let schema = scope.schema, let schemaDriver = driver as? SchemaSwitchable else { return }
         try await schemaDriver.switchSchemaIfNeeded(to: schema)
+    }
+
+    // Where the session's driver executes, nil when unknown. A pin moves it without moving the browse cursor; one the
+    // host has not moved is where its connect, restore or switch put it, which is the browse cursor. Once a text it sent
+    // may have moved it, startup SQL included, only a driver that reports its database can say where. So too for a
+    // driver that names its database on each request and was placed in none: the server's default for the user
+    // answers, which another statement or client can change.
+    func executionDatabase(for connectionId: UUID) -> String? {
+        guard let session = activeSessions[connectionId] else { return nil }
+        guard let driver = session.driver else { return session.resolvedBrowseDatabase }
+        let position = executionPositions[connectionId].flatMap { $0.driver === driver ? $0 : nil }
+        let reported = (driver as? DatabaseReporting)?.currentDatabase
+        guard driver.databaseMoves > (position?.moves ?? 0) else {
+            let placed = position?.database ?? session.resolvedBrowseDatabase
+            guard placed.isEmpty, !pluginManager.statementsCanSwitchDatabase(for: session.connection.type) else {
+                return placed
+            }
+            return reported
+        }
+        return reported
+    }
+
+    func noteExecutionDatabase(_ database: String, on driver: DatabaseDriver, for connectionId: UUID) {
+        guard activeSessions[connectionId]?.driver === driver else { return }
+        executionPositions[connectionId] = ExecutionPosition(driver: driver, database: database, moves: driver.databaseMoves)
     }
 }

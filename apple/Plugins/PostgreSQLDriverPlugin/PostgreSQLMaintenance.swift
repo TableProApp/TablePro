@@ -94,6 +94,8 @@ internal enum PostgreSQLMaintenance {
         connectedDatabase: String?,
         capabilities: PostgreSQLCapabilities
     ) -> [String]? {
+        // With no table each form covers the whole database, which a named schema would not.
+        if table == nil, let schema, !schema.isEmpty { return nil }
         let target = table.map { qualified(table: $0, schema: schema) }
         switch operation {
         case vacuum:

@@ -94,7 +94,7 @@ internal final class AgentAttentionNotifier {
         case .waitingOnYou:
             return String(localized: "The agent is waiting for your answer.")
         case .failed:
-            let reason = session.viewModel.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let reason = session.viewModelIfLoaded?.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !reason.isEmpty else { return String(localized: "The agent's reply failed.") }
             return String(format: String(localized: "The agent's reply failed: %@"), reason)
         case .working, .queued, .ready, .stopped:
@@ -114,6 +114,7 @@ internal final class AgentAttentionNotifier {
             content.subtitle = subtitle
         }
         content.body = body
+        content.sound = .default
         content.categoryIdentifier = Self.categoryId
         content.threadIdentifier = session.connectionId.uuidString
         content.userInfo = [
@@ -149,8 +150,8 @@ internal final class AgentAttentionNotifier {
 
 extension AgentAttentionNotifier: NotificationHandling {
     internal func presentationOptions(for notification: UNNotification) -> UNNotificationPresentationOptions {
-        guard let session = session(from: notification.request.content.userInfo) else { return [.banner, .list] }
-        return isOnScreen(session) ? [] : [.banner, .list]
+        guard let session = session(from: notification.request.content.userInfo) else { return [.banner, .list, .sound] }
+        return isOnScreen(session) ? [] : [.banner, .list, .sound]
     }
 
     internal func handle(_ response: UNNotificationResponse) {

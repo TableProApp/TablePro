@@ -82,6 +82,9 @@ struct ExportFormatRowScopeTests {
             destination: destination,
             progress: PluginExportProgress(progress: Progress(totalUnitCount: 1))
         )
+        if fileExtension == "xlsx" {
+            return try XLSXArchiveContents(contentsOf: destination).text
+        }
         let written = try Data(contentsOf: destination)
         return try #require(String(bytes: written, encoding: .isoLatin1))
     }

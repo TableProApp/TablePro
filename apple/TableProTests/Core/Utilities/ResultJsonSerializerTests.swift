@@ -1,10 +1,5 @@
-//
-//  ResultJsonSerializerTests.swift
-//  TableProTests
-//
-//  The JSON results view and the grid's Copy as JSON share one serializer and part company on one
-//  thing: pending deletions. Copy as JSON passes none, so it keeps every selected row.
-//
+// The JSON results view and the grid's Copy as JSON share one serializer and part company on one
+// thing: pending deletions. Copy as JSON passes none, so it keeps every selected row.
 
 import Foundation
 import TableProPluginKit
@@ -79,5 +74,20 @@ struct ResultJsonSerializerTests {
 
         #expect(output.rowCount == 0)
         #expect(output.json == "[]")
+    }
+
+    @Test("Past the document's row cap the count is the rows written, so Copy as JSON still copies")
+    func rowCountStopsAtTheCap() {
+        let rows = ContiguousArray((0..<50_001).map { Row(id: .existing($0), values: [.text("r\($0)")]) })
+        let output = ResultJsonSerializer.serialize(
+            tableRows: TableRows(rows: rows, columns: ["name"], columnTypes: [.text(rawType: nil)]),
+            displayIDs: nil,
+            selectedDisplayIndices: [],
+            columns: .identity
+        )
+
+        #expect(output.rowCount == 50_000)
+        #expect(output.json.contains("\"r49999\""))
+        #expect(!output.json.contains("\"r50000\""))
     }
 }

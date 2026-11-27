@@ -8,7 +8,7 @@ use rustls_pki_types::ServerName;
 use secrecy::ExposeSecret;
 use tablepro_core::{
     APPLICATION_NAME, ConfigError, ConnectEnvironment, Credentials, DriverError, LivenessPolicy, LossPhase,
-    NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, Transport, TransportError, TransportStream,
+    NetworkTarget, TimeoutPhase, TlsFailure, Transport, TransportError, TransportStream,
 };
 use tablepro_net::tls::{TlsSetupError, build_client_config};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -16,7 +16,7 @@ use tokio_rustls::TlsConnector;
 
 use crate::errors::{map_error, server_error};
 use crate::link::{Link, command};
-use crate::server_version;
+use crate::server_version::{self, ServerReport};
 use crate::tls_watch::{TlsFailureSlot, TlsWatch};
 
 /// Everything needed to open a link to one server: the transport, the
@@ -27,6 +27,7 @@ pub(crate) struct RedisEndpoint {
     tls: Option<TlsSetup>,
     tls_server_name: String,
     login: RedisConnectionInfo,
+    database: u32,
     liveness: LivenessPolicy,
 }
 
@@ -59,12 +60,17 @@ impl RedisEndpoint {
             tls,
             tls_server_name: target.tls_server_name().to_owned(),
             login,
+            database,
             liveness,
         })
     }
 
     pub(crate) fn liveness(&self) -> &LivenessPolicy {
         &self.liveness
+    }
+
+    pub(crate) fn database(&self) -> u32 {
+        self.database
     }
 
     /// A new link, logged in on the connection's database, named in the
@@ -125,7 +131,7 @@ impl RedisEndpoint {
 
     /// What the server is, asked on `link`. A login that may not run
     /// `INFO` still connects, without a version.
-    pub(crate) async fn server_info(&self, link: &Link) -> Result<ServerInfo, DriverError> {
+    pub(crate) async fn server_info(&self, link: &Link) -> Result<ServerReport, DriverError> {
         let info = command(&["INFO", "server"]);
         let asked = tokio::time::timeout(self.liveness.login_timeout, link.send(&info));
         let reply = asked.await.map_err(|_| DriverError::Timeout {
@@ -133,8 +139,8 @@ impl RedisEndpoint {
             server_cancelled: false,
         })??;
         match reply {
-            Value::BulkString(bytes) => Ok(server_version::server_info(&String::from_utf8_lossy(&bytes))),
-            Value::VerbatimString { text, .. } => Ok(server_version::server_info(&text)),
+            Value::BulkString(bytes) => Ok(server_version::server_report(&String::from_utf8_lossy(&bytes))),
+            Value::VerbatimString { text, .. } => Ok(server_version::server_report(&text)),
             _ => Ok(server_version::unknown()),
         }
     }

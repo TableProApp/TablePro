@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-internal enum SQLImportFailure {
+nonisolated internal enum SQLImportFailure {
     internal static func error(cause: any Error, rollbackError: (any Error)?) -> any Error {
         if cause is PluginImportCancellationError || cause is CancellationError {
             return cause
@@ -35,7 +35,7 @@ internal enum SQLImportFailure {
     }
 }
 
-internal struct RollbackAlsoFailedError: LocalizedError {
+nonisolated internal struct RollbackAlsoFailedError: LocalizedError {
     internal let cause: any Error
     internal let rollbackError: any Error
 

@@ -34,9 +34,8 @@ internal struct RestoredTabMerge {
         var merged = kept
         var renamed: Set<UUID> = []
         for var tab in present {
-            /// Titled before the saved set was read, so a present "Query 1" can repeat a restored one.
-            if QueryTab.isDefaultQueryTitle(tab.title),
-               merged.contains(where: { $0.tabType == .query && $0.title == tab.title }) {
+            // Titled before the saved set was read, so a present "Query 1" can repeat a restored one.
+            if tab.renumbersOnCollision, tab.repeatsTitle(of: merged) {
                 tab.title = QueryTabManager.nextQueryTitle(existingTabs: merged + present)
                 renamed.insert(tab.id)
             }

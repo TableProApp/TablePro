@@ -23,10 +23,10 @@ final class PaginationCoordinator: ObservableObject {
     // MARK: - Pagination
 
     func goToNextPage() {
-        guard canSeek, let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
+        guard canSeek, let (tab, _) = parent.tabManager.selectedTabAndIndex, tab.tabType == .table else { return }
         let loadedRowCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
         guard tab.pagination.canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
-        paginateAfterConfirmation(tabIndex: tabIndex) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
+        paginateAfterConfirmation(tabId: tab.id) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
     }
 
     func goToPreviousPage() {
@@ -68,6 +68,7 @@ final class PaginationCoordinator: ObservableObject {
     func showAllRows() {
         guard canSeek,
               let (tab, _) = parent.tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
               tab.pagination.hasExactRowCount,
               let total = tab.pagination.totalRowCount, total > 0 else { return }
 
@@ -80,9 +81,8 @@ final class PaginationCoordinator: ObservableObject {
             ),
             confirmTitle: String(localized: "Show All")
         ) { [weak self] in
-            guard let self,
-                  let tabIndex = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-            paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+            guard let self, parent.tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
+            paginateAfterConfirmation(tabId: tabId) { pagination in
                 pagination.updatePageSize(max(total, 1))
                 pagination.goToFirstPage()
             }
@@ -112,36 +112,34 @@ final class PaginationCoordinator: ObservableObject {
         }
     }
 
+    // A query tab has no pages: the reload would write a generated table page over the user's SQL.
     private func paginateIfPossible(
         where condition: (PaginationState) -> Bool = { _ in true },
         mutate: @escaping (inout PaginationState) -> Void
     ) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
+        guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
               condition(tab.pagination) else { return }
-        paginateAfterConfirmation(tabIndex: tabIndex, mutate: mutate)
+        paginateAfterConfirmation(tabId: tab.id, mutate: mutate)
     }
 
     private func paginateAfterConfirmation(
-        tabIndex: Int,
+        tabId: UUID,
         mutate: @escaping (inout PaginationState) -> Void
     ) {
-        let tabId = parent.tabManager.tabs[tabIndex].id
-        parent.confirmDiscardChangesIfNeeded(action: .pagination) { [weak self] confirmed in
+        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .pagination) { [weak self] confirmed in
             guard let self, confirmed else { return }
             guard parent.tabManager.mutate(tabId: tabId, { tab in
                 mutate(&tab.pagination)
                 tab.paginationVersion += 1
             }) else { return }
-            reloadCurrentPage()
+            reloadPage(ofTab: tabId)
         }
     }
 
-    private func reloadCurrentPage() {
-        guard let tabIndex = parent.tabManager.selectedTabIndex,
-              tabIndex < parent.tabManager.tabs.count else { return }
-
-        parent.rebuildTableQuery(at: tabIndex)
-        parent.runQuery(viewport: .firstRow)
+    private func reloadPage(ofTab tabId: UUID) {
+        parent.rebuildTableQuery(forTab: tabId)
+        parent.runQuery(onTab: tabId, viewport: .firstRow)
     }
 
     // MARK: - Cancel Current Query
@@ -163,7 +161,8 @@ final class PaginationCoordinator: ObservableObject {
         guard let scope = parent.scope(for: tab) else { return }
         let tabId = tab.id
         let schemaName = tab.tableContext.schemaName
-        let (filters, logicMode) = tab.filterState.rerunFilters
+        let filters = tab.filterState.applied?.filters ?? []
+        let logicMode = tab.filterState.applied?.logicMode ?? .and
         // A plugin search replaces the table filters in a narrowed browse, so the count must read it or it counts the whole table.
         let browseFilters = parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)?.pluginQueryFilters
         let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql
@@ -173,8 +172,8 @@ final class PaginationCoordinator: ObservableObject {
             columns: queryColumns.columns, columnTypes: queryColumns.columnTypes
         )
         let safeModeIsReadOnly = parent.runsAtReadOnly
-        let gate = browseFilters == nil && parent.rawFilterNeedsReadOnlyGate(filters, tabId: tabId)
-            ? countSQL.map { parent.rawFilterRequest(sql: $0, canPrompt: true) }
+        let gate = browseFilters == nil && parent.rawFilterNeedsReadOnlyGate(filters)
+            ? countSQL.map { parent.rawFilterRequest(sql: $0, canPrompt: true, scope: scope) }
             : nil
 
         // Claims the superseded automatic count's flag too: its task finds the token changed and won't clear a successor's state.
@@ -190,7 +189,6 @@ final class PaginationCoordinator: ObservableObject {
             var refusal: ExecutionGateError?
             if let gate {
                 refusal = await parent.executionGate.authorize(gate).denialError
-                if refusal == nil { parent.approveReadOnlyRawFilter(filters, tabId: tabId) }
             }
             let outcome: Result<Int?, Error>
             if case .cancelledByUser? = refusal {
@@ -235,6 +233,7 @@ final class PaginationCoordinator: ObservableObject {
             guard let count, count >= 0 else { return }
             tab.pagination.totalRowCount = count
             tab.pagination.isApproximateRowCount = false
+            tab.pagination.settledRowCountScope = tab.tableContext.tableName.map(tab.rowCountScope(table:))
         case .failure(let error):
             guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return }
             let message = DatabaseWriteRejectionDiagnosis.formatted(error)
@@ -253,14 +252,16 @@ final class PaginationCoordinator: ObservableObject {
         countSQL: String?,
         safeModeIsReadOnly: Bool
     ) async -> Result<Int?, Error> {
+        let schema = scope.schema
         do {
             let count = try await DatabaseManager.shared.withRowCountDriver(scope: scope, filtered: !filters.isEmpty) { driver in
                 if let browseFilters {
-                    return try await driver.fetchExactRowCount(table: tableName, browseFilters: browseFilters)
+                    return try await driver.fetchExactRowCount(table: tableName, schema: schema, browseFilters: browseFilters)
                 }
                 return try await ExactRowCounter.count(
                     on: driver,
                     table: tableName,
+                    schema: schema,
                     filters: filters,
                     logicMode: logicMode,
                     countSQL: countSQL,
@@ -291,23 +292,12 @@ final class PaginationCoordinator: ObservableObject {
             return
         }
 
-        let loadedCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
-        let totalEstimate = tab.pagination.totalRowCount
-
-        let message: String
-        if let total = totalEstimate {
-            let remaining = max(0, total - loadedCount)
-            message = String(
-                format: String(localized: "This will fetch approximately %@ more rows. Large result sets use significant memory. Continue?"),
-                remaining.formatted()
-            )
-        } else {
-            message = String(localized: "This will fetch all remaining rows. Large result sets use significant memory. Continue?")
-        }
-
+        // No number: only a query tab fetches all, and nothing counts a query's own rows.
         confirmLargeFetch(
             messageText: String(localized: "Fetch All Rows"),
-            informativeText: message,
+            informativeText: String(
+                localized: "This will fetch all remaining rows. Large result sets use significant memory. Continue?"
+            ),
             confirmTitle: String(localized: "Fetch All")
         ) { [weak self] in
             guard let self else { return }
@@ -331,7 +321,7 @@ final class PaginationCoordinator: ObservableObject {
         let owner = TabQueryTaskOwner.unclaimedWork(tabId: tabId, token: workToken)
         let lease = DriverLeaseOwner()
         let isTableTab = parent.tabManager.tabs[idx].tabType == .table
-        let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: parent.tabManager.tabs[idx]) : []
+        let unloadedLayout = isTableTab ? parent.unloadedValueLayout(for: parent.tabManager.tabs[idx], sql: baseQuery) : nil
         let failureOutput = ServerOutputBox()
         let safeModeIsReadOnly = parent.runsAtReadOnly
 
@@ -345,6 +335,25 @@ final class PaginationCoordinator: ObservableObject {
             guard let self, !parent.isTearingDown else { return }
 
             do {
+                // The level may have changed since the statement first ran, so the gate reads it again, as a sort's rerun does.
+                let decision = await parent.executionGate.authorize(OperationRequest(
+                    connectionId: scope.connectionId,
+                    databaseType: parent.connection.type,
+                    sql: baseQuery,
+                    kind: .readQuery,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: String(localized: "Fetch All"),
+                    scope: scope
+                ))
+                if case .cancelledByUser? = decision.denialError {
+                    await MainActor.run { [weak self] in
+                        self?.parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
+                    }
+                    return
+                }
+                if let denial = decision.denialError { throw denial }
+
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .private)")
                 let result = try await parent.withExecutionDriver(
@@ -362,14 +371,15 @@ final class PaginationCoordinator: ObservableObject {
                         }
                         return try await driver.executeUserQuery(query: baseQuery, rowCap: nil, parameters: parameters)
                     }
-                    let result: QueryResult
+                    var result: QueryResult
                     if isTableTab {
                         // A table tab's own reads print nothing, as on its first page.
                         result = try await rerun()
                     } else {
                         result = try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput, rerun)
                     }
-                    return result.foldingUnloadedValues(lengthColumns: lengthColumns)
+                    result.foldUnloadedValues(unloadedLayout)
+                    return result
                 }
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")

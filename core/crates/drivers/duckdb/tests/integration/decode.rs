@@ -39,6 +39,13 @@ async fn nested_values_read_as_duckdb_prints_them() {
         "union_value(n := 2)::UNION(n INTEGER, s VARCHAR)",
         "union_value(s := 'x, y')::UNION(n INTEGER, s VARCHAR)",
         "[union_value(s := 'x, y')::UNION(n INTEGER, s VARCHAR)]",
+        "union_value(s := 'it''s')::UNION(n INTEGER, s VARCHAR)",
+        "[union_value(s := 'it''s')::UNION(n INTEGER, s VARCHAR), union_value(s := 'plain')::UNION(n INTEGER, s VARCHAR), union_value(n := 2)::UNION(n INTEGER, s VARCHAR)]",
+        "[union_value(s := NULL)::UNION(n INTEGER, s VARCHAR), union_value(s := 'NULL')::UNION(n INTEGER, s VARCHAR), union_value(s := '')::UNION(n INTEGER, s VARCHAR)]",
+        "{'a': union_value(s := 'x, y')::UNION(n INTEGER, s VARCHAR)}",
+        "MAP {union_value(s := 'a, b')::UNION(n INTEGER, s VARCHAR): union_value(s := 'c d')::UNION(n INTEGER, s VARCHAR)}",
+        "[[union_value(s := 'x, y')::UNION(n INTEGER, s VARCHAR)]]",
+        "[union_value(l := [1, 2])::UNION(l INTEGER[], s VARCHAR)]",
         "[{'k': 'a,b'}, NULL]",
         "['happy'::ENUM('sad', 'happy')]",
     ];

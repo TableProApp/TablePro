@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-enum DuckDBPluginError: Error {
+nonisolated enum DuckDBPluginError: Error {
     case connectionFailed(String)
     case notConnected
     case catalogUnresolved
@@ -16,7 +16,7 @@ enum DuckDBPluginError: Error {
     case fileMissing(String)
 }
 
-extension DuckDBPluginError: PluginDriverError {
+nonisolated extension DuckDBPluginError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .connectionFailed(let msg): return msg

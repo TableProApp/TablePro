@@ -29,11 +29,11 @@ public sealed class ExportPlan
     // Without an extension: the save picker adds the one of the format chosen.
     public string FileName { get; }
 
-    // SQL INSERT writes rows back into the table they came from, so only a table offers it.
+    // A query result's SQL INSERT writes into query_results, as macOS names it.
     public static ExportPlan For(TableName? table, string resultsName)
     {
         ArgumentNullException.ThrowIfNull(resultsName);
-        ExportFormat[] rows =
+        ExportFormat[] formats =
         [
             ExportFormat.Csv,
             ExportFormat.Json,
@@ -41,12 +41,13 @@ public sealed class ExportPlan
             ExportFormat.Markdown,
             ExportFormat.Html,
             ExportFormat.Xml,
+            ExportFormat.SqlInsert,
         ];
         return table is null
-            ? new ExportPlan([ExportScope.ShownRows], rows, resultsName)
+            ? new ExportPlan([ExportScope.ShownRows], formats, resultsName)
             : new ExportPlan(
                 [ExportScope.CurrentPage, ExportScope.EntireTable],
-                [.. rows, ExportFormat.SqlInsert],
+                formats,
                 FileNameOf(table.Name, resultsName));
     }
 

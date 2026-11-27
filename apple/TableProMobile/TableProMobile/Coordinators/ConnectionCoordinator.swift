@@ -272,6 +272,11 @@ final class ConnectionCoordinator {
         return activeDatabase
     }
 
+    // SQL Server names it in front of the schema; other engines ignore it.
+    var tableDatabase: String? {
+        activeDatabase.isEmpty ? nil : activeDatabase
+    }
+
     static var editorHeldElsewhereMessage: String {
         String(localized: "Another window has unsaved changes on this connection. Save or discard them before switching database.")
     }
@@ -333,17 +338,24 @@ final class ConnectionCoordinator {
         appState.sessionTransactions.token(for: connection.id, on: session?.driver)
     }
 
-    // `reading` work is a read the app built, so a session lost under it cannot have committed anything.
+    // `reading` work is a read the app built, so a session lost under it cannot have committed anything. Throws
+    // `SessionHeldByImport` at once, before anything runs, while an import holds the session; that refusal checks no
+    // session, since nothing reached it. Other work is a write that leaves the session as a fresh connection would not
+    // have it, unless `marksSession` is off for work that reads its own statements (a query run).
     func track<T>(
         reading: Bool = false,
+        marksSession: Bool = true,
         failed: (T) -> Bool = { _ in false },
         rolledBack: (T) -> Bool = { _ in false },
         _ work: () async throws -> T
-    ) async rethrows -> T {
+    ) async throws -> T {
         let heldBefore = transactionHold != nil
         let loss: SessionLoss = reading ? .whileIdle : .duringWork
+        let marks = !reading && marksSession
+        let driver = session?.driver
         do {
             let value = try await appState.sessionTransactions.track(connection.id, reading: reading, work)
+            if marks, let driver { noteSessionChanged(on: driver) }
             var lossSettled = false
             if failed(value) {
                 lossSettled = await restoreSession(after: loss)
@@ -355,10 +367,57 @@ final class ConnectionCoordinator {
             }
             await model.reloadMetadataIfReleased(from: self)
             return value
+        } catch let refusal as SessionHeldByImport {
+            throw refusal
         } catch {
+            if marks, let driver { noteSessionChanged(on: driver) }
             await restoreSession(after: loss)
             throw error
         }
+    }
+
+    // Export Results runs the statement again on a connection of its own, which reads what the session read only while
+    // it is still that session, still where it read, and has run nothing since it connected that leaves state a fresh
+    // connection lacks: a write, a `SET`, a `USE`, a temporary table or a transaction statement.
+    func reproducesOnFreshConnection(_ placement: TablePlacement?) -> Bool {
+        guard let placement, placement == tablePlacement, let driver = session?.driver else { return false }
+        return !model.hasChangedSession(driver)
+    }
+
+    func noteSessionChanged(on driver: any DatabaseDriver) {
+        model.noteSessionChanged(on: driver)
+    }
+
+    // An import holds the session for its whole run. It is admitted only when nothing else runs on the session and
+    // nothing moves it, and the driver and the Safe Mode level it runs under are read in the turn that sets the mark,
+    // so a switch or a redial cannot hand it another session and a Safe Mode change cannot pass it by.
+    func trackImport<T: Sendable>(
+        failed: @Sendable (T) -> Bool,
+        _ work: @Sendable (ImportAdmission) async throws -> T
+    ) async throws -> T {
+        let admission = ImportAdmission(driver: try writableSession.get().driver, safeModeLevel: connection.safeModeLevel)
+        let value: T
+        do {
+            value = try await appState.sessionTransactions.track(
+                connection.id, importing: true, sessionMoving: isSwitching || model.isMovingSession
+            ) {
+                try await work(admission)
+            }
+        } catch let refusal as SessionHeldByImport {
+            throw refusal
+        } catch let refusal as SessionBusyForImport {
+            throw refusal
+        } catch {
+            noteSessionChanged(on: admission.driver)
+            await restoreSession(after: .duringWork)
+            throw error
+        }
+        noteSessionChanged(on: admission.driver)
+        if failed(value) {
+            await restoreSession(after: .duringWork)
+        }
+        await model.reloadMetadataIfReleased(from: self)
+        return value
     }
 
     // A list reload reading the session would end the page with its next statement, so the page waits for it; nothing
@@ -373,12 +432,13 @@ final class ConnectionCoordinator {
                 await read()
                 return
             }
-            await self.track(reading: true, failed: { _ in failed() }) { await read() }
+            try await self.track(reading: true, failed: { _ in failed() }) { await read() }
         }
     }
 
     // The token is what the indicator showed when the user asked, so a swapped session or newer work refuses.
     func commitTransaction(as token: SessionTransactionMonitor.HoldToken) async throws {
+        noteSessionChanged(on: token.driver)
         do {
             try await appState.sessionTransactions.commit(connection.id, as: token)
         } catch {
@@ -393,6 +453,7 @@ final class ConnectionCoordinator {
     }
 
     func rollBackTransaction(as token: SessionTransactionMonitor.HoldToken) async throws {
+        noteSessionChanged(on: token.driver)
         do {
             try await appState.sessionTransactions.rollBack(connection.id, as: token)
         } catch {
@@ -422,6 +483,11 @@ final class ConnectionCoordinator {
         var schema = false
     }
 
+    // What a run on `driver` left there that the catalog connection never sees: a role, a search path, a temporary table.
+    func noteSessionEffect(_ effect: SessionLocalStatements.Effect, on driver: any DatabaseDriver) {
+        appState.catalogChanges.noteSessionEffect(effect, for: connection.id, driver: ObjectIdentifier(driver))
+    }
+
     // A read that costs a statement replaces ROW_COUNT() and the warnings, so it is sent only after a run that can have
     // moved the session. The work runs in a task of its own, since Stop may have cancelled the run that asks.
     func followSessionPlacement(after move: SessionMove) async {
@@ -429,14 +495,15 @@ final class ConnectionCoordinator {
         if move.schema { await followSessionSchema() }
     }
 
+    // An import holding the session keeps it where it is; the next run that can move it reads it again.
     private func followSessionDatabase(after move: SessionMove) async {
-        guard supportsDatabaseSwitching, let driver = session?.driver as? any SessionDatabaseReporting,
+        guard supportsDatabaseSwitching, !isImportRunning, let driver = session?.driver as? any SessionDatabaseReporting,
               move.database || driver.reportsDatabaseWithoutStatement else { return }
         await Task {
             let used = try? await driver.sessionDatabase()
             // With autocommit off, a MySQL read opens a transaction.
             if !driver.reportsDatabaseWithoutStatement { await refreshTransaction() }
-            guard let used, !used.isEmpty, used != activeDatabase, session?.driver === driver else { return }
+            guard let used, !used.isEmpty, used != activeDatabase, session?.driver === driver, !isImportRunning else { return }
             // An unsaved edit holds the session where it was made, as it holds the picker.
             if isHeldByEditor || anotherWindowHoldsEditor, !activeDatabase.isEmpty {
                 let back = activeDatabase
@@ -462,16 +529,13 @@ final class ConnectionCoordinator {
                 model.endSwitch()
                 await model.loadSchemasAfterSwitch(to: used, from: self)
                 await model.runHeldBackWork(from: self)
-                // MySQL names the database in every Tables tab write, and a plugin driver runs the app's requests in the
-                // menu's database; SQL Server saves only once the session is back.
+                // Every Tables tab write names its database, and a plugin driver runs the app's requests in the menu's.
                 presentFailure(
                     title: Self.switchDatabaseFailedTitle,
-                    message: model.qualifiesTablesWithDatabase || driver.reportsDatabaseWithoutStatement
-                        ? String(format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. Unsaved changes still save to “%@”."), used, back, back)
-                        : String(
-                            format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. To save the unsaved changes, run USE %@ in the Query tab of the window that holds them."),
-                            used, back, SQLBuilder.quoteIdentifier(back, for: connection.type)
-                        )
+                    message: String(
+                        format: String(localized: "The query moved the session to “%@” and it could not go back to “%@”. Unsaved changes still save to “%@”."),
+                        used, back, back
+                    )
                 )
                 return
             }
@@ -481,7 +545,7 @@ final class ConnectionCoordinator {
 
     // The Tables tab names its schema, so only completion and the picker read where the session is.
     private func followSessionSchema() async {
-        guard supportsSchemas, let driver = session?.driver as? any SessionSchemaReporting else { return }
+        guard supportsSchemas, !isImportRunning, let driver = session?.driver as? any SessionSchemaReporting else { return }
         await driver.settleCurrentSchema()
         guard session?.driver === driver, let current = driver.currentSchema, current != activeSchema else { return }
         appState.bumpSessionRevision(connection.id)
@@ -489,8 +553,8 @@ final class ConnectionCoordinator {
     }
 
     // From the start of a run with a `USE` until the picker follows it, another run's statements could go out around the
-    // move, so no window runs one, and on SQL Server, whose Tables tab names no database, every window's writes are
-    // refused. A driver that reports its database without a statement keeps the app's requests where the picker says.
+    // move, so no window runs one. The Tables tab names its database, so its writes go on. A driver that reports its
+    // database without a statement keeps the app's requests where the picker says.
     func beginDatabaseMove(ifRunning text: String) -> Bool {
         guard supportsDatabaseSwitching, let driver = session?.driver as? any SessionDatabaseReporting,
               !driver.reportsDatabaseWithoutStatement,
@@ -505,6 +569,25 @@ final class ConnectionCoordinator {
 
     var isDatabaseMoving: Bool { model.isDatabaseMoving }
 
+    // Set in every window on the connection while an import holds its session.
+    var isImportRunning: Bool { appState.sessionTransactions.isHeldByImport(connection.id) }
+
+    // Why a typed run cannot start now. `track` refuses a run an import holds the session against anyway.
+    var runRefusal: AppError? {
+        if isDatabaseMoving { return Self.databaseMovingRefusal }
+        return isImportRunning ? SessionHeldByImport().appError : nil
+    }
+
+    // `work` runs once the import holding the session ends, or at once when none does.
+    func afterImport(_ work: @escaping @MainActor () -> Void) {
+        appState.sessionTransactions.afterImport(connection.id, work)
+    }
+
+    // The message a refused `track` call shows, else what the error itself says.
+    static func refusal(for error: any Error) -> AppError? {
+        (error as? SessionHeldByImport)?.appError
+    }
+
     static var databaseMovingRefusal: AppError {
         AppError(
             category: .query,
@@ -515,26 +598,6 @@ final class ConnectionCoordinator {
         )
     }
 
-    var databaseMoveRefusal: AppError? {
-        guard supportsDatabaseSwitching, !model.qualifiesTablesWithDatabase,
-              let driver = session?.driver as? any SessionDatabaseReporting,
-              !driver.reportsDatabaseWithoutStatement else { return nil }
-        if model.isDatabaseMoving { return Self.databaseMovingRefusal }
-        // A session that could not go back to where an unsaved edit was made. SQL Server compares names by its collation,
-        // which ignores case unless set otherwise.
-        if let current = driver.currentDatabase, !current.isEmpty, !activeDatabase.isEmpty,
-           current.caseInsensitiveCompare(activeDatabase) != .orderedSame {
-            return AppError(
-                category: .query,
-                title: String(localized: "Session in Another Database"),
-                message: String(format: String(localized: "The session is in “%@”, not “%@”, so this change cannot be saved now."), current, activeDatabase),
-                recovery: nil,
-                underlying: nil
-            )
-        }
-        return nil
-    }
-
     func switchDatabase(to name: String) async {
         await switchDatabase(to: name, inside: nil)
     }
@@ -542,6 +605,10 @@ final class ConnectionCoordinator {
     // `open` is the open this switch puts back where the connection was; the switch runs as a step of it.
     func switchDatabase(to name: String, inside open: ConnectionAttempt?) async {
         guard isAttached, session != nil || model.isSwitchingDatabase, name != activeDatabase, !isSwitching else { return }
+        guard !isImportRunning else {
+            presentFailure(title: Self.switchDatabaseFailedTitle, message: SessionHeldByImport().localizedDescription)
+            return
+        }
         guard !anotherWindowHoldsEditor else {
             presentFailure(title: Self.switchDatabaseFailedTitle, message: Self.editorHeldElsewhereMessage)
             return
@@ -556,6 +623,10 @@ final class ConnectionCoordinator {
 
     func switchSchema(to name: String) async {
         guard let session, name != activeSchema, !isSwitching else { return }
+        guard !isImportRunning else {
+            presentFailure(title: Self.switchSchemaFailedTitle, message: SessionHeldByImport().localizedDescription)
+            return
+        }
         let failure = await whileSwitching(to: name) {
             await model.switchSchema(to: name, on: session)
         }
@@ -581,6 +652,11 @@ final class ConnectionCoordinator {
     // A failure on a dead session redials first. The alert then says why, unless the session is lost, which its own
     // screen says.
     func report(_ failure: ConnectionFailure, operation: String) async {
+        // Refused before it reached the session, which is in use by an import, so there is nothing to check.
+        if failure.error is SessionHeldByImport {
+            presentFailure(title: failure.title, message: failure.error.localizedDescription)
+            return
+        }
         let failedOn = session?.driver
         if await restoreSession(after: .whileIdle) { return }
         guard !isLost, !failure.redialRepeats || session?.driver === failedOn else { return }

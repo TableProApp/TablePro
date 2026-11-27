@@ -20,6 +20,8 @@ struct ConnectedView: View {
     @State private var showDeletedAlert = false
     @State private var databaseSwitchAwaitingRollBack: String?
     @State private var retries = 0
+    @State private var dataImport: IdentifiableURL?
+    @State private var dataImportMove: PendingDataImport?
 
     private var displayTitle: String {
         connection.name.isEmpty ? connection.host : connection.name
@@ -320,6 +322,36 @@ struct ConnectedView: View {
             activity.isEligibleForHandoff = true
             activity.userInfo = ["connectionId": connection.id.uuidString]
         }
+        // A file opened from another app waits for the tabs, so it lands on a connected session.
+        .onChange(of: presenter.pendingDataImport, initial: true) { _, _ in
+            takePendingDataImport()
+        }
+        .sheet(item: $dataImport, onDismiss: dataImportDidDismiss) { item in
+            MobileImportSheet(fileURL: item.url, connectionChoice: importConnectionChoice)
+                .environment(appState)
+                .environment(coordinator)
+        }
+    }
+
+    private func takePendingDataImport() {
+        guard dataImport == nil, let url = presenter.takeDataImport(for: connection.id) else { return }
+        dataImport = IdentifiableURL(url: url)
+    }
+
+    private var importConnectionChoice: ImportConnectionChoice {
+        ImportConnectionChoice { id, url in
+            dataImportMove = PendingDataImport(connectionId: id, fileURL: url)
+        }
+    }
+
+    // Moved only once this sheet is gone, so the other connection's cover never meets a sheet still on screen.
+    private func dataImportDidDismiss() {
+        guard let move = dataImportMove else {
+            takePendingDataImport()
+            return
+        }
+        dataImportMove = nil
+        presenter.moveDataImport(move.fileURL, to: move.connectionId)
     }
 
     // A switch blocks edits on the content only, so the tabs, Connections and the status stay usable.

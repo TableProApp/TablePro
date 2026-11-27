@@ -16,12 +16,13 @@ public actor MCPConnectionBridge {
     public init() {}
 
     func listConnections(principal: MCPPrincipal, purpose: MCPConnectionListPurpose = .agent) async -> JsonValue {
-        await listConnections(access: principal.connectionAccess, purpose: purpose)
-    }
-
-    private func listConnections(access: ConnectionAccess, purpose: MCPConnectionListPurpose) async -> JsonValue {
-        let listings = await MainActor.run { ExternalConnectionDirectory.listings() }
-        return MCPConnectionListEncoder.encode(listings, access: access, purpose: purpose)
+        let followsActiveProject = principal.followsActiveProject
+        let listings = await MainActor.run {
+            followsActiveProject
+                ? ExternalConnectionDirectory.listingsInActiveProject()
+                : ExternalConnectionDirectory.listings()
+        }
+        return MCPConnectionListEncoder.encode(listings, access: principal.connectionAccess, purpose: purpose)
     }
 
     func connect(connectionId: UUID) async throws -> JsonValue {
@@ -88,6 +89,22 @@ public actor MCPConnectionBridge {
 
     func resolveScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
         try await access.resolveScope(connectionId: connectionId, database: database, schema: schema)
+    }
+
+    func resolveStatementScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await access.resolveStatementScope(connectionId: connectionId, database: database, schema: schema)
+    }
+
+    func resolveAppStatementScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await access.resolveAppStatementScope(connectionId: connectionId, database: database, schema: schema)
+    }
+
+    func resolveServerScope(connectionId: UUID) async throws -> DatabaseScope {
+        try await access.resolveServerScope(connectionId: connectionId)
+    }
+
+    func driverGeneration(of connectionId: UUID) async -> UUID? {
+        await access.driverGeneration(of: connectionId)
     }
 
     func switchDatabase(connectionId: UUID, database: String) async throws -> JsonValue {
@@ -218,11 +235,15 @@ public actor MCPConnectionBridge {
 
     func insertRows(_ operation: ApprovedOperation, table: String) async throws -> JsonValue {
         let inserted = try await access.runInserts(operation)
-        return .object([
+        var reply: [String: JsonValue] = [
             "table": .string(table),
             "rows_submitted": .int(operation.statements.count),
-            "rows_affected": .int(inserted)
-        ])
+            "rows_affected": .int(inserted.affected)
+        ]
+        if let notice = inserted.notice {
+            reply["status_message"] = .string(notice)
+        }
+        return .object(reply)
     }
 
     func transactionControl(_ operation: ApprovedOperation, action: String) async throws -> JsonValue {

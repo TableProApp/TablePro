@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import TablePro
 import Testing
@@ -169,5 +170,125 @@ struct TabDiskUnchangedSaveTests {
         TabDiskActor.saveSync(connectionId: connectionId, tabs: renamed, selectedTabId: renamed.first?.id)
         let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
         #expect(loaded?.tabs.map(\.title) == ["Renamed"])
+    }
+
+    @Test("A query edited from its NFC form to its NFD form is saved")
+    func canonicallyEqualEditIsSaved() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let tabId = UUID()
+        let composed = "SELECT 'caf\u{E9}'"
+        let decomposed = "SELECT 'cafe\u{301}'"
+        #expect(composed == decomposed)
+
+        try await save([tab(id: tabId, title: "One", query: composed)], connectionId: connectionId)
+        try await save([tab(id: tabId, title: "One", query: decomposed)], connectionId: connectionId)
+
+        let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(loaded?.tabs.first.map { Array($0.query.utf8) } == Array(decomposed.utf8))
+    }
+
+    @Test("A moved caret alone is saved")
+    func movedCaretIsSaved() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        var first = tab(title: "One", query: "SELECT 1")
+        first.cursorOffset = 2
+        try await save([first], connectionId: connectionId)
+        let written = try fileNumber(stateURL(connectionId))
+
+        first.cursorOffset = 5
+        try await save([first], connectionId: connectionId)
+
+        #expect(try fileNumber(stateURL(connectionId)) != written)
+        let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(loaded?.tabs.first?.cursorOffset == 5)
+    }
+
+    @Test("After the quit-time save an unchanged save still leaves the file alone")
+    func unchangedSaveAfterSyncSaveKeepsTheFile() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let tabs = [tab(title: "One", query: "SELECT 1")]
+
+        TabDiskActor.saveSync(connectionId: connectionId, tabs: tabs, selectedTabId: tabs.first?.id)
+        let written = try fileNumber(stateURL(connectionId))
+        try await save(tabs, connectionId: connectionId)
+
+        #expect(try fileNumber(stateURL(connectionId)) == written)
+    }
+
+    @Test("A save that failed is tried again by the same save")
+    func failedSaveIsTriedAgain() async throws {
+        let connectionId = UUID()
+        let url = stateURL(connectionId)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: url.path)
+            TabDiskActor.clearSync(connectionId: connectionId)
+        }
+        let tabId = UUID()
+        try await save([tab(id: tabId, title: "One", query: "SELECT 1")], connectionId: connectionId)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: url.path)
+
+        let renamed = [tab(id: tabId, title: "Renamed", query: "SELECT 1")]
+        await #expect(throws: (any Error).self) { try await save(renamed, connectionId: connectionId) }
+
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: url.path)
+        try await save(renamed, connectionId: connectionId)
+        let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(loaded?.tabs.map(\.title) == ["Renamed"])
+    }
+
+    @Test("Literal comparison tells canonically equal queries apart and matches shared storage")
+    func literalComparison() {
+        let query = String(repeating: "SELECT 1;\n", count: 1_000)
+        let copy = query
+        #expect(TabDiskInput.sameText(query, copy))
+        var unshared = query
+        unshared.append(";")
+        unshared.removeLast()
+        #expect(TabDiskInput.sameText(query, unshared))
+        #expect(!TabDiskInput.sameText("caf\u{E9}", "cafe\u{301}"))
+        #expect(!TabDiskInput.sameText(query, query + " "))
+        #expect(TabDiskInput.sameText("", ""))
+        #expect(TabDiskInput.sameText(NSString(string: "SELECT 2") as String, "SELECT 2"))
+    }
+
+    @Test("Editor text, bridged from its text storage, compares literally")
+    func editorTextComparison() {
+        let native = String(repeating: "SELECT 'caf\u{E9}';\n", count: 1_000)
+        let storage = NSTextStorage(string: native)
+        let edited = storage.string
+        #expect(TabDiskInput.sameText(edited, edited))
+        #expect(TabDiskInput.sameText(edited, native))
+        #expect(TabDiskInput.sameText(native, edited))
+
+        storage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "-")
+        #expect(!TabDiskInput.sameText(storage.string, edited))
+
+        let decomposed = NSTextStorage(string: native.replacingOccurrences(of: "\u{E9}", with: "e\u{301}")).string
+        #expect(edited == decomposed)
+        #expect(!TabDiskInput.sameText(edited, decomposed))
+    }
+
+    @Test("An unchanged save of editor text leaves the file alone, and a typed character is saved")
+    func editorTextSave() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let tabId = UUID()
+        let storage = NSTextStorage(string: String(repeating: "SELECT 1;\n", count: 1_000))
+        let text = storage.string
+
+        try await save([tab(id: tabId, title: "One", query: text)], connectionId: connectionId)
+        let written = try fileNumber(stateURL(connectionId))
+        try await save([tab(id: tabId, title: "One", query: text)], connectionId: connectionId)
+        #expect(try fileNumber(stateURL(connectionId)) == written)
+
+        storage.replaceCharacters(in: NSRange(location: storage.length, length: 0), with: "-")
+        let typed = storage.string
+        try await save([tab(id: tabId, title: "One", query: typed)], connectionId: connectionId)
+        #expect(try fileNumber(stateURL(connectionId)) != written)
+        let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(loaded?.tabs.first.map { ($0.query as NSString).isEqual(to: typed) } == true)
     }
 }

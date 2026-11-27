@@ -96,7 +96,7 @@ fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConn
         database: file.display().to_string(),
         username: String::new(),
         tls: TlsConfig::disabled(),
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
         external_access: access,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
@@ -105,10 +105,14 @@ fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConn
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 
@@ -141,7 +145,7 @@ async fn open_session(dir: &Path, file: &Path, id: Uuid, create: bool) -> Arc<Se
         driver: Arc::new(SqliteDriver),
         target: RequestTarget::File(endpoint),
         workspace_settings: WorkspaceSettings::workspace(false),
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
     };
     let pending = connector
         .establish(request, CredentialInteraction::Unattended, CancellationToken::new())
@@ -546,11 +550,9 @@ async fn a_changed_token_is_refused_and_a_closed_port_is_unreachable() {
         token: Some("tp_other".to_owned()),
         ..Machine::of(&harness)
     };
-    let free = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-    let closed_port = free.local_addr().expect("an address").port();
-    drop(free);
+    // Port 1 is below every system's ephemeral range, so no test's listener takes it and the connect is refused.
     let silent = Machine {
-        port: closed_port,
+        port: 1,
         ..Machine::of(&harness)
     };
 

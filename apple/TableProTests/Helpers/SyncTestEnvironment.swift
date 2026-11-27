@@ -1,4 +1,5 @@
 import CloudKit
+import Combine
 import Foundation
 @testable import TablePro
 import TableProSyncTransport
@@ -22,6 +23,7 @@ final class SyncTestEnvironment {
     let connections: ConnectionStorage
     let groups: GroupStorage
     let tags: TagStorage
+    let projects: ProjectStorage
     let favoriteTables: FavoriteTablesStorage
     let favoriteDatabases: FavoriteDatabasesStorage
     let columnLayouts: FileColumnLayoutPersister
@@ -54,13 +56,21 @@ final class SyncTestEnvironment {
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         )
         connections = connectionStore
-        groups = GroupStorage(
+        let groupStore = GroupStorage(
             userDefaults: defaults,
             syncTracker: tracker,
             connectionStorage: connectionStore,
             appEvents: AppEvents()
         )
+        groups = groupStore
         tags = TagStorage(userDefaults: defaults, syncTracker: tracker, appEvents: AppEvents())
+        projects = ProjectStorage(
+            userDefaults: defaults,
+            syncTracker: tracker,
+            connectionStorage: connectionStore,
+            groupStorage: groupStore,
+            appEvents: AppEvents()
+        )
         favoriteTables = FavoriteTablesStorage(userDefaults: defaults, syncTracker: tracker)
         favoriteDatabases = FavoriteDatabasesStorage(defaults: defaults, syncTracker: tracker)
         columnLayouts = FileColumnLayoutPersister(
@@ -84,7 +94,11 @@ final class SyncTestEnvironment {
         favorites: SQLFavoriteManager? = nil,
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { nil },
         licenseGate: @escaping @MainActor () -> DisableReason? = { nil },
-        activationClock: any Clock<Duration> = ContinuousClock()
+        policyGate: @escaping @MainActor () -> DisableReason? = { nil },
+        policyChanges: AnyPublisher<DisableReason?, Never> = Empty().eraseToAnyPublisher(),
+        activationClock: any Clock<Duration> = ContinuousClock(),
+        pushRegistrar: SyncPushRegistrar = .inert,
+        projectSyncWritable: Bool = false
     ) -> SyncCoordinator {
         let live = AppServices.live
         let services = AppServices(
@@ -130,7 +144,8 @@ final class SyncTestEnvironment {
             mcpServerManager: live.mcpServerManager,
             syncTracker: tracker,
             welcomeRouter: live.welcomeRouter,
-            telemetry: live.telemetry
+            telemetry: live.telemetry,
+            projectStorage: projects
         )
         return SyncCoordinator(
             services: services,
@@ -139,7 +154,28 @@ final class SyncTestEnvironment {
             makeNetworkMonitor: makeNetworkMonitor,
             columnLayouts: self.columnLayouts,
             licenseGate: licenseGate,
-            activationClock: activationClock
+            policyGate: policyGate,
+            policyChanges: policyChanges,
+            activationClock: activationClock,
+            pushRegistrar: pushRegistrar,
+            schema: .projects(deployed: projectSyncWritable)
+        )
+    }
+}
+
+extension SyncPushRegistrar {
+    static let inert = SyncPushRegistrar(register: {}, unregister: {})
+}
+
+@MainActor
+final class RecordingPushRegistrar {
+    private(set) var registrations = 0
+    private(set) var unregistrations = 0
+
+    var registrar: SyncPushRegistrar {
+        SyncPushRegistrar(
+            register: { [weak self] in self?.registrations += 1 },
+            unregister: { [weak self] in self?.unregistrations += 1 }
         )
     }
 }
@@ -171,6 +207,8 @@ actor ScriptedSyncTransport: SyncTransport {
     private(set) var pullCount = 0
     private(set) var pushCount = 0
     private(set) var zoneSaveCount = 0
+    private(set) var subscriptionSaveCount = 0
+    private var subscriptionError: (any Error)?
 
     /// What the account reads as, what every pushed item fails with, and what a pull throws. Each
     /// is changeable mid-test, the way the account or the storage changes under a running app.
@@ -266,6 +304,17 @@ actor ScriptedSyncTransport: SyncTransport {
         zoneSaveCount += 1
     }
 
+    func failSubscriptionSaves(with error: (any Error)?) {
+        subscriptionError = error
+    }
+
+    func saveSubscription() async throws {
+        subscriptionSaveCount += 1
+        if let subscriptionError {
+            throw subscriptionError
+        }
+    }
+
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
         pushCount += 1
         pushedRecords.append(contentsOf: records)
@@ -333,5 +382,19 @@ actor ScriptedSyncTransport: SyncTransport {
             throw pullError
         }
         return pulled(pushedRecords, pushedDeletions)
+    }
+}
+
+extension SyncWritableSchema {
+    // Production's schema with the project type and both membership fields deployed, or held back.
+    static func projects(deployed: Bool) -> SyncWritableSchema {
+        SyncWritableSchema(
+            field: { field in
+                let isProjectField = field is ConnectionProjectSyncField
+                    || field.key == ConnectionSyncField.projectId.key
+                return isProjectField ? deployed : field.isWritable
+            },
+            type: { $0 == .project ? deployed : $0.isWritable }
+        )
     }
 }

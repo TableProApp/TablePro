@@ -51,20 +51,25 @@ internal extension MySQLPluginDriver {
             return try await databendColumns(table: table, schema: schema)
         }
         guard !flavor.isOceanBase else {
-            let columnsByTable = try await informationSchemaColumns(schema: schema, table: table)
+            let columnsByTable = try await exportCatalog.informationSchemaColumns(schema: schema, table: table)
             return columnsByTable[table] ?? (columnsByTable.count == 1 ? columnsByTable.values.first ?? [] : [])
         }
         guard !flavor.isStarRocks else {
             return try await starrocksColumns(database: effectiveSchema(schema), table: table)[table] ?? []
         }
-        let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
-        let catalogDetails = try await fetchCatalogColumnDetails(table: table, schema: schema)
+        let reads: MySQLColumnReads
+        if let flight = try await columnReadsInOneFlight(table: table, schema: schema) {
+            reads = flight
+        } else {
+            reads = try await columnReadsOneByOne(table: table, schema: schema)
+        }
+        let catalogDetails = reads.catalogDetails
         let createTableDefaults = try await createTableDefaults(
-            table: table, schema: schema, showRows: result.rows, catalogDetails: catalogDetails
+            table: table, schema: schema, showRows: reads.showRows, catalogDetails: catalogDetails
         )
         let identity = serverIdentity
 
-        let columns = result.rows.compactMap { row -> PluginColumnInfo? in
+        let columns = reads.showRows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText,
                   let dataType = row[safe: 1]?.asText
             else { return nil }
@@ -115,9 +120,58 @@ internal extension MySQLPluginDriver {
                 generationKind: mysqlGenerationKind(extra: extra)
             )
         }
-        let checks = try await mariadbColumnChecks(table: table, schema: schema, columns: columns.map(\.name))
+        let checks = try await mariadbColumnChecks(
+            table: table, schema: schema, columns: columns.map(\.name), knownClauses: reads.checkClauses
+        )
         guard !checks.isEmpty else { return columns }
         return columns.map { $0.withColumnCheck(checks[$0.name]) }
+    }
+
+    private func columnReadsOneByOne(table: String, schema: String?) async throws -> MySQLColumnReads {
+        let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
+        let details = try await fetchCatalogColumnDetails(table: table, schema: schema)
+        return MySQLColumnReads(showRows: result.rows, catalogDetails: details, checkClauses: nil)
+    }
+
+    // Nil sends the caller to the one-by-one reads, which also cover every session this flight does not.
+    private func columnReadsInOneFlight(table: String, schema: String?) async throws -> MySQLColumnReads? {
+        let identity = serverIdentity
+        let database = effectiveSchema(schema)
+        guard MySQLServerVersion.readsInOneFlight(banner: identity.banner, flavor: identity.flavor),
+              temporaryTableCandidates.isEmpty,
+              catalogVisibility.visibility(of: database) != .blind,
+              let catalogRead = columnCatalogRead(table: table, schema: schema)
+        else { return nil }
+
+        let readsChecks = identity.flavor.isMariaDB
+            && MySQLCheckConstraints.source(banner: identity.banner, flavor: identity.flavor) == .informationSchema
+        let level = MySQLCatalogColumn.checkConstraintLevel
+        let plan = MySQLColumnFlight(
+            readsChecks: readsChecks,
+            levelIsPresent: readsChecks ? cachedCatalogColumnPresence(level.rawValue) : nil
+        )
+        let statements = plan.reads.map { read -> String in
+            switch read {
+            case .columns: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))"
+            case .catalogDetails: catalogRead.query
+            case .levelPresence: level.presenceQuery
+            case .checkClauses: MySQLColumnChecks.clausesQuery(schema: database, table: table)
+            }
+        }
+        guard let answers = try await readInOneFlight(statements) else { return nil }
+
+        let outcome = try plan.outcome(of: answers, settlesBlindness: MySQLCatalogVisibilityRule.settlesBlindness(code:))
+        for refusal in outcome.refusals {
+            Self.logger.warning("column read refused code=\(refusal.code, privacy: .public) message=\(refusal.message)")
+        }
+        if let present = outcome.levelIsPresent {
+            cacheCatalogColumnPresence(level.rawValue, present)
+        }
+        return MySQLColumnReads(
+            showRows: outcome.showRows,
+            catalogDetails: catalogRead.details(fromRows: outcome.catalogRows),
+            checkClauses: outcome.checkClauses
+        )
     }
 
     /// What `INFORMATION_SCHEMA.COLUMNS` says about a table's columns that `SHOW FULL COLUMNS` cannot:
@@ -148,14 +202,27 @@ internal extension MySQLPluginDriver {
     ) async throws -> [String: MySQLCatalogColumnDetail] {
         guard serverHasInformationSchema,
               catalogVisibility.visibility(of: effectiveSchema(schema)) != .blind,
-              await !resolvesToTemporaryTable(table, schema: schema)
+              await !resolvesToTemporaryTable(table, schema: schema),
+              let catalogRead = columnCatalogRead(table: table, schema: schema)
         else { return [:] }
+        do {
+            return catalogRead.details(fromRows: try await execute(ownStatement: catalogRead.query).rows)
+        } catch let error as MariaDBPluginError
+            where MySQLCatalogVisibilityRule.settlesBlindness(code: error.code) {
+            Self.logger.warning(
+                "column catalog read refused code=\(error.code, privacy: .public) message=\(error.message)"
+            )
+            return [:]
+        }
+    }
+
+    private func columnCatalogRead(table: String, schema: String?) -> MySQLColumnCatalogRead? {
         let identity = serverIdentity
         let readsGeneration = MySQLServerVersion.hasGenerationExpression(
             banner: identity.banner, flavor: identity.flavor
         )
         let readsDefault = MySQLServerVersion.quotesColumnDefault(banner: identity.banner, flavor: identity.flavor)
-        guard readsGeneration || readsDefault else { return [:] }
+        guard readsGeneration || readsDefault else { return nil }
         let generationProjection = readsGeneration ? "GENERATION_EXPRESSION" : "NULL"
         let defaultProjection = readsDefault ? "COLUMN_DEFAULT" : "NULL"
         let generatedOnly = readsDefault ? "" : " AND GENERATION_EXPRESSION <> \'\'"
@@ -165,24 +232,7 @@ internal extension MySQLPluginDriver {
             WHERE TABLE_SCHEMA = \'\(effectiveSchemaLiteral(schema))\'
                 AND TABLE_NAME = \'\(mysqlEscapeStringLiteral(table))\'\(generatedOnly)
             """
-        do {
-            let result = try await execute(ownStatement: query)
-            var details: [String: MySQLCatalogColumnDetail] = [:]
-            for row in result.rows {
-                guard let name = row[safe: 0]?.asText else { continue }
-                details[name] = MySQLCatalogColumnDetail(
-                    generationExpression: row[safe: 1]?.asText?.nilIfEmpty,
-                    catalogDefault: readsDefault ? .quoted(row[safe: 2]?.asText) : nil
-                )
-            }
-            return details
-        } catch let error as MariaDBPluginError
-            where MySQLCatalogVisibilityRule.settlesBlindness(code: error.code) {
-            Self.logger.warning(
-                "column catalog read refused code=\(error.code, privacy: .public) message=\(error.message)"
-            )
-            return [:]
-        }
+        return MySQLColumnCatalogRead(query: query, readsDefault: readsDefault)
     }
 
     /// The defaults `SHOW CREATE TABLE` states, for the columns whose catalog answer cannot recreate
@@ -202,61 +252,9 @@ internal extension MySQLPluginDriver {
         catalogDetails: [String: MySQLCatalogColumnDetail]
     ) async throws -> MySQLCreateTableDefaults? {
         guard let scope = createTableDefaultsScope(showRows: showRows, catalogDetails: catalogDetails),
-              let clauses = try await createTableDefaultClauses(table: table, schema: schema)
+              let clauses = try await exportCatalog.createTableDefaultClauses(table: table, schema: schema)
         else { return nil }
         return MySQLCreateTableDefaults(clauses: clauses, scope: scope)
-    }
-
-    /// The whole-schema read's counterpart of `createTableDefaults`: one `SHOW CREATE TABLE` for each
-    /// table holding a default its catalog row cannot recreate, and none for the rest. The rows are
-    /// `INFORMATION_SCHEMA.COLUMNS` rows, which on a MariaDB from 10.2.7 are already exact.
-    private func createTableDefaultsByTable(
-        forCatalogRows rows: [[PluginCellValue]],
-        schema: String?
-    ) async throws -> [String: MySQLCreateTableDefaults] {
-        let identity = serverIdentity
-        guard !identity.flavor.isOceanBase else { return [:] }
-        let scope: MySQLCreateTableDefaults.Scope
-        let needsCreateTable: ([PluginCellValue]) -> Bool
-        if identity.flavor.isMariaDB {
-            guard MySQLServerVersion.mariaDBDefaultsCanBeExpressions(banner: identity.banner, flavor: identity.flavor),
-                  !MySQLServerVersion.quotesColumnDefault(banner: identity.banner, flavor: identity.flavor)
-            else { return [:] }
-            scope = .everyColumn
-            needsCreateTable = { row in
-                mariaDBBareDefaultMayBeExpression(row[safe: 6]?.asText, dataType: row[safe: 2]?.asText ?? "")
-            }
-        } else {
-            scope = .expressionDefaults
-            needsCreateTable = { row in
-                mysqlExpressionDefaultNeedsCreateTable(
-                    row[safe: 6]?.asText, extra: row[safe: 7]?.asText, dataType: row[safe: 2]?.asText ?? ""
-                )
-            }
-        }
-        let tables = Set(rows.filter(needsCreateTable).compactMap { $0[safe: 0]?.asText })
-        var defaults: [String: MySQLCreateTableDefaults] = [:]
-        for table in tables.sorted() {
-            guard let clauses = try await createTableDefaultClauses(table: table, schema: schema) else { continue }
-            defaults[table] = MySQLCreateTableDefaults(clauses: clauses, scope: scope)
-        }
-        return defaults
-    }
-
-    /// Nil when the statement is refused, or does not describe a table: a view's leaves its columns on
-    /// the catalog's answer.
-    private func createTableDefaultClauses(table: String, schema: String?) async throws -> [String: String]? {
-        do {
-            let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
-            guard let createTable = result.rows.first?[safe: 1]?.asText else { return nil }
-            return MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: createTable)
-        } catch let error as MariaDBPluginError
-            where MySQLCatalogVisibilityRule.settlesBlindness(code: error.code) {
-            Self.logger.warning(
-                "create table default read refused code=\(error.code, privacy: .public) message=\(error.message)"
-            )
-            return nil
-        }
     }
 
     private func createTableDefaultsScope(
@@ -324,105 +322,32 @@ internal extension MySQLPluginDriver {
     // StarRocks answers the bulk read by loading every table's schema from the lake behind an external catalog.
     var providesBulkColumnFetch: Bool { !flavor.isStarRocks }
 
-    /// `GENERATION_EXPRESSION` is projected here rather than looked up per table, because a caller
-    /// that takes the bulk list has to receive what `fetchColumns` would have given it. Without the
-    /// column the two reads disagree on generated columns alone, and a schema comparison built on
-    /// the bulk read reports a changed generation expression as no difference at all.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        guard !flavor.isDatabend else { return try await databendAllColumns(schema: schema) }
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
+        guard !flavor.isDatabend else {
+            return try await databendAllColumns(schema: schema, keepsSpellingsApart: keepsSpellingsApart)
+        }
         let database = effectiveSchema(schema)
-        guard !flavor.isStarRocks else { return try await starrocksColumns(database: database, table: nil) }
+        guard !flavor.isStarRocks else {
+            return try await starrocksColumns(database: database, table: nil, keepsSpellingsApart: keepsSpellingsApart)
+        }
         return try await catalogOrShow(
             database: database,
             catalogExists: serverHasInformationSchema,
-            catalog: { try await self.informationSchemaColumns(schema: schema, table: nil) },
-            show: { try await self.showColumnsByTable(database: database) }
+            catalog: {
+                try await self.exportCatalog.informationSchemaColumns(
+                    schema: schema, table: nil, keepsSpellingsApart: keepsSpellingsApart
+                )
+            },
+            show: { try await self.showColumnsByTable(database: database, keepsSpellingsApart: keepsSpellingsApart) }
         )
-    }
-
-    private func informationSchemaColumns(
-        schema: String?,
-        table: String?
-    ) async throws -> [String: [PluginColumnInfo]] {
-        let escapedDb = effectiveSchemaLiteral(schema)
-        let tableFilter = table.map { " AND TABLE_NAME = '\(mysqlEscapeStringLiteral($0))'" } ?? ""
-        let identity = serverIdentity
-        let hasGenerationExpression = MySQLServerVersion.hasGenerationExpression(
-            banner: identity.banner, flavor: identity.flavor
-        )
-        let generationProjection = hasGenerationExpression ? "GENERATION_EXPRESSION" : "NULL"
-        let query = """
-            SELECT
-                TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME,
-                IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT,
-                \(generationProjection)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = '\(escapedDb)'\(tableFilter)
-            ORDER BY TABLE_NAME, ORDINAL_POSITION
-            """
-
-        let result = try await execute(ownStatement: query)
-        let createTableClausesByTable = try await oceanbaseDefaultClausesByTable(
-            forRows: result.rows, tableColumn: 0, typeColumn: 2, defaultColumn: 6, schema: schema
-        )
-        let createTableDefaultsByTable = try await createTableDefaultsByTable(
-            forCatalogRows: result.rows, schema: schema
-        )
-
-        var allColumns: [String: [PluginColumnInfo]] = [:]
-        for row in result.rows {
-            guard let tableName = row[safe: 0]?.asText,
-                  let name = row[safe: 1]?.asText,
-                  let dataType = row[safe: 2]?.asText
-            else { continue }
-
-            let collation = row[safe: 3]?.asText
-            let isNullable = (row[safe: 4]?.asText) == "YES"
-            let isPrimaryKey = (row[safe: 5]?.asText) == "PRI"
-            let rawDefault = row[safe: 6]?.asText
-            let extra = row[safe: 7]?.asText
-            let comment = row[safe: 8]?.asText
-
-            let charset: String? = {
-                guard let coll = collation, coll != "NULL" else { return nil }
-                return coll.components(separatedBy: "_").first
-            }()
-
-            let upperType = dataType.uppercased()
-            let normalizedType = (upperType.hasPrefix("ENUM(") || upperType.hasPrefix("SET("))
-                ? dataType : upperType
-            let allowedValues = EnumValueParser.parseMySQLEnumOrSet(from: normalizedType)
-            let defaultValue = columnDefaultValue(
-                catalogDefault: rawDefault,
-                extra: extra,
-                dataType: normalizedType,
-                isNullable: isNullable,
-                column: name,
-                createTableClauses: createTableClausesByTable[tableName],
-                createTableDefaults: createTableDefaultsByTable[tableName]
-            )
-
-            let column = PluginColumnInfo(
-                name: name,
-                dataType: normalizedType,
-                isNullable: isNullable,
-                isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue,
-                extra: extra,
-                charset: charset,
-                collation: collation == "NULL" ? nil : collation,
-                comment: comment?.isEmpty == false ? comment : nil,
-                identityKind: mysqlIdentityKind(extra: extra),
-                isGenerated: mysqlColumnIsGenerated(extra: extra),
-                allowedValues: allowedValues,
-                generationExpression: row[safe: 9]?.asText?.nilIfEmpty,
-                generationKind: mysqlGenerationKind(extra: extra)
-            )
-
-            allColumns[tableName, default: []].append(column)
-        }
-
-        return allColumns
     }
 }
 
@@ -431,4 +356,118 @@ internal extension MySQLPluginDriver {
 internal struct MySQLCatalogColumnDetail: Equatable, Sendable {
     let generationExpression: String?
     let catalogDefault: MySQLCatalogDefault?
+}
+
+internal struct MySQLColumnCatalogRead: Equatable, Sendable {
+    let query: String
+    let readsDefault: Bool
+
+    func details(fromRows rows: [[PluginCellValue]]) -> [String: MySQLCatalogColumnDetail] {
+        var details: [String: MySQLCatalogColumnDetail] = [:]
+        for row in rows {
+            guard let name = row[safe: 0]?.asText else { continue }
+            details[name] = MySQLCatalogColumnDetail(
+                generationExpression: row[safe: 1]?.asText?.nilIfEmpty,
+                catalogDefault: readsDefault ? .quoted(row[safe: 2]?.asText) : nil
+            )
+        }
+        return details
+    }
+}
+
+// `checkClauses` is nil when the clauses have not been read yet.
+internal struct MySQLColumnReads {
+    let showRows: [[PluginCellValue]]
+    let catalogDetails: [String: MySQLCatalogColumnDetail]
+    let checkClauses: [String]?
+}
+
+// `SHOW CREATE TABLE` stays out of the flight: whether it runs depends on these answers.
+internal struct MySQLColumnFlight: Equatable, Sendable {
+    enum Read: Equatable, Sendable {
+        case columns
+        case catalogDetails
+        case levelPresence
+        case checkClauses
+    }
+
+    struct Refusal: Equatable, Sendable {
+        let code: UInt32
+        let message: String
+    }
+
+    struct FailureResponse: Equatable, Sendable {
+        let stopsFlights: Bool
+        let reportsFailure: Bool
+
+        // The server may still be running what outlasted the socket timeout, so that read never goes out again.
+        init(to error: MariaDBPluginError) {
+            stopsFlights = mysqlClientErrorCodes.contains(error.code)
+            reportsFailure = error.outlastedSocketTimeout
+        }
+    }
+
+    struct Outcome {
+        let showRows: [[PluginCellValue]]
+        let catalogRows: [[PluginCellValue]]
+        let levelIsPresent: Bool?
+        let checkClauses: [String]
+        let refusals: [Refusal]
+    }
+
+    let reads: [Read]
+
+    // A lost connection clears the transaction flag, so a fallback could reconnect over a session that held state.
+    static func mayRun(on footprint: MySQLSessionFootprint, isRefused: Bool) -> Bool {
+        footprint.isClean && !isRefused
+    }
+
+    init(readsChecks: Bool, levelIsPresent: Bool?) {
+        var reads: [Read] = [.columns, .catalogDetails]
+        if readsChecks, levelIsPresent != false {
+            if levelIsPresent == nil { reads.append(.levelPresence) }
+            reads.append(.checkClauses)
+        }
+        self.reads = reads
+    }
+
+    // Decides as the one-by-one reads do: a refused catalog read degrades, anything else fails the whole read.
+    func outcome(
+        of answers: [Result<PluginQueryResult, MariaDBPluginError>],
+        settlesBlindness: (UInt32) -> Bool
+    ) throws -> Outcome {
+        var showRows: [[PluginCellValue]] = []
+        var catalogRows: [[PluginCellValue]] = []
+        var levelIsPresent: Bool?
+        var levelWasRefused = false
+        var clauses: [String] = []
+        var refusals: [Refusal] = []
+
+        for (read, answer) in zip(reads, answers) {
+            switch answer {
+            case .success(let result):
+                switch read {
+                case .columns: showRows = result.rows
+                case .catalogDetails: catalogRows = result.rows
+                case .levelPresence:
+                    levelIsPresent = (result.rows.first?[safe: 0]?.asText.flatMap { Int($0) } ?? 0) > 0
+                case .checkClauses: clauses = result.rows.compactMap { $0[safe: 0]?.asText }
+                }
+            case .failure(let failure):
+                // Sent before the answer on `LEVEL` was known, so a server without the column refuses it.
+                if read == .checkClauses, levelIsPresent == false || levelWasRefused { continue }
+                guard read != .columns, settlesBlindness(failure.code) else { throw failure }
+                refusals.append(Refusal(code: failure.code, message: failure.message))
+                if read == .levelPresence { levelWasRefused = true }
+            }
+        }
+        let hasNoLevel = levelIsPresent == false || levelWasRefused
+        return Outcome(
+            showRows: showRows,
+            catalogRows: catalogRows,
+            levelIsPresent: levelIsPresent,
+            checkClauses: hasNoLevel ? [] : clauses,
+            refusals: refusals
+        )
+    }
 }

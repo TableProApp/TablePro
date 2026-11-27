@@ -9,12 +9,18 @@ public interface IQueryTabView
 {
     string SelectedText { get; }
 
+    // Where SelectedText starts in DocumentText; null when it joins several selections.
+    int? SelectedTextStart { get; }
+
     string WholeText { get; }
 
     // The editor's own text, which the caret and a statement's place count in.
     string DocumentText { get; }
 
     int Caret { get; }
+
+    // The first line of each folded region, which a session keeps.
+    IReadOnlyList<int> FoldedLines { get; }
 
     // The history keeps a run's failure in the words the results pane showed for it.
     string TimedOutMessage { get; }
@@ -24,6 +30,9 @@ public interface IQueryTabView
     void SelectStatement(int start, int length);
 
     void ShowNoStatement();
+
+    // Offered after a failed run whose server said where; the offset counts in DocumentText.
+    void ShowErrorPosition(int offset);
 
     void ShowRefused();
 
@@ -43,15 +52,66 @@ public interface IQueryTabView
     void CloseEditor();
 }
 
-// One editor connection for the tab, so a transaction holds from one run to the next.
-public sealed class QueryTab : IWorkspaceTab
+public enum DiskChange
 {
+    None,
+    Changed,
+    Gone,
+}
+
+public enum SaveOverChange
+{
+    Overwrite,
+    Reload,
+    Cancel,
+}
+
+// What a query tab with a .sql file behind it shows and asks, which its view words.
+public interface IQueryFileView
+{
+    // The editor's text becomes the file's, as Reload asks.
+    void ReplaceText(string text);
+
+    // Null when the picker was dismissed.
+    Task<string?> PickSavePathAsync(string suggestedName, string? folder);
+
+    // Without Save when offerSave is off.
+    Task<SaveBeforeClose> AskSaveBeforeCloseAsync(string tab, bool offerSave);
+
+    Task<SaveOverChange> AskSaveOverChangeAsync(string path);
+
+    // None takes the bar away.
+    void ShowDiskChange(DiskChange change);
+
+    // A SqlFileEncodingException names the character the file's encoding cannot store.
+    Task ShowSaveFailedAsync(string path, Exception failure);
+
+    Task ShowReloadFailedAsync(string path, Exception failure);
+}
+
+// A typed run the server refused: its SQL and the words the results pane showed, which Fix with AI sends.
+public sealed record RunFailure(string Statement, string Error);
+
+// The switcher's lists, user databases before the engine's own.
+public sealed record DatabaseChoices(
+    IReadOnlyList<string> UserDatabases,
+    IReadOnlyList<string> SystemDatabases,
+    string? Current);
+
+// One editor connection for the tab, so a transaction holds from one run to the next.
+public sealed partial class QueryTab : IWorkspaceTab
+{
+    // What File, Open file takes as SQL, as the picker lists them.
+    private static readonly string[] SqlExtensions = [".sql", ".psql", ".pgsql"];
+
     private readonly ITabSession _session;
     private readonly IQueryTabView _view;
     private readonly IResultsView _results;
     private readonly DataModel _dataModel;
     private readonly Func<AppSettings> _settings;
     private readonly IHistoryRecorder? _history;
+    private readonly IQueryFileView? _files;
+    private readonly IResultEditView? _resultView;
     private readonly TabWork _work = new();
     private ITabEditor? _editor;
     private Task? _closing;
@@ -60,7 +120,20 @@ public sealed class QueryTab : IWorkspaceTab
     private GridSort _sort = GridSort.None;
     private bool _sorting;
     private bool _confirming;
+    private bool _switching;
+    private string? _listedDefault;
+    private SqlFileFormat _format = SqlFileFormat.Utf8;
+    private SqlFileStamp? _stamp;
+    private string? _savedText;
+    private Task<bool>? _saving;
 
+    // A restored file tab whose file is still being read, which no check or save compares with yet.
+    private bool _awaitingFile;
+    private bool _checking;
+    private (DiskChange Change, SqlFileStamp? Stamp)? _shownChange;
+    private (DiskChange Change, SqlFileStamp? Stamp)? _dismissedChange;
+
+    // onDisk is the file as the view read it, null when it could not be; the view's text may differ from it.
     public QueryTab(
         string title,
         ITabSession session,
@@ -69,64 +142,263 @@ public sealed class QueryTab : IWorkspaceTab
         DataModel dataModel,
         Func<AppSettings> settings,
         IHistoryRecorder? history = null,
-        string? database = null)
+        string? database = null,
+        IQueryFileView? files = null,
+        string? filePath = null,
+        SqlFileRead? onDisk = null,
+        bool baselineUnknown = false,
+        bool restoring = false,
+        IResultEditView? resultEdits = null,
+        string? customTitle = null,
+        bool? wrapText = null)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(results);
         ArgumentNullException.ThrowIfNull(settings);
-        Title = title;
+        AutomaticTitle = title;
         _session = session;
         _view = view;
         _results = results;
         _dataModel = dataModel;
         _settings = settings;
         _history = history;
-        Database = string.IsNullOrEmpty(database) ? null : database;
+        _files = files;
+        _resultView = resultEdits;
+        // Read once: a later change of the setting is for new tabs, not this one.
+        WrapsText = wrapText ?? settings().GridWrapText;
+        Database = Kept(database);
+        if (files is not null && !string.IsNullOrEmpty(filePath))
+        {
+            FilePath = filePath;
+            AutomaticTitle = Path.GetFileName(filePath);
+            if (onDisk is not null)
+            {
+                _format = onDisk.Format;
+                _stamp = onDisk.Stamp;
+                _savedText = baselineUnknown ? null : onDisk.Text;
+            }
+
+            IsDirty = TextDiffers();
+            _awaitingFile = restoring && onDisk is null;
+        }
+        else
+        {
+            CustomTitle = QueryTitles.Normalize(customTitle);
+        }
+
+        _results.ShownSetChanged += OnShownSetChanged;
     }
 
     public event EventHandler? StateChanged;
 
-    public string Title { get; }
+    // The file the tab wrote, for File > Open Recent.
+    public event EventHandler<string>? FileSaved;
+
+    // A run the user started ended, cancelled or not; a sort or a commit is not one.
+    public event EventHandler<RunEnd>? RunEnded;
+
+    // Whether the tab's grid wraps long values, which the View menu and the header menu turn on and off.
+    public bool WrapsText { get; private set; }
+
+    public void SetWrapsText(bool wraps)
+    {
+        if (WrapsText == wraps)
+        {
+            return;
+        }
+        WrapsText = wraps;
+        // The workspace drops its cached snapshot on this, so the session keeps the choice.
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // What the strip, the share sheet and Save As show: the typed name, else the automatic title.
+    public string Title => CustomTitle ?? AutomaticTitle;
+
+    // Query N, the title a caller gave, or the file's name: what an emptied typed name goes back to.
+    public string AutomaticTitle { get; private set; }
+
+    // Null until one is typed; a file's name takes over from it once the tab has a file.
+    public string? CustomTitle { get; private set; }
+
+    // A file tab is named for its file, so only a query with none takes a typed name.
+    public bool CanRename => FilePath is null && !_work.IsClosed;
 
     public TabKind Kind => TabKind.Query;
 
-    // Each editor connection the tab opens moves here before its first run.
-    public string? Database { get; }
+    // Where each editor connection the tab opens runs; null for the connection's own.
+    public string? Database { get; private set; }
+
+    // The tab's own, else the connection's, else the one the server listed as the login's.
+    public string? ShownDatabase => Database ?? _session.Database ?? _listedDefault;
+
+    public bool ShowsDatabases => _session.Layout != DatabaseLayout.OneDatabase;
+
+    // As the Linux app waits: a move would part a run or a transaction from the database it began in.
+    public bool CanPickDatabase =>
+        !IsRunning && !IsSavingRows && !_confirming && !_switching && !_work.IsClosed
+        && !WorkspaceNotices.Holds(Transaction);
 
     public bool IsRunning { get; private set; }
 
     public TransactionState Transaction { get; private set; }
 
-    public bool HasUnsavedChanges => false;
+    public string? FilePath { get; private set; }
 
-    // A query tab's text is kept in the session, so closing loses nothing to ask about.
-    public Task<bool> ConfirmCloseAsync(bool offerSave) => Task.FromResult(true);
+    // The text differs from the file as last read or saved; set as the view reports edits.
+    public bool IsDirty { get; private set; }
 
-    public SessionTab Snapshot() =>
-        new() { Kind = TabKind.Query, Title = Title, Sql = _view.WholeText, Database = Database };
+    public bool HasUnsavedChanges => FileUnsaved || HasPendingRows;
+
+    // The typed SQL whose results the tab shows, which a result share sends; null after Commit or Roll back.
+    public string? LastStatement => _statement;
+
+    // The last typed run, when the server refused it; null once another run starts.
+    public RunFailure? LastFailure { get; private set; }
+
+    // What Explain, Review and Optimize with AI send: the selection, else the statement the caret is in, as Run
+    // statement takes it. Null when there is none.
+    public string? AssistantStatement()
+    {
+        var selected = _view.SelectedText;
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            return selected.Trim();
+        }
+
+        var text = _view.DocumentText;
+        if (_session.StatementAt(text, _view.Caret) is not { } statement)
+        {
+            return null;
+        }
+
+        // The range stops before its terminator, which the assistant sees as the user wrote it.
+        var (start, length) = statement.GetOffsetAndLength(text.Length);
+        var end = start + length;
+        var after = end;
+        while (after < text.Length && text[after] is ' ' or '\t')
+        {
+            after++;
+        }
+
+        if (after < text.Length && text[after] == ';')
+        {
+            end = after + 1;
+        }
+
+        var found = text[start..end].Trim();
+        return found.Length > 0 ? found : null;
+    }
+
+    // Read afresh, since the view reports edits a moment later than they land; a file still being written counts too.
+    private bool FileUnsaved => (FilePath is not null && TextDiffers()) || _saving is { IsCompleted: false };
+
+    // A scratch tab's text is kept in the session, so only a file's text is asked about, with the result's rows.
+    public async Task<bool> ConfirmCloseAsync(bool offerSave)
+    {
+        // A row save in flight is waited for, never asked about halfway; what it left pending is asked about after.
+        await _rowSave.ConfigureAwait(true);
+        // An open edit the grid cannot keep holds the close back while it shows why.
+        if (_editing is not null && _resultView is { } view && !view.CommitOpenEdit())
+        {
+            return false;
+        }
+
+        var rows = HasPendingRows;
+        var file = _files is not null && FileUnsaved;
+        if (!rows && !file)
+        {
+            return true;
+        }
+
+        // A read-only connection takes away Save for the rows; a file is written here, not to the database.
+        var saves = offerSave || !rows;
+        var answer = rows
+            ? await _resultView!.AskSaveBeforeCloseAsync(Title, saves).ConfigureAwait(true)
+            : await _files!.AskSaveBeforeCloseAsync(Title, offerSave: true).ConfigureAwait(true);
+        switch (answer)
+        {
+            // The rows are read again after their save: the file's save, or another tab's answer, can keep this one open.
+            case SaveBeforeClose.Save when saves:
+                if (rows && !await TrackRowSave(SaveRowsOnceAsync(reread: true)).ConfigureAwait(true))
+                {
+                    return false;
+                }
+
+                // Text typed while the file was written is still unsaved, so the tab stays.
+                return !file || (await SaveAsync().ConfigureAwait(true) && !FileUnsaved);
+            case SaveBeforeClose.DontSave:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // An empty name goes back to the automatic title; false when the shown title stays as it was.
+    public bool Rename(string? name)
+    {
+        var custom = QueryTitles.Normalize(name);
+        if (!CanRename || custom == CustomTitle)
+        {
+            return false;
+        }
+
+        CustomTitle = custom;
+        // The workspace drops its cached snapshot on this, so the session keeps the new name.
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    // Don't Save leaves the file as it was; the text stays with the tab either way, as macOS keeps a closed tab's SQL.
+    public SessionTab Snapshot() => new()
+    {
+        Kind = TabKind.Query,
+        // Apart from the typed name, so one emptied after a relaunch or a reopen goes back to it.
+        Title = AutomaticTitle,
+        CustomTitle = CustomTitle,
+        Sql = _view.WholeText,
+        Database = Database,
+        FilePath = FilePath,
+        FileStamp = FilePath is null ? null : _stamp,
+        FileUnsaved = FilePath is not null && TextDiffers(),
+        FoldedLines = _view.FoldedLines is { Count: > 0 } folded ? [.. folded] : null,
+        WrapText = WrapsText,
+    };
+
+    // The server rolls the transaction back once the app ends, so a relaunch can say so.
+    public SessionTab WithPendingWork(SessionTab snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return snapshot with
+        {
+            HeldTransaction = snapshot.HeldTransaction || WorkspaceNotices.Holds(Transaction),
+            RecoverFile = snapshot.FileUnsaved,
+        };
+    }
 
     public async Task RunAsync()
     {
-        if (IsRunning || _confirming || _work.IsClosed)
+        if (IsRunning || IsSavingRows || _confirming || _switching || _work.IsClosed)
         {
             return;
         }
 
         var sql = _view.SelectedText;
+        var origin = _view.SelectedTextStart;
         if (string.IsNullOrWhiteSpace(sql))
         {
             sql = _view.WholeText;
+            origin = 0;
         }
 
-        await RunTypedAsync(sql).ConfigureAwait(true);
+        await RunTypedAsync(sql, origin).ConfigureAwait(true);
     }
 
     // The statement is selected first so the tab shows which of its statements ran, as the Linux app does.
     public async Task RunStatementAsync()
     {
-        if (IsRunning || _confirming || _work.IsClosed)
+        if (IsRunning || IsSavingRows || _confirming || _switching || _work.IsClosed)
         {
             return;
         }
@@ -140,7 +412,29 @@ public sealed class QueryTab : IWorkspaceTab
 
         var (start, length) = statement.GetOffsetAndLength(text.Length);
         _view.SelectStatement(start, length);
-        await RunTypedAsync(text[statement]).ConfigureAwait(true);
+        await RunTypedAsync(text[statement], start).ConfigureAwait(true);
+    }
+
+    // The server counts code points from 1 in the text sent, and the document keeps each line break as one '\n'.
+    public static int? ErrorOffset(int start, string sent, int position)
+    {
+        ArgumentNullException.ThrowIfNull(sent);
+        if (position < 1)
+        {
+            return null;
+        }
+
+        var offset = start;
+        var index = 0;
+        for (var walked = 1; walked < position && index < sent.Length; walked++)
+        {
+            var width = char.IsSurrogatePair(sent, index) ? 2 : 1;
+            var pairedReturn = sent[index] == '\r' && index + 1 < sent.Length && sent[index + 1] == '\n';
+            offset += pairedReturn ? 0 : width;
+            index += width;
+        }
+
+        return offset;
     }
 
     public void Stop() => _run?.Cancel();
@@ -158,7 +452,9 @@ public sealed class QueryTab : IWorkspaceTab
     // Only one query that reads runs again: running a script or a write again would repeat it.
     public async Task SortAsync(GridSort sort)
     {
-        if (IsRunning || _sorting)
+        if (IsRunning || IsSavingRows || _sorting || _switching
+            || !await MayReplaceResultAsync(ResultReplacement.Sort).ConfigureAwait(true)
+            || IsRunning || _sorting || _switching)
         {
             _results.Sort = _sort;
             return;
@@ -182,6 +478,218 @@ public sealed class QueryTab : IWorkspaceTab
     // The grid shows another set of the run, unsorted.
     public void ResultPicked() => _sort = GridSort.None;
 
+    // Read each time the switcher opens; null when the server refused, which the results pane says.
+    public async Task<DatabaseChoices?> GetDatabaseChoicesAsync()
+    {
+        IReadOnlyList<SchemaEntry>? listed = null;
+        await _work.RunAsync(async token =>
+        {
+            try
+            {
+                listed = await _session.GetDatabasesAsync(token).ConfigureAwait(true);
+            }
+            catch (TableProException exception)
+            {
+                if (!_work.IsClosed)
+                {
+                    _results.ShowError(exception.Error);
+                }
+            }
+        }).ConfigureAwait(true);
+        if (listed is null || _work.IsClosed)
+        {
+            return null;
+        }
+
+        var listedDefault = listed.FirstOrDefault(entry => entry.IsDefault)?.Name;
+        if (listedDefault != _listedDefault)
+        {
+            _listedDefault = listedDefault;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        return new DatabaseChoices(
+            [.. listed.Where(entry => !entry.IsSystem).Select(entry => entry.Name)],
+            [.. listed.Where(entry => entry.IsSystem).Select(entry => entry.Name)],
+            ShownDatabase);
+    }
+
+    // An open editor keeps its connection, and with it its temporary tables and settings.
+    public async Task PickDatabaseAsync(string database)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(database);
+        if (!CanPickDatabase || database == ShownDatabase
+            || !await MayReplaceResultAsync(ResultReplacement.Database).ConfigureAwait(true) || !CanPickDatabase)
+        {
+            return;
+        }
+
+        _switching = true;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            await _work.RunAsync(token => MoveEditorAsync(database, token)).ConfigureAwait(true);
+        }
+        finally
+        {
+            _switching = false;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    // The view reports an edit; a file tab works out whether its text still matches the file.
+    public void TextEdited() => UpdateDirty();
+
+    // To its file; Save As when it has none or the file is gone.
+    public Task<bool> SaveAsync() => Saving(saveAs: false);
+
+    public Task<bool> SaveAsAsync() => Saving(saveAs: true);
+
+    // A bar the user closed stays closed until the file changes again.
+    // Every file operation is tab work, so a close waits for it and nothing it finds reaches a closed tab.
+    public Task CheckDiskAsync() => _work.RunAsync(_ => CheckDiskOnceAsync());
+
+    private async Task CheckDiskOnceAsync()
+    {
+        if (_files is null || FilePath is not { } path || _checking || _awaitingFile || _work.IsClosed)
+        {
+            return;
+        }
+
+        _checking = true;
+        try
+        {
+            var seen = SqlFile.Stamp(path);
+            var change = DiskChange.None;
+            if (seen is null)
+            {
+                change = DiskChange.Gone;
+            }
+            else if (seen != _stamp && await ChangedOnDiskAsync(path).ConfigureAwait(true))
+            {
+                change = DiskChange.Changed;
+            }
+
+            if (path != FilePath || _work.IsClosed)
+            {
+                return;
+            }
+
+            var shown = (change, seen);
+            if (change != DiskChange.None && shown == _dismissedChange)
+            {
+                return;
+            }
+
+            _shownChange = shown;
+            _files.ShowDiskChange(change);
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    public void DiskChangeDismissed() => _dismissedChange = _shownChange;
+
+    // A restored file tab reads its file once it is in the strip, off the UI thread: a clean one takes the file's text
+    // unless it was edited meanwhile, and the file becomes what a check and a save compare with.
+    public Task LoadRestoredFileAsync(SqlFileStamp? savedStamp, bool unsaved) =>
+        _work.RunAsync(_ => LoadRestoredFileOnceAsync(savedStamp, unsaved));
+
+    private async Task LoadRestoredFileOnceAsync(SqlFileStamp? savedStamp, bool unsaved)
+    {
+        if (_files is null || FilePath is not { } path || !_awaitingFile)
+        {
+            return;
+        }
+
+        var shown = _view.WholeText;
+        SqlFileOpening opening;
+        try
+        {
+            opening = await Task.Run(
+                    () => SqlFileOpening.Restored(shown, savedStamp, unsaved, () => SqlFile.TryRead(path)))
+                .ConfigureAwait(true);
+        }
+        finally
+        {
+            _awaitingFile = false;
+        }
+
+        if (_work.IsClosed || path != FilePath)
+        {
+            return;
+        }
+
+        if (opening.Text != shown && _view.WholeText == shown)
+        {
+            _files.ReplaceText(opening.Text);
+        }
+
+        if (opening.Baseline is { } baseline)
+        {
+            _format = baseline.Format;
+            _stamp = baseline.Stamp;
+            _savedText = opening.BaselineUnknown ? null : baseline.Text;
+        }
+
+        IsDirty = TextDiffers();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        // A check asked for while the file was read found nothing to compare with, so it runs now.
+        await CheckDiskOnceAsync().ConfigureAwait(true);
+    }
+
+    // The tab's text becomes the file's, dropping what was typed since.
+    public async Task<bool> ReloadAsync()
+    {
+        var reloaded = false;
+        await _work.RunAsync(async _ => reloaded = await ReloadOnceAsync().ConfigureAwait(true)).ConfigureAwait(true);
+        return reloaded;
+    }
+
+    private async Task<bool> ReloadOnceAsync()
+    {
+        if (_files is null || FilePath is not { } path)
+        {
+            return false;
+        }
+
+        var shown = _view.WholeText;
+        try
+        {
+            var read = await Task.Run(() => SqlFile.Read(path)).ConfigureAwait(true);
+            // Text typed while the file was read is not thrown away for it.
+            if (path != FilePath || _work.IsClosed || _view.WholeText != shown)
+            {
+                return false;
+            }
+
+            _files.ReplaceText(read.Text);
+            Adopt(read.Format, read.Stamp, read.Text);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (_work.IsClosed)
+            {
+                return false;
+            }
+
+            if (SqlFile.Stamp(path) is null)
+            {
+                _shownChange = (DiskChange.Gone, null);
+                _files.ShowDiskChange(DiskChange.Gone);
+            }
+            else
+            {
+                await _files.ShowReloadFailedAsync(path, exception).ConfigureAwait(true);
+            }
+
+            return false;
+        }
+    }
+
     public Task CloseAsync() => _closing ??= CloseOnceAsync();
 
     // The run in flight stops and ends before the run, the editor and the session it uses are let go.
@@ -192,6 +700,7 @@ public sealed class QueryTab : IWorkspaceTab
         _run?.Dispose();
         _run = null;
         _results.Clear();
+        ReleaseResult();
         if (_editor is not null)
         {
             await _editor.DisposeAsync().ConfigureAwait(true);
@@ -202,22 +711,23 @@ public sealed class QueryTab : IWorkspaceTab
         await _session.ReleaseAsync().ConfigureAwait(true);
     }
 
-    // Safe Mode judges the text that is sent, whichever part of the editor it is.
-    private async Task RunTypedAsync(string sql)
+    // Safe Mode judges the text that is sent, whichever part of the editor it is; origin is null when it joins pieces.
+    private async Task RunTypedAsync(string sql, int? origin)
     {
         if (string.IsNullOrWhiteSpace(sql))
         {
             return;
         }
 
-        if (!await SafeModeAllowsAsync(sql).ConfigureAwait(true) || IsRunning || _work.IsClosed)
+        if (!await SafeModeAllowsAsync(sql).ConfigureAwait(true) || IsRunning || _work.IsClosed
+            || !await MayReplaceResultAsync(ResultReplacement.Run).ConfigureAwait(true) || IsRunning || _work.IsClosed)
         {
             return;
         }
 
         _statement = sql;
         _sort = GridSort.None;
-        await RunSqlAsync(sql, record: true).ConfigureAwait(true);
+        await RunSqlAsync(sql, record: true, origin).ConfigureAwait(true);
     }
 
     // Typed SQL only: Commit and Roll back end a transaction at every level, and a sort runs again only a read.
@@ -247,12 +757,16 @@ public sealed class QueryTab : IWorkspaceTab
     }
 
     // Record: a run the user typed, which the history keeps; a sort and Commit or Roll back are not.
-    private Task<bool> RunSqlAsync(string sql, bool record) =>
-        _work.RunAsync(token => RunOnEditorAsync(sql, record, token));
+    private Task<bool> RunSqlAsync(string sql, bool record, int? origin = null) =>
+        _work.RunAsync(token => RunOnEditorAsync(sql, record, origin, token));
 
-    private async Task RunOnEditorAsync(string sql, bool record, CancellationToken cancellationToken)
+    private async Task RunOnEditorAsync(string sql, bool record, int? origin, CancellationToken cancellationToken)
     {
         HistoryRun? ran = null;
+        // The run replaces the rows the result's edits name, which were asked about first.
+        ReleaseResult();
+        RunEnd? ended = null;
+        var began = Stopwatch.GetTimestamp();
         SetRunning(true);
         try
         {
@@ -265,21 +779,12 @@ public sealed class QueryTab : IWorkspaceTab
             // An editor that opens as the tab closes stays in _editor, which the close disposes.
             if (_editor is null)
             {
-                var opened = await _session.OpenEditorAsync(cancellationToken).ConfigureAwait(true);
-                _editor = opened;
-                if (Database is { } database && !_work.IsClosed)
+                var opening = Database;
+                // Run elsewhere, the text would make its objects in the wrong database, so the core refuses the open.
+                _editor = await _session.OpenEditorAsync(Database, cancellationToken).ConfigureAwait(true);
+                if (opening is null)
                 {
-                    try
-                    {
-                        await opened.UseDatabaseAsync(database, cancellationToken).ConfigureAwait(true);
-                    }
-                    catch (TableProException)
-                    {
-                        // Run elsewhere, the text would make its object in the wrong database, so the editor goes.
-                        _editor = null;
-                        await opened.DisposeAsync().ConfigureAwait(true);
-                        throw;
-                    }
+                    _home ??= _editor.Database;
                 }
             }
 
@@ -289,18 +794,38 @@ public sealed class QueryTab : IWorkspaceTab
             }
 
             _run?.Dispose();
+            if (record)
+            {
+                LastFailure = null;
+            }
+
             var startedAt = DateTimeOffset.Now;
             var started = Stopwatch.GetTimestamp();
-            _run = _editor.Run(sql, RunOptions(_settings()), cancellationToken);
-            await _results.ShowRunAsync(_run, _sort, int.MaxValue, cancellationToken).ConfigureAwait(true);
+            var settings = _settings();
+            _run = _editor.Run(sql, RunOptions(settings), cancellationToken);
+            await _results.ShowRunAsync(_run, _sort, int.MaxValue, settings.ResultSetsKeptPerRun, cancellationToken)
+                .ConfigureAwait(true);
             if (!_work.IsClosed)
             {
+                // Before AfterRunAsync, whose lost-transaction error would take the bar the offer sits on.
+                if (origin is { } start
+                    && _results.Outcome is QueryOutcome.Failed { Error.Server.Position: { } position }
+                    && ErrorOffset(start, sql, position) is { } offset)
+                {
+                    _view.ShowErrorPosition(offset);
+                }
+
                 if (record)
                 {
                     ran = Ran(sql, startedAt, Stopwatch.GetElapsedTime(started));
+                    ended = Ended(Stopwatch.GetElapsedTime(began));
+                    LastFailure = _results.Outcome is QueryOutcome.Failed failed
+                        ? new RunFailure(sql, _view.WordError(failed.Error))
+                        : null;
                 }
 
                 await AfterRunAsync().ConfigureAwait(true);
+                await BindResultAsync(sql, cancellationToken).ConfigureAwait(true);
             }
         }
         catch (TableProException exception)
@@ -308,11 +833,19 @@ public sealed class QueryTab : IWorkspaceTab
             if (!_work.IsClosed)
             {
                 _results.ShowError(exception.Error);
+                ended = record
+                    ? new RunEnd(Stopwatch.GetElapsedTime(began), false, _view.WordError(exception.Error), null, null)
+                    : null;
             }
         }
         finally
         {
             SetRunning(false);
+        }
+
+        if (ended is not null && !_work.IsClosed)
+        {
+            RunEnded?.Invoke(this, ended);
         }
 
         // After the tab is idle, and inside its work, so a close waits for the write before the session goes.
@@ -356,6 +889,21 @@ public sealed class QueryTab : IWorkspaceTab
         return new HistoryRun(sql, startedAt, duration, _results.RowsAffected, kept);
     }
 
+    // A run with no end, as one whose connection dropped, has no outcome to tell.
+    private RunEnd? Ended(TimeSpan waited) => _results.Outcome is not { } outcome
+        ? null
+        : new RunEnd(
+            waited,
+            outcome is QueryOutcome.Cancelled,
+            outcome switch
+            {
+                QueryOutcome.Failed failed => _view.WordError(failed.Error),
+                QueryOutcome.TimedOut => _view.TimedOutMessage,
+                _ => null,
+            },
+            _results.ResultSetCount > 0 ? _results.RowCount : null,
+            _results.RowsAffected);
+
     private static QueryOptions RunOptions(AppSettings settings) => new(
         settings.RowLimit,
         settings.QueryTimeoutSeconds > 0 ? TimeSpan.FromSeconds(settings.QueryTimeoutSeconds) : null);
@@ -365,6 +913,12 @@ public sealed class QueryTab : IWorkspaceTab
         if (await ReleaseLostEditorAsync().ConfigureAwait(true))
         {
             return;
+        }
+
+        // A typed USE moved the editor, so the tab runs there from now on.
+        if (_editor?.Database is { } now)
+        {
+            SetDatabase(now);
         }
 
         var state = _results.Transaction == TransactionState.Unknown ? Transaction : _results.Transaction;
@@ -403,7 +957,8 @@ public sealed class QueryTab : IWorkspaceTab
     // Run as typed SQL is, so the results and the bar follow it, as the Linux app ends one.
     private async Task EndTransactionAsync(bool commit)
     {
-        if (IsRunning || _editor is null)
+        if (IsRunning || IsSavingRows || _editor is null
+            || !await MayReplaceResultAsync(ResultReplacement.Run).ConfigureAwait(true) || IsRunning)
         {
             return;
         }
@@ -417,6 +972,214 @@ public sealed class QueryTab : IWorkspaceTab
         IsRunning = running;
         _view.ShowRunning(running);
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private string? Kept(string? database) =>
+        string.IsNullOrEmpty(database) || database == _session.Database ? null : database;
+
+    // A switch the user picked leaves the rows shown from the database before, so a sort orders them where they are;
+    // a database a run itself moved to is where its own rows came from.
+    private void SetDatabase(string? database, bool switched = false)
+    {
+        var kept = Kept(database);
+        if (kept != Database)
+        {
+            Database = kept;
+            if (switched)
+            {
+                _statement = null;
+                // The rows shown came from the database before, which a save would read again in this one.
+                if (_editing is not null)
+                {
+                    ReleaseResult(ResultEditBlock.RunAgain);
+                }
+            }
+
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private async Task MoveEditorAsync(string database, CancellationToken cancellationToken)
+    {
+        if (await ReleaseLostEditorAsync().ConfigureAwait(true) || _editor is not { } editor)
+        {
+            SetDatabase(database, switched: true);
+            return;
+        }
+
+        try
+        {
+            await editor.UseDatabaseAsync(database, cancellationToken).ConfigureAwait(true);
+            SetDatabase(editor.Database ?? database, switched: true);
+        }
+        catch (TableProException exception) when (IsUnsupported(exception.Error))
+        {
+            // The engine binds a connection to its database, so the next run opens one there.
+            _editor = null;
+            await editor.DisposeAsync().ConfigureAwait(true);
+            SetDatabase(database, switched: true);
+        }
+        catch (TableProException exception)
+        {
+            if (!_work.IsClosed)
+            {
+                _results.ShowError(exception.Error);
+            }
+        }
+    }
+
+    private static bool IsUnsupported(CoreError error) =>
+        error.Code == "driver.unsupported" || error.Codes.Contains("driver.unsupported");
+
+    // A save already writing ends first, and text typed since is saved after it, so a Save never joins an older one.
+    private async Task<bool> Saving(bool saveAs)
+    {
+        var waited = false;
+        while (_saving is { IsCompleted: false } pending)
+        {
+            waited = true;
+            await pending.ConfigureAwait(true);
+        }
+
+        if (waited && !saveAs && FilePath is not null && !TextDiffers())
+        {
+            return true;
+        }
+
+        var saving = SaveWithinWorkAsync(saveAs);
+        _saving = saving;
+        return await saving.ConfigureAwait(true);
+    }
+
+    // Inside the tab's work, so a close waits for the file to be written before the tab goes.
+    private async Task<bool> SaveWithinWorkAsync(bool saveAs)
+    {
+        var saved = false;
+        await _work.RunAsync(async _ => saved = await SaveOnceAsync(saveAs).ConfigureAwait(true)).ConfigureAwait(true);
+        return saved;
+    }
+
+    private async Task<bool> SaveOnceAsync(bool saveAs)
+    {
+        if (_files is null)
+        {
+            return false;
+        }
+
+        if (saveAs || FilePath is not { } path || SqlFile.Stamp(path) is not { } seen)
+        {
+            return await SaveAsNewAsync(_files).ConfigureAwait(true);
+        }
+
+        if (seen != _stamp && await ChangedOnDiskAsync(path).ConfigureAwait(true))
+        {
+            switch (await _files.AskSaveOverChangeAsync(path).ConfigureAwait(true))
+            {
+                case SaveOverChange.Overwrite:
+                    break;
+                case SaveOverChange.Reload:
+                    await ReloadAsync().ConfigureAwait(true);
+                    return false;
+                default:
+                    return false;
+            }
+        }
+
+        return await WriteAsync(_files, path, _format).ConfigureAwait(true);
+    }
+
+    // Save As writes UTF-8, and the tab keeps saving the new file that way.
+    private async Task<bool> SaveAsNewAsync(IQueryFileView files)
+    {
+        var folder = FilePath is { } path ? Path.GetDirectoryName(path) : null;
+        var picked = await files.PickSavePathAsync(SuggestedFileName(), folder).ConfigureAwait(true);
+        return picked is not null && await WriteAsync(files, picked, SqlFileFormat.Utf8).ConfigureAwait(true);
+    }
+
+    private string SuggestedFileName()
+    {
+        if (FilePath is { } path)
+        {
+            return Path.GetFileName(path);
+        }
+
+        var invalid = Path.GetInvalidFileNameChars();
+        var name = string.Concat(Title.Select(character => invalid.Contains(character) ? '_' : character));
+        // A name typed with its extension is not given a second one.
+        return SqlExtensions.Any(extension => name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            ? name
+            : name + ".sql";
+    }
+
+    private async Task<bool> WriteAsync(IQueryFileView files, string path, SqlFileFormat format)
+    {
+        var text = _view.WholeText;
+        try
+        {
+            var stamp = await Task.Run(() => SqlFile.Write(path, text, format)).ConfigureAwait(true);
+            FilePath = path;
+            AutomaticTitle = Path.GetFileName(path);
+            // The file's name takes over from a typed one, as a file tab is always named for its file.
+            CustomTitle = null;
+            Adopt(format, stamp, text);
+            FileSaved?.Invoke(this, path);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            await files.ShowSaveFailedAsync(path, exception).ConfigureAwait(true);
+            return false;
+        }
+    }
+
+    // The file as read or written now is the one the tab's text is measured against.
+    private void Adopt(SqlFileFormat format, SqlFileStamp stamp, string text)
+    {
+        _format = format;
+        _stamp = stamp;
+        _savedText = text;
+        _shownChange = null;
+        _dismissedChange = null;
+        _files?.ShowDiskChange(DiskChange.None);
+        IsDirty = TextDiffers();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // A newer time alone, as a checkout that wrote the same text leaves, is no change.
+    private async Task<bool> ChangedOnDiskAsync(string path)
+    {
+        try
+        {
+            var read = await Task.Run(() => SqlFile.Read(path)).ConfigureAwait(true);
+            if (read.Text != _savedText)
+            {
+                return true;
+            }
+
+            if (path == FilePath)
+            {
+                _format = read.Format;
+                _stamp = read.Stamp;
+            }
+
+            return false;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    private bool TextDiffers() => _view.WholeText != _savedText;
+
+    private void UpdateDirty()
+    {
+        var dirty = FilePath is not null && TextDiffers();
+        if (dirty != IsDirty)
+        {
+            IsDirty = dirty;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private async Task SortHeldRowsAsync(GridSort sort)
@@ -442,6 +1205,8 @@ public sealed class QueryTab : IWorkspaceTab
         finally
         {
             _sorting = false;
+            // A sorted copy bound while the sort ran was shown as not taking edits.
+            ResultEditsChanged();
         }
     }
 

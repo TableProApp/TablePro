@@ -15,6 +15,18 @@ public protocol PluginImportDataSink: AnyObject, Sendable {
     /// its lines from the batch's first.
     func execute(statement: String, line: Int) async throws
 
+    /// Runs a `COPY ... FROM STDIN` read from the file's `line` and sends it `rows`.
+    func copyFromStandardInput(statement: String, line: Int, rows: PluginCopyData) async throws
+
+    // True only when the connection can send several statements in one exchange and `statement` may wait for the
+    // ones after it: its text reads the same whatever the statements before it change, so the file can be read past it.
+    func batches(_ statement: String) -> Bool
+
+    // Runs each as `execute(statement:line:)` does, in order. The first that fails throws `PluginImportBatchFailure`
+    // naming it, and none after it runs. `readAhead` says the file was read past them before they ran: when they
+    // changed how the session reads text, it throws one whose index is `statements.count`.
+    func execute(statements: [PluginImportStatement], readAhead: Bool) async throws
+
     func insertRow(_ values: [String: PluginCellValue]) async throws
     func insertRows(_ rows: [[String: PluginCellValue]]) async throws
     func deleteAllRowsFromTargetTable() async throws
@@ -30,6 +42,21 @@ public extension PluginImportDataSink {
     func execute(statement: String, line: Int) async throws {
         try await execute(statement: statement)
     }
+    func copyFromStandardInput(statement: String, line: Int, rows: PluginCopyData) async throws {
+        throw PluginImportError.importFailed(
+            String(localized: "This connection cannot load the rows of COPY FROM STDIN.")
+        )
+    }
+    func batches(_ statement: String) -> Bool { false }
+    func execute(statements: [PluginImportStatement], readAhead: Bool) async throws {
+        for (index, statement) in statements.enumerated() {
+            do {
+                try await execute(statement: statement.text, line: statement.line)
+            } catch {
+                throw PluginImportBatchFailure(index: index, underlying: error)
+            }
+        }
+    }
     func insertRow(_ values: [String: PluginCellValue]) async throws {
         throw PluginImportError.importFailed("Row-based import is not supported by this connection")
     }
@@ -43,4 +70,25 @@ public extension PluginImportDataSink {
     }
     func disableForeignKeyChecks() async throws {}
     func enableForeignKeyChecks() async throws {}
+}
+
+public struct PluginImportStatement: Sendable {
+    public let text: String
+    public let line: Int
+
+    public init(text: String, line: Int) {
+        self.text = text
+        self.line = line
+    }
+}
+
+public struct PluginImportBatchFailure: Error {
+    // `statements.count` when every statement ran and the file cannot be read on past them.
+    public let index: Int
+    public let underlying: any Error
+
+    public init(index: Int, underlying: any Error) {
+        self.index = index
+        self.underlying = underlying
+    }
 }

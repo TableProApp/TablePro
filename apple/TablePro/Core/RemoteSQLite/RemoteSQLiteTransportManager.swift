@@ -26,7 +26,6 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
     private var tunnels: [UUID: RemoteSQLiteTunnel] = [:]
     private var creations = TunnelCreationGenerations()
     private static let tunnelRegistry = OSAllocatedUnfairLock(initialState: [UUID: RemoteSQLiteTunnel]())
-    private var appNapActivity: NSObjectProtocol?
 
     private init() {}
 
@@ -118,7 +117,6 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
         Self.tunnelRegistry.withLock { $0[connectionId] = tunnel }
         tunnel.startForwarding()
         tunnel.startKeepAlive()
-        updateAppNapState()
 
         Self.logger.info("Remote SQLite session ready for \(connectionId) on 127.0.0.1:\(tunnel.localPort)")
         return RemoteSQLiteEndpoint(port: tunnel.localPort, token: token)
@@ -133,7 +131,6 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
     private func discardTunnel(connectionId: UUID) async throws {
         guard let tunnel = tunnels.removeValue(forKey: connectionId) else { return }
         Self.tunnelRegistry.withLock { $0[connectionId] = nil }
-        updateAppNapState()
         tunnel.close()
     }
 
@@ -165,7 +162,6 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
     private func handleTunnelDeath(connectionId: UUID) async {
         guard tunnels.removeValue(forKey: connectionId) != nil else { return }
         Self.tunnelRegistry.withLock { $0[connectionId] = nil }
-        updateAppNapState()
         Self.logger.warning("Remote SQLite session died for \(connectionId)")
         await DatabaseManager.shared.handleRemoteSQLiteTunnelDied(connectionId: connectionId)
     }
@@ -196,17 +192,5 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
             return nil
         }
         return listenFD
-    }
-
-    private func updateAppNapState() {
-        if !tunnels.isEmpty && appNapActivity == nil {
-            appNapActivity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiatedAllowingIdleSystemSleep,
-                reason: "Remote SQLite session keepalive requires timely execution"
-            )
-        } else if tunnels.isEmpty, let activity = appNapActivity {
-            ProcessInfo.processInfo.endActivity(activity)
-            appNapActivity = nil
-        }
     }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import TableProDatabase
 @testable import TableProMobile
+import TableProSSHTransport
 import Testing
 
 @MainActor

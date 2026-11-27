@@ -16,7 +16,7 @@ yanked = "deny"
 unmaintained = "workspace"
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "rsa is reached through sqlx-mysql, which encrypts the MySQL password with the server's public key, and through russh and ssh-key, which sign one login with an RSA identity file in the in-process SSH transport, off in the Linux app's build. Neither decrypts in process. The rsa ban below holds that scope. See linux/docs/decisions/0009-crypto-provider-and-sources.md and core/docs/decisions/0009-in-process-ssh-on-windows.md." },
-    { id = "RUSTSEC-2026-0459", reason = "The bundled SQLite before 3.54.0 is built only for targets other than Linux, and none ships: the Linux app links the distribution's SQLite (sqlite-unbundled), the Windows app has no release, and the macOS app does not link the core yet. sqlx-sqlite 0.9.0 requires libsqlite3-sys below 0.38, as the workspace pin does; once sqlx allows 0.39, raise the pin and remove this. Until then no Windows release (windows/RELEASING.md, A release)." },
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained with no patched version. arrow (under duckdb), bson, scylla, sqlx, tiberius, postgres-types, oauth2, rmcp, schemars and rust_xlsxwriter take or return its types, so it stays in the tree whatever date crate the workspace uses. Remove this once those crates move to jiff or time." },
 ]
 
 [licenses]
@@ -39,6 +39,8 @@ allow = [
     "LGPL-2.1-or-later",
     "0BSD",
     "BSL-1.0",
+    # The EFF large word list in tablepro-keys, CC BY 3.0 US (core ADR 0056, Libraries).
+    "CC-BY-3.0",
 ]
 
 [licenses.private]
@@ -67,4 +69,6 @@ deny = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = []
+# tokio-postgres with the copy_in fix, and sqlx-mysql reading more than 4096 columns, until a
+# release has each (Cargo.toml, patch.crates-io).
+allow-git = ["https://github.com/TableProApp/rust-postgres", "https://github.com/TableProApp/sqlx"]

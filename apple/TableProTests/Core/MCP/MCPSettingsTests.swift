@@ -184,4 +184,64 @@ struct MCPSettingsTests {
 
         #expect(decoded == original)
     }
+
+    @Test("Lowering the maximum row limit pulls a higher default down in the same write")
+    func lowerMaximumPullsTheDefaultDown() {
+        let settings = MCPSettings(defaultRowLimit: 5_000, maxRowLimit: 10_000).withMaxRowLimit(1_000)
+        #expect(settings.maxRowLimit == 1_000)
+        #expect(settings.defaultRowLimit == 1_000)
+    }
+
+    @Test("Raising the maximum row limit leaves the default alone")
+    func raisingTheMaximumKeepsTheDefault() {
+        let settings = MCPSettings(defaultRowLimit: 500, maxRowLimit: 10_000).withMaxRowLimit(20_000)
+        #expect(settings.maxRowLimit == 20_000)
+        #expect(settings.defaultRowLimit == 500)
+    }
+
+    @Test("A maximum row limit outside the allowed range is clamped, and changes nothing else")
+    func maximumRowLimitIsClamped() {
+        let original = MCPSettings(enabled: true, port: 5_000, queryTimeoutSeconds: 45, logQueriesInHistory: false)
+        let lowest = original.withMaxRowLimit(0)
+        #expect(lowest.maxRowLimit == SettingsValidationRules.mcpRowLimitRange.lowerBound)
+        #expect(lowest.defaultRowLimit == SettingsValidationRules.mcpRowLimitRange.lowerBound)
+
+        let highest = original.withMaxRowLimit(Int.max)
+        #expect(highest.maxRowLimit == SettingsValidationRules.mcpRowLimitRange.upperBound)
+        #expect(highest.defaultRowLimit == original.defaultRowLimit)
+        #expect(highest.port == original.port)
+        #expect(highest.queryTimeoutSeconds == original.queryTimeoutSeconds)
+        #expect(highest.logQueriesInHistory == original.logQueriesInHistory)
+        #expect(highest.enabled == original.enabled)
+    }
+
+    @Test("Both token sheets offer the same expiry choices, Never first")
+    func tokenExpiryChoices() {
+        #expect(TokenExpiry.allCases.first == .never)
+        #expect(TokenExpiry.allCases.map { $0.days } == [nil, 1, 7, 30, 60, 90, nil])
+    }
+
+    @Test("A fixed expiry adds its days, Never has no date, and Custom keeps the picked date")
+    func tokenExpiryResolvesDates() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let picked = Date(timeIntervalSince1970: 1_800_000_000)
+
+        #expect(TokenExpiry.never.resolvedDate(custom: picked, from: now, calendar: calendar) == nil)
+        #expect(TokenExpiry.custom.resolvedDate(custom: picked, from: now, calendar: calendar) == picked)
+        for option in TokenExpiry.allCases {
+            guard let days = option.days else { continue }
+            let expected = calendar.date(byAdding: .day, value: days, to: now)
+            #expect(option.resolvedDate(custom: picked, from: now, calendar: calendar) == expected)
+        }
+    }
+
+    @Test("A custom expiry starts thirty days out")
+    func customExpiryDefault() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        #expect(TokenExpiry.defaultCustomDate(from: now, calendar: calendar) == now.addingTimeInterval(30 * 86_400))
+    }
 }

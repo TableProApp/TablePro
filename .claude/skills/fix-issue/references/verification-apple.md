@@ -5,10 +5,11 @@ Read this when a verdict, a test name or a red CI check needs explaining. The co
 ## Usage
 
 - `verify.sh [options] <step> [args]`, plus `verify.sh tail <log> [lines]` and `verify.sh parse <log>`.
-- Options go before or after the step: `--platform <name>`, `--root <dir>`, `--run <dir>`, `--no-wait`, `--offline`. An unknown option is a usage error, and `--` ends the options.
+- Options go before or after the step: `--platform <name>`, `--root <dir>`, `--run <dir>`, `--no-wait`, `--offline`, `--jobs <n>`. An unknown option is a usage error, and `--` ends the options.
 - The platform comes from `uname -s`: Darwin is `apple`, Linux is `linux`, and a Windows shell (`MINGW*`, `MSYS*`, `CYGWIN*`) is `windows`. A platform named with `--platform` that has no backend exits 3; a default one with no backend is INCONCLUSIVE.
 - The root is the checkout your shell is in when it shares the script's git common directory, else the checkout the script lives in. `--root` overrides both. Check the `root:` line.
 - `--offline` adds `-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile` to `build`, `plugins`, `test` and `uitest`.
+- `--jobs <n>` caps the build jobs and test processes of each tool a step starts; unset, each tool keeps its own default. The header of `lib/platform-<name>.sh` names the flag that carries it to each tool, and the verdict prints `jobs: <n>`.
 - The Apple steps live in `.claude/skills/fix-issue/scripts/lib/platform-apple.sh`, whose header lists each one with its arguments.
 
 ## Why the wrapper
@@ -98,7 +99,8 @@ Read this when a verdict, a test name or a red CI check needs explaining. The co
 
 ## Reading CI
 
-- Artifacts exist only for a failed job and are kept 7 days. `macos-tests-<attempt>` holds every `.xcresult` plus `app-diagnostics` (TablePro crash reports and 2 hours of its unified log); `ios-tests-<attempt>` holds `iOS.xcresult`.
+- Artifacts exist only for a failed job and are kept 7 days. `macos-tests-<attempt>` holds every `.xcresult` plus `app-diagnostics` (TablePro crash reports and 2 hours of its unified log); `ios-tests-<attempt>` holds `Build.xcresult` and `iOS.xcresult`.
+- An iOS job red at "Boot a simulator the tests can install on" logs each device it tried and the runtime list. A device that "lost its runtime", or "Run the iOS tests" failing with "simulator runtime is not available" before any test ran, is the image unmounting the runtime (actions/runner-images#14946): re-run the failed job. No device of that name on any listed runtime means the image changed: update `SIMULATOR` in `ios-tests.yml`.
 - The step summary lists build errors, runner failures, failed cases and the slowest cases (`.claude/rules/ci.md`, Summaries). A case that passed only on the UI plan's retry shows as a `Passed only on retry` warning annotation while the job stays green.
 - `xcbeautify` can hide a compiler error behind "exit code 65". Read the check-run annotations, which also work while the run is going: `gh api repos/TableProApp/TablePro/check-runs/<job-id>/annotations`. Or open `Build.xcresult` from the artifact.
 - UI evidence: `gh run download <run-id> -n macos-tests-<attempt>`, then `xcrun xcresulttool get test-results activities --test-id <id> --path UI.xcresult` and `xcrun xcresulttool export attachments --path UI.xcresult --output-path <dir>`. The `element-tree-<n>` attachment shows which window held focus; the recording and the Synthesized Event plists show where each event landed.

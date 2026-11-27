@@ -186,6 +186,29 @@ struct PluginBackedDriverTests {
         #expect(driver.supportsTransactions == false)
     }
 
+    // Oracle commits nothing on its own, so a row edit outside the user's transaction gets one the app commits.
+    @Test("A session with nothing open is idle, so a row edit gets a transaction the app commits")
+    func idleSessionOpensItsOwnTransaction() async {
+        let plugin = StubPluginDriver()
+        plugin.hasTransactions = true
+        plugin.transactionState = .idle
+        let state = await makeDriver(plugin).sessionTransactionState()
+
+        #expect(state == .idle)
+        #expect(WriteTransactionPolicy.opensTransaction(supportsTransactions: true, state: state, statementCount: 1))
+    }
+
+    @Test("An open transaction is reported, so a row edit joins it and leaves the commit to its owner")
+    func openTransactionIsJoined() async {
+        let plugin = StubPluginDriver()
+        plugin.hasTransactions = true
+        plugin.transactionState = .inTransaction
+        let state = await makeDriver(plugin).sessionTransactionState()
+
+        #expect(state == .explicitTransaction)
+        #expect(!WriteTransactionPolicy.opensTransaction(supportsTransactions: true, state: state, statementCount: 1))
+    }
+
     @Test("String literals are escaped by the plugin, not the ANSI default")
     func escapingComesFromThePlugin() {
         let driver = makeDriver(StubPluginDriver())
@@ -309,5 +332,21 @@ struct PluginBackedDriverTests {
         #expect(columns.map(\.name) == ["id", "name"])
         #expect(columns.map(\.ordinalPosition) == [0, 1])
         #expect(columns.map(\.isPrimaryKey) == [true, false])
+    }
+
+    @Test("Catalog columns keep the plugin's enum labels, and only an always identity refuses written values")
+    func columnsKeepLabelsAndIdentityKind() async throws {
+        let plugin = StubPluginDriver()
+        plugin.scriptedColumns = [
+            PluginColumnInfo(name: "ID", dataType: "NUMBER", isNullable: false, identityKind: .always),
+            PluginColumnInfo(name: "SEQ", dataType: "NUMBER", isNullable: false, identityKind: .byDefault),
+            PluginColumnInfo(name: "status", dataType: "Enum8('new' = 1, 'paid' = 2)", allowedValues: ["new", "paid"])
+        ]
+
+        let columns = try await makeDriver(plugin).fetchColumns(table: "events", schema: nil)
+
+        #expect(columns.map(\.rejectsWrittenValues) == [true, false, false])
+        #expect(columns.map(\.isServerOwned) == [true, false, false])
+        #expect(columns.map(\.allowedValues) == [nil, nil, ["new", "paid"]])
     }
 }

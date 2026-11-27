@@ -72,7 +72,7 @@ extension GlobalStateSuites {
         func savedProviderListIsFetchedAgain() async throws {
             let viewModel = AIChatViewModel()
             await viewModel.loadAvailableModels()
-            #expect(viewModel.availableModels[Self.agent.id] == ["opus", "sonnet", "haiku"])
+            #expect(viewModel.availableModels[Self.agent.id]?.map(\.id) == ["default", "opus", "sonnet", "haiku"])
             #expect(!viewModel.modelListIsStale(for: Self.agent))
 
             let revision = viewModel.providerSettingsRevision
@@ -92,7 +92,7 @@ extension GlobalStateSuites {
         func failedListIsNotFetchedAgain() async {
             let viewModel = AIChatViewModel()
             await viewModel.loadAvailableModels()
-            #expect(viewModel.availableModels[unreachableProvider.id] == [])
+            #expect(viewModel.availableModels[unreachableProvider.id]?.isEmpty == true)
             #expect(!viewModel.modelListIsStale(for: unreachableProvider))
 
             var moved = unreachableProvider

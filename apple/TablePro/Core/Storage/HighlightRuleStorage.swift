@@ -20,12 +20,8 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
 
     private let storageDirectory: URL
     private var cache: [UUID: [String: [HighlightRule]]] = [:]
-    private let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return encoder
-    }()
-    private let decoder = JSONDecoder()
+    // Every row a grid draws asks for its table's rules, and building the storage key costs more than the lookup.
+    private var lastRead: (scope: TableScope, revision: Int, rules: [HighlightRule])?
 
     init(storageDirectory: URL? = nil) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
@@ -37,7 +33,10 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
     }
 
     func rules(for scope: TableScope) -> [HighlightRule] {
-        loadEntries(for: scope.connectionId)[scope.storageComponent] ?? []
+        if let lastRead, lastRead.revision == revision, lastRead.scope == scope { return lastRead.rules }
+        let rules = loadEntries(for: scope.connectionId)[scope.storageComponent] ?? []
+        lastRead = (scope, revision, rules)
+        return rules
     }
 
     func setRules(_ rules: [HighlightRule], for scope: TableScope) {
@@ -98,7 +97,7 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
         guard !connectionIds.isEmpty else { return }
         for connectionId in connectionIds {
             cache[connectionId] = [:]
-            removeFile(at: fileURL(for: connectionId))
+            try? file(for: connectionId).remove()
             removeFile(at: unreadableFileURL(for: connectionId))
         }
         revision &+= 1
@@ -107,9 +106,9 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
     private func commit(_ entries: [String: [HighlightRule]], for connectionId: UUID) {
         cache[connectionId] = entries
         if entries.isEmpty {
-            removeFile(at: fileURL(for: connectionId))
+            try? file(for: connectionId).remove()
         } else {
-            write(entries, for: connectionId)
+            try? file(for: connectionId).write(StoredRules(entries))
         }
         revision &+= 1
     }
@@ -117,40 +116,18 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
     private func loadEntries(for connectionId: UUID) -> [String: [HighlightRule]] {
         if let cached = cache[connectionId] { return cached }
 
-        let url = fileURL(for: connectionId)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            cache[connectionId] = [:]
-            return [:]
-        }
-
-        do {
-            let data = try Data(contentsOf: url)
-            let decoded = try decoder.decode([String: [LossyHighlightRule]].self, from: data)
-            let entries = decoded.compactMapValues { lossy -> [HighlightRule]? in
-                let rules = lossy.compactMap(\.rule)
-                return rules.isEmpty ? nil : rules
-            }
-            cache[connectionId] = entries
-            return entries
-        } catch {
-            Self.logger.error(
-                "Unreadable highlight rules for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public)"
-            )
+        let entries: [String: [HighlightRule]]
+        switch file(for: connectionId).read() {
+        case .missing:
+            entries = [:]
+        case .value(let stored):
+            entries = stored.entries
+        case .unreadable:
             preserveUnreadableFile(for: connectionId)
-            cache[connectionId] = [:]
-            return [:]
+            entries = [:]
         }
-    }
-
-    private func write(_ entries: [String: [HighlightRule]], for connectionId: UUID) {
-        do {
-            let data = try encoder.encode(entries)
-            try data.write(to: fileURL(for: connectionId), options: .atomic)
-        } catch {
-            Self.logger.error(
-                "Failed to write highlight rules for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public)"
-            )
-        }
+        cache[connectionId] = entries
+        return entries
     }
 
     private func preserveUnreadableFile(for connectionId: UUID) {
@@ -181,10 +158,36 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
         storageDirectory.appendingPathComponent("\(connectionId.uuidString).json")
     }
 
+    private func file(for connectionId: UUID) -> JSONFileStore<StoredRules> {
+        JSONFileStore(url: fileURL(for: connectionId), coding: .sortedKeys)
+    }
+
     private static func resolvedStorageDirectory() -> URL {
         AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("HighlightRules", isDirectory: true)
+    }
+}
+
+// Rules decode one by one, so one this build cannot read does not cost the rest, and a table left with none drops out.
+private struct StoredRules: Codable {
+    let entries: [String: [HighlightRule]]
+
+    init(_ entries: [String: [HighlightRule]]) {
+        self.entries = entries
+    }
+
+    init(from decoder: Decoder) throws {
+        let decoded = try decoder.singleValueContainer().decode([String: [LossyHighlightRule]].self)
+        entries = decoded.compactMapValues { lossy -> [HighlightRule]? in
+            let rules = lossy.compactMap(\.rule)
+            return rules.isEmpty ? nil : rules
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(entries)
     }
 }
 

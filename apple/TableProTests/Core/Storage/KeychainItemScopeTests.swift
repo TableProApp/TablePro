@@ -277,4 +277,25 @@ struct KeychainItemScopeTests {
 
         #expect(store.value(account: key, synchronizable: true) == "synced")
     }
+
+    @Test("ICloudSyncAllowed=false writes device-only items, and a synced item already written stays and is read")
+    func managedICloudOffWritesDeviceOnly() {
+        store.seed("from-another-device", account: key, synchronizable: true)
+        let keychain = KeychainHelper(
+            service: "com.TablePro.tests.scope",
+            passwordSyncSetting: { KeychainHelper.storedPasswordSyncSetting(policy: ICloudSyncOff()) },
+            items: store
+        )
+
+        #expect(keychain.readString(forKey: key) == "from-another-device")
+        #expect(keychain.writeString("new", forKey: key))
+
+        #expect(store.value(account: key, synchronizable: false) == "new")
+        #expect(store.value(account: key, synchronizable: true) == "from-another-device")
+    }
+}
+
+private struct ICloudSyncOff: ManagedPolicyReading {
+    func string(_ policy: ManagedPolicy) -> String? { nil }
+    func bool(_ policy: ManagedPolicy) -> Bool? { policy == .iCloudSyncAllowed ? false : nil }
 }

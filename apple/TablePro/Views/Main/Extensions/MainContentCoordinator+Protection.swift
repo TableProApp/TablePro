@@ -48,7 +48,7 @@ extension MainContentCoordinator {
             case .createTable:
                 guard !hasTableDraftWork(in: tab) else { return .mountedOnly }
             default:
-                guard !tab.pendingChanges.hasChanges else { return .mountedOnly }
+                guard !hasStagedRowEdits(inTab: tab.id) else { return .mountedOnly }
                 if hasStagedStructureEdits(in: tab) || hasStagedTypeChanges(in: tab) { return .saveable }
             }
             return fileSavability(of: tab)
@@ -68,7 +68,7 @@ extension MainContentCoordinator {
         case .createTable:
             return toolbarState.hasCreateTablePending || hasTableDraftWork(in: tab)
         default:
-            return changeManager.hasChanges
+            return hasStagedRowEdits(inTab: tab.id)
                 || hasStagedStructureEdits(in: tab)
                 || hasStagedTypeChanges(in: tab)
         }
@@ -108,8 +108,7 @@ extension MainContentCoordinator {
     }
 
     func hasAnyUnsavedWork() -> Bool {
-        changeManager.hasChanges
-            || hasPendingDestructiveTableOps
+        hasPendingDestructiveTableOps
             || hasSidebarEdits
             || toolbarState.hasCreateTablePending
             || tabManager.tabs.contains { hasUnsavedWork(in: $0) }

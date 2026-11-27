@@ -148,7 +148,7 @@ struct ManualCommitTests {
         #expect(AgentTransactionGuard.protection(family: .duckdb, sessionState: .inTransaction, controlsTransaction: false) == .refuse)
         #expect(AgentTransactionGuard.protection(family: .redshift, sessionState: .inTransaction, controlsTransaction: false) == .refuse)
         #expect(AgentTransactionGuard.protection(family: .mysql, sessionState: .inTransaction, controlsTransaction: false) == .none)
-        #expect(AgentTransactionGuard.protection(family: .teradata, sessionState: .inTransaction, controlsTransaction: false) == .none)
+        #expect(AgentTransactionGuard.protection(family: .teradata, sessionState: .inTransaction, controlsTransaction: false) == .refuse)
         #expect(AgentTransactionGuard.protection(family: .postgres, sessionState: .idle, controlsTransaction: false) == .none)
         #expect(AgentTransactionGuard.protection(family: .postgres, sessionState: .inTransaction, controlsTransaction: true) == .none)
     }
@@ -207,6 +207,22 @@ struct ManualCommitTests {
         #expect(AgentTransactionGuard.notice(
             startState: .inTransaction, endState: .inTransaction, pendingMatters: false, openedHold: false
         ) == nil)
+        #expect(AgentTransactionGuard.notice(startState: .idle, endState: .inTransaction, pendingMatters: false, openedHold: false)
+            == ManualCommit.statementOpenedNotice)
+        #expect(AgentTransactionGuard.notice(startState: .idle, endState: .idle, pendingMatters: false, openedHold: false) == nil)
+    }
+
+    @Test("Teradata's BT and ET are transaction control, and only there")
+    func teradataShortFormsControlTheTransaction() {
+        let teradata = DatabaseType.teradata
+        for sql in ["BT", "ET", "bt;"] {
+            #expect(ManualCommit.controlsTransaction([sql], databaseType: teradata, grammar: teradata.lexicalGrammar), "\(sql)")
+        }
+        #expect(ManualCommit.startsTransaction(["BT"], databaseType: teradata, grammar: teradata.lexicalGrammar))
+        #expect(!ManualCommit.startsTransaction(["ET"], databaseType: teradata, grammar: teradata.lexicalGrammar))
+        let postgres = DatabaseType.postgresql
+        #expect(!ManualCommit.controlsTransaction(["ET"], databaseType: postgres, grammar: postgres.lexicalGrammar))
+        #expect(!ManualCommit.controlsTransaction(["BT"], databaseType: postgres, grammar: postgres.lexicalGrammar))
     }
 
     @Test("The refusal says how to run the change")
@@ -244,19 +260,20 @@ struct ConnectionCommitModeStorageTests {
     @MainActor
     @Test("The form's Manual Commit toggle is off and refuses a change where the engine can't hold")
     func formToggleIsDisabledWhereUnavailable() {
-        let coordinator = ConnectionFormCoordinator(connectionId: nil)
-        coordinator.network.type = .mysql
-        coordinator.customization.commitMode = .manual
-        #expect(!coordinator.isManualCommitAvailable)
-        #expect(!coordinator.effectiveManualCommit)
-        coordinator.effectiveManualCommit = false
-        #expect(coordinator.customization.commitMode == .manual)
+        let mysql = ConnectionTypeTraits.live(for: .mysql, pluginManager: .shared)
+        let postgres = ConnectionTypeTraits.live(for: .postgresql, pluginManager: .shared)
+        var draft = ConnectionDraft.new(type: .mysql, traits: mysql)
+        draft.safety.commitMode = .manual
+        #expect(!mysql.manualCommitAvailable)
+        #expect(!ConnectionEditorEngine.effectiveManualCommit(draft, mysql))
+        draft.setManualCommit(false, traits: mysql)
+        #expect(draft.safety.commitMode == .manual)
 
-        coordinator.network.type = .postgresql
-        #expect(coordinator.isManualCommitAvailable)
-        #expect(coordinator.effectiveManualCommit)
-        coordinator.effectiveManualCommit = false
-        #expect(coordinator.customization.commitMode == .automatic)
+        draft.retype(to: postgres, from: mysql)
+        #expect(postgres.manualCommitAvailable)
+        #expect(ConnectionEditorEngine.effectiveManualCommit(draft, postgres))
+        draft.setManualCommit(false, traits: postgres)
+        #expect(draft.safety.commitMode == .automatic)
     }
 
     @Test("The form writes Manual Commit into the saved fields, and turning it off removes the key")

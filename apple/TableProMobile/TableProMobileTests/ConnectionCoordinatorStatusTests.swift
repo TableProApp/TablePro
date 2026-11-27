@@ -65,6 +65,76 @@ struct ConnectionCoordinatorStatusTests {
         return false
     }
 
+    // MARK: - Import
+
+    @Test("While an import in one window holds the session, another window's query, write and switch are refused at once")
+    func importHoldsTheSessionForEveryWindow() async throws {
+        let session = driver()
+        let importing = try await attachedCoordinator(on: session)
+        let other = ConnectionCoordinator(connection: connection, appState: appState)
+        await other.connect()
+        let log = QueryLog()
+        let gate = TestGate()
+        let importRun = Task {
+            try await importing.trackImport(failed: { (_: Bool) in false }) { admission in
+                #expect(admission.driver === session)
+                await gate.enter()
+                return true
+            }
+        }
+        await gate.waitUntilEntered()
+
+        #expect(other.isImportRunning)
+        #expect(other.runRefusal?.message == SessionHeldByImport().appError.message)
+        await #expect(throws: SessionHeldByImport.self) {
+            try await other.track { log.events.append("query") }
+        }
+        await #expect(throws: SessionHeldByImport.self) {
+            try await other.track(reading: true) { log.events.append("page") }
+        }
+        await other.switchDatabase(to: "app_archive")
+        #expect(other.failureAlertMessage == SessionHeldByImport().localizedDescription)
+        #expect(log.events.isEmpty)
+
+        await gate.open()
+        _ = try await importRun.value
+        try await other.track { log.events.append("query") }
+        #expect(log.events == ["query"])
+        #expect(other.isImportRunning == false)
+    }
+
+    @Test("An import asked for while other work runs on the session is refused, not queued")
+    func importRefusedWhileWorkRuns() async throws {
+        let importing = try await attachedCoordinator(on: driver())
+        let gate = TestGate()
+        let work = Task { try? await importing.track { await gate.enter() } }
+        await gate.waitUntilEntered()
+
+        await #expect(throws: SessionBusyForImport.self) {
+            try await importing.trackImport(failed: { (_: Bool) in false }) { _ in true }
+        }
+
+        await gate.open()
+        await work.value
+        #expect(try await importing.trackImport(failed: { (_: Bool) in false }) { _ in true })
+    }
+
+    @Test("A result reruns on a fresh connection only from the same unchanged session, still where it was read")
+    func freshConnectionReproducesOnlyAnUnchangedSession() async throws {
+        let coordinator = try await attachedCoordinator(on: driver())
+        let placement = coordinator.tablePlacement
+
+        try await coordinator.track(reading: true) {}
+        #expect(coordinator.reproducesOnFreshConnection(placement))
+        #expect(coordinator.reproducesOnFreshConnection(nil) == false)
+
+        try await coordinator.track(marksSession: false) {}
+        #expect(coordinator.reproducesOnFreshConnection(placement))
+
+        try await coordinator.track {}
+        #expect(coordinator.reproducesOnFreshConnection(placement) == false)
+    }
+
     // MARK: - Mapping
 
     @Test("Each phase maps to the shared display status, and a redial reads as reconnecting")
@@ -226,7 +296,7 @@ struct ConnectionCoordinatorStatusTests {
         let second = driver(tables: ["orders"])
         factory.queue(second)
 
-        _ = await coordinator.track(failed: { $0 }) { true }
+        _ = try await coordinator.track(failed: { $0 }) { true }
 
         #expect(coordinator.session?.driver === second)
         #expect(isConnected(coordinator))
@@ -373,7 +443,7 @@ struct ConnectionCoordinatorStatusTests {
         await coordinator.reconnectIfNeeded()
         #expect(coordinator.session?.driver === second)
 
-        let saved = await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
+        let saved = try await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.saveChanges()
         }
 
@@ -419,7 +489,7 @@ struct ConnectionCoordinatorStatusTests {
 
         let second = driver(tables: ["users"])
         factory.queue(second)
-        let saved = await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
+        let saved = try await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.saveChanges()
         }
 
@@ -432,6 +502,13 @@ struct ConnectionCoordinatorStatusTests {
         viewModel.operationError = nil
         #expect(await viewModel.saveChanges())
         #expect(ranUpdate(second))
+    }
+
+    // An open dials the remembered database first; this one refuses it as a dropped database.
+    private func goneStagingDriver() -> MockDatabaseDriver {
+        let gone = driver()
+        gone.connectError = MySQLError.databaseRefused("Unknown database 'app_staging'")
+        return gone
     }
 
     // A window on app_staging whose redial failed; `beforeLoss` runs while it is still connected.
@@ -450,8 +527,9 @@ struct ConnectionCoordinatorStatusTests {
         return coordinator
     }
 
-    // Another window opens the connection, which dials the saved app_prod.
+    // Another window opens the connection once app_staging is gone, so it lands on the saved app_prod.
     private func reconnectAnotherWindow() async -> MockDatabaseDriver {
+        factory.queue(goneStagingDriver())
         let second = driver(tables: ["orders"])
         factory.queue(second)
         await ConnectionCoordinator(connection: connection, appState: appState).connect()
@@ -497,6 +575,7 @@ struct ConnectionCoordinatorStatusTests {
         let second = driver(tables: ["orders"])
         let loading = TestGate()
         second.beforeFetchTables = { await loading.enter() }
+        factory.queue(goneStagingDriver())
         factory.queue(second)
         let other = ConnectionCoordinator(connection: connection, appState: appState)
 
@@ -559,4 +638,9 @@ nonisolated enum ScriptedFailure: LocalizedError {
         case .noSuchDatabase: "FATAL: the requested database does not exist"
         }
     }
+}
+
+@MainActor
+private final class QueryLog {
+    var events: [String] = []
 }

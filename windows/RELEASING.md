@@ -1,17 +1,19 @@
 # Releasing
 
-`.github/workflows/release-windows.yml` builds and publishes a Windows release. [ADR 0005](docs/decisions/0005-distribution.md) says why MSIX, self-contained, Native AOT, Artifact Signing and winget. An agent runs these commands when the maintainer says to release; it never creates the tag on its own.
+`.github/workflows/release-windows.yml` builds and publishes a Windows release. [ADR 0005](docs/decisions/0005-distribution.md) says why MSIX, self-contained, Native AOT, Artifact Signing and winget, and [ADR 0020](docs/decisions/0020-app-installer-updates.md) why App Installer files, the beta channel and the app's own check. An agent runs these commands when the maintainer says to release; it never creates the tag on its own.
 
 ## What a release ships
 
-- `TablePro_X.Y.Z.0_x64_arm64.msixbundle` on the `windows-vX.Y.Z` GitHub release, with `SHA256SUMS`: the x64 and Arm64 MSIX in one bundle, signed with Azure Artifact Signing. Windows installs the package for its own architecture.
-- A pull request to microsoft/winget-pkgs that adds `TablePro.TablePro` X.Y.Z, so `winget install TablePro.TablePro` gets it once Microsoft merges it.
+- `TablePro_<package>_x64_arm64.msixbundle` on the GitHub release, with `SHA256SUMS`: the x64 and Arm64 MSIX in one bundle, signed with Azure Artifact Signing. Windows installs the package for its own architecture.
+- Next to it, the channel's App Installer file: `TablePro.appinstaller` for a release, `TablePro-Beta.appinstaller` for a beta. Its `Uri` is the channel's file below, so opening it installs the channel's newest build and keeps the install on that channel.
+- The channel's file on `gh-pages`, deployed to `https://updates.tablepro.app/windows/`: a release moves `TablePro.appinstaller`, and `TablePro-Beta.appinstaller` too unless a newer beta is out; a beta moves `TablePro-Beta.appinstaller`. `windows/ci/appinstaller.py channels` refuses to move a channel to a lower version.
+- For a release, not a beta: a pull request to microsoft/winget-pkgs that adds `TablePro.TablePro` X.Y.Z, so `winget install TablePro.TablePro` gets it once Microsoft merges it.
 
 ## Versions
 
-- A tag is `windows-vX.Y.Z`, each number at most 65535. The package version is `X.Y.Z.0`.
-- There is no pre-release tag. MSIX orders versions by their four numbers, so a beta could not sort below its stable.
-- The tag is the only place the version is written. The workflow sets it in `Package.appxmanifest` and passes `-p:Version`, which Settings shows. A local build keeps the csproj's `0.1.0`.
+- A tag is `windows-vX.Y.Z` for a release or `windows-vX.Y.Z-beta.N` for a beta, each of X, Y and Z at most 65535 and N from 1 to 98. There is no other pre-release.
+- The package version is `X.Y.Z.N` for a beta and `X.Y.Z.99` for the release: MSIX orders the four numbers, so a beta sorts below its release and above the release before it. `python3 windows/ci/appinstaller.py version <version>` prints it with the channel.
+- The tag is the only place the version is written. The workflow sets the package version in `Package.appxmanifest` and passes the tag's version as `-p:Version`, which Settings shows. A local build keeps the csproj's `0.1.0`.
 
 ## Setup
 
@@ -25,17 +27,18 @@ The maintainer does these once, in this order: a tag runs the workflow file at t
    - `WINDOWS_SIGNING_ENDPOINT`: the account's regional endpoint, such as `https://eus.codesigning.azure.net/`.
    - `WINDOWS_SIGNING_ACCOUNT` and `WINDOWS_SIGNING_PROFILE`: the account and its certificate profile.
    - `WINDOWS_PUBLISHER`: the certificate profile's subject, exactly as the certificate shows it, such as `CN=Name, O=Name, L=City, S=State, C=Country`. The package's Publisher has to match it, or signing fails. It also fixes the package family name, and Windows takes a package with another publisher for another app, so it never changes after the first release.
-6. **Environment `windows-winget`**, deploying from `windows-v*` tags only, with a required reviewer, and the secret `WINGET_TOKEN`: a classic token with the `public_repo` scope ([wingetcreate, token](https://github.com/microsoft/winget-create/blob/main/doc/token.md)). That scope writes to every public repository its account can, so the account is one outside TableProApp whose only use is its fork of microsoft/winget-pkgs.
+6. **Environment `github-pages`**: add the tag pattern `windows-v*` beside `v*` to its deployment branches and tags before the first tag, or the channel files reach `gh-pages` and Pages refuses to deploy them: `gh api --method POST repos/TableProApp/TablePro/environments/github-pages/deployment-branch-policies -f name='windows-v*' -f type=tag`.
+7. **Environment `windows-winget`**, deploying from `windows-v*` tags only, with a required reviewer, and the secret `WINGET_TOKEN`: a classic token with the `public_repo` scope ([wingetcreate, token](https://github.com/microsoft/winget-create/blob/main/doc/token.md)). That scope writes to every public repository its account can, so the account is one outside TableProApp whose only use is its fork of microsoft/winget-pkgs.
 
 ## A release
 
-1. **Dry run.** It builds, checks, installs and starts both packages as the tag does, and publishes nothing. With `-f sign=true` it signs too, once `windows-release` also allows `main`; never a branch pattern, since whoever writes the branch writes the workflow that runs with the signing secrets.
+1. **Dry run.** It builds, checks, installs and starts both packages as the tag does, writes the channel files into a copy of `gh-pages` and shows the change, and publishes nothing. Pass a beta's version, such as `0.2.0-beta.1`, to dry-run a beta. With `-f sign=true` it signs too, once `windows-release` also allows `main`; never a branch pattern, since whoever writes the branch writes the workflow that runs with the signing secrets.
 
    ```bash
    gh workflow run release-windows.yml --ref main -f version=X.Y.Z
    ```
 
-2. **The tag**, on a `main` commit whose CI push run is green and whose `deny.toml` ignores no advisory on the grounds that Windows has no release:
+2. **The tag**, on a `main` commit whose CI push run is green:
 
    ```bash
    git fetch origin --tags
@@ -44,17 +47,39 @@ The maintainer does these once, in this order: a tag runs the workflow file at t
    git push origin windows-vX.Y.Z
    ```
 
+   A beta's tag is `windows-vX.Y.Z-beta.N`, from the same kind of commit:
+
+   ```bash
+   git tag -s windows-vX.Y.Z-beta.N -m windows-vX.Y.Z-beta.N <commit>
+   git push origin windows-vX.Y.Z-beta.N
+   ```
+
 3. **The workflow**, `gh run list --workflow release-windows.yml --limit 3`:
    - Builds an MSIX per architecture: Release configuration, the core in Cargo's release profile, Native AOT. It fails when the package's version, architecture or Windows 10 1809 floor is wrong, when it depends on a framework package, when `TablePro.dll` is in it, or when a binary in it imports the VC++ redistributable.
-   - Bundles both and signs the bundle, which signs the packages in it. A reviewer approves the step.
+   - Bundles both under the package version, signs the bundle, which signs the packages in it, and writes the channel's App Installer file for it. A reviewer approves the step.
    - Installs the bundle on Windows Server 2022 (x64, build 20348, the oldest Windows a hosted runner has) and Windows 11 (Arm64), and runs `TheInstalledPackageStartsAndKeepsItsFilesInLocalState` from the UI tests on each, in light and dark.
-   - Writes the winget manifest and runs `winget validate` on it.
-   - Publishes the GitHub release, which a reviewer approves. The repository's latest release stays the macOS one.
-   - Opens the winget-pkgs pull request with wingetcreate, which a reviewer approves.
-4. **Afterwards**: watch the winget-pkgs pull request. Its bots validate and install the package, and a label such as `Needs-Author-Feedback` waits for an answer.
+   - For a release, writes the winget manifest and runs `winget validate` on it.
+   - Publishes the GitHub release with the bundle, the App Installer file and `SHA256SUMS`, a pre-release for a beta, which a reviewer approves. The repository's latest release stays the macOS one.
+   - Tries the channel files on a copy of `gh-pages` in a job with no write access, then the GitHub release job moves them on `gh-pages` itself, one release at a time, and Pages deploys them, so installs on that channel find the update.
+   - For a release, opens the winget-pkgs pull request with wingetcreate, which a reviewer approves.
+4. **Afterwards**: check that `https://updates.tablepro.app/windows/TablePro.appinstaller` (or `TablePro-Beta.appinstaller`) names the new version, and watch the winget-pkgs pull request. Its bots validate and install the package, and a label such as `Needs-Author-Feedback` waits for an answer.
+
+## Notes
+
+- A user-visible change adds one towncrier fragment, `windows/changelog.d/<PR>.<type>.md` (`.claude/rules/changelog.md`). Only a `chore(release)` pull request edits `windows/CHANGELOG.md`; CI's Lint job refuses any other.
+- The release pull request assembles the fragments into a `CHANGELOG.md` section and curates them, as the macOS app does (`apple/RELEASING.md`, Notes). From a venv built on `scripts/release/requirements.txt`:
+
+  ```bash
+  towncrier build --dir windows --version X.Y.Z
+  ```
+
+  `[CRITICAL]` on the version heading marks a security or data-loss release, never a beta; later stables carry it forward.
+- A beta gets no `CHANGELOG.md` section: its notes are a towncrier draft of the fragments at the tag (`towncrier build --draft --dir windows --version X.Y.Z-beta.N`).
+- The GitHub release body the workflow writes is a fixed install line, not the changelog.
 
 ## When a run fails
 
 - Nothing reaches users before the GitHub release job. Tags never move: a code fix lands on `main` and ships as the next number.
+- The channel push or Pages failed after the GitHub release: `gh run rerun <run> --failed` runs them again. The release job finds its release made and pushes the files, and pushing a channel file that already names the version changes nothing.
 - A runner or network failure: `gh run rerun <run> --failed`.
 - winget-pkgs rejects the pull request: fix `windows/ci/winget-manifest.py` on `main`, run it on the published bundle with the family name the install step printed, and submit that folder with `wingetcreate submit`. The release stays as published.

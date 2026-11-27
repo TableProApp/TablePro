@@ -20,7 +20,7 @@ import Foundation
 /// database in read-only mode" before that URL, which is DuckDB's own signal that a read-only
 /// retry would succeed. Everything past the anchor is optional so a reworded DuckDB release
 /// degrades to "another process has the file" instead of failing to classify at all.
-struct DuckDBLockConflict: Equatable {
+nonisolated struct DuckDBLockConflict: Equatable {
     let filePath: String?
     let holderExecutablePath: String?
     let holderProcessId: Int?
@@ -92,7 +92,7 @@ struct DuckDBLockConflict: Equatable {
     }
 }
 
-extension DuckDBLockConflict {
+nonisolated extension DuckDBLockConflict {
     /// What the user is told. DuckDB's own sentence names the holder, a path and a
     /// documentation URL, which is more than a person needs and less than they can act on, so
     /// the holder's name is promoted to the front and the rest is dropped.

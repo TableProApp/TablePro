@@ -4,7 +4,13 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:TablePro.App.Views"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    KeyboardAcceleratorPlacementMode="Hidden">
+
+    <!-- Not a KeyDown handler: an accelerator also fires with the focus on the rail, the title bar or nowhere. -->
+    <UserControl.KeyboardAccelerators>
+        <KeyboardAccelerator Modifiers="Control" Key="V" Invoked="OnPasteInvoked" />
+    </UserControl.KeyboardAccelerators>
 
     <Grid Padding="36,24,36,0">
         <Grid.RowDefinitions>
@@ -14,11 +20,23 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock
-            x:Uid="HomeTitle"
-            Margin="0,0,0,12"
-            AutomationProperties.HeadingLevel="Level1"
-            Style="{StaticResource TitleTextBlockStyle}" />
+        <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="16">
+            <TextBlock
+                x:Uid="HomeTitle"
+                VerticalAlignment="Center"
+                AutomationProperties.HeadingLevel="Level1"
+                Style="{StaticResource TitleTextBlockStyle}" />
+            <!-- Its content is the active project's name; the same choices are in File, Project. -->
+            <DropDownButton
+                x:Name="ProjectSwitcher"
+                x:Uid="ProjectSwitcher"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="ProjectSwitcher">
+                <DropDownButton.Flyout>
+                    <MenuFlyout x:Name="ProjectMenu" Placement="BottomEdgeAlignedLeft" Opening="OnProjectMenuOpening" />
+                </DropDownButton.Flyout>
+            </DropDownButton>
+        </StackPanel>
 
         <Grid Grid.Row="1" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
@@ -33,8 +51,29 @@
                 DefaultLabelPosition="Right"
                 IsDynamicOverflowEnabled="True">
                 <AppBarButton x:Uid="NewConnectionButton" x:Name="NewConnectionButton" AutomationProperties.AutomationId="NewConnectionButton" Icon="Add" Click="OnNewConnection" />
+                <AppBarButton x:Uid="NewFromUrlButton" x:Name="NewFromUrlButton" AutomationProperties.AutomationId="NewFromUrlButton">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE71B;" /></AppBarButton.Icon>
+                    <AppBarButton.Flyout>
+                        <Flyout x:Name="HomeUrlFlyout" Placement="Bottom" Opened="OnHomeUrlFlyoutOpened">
+                            <StackPanel Width="440" Spacing="12">
+                                <TextBox x:Uid="UrlBox" x:Name="HomeUrlBox" AutomationProperties.AutomationId="HomeUrlBox" KeyDown="OnHomeUrlKeyDown" />
+                                <Button x:Uid="UrlContinueButton" x:Name="HomeUrlContinueButton" AutomationProperties.AutomationId="HomeUrlContinueButton" HorizontalAlignment="Right" Click="OnHomeUrlContinue" Style="{StaticResource AccentButtonStyle}" />
+                            </StackPanel>
+                        </Flyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
                 <AppBarButton x:Uid="OpenFileButton" x:Name="OpenFileButton" AutomationProperties.AutomationId="OpenFileButton" Icon="OpenFile" Click="OnOpenFile" />
-                <AppBarButton x:Uid="ImportButton" x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" Icon="Import" Click="OnImport" />
+                <AppBarButton x:Uid="ImportButton" x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" Icon="Import">
+                    <AppBarButton.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem x:Uid="ImportAppFromFile" AutomationProperties.AutomationId="ImportFromFileMenuItem" Click="OnImport" />
+                            <MenuFlyoutItem x:Uid="ImportAppFromApp" AutomationProperties.AutomationId="ImportFromAppMenuItem" Click="OnImportFromApp" />
+                        </MenuFlyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
+                <AppBarButton x:Uid="ExportConnectionsButton" x:Name="ExportConnectionsButton" AutomationProperties.AutomationId="ExportConnectionsButton" Click="OnExportConnections">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xEDE1;" /></AppBarButton.Icon>
+                </AppBarButton>
                 <AppBarSeparator x:Name="LibrarySeparator" />
                 <AppBarButton x:Uid="NewGroupButton" x:Name="NewGroupButton" AutomationProperties.AutomationId="NewGroupButton" Icon="NewFolder" Click="OnNewGroup" />
                 <AppBarButton x:Uid="TagsButton" x:Name="TagsButton" AutomationProperties.AutomationId="TagsButton" Icon="Tag">
@@ -83,14 +122,9 @@
                 <toolkit:SettingsCard x:Uid="NewConnectionCard" x:Name="NewConnectionCard" AutomationProperties.AutomationId="NewConnectionCard" IsClickEnabled="True" Click="OnNewConnection">
                     <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Add" /></toolkit:SettingsCard.HeaderIcon>
                 </toolkit:SettingsCard>
-                <toolkit:SettingsCard x:Uid="OpenFileCard" x:Name="OpenFileCard" AutomationProperties.AutomationId="OpenFileCard" IsClickEnabled="True" Click="OnOpenFile">
-                    <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="OpenFile" /></toolkit:SettingsCard.HeaderIcon>
-                </toolkit:SettingsCard>
-                <toolkit:SettingsCard x:Uid="ImportCard" x:Name="ImportCard" AutomationProperties.AutomationId="ImportCard" IsClickEnabled="True" Click="OnImport">
-                    <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Import" /></toolkit:SettingsCard.HeaderIcon>
-                </toolkit:SettingsCard>
-                <toolkit:SettingsCard x:Uid="SampleCard" x:Name="SampleCard" AutomationProperties.AutomationId="SampleCard" IsClickEnabled="True" Click="OnSample">
-                    <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Library" /></toolkit:SettingsCard.HeaderIcon>
+                <!-- Importing, a connections file and the sample are the setup guide's steps (core 0057). -->
+                <toolkit:SettingsCard x:Uid="SetupGuideCard" x:Name="SetupGuideCard" AutomationProperties.AutomationId="SetupGuideCard" IsClickEnabled="True" Click="OnSetupGuide">
+                    <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE82D;" /></toolkit:SettingsCard.HeaderIcon>
                 </toolkit:SettingsCard>
             </StackPanel>
             </Grid>
@@ -185,13 +219,50 @@
             </TreeView.ItemTemplate>
         </TreeView>
 
-        <TextBlock
-            x:Name="NoResultsText"
-            x:Uid="NoResultsText"
+        <StackPanel
+            x:Name="EmptyProject"
             Grid.Row="3"
-            Margin="0,24,0,0"
+            Margin="0,48,0,0"
             HorizontalAlignment="Center"
-            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            Visibility="Collapsed" />
+            Spacing="8"
+            Visibility="Collapsed">
+            <TextBlock
+                x:Name="EmptyProjectTitle"
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="EmptyProjectTitle"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                TextWrapping="Wrap" />
+            <TextBlock
+                x:Uid="EmptyProjectMessage"
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap" />
+            <Button
+                x:Uid="EmptyProjectNewConnection"
+                x:Name="EmptyProjectNewConnection"
+                Margin="0,8,0,0"
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="EmptyProjectNewConnection"
+                Click="OnNewConnection"
+                Style="{StaticResource AccentButtonStyle}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Margin="0,24,0,0" HorizontalAlignment="Center" Spacing="8">
+            <TextBlock
+                x:Name="NoResultsText"
+                x:Uid="NoResultsText"
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Visibility="Collapsed" />
+            <!-- Only inside a project: the rest of the library may hold the match. -->
+            <HyperlinkButton
+                x:Name="SearchAllConnectionsButton"
+                x:Uid="SearchAllConnectionsButton"
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="SearchAllConnectionsButton"
+                Click="OnSearchAllConnections"
+                Visibility="Collapsed" />
+        </StackPanel>
     </Grid>
 </UserControl>

@@ -31,7 +31,7 @@ private func save(_ name: String, in library: ConnectionLibrary) async throws ->
         integratedAuth: false,
         tls: TlsSettings(mode: .disable, caFile: nil, clientCertificate: nil, clientKey: nil, serverName: nil),
         ssh: nil,
-        safeMode: .off,
+        safeMode: .silent,
         queryTimeoutSecs: nil,
         color: nil,
         groupId: nil,
@@ -46,7 +46,7 @@ private let emptyRecords = CloudLibraryRecords(groups: [], connections: [])
 
 @Test func aLibrarySendsItsRecordsAsTheMacWritesThemAndThenNothing() async throws {
     let library = try makeLibrary()
-    let work = try await library.createGroup(name: "Work", parentId: nil)
+    let work = try await library.createGroup(name: "Work", parentId: nil, projectId: nil)
     let id = try await save("production", in: library)
     try await library.moveToGroup(ids: [id], groupId: work.id, before: nil)
     try await library.setFavorite(id: id, favorite: true)

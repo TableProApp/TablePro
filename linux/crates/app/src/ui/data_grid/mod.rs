@@ -83,6 +83,9 @@ impl DataGrid {
         let columns = config.columns.clone();
         let sorting = config.sorting;
         let rules = config.rules.clone();
+        // Read once: the setting is what a new grid opens with, and an open one keeps its own.
+        imp.wrap
+            .set(config.wrap_text && config.settings.grid_preferences().snapshot().wrap_text);
         imp.column_view
             .update_property(&[gtk::accessible::Property::Label(&config.label)]);
         imp.config.replace(Some(config));
@@ -377,6 +380,10 @@ impl DataGrid {
     /// export of what the user is looking at.
     pub fn export_source(&self) -> ExportSource {
         copy::export_source(self)
+    }
+
+    pub(crate) fn shared_rows(&self) -> crate::services::share_subject::SharedRows {
+        copy::shared_rows(self)
     }
 
     /// Put the sort on the headers without asking for the rows again, as

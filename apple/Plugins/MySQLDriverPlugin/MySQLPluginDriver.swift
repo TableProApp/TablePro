@@ -70,6 +70,33 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         set { sessionLock.withLock { _schemaNamesAreCaseSensitive = newValue } }
     }
 
+    // Catalog reads that run side by side share this one `lower_case_table_names` read.
+    private var _schemaNameCaseRead: Task<Bool?, Never>?
+
+    internal enum SchemaNameCase {
+        case known(Bool)
+        case reading(Task<Bool?, Never>)
+    }
+
+    internal func schemaNameCase(startingRead read: @escaping @Sendable () async -> Bool?) -> SchemaNameCase {
+        sessionLock.withLock {
+            if let known = _schemaNamesAreCaseSensitive { return .known(known) }
+            if let inFlight = _schemaNameCaseRead { return .reading(inFlight) }
+            let task = Task { await read() }
+            _schemaNameCaseRead = task
+            return .reading(task)
+        }
+    }
+
+    // A read a disconnect overtook or that failed stores nothing, so the next caller asks again.
+    internal func settleSchemaNameCaseRead(_ read: Task<Bool?, Never>, answer: Bool?) {
+        sessionLock.withLock {
+            guard _schemaNameCaseRead == read else { return }
+            _schemaNameCaseRead = nil
+            if let answer { _schemaNamesAreCaseSensitive = answer }
+        }
+    }
+
     /// Which `information_schema` columns this server has, keyed `TABLE.COLUMN`. Kept and cleared like
     /// `_schemaNamesAreCaseSensitive`.
     private var _catalogColumnPresence: [String: Bool] = [:]
@@ -83,7 +110,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     /// Guards `_flavor`, `footprint`, `appliedQueryTimeoutSeconds`, `isReleased`, `sessionLoss`,
-    /// `_schemaNamesAreCaseSensitive`, `_catalogColumnPresence` and `lastActivity`. The driver is
+    /// `_schemaNamesAreCaseSensitive`, `_schemaNameCaseRead`, `_catalogColumnPresence` and `lastActivity`. The driver is
     /// `@unchecked Sendable` and the idle timer runs on its own task, so the release decision and a
     /// query arriving would otherwise read and write them at the same time.
     /// Nothing calls into the connection while holding it: the connection asks the driver back under
@@ -103,6 +130,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// How many calls hold the connection right now. A release that ignores this can null the
     /// connection between `requireConnection` returning and the query reaching the server.
     private var activeOperations = 0
+
+    // Set once a flight breaks on this connection's path, so the reads go one by one until the next connect.
+    private var flightsRefused = false
 
     internal static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
 
@@ -178,7 +208,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             capabilities.insert(.temporaryTables)
         }
         if flavor.enforcesReadOnlyTransactions {
-            capabilities.formUnion([.readOnlyStatements, .enforcesReadOnlyMode])
+            capabilities.insert(.readOnlyStatements)
+        }
+        if holdsForServer(MySQLReadOnlyTransaction.isAvailable(banner:flavor:)) {
+            capabilities.insert(.enforcesReadOnlyMode)
         }
         return capabilities
     }
@@ -297,9 +330,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _serverVersion = nil
             _flavor = initialFlavor
             _schemaNamesAreCaseSensitive = nil
+            _schemaNameCaseRead = nil
             _catalogColumnPresence = [:]
             isReleased = false
             isDisconnected = true
+            flightsRefused = false
             footprint.reset()
             sessionLoss.reset()
             let task = reacquireTask
@@ -542,6 +577,34 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               )
         else { return }
         _ = try? await conn.executeQuery("DO 0", rowCap: nil)
+    }
+
+    private var flightMayRun: Bool {
+        sessionLock.withLock { MySQLColumnFlight.mayRun(on: footprint, isRefused: flightsRefused) }
+    }
+
+    // Nil when the flight could not run, and the caller then reads the same statements one by one.
+    func readInOneFlight(_ statements: [String]) async throws -> [Result<PluginQueryResult, MariaDBPluginError>]? {
+        guard flightMayRun else { return nil }
+        let conn = try await requireConnection()
+        defer { endOperation(on: conn) }
+        statements.forEach(noteActivity)
+        let startTime = Date()
+        let answers: [Result<MariaDBPluginQueryResult, MariaDBPluginError>]
+        do {
+            let admits: @Sendable () -> Bool = { [weak self] in self?.flightMayRun ?? false }
+            guard let read = try await conn.readInOneFlight(statements, admits: admits) else { return nil }
+            answers = read
+        } catch let error as MariaDBPluginError {
+            let response = MySQLColumnFlight.FailureResponse(to: error)
+            if response.stopsFlights {
+                sessionLock.withLock { flightsRefused = true }
+            }
+            if response.reportsFailure { throw error }
+            Self.logger.warning("A one-flight read fell back to single reads: code=\(error.code, privacy: .public)")
+            return nil
+        }
+        return answers.map { answer in answer.map { Self.pluginResult($0, startedAt: startTime) } }
     }
 
     // MARK: - Idle connection release
@@ -902,7 +965,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // A temporary table cannot carry a trigger.
         guard flavor.hasMySQLObjectCatalogs, await !resolvesToTemporaryTable(table, schema: schema) else { return [] }
         let dbName = effectiveSchema(schema)
-        let triggers = try await triggerList(schema: dbName, table: table)
+        let triggers = try await exportCatalog.triggerList(schema: dbName, table: table)
         Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .private(mask: .hash)) table=\(table, privacy: .private(mask: .hash)) parsed=\(triggers.count)")
         return triggers
     }
@@ -919,7 +982,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER \(qualifiedName(name, schema: schema))"
+        exportCatalog.dropTriggerStatement(name: name, schema: schema)
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
@@ -930,78 +993,29 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard serverHasInformationSchema else {
             return try await tableStatusRow(table: table, schema: schema)?[safe: 4]?.asText.flatMap { Int($0) }
         }
-        let escapedDb = effectiveSchemaLiteral(schema)
-        let escapedTable = mysqlEscapeStringLiteral(table)
-
-        let query = """
-            SELECT TABLE_ROWS
-            FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA = '\(escapedDb)'
-              AND TABLE_NAME = '\(escapedTable)'
-            """
-
-        let result = try await execute(ownStatement: query)
-        guard let firstRow = result.rows.first,
-              let value = firstRow[safe: 0]?.asText,
-              let count = Int(value)
-        else { return nil }
-
-        return count
+        return try await exportCatalog.approximateRowCount(table: table, schema: schema)
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
-
-        guard let firstRow = result.rows.first,
-              let ddl = firstRow[safe: 1]?.asText
-        else {
+        guard let ddl = try await exportCatalog.tableDDL(table: table, schema: schema) else {
             throw MariaDBPluginError(code: 0, message: "Failed to fetch DDL for table '\(table)'", sqlState: nil)
-        }
-
-        return ddl.hasSuffix(";") ? ddl : ddl + ";"
-    }
-
-    /// Scheduled events. `information_schema.EVENTS` lists them for the current database, and
-    /// `SHOW CREATE EVENT` is the only thing that produces a runnable definition.
-    func fetchEvents(schema: String?) async throws -> [PluginEventInfo] {
-        guard flavor.hasMySQLObjectCatalogs,
-              holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:))
-        else { return [] }
-        let exactSchema = await schemaNamesAreCaseSensitive()
-        let result = try await execute(
-            ownStatement: MySQLObjectQueries.eventList(schema: effectiveSchema(schema), exactSchema: exactSchema)
-        )
-        return result.rows.compactMap { row in
-            guard let name = row[safe: 0]?.asText else { return nil }
-            return PluginEventInfo(
-                name: name,
-                schema: row[safe: 3]?.asText,
-                kind: row[safe: 1]?.asText,
-                isEnabled: row[safe: 2]?.asText?.uppercased() == "ENABLED"
-            )
-        }
-    }
-
-    func fetchEventDDL(_ event: PluginEventInfo) async throws -> String {
-        let result = try await execute(query: "SHOW CREATE EVENT \(qualifiedName(event.name, schema: event.schema))")
-        guard let row = result.rows.first, let ddl = row[safe: 3]?.asText else {
-            throw PluginObjectSourceError.unsupported(event.name)
         }
         return ddl
     }
 
+    func fetchEvents(schema: String?) async throws -> [PluginEventInfo] {
+        try await exportCatalog.events(schema: schema)
+    }
+
+    func fetchEventDDL(_ event: PluginEventInfo) async throws -> String {
+        try await exportCatalog.eventDDL(event)
+    }
+
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         guard !flavor.isDatabend else { return try await databendViewDefinition(view: view, schema: schema) }
-        // StarRocks's `SHOW CREATE VIEW` rewrites a materialized view as a plain `CREATE VIEW`.
-        let show = flavor.isStarRocks ? "SHOW CREATE TABLE" : "SHOW CREATE VIEW"
-        let result = try await execute(query: "\(show) \(qualifiedName(view, schema: schema))")
-
-        guard let firstRow = result.rows.first,
-              let ddl = firstRow[safe: 1]?.asText
-        else {
+        guard let ddl = try await exportCatalog.viewDefinition(view: view, schema: schema) else {
             throw MariaDBPluginError(code: 0, message: "Failed to fetch definition for view '\(view)'", sqlState: nil)
         }
-
         return ddl
     }
 
@@ -1118,18 +1132,36 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The clock still moves, because a database switch is the user using the connection: leaving
     /// it alone let the idle timer fire seconds after a switch and charge the next click a full
     /// reconnect.
+    ///
+    /// The `USE` stays unsent only while this session is proven on the database: the connection saw its own `USE`
+    /// succeed and every statement since stay put, and the footprint is clean. Every other case sends it. A `USE` left
+    /// out no longer resets `ROW_COUNT()` or the warning list, so they answer for the user's own last statement.
     func switchDatabase(to database: String) async throws {
         guard !flavor.isStarRocks else {
             return try await enterStarRocks(starrocksScope.entering(catalog: database))
         }
-        _ = try await executeWithReconnect(
-            query: "USE \(quoteIdentifier(database))",
-            isRetry: false,
-            countsAsActivity: false
-        )
+        let conn = try await requireConnection()
+        defer { endOperation(on: conn) }
+        do {
+            try await conn.enterDatabase(
+                database,
+                statement: "USE \(quoteIdentifier(database))",
+                mayStay: { [weak self] in self?.sessionMayStay(on: database) ?? false }
+            )
+        } catch {
+            await refreshTransactionFlag(after: error, on: conn)
+            throw error
+        }
         sessionLock.withLock {
             _activeDatabase = database
             lastActivity = ContinuousClock.now
+        }
+    }
+
+    private func sessionMayStay(on database: String) -> Bool {
+        sessionLock.withLock {
+            _activeDatabase.utf8.elementsEqual(database.utf8) && footprint.isClean
+                && MySQLServerVersion.keepsDatabaseBetweenStatements(banner: _serverVersion, flavor: _flavor)
         }
     }
 
@@ -1423,11 +1455,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Foreign Key Checks
 
     func foreignKeyDisableStatements() -> [String]? {
-        flavor.hasMySQLObjectCatalogs ? ["SET FOREIGN_KEY_CHECKS=0"] : nil
+        flavor.foreignKeyCheckStatements(enabled: false)
     }
 
     func foreignKeyEnableStatements() -> [String]? {
-        flavor.hasMySQLObjectCatalogs ? ["SET FOREIGN_KEY_CHECKS=1"] : nil
+        flavor.foreignKeyCheckStatements(enabled: true)
     }
 }
 
@@ -1497,11 +1529,17 @@ extension MySQLPluginDriver {
     }
 
     private func readOnlyScope(_ context: PluginStatementContext) -> MySQLReadOnlyTransaction.Scope? {
-        guard let reason = MySQLReadOnlyTransaction.reason(for: context, flavor: flavor) else { return nil }
+        let identity = serverIdentity
+        guard let reason = MySQLReadOnlyTransaction.reason(for: context, flavor: identity.flavor, banner: identity.banner)
+        else { return nil }
         // The lock comes from the footprint, because the status flags never show it.
-        return MySQLReadOnlyTransaction.Scope(reason: reason, sessionState: { isInTransaction in
-            self.sessionLock.withLock { self.footprint.transactionState(isInTransaction: isInTransaction) }
-        })
+        return MySQLReadOnlyTransaction.Scope(
+            reason: reason,
+            runsInOpenTransaction: context.enforcesReadOnly && !context.callsUnlistedFunction,
+            sessionState: { isInTransaction in
+                self.sessionLock.withLock { self.footprint.transactionState(isInTransaction: isInTransaction) }
+            }
+        )
     }
 
     private func readOnlyRead(

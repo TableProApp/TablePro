@@ -1,0 +1,376 @@
+{
+  "description": "License files signed with keys[0], the RFC 8037 appendix A.1 key, and keys[1], whose kid is in revoked_kids. Verify each token at now (Unix seconds) with keys, refusing revoked_kids, for origin and for either audience, with nbf allowed up to 300 seconds ahead. Every valid token passes, decodes to its claims and is in state at now: active before exp, grace before grace_until, lapsed from it; a file with maintenance_until and no exp is active. Every invalid token fails the check it names.",
+  "keys": [
+    {
+      "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+      "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+    },
+    {
+      "kid": "Tu3GV4lY5PFEiSEmAsjAhMf6L9x67QwzCteOXh7LQjU",
+      "x": "TMI9PhVmgIiU5Mj0UVJZrKTkOakZvybK5l3aPFnhfC0"
+    }
+  ],
+  "revoked_kids": [
+    "Tu3GV4lY5PFEiSEmAsjAhMf6L9x67QwzCteOXh7LQjU"
+  ],
+  "audiences": [
+    "tablepro-cloud",
+    "tablepro-app"
+  ],
+  "origin": "https://api.example.com",
+  "now": 1792922400,
+  "valid": [
+    {
+      "name": "yearly, 300 days before its end",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.k2d6I8mBNhV4ka9WYPle7B4YY0wz5FYhQEI_FDmcn5dAfqJbEPEuNlZzt1CBtXxedOgj7kqgWmEFHClAdK1DCA",
+      "header": {
+        "alg": "EdDSA",
+        "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "typ": "license+jwt"
+      },
+      "claims": {
+        "iss": "https://tablepro.app",
+        "aud": [
+          "tablepro-cloud",
+          "tablepro-app"
+        ],
+        "sub": "lic_01kasr2vbse2qbn1fd3f8vbq5k",
+        "jti": "019a1a6e-c070-7a00-8b00-000000000001",
+        "iat": 1787047200,
+        "nbf": 1787047200,
+        "exp": 1818842400,
+        "grace_until": 1821434400,
+        "license_type": "paid",
+        "seats": 25,
+        "features": [
+          "encrypted_export",
+          "query_insights",
+          "service_sync",
+          "team_library"
+        ],
+        "origin": "https://api.example.com"
+      },
+      "state": "active"
+    },
+    {
+      "name": "yearly, 10 days into its 30 days of grace",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3NjAyNjMyMDAsIm5iZiI6MTc2MDI2MzIwMCwiZXhwIjoxNzkyMDU4NDAwLCJncmFjZV91bnRpbCI6MTc5NDY1MDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.dyANdPT37Vs3e6H6Fw_EIbK7R4H4GfUKYUWEMDbRfLnSlgfmF33bI0JDBJRhDxFV4zxeRJG27zZH9m0ui6FICA",
+      "header": {
+        "alg": "EdDSA",
+        "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "typ": "license+jwt"
+      },
+      "claims": {
+        "iss": "https://tablepro.app",
+        "aud": [
+          "tablepro-cloud",
+          "tablepro-app"
+        ],
+        "sub": "lic_01kasr2vbse2qbn1fd3f8vbq5k",
+        "jti": "019a1a6e-c070-7a00-8b00-000000000001",
+        "iat": 1760263200,
+        "nbf": 1760263200,
+        "exp": 1792058400,
+        "grace_until": 1794650400,
+        "license_type": "paid",
+        "seats": 25,
+        "features": [
+          "encrypted_export",
+          "query_insights",
+          "service_sync",
+          "team_library"
+        ],
+        "origin": "https://api.example.com"
+      },
+      "state": "grace"
+    },
+    {
+      "name": "yearly, its 30 days of grace just over",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3NTg1MzUyMDAsIm5iZiI6MTc1ODUzNTIwMCwiZXhwIjoxNzkwMzMwNDAwLCJncmFjZV91bnRpbCI6MTc5MjkyMjQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.vPnAci8NAbdmlpI3nWsjJhlBGx4bRnug3netTfxQmE7HTF0EMpgA4iIQq_PGGMfTzmC3MKOC64OjQwPtFZZQDw",
+      "header": {
+        "alg": "EdDSA",
+        "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "typ": "license+jwt"
+      },
+      "claims": {
+        "iss": "https://tablepro.app",
+        "aud": [
+          "tablepro-cloud",
+          "tablepro-app"
+        ],
+        "sub": "lic_01kasr2vbse2qbn1fd3f8vbq5k",
+        "jti": "019a1a6e-c070-7a00-8b00-000000000001",
+        "iat": 1758535200,
+        "nbf": 1758535200,
+        "exp": 1790330400,
+        "grace_until": 1792922400,
+        "license_type": "paid",
+        "seats": 25,
+        "features": [
+          "encrypted_export",
+          "query_insights",
+          "service_sync",
+          "team_library"
+        ],
+        "origin": "https://api.example.com"
+      },
+      "state": "lapsed"
+    },
+    {
+      "name": "monthly, 5 days into its 7 days of grace",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDIiLCJpYXQiOjE3ODk2MzkyMDAsIm5iZiI6MTc4OTYzOTIwMCwiZXhwIjoxNzkyNDkwNDAwLCJncmFjZV91bnRpbCI6MTc5MzA5NTIwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0._zQRDzwoNfATyAgVOxnp_1p6SznYpr-9LxgTF1Xxpe7oQSkzts68W8GGSZYAMeH2saJryDMrR-1oHBu4K5_7Aw",
+      "header": {
+        "alg": "EdDSA",
+        "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "typ": "license+jwt"
+      },
+      "claims": {
+        "iss": "https://tablepro.app",
+        "aud": [
+          "tablepro-cloud",
+          "tablepro-app"
+        ],
+        "sub": "lic_01kasr2vbse2qbn1fd3f8vbq5k",
+        "jti": "019a1a6e-c070-7a00-8b00-000000000002",
+        "iat": 1789639200,
+        "nbf": 1789639200,
+        "exp": 1792490400,
+        "grace_until": 1793095200,
+        "license_type": "paid",
+        "seats": 25,
+        "features": [
+          "encrypted_export",
+          "query_insights",
+          "service_sync",
+          "team_library"
+        ],
+        "origin": "https://api.example.com"
+      },
+      "state": "grace"
+    },
+    {
+      "name": "monthly, its 7 days of grace just over",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDIiLCJpYXQiOjE3ODk0NjY0MDAsIm5iZiI6MTc4OTQ2NjQwMCwiZXhwIjoxNzkyMzE3NjAwLCJncmFjZV91bnRpbCI6MTc5MjkyMjQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.rytwljXY1x0Eun8yJkMTstynvuPYvOMG-pYxvAQZJwTyxO-QEs82jyZCwslGP-3gOfWw4eVnohXJBi4DCsOwBg",
+      "header": {
+        "alg": "EdDSA",
+        "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "typ": "license+jwt"
+      },
+      "claims": {
+        "iss": "https://tablepro.app",
+        "aud": [
+          "tablepro-cloud",
+          "tablepro-app"
+        ],
+        "sub": "lic_01kasr2vbse2qbn1fd3f8vbq5k",
+        "jti": "019a1a6e-c070-7a00-8b00-000000000002",
+        "iat": 1789466400,
+        "nbf": 1789466400,
+        "exp": 1792317600,
+        "grace_until": 1792922400,
+        "license_type": "paid",
+        "seats": 25,
+        "features": [
+          "encrypted_export",
+          "query_insights",
+          "service_sync",
+          "team_library"
+        ],
+        "origin": "https://api.example.com"
+      },
+      "state": "lapsed"
+    },
+    {
+      "name": "perpetual, its maintenance ended 60 days ago",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDMiLCJpYXQiOjE3NjExMjcyMDAsIm5iZiI6MTc2MTEyNzIwMCwibWFpbnRlbmFuY2VfdW50aWwiOjE3ODc3Mzg0MDAsImxpY2Vuc2VfdHlwZSI6InBhaWQiLCJzZWF0cyI6MjUsImZlYXR1cmVzIjpbImVuY3J5cHRlZF9leHBvcnQiLCJxdWVyeV9pbnNpZ2h0cyIsInNlcnZpY2Vfc3luYyIsInRlYW1fbGlicmFyeSJdLCJvcmlnaW4iOiJodHRwczovL2FwaS5leGFtcGxlLmNvbSJ9.Upgs3YE3-YVh86LhfJBDyurmw16vtX8z3idvmvmKwZLjqDDtJ313rOhUyo44fWi0HUY_jkAERiYNzS1o_qvNCQ",
+      "header": {
+        "alg": "EdDSA",
+        "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "typ": "license+jwt"
+      },
+      "claims": {
+        "iss": "https://tablepro.app",
+        "aud": [
+          "tablepro-cloud",
+          "tablepro-app"
+        ],
+        "sub": "lic_01kasr2vbse2qbn1fd3f8vbq5k",
+        "jti": "019a1a6e-c070-7a00-8b00-000000000003",
+        "iat": 1761127200,
+        "nbf": 1761127200,
+        "maintenance_until": 1787738400,
+        "license_type": "paid",
+        "seats": 25,
+        "features": [
+          "encrypted_export",
+          "query_insights",
+          "service_sync",
+          "team_library"
+        ],
+        "origin": "https://api.example.com"
+      },
+      "state": "active"
+    },
+    {
+      "name": "trial, 5 days into its grace",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDQiLCJpYXQiOjE3ODk4OTg0MDAsIm5iZiI6MTc4OTg5ODQwMCwiZXhwIjoxNzkyNDkwNDAwLCJncmFjZV91bnRpbCI6MTc5NTA4MjQwMCwibGljZW5zZV90eXBlIjoidHJpYWwiLCJzZWF0cyI6MTAsImZlYXR1cmVzIjpbImVuY3J5cHRlZF9leHBvcnQiLCJxdWVyeV9pbnNpZ2h0cyIsInNlcnZpY2Vfc3luYyIsInRlYW1fbGlicmFyeSJdLCJvcmlnaW4iOiJodHRwczovL2FwaS5leGFtcGxlLmNvbSJ9.hwAjdJoaHMEoS82ZjUNGxKY_J8m56rnfwf_pKYlz4uDNQzcXxK03cr8W6f0Ts0D2-v_B4rx-tmeAJFCpYWLdDA",
+      "header": {
+        "alg": "EdDSA",
+        "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "typ": "license+jwt"
+      },
+      "claims": {
+        "iss": "https://tablepro.app",
+        "aud": [
+          "tablepro-cloud",
+          "tablepro-app"
+        ],
+        "sub": "lic_01kasr2vbse2qbn1fd3f8vbq5k",
+        "jti": "019a1a6e-c070-7a00-8b00-000000000004",
+        "iat": 1789898400,
+        "nbf": 1789898400,
+        "exp": 1792490400,
+        "grace_until": 1795082400,
+        "license_type": "trial",
+        "seats": 10,
+        "features": [
+          "encrypted_export",
+          "query_insights",
+          "service_sync",
+          "team_library"
+        ],
+        "origin": "https://api.example.com"
+      },
+      "state": "grace"
+    },
+    {
+      "name": "nbf 4 minutes ahead, inside the leeway",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDUiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc5MjkyMjY0MCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.m_jmK-Bvv0sv-ze9GthxlrMlNRql9u8rfmC7TMRFQghEUAESLPa5TTIAqJS_93yebSJ-yxIz5OMJ7LuydICfDQ",
+      "header": {
+        "alg": "EdDSA",
+        "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "typ": "license+jwt"
+      },
+      "claims": {
+        "iss": "https://tablepro.app",
+        "aud": [
+          "tablepro-cloud",
+          "tablepro-app"
+        ],
+        "sub": "lic_01kasr2vbse2qbn1fd3f8vbq5k",
+        "jti": "019a1a6e-c070-7a00-8b00-000000000005",
+        "iat": 1787047200,
+        "nbf": 1792922640,
+        "exp": 1818842400,
+        "grace_until": 1821434400,
+        "license_type": "paid",
+        "seats": 25,
+        "features": [
+          "encrypted_export",
+          "query_insights",
+          "service_sync",
+          "team_library"
+        ],
+        "origin": "https://api.example.com"
+      },
+      "state": "active"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "alg none without a signature",
+      "check": "alg",
+      "token": "eyJhbGciOiJub25lIiwia2lkIjoia1ByS19xbXhWV2FZVkE5d3dCRjZJdW8zdlZ6ejdUeEhDVHdYQnlnclM0ayIsInR5cCI6ImxpY2Vuc2Urand0In0.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0."
+    },
+    {
+      "name": "HS256 keyed with the public key",
+      "check": "alg",
+      "token": "eyJhbGciOiJIUzI1NiIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.3x2MRGpBGtGJR_0SZIuVDs_nvbVXztJ03i4PFamzM1Q"
+    },
+    {
+      "name": "typ JWT",
+      "check": "typ",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.pWL9-NJJBAhZwKPWi7zsxVZ2tnn-Pfhgf_5J7hznPOv7EXuZEdh9GNZ_Jzu8_Z-OzmgiZh06YjWAAypoauMhAg"
+    },
+    {
+      "name": "typ of an entitlement token",
+      "check": "typ",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJ0YWJsZXByby1lbnRpdGxlbWVudCtqd3QifQ.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.8oLCaVN6vRaKpyeZUp9Oa2vRtOsgrPoY5nN3rj0f1wi0mHdZ7y3GPVROUsDfP0Uia15kyQaEhA7SjaMz5FXhBA"
+    },
+    {
+      "name": "signed with a revoked key",
+      "check": "revoked",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6IlR1M0dWNGxZNVBGRWlTRW1Bc2pBaE1mNkw5eDY3UXd6Q3RlT1hoN0xRalUiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.ElD0_wF7K3LiRP19Mspi3AxijUay7SK0jYEwcIC12Y2Xe6d9acDfji1McH81ngY41XaetKYnhpqAV5adItMBBA"
+    },
+    {
+      "name": "signed with a key the verifier does not have",
+      "check": "kid",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6IjhqWXEwMDRUUFVuNVpSSkdwRGQxQTJsQnB1eUJKOFh4Rmt6a0MzLVg2RUUiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.UxvklN2lAVLVLVCxvs1IcJyiLTqhlFVVYY5Zi0ip4viVECKe9pKxsKCMRyhY3opzIhhwG5cqwBIMs9QwQJzMDw"
+    },
+    {
+      "name": "exp moved a year later after signing",
+      "check": "signature",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODUwMzc4NDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.k2d6I8mBNhV4ka9WYPle7B4YY0wz5FYhQEI_FDmcn5dAfqJbEPEuNlZzt1CBtXxedOgj7kqgWmEFHClAdK1DCA"
+    },
+    {
+      "name": "iss of the entitlements",
+      "check": "iss",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL2FwaS50YWJsZXByby5hcHAiLCJhdWQiOlsidGFibGVwcm8tY2xvdWQiLCJ0YWJsZXByby1hcHAiXSwic3ViIjoibGljXzAxa2FzcjJ2YnNlMnFibjFmZDNmOHZicTVrIiwianRpIjoiMDE5YTFhNmUtYzA3MC03YTAwLThiMDAtMDAwMDAwMDAwMDAxIiwiaWF0IjoxNzg3MDQ3MjAwLCJuYmYiOjE3ODcwNDcyMDAsImV4cCI6MTgxODg0MjQwMCwiZ3JhY2VfdW50aWwiOjE4MjE0MzQ0MDAsImxpY2Vuc2VfdHlwZSI6InBhaWQiLCJzZWF0cyI6MjUsImZlYXR1cmVzIjpbImVuY3J5cHRlZF9leHBvcnQiLCJxdWVyeV9pbnNpZ2h0cyIsInNlcnZpY2Vfc3luYyIsInRlYW1fbGlicmFyeSJdLCJvcmlnaW4iOiJodHRwczovL2FwaS5leGFtcGxlLmNvbSJ9.gacij4d8LwP4Mafuco3XYgR0YwTJekQg1-8z_aZQlY4Pdbb_ZFCS73l53C-CSUKe5Ai5io-pz12Z_757OAjpDA"
+    },
+    {
+      "name": "aud of the OAuth access tokens",
+      "check": "aud",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJodHRwczovL2FwaS50YWJsZXByby5hcHAiXSwic3ViIjoibGljXzAxa2FzcjJ2YnNlMnFibjFmZDNmOHZicTVrIiwianRpIjoiMDE5YTFhNmUtYzA3MC03YTAwLThiMDAtMDAwMDAwMDAwMDAxIiwiaWF0IjoxNzg3MDQ3MjAwLCJuYmYiOjE3ODcwNDcyMDAsImV4cCI6MTgxODg0MjQwMCwiZ3JhY2VfdW50aWwiOjE4MjE0MzQ0MDAsImxpY2Vuc2VfdHlwZSI6InBhaWQiLCJzZWF0cyI6MjUsImZlYXR1cmVzIjpbImVuY3J5cHRlZF9leHBvcnQiLCJxdWVyeV9pbnNpZ2h0cyIsInNlcnZpY2Vfc3luYyIsInRlYW1fbGlicmFyeSJdLCJvcmlnaW4iOiJodHRwczovL2FwaS5leGFtcGxlLmNvbSJ9.1XfQyGekQpLivHTkVd1c1UV4DrS3FU6AInYrQmNOkGCLLSPbk9h8QCFa7Czwhlo6FlajJp4ocMo_7l8uHDdZCA"
+    },
+    {
+      "name": "origin of another install",
+      "check": "origin",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUub3JnIn0.-hjkSGpoAug9LsvDRwvcJtsKlZPeJNQuG3MgNmhABrWRK-2ufTC3-h1qGvpWm9LtV3A4nLlYjr5hQdZBLoj9BQ"
+    },
+    {
+      "name": "no seats",
+      "check": "claims",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjowLCJmZWF0dXJlcyI6WyJlbmNyeXB0ZWRfZXhwb3J0IiwicXVlcnlfaW5zaWdodHMiLCJzZXJ2aWNlX3N5bmMiLCJ0ZWFtX2xpYnJhcnkiXSwib3JpZ2luIjoiaHR0cHM6Ly9hcGkuZXhhbXBsZS5jb20ifQ.0o6eB2fSg9LTkhYrqZX2bDE4C8aFUPKu0hoGPVYgd2QQNMD9QwHTRlZDfc6P7E7_tEmi3rEmQjCesOp5gXB8Dw"
+    },
+    {
+      "name": "no features claim",
+      "check": "claims",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOm51bGwsIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.8fevUDUL2FaZIEYRyGt9HADdxVNTuwmef_i5IldGbDriV3SiVw_KLAndF4h4nAItUqxa79oo3pb3utV4d7XWBw"
+    },
+    {
+      "name": "both exp and maintenance_until",
+      "check": "term",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibWFpbnRlbmFuY2VfdW50aWwiOjE3OTU1MTQ0MDAsImxpY2Vuc2VfdHlwZSI6InBhaWQiLCJzZWF0cyI6MjUsImZlYXR1cmVzIjpbImVuY3J5cHRlZF9leHBvcnQiLCJxdWVyeV9pbnNpZ2h0cyIsInNlcnZpY2Vfc3luYyIsInRlYW1fbGlicmFyeSJdLCJvcmlnaW4iOiJodHRwczovL2FwaS5leGFtcGxlLmNvbSJ9.cGx1FdRHhDkLvaUGHgHM_4uWVIXkuPjKuZYqSqGgx_T6jg8YTJhiq3o7--WBAT6APiXdgNRLW6eCkbXA_eICBA"
+    },
+    {
+      "name": "neither exp nor maintenance_until",
+      "check": "term",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.OiHiEUJWs2KH3Uw1jiee3CtRZcdHmUyWt5gF7x9AqLMMUOtsA5bJA7HK6z6y52BNCfOUOVdQ92gtQwOwzn7RCA"
+    },
+    {
+      "name": "exp without grace_until",
+      "check": "term",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJsaWNlbnNlX3R5cGUiOiJwYWlkIiwic2VhdHMiOjI1LCJmZWF0dXJlcyI6WyJlbmNyeXB0ZWRfZXhwb3J0IiwicXVlcnlfaW5zaWdodHMiLCJzZXJ2aWNlX3N5bmMiLCJ0ZWFtX2xpYnJhcnkiXSwib3JpZ2luIjoiaHR0cHM6Ly9hcGkuZXhhbXBsZS5jb20ifQ.rOHKYr_GqrhLqiSqUxW3lrhg9fhm60xY1U3GzHTpWDQJF_lKQDBE7MYcQmUnfW0glWmaIWwXQ59zW7FrshN8AA"
+    },
+    {
+      "name": "grace_until at exp",
+      "check": "term",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgxODg0MjQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.xOmWxYDNZdYn56ix2uryv3vHHL8sHEJfvY8C5wNEqpOiwS34hXjQpg5ZMsHzd29_xkm7kxssBPJqgkSoenpuBw"
+    },
+    {
+      "name": "grace_until before exp",
+      "check": "term",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgxODc1NjAwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.xDBJh-VTIyOgx4AApl8IZ9DpeqpcPtbGQ29kaFHFD2Qo1qWXr9EeQNhpCHNKcQRlGAN_NvlGsprBnYi_fHicCA"
+    },
+    {
+      "name": "grace_until with maintenance_until",
+      "check": "term",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc4NzA0NzIwMCwiZ3JhY2VfdW50aWwiOjE4MjE0MzQ0MDAsIm1haW50ZW5hbmNlX3VudGlsIjoxNzk1NTE0NDAwLCJsaWNlbnNlX3R5cGUiOiJwYWlkIiwic2VhdHMiOjI1LCJmZWF0dXJlcyI6WyJlbmNyeXB0ZWRfZXhwb3J0IiwicXVlcnlfaW5zaWdodHMiLCJzZXJ2aWNlX3N5bmMiLCJ0ZWFtX2xpYnJhcnkiXSwib3JpZ2luIjoiaHR0cHM6Ly9hcGkuZXhhbXBsZS5jb20ifQ.8o-kOGB7C9MllSQHBt41TVDKp2_11nvUJxRFenpb2JBrD7c4KUv3JuMeQUDHepE4v69seTM5BVKCOGJ_PvJPCQ"
+    },
+    {
+      "name": "nbf 6 minutes ahead",
+      "check": "nbf",
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcktfcW14VldhWVZBOXd3QkY2SXVvM3ZWeno3VHhIQ1R3WEJ5Z3JTNGsiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCIsImF1ZCI6WyJ0YWJsZXByby1jbG91ZCIsInRhYmxlcHJvLWFwcCJdLCJzdWIiOiJsaWNfMDFrYXNyMnZic2UycWJuMWZkM2Y4dmJxNWsiLCJqdGkiOiIwMTlhMWE2ZS1jMDcwLTdhMDAtOGIwMC0wMDAwMDAwMDAwMDEiLCJpYXQiOjE3ODcwNDcyMDAsIm5iZiI6MTc5MjkyMjc2MCwiZXhwIjoxODE4ODQyNDAwLCJncmFjZV91bnRpbCI6MTgyMTQzNDQwMCwibGljZW5zZV90eXBlIjoicGFpZCIsInNlYXRzIjoyNSwiZmVhdHVyZXMiOlsiZW5jcnlwdGVkX2V4cG9ydCIsInF1ZXJ5X2luc2lnaHRzIiwic2VydmljZV9zeW5jIiwidGVhbV9saWJyYXJ5Il0sIm9yaWdpbiI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIn0.NCS8mKcRLkYlHYo5dzWsXZiXQcyteUv5CLDX0C-wTht-5PGMX81wgdeBM6dtItckJEVAkAEnOcFl0OQDZV0GBQ"
+    }
+  ]
+}

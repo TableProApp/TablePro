@@ -6,7 +6,7 @@
 import Foundation
 
 // The five encodings `JSONSerialization` reads, with or without a byte order mark.
-enum JSONTextEncoding: Equatable {
+nonisolated enum JSONTextEncoding: Equatable {
     case utf8
     case utf16BigEndian
     case utf16LittleEndian
@@ -43,7 +43,7 @@ enum JSONTextEncoding: Equatable {
 
 // Turns UTF-16 or UTF-32 text into UTF-8 a chunk at a time. A code unit, or a surrogate pair, that a
 // chunk cuts in two waits for the next chunk.
-struct JSONTextDecoder {
+nonisolated struct JSONTextDecoder {
     let encoding: JSONTextEncoding
     private var pending: [UInt8] = []
 

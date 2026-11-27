@@ -146,9 +146,9 @@ final class ExportUITests: UITestCase {
 
         let tree = sheet.outlines.firstMatch
         XCTAssertTrue(tree.waitToExist(timeout: 10), "The export tree must show")
-        // The fixture's database row is named after its file's path.
+        // The fixture's database row is titled with its file's name, not its path.
         let database = tree.checkBoxes.matching(
-            NSPredicate(format: "label BEGINSWITH %@ AND label ENDSWITH %@", "/", ".sqlite")
+            NSPredicate(format: "label == %@", launch.database.lastPathComponent)
         ).firstMatch
         XCTAssertTrue(database.waitToExist(timeout: 10), "The database row must offer its own checkbox")
         database.click()

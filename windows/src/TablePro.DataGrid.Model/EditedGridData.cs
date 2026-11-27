@@ -1,9 +1,12 @@
+using System.Collections.ObjectModel;
+
 namespace TablePro.DataGrid.Model;
 
-// The data with the edits laid over it. Grid rows are the data's rows, then the new rows.
+// Rows are the data's, then the new rows; columns follow ColumnOrder, so the grid works in display columns only.
 public sealed class EditedGridData : IGridData
 {
     private GridEdits _edits;
+    private ColumnArrangement? _arrangement;
 
     public EditedGridData(IGridData data, GridEdits edits)
     {
@@ -26,11 +29,51 @@ public sealed class EditedGridData : IGridData
         }
     }
 
+    // Display position to data column: every data column in order until Arrange.
+    public IReadOnlyList<int> ColumnOrder =>
+        Volatile.Read(ref _arrangement)?.Order ?? Array.AsReadOnly(Enumerable.Range(0, Data.ColumnCount).ToArray());
+
     public int RowCount => Data.RowCount + Edits.AddedRows;
 
-    public int ColumnCount => Data.ColumnCount;
+    public int ColumnCount => Volatile.Read(ref _arrangement)?.Count ?? Data.ColumnCount;
 
-    public string GetColumnName(int column) => Data.GetColumnName(column);
+    public string GetColumnName(int column) => Data.GetColumnName(DataColumn(column));
+
+    // On the UI thread, then the grid's RearrangeColumns; a reader keeps the order it opened with, as with the edits.
+    public void Arrange(IReadOnlyList<int> order)
+    {
+        ArgumentNullException.ThrowIfNull(order);
+        Volatile.Write(ref _arrangement, new ColumnArrangement(order, Data.ColumnCount));
+    }
+
+    public int DataColumn(int column)
+    {
+        var arrangement = Volatile.Read(ref _arrangement);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(column, arrangement?.Count ?? Data.ColumnCount);
+        return arrangement?.DataColumn(column) ?? column;
+    }
+
+    // -1 for a hidden column.
+    public int DisplayColumn(int dataColumn)
+    {
+        if (dataColumn < 0 || dataColumn >= Data.ColumnCount)
+        {
+            return -1;
+        }
+        return Volatile.Read(ref _arrangement)?.DisplayColumn(dataColumn) ?? dataColumn;
+    }
+
+    // A pending value on a data row, in display columns.
+    public bool IsCellEdited(int row, int column)
+    {
+        var arrangement = Volatile.Read(ref _arrangement);
+        if (row < 0 || row >= Data.RowCount || column < 0 || column >= (arrangement?.Count ?? Data.ColumnCount))
+        {
+            return false;
+        }
+        return Edits.TryGetCell(row, arrangement?.DataColumn(column) ?? column, out _);
+    }
 
     public RowMark GetRowMark(int row)
     {
@@ -54,25 +97,81 @@ public sealed class EditedGridData : IGridData
     public IGridReader OpenReader(GridEdits edits)
     {
         ArgumentNullException.ThrowIfNull(edits);
-        return new Reader(Data, Data.OpenReader(), edits);
+        return new Reader(Data, Data.OpenReader(), edits, Volatile.Read(ref _arrangement));
     }
 
-    private sealed class Reader(IGridData data, IGridReader inner, GridEdits edits) : IGridReader
+    private sealed class ColumnArrangement
     {
-        private readonly CellBlock _scratch = new();
+        private readonly int[] _order;
+        private readonly int[] _display;
 
-        // The data's rows come from its own reader into a scratch block; new rows are never asked of the data.
+        public ColumnArrangement(IReadOnlyList<int> order, int dataColumns)
+        {
+            if (order.Count == 0)
+            {
+                throw new ArgumentException("The order shows no column.", nameof(order));
+            }
+            _order = new int[order.Count];
+            _display = new int[dataColumns];
+            Array.Fill(_display, -1);
+            for (var position = 0; position < order.Count; position++)
+            {
+                var column = order[position];
+                ArgumentOutOfRangeException.ThrowIfNegative(column, nameof(order));
+                ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(column, dataColumns, nameof(order));
+                if (_display[column] >= 0)
+                {
+                    throw new ArgumentException("The order shows a column twice.", nameof(order));
+                }
+                _order[position] = column;
+                _display[column] = position;
+            }
+            Order = Array.AsReadOnly(_order);
+        }
+
+        public ReadOnlyCollection<int> Order { get; }
+
+        public int Count => _order.Length;
+
+        public int DataColumn(int column) => _order[column];
+
+        public int DisplayColumn(int dataColumn) => dataColumn < _display.Length ? _display[dataColumn] : -1;
+    }
+
+    // Display columns whose data columns follow on: one read of the data each, so the data's order costs one read.
+    private readonly record struct Run(int Data, int Count);
+
+    private sealed class Reader(IGridData data, IGridReader inner, GridEdits edits, ColumnArrangement? arrangement)
+        : IGridReader
+    {
+        private readonly List<CellBlock> _scratch = [];
+        private readonly List<Run> _runs = [];
+
+        private int ColumnCount => arrangement?.Count ?? data.ColumnCount;
+
+        public bool KeepsLineBreaks
+        {
+            get => inner.KeepsLineBreaks;
+            set => inner.KeepsLineBreaks = value;
+        }
+
+        // The data's rows come from its own reader into scratch blocks; new rows are never asked of the data.
         public void Read(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters, CellBlock block)
         {
             ArgumentNullException.ThrowIfNull(block);
             var dataRows = data.RowCount;
-            var columns = Math.Clamp(data.ColumnCount - firstColumn, 0, Math.Max(0, columnCount));
+            var columns = firstColumn < 0 ? 0 : Math.Clamp(ColumnCount - firstColumn, 0, Math.Max(0, columnCount));
             var wanted = Math.Clamp(dataRows - firstRow, 0, Math.Max(0, rowCount));
             var read = wanted;
+            FindRuns(firstColumn, columns);
             if (wanted > 0 && columns > 0)
             {
-                inner.Read(firstRow, wanted, firstColumn, columns, maxCharacters, _scratch);
-                read = Math.Min(wanted, _scratch.RowCount);
+                for (var index = 0; index < _runs.Count; index++)
+                {
+                    var run = _runs[index];
+                    inner.Read(firstRow, wanted, run.Data, run.Count, maxCharacters, _scratch[index]);
+                    read = Math.Min(read, _scratch[index].RowCount);
+                }
             }
             var added = 0;
             var firstAdded = 0;
@@ -84,28 +183,33 @@ public sealed class EditedGridData : IGridData
                 added = Math.Max(0, end - start);
                 firstAdded = start - dataRows;
             }
-            block.Reset(firstRow, read + added, firstColumn, columns, maxCharacters);
-            block.EnsureCapacity(Characters(firstRow, read, firstColumn, columns, firstAdded, added, maxCharacters));
-            for (var column = firstColumn; column < firstColumn + columns; column++)
+            block.Reset(firstRow, read + added, firstColumn, columns, maxCharacters, KeepsLineBreaks);
+            block.EnsureCapacity(Characters(firstRow, read, firstAdded, added, maxCharacters));
+            for (var index = 0; index < _runs.Count; index++)
             {
-                for (var row = firstRow; row < firstRow + read; row++)
+                var run = _runs[index];
+                var scratch = _scratch[index];
+                for (var dataColumn = run.Data; dataColumn < run.Data + run.Count; dataColumn++)
                 {
-                    if (edits.IsDeleted(row))
+                    for (var row = firstRow; row < firstRow + read; row++)
                     {
-                        block.Add(_scratch.Get(row, column), CellState.Deleted);
+                        if (edits.IsDeleted(row))
+                        {
+                            block.Add(scratch.Get(row, dataColumn), CellState.Deleted);
+                        }
+                        else if (edits.TryGetCell(row, dataColumn, out var pending))
+                        {
+                            Add(block, pending, CellState.Modified);
+                        }
+                        else
+                        {
+                            block.Add(scratch.Get(row, dataColumn));
+                        }
                     }
-                    else if (edits.TryGetCell(row, column, out var pending))
+                    for (var addedRow = firstAdded; addedRow < firstAdded + added; addedRow++)
                     {
-                        Add(block, pending, CellState.Modified);
+                        Add(block, edits.GetAddedCell(addedRow, dataColumn), CellState.Inserted);
                     }
-                    else
-                    {
-                        block.Add(_scratch.Get(row, column));
-                    }
-                }
-                for (var index = firstAdded; index < firstAdded + added; index++)
-                {
-                    Add(block, edits.GetAddedCell(index, column), CellState.Inserted);
                 }
             }
         }
@@ -113,17 +217,43 @@ public sealed class EditedGridData : IGridData
         // The pending text, null for NULL and "" for DEFAULT; a deleted row keeps the data's value.
         public string? ReadWhole(int row, int column)
         {
+            if (column < 0 || column >= ColumnCount)
+            {
+                return null;
+            }
+            var dataColumn = arrangement?.DataColumn(column) ?? column;
             var dataRows = data.RowCount;
             if (row >= dataRows)
             {
-                return row - dataRows < edits.AddedRows ? Whole(edits.GetAddedCell(row - dataRows, column)) : null;
+                return row - dataRows < edits.AddedRows ? Whole(edits.GetAddedCell(row - dataRows, dataColumn)) : null;
             }
-            return !edits.IsDeleted(row) && edits.TryGetCell(row, column, out var pending)
+            return !edits.IsDeleted(row) && edits.TryGetCell(row, dataColumn, out var pending)
                 ? Whole(pending)
-                : inner.ReadWhole(row, column);
+                : inner.ReadWhole(row, dataColumn);
         }
 
         public void Dispose() => inner.Dispose();
+
+        private void FindRuns(int firstColumn, int columns)
+        {
+            _runs.Clear();
+            for (var column = firstColumn; column < firstColumn + columns; column++)
+            {
+                var dataColumn = arrangement?.DataColumn(column) ?? column;
+                if (_runs.Count > 0 && _runs[^1].Data + _runs[^1].Count == dataColumn)
+                {
+                    _runs[^1] = _runs[^1] with { Count = _runs[^1].Count + 1 };
+                }
+                else
+                {
+                    _runs.Add(new Run(dataColumn, 1));
+                }
+            }
+            while (_scratch.Count < _runs.Count)
+            {
+                _scratch.Add(new CellBlock());
+            }
+        }
 
         private static void Add(CellBlock block, PendingCell pending, CellState marks)
         {
@@ -149,21 +279,25 @@ public sealed class EditedGridData : IGridData
         };
 
         // One more per typed cell for a cut mark.
-        private int Characters(int firstRow, int read, int firstColumn, int columns, int firstAdded, int added,
-            int maxCharacters)
+        private int Characters(int firstRow, int read, int firstAdded, int added, int maxCharacters)
         {
             var characters = 0;
-            for (var column = firstColumn; column < firstColumn + columns; column++)
+            for (var index = 0; index < _runs.Count; index++)
             {
-                for (var row = firstRow; row < firstRow + read; row++)
+                var run = _runs[index];
+                var scratch = _scratch[index];
+                for (var dataColumn = run.Data; dataColumn < run.Data + run.Count; dataColumn++)
                 {
-                    characters += !edits.IsDeleted(row) && edits.TryGetCell(row, column, out var pending)
-                        ? Typed(pending, maxCharacters)
-                        : _scratch.Get(row, column).Text.Length;
-                }
-                for (var index = firstAdded; index < firstAdded + added; index++)
-                {
-                    characters += Typed(edits.GetAddedCell(index, column), maxCharacters);
+                    for (var row = firstRow; row < firstRow + read; row++)
+                    {
+                        characters += !edits.IsDeleted(row) && edits.TryGetCell(row, dataColumn, out var pending)
+                            ? Typed(pending, maxCharacters)
+                            : scratch.Get(row, dataColumn).Text.Length;
+                    }
+                    for (var addedRow = firstAdded; addedRow < firstAdded + added; addedRow++)
+                    {
+                        characters += Typed(edits.GetAddedCell(addedRow, dataColumn), maxCharacters);
+                    }
                 }
             }
             return characters;

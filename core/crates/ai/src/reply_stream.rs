@@ -38,7 +38,7 @@ pub async fn stream_reply(
     };
     let last = match outcome {
         Ok(end) => ReplyEvent::Finished(end),
-        Err(error) => ReplyEvent::Failed(error),
+        Err(error) => ReplyEvent::Failed(endpoint.scrub(error)),
     };
     // The receiver may be gone already, which only means no one waits.
     let _ = events.send(last);
@@ -56,7 +56,9 @@ pub async fn collect_reply(
         text.push_str(&part);
         true
     };
-    let end = read_reply(client, endpoint, request, &mut on_text).await?;
+    let end = read_reply(client, endpoint, request, &mut on_text)
+        .await
+        .map_err(|error| endpoint.scrub(error))?;
     Ok((text, end))
 }
 

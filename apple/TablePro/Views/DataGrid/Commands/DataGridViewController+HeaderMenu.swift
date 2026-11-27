@@ -66,6 +66,12 @@ extension DataGridViewController {
             menuItem(String(localized: "Size All Columns to Fit"), #selector(sizeAllColumnsToFitFromMenu(_:)), nil),
         ])
 
+        if commands.offers(.wrapText) {
+            let wrap = menuItem(String(localized: "Wrap Text"), #selector(toggleWrapText(_:)), nil)
+            wrap.state = model.wrapsText ? .on : .off
+            groups.append([wrap])
+        }
+
         if commands.offers(.hideColumns) {
             var visibility = [menuItem(String(localized: "Hide Column"), #selector(hideColumnFromMenu(_:)), columnID)]
             if !model.store.columnLayout.hiddenColumns.isEmpty {
@@ -188,6 +194,7 @@ extension DataGridViewController {
         #selector(DataGridViewController.chooseProtobufSchemaFromMenu(_:)),
         #selector(DataGridViewController.sizeColumnToFitFromMenu(_:)),
         #selector(DataGridViewController.sizeAllColumnsToFitFromMenu(_:)),
+        #selector(DataGridViewController.toggleWrapText(_:)),
         #selector(DataGridViewController.hideColumnFromMenu(_:)),
         #selector(DataGridViewController.showAllColumnsFromMenu(_:)),
         #selector(DataGridViewController.freezeColumnsFromMenu(_:)),

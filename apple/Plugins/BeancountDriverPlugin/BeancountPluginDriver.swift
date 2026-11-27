@@ -171,6 +171,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var currentSchema: String? { nil }
+    // The ledger it opened, as the connection names it, so the host can tell a caller naming it from one naming another.
+    var currentDatabase: String? { config.database }
     var serverVersion: String? { lock.withLock { activeBackendVersion } }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }

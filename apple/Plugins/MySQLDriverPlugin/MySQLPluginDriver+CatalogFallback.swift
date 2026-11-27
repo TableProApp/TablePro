@@ -94,27 +94,32 @@ internal extension MySQLPluginDriver {
 
     // MARK: - The degraded reads
 
-    func showColumnsByTable(database: String) async throws -> [String: [PluginColumnInfo]] {
-        try await degradedRead(database: database) { table in
+    func showColumnsByTable(database: String, keepsSpellingsApart: Bool = false) async throws -> [String: [PluginColumnInfo]] {
+        try await degradedRead(database: database, keepsSpellingsApart: keepsSpellingsApart) { table in
             try await self.fetchColumns(table: table.name, schema: database)
         }
     }
 
-    func showIndexesByTable(database: String) async throws -> [String: [PluginIndexInfo]] {
-        try await degradedRead(database: database) { table in
+    func showIndexesByTable(database: String, keepsSpellingsApart: Bool = false) async throws -> [String: [PluginIndexInfo]] {
+        try await degradedRead(database: database, keepsSpellingsApart: keepsSpellingsApart) { table in
             try await self.fetchIndexes(table: table.name, schema: database)
         }
     }
 
     /// Base tables only: `SHOW CREATE TABLE` answers for a view with its `SELECT` and for a MariaDB
     /// sequence with the sequence's own table, neither of which can carry a constraint.
-    func showForeignKeysByTable(database: String) async throws -> [String: [PluginForeignKeyInfo]] {
+    func showForeignKeysByTable(
+        database: String,
+        keepsSpellingsApart: Bool = false
+    ) async throws -> [String: [PluginForeignKeyInfo]] {
         let identity = serverIdentity
         let omittedAction = MySQLServerVersion.omittedForeignKeyAction(
             banner: identity.banner,
             flavor: identity.flavor
         )
-        return try await degradedRead(database: database, baseTablesOnly: true) { table in
+        return try await degradedRead(
+            database: database, baseTablesOnly: true, keepsSpellingsApart: keepsSpellingsApart
+        ) { table in
             try await self.ddlForeignKeys(table: table.name, database: database, omittedAction: omittedAction)
         }
     }
@@ -134,10 +139,15 @@ internal extension MySQLPluginDriver {
     private func degradedRead<Value>(
         database: String,
         baseTablesOnly: Bool = false,
+        keepsSpellingsApart: Bool = false,
         of read: (PluginTableInfo) async throws -> [Value]
     ) async throws -> [String: [Value]] {
+        let tables = try await fetchTables(schema: database)
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(tables.map(\.name))
+        }
         var answer: [String: [Value]] = [:]
-        for table in try await fetchTables(schema: database) {
+        for table in tables {
             try Task.checkCancellation()
             guard !baseTablesOnly || Self.isBaseTable(table) else { continue }
             let values = try await read(table)

@@ -5,10 +5,9 @@
 
 import Combine
 import Foundation
-import SwiftUI
 import TableProPluginKit
 
-final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "XLSX Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to Excel format"
@@ -20,16 +19,13 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
     typealias Settings = XLSXExportOptions
     static let settingsStorageId = "xlsx"
 
-    @Published var settings = XLSXExportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = XLSXExportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
     required init() { loadSettings() }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(XLSXExportOptionsView(plugin: self))
-    }
 
     func resetSettingsToDefaults() {
         settings = XLSXExportOptions()
@@ -54,12 +50,13 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
 
             var isFirstBatch = true
-            var rowBatch: [[PluginCellValue]] = []
             var columns: [String] = []
             var columnTypeNames: [String] = []
             var sheetRows = XLSXSheetRows(limit: Self.maxRowsPerSheet, headerRowCount: options.includeHeaderRow ? 1 : 0)
 
-            func writeBatch() throws {
+            // Each batch is written as it arrives: the stream already bounds a batch by rows and bytes, and the
+            // writer keeps at most one flush of XML, so holding rows here would only add to both.
+            func writeBatch(_ rowBatch: [[PluginCellValue]]) throws {
                 for chunk in sheetRows.chunks(of: rowBatch.count) {
                     if chunk.startsNewSheet {
                         try writer.continueSheet(
@@ -78,7 +75,6 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                 for _ in 0..<rowBatch.count {
                     progress.incrementRow()
                 }
-                rowBatch.removeAll(keepingCapacity: true)
             }
 
             let stream = dataSource.streamRows(for: table)
@@ -99,16 +95,12 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                     sheetRows = XLSXSheetRows(limit: Self.maxRowsPerSheet, headerRowCount: options.includeHeaderRow ? 1 : 0)
                     isFirstBatch = false
                 case .rows(let rows):
-                    rowBatch.append(contentsOf: rows)
-                    if rowBatch.count >= 5_000 {
-                        try writeBatch()
-                    }
+                    try writeBatch(rows)
                 }
             }
 
-            if !rowBatch.isEmpty {
-                try writeBatch()
-            }
+            // The stream's own checks end with its last element.
+            try progress.checkCancellation()
 
             if !isFirstBatch {
                 try writer.finishSheet()
@@ -123,13 +115,19 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
             }
         }
 
-        try await writer.write(to: destination)
+        try await writer.write(to: destination, progress: progress)
 
         progress.finalizeTable()
 
         var warnings: [String] = []
         if didSplitSheets {
             warnings.append("Data exceeded Excel's row limit (1,048,576) and was split across multiple sheets.")
+        }
+        if writer.cutValueCount > 0 {
+            warnings.append(String(
+                format: String(localized: "Values cut to Excel's limit of 32,767 characters: %lld. Export as CSV to keep them whole."),
+                Int64(writer.cutValueCount)
+            ))
         }
         return ExportFormatResult(warnings: warnings)
     }

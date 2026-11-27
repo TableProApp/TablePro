@@ -67,7 +67,8 @@ struct SyncCoordinatorThemeTests {
                 makeNetworkMonitor: { nil },
                 columnLayouts: columnLayouts,
                 themeCatalog: catalog,
-                licenseGate: { nil }
+                licenseGate: { nil },
+                pushRegistrar: .inert
             )
         }
 
@@ -335,7 +336,8 @@ struct SyncCoordinatorThemeTests {
             makeNetworkMonitor: { nil },
             columnLayouts: columnLayouts,
             themeCatalog: harness.catalog,
-            licenseGate: { nil }
+            licenseGate: { nil },
+            pushRegistrar: .inert
         )
         relaunched.start()
         #expect(harness.metadata.loadToken() != nil)

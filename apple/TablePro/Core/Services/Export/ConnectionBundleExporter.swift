@@ -27,6 +27,7 @@ internal struct ConnectionBundleExporter {
     private let connections: ConnectionStorage
     private let groups: GroupStorage
     private let tags: TagStorage
+    private let projects: ProjectStorage
     private let profiles: CredentialProfileStorage
     private let sshProfiles: SSHProfileStorage
     private let favorites: SQLFavoriteManager
@@ -41,8 +42,10 @@ internal struct ConnectionBundleExporter {
         sshProfiles: SSHProfileStorage = .shared,
         favorites: SQLFavoriteManager = .shared,
         registry: PluginMetadataRegistry = .shared,
-        appVersion: String = ConnectionBundleExporter.bundledAppVersion
+        appVersion: String = ConnectionBundleExporter.bundledAppVersion,
+        projects: ProjectStorage = .shared
     ) {
+        self.projects = projects
         self.connections = connections
         self.groups = groups
         self.tags = tags
@@ -86,6 +89,11 @@ internal struct ConnectionBundleExporter {
         return settings
     }
 
+    // A teammate's copy drops both on read, so publishing them would only leave a token typed into one in the shared copy.
+    func teamShareableSettings(for connection: DatabaseConnection) -> ExportableConnection {
+        portableSettings(for: connection).withoutStartupCommands().withoutTunnelCommand()
+    }
+
     func groupPath(for connection: DatabaseConnection) -> [String] {
         let groupsById = Dictionary(groups.loadGroups().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var path: [String] = []
@@ -102,9 +110,10 @@ internal struct ConnectionBundleExporter {
         tags.tags(for: connection.tagIds).map(\.name)
     }
 
+    // The Team Catalog's file, so its settings follow what a team may see.
     func connectionsOnlyBundle(for connections: [DatabaseConnection]) throws -> ConnectionBundle {
         try BundleExportAssembler.assemble(
-            exportInput(for: connections, includesCredentials: false, library: nil),
+            exportInput(for: connections, includesCredentials: false, library: nil, settings: teamShareableSettings(for:)),
             options: .connectionsOnly,
             appVersion: appVersion
         )
@@ -210,17 +219,19 @@ internal struct ConnectionBundleExporter {
     private func exportInput(
         for exported: [DatabaseConnection],
         includesCredentials: Bool,
-        library: SavedQueryLibrary?
+        library: SavedQueryLibrary?,
+        settings: ((DatabaseConnection) -> ExportableConnection)? = nil
     ) -> BundleExportInput {
         BundleExportInput(
             connections: exported.map { connection in
                 BundleExportInput.Connection(
                     id: connection.id,
-                    settings: portableSettings(for: connection, keepingLocalCredentials: true),
+                    settings: settings?(connection) ?? portableSettings(for: connection, keepingLocalCredentials: true),
                     groupId: connection.groupId,
                     tagIds: connection.tagIds,
                     credentialProfileId: connection.credentialMode.profileId,
-                    credentials: includesCredentials ? credentials(for: connection) : nil
+                    credentials: includesCredentials ? credentials(for: connection) : nil,
+                    projectId: connection.projectId
                 )
             },
             groups: groups.loadGroups().map { group in
@@ -229,7 +240,8 @@ internal struct ConnectionBundleExporter {
                     name: group.name,
                     color: group.color.isDefault ? nil : group.color.rawValue,
                     iconName: group.iconName,
-                    parentId: group.parentId
+                    parentId: group.parentId,
+                    projectId: group.projectId
                 )
             },
             tags: tags.loadTags().map { tag in
@@ -260,6 +272,14 @@ internal struct ConnectionBundleExporter {
                     keyword: favorite.keyword,
                     folderId: favorite.folderId,
                     connectionId: favorite.connectionId
+                )
+            },
+            projects: projects.loadProjects().map { project in
+                BundleExportInput.Project(
+                    id: project.id,
+                    name: project.name,
+                    color: project.color.isDefault ? nil : project.color.rawValue,
+                    iconName: project.iconName
                 )
             }
         )

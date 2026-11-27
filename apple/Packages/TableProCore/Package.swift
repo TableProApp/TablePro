@@ -51,6 +51,7 @@ let package = Package(
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
+        .library(name: "TableProSQLFile", targets: ["TableProSQLFile"]),
         .library(name: "TableProSQLQuoting", targets: ["TableProSQLQuoting"]),
         .library(name: "TableProProcess", targets: ["TableProProcess"]),
         .library(name: "TableProSQLVocabulary", targets: ["TableProSQLVocabulary"]),
@@ -72,6 +73,7 @@ let package = Package(
         .library(name: "TableProKafkaCore", targets: ["TableProKafkaCore"]),
         .library(name: "TableProCassandraCore", targets: ["TableProCassandraCore"]),
         .library(name: "TableProEtcdCore", targets: ["TableProEtcdCore"]),
+        .library(name: "TableProElasticsearchCore", targets: ["TableProElasticsearchCore"]),
         .library(name: "TableProDuckDBCore", targets: ["TableProDuckDBCore"])
     ],
     // Kafka brokers hand back whatever codec the producer stored, and macOS has no zstd.
@@ -268,6 +270,13 @@ let package = Package(
             dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProSQLGrammar"
         ),
+        // Reads a .sql file for both apps' imports, so never TableProPluginKit.
+        .target(
+            name: "TableProSQLFile",
+            dependencies: ["TableProSQLGrammar", "TableProTabularIO", "TableProGzip"],
+            path: "Sources/TableProSQLFile",
+            swiftSettings: pluginCoreSettings
+        ),
         // Linked by PluginKit, plugin bundles and both apps, so it depends on nothing.
         .target(
             name: "TableProSQLQuoting",
@@ -315,9 +324,10 @@ let package = Package(
             dependencies: ["TableProTabularIO", "TableProNumberFormatting"],
             path: "Sources/TableProTabular"
         ),
+        // The plugins link the vendored SQLite through CSQLite; the iOS app has no vendored build and uses the SDK's.
         .target(
             name: "TableProSQLiteCore",
-            dependencies: ["CSQLite"],
+            dependencies: [.target(name: "CSQLite", condition: .when(platforms: [.macOS]))],
             path: "Sources/TableProSQLiteCore"
         ),
         // Linked by a plugin bundle, so never TableProPluginKit: the plugin would carry its own copy of PluginKit's types.
@@ -331,6 +341,13 @@ let package = Package(
             name: "TableProPostgreSQLCore",
             dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProPostgreSQLCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        // Linked by a plugin bundle, so never TableProPluginKit.
+        .target(
+            name: "TableProElasticsearchCore",
+            dependencies: [],
+            path: "Sources/TableProElasticsearchCore",
             swiftSettings: pluginCoreSettings
         ),
         .target(
@@ -412,7 +429,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProWeaviateClientTests",
-            dependencies: ["TableProWeaviateClient", "TableProTLSTestFixtures"],
+            dependencies: ["TableProWeaviateClient", "TableProWeaviateCore", "TableProTLSTestFixtures"],
             path: "Tests/TableProWeaviateClientTests"
         ),
         .testTarget(
@@ -526,6 +543,12 @@ let package = Package(
             name: "TableProSQLGrammarTests",
             dependencies: ["TableProSQLGrammar"],
             path: "Tests/TableProSQLGrammarTests"
+        ),
+        .testTarget(
+            name: "TableProSQLFileTests",
+            dependencies: ["TableProSQLFile", "TableProSQLGrammar", "TableProTabularIO", "TableProGzip"],
+            path: "Tests/TableProSQLFileTests",
+            swiftSettings: pluginCoreSettings
         ),
         .testTarget(
             name: "TableProSQLQuotingTests",
@@ -643,6 +666,12 @@ let package = Package(
             name: "TableProCassandraCoreTests",
             dependencies: ["TableProCassandraCore", "TableProSQLGrammar"],
             path: "Tests/TableProCassandraCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProElasticsearchCoreTests",
+            dependencies: ["TableProElasticsearchCore"],
+            path: "Tests/TableProElasticsearchCoreTests",
             swiftSettings: pluginCoreSettings
         ),
         .testTarget(

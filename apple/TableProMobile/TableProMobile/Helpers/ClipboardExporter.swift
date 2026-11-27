@@ -2,6 +2,7 @@ import TableProMSSQLCore
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
 import TableProSQLQuoting
 import TableProTabularIO
 import UIKit
@@ -53,18 +54,21 @@ nonisolated enum ClipboardExporter {
         incompleteColumns(columns: columns, rows: [cells])
     }
 
+    // `columnDetails` is the table's catalog read, which alone says which columns the server fills in itself.
     static func exportRow(
         columns: [ColumnInfo],
         cells: [Cell],
         format: ExportFormat,
         tableName: String? = nil,
         databaseType: DatabaseType,
-        driver: (any DatabaseDriver)?
+        driver: (any DatabaseDriver)?,
+        columnDetails: [ColumnInfo] = []
     ) throws(IncompleteValues) -> String {
         let values = try completeValues(columns: columns, rows: [cells])
         return exportRow(
             columns: columns, row: values[0],
-            format: format, tableName: tableName, databaseType: databaseType, driver: driver
+            format: format, tableName: tableName, databaseType: databaseType, driver: driver,
+            columnDetails: columnDetails
         )
     }
 
@@ -74,12 +78,14 @@ nonisolated enum ClipboardExporter {
         format: ExportFormat,
         tableName: String? = nil,
         databaseType: DatabaseType,
-        driver: (any DatabaseDriver)?
+        driver: (any DatabaseDriver)?,
+        columnDetails: [ColumnInfo] = []
     ) throws(IncompleteValues) -> String {
         let values = try completeValues(columns: columns, rows: rows)
         return exportRows(
             columns: columns, rows: values,
-            format: format, tableName: tableName, databaseType: databaseType, driver: driver
+            format: format, tableName: tableName, databaseType: databaseType, driver: driver,
+            columnDetails: columnDetails
         )
     }
 
@@ -89,7 +95,8 @@ nonisolated enum ClipboardExporter {
         format: ExportFormat,
         tableName: String? = nil,
         databaseType: DatabaseType,
-        driver: (any DatabaseDriver)?
+        driver: (any DatabaseDriver)?,
+        columnDetails: [ColumnInfo] = []
     ) -> String {
         switch format {
         case .json:
@@ -97,10 +104,10 @@ nonisolated enum ClipboardExporter {
         case .csv:
             return rowToCsv(columns: columns, row: row, includeHeader: true)
         case .sqlInsert:
-            return rowToInsert(
-                columns: columns, row: row, tableName: tableName ?? "table",
+            return InsertWriter(
+                columns: columns, columnDetails: columnDetails, tableName: tableName ?? "table",
                 databaseType: databaseType, driver: driver
-            )
+            ).statement(for: row)
         }
     }
 
@@ -110,7 +117,8 @@ nonisolated enum ClipboardExporter {
         format: ExportFormat,
         tableName: String? = nil,
         databaseType: DatabaseType,
-        driver: (any DatabaseDriver)?
+        driver: (any DatabaseDriver)?,
+        columnDetails: [ColumnInfo] = []
     ) -> String {
         switch format {
         case .json:
@@ -125,13 +133,11 @@ nonisolated enum ClipboardExporter {
             }
             return ([header] + dataLines).joined(separator: "\n")
         case .sqlInsert:
-            let name = tableName ?? "table"
-            return rows.map {
-                rowToInsert(
-                    columns: columns, row: $0, tableName: name,
-                    databaseType: databaseType, driver: driver
-                )
-            }.joined(separator: "\n")
+            let writer = InsertWriter(
+                columns: columns, columnDetails: columnDetails, tableName: tableName ?? "table",
+                databaseType: databaseType, driver: driver
+            )
+            return rows.map { writer.statement(for: $0) }.joined(separator: "\n")
         }
     }
 
@@ -154,7 +160,7 @@ nonisolated enum ClipboardExporter {
 
     // MARK: - Private
 
-    private static func incompleteColumns(columns: [ColumnInfo], rows: [[Cell]]) -> [String] {
+    static func incompleteColumns(columns: [ColumnInfo], rows: [[Cell]]) -> [String] {
         columns.indices.compactMap { index in
             let isIncomplete = rows.contains { cells in
                 guard index < cells.count else { return false }
@@ -188,49 +194,9 @@ nonisolated enum ClipboardExporter {
         return "{\n" + pairs.joined(separator: ",\n") + "\n}"
     }
 
-    // The column's type decides, as in the Mac export: text that reads like a number or `true` stays text. A column with
-    // no type, as SQLite reports for an expression, is read by its value.
+    // The macOS JSON export's own rule, so a row copied here and a table exported there agree on every value.
     private static func jsonValue(_ value: String, typeName: String) -> String {
-        if typeName.trimmingCharacters(in: .whitespaces).isEmpty {
-            let bare = isJsonNumber(value) || value == "true" || value == "false"
-            return bare ? value : JSONText.stringLiteral(value)
-        }
-        if isBooleanType(typeName), let flag = booleanLiteral(value) {
-            return flag
-        }
-        if isNumberType(typeName), isJsonNumber(value) {
-            return value
-        }
-        return JSONText.stringLiteral(value)
-    }
-
-    // PostgreSQL's text format sends `t` or `f`, and SQLite keeps a boolean as 1 or 0.
-    private static func booleanLiteral(_ value: String) -> String? {
-        switch value.lowercased() {
-        case "true", "t", "1": "true"
-        case "false", "f", "0": "false"
-        default: nil
-        }
-    }
-
-    // SQL Server documents `bit` as an integer type that holds 1, 0 or NULL.
-    private static func isNumberType(_ typeName: String) -> Bool {
-        ColumnInfo.isNumericType(typeName: typeName) || unwrappedTypeName(typeName) == "bit"
-    }
-
-    private static func isBooleanType(_ typeName: String) -> Bool {
-        let base = unwrappedTypeName(typeName)
-        return base == "bool" || base == "boolean"
-    }
-
-    // ClickHouse wraps the type, as in `Nullable(Bool)`.
-    private static func unwrappedTypeName(_ typeName: String) -> String {
-        var base = typeName.lowercased().trimmingCharacters(in: .whitespaces)
-        while base.hasSuffix(")"), let open = base.firstIndex(of: "("),
-              ["nullable", "lowcardinality"].contains(String(base[..<open])) {
-            base = String(base[base.index(after: open) ..< base.index(before: base.endIndex)])
-        }
-        return base
+        JSONExportPlugin.formatJSONValue(.text(value), columnTypeName: typeName, preserveAsString: false)
     }
 
     private static func rowToCsv(columns: [ColumnInfo], row: [String?], includeHeader: Bool) -> String {
@@ -245,27 +211,73 @@ nonisolated enum ClipboardExporter {
         return lines.joined(separator: "\n")
     }
 
-    private static func rowToInsert(
-        columns: [ColumnInfo],
-        row: [String?],
-        tableName: String,
-        databaseType: DatabaseType,
-        driver: (any DatabaseDriver)?
-    ) -> String {
-        let quotedTable = SQLBuilder.quoteIdentifier(tableName, for: databaseType)
-        let cols = columns
-            .map { SQLBuilder.quoteIdentifier($0.name, for: databaseType) }
-            .joined(separator: ", ")
-        let vals = columns.indices.map { i in
-            let value = i < row.count ? row[i] : nil
-            guard let value else { return "NULL" }
-            if databaseType == .mssql { return MSSQLStringLiteral.quoted(value) }
-            return "'\(escapeLiteral(value, databaseType: databaseType, driver: driver))'"
-        }.joined(separator: ", ")
-        return "INSERT INTO \(quotedTable) (\(cols)) VALUES (\(vals));"
+    // The rules the macOS SQL export writes a row by: a column the server fills in is left out, and a MySQL BIT value goes
+    // bare, since a quoted '5' is stored as the byte 53.
+    nonisolated private struct InsertWriter {
+        let columns: [ColumnInfo]
+        let tableName: String
+        let databaseType: DatabaseType
+        let driver: (any DatabaseDriver)?
+        private let written: [Int]
+        private let bitColumns: Set<Int>
+        private let firstWritableColumn: String?
+
+        init(
+            columns: [ColumnInfo],
+            columnDetails: [ColumnInfo],
+            tableName: String,
+            databaseType: DatabaseType,
+            driver: (any DatabaseDriver)?
+        ) {
+            self.columns = columns
+            self.tableName = tableName
+            self.databaseType = databaseType
+            self.driver = driver
+            let serverOwned = Set(columnDetails.filter(\.isServerOwned).map(\.name))
+            let declaredTypes = Dictionary(columnDetails.map { ($0.name, $0.typeName) }, uniquingKeysWith: { first, _ in first })
+            written = columns.indices.filter { !serverOwned.contains(columns[$0].name) }
+            let readsBitAsNumber = SQLBuilder.speaksMySQLDialect(databaseType)
+            bitColumns = Set(written.filter { index in
+                readsBitAsNumber && ClipboardExporter.isBitType(declaredTypes[columns[index].name] ?? columns[index].typeName)
+            })
+            firstWritableColumn = columnDetails.defaultsRowColumn
+        }
+
+        func statement(for row: [String?]) -> String {
+            let quotedTable = SQLBuilder.quoteIdentifier(tableName, for: databaseType)
+            let first = firstWritableColumn.map { SQLBuilder.quoteIdentifier($0, for: databaseType) }
+            if written.isEmpty, let defaults = AllDefaultsInsert.sql(
+                into: quotedTable, databaseTypeId: databaseType.rawValue, firstWritableColumn: first
+            ) {
+                return "\(defaults);"
+            }
+            // An engine with no all-defaults spelling gets every column, which at least shows what the row held.
+            let written = written.isEmpty ? Array(columns.indices) : written
+            let cols = written
+                .map { SQLBuilder.quoteIdentifier(columns[$0].name, for: databaseType) }
+                .joined(separator: ", ")
+            let vals = written.map { index -> String in
+                guard index < row.count, let value = row[index] else { return "NULL" }
+                if bitColumns.contains(index), ClipboardExporter.isUnsignedInteger(value) { return value }
+                if databaseType == .mssql { return MSSQLStringLiteral.quoted(value) }
+                return "'\(ClipboardExporter.literalBody(value, databaseType: databaseType, driver: driver))'"
+            }.joined(separator: ", ")
+            return "INSERT INTO \(quotedTable) (\(cols)) VALUES (\(vals));"
+        }
     }
 
-    private static func escapeLiteral(
+    // StarRocks' BITMAP is not this type.
+    static func isBitType(_ typeName: String) -> Bool {
+        let upper = typeName.uppercased().trimmingCharacters(in: .whitespaces)
+        return upper == "BIT" || upper.hasPrefix("BIT(")
+    }
+
+    static func isUnsignedInteger(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.allSatisfy { $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") }
+    }
+
+    // The copy declares no sql_mode, so a MySQL literal keeps the escapes every MySQL session reads.
+    static func literalBody(
         _ value: String,
         databaseType: DatabaseType,
         driver: (any DatabaseDriver)?
@@ -282,53 +294,6 @@ nonisolated enum ClipboardExporter {
         guard let value else { return "" }
         if value.isEmpty || value == "NULL" { return "\"\(value)\"" }
         return escapeCsvField(value)
-    }
-
-    // ASCII digits only, so "01234", "+5" or Arabic-Indic digits stay quoted strings.
-    private static func isJsonNumber(_ value: String) -> Bool {
-        var characters = Substring(value)
-        if characters.first == "-" { characters = characters.dropFirst() }
-        guard let first = characters.first, isAsciiDigit(first) else { return false }
-        if first == "0", characters.count > 1, characters.dropFirst().first.map(isAsciiDigit) == true {
-            return false
-        }
-
-        var sawDigit = false
-        var index = characters.startIndex
-        while index < characters.endIndex, isAsciiDigit(characters[index]) {
-            sawDigit = true
-            index = characters.index(after: index)
-        }
-        guard sawDigit else { return false }
-
-        if index < characters.endIndex, characters[index] == "." {
-            index = characters.index(after: index)
-            var sawFraction = false
-            while index < characters.endIndex, isAsciiDigit(characters[index]) {
-                sawFraction = true
-                index = characters.index(after: index)
-            }
-            guard sawFraction else { return false }
-        }
-
-        if index < characters.endIndex, characters[index] == "e" || characters[index] == "E" {
-            index = characters.index(after: index)
-            if index < characters.endIndex, characters[index] == "+" || characters[index] == "-" {
-                index = characters.index(after: index)
-            }
-            var sawExponent = false
-            while index < characters.endIndex, isAsciiDigit(characters[index]) {
-                sawExponent = true
-                index = characters.index(after: index)
-            }
-            guard sawExponent else { return false }
-        }
-
-        return index == characters.endIndex
-    }
-
-    private static func isAsciiDigit(_ character: Character) -> Bool {
-        character.isASCII && character.isNumber
     }
 
     private static func escapeCsvField(_ field: String) -> String {

@@ -1,8 +1,3 @@
-//
-//  DatabaseTreeView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProPluginKit
 
@@ -64,8 +59,8 @@ struct DatabaseTreeServerObjectRef: Identifiable, Equatable {
 }
 
 struct DatabaseTreeView: View {
-    @ObservedObject private var databaseManager = DatabaseManager.shared
-    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
+    private var databaseManager: DatabaseManager { .shared }
+    private var treeService: DatabaseTreeMetadataService { .shared }
 
     let connectionId: UUID
     let databaseType: DatabaseType
@@ -75,13 +70,12 @@ struct DatabaseTreeView: View {
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     let coordinator: MainContentCoordinator?
 
-    /// The publisher behind `activeDatabase` and `activeSchema` is the toolbar state, not the
-    /// coordinator, and `@ObservedObject` cannot wrap an optional. The coordinator holds it as
-    /// a stable `let`, so the view observes it directly.
+    // `@ObservedObject` cannot wrap an optional, and the coordinator holds the toolbar state as a stable `let`.
     @ObservedObject var toolbarState: ConnectionToolbarState
     @ObservedObject var sidebarState: SharedSidebarState
+    @ObservedObject var catalog: ConnectionSidebarCatalog
 
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var sidebarDisplay = SidebarDisplayPreferences.shared
     @State private var showsDatabaseProgress = false
 
     private var activeDatabase: String? {
@@ -102,7 +96,7 @@ struct DatabaseTreeView: View {
     }
 
     private var showsSystemContainers: Bool {
-        settingsManager.general.showSystemContainers
+        sidebarDisplay.options.showSystemContainers
     }
 
     private var filteredDatabases: [DatabaseMetadata] {
@@ -181,7 +175,8 @@ struct DatabaseTreeView: View {
             connectionId: connectionId,
             database: coordinator?.browseDatabaseName ?? activeDatabase,
             databaseType: databaseType,
-            sidebarState: sidebarState
+            sidebarState: sidebarState,
+            catalog: catalog
         )
     }
 
@@ -200,10 +195,10 @@ struct DatabaseTreeView: View {
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
             selectedTables: windowState.selectedTables,
-            showRecentTables: settingsManager.general.showRecentTables,
+            showRecentTables: sidebarDisplay.options.showRecentTables,
             showSystemContainers: showsSystemContainers,
-            showsPartitions: settingsManager.general.showPartitions,
-            rowSizePreference: settingsManager.general.sidebarRowSize
+            showsPartitions: sidebarDisplay.options.showPartitions,
+            rowSizePreference: sidebarDisplay.options.rowSize
         )
     }
 

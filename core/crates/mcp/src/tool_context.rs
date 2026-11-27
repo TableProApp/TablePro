@@ -24,23 +24,32 @@ pub struct ToolContext {
 }
 
 impl ToolContext {
-    /// Every saved connection a client may know about. A blocked one is
-    /// left out, as if it did not exist.
+    /// Every saved connection a client may know about, in the app's
+    /// active project. A blocked one is left out, as if it did not exist.
     pub fn visible_connections(&self) -> Result<Vec<SavedConnection>, ToolError> {
         Ok(self.visible_library()?.0)
     }
 
     /// One snapshot, so each connection's group is the one it had there.
     pub fn visible_library(&self) -> Result<(Vec<SavedConnection>, ConnectionList), ToolError> {
+        let list = self.library()?.scoped(self.host.active_project());
+        Ok((
+            list.connections
+                .iter()
+                .filter(|connection| !connection.external_access.is_blocked())
+                // As the app shows it, in every list, error and approval a tool makes.
+                .map(|connection| SavedConnection {
+                    name: tablepro_storage::shown_name(&connection.name),
+                    ..connection.clone()
+                })
+                .collect(),
+            list,
+        ))
+    }
+
+    fn library(&self) -> Result<ConnectionList, ToolError> {
         match self.connections.snapshot().state {
-            ConnectionListState::Ready(list) => Ok((
-                list.connections
-                    .iter()
-                    .filter(|connection| !connection.external_access.is_blocked())
-                    .cloned()
-                    .collect(),
-                list,
-            )),
+            ConnectionListState::Ready(list) => Ok(list),
             ConnectionListState::Loading => Err(ToolError::Internal(
                 "TablePro is still reading the saved connections; try again in a moment".to_owned(),
             )),
@@ -51,14 +60,29 @@ impl ToolContext {
     }
 
     /// The saved connection a tool names, read again for each call so a
-    /// level the user changed a moment ago applies.
+    /// level or a project the user changed a moment ago applies.
     pub fn connection(&self, id: &str) -> Result<SavedConnection, ToolError> {
         let parsed = Uuid::parse_str(id.trim())
             .map_err(|_| ToolError::InvalidArgument(format!("{id} is not a connection id from list_connections")))?;
-        self.visible_connections()?
-            .into_iter()
-            .find(|connection| connection.id == parsed)
-            .ok_or_else(|| ToolError::NotFound(format!("no connection has the id {parsed}")))
+        let library = self.library()?;
+        let connection = library
+            .connections
+            .iter()
+            .find(|connection| connection.id == parsed && !connection.external_access.is_blocked())
+            .ok_or_else(|| ToolError::NotFound(format!("no connection has the id {parsed}")))?;
+        // Its window may still be open in the app, so this is not "not found".
+        let scope = library.resolved_scope(self.host.active_project());
+        if scope.is_some() && library.effective_project(connection) != scope {
+            // No name: a client that kept the id must not read a rename the listing no longer shows it.
+            return Err(ToolError::OutOfScope(
+                "this connection is outside the project TablePro shows now; the user can switch project in TablePro"
+                    .to_owned(),
+            ));
+        }
+        Ok(SavedConnection {
+            name: tablepro_storage::shown_name(&connection.name),
+            ..connection.clone()
+        })
     }
 
     pub async fn session(&self, connection: &SavedConnection) -> Result<Arc<Session>, ToolError> {

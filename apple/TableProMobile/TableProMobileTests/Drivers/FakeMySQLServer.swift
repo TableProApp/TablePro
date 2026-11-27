@@ -13,9 +13,36 @@ import TableProTLSTestFixtures
 // statement does, or with `killedQueriesComplete` succeeds as one that finished before the kill landed. Unkilled,
 // or after `release`, it succeeds. A query starting with `streamsRowsStarting` returns `streamedRows` one-column rows,
 // cut by a kill for its session with 1317. A cleartext password passed to `refuse` is answered with 1045, as an expired
-// token is.
+// token is. With `refusesLogin` every login gets that error, as a refused sign-in or database does. A query in
+// `failures` is answered with its error, after its rows when it has any. Replies carry SERVER_STATUS_IN_TRANS from a
+// BEGIN or START TRANSACTION to the COMMIT or ROLLBACK that ends it.
 final class FakeMySQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
+
+    struct Failure: Sendable {
+        let code: UInt16
+        let sqlState: String
+        let message: String
+        var rowsFirst: Int?
+
+        // ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION.
+        static func readOnlyRefusal(rowsFirst: Int? = nil) -> Failure {
+            Failure(
+                code: 1_792, sqlState: "25006", message: "Cannot execute statement in a READ ONLY transaction.",
+                rowsFirst: rowsFirst
+            )
+        }
+    }
+
+    struct LoginRefusal {
+        let code: UInt16
+        let sqlState: String
+        let message: String
+
+        var packet: [UInt8] {
+            [0xFF, UInt8(code & 0xFF), UInt8(code >> 8)] + Array("#\(sqlState)".utf8) + Array(message.utf8)
+        }
+    }
 
     struct Identity {
         let certificate: String
@@ -66,7 +93,6 @@ final class FakeMySQLServer: @unchecked Sendable {
 
     private static let comQuit: UInt8 = 0x01
     private static let comQuery: UInt8 = 0x03
-    private static let okPacket: [UInt8] = [0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]
     private static let sslRequestLength = 32
     private static let switchToCleartext: [UInt8] = [0xFE] + Array("mysql_clear_password".utf8) + [0]
     private static let switchToSHA2: [UInt8] = [0xFE] + Array("caching_sha2_password".utf8) + [0]
@@ -78,8 +104,6 @@ final class FakeMySQLServer: @unchecked Sendable {
     // ER_ACCESS_DENIED_ERROR (1045), SQLSTATE 28000.
     private static let accessDeniedPacket: [UInt8] = [0xFF, 0x15, 0x04] + Array("#28000".utf8)
         + Array("Access denied for user (using password: YES)".utf8)
-    // No warnings, SERVER_STATUS_AUTOCOMMIT.
-    private static let eofPacket: [UInt8] = [0xFE, 0x00, 0x00, 0x02, 0x00]
     // A utf8mb4 VARCHAR(255) named `n`: catalog, schema, table, org_table, name and org_name, then charset 45, length
     // 1020, type 0xFD, no flags or decimals.
     private static let textColumnDefinition: [UInt8] = ["def", "", "", "", "n", ""]
@@ -96,6 +120,9 @@ final class FakeMySQLServer: @unchecked Sendable {
     private let killedQueriesComplete: Bool
     private let streamedPrefix: String?
     private let streamedRows: Int
+    private let serverVersion: String
+    private let failures: [String: Failure]
+    private let loginRefusal: LoginRefusal?
     private let fixtures: URL?
     private let kills = KillBoard()
     private let refusedPasswords = OSAllocatedUnfairLock<Set<String>>(initialState: [])
@@ -122,7 +149,10 @@ final class FakeMySQLServer: @unchecked Sendable {
         holdSeconds: TimeInterval = 10,
         killedQueriesComplete: Bool = false,
         streamsRowsStarting streamedPrefix: String? = nil,
-        streamedRows: Int = 0
+        streamedRows: Int = 0,
+        serverVersion: String = "8.0.36",
+        failures: [String: Failure] = [:],
+        refusesLogin loginRefusal: LoginRefusal? = nil
     ) throws {
         self.asksForCleartext = asksForCleartext
         self.asksForFullSHA2Auth = asksForFullSHA2Auth
@@ -132,6 +162,9 @@ final class FakeMySQLServer: @unchecked Sendable {
         self.killedQueriesComplete = killedQueriesComplete
         self.streamedPrefix = streamedPrefix
         self.streamedRows = streamedRows
+        self.serverVersion = serverVersion
+        self.failures = failures
+        self.loginRefusal = loginRefusal
         if let identity {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("FakeMySQLServer-\(UUID().uuidString)", isDirectory: true)
@@ -276,20 +309,32 @@ final class FakeMySQLServer: @unchecked Sendable {
                 return
             }
         }
-        guard channel.send(Self.okPacket, sequence: sequence &+ 1) else { return }
+        if let loginRefusal {
+            _ = channel.send(loginRefusal.packet, sequence: sequence &+ 1)
+            return
+        }
+        guard channel.send(Self.okPacket(inTransaction: false), sequence: sequence &+ 1) else { return }
         session.loggedIn = true
 
+        var inTransaction = false
         while let command = channel.readPacket() {
             if command.payload.first == Self.comQuit {
                 session.quit = true
                 return
             }
-            var reply = Self.okPacket
+            var reply = Self.okPacket(inTransaction: inTransaction)
             if command.payload.first == Self.comQuery {
                 let query = String(decoding: command.payload.dropFirst(), as: UTF8.self)
                 session.queries.append(query)
+                inTransaction = Self.inTransaction(after: query, was: inTransaction)
+                reply = Self.okPacket(inTransaction: inTransaction)
+                if let failure = failures[query] {
+                    guard fail(with: failure, on: channel, after: command.sequence, inTransaction: inTransaction) else { return }
+                    continue
+                }
                 if let streamedPrefix, query.hasPrefix(streamedPrefix) {
-                    guard streamRows(on: channel, after: command.sequence, into: &session) else { return }
+                    guard streamRows(on: channel, after: command.sequence, inTransaction: inTransaction, into: &session)
+                    else { return }
                     continue
                 }
                 if let killed = Self.killedSession(in: query) {
@@ -305,13 +350,19 @@ final class FakeMySQLServer: @unchecked Sendable {
 
     // A text result set without CLIENT_DEPRECATE_EOF, which the handshake does not offer: the column count, the column,
     // an EOF, the rows and a closing EOF, or 1317 in place of the rest once a kill for the session arrives.
-    private func streamRows(on channel: ServerChannel, after sequence: UInt8, into session: inout Session) -> Bool {
+    private func streamRows(
+        on channel: ServerChannel,
+        after sequence: UInt8,
+        inTransaction: Bool,
+        into session: inout Session
+    ) -> Bool {
         var next = sequence
         func send(_ payload: [UInt8]) -> Bool {
             next &+= 1
             return channel.send(payload, sequence: next)
         }
-        guard send([1]), send(Self.textColumnDefinition), send(Self.eofPacket) else { return false }
+        let eof = Self.eofPacket(inTransaction: inTransaction)
+        guard send([1]), send(Self.textColumnDefinition), send(eof) else { return false }
         for index in 0..<streamedRows {
             if kills.takeKill(session.connectionId) {
                 session.streamWasKilled = true
@@ -320,7 +371,47 @@ final class FakeMySQLServer: @unchecked Sendable {
             guard send(Self.lengthEncoded("row \(index)")) else { return false }
             session.streamedRowsSent += 1
         }
-        return send(Self.eofPacket)
+        return send(eof)
+    }
+
+    // Its rows first when it has any, then the error in place of the closing EOF.
+    private func fail(with failure: Failure, on channel: ServerChannel, after sequence: UInt8, inTransaction: Bool) -> Bool {
+        var next = sequence
+        func send(_ payload: [UInt8]) -> Bool {
+            next &+= 1
+            return channel.send(payload, sequence: next)
+        }
+        if let rows = failure.rowsFirst {
+            guard send([1]), send(Self.textColumnDefinition), send(Self.eofPacket(inTransaction: inTransaction)) else {
+                return false
+            }
+            for index in 0..<rows {
+                guard send(Self.lengthEncoded("row \(index)")) else { return false }
+            }
+        }
+        let error = [0xFF, UInt8(failure.code & 0xFF), UInt8(failure.code >> 8)] + Array("#\(failure.sqlState)".utf8)
+        return send(error + Array(failure.message.utf8))
+    }
+
+    private static func inTransaction(after query: String, was open: Bool) -> Bool {
+        let head = query.trimmingCharacters(in: .whitespaces).uppercased()
+        if head.hasPrefix("BEGIN") || head.hasPrefix("START TRANSACTION") { return true }
+        if head.hasPrefix("COMMIT") || head.hasPrefix("ROLLBACK") { return false }
+        return open
+    }
+
+    // SERVER_STATUS_AUTOCOMMIT, with SERVER_STATUS_IN_TRANS inside a transaction.
+    private static func status(inTransaction: Bool) -> [UInt8] {
+        [inTransaction ? 0x03 : 0x02, 0x00]
+    }
+
+    private static func okPacket(inTransaction: Bool) -> [UInt8] {
+        [0x00, 0x00, 0x00] + status(inTransaction: inTransaction) + [0x00, 0x00]
+    }
+
+    // No warnings.
+    private static func eofPacket(inTransaction: Bool) -> [UInt8] {
+        [0xFE, 0x00, 0x00] + status(inTransaction: inTransaction)
     }
 
     private static func lengthEncoded(_ text: String) -> [UInt8] {
@@ -341,7 +432,7 @@ final class FakeMySQLServer: @unchecked Sendable {
             capabilities |= Capability.ssl
         }
         var payload: [UInt8] = [10]
-        payload += Array("8.0.36".utf8) + [0]
+        payload += Array(serverVersion.utf8) + [0]
         payload += (0..<4).map { UInt8((connectionId >> ($0 * 8)) & 0xFF) }
         payload += Array("abcdefgh".utf8) + [0]
         payload += [UInt8(capabilities & 0xFF), UInt8((capabilities >> 8) & 0xFF)]

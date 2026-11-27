@@ -56,6 +56,12 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         profiles[typeId]
     }
 
+    /// A query language several engines share, named as a plugin's `EditorLanguage.custom` names it, so an engine
+    /// TablePro does not curate still lexes as its language does.
+    public static func curated(forQueryLanguage language: String) -> SQLLexicalProfile? {
+        language == "cypher" ? cypherProfile : nil
+    }
+
     /// The database type ids the curated table covers.
     public static var curatedDatabaseTypeIds: Set<String> {
         Set(profiles.keys)
@@ -68,10 +74,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// own; an engine that runs statements without one says so through its plugin. A `MERGE` that keeps its `;` is left
     /// out for the same reason: an engine that refuses one without it says so through its plugin. So is a CQL batch,
     /// which would read one statement where an unknown engine may run several. So are the two single body forms, which
-    /// would cut the `BEGIN ... END` body of an engine that has the usual one. So is a statement inside another, which
-    /// would make every `update` or `access` column an unknown engine names a write, and Snowflake's pipe operator,
-    /// which would cut a statement at the `->>` that is JSON's operator on an unknown engine. So are psql's `COPY` rows,
-    /// which would hide lines an unknown engine runs as statements.
+    /// would cut the `BEGIN ... END` body of an engine that has the usual one. So is MySQL's compound statement body,
+    /// which would hold a `LOOP` or a `WHILE ... DO` open past the `;` an unknown engine ends it at. So is a statement
+    /// inside another, which would make every `update` or `access` column an unknown engine names a write, and Snowflake's
+    /// pipe operator, which would cut a statement at the `->>` that is JSON's operator on an unknown engine. So are
+    /// psql's `COPY` rows, which would hide lines an unknown engine runs as statements.
     public static let everyKnownReading: [SQLLexicalGrammar] = {
         var seen: Set<SQLLexicalGrammar> = []
         var result: [SQLLexicalGrammar] = []
@@ -80,8 +87,10 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             for reading in profile.readings {
                 let unitless = reading.subtracting([
                     .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
-                    .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies,
+                    .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies, .compoundStatementBodies,
                     .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains, .psqlScripts,
+                    // An unknown engine reads `BT` and `ET` as names, not as transaction control.
+                    .transactionShortForms,
                 ])
                 if seen.insert(unitless).inserted {
                     result.append(unitless)
@@ -110,10 +119,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
 
     /// MySQL 8.4.11 and MariaDB 11.8.9, measured: a backslash escapes in `'` and `"` strings and is literal in a
     /// backtick identifier, block comments do not nest, `#` is a comment, `/*! */` runs, `--` needs whitespace after
-    /// it, and only a line feed ends a line comment.
+    /// it, and only a line feed ends a line comment. From the MySQL 8.4 manual, and by hand on MariaDB 13.0.2 (the probe
+    /// does not check it): a routine's body is one statement, which may be a compound one.
     static let mySQL: SQLLexicalGrammar = [
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .hashLineComments,
-        .executableComments, .dashCommentsNeedWhitespace, .delimiterDirective,
+        .executableComments, .dashCommentsNeedWhitespace, .delimiterDirective, .compoundStatementBodies,
     ]
 
     /// SQLite 3.54, measured: brackets and backticks quote identifiers, `]]` does not escape, a backslash is literal,
@@ -216,6 +226,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .doubleSlashLineComments,
         .withoutDashComments,
     ]
+
+    private static let cypherProfile = SQLLexicalProfile(grammar: cypher, undetermined: [.carriageReturnEndsLineComments])
 
     /// DynamoDB, from the driver's statement forms: a request is `<Action> {JSON}`, and a backslash escapes inside a
     /// JSON string. PartiQL, the other form, documents only a doubled quote, so plain ANSI is kept as an alternative
@@ -326,7 +338,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "Trino": trinoFamily,
             "Presto": trinoFamily,
             "Teradata": SQLLexicalProfile(
-                grammar: .ansi,
+                grammar: [.transactionShortForms],
                 undetermined: [.nestedBlockComments, .carriageReturnEndsLineComments]
             ),
             "SAP HANA": SQLLexicalProfile(
@@ -346,7 +358,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                     .backslashEscapesInBackticks, .backslashEscapesInAngleQuotes, .carriageReturnEndsLineComments,
                 ]
             ),
-            "Neo4j": SQLLexicalProfile(grammar: cypher, undetermined: [.carriageReturnEndsLineComments]),
+            "Neo4j": cypherProfile,
             "InfluxDB": SQLLexicalProfile(
                 grammar: influxDB,
                 alternatives: [.ansi],

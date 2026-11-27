@@ -49,6 +49,7 @@ extension PluginMetadataRegistry {
             structureEditing: SchemaEditingSupport(columnReorder: .unsupported, foreignKeyEdit: .unsupported),
             capabilities: PluginMetadataSnapshot.CapabilityFlags(
                 supportsSchemaSwitching: true,
+                schemaSwitchScopesUnqualifiedNames: true,
                 supportsImport: false,
                 supportsExport: true,
                 supportsSSH: true,

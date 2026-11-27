@@ -31,9 +31,10 @@ public enum ImportApplier {
         outcome.connectionsReplaced = write.replaced.count
 
         var stored = Set(write.added).union(write.replaced)
+        outcome.connectionIds = plan.connections.map(\.id).filter { stored.contains($0) }
         for planned in plan.connections where stored.contains(planned.id) {
             if let credentials = planned.credentials {
-                library.writeCredentials(credentials, connectionId: planned.id)
+                outcome.passwordsNotKept += library.writeCredentials(credentials, connectionId: planned.id).secretsNotKept
             }
         }
         if !plan.keptConnections.isEmpty {
@@ -67,11 +68,37 @@ public enum ImportApplier {
             ? [:]
             : library.addImportedProfiles(plan.credentialProfiles)
 
+        let projectIds = try plan.projects.isEmpty ? [:] : library.ensureProjects(plan.projects)
+        let replacedIds = Set(plan.connections.filter { $0.write == .replace }.map(\.id))
+        let ownProjectIds = replacedIds.isEmpty ? [:] : library.projectIds(ofSavedConnections: replacedIds)
+        // The file's project wins. One it does not name, or the store could not resolve, takes the target.
+        func projectId(of planned: PlannedConnection) -> UUID? {
+            if let named = planned.projectRef.flatMap({ projectIds[$0] }) {
+                return named
+            }
+            // A replaced connection stays in its project, and so its groups are matched and made there.
+            if planned.write == .replace, let own = ownProjectIds[planned.id] {
+                return own
+            }
+            return plan.targetProjectId
+        }
+        func scopedPath(of planned: PlannedConnection) -> [PathComponent] {
+            guard let root = planned.groupPath.first else { return [] }
+            let scoped = PathComponent(
+                name: root.name,
+                scope: projectId(of: planned),
+                color: root.color,
+                iconName: root.iconName
+            )
+            return [scoped] + planned.groupPath.dropFirst()
+        }
+
         var paths: [[PathComponent]] = []
         var seenPaths: Set<[PathComponent]> = []
         for planned in plan.connections where !planned.groupPath.isEmpty {
-            if seenPaths.insert(planned.groupPath).inserted {
-                paths.append(planned.groupPath)
+            let path = scopedPath(of: planned)
+            if seenPaths.insert(path).inserted {
+                paths.append(path)
             }
         }
         let leaves = try paths.isEmpty ? [] : library.ensureGroupPaths(paths)
@@ -87,11 +114,13 @@ public enum ImportApplier {
             let connectionTagIds = planned.tagNames
                 .compactMap { tagIds[$0.lowercased()] }
                 .filter { seenTags.insert($0).inserted }
+            let groupId = groupIds[scopedPath(of: planned)]
             return ResolvedConnection(
                 planned: planned,
-                groupId: groupIds[planned.groupPath],
+                groupId: groupId,
                 tagIds: connectionTagIds,
-                credentialProfileId: planned.credentialProfileRef.flatMap { createdProfiles[$0] }
+                credentialProfileId: planned.credentialProfileRef.flatMap { createdProfiles[$0] },
+                projectId: groupId == nil ? projectId(of: planned) : nil
             )
         }
     }

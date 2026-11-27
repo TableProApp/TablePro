@@ -10,8 +10,16 @@ import TableProPluginKit
 import UniformTypeIdentifiers
 
 struct RowImportBatchSheet: View {
-    private struct EditRequest: Identifiable {
-        let id: RowImportBatch.File.ID
+    private enum Phase {
+        case list
+        case editing(RowImportBatch.File.ID)
+        case running(ImportService)
+        case finished(TransferResult, changes: [DatabaseObjectChange])
+
+        var editedFile: RowImportBatch.File.ID? {
+            if case .editing(let id) = self { return id }
+            return nil
+        }
     }
 
     @ObservedObject private var pluginManager = PluginManager.shared
@@ -19,17 +27,14 @@ struct RowImportBatchSheet: View {
     let connection: DatabaseConnection
 
     @StateObject private var batch: RowImportBatch
+    @State private var phase: Phase = .list
     @State private var shownFormat: String?
-    @State private var editing: EditRequest?
     @State private var isDropTargeted = false
 
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var importSucceeded = false
-    @State private var importService: ImportService?
-    @State private var showProgressDialog = false
     @State private var importTask: Task<Void, Never>?
 
-    @State private var hostWindow: NSWindow?
 
     init(
         isPresented: Binding<Bool>,
@@ -48,7 +53,50 @@ struct RowImportBatchSheet: View {
         ))
     }
 
+    // A ZStack, not a Group, whose modifiers reach each phase view: a phase switch must not run onDisappear.
     var body: some View {
+        ZStack {
+            switch phase {
+            case .list:
+                listView
+            case .editing(let id):
+                editView(for: id)
+            case .running(let service):
+                ImportProgressView(service: service)
+            case .finished(let result, let changes):
+                TransferResultView(
+                    result,
+                    onBack: result.returnsToForm ? { backToList(posting: changes) } : nil,
+                    onDone: { done(posting: changes) }
+                )
+            }
+        }
+        .background { signatureObservers }
+        .task {
+            settingsSnapshot = PluginSettingsSnapshot(plugins: batch.formatIds.compactMap {
+                plugin(for: $0) as? any SettablePluginDiscoverable
+            })
+            for formatId in batch.formatIds {
+                batch.setSignature(plugin(for: formatId)?.fieldDetectionSignature ?? "", for: formatId)
+            }
+            await batch.loadTables()
+        }
+        .task(id: batch.readRequest) {
+            await batch.readFiles()
+        }
+        .onDisappear {
+            importTask?.cancel()
+            if !importSucceeded { settingsSnapshot?.restore() }
+            settingsSnapshot = nil
+        }
+        // The result's only shortcut is Return. Cancel, the editor's Cancel and Stop own Escape in the other phases.
+        .onExitCommand {
+            guard case .finished(_, let changes) = phase else { return }
+            done(posting: changes)
+        }
+    }
+
+    private var listView: some View {
         VStack(spacing: 0) {
             headerView
                 .padding()
@@ -56,9 +104,6 @@ struct RowImportBatchSheet: View {
 
             fileTable
                 .frame(maxWidth: .infinity, minHeight: 200, maxHeight: .infinity)
-                .sheet(item: $editing) { request in
-                    editSheet(for: request.id)
-                }
                 .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
                     accept(providers)
                 }
@@ -85,34 +130,6 @@ struct RowImportBatchSheet: View {
                 .padding()
         }
         .frame(minWidth: 780, minHeight: 600, idealHeight: 680, maxHeight: .infinity)
-        .background {
-            WindowAccessor { window in
-                hostWindow = window
-            }
-        }
-        .background { signatureObservers }
-        .task {
-            settingsSnapshot = PluginSettingsSnapshot(plugins: batch.formatIds.compactMap {
-                plugin(for: $0) as? any SettablePluginDiscoverable
-            })
-            for formatId in batch.formatIds {
-                batch.setSignature(plugin(for: formatId)?.fieldDetectionSignature ?? "", for: formatId)
-            }
-            await batch.loadTables()
-        }
-        .task(id: batch.readRequest) {
-            await batch.readFiles()
-        }
-        .onDisappear {
-            importTask?.cancel()
-            if !importSucceeded { settingsSnapshot?.restore() }
-            settingsSnapshot = nil
-        }
-        .sheet(isPresented: $showProgressDialog) {
-            if let service = importService {
-                ImportProgressView(service: service)
-            }
-        }
     }
 
     // MARK: - Header
@@ -216,7 +233,7 @@ struct RowImportBatchSheet: View {
                 Button(String(localized: "Try Again")) { batch.retryRead(of: file.id) }
                     .buttonStyle(.link)
             } else {
-                Button(String(localized: "Edit…")) { editing = EditRequest(id: file.id) }
+                Button(String(localized: "Edit…")) { phase = .editing(file.id) }
                     .buttonStyle(.link)
                     .disabled(batch.scope == nil)
                     .accessibilityLabel(Text(String(format: String(localized: "Edit the import of %@"), file.sourceName)))
@@ -285,12 +302,12 @@ struct RowImportBatchSheet: View {
     }
 
     @ViewBuilder
-    private func editSheet(for id: RowImportBatch.File.ID) -> some View {
+    private func editView(for id: RowImportBatch.File.ID) -> some View {
         if let file = batch.file(id), let edit = batch.edit(for: id, onDone: { batch.apply($0, to: id) }) {
             RowImportSheet(
                 isPresented: Binding(
-                    get: { editing?.id == id },
-                    set: { if !$0 { editing = nil } }
+                    get: { phase.editedFile == id },
+                    set: { if !$0 { phase = .list } }
                 ),
                 connection: connection,
                 fileURL: file.url,
@@ -298,6 +315,8 @@ struct RowImportBatchSheet: View {
                 formatId: file.formatId,
                 edit: edit
             )
+        } else {
+            listView
         }
     }
 
@@ -370,7 +389,7 @@ struct RowImportBatchSheet: View {
                 .keyboardShortcut(.cancelAction)
             Button("Import") { performImport() }
                 .buttonStyle(.borderedProminent)
-                .disabled(!batch.canImport || importService?.state.isImporting == true)
+                .disabled(!batch.canImport)
                 .keyboardShortcut(.defaultAction)
         }
     }
@@ -402,13 +421,12 @@ struct RowImportBatchSheet: View {
 
     private func performImport() {
         guard let scope = batch.scope else {
-            TransferResultAlert.presentImportFailure(error: DatabaseError.notConnected, window: hostWindow) {}
+            phase = .finished(TransferResults.importFailed(error: DatabaseError.notConnected), changes: [])
             return
         }
         guard let plan = batch.plan(), let policy = batch.policy else { return }
         let service = ImportService(connection: connection)
-        importService = service
-        showProgressDialog = true
+        phase = .running(service)
 
         importTask = Task {
             do {
@@ -441,37 +459,40 @@ struct RowImportBatchSheet: View {
                     policy: policy,
                     authorization: authorization
                 )
-                showProgressDialog = false
-                present(report, scope: scope)
+                show(report, scope: scope)
             } catch ExecutionGateError.cancelledByUser {
-                showProgressDialog = false
-            } catch is PluginImportCancellationError {
-                showProgressDialog = false
-                TransferResultAlert.presentImportCancelled(result: service.stopResult, window: hostWindow) {}
-            } catch is CancellationError {
-                showProgressDialog = false
-                TransferResultAlert.presentImportCancelled(result: service.stopResult, window: hostWindow) {}
+                phase = .list
+            } catch is PluginImportCancellationError, is CancellationError {
+                phase = .finished(TransferResults.importStopped(service.stopResult), changes: [])
             } catch {
-                showProgressDialog = false
-                TransferResultAlert.presentImportFailure(error: error, result: service.stopResult, window: hostWindow) {}
+                phase = .finished(TransferResults.importFailed(error: error, result: service.stopResult), changes: [])
             }
         }
     }
 
-    private func present(_ report: RowImportBatchReport, scope: DatabaseScope) {
-        let completed = report.ending == .completed
-        if completed {
+    private func show(_ report: RowImportBatchReport, scope: DatabaseScope) {
+        if report.ending == .completed {
             importSucceeded = true
         }
-        TransferResultAlert.presentBatchImportResult(report, window: hostWindow) {
-            for table in Set(report.files.map(\.targetTable)) {
-                AppCommands.shared.objectChanged.send(
-                    DatabaseObjectChange(connectionId: connection.id, scope: scope, name: table, kind: .rows)
-                )
-            }
-            if completed {
-                isPresented = false
-            }
+        let changes = Set(report.files.map(\.targetTable)).map { table in
+            DatabaseObjectChange(connectionId: connection.id, scope: scope, name: table, kind: .rows)
+        }
+        phase = .finished(TransferResults.batchImport(report), changes: changes)
+    }
+
+    private func backToList(posting changes: [DatabaseObjectChange]) {
+        post(changes)
+        phase = .list
+    }
+
+    private func done(posting changes: [DatabaseObjectChange]) {
+        post(changes)
+        isPresented = false
+    }
+
+    private func post(_ changes: [DatabaseObjectChange]) {
+        for change in changes {
+            AppCommands.shared.objectChanged.send(change)
         }
     }
 }

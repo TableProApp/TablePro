@@ -1,6 +1,6 @@
 # 0003: TablePro's own data grid control
 
-- **Status**: Accepted
+- **Status**: Accepted; column order amended by [0013](0013-row-details-column-layout-and-selection-summary.md); one line per cell and the fixed row height superseded by [0024](0024-wrapped-cells-and-uneven-rows.md)
 - **Date**: 2026-11-03
 
 ## Context
@@ -27,7 +27,7 @@
 - `GridColumns` keeps widths and positions for two panes: the row numbers with the frozen columns, and the scrolling columns from x = 0.
 - `GridSelection` is an anchor and a focused cell, as cells, whole rows or everything, so a selection of any size is two numbers.
 - `GridNavigation` moves as Excel does in a block with no empty cells: arrows, Page Up and Down, Home and End, Ctrl to the edges, Shift to extend.
-- `GridCopy` writes Excel's TSV: tabs, CRLF, values with a tab, line break or quote quoted with quotes doubled, NULL as an empty cell. It streams blocks of 16,384 cells from a reader of its own, at a 4,096-character cap, and reads a cut value whole. The core shows control characters as spaces, so a text value with a space is read whole too.
+- `GridCopy` writes Excel's TSV: tabs, CRLF, values with a tab, line break or quote quoted with quotes doubled, NULL and a value the driver could not read as an empty cell. It streams blocks of 16,384 cells from a reader of its own, at a 4,096-character cap, and reads a cut value whole. The core shows control characters as spaces, so a text value with a space is read whole too.
 - `EditedGridData` lays the host's `GridEdits` over the data: the data's rows, then the new rows. `GridEdits` is immutable, and a reader keeps the edits it opened with. A copy takes the edits on the UI thread with its range and opens its reader over them on the pool thread.
 - Its reader reads the data's rows into a block of its own, then copies each cell on, a pending one in its place. Pending text is cut and its control characters shown as spaces, as the core shows a value. New rows are never asked of the data.
 - A cell's state carries Modified, Inserted, Deleted or Default. A deleted row keeps the data's text. `ReadWhole` gives the pending text, null for NULL and empty for DEFAULT, so a copy takes what the user typed.
@@ -49,8 +49,8 @@
 
 - Each row is one element with a `SpriteVisual` painted from a `CompositionDrawingSurface` the width of the pane's visible columns. `TablePro.Graphics.SurfaceDevice` makes the composition graphics device from a Direct2D device through Windows App SDK's `ICompositorInterop`, whose IIDs and layout differ from the system's; a draw gets the surface's own device context through `ICompositionDrawingSurfaceInterop::BeginDraw`.
 - A row keeps an `IDWriteTextLayout` per visible cell while it stays on screen, and lays out only the columns that come into view. Layouts are made from the block's spans: no string, wrapper or closure per cell.
-- The font is what a TextBlock cell would use: Segoe UI Variable Text at the content size (Segoe UI before Windows 11), one line, cut with an ellipsis, centered, grayscale antialiased on a clear surface. The locale is the UI language's, so Han glyphs follow it.
-- NULL is the word NULL in italic in the tertiary text color. A value the core cut ends with an ellipsis in the tertiary color.
+- The font is what a TextBlock cell would use: Segoe UI Variable Text at the content size (Segoe UI before Windows 11), one line, cut with an ellipsis, centered, grayscale antialiased on a clear surface, unless the host names another (`CellFontFamily`, a family not installed keeping the default) or size (`CellFontSize`, 8 to 36); rows and the header grow with the size as they do with text scale, and the app sets both from Settings, Data grid. The locale is the UI language's, so Han glyphs follow it.
+- NULL is the host's `NullText`, the word NULL unless Settings, Data grid, NULL display names another, in italic in the tertiary text color; its accessible name follows it, and a copy still writes NULL as an empty cell. A value the driver could not read shows as `<unreadable type>` in the same style, as the Linux grid words it from the type the core names in the cell (`CellState.Unreadable`). A value the core cut ends with an ellipsis in the tertiary color.
 - Pending changes, as on macOS. A changed cell has underlined text on `SystemFillColorCautionBackground`, and a new row underlined text on `SystemFillColorSuccessBackground`. A row marked for delete, its number too, has struck-through text in `SystemFillColorCritical` on `SystemFillColorCriticalBackground`. DEFAULT is `DefaultText` in semibold `AccentTextFillColorPrimary`.
 - Underline and strike-through are the layout's own, over the whole text. A wash covers the selection rectangle beneath the row, so a row with one draws the selection's tint over it and redraws when the selection moves.
 - High contrast draws no washes; underline and strike-through stay.
@@ -75,6 +75,7 @@
 - Off until the host sets `IsEditable`. F2, Enter or a double-click on a cell opens the editor; typing does not, as on macOS. `CellEditStarting` gives the host the cell, and the host sets the text or cancels. Text with NUL opens nothing, since a TextBox cannot hold it.
 - F2 and Enter, and Tab in the editor, open the editor once the key is done, so the key's character does not reach the new TextBox.
 - The editor is a stock TextBox in the cell's pane, the frozen one or the scrolling one, so it scrolls with the rows. It takes the cells' font, gets focus and selects its text. A value with a line break opens with AcceptsReturn and grows to four rows.
+- Each edit opens a new TextBox. A TextBox with focus and no Height that wraps or takes returns animates its own Height for 100 ms when its size changes, and sets Height to NaN when that ends (`TextBox::OnSizeChanged`, `TextBox_Partial.cpp`). One reused for the next cell opened at the last cell's height, and a one-line editor lost the grid's Height a moment later (run 44783975649). Focus needs the box in the tree, not loaded (`CUIElement::IsFocusable`), so the new box takes focus as it opens and keys typed right after F2 or Tab reach it.
 - Enter commits and stays. Tab and Shift+Tab commit and edit the next cell to the right or left, as NSTableView does. Escape cancels. Ctrl+Enter commits a value with line breaks.
 - Losing focus commits, and a refused commit then cancels. Focus that moves to the TextBox's own menus does not. Unloading the grid and setting `FrozenColumnCount` do the same.
 - On those paths the editor's ToolTip closes with it, so the host shows a refused commit's Error itself.
@@ -103,6 +104,9 @@
 - `ISelectionProvider.GetSelection` reads the model, so cells off the screen are in it, up to 10,000 cells.
 - A point query reaches a drawn cell through the pane's peer, which maps the point to the cell.
 - A header is a HeaderItem with Invoke, which sorts and raises the Invoked event, Transform, which resizes in physical pixels, and its sort order as `ItemStatus`, the property the [HeaderItem control type](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-supportheaderitemcontroltype) gives sort orders. A change raises ItemStatus's property-changed event. The host words it through `SortedAscendingStatus` and `SortedDescendingStatus`.
+- A column's header is a peer of its own, one per column like a cell's, not the header element: ItemsRepeater hands an element to another column as it scrolls, so a client holding the element's peer would read another column. The element's peer leaves the control view and sends a point query to its column's peer. `GetColumnHeaders` lists every column, a cell's TableItem names its column header on screen or not, and the tree lists the headers in view.
+- A row number is a HeaderItem too, named as drawn, with Invoke, which selects the row as a click on the number does, and ScrollItem. `GetRowHeaders` lists the rows in view, a cell's TableItem names its row's, and the tree lists each row in view as its header then its cells.
+- With `ShowsCellTips`, a cell the core cut or its column cuts shows its text, up to 1,000 characters, in a ToolTip after the pointer rests on it: twice `SPI_GETMOUSEHOVERTIME`, one and a half within 200 ms of the last tip closing, as ToolTipService times one. ToolTipService arms a tooltip only on its owner's `PointerEntered` (`ToolTipService_Partial.cpp`), so a ToolTip owned by a pane would open for the first cell alone; each cell's is opened by the grid instead, docked above the cell through `PlacementRect`, since a tooltip opened from code has no pointer to follow. A ToolTip opens from code only through an owner ToolTipService knows, which it takes as its container (`ToolTip::OnIsOpenChanged`; with none, `IsOpen` throws, run 43604877228), so the pane owns the tip only while it shows. Moving to another cell, pressing, scrolling, resizing a column, an edit and new data close it.
 - A cell's `ItemStatus` is its pending change: `EditedStatus`, `NewRowStatus` or `DeletedStatus`, the macOS grid's VoiceOver words. A change raises ItemStatus's property-changed event. Its Name stays the value, `DefaultText` for a DEFAULT cell.
 - An open editor is its pane's one automation child.
 
@@ -115,11 +119,12 @@
 ## Consequences
 
 - Text, hit testing, high contrast, text scale, DPI, device loss, right to left and color fonts are ours to keep right; a TextBlock would do them. Each has a test or a gate check.
-- `TablePattern.ColumnHeaders` reads empty for clients on Windows App SDK 2.6.4: `CUIATableProviderWrapper::GetColumnHeaders` releases its SAFEARRAY before filling it. microsoft/microsoft-ui-xaml#11820 fixed it after 2.6.4. The grid returns the header peers on screen, and a cell's TableItem names its column header while that header is realized.
+- `TablePattern.ColumnHeaders` reads empty for clients on Windows App SDK 2.6.4: `CUIATableProviderWrapper::GetColumnHeaders` releases its SAFEARRAY before filling it. microsoft/microsoft-ui-xaml#11820 fixed it after 2.6.4. Until the SDK has it, a client reads a cell's headers from its TableItem (`ColumnHeaderItems`, `RowHeaderItems`), which reaches every column and row, and the headers in view from the tree.
 - The grid raises `SortRequested` and the host sorts: on the server, or with the core's sort of the rows held.
 - A UI in a right-to-left language would need the grid mirrored; only values read right to left today.
 - The gate runs WARP on hosted runners; no machine with a GPU is measured yet.
-- Not yet: column reorder, row header peers, find, tooltips for cut cells.
+- The host owns the column order: a dragged header raises `ColumnMoveRequested`, the host arranges its data and calls `RearrangeColumns`, which keeps each column's width ([0013](0013-row-details-column-layout-and-selection-summary.md)).
+- Not yet: find.
 
 ## Alternatives considered
 

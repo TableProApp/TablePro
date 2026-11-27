@@ -264,6 +264,7 @@ mod tests {
                 draft: DraftId::new(),
                 ordinal: 1,
                 label: crate::ui::workspace::editor_label::EditorLabel::Untitled(1),
+                name: None,
             }),
         )])));
         let directory = WindowTabs::new(tabs.clone(), index, &view);

@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use sqlx::{AssertSqlSafe, Connection, Row, SqlitePool};
@@ -7,7 +6,13 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
+use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::unix_time::to_unix;
+
+#[path = "favourites_batch.rs"]
+mod batch;
+
+pub use batch::{FavouriteContents, FavouriteDigests, FavouriteWrite};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseEnvironment {
@@ -42,6 +47,24 @@ pub struct FavouriteTable {
     pub name: String,
 }
 
+impl FavouriteTable {
+    fn record(&self) -> RecordRef {
+        RecordRef::Table(crate::TableRef {
+            connection_id: self.connection_id,
+            database: self.database.clone().unwrap_or_default(),
+            schema: self.schema.clone().unwrap_or_default(),
+            name: self.name.clone(),
+        })
+    }
+}
+
+fn database_record(connection_id: Uuid, database: &str) -> RecordRef {
+    RecordRef::Database {
+        connection_id,
+        database: database.to_owned(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FavouriteDatabase {
     pub connection_id: Uuid,
@@ -53,21 +76,20 @@ pub struct FavouriteDatabase {
 pub struct Favourites {
     pool: SqlitePool,
     path: PathBuf,
-    changes: Arc<watch::Sender<u64>>,
+    signals: Signals,
 }
 
 impl Favourites {
-    pub(crate) fn new(pool: SqlitePool, path: PathBuf, changes: Arc<watch::Sender<u64>>) -> Self {
-        Self { pool, path, changes }
+    pub(crate) fn new(pool: SqlitePool, path: PathBuf, signals: Signals) -> Self {
+        Self { pool, path, signals }
     }
 
     pub fn changes(&self) -> watch::Receiver<u64> {
-        self.changes.subscribe()
+        self.signals.subscribe()
     }
 
-    fn changed(&self) {
-        self.changes
-            .send_modify(|revision| *revision = revision.wrapping_add(1));
+    fn changed(&self, entry: JournalEntry) {
+        self.signals.changed(&[entry]);
     }
 
     pub async fn add_table(&self, table: &FavouriteTable) -> Result<(), StorageError> {
@@ -90,7 +112,7 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed();
+            self.changed(JournalEntry::new(RecordKind::FavouriteTable).wrote([table.record()]));
         }
         Ok(())
     }
@@ -126,7 +148,7 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed();
+            self.changed(JournalEntry::new(RecordKind::FavouriteTable).deleted([table.record()]));
         }
         Ok(())
     }
@@ -178,7 +200,9 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed();
+            self.changed(
+                JournalEntry::new(RecordKind::FavouriteDatabase).wrote([database_record(connection, database)]),
+            );
         }
         Ok(())
     }
@@ -206,7 +230,9 @@ impl Favourites {
             .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed();
+            self.changed(
+                JournalEntry::new(RecordKind::FavouriteDatabase).deleted([database_record(connection, database)]),
+            );
         }
         Ok(())
     }

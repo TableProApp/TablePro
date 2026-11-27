@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 use crate::i18n::{gettext, gettext_f};
 use crate::runtime::{spawn_and_deliver, spawn_held};
+use crate::services::saved_connection_list::SavedConnectionList;
 use crate::ui::history_dialog::QueryDestination;
 use saved_query_listing::{Listing, matches};
 use saved_query_object::SavedQueryObject;
@@ -37,16 +38,19 @@ pub(crate) struct SavedQueriesDialogInit {
     pub store: Option<SavedQueries>,
     // Its connection's queries are listed first.
     pub active_connection: Option<Uuid>,
+    // Its scope narrows the list, and its scope signal reads it again.
+    pub saved: Rc<SavedConnectionList>,
     pub tasks: Tasks,
     pub hold: Rc<dyn ProcessHold>,
 }
 
 // What the last search matched. None shows every query.
-type Matched = Rc<RefCell<Option<HashSet<i64>>>>;
+type Matched = Rc<RefCell<Option<HashSet<Uuid>>>>;
 
 struct DialogParts {
     store: Option<SavedQueries>,
     active_connection: Option<Uuid>,
+    saved: Rc<SavedConnectionList>,
     tasks: Tasks,
     hold: Rc<dyn ProcessHold>,
     selection: gtk::SingleSelection,
@@ -87,9 +91,20 @@ impl SavedQueriesDialog {
             .can_unselect(true)
             .build();
         let changes = init.store.as_ref().map(SavedQueries::changes);
+        let weak = dialog.downgrade();
+        // The load starts a new generation, so a list of the old scope on its way is dropped.
+        let observer = init.saved.connect_scope_changed(move || {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.load();
+            }
+        });
+        dialog.imp().scope_observer.set(Some(observer));
+        // The workspace keeps a closed dialog until the next one opens.
+        dialog.connect_closed(|dialog| dialog.imp().unfollow_scope());
         let _ = dialog.imp().parts.set(DialogParts {
             store: init.store,
             active_connection: init.active_connection,
+            saved: init.saved,
             tasks: init.tasks,
             hold: init.hold,
             selection,
@@ -230,7 +245,7 @@ impl SavedQueriesDialog {
         &self,
         row: &SavedQueryRow,
         name: &str,
-        act: fn(&Self, i64),
+        act: fn(&Self, Uuid),
     ) -> gio::ActionEntry<gio::SimpleActionGroup> {
         let (dialog, row) = (self.downgrade(), row.downgrade());
         gio::ActionEntry::<gio::SimpleActionGroup>::builder(name)
@@ -242,7 +257,7 @@ impl SavedQueriesDialog {
             .build()
     }
 
-    fn object_by_id(&self, id: i64) -> Option<SavedQueryObject> {
+    fn object_by_id(&self, id: Uuid) -> Option<SavedQueryObject> {
         let parts = self.imp().parts.get()?;
         parts
             .items
@@ -251,7 +266,7 @@ impl SavedQueriesDialog {
             .find(|object| object.id() == Some(id))
     }
 
-    fn send_query(&self, id: i64, destination: QueryDestination) {
+    fn send_query(&self, id: Uuid, destination: QueryDestination) {
         let Some(query) = self
             .object_by_id(id)
             .and_then(|object| object.query().map(str::to_owned))
@@ -262,7 +277,7 @@ impl SavedQueriesDialog {
         self.close();
     }
 
-    fn copy_query(&self, id: i64) {
+    fn copy_query(&self, id: Uuid) {
         if let Some(query) = self
             .object_by_id(id)
             .and_then(|object| object.query().map(str::to_owned))
@@ -271,7 +286,7 @@ impl SavedQueriesDialog {
         }
     }
 
-    fn prompt_rename(&self, id: i64) {
+    fn prompt_rename(&self, id: Uuid) {
         let Some(current) = self
             .object_by_id(id)
             .and_then(|object| object.name().map(str::to_owned))
@@ -310,7 +325,7 @@ impl SavedQueriesDialog {
         alert.present(Some(self));
     }
 
-    fn confirm_delete(&self, id: i64) {
+    fn confirm_delete(&self, id: Uuid) {
         let Some(name) = self
             .object_by_id(id)
             .and_then(|object| object.name().map(str::to_owned))
@@ -340,13 +355,13 @@ impl SavedQueriesDialog {
         alert.present(Some(self));
     }
 
-    fn rename(&self, id: i64, name: String) {
+    fn rename(&self, id: Uuid, name: String) {
         self.change(StoreChange::Rename, move |store| async move {
             store.rename(id, &name).await
         });
     }
 
-    fn delete(&self, id: i64) {
+    fn delete(&self, id: Uuid) {
         self.change(StoreChange::Delete, move |store| async move { store.delete(id).await });
     }
 
@@ -399,10 +414,17 @@ impl SavedQueriesDialog {
         let generation = imp.load_generation.get().wrapping_add(1);
         imp.load_generation.set(generation);
         let active = parts.active_connection;
+        let scope = parts.saved.scope().map(|scope| scope.with(active));
         let dialog = self.downgrade();
         drop(spawn_and_deliver(
             &parts.tasks,
-            async move { store.list(None).await.map(|queries| Listing::new(queries, active)) },
+            async move {
+                let queries = match scope {
+                    Some(scope) => store.list_for(&scope.connections).await,
+                    None => store.list(None).await,
+                };
+                queries.map(|queries| Listing::new(queries, active))
+            },
             move |listed| {
                 if let Some(dialog) = dialog.upgrade() {
                     dialog.list_arrived(generation, listed);
@@ -499,7 +521,7 @@ impl SavedQueriesDialog {
         });
     }
 
-    fn search_finished(&self, generation: u64, found: Result<HashSet<i64>, TaskFailure>) {
+    fn search_finished(&self, generation: u64, found: Result<HashSet<Uuid>, TaskFailure>) {
         if self.imp().search_generation.get() != generation {
             return;
         }
@@ -509,7 +531,7 @@ impl SavedQueriesDialog {
         }
     }
 
-    fn apply_matches(&self, found: Option<HashSet<i64>>) {
+    fn apply_matches(&self, found: Option<HashSet<Uuid>>) {
         let Some(parts) = self.imp().parts.get() else {
             return;
         };

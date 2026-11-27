@@ -16,20 +16,17 @@ final class ERDiagramViewModel: ObservableObject {
     let schemaKey: String
     let schemaName: String?
 
-    /// The diagram is bound to the database and the schema its tab was opened on, so moving
-    /// the sidebar to another database or schema cannot repoint an open diagram.
+    // Fixed at the first load: with no schema of its own, a re-resolved scope followed the sidebar's browse schema.
+    private var loadedScope: DatabaseScope?
+
     var scope: DatabaseScope? {
-        services.databaseManager.resolvedScope(database: databaseName, schema: schemaName, for: connectionId)
+        loadedScope
+            ?? services.databaseManager.resolvedScope(database: databaseName, schema: schemaName, for: connectionId)
     }
 
     nonisolated private static let noSchemaMarker = "default"
 
-    /// `schemaKey` is the diagram's identity, written as `database.schema` with
-    /// `noSchemaMarker` standing in for an engine that has no schemas. It is also the only
-    /// record of the schema a diagram tab was opened on, because `addERDiagramTab` writes a
-    /// database into the tab's table context but never a schema. Stripping the database
-    /// prefix rather than splitting on the separator keeps a database name that contains a
-    /// dot intact.
+    // `schemaKey` is the diagram's identity; stripping the database prefix keeps a database name with a dot intact.
     nonisolated static func resolveSchemaName(fromSchemaKey schemaKey: String, databaseName: String) -> String? {
         let prefix = databaseName + "."
         guard !databaseName.isEmpty, schemaKey.hasPrefix(prefix) else { return nil }
@@ -40,11 +37,6 @@ final class ERDiagramViewModel: ObservableObject {
 
     nonisolated static func schemaKey(databaseName: String, schema: String?) -> String {
         "\(databaseName).\(schema ?? noSchemaMarker)"
-    }
-
-    nonisolated static func schemaKeyPreserves(_ schema: String, databaseName: String) -> Bool {
-        resolveSchemaName(fromSchemaKey: schemaKey(databaseName: databaseName, schema: schema), databaseName: databaseName)
-            == schema
     }
 
     // MARK: - State
@@ -77,7 +69,7 @@ final class ERDiagramViewModel: ObservableObject {
 
     private var fullGraph: ERDiagramGraph = .empty
     // The bulk column read takes in views too, and a view is edited on the terms its own kind allows.
-    private(set) var objectKinds: [String: TableInfo.TableType] = [:]
+    private(set) var objectKinds: [CatalogName: TableInfo.TableType] = [:]
 
     // MARK: - Canvas Viewport
 
@@ -163,6 +155,7 @@ final class ERDiagramViewModel: ObservableObject {
         connectionId: UUID,
         databaseName: String,
         schemaKey: String,
+        schemaName: String? = nil,
         connection: DatabaseConnection? = nil,
         services: AppServices = .live,
         autoPanClock: any Clock<Duration> = ContinuousClock()
@@ -170,7 +163,9 @@ final class ERDiagramViewModel: ObservableObject {
         self.connectionId = connectionId
         self.databaseName = databaseName
         self.schemaKey = schemaKey
-        self.schemaName = Self.resolveSchemaName(fromSchemaKey: schemaKey, databaseName: databaseName)
+        // The key writes a schema named `default` and no schema alike, so the schema the tab recorded wins.
+        self.schemaName = schemaName?.nilIfEmpty
+            ?? Self.resolveSchemaName(fromSchemaKey: schemaKey, databaseName: databaseName)
         self.connection = connection
         self.services = services
         self.autoPanClock = autoPanClock
@@ -179,6 +174,16 @@ final class ERDiagramViewModel: ObservableObject {
             .sink { [weak self] change in
                 self?.placeCreatedTable(change)
             }
+    }
+
+    convenience init(tab: QueryTab, connection: DatabaseConnection) {
+        self.init(
+            connectionId: connection.id,
+            databaseName: tab.tableContext.databaseName,
+            schemaKey: tab.display.erDiagramSchemaKey ?? tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName,
+            connection: connection
+        )
     }
 
     deinit {
@@ -219,6 +224,7 @@ final class ERDiagramViewModel: ObservableObject {
             loadState = .failed(String(localized: "This diagram is not bound to a database"))
             return
         }
+        loadedScope = scope
 
         do {
             let (fetched, kinds) = try await fetchGraph(in: scope)
@@ -256,24 +262,27 @@ final class ERDiagramViewModel: ObservableObject {
 
     private func fetchGraph(
         in scope: DatabaseScope
-    ) async throws -> (ERDiagramGraph, [String: TableInfo.TableType]?) {
+    ) async throws -> (ERDiagramGraph, [CatalogName: TableInfo.TableType]?) {
+        let schema = scope.schema
         let (columns, foreignKeys, indexes, tables) = try await services.databaseManager.withMetadataDriver(
             scope: scope, workload: .bulk
         ) { driver in
-            let cols = try await driver.fetchAllColumns()
-            let fks = try await driver.fetchAllForeignKeys()
-            let idx = try await driver.fetchIndexes(forTables: Array(fks.keys))
+            let cols = try await driver.fetchAllColumns(schema: schema)
+            let fks = try await driver.fetchAllForeignKeys(schema: schema)
+            let idx = try await driver.fetchIndexes(forTables: fks.keys.map(\.text), schema: schema)
             // Nil keeps the kinds already known, so a failed read never turns a view into a table.
             let tables: [TableInfo]?
             do {
-                tables = try await driver.fetchTables()
+                tables = try await driver.fetchTables(schema: schema)
             } catch {
                 Self.logger.error("ER diagram could not read object kinds: \(error.localizedDescription)")
                 tables = nil
             }
             return (cols, fks, idx, tables)
         }
-        let kinds = tables.map { Dictionary($0.map { ($0.name, $0.type) }, uniquingKeysWith: { first, _ in first }) }
+        let kinds = tables.map {
+            Dictionary($0.map { (CatalogName($0.name), $0.type) }, uniquingKeysWith: { first, _ in first })
+        }
         return (
             ERDiagramGraphBuilder.build(
                 allColumns: columns,
@@ -369,7 +378,7 @@ final class ERDiagramViewModel: ObservableObject {
         guard var placement = pendingPlacement, placement.tableName == nil,
               change.connectionId == connectionId,
               loadState == .loaded,
-              fullGraph.nodeIndex[change.name] == nil,
+              fullGraph.nodeId(of: change.name) == nil,
               change.scope.database == (scope?.database ?? databaseName),
               change.scope.schema?.nilIfEmpty == scope?.schema?.nilIfEmpty
         else { return }
@@ -467,9 +476,9 @@ final class ERDiagramViewModel: ObservableObject {
     }
 
     func persistPositions() {
-        let namedPositions = positionOverrides.reduce(into: [String: CGPoint]()) { result, pair in
+        let namedPositions = positionOverrides.reduce(into: [CatalogName: CGPoint]()) { result, pair in
             if let name = nodeIdToName[pair.key] {
-                result[name] = pair.value
+                result[CatalogName(name)] = pair.value
             }
         }
         ERDiagramPositionStorage.shared.save(namedPositions, connectionId: connectionId, schemaKey: schemaKey)

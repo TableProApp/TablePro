@@ -309,4 +309,61 @@ final class VimEngineFindCharTests {
         keys("l")
         #expect(pos == 1, "After Escape during f, next key should run as normal command")
     }
+
+    // MARK: - A cancelled or failed find ends the command
+
+    @Test("Escape after df drops the operator, so the next w only moves")
+    func escapeAfterOperatorFindDropsTheOperator() {
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("df\u{1B}w")
+        #expect(buffer.text == "hello world foo bar\nsecond line\n")
+        #expect(pos == 6)
+    }
+
+    @Test("A failed df drops the operator")
+    func failedOperatorFindDropsTheOperator() {
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("dfzw")
+        #expect(buffer.text == "hello world foo bar\nsecond line\n")
+        #expect(pos == 6)
+    }
+
+    @Test("A failed d; drops the operator")
+    func failedRepeatFindDropsTheOperator() {
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("fbd;w")
+        #expect(buffer.text == "hello world foo bar\nsecond line\n")
+        #expect(pos == 20)
+    }
+
+    @Test("d; with no find to repeat drops the operator")
+    func repeatFindWithNothingToRepeatDropsTheOperator() {
+        buffer = VimTextBufferMock(text: "one two three\n")
+        engine = VimEngine(buffer: buffer)
+        keys("d;w")
+        #expect(buffer.text == "one two three\n")
+        #expect(pos == 4)
+    }
+
+    @Test("dF stops short of the character under the cursor")
+    func dCapitalFIsExclusive() {
+        buffer = VimTextBufferMock(text: "abcdef\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 4, length: 0))
+        keys("d")
+        key("F", shift: true)
+        keys("b")
+        #expect(buffer.text == "aef\n")
+    }
+
+    @Test("dT keeps the target and the character under the cursor")
+    func dCapitalTIsExclusive() {
+        buffer = VimTextBufferMock(text: "abcdef\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 4, length: 0))
+        keys("d")
+        key("T", shift: true)
+        keys("b")
+        #expect(buffer.text == "abef\n")
+    }
 }

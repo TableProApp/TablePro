@@ -19,7 +19,7 @@ enum TrinoSSLMapping {
         if mode == .caOnly, anchor == nil {
             throw TrinoError.invalidConfiguration(String(
                 localized: """
-                    Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate \
+                    Verify CA needs a CA certificate. In the connection's SSL/TLS settings, choose the CA certificate \
                     that signed the server's certificate, or set SSL Mode to Verify Identity.
                     """
             ))
@@ -53,7 +53,7 @@ enum TrinoSSLMapping {
         guard !keyPath.isEmpty else {
             throw TrinoError.invalidConfiguration(String(
                 localized: """
-                    A client certificate needs its client key. On the connection's Network tab, choose the \
+                    A client certificate needs its client key. In the connection's SSL/TLS settings, choose the \
                     client key, or clear the client certificate.
                     """
             ))

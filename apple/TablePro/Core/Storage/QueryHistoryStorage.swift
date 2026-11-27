@@ -30,6 +30,8 @@ actor QueryHistoryStorage {
     private var cachedMaxDays: Int = 90
     private var cachedAutoCleanup: Bool = true
     private var insertsSinceCleanup: Int = 0
+    // Moves on each retention pass, so the core's copy knows the runs it dropped and drops them too.
+    private(set) var cleanupRuns = 0
     private var didBackfillFingerprints = false
 
     var rewindRevision = 0
@@ -104,6 +106,7 @@ actor QueryHistoryStorage {
             return
         }
         createFingerprintIndex()
+        slimSearchIndexIfNeeded()
         createPlanSnapshotStorage()
         createRewindSnapshotStorage()
         protectDatabaseFiles(at: dbPath)
@@ -141,18 +144,23 @@ actor QueryHistoryStorage {
             error_message TEXT,
             fingerprint_hash INTEGER NOT NULL DEFAULT 0,
             first_row_time REAL,
-            server_time REAL
+            server_time REAL,
+            shape_hash INTEGER NOT NULL DEFAULT 0
         );
         """
 
+    // No prefix tables: a prefix query reads the term index without them, about as fast. No size
+    // table: it serves only bm25, and the app orders by time. Each costs WAL frames on every insert.
     private static let ftsTableSql = """
         CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(
             query,
             content='history',
             content_rowid='rowid',
-            prefix='2 3 4'
+            columnsize=0
         );
         """
+
+    private static let slimSearchIndexMarker = "columnsize=0"
 
     private func createTables() {
         execute(Self.historyTableSql)
@@ -188,24 +196,61 @@ actor QueryHistoryStorage {
         return !results.contains(false)
     }
 
-    /// Kept out of `createIndexes` because that runs before the migration, when a database written
-    /// by an older release still has no `fingerprint_hash` column to index.
-    /// Composites rather than `fingerprint_hash` alone, because a representative lookup takes the
-    /// newest row of one shape under the panel's own filters. Unscoped, the first index answers that
-    /// in a single step. Scoped to a connection, only the second one does: without it `connection_id`
-    /// is a filter applied after the walk, so the lookup reads every row of that shape belonging to
-    /// every other connection before it reaches one it can return. The leftmost column still serves
-    /// the grouping, so the narrower index is redundant once these exist.
+    // Kept out of `createIndexes` because that runs before the migration, when a database written by
+    // an older release still has no `shape_hash` column to index. 0.87.0 creates the two
+    // `fingerprint_hash` indexes at its open; this build reads neither, and each costs a WAL frame per
+    // insert. Dropping an absent index writes nothing.
     private func createFingerprintIndex() {
-        execute("""
-            CREATE INDEX IF NOT EXISTS idx_history_fingerprint_executed
-                ON history(fingerprint_hash, executed_at DESC);
-            """)
-        execute("""
-            CREATE INDEX IF NOT EXISTS idx_history_fingerprint_connection_executed
-                ON history(fingerprint_hash, connection_id, executed_at DESC);
-            """)
+        execute("DROP INDEX IF EXISTS idx_history_fingerprint_executed;")
+        execute("DROP INDEX IF EXISTS idx_history_fingerprint_connection_executed;")
         execute("DROP INDEX IF EXISTS idx_history_fingerprint;")
+        execute("""
+            CREATE INDEX IF NOT EXISTS idx_history_shape_executed
+                ON history(shape_hash, executed_at DESC);
+            """)
+        execute("""
+            CREATE INDEX IF NOT EXISTS idx_history_shape_connection_executed
+                ON history(shape_hash, connection_id, executed_at DESC);
+            """)
+    }
+
+    // Rebuilds a search index made by an older build (0.87.0's prefix tables, or the plain one before
+    // it) as `ftsTableSql`, once, in one transaction. 0.87.0 still reads the result: its create
+    // statements are no-ops on it and its delete trigger works on it. Any failure keeps the old index.
+    private func slimSearchIndexIfNeeded() {
+        guard let sql = searchIndexSql(), !sql.contains(Self.slimSearchIndexMarker) else { return }
+        guard beginTransaction() else { return }
+        let rebuilt = execute("DROP TRIGGER IF EXISTS history_ai;")
+            && execute("DROP TRIGGER IF EXISTS history_ad;")
+            && execute("DROP TRIGGER IF EXISTS history_au;")
+            && execute("DROP TABLE IF EXISTS history_fts;")
+            && execute(Self.ftsTableSql)
+            && createFtsTriggers()
+            && execute("INSERT INTO history_fts(history_fts) VALUES('rebuild');")
+        guard rebuilt else {
+            Self.logger.error("Query history search index rebuild failed and was rolled back")
+            rollbackTransaction()
+            return
+        }
+        commitTransaction()
+    }
+
+    private func searchIndexSql() -> String? {
+        guard db != nil else { return nil }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'history_fts';",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK, sqlite3_step(statement) == SQLITE_ROW,
+            let text = sqlite3_column_text(statement, 0)
+        else {
+            return nil
+        }
+        return String(cString: text)
     }
 
     // MARK: - Migration
@@ -216,37 +261,41 @@ actor QueryHistoryStorage {
         if !hasSource {
             guard migrateToVersion3() else { return false }
         }
+        // `shape_hash` is the shape read with the engine's grammar; `fingerprint_hash` keeps the previous stable's reading.
         guard addColumnIfMissing("fingerprint_hash", definition: "INTEGER NOT NULL DEFAULT 0"),
               addColumnIfMissing("first_row_time", definition: "REAL"),
-              addColumnIfMissing("server_time", definition: "REAL")
+              addColumnIfMissing("server_time", definition: "REAL"),
+              addColumnIfMissing("shape_hash", definition: "INTEGER NOT NULL DEFAULT 0")
         else {
             return false
         }
-        setUserVersion(5)
+        // Setting the same value still writes a WAL frame, at every launch.
+        if userVersion() != 5 {
+            setUserVersion(5)
+        }
         return true
     }
 
     // first_row_time and server_time stay NULL for older rows: COALESCE falls back to execution_time.
-    private func addColumnIfMissing(_ column: String, definition: String) -> Bool {
-        guard let present = hasColumn(column, inTable: "history") else { return false }
-        return present || execute("ALTER TABLE history ADD COLUMN \(column) \(definition);")
+    func addColumnIfMissing(_ column: String, definition: String, inTable table: String = "history") -> Bool {
+        guard let present = hasColumn(column, inTable: table) else { return false }
+        return present || execute("ALTER TABLE \(table) ADD COLUMN \(column) \(definition);")
     }
 
-    /// Filling the column is deliberately not part of `init`.
-    ///
-    /// An actor's initializer runs synchronously on whoever calls it, and the first caller is a
-    /// `Task` inside `applicationWillFinishLaunching`, which inherits main-actor isolation. Doing
-    /// the backfill there tokenizes every stored row on the main thread before any window appears,
-    /// for as long as the user's history is. Running it from an actor method instead puts it on the
-    /// actor's own executor, and the only caller that needs it is the one that reads groups.
-    private func ensureFingerprintsBackfilled() {
+    // Not in `init`, which runs on the main actor at launch: the readers of groups and plans call it on the actor.
+    func ensureFingerprintsBackfilled() {
         guard !didBackfillFingerprints else { return }
         didBackfillFingerprints = true
         backfillFingerprints()
     }
 
     private func backfillFingerprints() {
-        let pending = readRowsMissingFingerprint()
+        backfillFingerprints(table: "history", sqlColumn: "query")
+        backfillFingerprints(table: "plan_snapshots", sqlColumn: "subject_sql")
+    }
+
+    private func backfillFingerprints(table: String, sqlColumn: String) {
+        let pending = readRowsMissingFingerprint(table: table, sqlColumn: sqlColumn)
         guard !pending.isEmpty else { return }
 
         beginTransaction()
@@ -256,7 +305,7 @@ actor QueryHistoryStorage {
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(
             db,
-            "UPDATE history SET fingerprint_hash = ? WHERE id = ?;",
+            "UPDATE \(table) SET shape_hash = ? WHERE id = ?;",
             -1,
             &statement,
             nil
@@ -276,14 +325,14 @@ actor QueryHistoryStorage {
         }
     }
 
-    private func readRowsMissingFingerprint() -> [(id: String, fingerprint: Int64)] {
+    private func readRowsMissingFingerprint(table: String, sqlColumn: String) -> [(id: String, fingerprint: Int64)] {
         var pending: [(id: String, fingerprint: Int64)] = []
 
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(
             db,
-            "SELECT id, query, database_type FROM history WHERE fingerprint_hash = 0;",
+            "SELECT id, \(sqlColumn), database_type FROM \(table) WHERE shape_hash = 0;",
             -1,
             &statement,
             nil
@@ -494,8 +543,8 @@ actor QueryHistoryStorage {
             INSERT INTO history (
                 id, query, connection_id, database_name, database_type, schema_name,
                 source, statement_type, executed_at, execution_time, row_count,
-                was_successful, error_message, fingerprint_hash, first_row_time, server_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                was_successful, error_message, shape_hash, first_row_time, server_time, fingerprint_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
 
         var statement: OpaquePointer?
@@ -538,6 +587,7 @@ actor QueryHistoryStorage {
         } else {
             sqlite3_bind_null(statement, 16)
         }
+        sqlite3_bind_int64(statement, 17, SQLLegacyFingerprint.hash(entry.query, databaseType: entry.databaseType))
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             logSqliteError(context: "insert")
@@ -782,6 +832,9 @@ actor QueryHistoryStorage {
         if let connectionId = request.scope.connectionId {
             clause.append(" AND \(prefix)connection_id = ?", .text(connectionId.uuidString))
         }
+        if let allowed = request.allowedConnectionIds {
+            clause.appendConnections(in: allowed, column: "\(prefix)connection_id")
+        }
 
         let allSources = Set(QueryHistorySource.allCases)
         guard request.sources != allSources else { return }
@@ -820,7 +873,7 @@ actor QueryHistoryStorage {
         clause.append("""
              LEFT JOIN history \(alias) ON \(alias).rowid = (
                  SELECT r.rowid FROM history r
-                  WHERE r.fingerprint_hash = \(groupAlias).fingerprint_hash\(predicate)
+                  WHERE r.shape_hash = \(groupAlias).shape_hash\(predicate)
             """)
         appendScope(&clause)
         clause.append(" ORDER BY r.executed_at DESC, r.rowid DESC LIMIT 1)")
@@ -831,7 +884,7 @@ actor QueryHistoryStorage {
         clause.append("""
             SELECT COUNT(*),
                    SUM(CASE WHEN was_successful = 0 THEN 1 ELSE 0 END),
-                   COUNT(DISTINCT fingerprint_hash),
+                   COUNT(DISTINCT shape_hash),
                    SUM(\(Self.databaseTimeExpression)),
                    MAX(\(Self.databaseTimeExpression))
             FROM history
@@ -866,11 +919,11 @@ actor QueryHistoryStorage {
         let failedRuns = " AND r.was_successful = 0"
         var clause = QueryHistorySqlClause()
         clause.append("""
-            SELECT g.fingerprint_hash, g.call_count, g.failure_count, g.total_duration, g.max_duration,
+            SELECT g.shape_hash, g.call_count, g.failure_count, g.total_duration, g.max_duration,
                    g.total_rows, rep.query, rep.statement_type, rep.database_type,
                    \(ranking.needsErrorMessage ? "err.error_message" : "NULL")
             FROM (
-                SELECT fingerprint_hash,
+                SELECT shape_hash,
                        COUNT(*) AS call_count,
                        SUM(CASE WHEN was_successful = 0 THEN 1 ELSE 0 END) AS failure_count,
                        SUM(\(Self.databaseTimeExpression)) AS total_duration,
@@ -880,7 +933,7 @@ actor QueryHistoryStorage {
                 WHERE 1 = 1
             """)
         appendInsightsFilters(request, to: &clause, columnPrefix: "")
-        clause.append(" GROUP BY fingerprint_hash\(ranking.having)")
+        clause.append(" GROUP BY shape_hash\(ranking.having)")
         // Ordered and limited inside the derived table, so the joined lookups below run once per
         // returned row rather than once per distinct shape in the whole history.
         clause.append(
@@ -941,7 +994,7 @@ actor QueryHistoryStorage {
         var clause = QueryHistorySqlClause()
         clause.append("""
             WITH windowed AS (
-                SELECT fingerprint_hash,
+                SELECT shape_hash,
                        CASE WHEN executed_at >= ? THEN 1 ELSE 0 END AS is_recent,
                        \(Self.databaseTimeExpression) AS execution_time
                 FROM history
@@ -951,15 +1004,15 @@ actor QueryHistoryStorage {
         clause.append("""
             ),
             paired AS (
-                SELECT fingerprint_hash,
+                SELECT shape_hash,
                        SUM(is_recent) AS recent_count,
                        SUM(1 - is_recent) AS prior_count,
                        AVG(CASE WHEN is_recent = 1 THEN execution_time END) AS recent_mean,
                        AVG(CASE WHEN is_recent = 0 THEN execution_time END) AS prior_mean
                 FROM windowed
-                GROUP BY fingerprint_hash
+                GROUP BY shape_hash
             )
-            SELECT p.fingerprint_hash, p.recent_count, p.prior_count, p.recent_mean, p.prior_mean,
+            SELECT p.shape_hash, p.recent_count, p.prior_count, p.recent_mean, p.prior_mean,
                    rep.query, rep.database_type
             FROM paired p
             """)
@@ -1175,6 +1228,7 @@ actor QueryHistoryStorage {
     @discardableResult
     private func performCleanup() -> Bool {
         guard let db else { return false }
+        cleanupRuns += 1
 
         let changesBefore = sqlite3_total_changes(db)
         beginTransaction()

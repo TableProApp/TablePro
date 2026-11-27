@@ -21,6 +21,7 @@ struct MaskingPolicy: Equatable, Sendable {
     // The first rule that matches wins. Without a table, as for most query results, a `table.column`
     // pattern matches by its column part alone, so an unknown source masks more rather than less.
     func style(table: String?, column: String, typeName: String?) -> MaskingStyle? {
+        guard !rules.isEmpty else { return nil }
         for rule in rules where Self.matches(rule, table: table, column: column, typeName: typeName) {
             return rule.style
         }
@@ -116,7 +117,7 @@ struct MaskingPolicy: Equatable, Sendable {
     }
 
     // A result names `TINYINT(1)`, `BIT(8)` or `Nullable(String)` where the rule says `tinyint`, `bit` or `string`.
-    private static func baseTypeName(_ typeName: String) -> String {
+    static func baseTypeName(_ typeName: String) -> String {
         let unwrapped = ColumnType.unwrappedTypeName(typeName) ?? typeName
         return unwrapped.prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces)
     }
@@ -175,6 +176,15 @@ struct ColumnMasks: Equatable, Sendable {
 
     func isMasked(_ column: Int) -> Bool {
         styles[column] != nil
+    }
+
+    func strictest(with other: ColumnMasks) -> ColumnMasks {
+        guard !other.isEmpty else { return self }
+        var merged = styles
+        for (column, style) in other.styles {
+            merged[column] = MaskingStyle.strictest(merged[column], style)
+        }
+        return ColumnMasks(styles: merged)
     }
 
     func value(_ value: PluginCellValue, column: Int) -> PluginCellValue {

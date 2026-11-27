@@ -26,6 +26,12 @@ public final class TextLine: Identifiable, Equatable {
         typesetter = Typesetter()
     }
 
+    /// Marks a line that was typeset as needing layout, and leaves one that never was as it is.
+    func discardTypesetting() {
+        guard !needsLayout else { return }
+        setNeedsLayout()
+    }
+
     /// Determines if the line needs to be laid out again.
     /// - Parameter maxWidth: The new max width to check.
     /// - Returns: True, if this line has been marked as needing layout using ``TextLine/setNeedsLayout()`` or if the
@@ -71,6 +77,22 @@ public final class TextLine: Identifiable, Equatable {
         )
         self.maxWidth = displayData.maxWidth
         needsLayout = false
+    }
+
+    func restyle(
+        range: NSRange,
+        lineLocation: Int,
+        maxWidth: CGFloat,
+        displayData: DisplayData,
+        stringRef: NSTextStorage
+    ) -> [LineFragment]? {
+        guard !needsLayout(maxWidth: maxWidth), lineFragments.count > 1 else { return nil }
+        return typesetter.restyle(
+            range: range,
+            lineLocation: lineLocation,
+            storage: stringRef,
+            displayData: displayData
+        )
     }
 
     public static func == (lhs: TextLine, rhs: TextLine) -> Bool {

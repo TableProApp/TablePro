@@ -4,14 +4,13 @@ use std::time::Duration;
 use async_trait::async_trait;
 use mongodb::Client;
 use tablepro_core::{
-    CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LossPhase,
-    ResultSink, RunOptions, RunSummary, TransactionState, UserSql,
+    CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState,
+    EditorSessionStatus, LossPhase, ResultSink, RunOptions, RunSummary, TransactionState, UserSql,
 };
 use tokio_util::sync::CancellationToken;
 
 use crate::editor_run::EditorRun;
 use crate::endpoint::{ClientUse, MongoEndpoint};
-use crate::session_status::SessionStatus;
 
 /// One editor tab's own client of the server.
 ///
@@ -23,7 +22,7 @@ pub(crate) struct MongoEditorSession {
     endpoint: Arc<MongoEndpoint>,
     client: Arc<Mutex<Option<Client>>>,
     database: Arc<Mutex<String>>,
-    status: Arc<SessionStatus>,
+    status: Arc<EditorSessionStatus>,
     read_only: bool,
     statement_timeout: Option<Duration>,
     shutdown: CancellationToken,
@@ -46,7 +45,7 @@ impl MongoEditorSession {
             endpoint,
             client: Arc::new(Mutex::new(Some(client))),
             database: Arc::new(Mutex::new(database)),
-            status: Arc::new(SessionStatus::new()),
+            status: Arc::new(EditorSessionStatus::new()),
             read_only,
             statement_timeout: options.statement_timeout,
             shutdown: CancellationToken::new(),

@@ -20,7 +20,6 @@ extension GlobalStateSuites {
             let coordinator = MainContentCoordinator(
                 connection: TestFixtures.makeConnection(type: type),
                 tabManager: tabManager,
-                changeManager: DataChangeManager(),
                 toolbarState: ConnectionToolbarState()
             )
             var tab = QueryTab(title: "files", query: "SELECT * FROM `files` LIMIT 200", tabType: .table)
@@ -72,9 +71,20 @@ extension GlobalStateSuites {
             #expect(!query.contains("OCTET_LENGTH"))
         }
 
-        @Test("An engine with no byte length function reads every value inline", .unloadedNoDefaultSort)
-        func otherEngineReadsInline() async throws {
+        @Test("A PostgreSQL page leaves a large binary value on the server and reads its size", .unloadedNoDefaultSort)
+        func postgreSQLFirstPageDefersBinaryValues() async throws {
             let (coordinator, tabManager, tabId) = makeCoordinator(type: .postgresql)
+            defer { coordinator.teardown() }
+
+            let query = try #require(await firstLoadQuery(coordinator, tabManager, tabId: tabId))
+
+            #expect(query.contains(#"CASE WHEN octet_length("data") <= 65536 THEN "data" END AS "data""#))
+            #expect(query.contains(#"octet_length("data") AS "__tablepro_byte_length_2""#))
+        }
+
+        @Test("An engine with no large value functions reads every value inline", .unloadedNoDefaultSort)
+        func otherEngineReadsInline() async throws {
+            let (coordinator, tabManager, tabId) = makeCoordinator(type: .mssql)
             defer { coordinator.teardown() }
 
             let query = try #require(await firstLoadQuery(coordinator, tabManager, tabId: tabId))

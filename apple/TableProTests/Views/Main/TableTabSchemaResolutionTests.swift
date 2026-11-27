@@ -22,7 +22,6 @@ struct TableTabSchemaResolutionTests {
         MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
     }
@@ -234,7 +233,6 @@ struct TableTabListingSchemaTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }

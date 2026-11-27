@@ -48,16 +48,25 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
     private static let naturalSize: CGFloat = 480
 
     func updateNSViewController(_ splitViewController: NSSplitViewController, context: Context) {
-        context.coordinator.sessionsController?.rootView = SessionsTableView(viewModel: viewModel)
-        context.coordinator.metricsController?.rootView = MetricsBarView(
-            metrics: viewModel.metrics,
-            error: viewModel.panelErrors[.serverMetrics]
-        )
-        context.coordinator.slowQueriesController?.rootView = SlowQueryListView(
-            queries: viewModel.slowQueries,
-            error: viewModel.panelErrors[.slowQueries],
-            databaseType: viewModel.databaseType
-        )
+        let board = viewModel.board
+        let coordinator = context.coordinator
+        let metricsError = board.panelErrors[.serverMetrics]
+        if board.metrics != coordinator.metrics || metricsError != coordinator.metricsError {
+            coordinator.metrics = board.metrics
+            coordinator.metricsError = metricsError
+            coordinator.metricsController?.rootView = MetricsBarView(metrics: board.metrics, error: metricsError)
+        }
+        let slowError = board.panelErrors[.slowQueries]
+        let slowChanged = !board.slowQueries.elementsEqual(coordinator.slowQueries, by: { $0.hasSameContent(as: $1) })
+        if slowChanged || slowError != coordinator.slowQueriesError {
+            coordinator.slowQueries = board.slowQueries
+            coordinator.slowQueriesError = slowError
+            coordinator.slowQueriesController?.rootView = SlowQueryListView(
+                queries: board.slowQueries,
+                error: slowError,
+                databaseType: viewModel.databaseType
+            )
+        }
     }
 
     private enum Pane {
@@ -99,8 +108,8 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         case .serverMetrics:
             let controller = NSHostingController(
                 rootView: MetricsBarView(
-                    metrics: viewModel.metrics,
-                    error: viewModel.panelErrors[.serverMetrics]
+                    metrics: viewModel.board.metrics,
+                    error: viewModel.board.panelErrors[.serverMetrics]
                 )
             )
             controller.sizingOptions = []
@@ -114,8 +123,8 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         case .slowQueries:
             let controller = NSHostingController(
                 rootView: SlowQueryListView(
-                    queries: viewModel.slowQueries,
-                    error: viewModel.panelErrors[.slowQueries],
+                    queries: viewModel.board.slowQueries,
+                    error: viewModel.board.panelErrors[.slowQueries],
                     databaseType: viewModel.databaseType
                 )
             )
@@ -132,6 +141,10 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         var sessionsController: NSHostingController<SessionsTableView>?
         var metricsController: NSHostingController<MetricsBarView>?
         var slowQueriesController: NSHostingController<SlowQueryListView>?
+        var metrics: [DashboardMetric] = []
+        var metricsError: String?
+        var slowQueries: [DashboardSlowQuery] = []
+        var slowQueriesError: String?
     }
 }
 

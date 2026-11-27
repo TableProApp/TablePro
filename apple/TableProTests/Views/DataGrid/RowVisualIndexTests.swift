@@ -96,7 +96,7 @@ struct UndoStepRepaintTests {
             needsRowRemoval: false,
             needsRowRestore: false,
             restoreRow: nil
-        ))
+        ), forTab: tab.id)
 
         var repainted = IndexSet()
         var marksRepainted = false

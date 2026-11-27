@@ -7,11 +7,7 @@ struct RecentTableEntry: Codable, Equatable, Identifiable {
     let name: String
     let isView: Bool
 
-    /// The kind the object was opened as, as a `TableInfo.TableType` raw value.
-    ///
-    /// Nil for an entry written before the kind was recorded, and for an open whose caller knew
-    /// only whether the object was a view. Kept as a string rather than the enum so an entry
-    /// naming a kind this build has dropped decodes to nil instead of failing the whole file.
+    // A raw value, not the enum, so a kind this build has dropped reads as nil instead of failing the whole list.
     let objectType: String?
     let openedAt: Date
 
@@ -27,9 +23,7 @@ struct RecentTableEntry: Codable, Equatable, Identifiable {
 
     var isUnqualified: Bool { schema?.isEmpty ?? true }
 
-    /// An entry recorded before the schema was known names the same table as a qualified one, but
-    /// opens that name in whichever schema is browsed when it is clicked. Only a qualified entry
-    /// replaces an unqualified one: the reverse would trade a known schema for a guess.
+    // Only a qualified entry replaces an unqualified one: the reverse would trade a known schema for a guess.
     func supersedes(_ other: RecentTableEntry) -> Bool {
         !isUnqualified && other.isUnqualified && other.scopeKey == scopeKey && other.name == name
     }
@@ -38,10 +32,7 @@ struct RecentTableEntry: Codable, Equatable, Identifiable {
         TableInfo(name: name, type: resolvedType, rowCount: nil, schema: schema)
     }
 
-    /// `isView` alone cannot say what an object is, only that it is not a table: a MariaDB sequence
-    /// recorded through it came back as a view, so the Recent row offered Drop View and issued
-    /// `DROP VIEW`, which fails with ERROR 4092 on the sequence the tree row drops correctly.
-    /// An entry that predates the kind still resolves the way it always did.
+    // `isView` alone turned a MariaDB sequence into a view, so its Recent row issued a failing `DROP VIEW`.
     private var resolvedType: TableInfo.TableType {
         if let objectType, let type = TableInfo.TableType(rawValue: objectType) { return type }
         return isView ? .view : .table
@@ -68,21 +59,23 @@ final class RecentTablesStore {
     }
 
     func entries(connectionId: UUID) -> [RecentTableEntry] {
-        if let data = defaults.data(forKey: PreferenceKeys.recentTables(connectionId: connectionId).name) {
-            return (try? JSONDecoder().decode([RecentTableEntry].self, from: data)) ?? []
+        switch defaults.read(PreferenceKeys.recentTables(connectionId: connectionId)) {
+        case .missing: return migrateLegacy(connectionId: connectionId)
+        case .value(let entries): return entries
+        case .unreadable: return []
         }
-        return migrateLegacy(connectionId: connectionId)
     }
 
     private func migrateLegacy(connectionId: UUID) -> [RecentTableEntry] {
-        let legacyKey = legacyKeyPrefix + connectionId.uuidString
-        guard let data = defaults.data(forKey: legacyKey),
-              let entries = try? JSONDecoder().decode([RecentTableEntry].self, from: data) else {
-            return []
-        }
+        let key = legacyKey(for: connectionId)
+        guard let entries = defaults.read(key).value else { return [] }
         persist(entries, connectionId: connectionId)
-        defaults.removeObject(forKey: legacyKey)
+        defaults.removeValue(for: key)
         return entries
+    }
+
+    private func legacyKey(for connectionId: UUID) -> JSONDefaultsKey<[RecentTableEntry]> {
+        JSONDefaultsKey(legacyKeyPrefix + connectionId.uuidString)
     }
 
     @discardableResult
@@ -119,9 +112,7 @@ final class RecentTablesStore {
         return updated
     }
 
-    /// Drops the entries inside one schema, for a schema that no longer exists. Dropping the whole
-    /// database's entries would take the sibling schemas with it, and leaving them is what made a
-    /// Recent row open a tab whose query failed with "relation does not exist".
+    // For a schema that no longer exists, whose entries otherwise open tabs failing with "relation does not exist".
     @discardableResult
     func clear(connectionId: UUID, database: String?, schema: String) -> [RecentTableEntry] {
         let updated = entries(connectionId: connectionId).filter {
@@ -131,9 +122,7 @@ final class RecentTablesStore {
         return updated
     }
 
-    /// A renamed table keeps its position rather than being dropped and re-added, which would look
-    /// like the user had just opened it. Any stale entry already sitting on the new name is removed
-    /// first: two entries with one id map to a single cached node and the outline draws neither.
+    // A stale entry on the new name goes first: two entries with one id share a node and the outline draws neither.
     func rename(connectionId: UUID, entry: RecentTableEntry, to newName: String) -> [RecentTableEntry] {
         mutate(connectionId: connectionId) { entries in
             guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return false }
@@ -182,8 +171,6 @@ final class RecentTablesStore {
         }
     }
 
-    /// The entry takes the schema where it stands, keeping its position and the time it was opened,
-    /// rather than being recorded again as if the user had just opened it.
     func resolveSchema(
         connectionId: UUID,
         database: String?,
@@ -203,9 +190,7 @@ final class RecentTablesStore {
         }
     }
 
-    /// Reads, mutates and persists in one place, so a rename lands on disk whether or not the
-    /// Recent section is on screen. The live list is empty while Show Recent Tables is off, and
-    /// renaming only that left a dead entry to reappear under the old name when it came back on.
+    // Persists whether or not Recent is on screen, so a rename made while it is off leaves no dead entry.
     private func mutate(
         connectionId: UUID,
         _ body: (inout [RecentTableEntry]) -> Bool
@@ -224,8 +209,8 @@ final class RecentTablesStore {
     }
 
     func removeEntries(for connectionId: UUID) {
-        defaults.removeObject(forKey: PreferenceKeys.recentTables(connectionId: connectionId).name)
-        defaults.removeObject(forKey: legacyKeyPrefix + connectionId.uuidString)
+        defaults.removeValue(for: PreferenceKeys.recentTables(connectionId: connectionId))
+        defaults.removeValue(for: legacyKey(for: connectionId))
     }
 
     static func merged(_ entry: RecentTableEntry, into existing: [RecentTableEntry]) -> [RecentTableEntry] {
@@ -241,7 +226,6 @@ final class RecentTablesStore {
     }
 
     private func persist(_ entries: [RecentTableEntry], connectionId: UUID) {
-        guard let data = try? JSONEncoder().encode(entries) else { return }
-        defaults.set(data, forKey: PreferenceKeys.recentTables(connectionId: connectionId).name)
+        try? defaults.write(entries, to: PreferenceKeys.recentTables(connectionId: connectionId))
     }
 }

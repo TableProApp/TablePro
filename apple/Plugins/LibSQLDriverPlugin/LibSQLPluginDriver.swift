@@ -28,6 +28,9 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LibSQLPluginDriver")
 
+    private static let lexicalGrammar: SQLLexicalGrammar =
+        SQLLexicalProfile.curated(forDatabaseTypeId: LibSQLPlugin.databaseTypeId)?.grammar ?? .ansi
+
     var serverVersion: String? {
         lock.lock()
         defer { lock.unlock() }
@@ -147,8 +150,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 sql: "SELECT sqlite_version()",
                 requestTimeout: deadline.remainingSeconds()
             )
-            let version = libsqlVersion?.rows.first?.first?.stringValue
-                ?? sqliteVersion.rows.first?.first?.stringValue
+            let version = libsqlVersion?.rows.first?.first?.cell.asText
+                ?? sqliteVersion.rows.first?.first?.cell.asText
                 ?? "libSQL"
 
             lock.withLock { _serverVersion = version }
@@ -282,46 +285,74 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        PluginRowStream.makeBounded { continuation, abort in
-            let streamTask = Task {
-                do {
-                    try await self.performStreamRows(query: query, continuation: continuation)
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            abort.onAbort { streamTask.cancel() }
+    // A server answers a pipeline request with the whole result, so a remote read carries its own limit. A local
+    // read stops stepping once the reader has its rows.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        guard let sent = SQLStatementRowLimit.boundedRead(query, rowCap: rowCap, grammar: Self.lexicalGrammar) else {
+            return nil
+        }
+        switch getBackend() {
+        case .remote:
+            let result = try await execute(query: sent)
+            guard result.rows.count > rowCap else { return result }
+            return PluginQueryResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: Array(result.rows.prefix(rowCap)),
+                rowsAffected: result.rowsAffected,
+                timing: result.timing,
+                isTruncated: true,
+                statusMessage: result.statusMessage,
+                columnMeta: result.columnMeta
+            )
+        case .local:
+            return try await boundedQueryFromStream(query: query, rowCap: rowCap)
+        case nil:
+            throw LibSQLError.notConnected
         }
     }
 
-    private func performStreamRows(
-        query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws {
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        PluginRowStream.makeBounded { continuation, abort in
+            let spill = PluginRowSpill(continuation: continuation)
+            let streamTask = Task {
+                do {
+                    try await self.performStreamRows(query: query, into: spill)
+                } catch {
+                    spill.finish(throwing: error)
+                }
+            }
+
+            abort.onAbort {
+                spill.abandon()
+                streamTask.cancel()
+            }
+        }
+    }
+
+    private func performStreamRows(query: String, into spill: PluginRowSpill) async throws {
         switch getBackend() {
         case .remote(let client):
             let result = try await client.execute(sql: query)
 
             let columns = result.cols.map(\.name)
             let columnTypeNames = result.cols.map { $0.decltype ?? "" }
-            continuation.yield(.header(PluginStreamHeader(
+            spill.yield(PluginStreamHeader(
                 columns: columns,
                 columnTypeNames: columnTypeNames,
                 estimatedRowCount: nil
-            )))
+            ))
 
             if !result.rows.isEmpty {
                 let rows = result.rows.map { rawRow in
-                    rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
+                    rawRow.map(\.cell)
                 }
-                continuation.yield(.rows(rows))
+                spill.deliver(rows)
             }
 
-            continuation.finish()
+            spill.finish()
         case .local(let localBackend):
-            try await localBackend.streamQuery(query, continuation: continuation)
+            try await localBackend.streamQuery(query, into: spill)
         case nil:
             throw LibSQLError.notConnected
         }
@@ -384,6 +415,14 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let query = """
             SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk
             FROM \(SQLiteMasterQueries.catalogTable(schema: schema)) m,
@@ -392,6 +431,9 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ORDER BY m.name, p.cid
             """
         let result = try await execute(query: query)
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
+        }
 
         var allColumns: [String: [PluginColumnInfo]] = [:]
 
@@ -426,8 +468,20 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await allForeignKeys(schema: schema, keepsSpellingsApart: true)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await allForeignKeys(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allForeignKeys(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginForeignKeyInfo]] {
         let query = SQLiteForeignKeyGrouping.schemaForeignKeysQuery(schema: schema, excludingTableGlob: "libsql_*")
-        return SQLiteForeignKeyGrouping.foreignKeysByTable(schema: schema, fromRows: try await execute(query: query).rows)
+        let rows = try await execute(query: query).rows
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: rows, nameAt: 0)
+        }
+        return SQLiteForeignKeyGrouping.foreignKeysByTable(schema: schema, fromRows: rows)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -907,7 +961,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 truncated = true
                 break
             }
-            let row = rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
+            let row = rawRow.map(\.cell)
             rows.append(row)
         }
 

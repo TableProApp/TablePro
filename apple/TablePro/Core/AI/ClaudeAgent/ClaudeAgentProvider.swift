@@ -72,7 +72,7 @@ final class ClaudeAgentProvider: ChatTransport {
     }
 
     func fetchAvailableModels() async throws -> [AIModelInfo] {
-        ClaudeAgent.curatedModels.map { AIModelInfo(id: $0.id, displayName: $0.displayName) }
+        ClaudeAgent.models
     }
 
     func testConnection() async throws -> Bool {
@@ -118,7 +118,7 @@ final class ClaudeAgentProvider: ChatTransport {
         if let systemPrompt, !systemPrompt.isEmpty {
             arguments += ["--system-prompt", systemPrompt]
         }
-        if !model.isEmpty {
+        if !model.isEmpty, model != ClaudeAgent.defaultAlias {
             arguments += ["--model", model]
         }
         arguments += ["--", prompt]

@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
+use gio::prelude::SettingsExt as _;
 use tablepro_core::AiProvider;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 use tablepro_linux_platform::settings::keys;
@@ -136,7 +137,8 @@ async fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult
     let fixture = Fixture::new()?;
     assert_eq!(fixture.settings.ai_provider(), None);
     assert!(!fixture.settings.ai_inline_suggestions());
-    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "claude-opus-5-5");
+    // Empty until first use, when the app saves the model catalog's default.
+    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "");
     assert_eq!(fixture.settings.ai_model(AiProvider::OpenAi), "");
     assert_eq!(
         fixture.settings.ai_base_url(AiProvider::OpenAiCompatible),
@@ -152,7 +154,7 @@ async fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult
 
     assert_eq!(fixture.settings.ai_provider(), Some(AiProvider::OpenAiCompatible));
     assert_eq!(fixture.settings.ai_model(AiProvider::OpenAiCompatible), "llama3.2");
-    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "claude-opus-5-5");
+    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "");
     assert_eq!(
         fixture.settings.ai_base_url(AiProvider::OpenAiCompatible),
         "http://gpu-box:11434/v1"
@@ -175,6 +177,37 @@ async fn restore_session_round_trip() -> TestResult {
     fixture.settings.set_restore_session(false)?;
 
     assert!(!fixture.settings.restore_session());
+    Ok(())
+}
+
+#[glib::async_test]
+async fn the_active_project_starts_as_all_connections_and_round_trips() -> TestResult {
+    let fixture = Fixture::new()?;
+    assert_eq!(fixture.settings.active_project(), None);
+    let project = uuid::Uuid::new_v4();
+    let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = seen.clone();
+    fixture
+        .settings
+        .connect_active_project_changed(move |project| sink.borrow_mut().push(project));
+
+    fixture.settings.set_active_project(Some(project))?;
+    assert_eq!(fixture.settings.active_project(), Some(project));
+    fixture.settings.set_active_project(None)?;
+
+    assert_eq!(fixture.settings.active_project(), None);
+    assert_eq!(fixture.settings.gio().string(keys::ACTIVE_PROJECT), "");
+    assert_eq!(*seen.borrow(), [Some(project), None]);
+    Ok(())
+}
+
+#[glib::async_test]
+async fn an_active_project_that_is_no_id_reads_as_all_connections() -> TestResult {
+    let fixture = Fixture::new()?;
+
+    fixture.settings.gio().set_string(keys::ACTIVE_PROJECT, "not an id")?;
+
+    assert_eq!(fixture.settings.active_project(), None);
     Ok(())
 }
 
@@ -651,6 +684,31 @@ async fn invisible_characters_preference_uses_the_shared_snapshot_and_external_u
     assert!(fixture.settings.show_invisible_characters());
     assert_eq!(observed.borrow().as_slice(), &[false, true]);
     assert!(original.show_invisible_characters);
+    Ok(())
+}
+
+#[glib::async_test]
+async fn wrap_text_is_off_by_default_and_follows_the_shared_snapshot_and_external_updates() -> TestResult {
+    use gio::prelude::SettingsExt;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let changes = observed.clone();
+    preferences.connect_changed(move |preferences| {
+        changes.borrow_mut().push(preferences.snapshot().wrap_text);
+    });
+    assert!(!fixture.settings.grid_wrap_text());
+
+    fixture.settings.set_grid_wrap_text(true)?;
+    assert!(fixture.settings.grid_wrap_text());
+    fixture.settings.gio().set_boolean(keys::GRID_WRAP_TEXT, false)?;
+    assert!(!fixture.settings.grid_wrap_text());
+    assert_eq!(observed.borrow().as_slice(), &[true, false]);
+    assert!(!original.wrap_text);
     Ok(())
 }
 

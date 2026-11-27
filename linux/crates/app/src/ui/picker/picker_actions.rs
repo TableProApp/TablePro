@@ -7,9 +7,9 @@ use tablepro_storage::{ConnectionColor, ConnectionGroup, ConnectionTag, SavedCon
 use uuid::Uuid;
 
 use super::connection_menu::{
-    CHANGE_LIBRARY, CONNECT, DELETE, DELETE_GROUP, DUPLICATE, EDIT, MOVE_TO_GROUP, NEW_GROUP, NEW_GROUP_FOR, NEW_TAG,
-    NONE, PICKER, RENAME_GROUP, ROW, ROW_COLOR, ROW_GROUP, ROW_MOVE_DOWN, ROW_MOVE_UP, ROW_PARENT, SET_COLOR,
-    SET_FAVOURITE, SET_TAG, tag_action,
+    CHANGE_LIBRARY, CONNECT, CONNECTION_TO_PROJECT, DELETE, DELETE_GROUP, DUPLICATE, EDIT, GROUP_TO_PROJECT,
+    MOVE_TO_GROUP, NEW_GROUP, NEW_GROUP_FOR, NEW_TAG, NONE, PICKER, RENAME_GROUP, ROW, ROW_COLOR, ROW_GROUP,
+    ROW_MOVE_DOWN, ROW_MOVE_UP, ROW_PARENT, SET_COLOR, SET_FAVOURITE, SET_TAG, tag_action,
 };
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::library_outline::{LibraryItem, LibraryMove, LibraryOutline, LibrarySection, Step};
@@ -47,6 +47,9 @@ pub(crate) fn install_picker_actions(
     }
     for (name, picked) in [(SET_COLOR, Setting::Color), (MOVE_TO_GROUP, Setting::Group)] {
         actions.add_action(&setting_action(name, picked, &list, &sender));
+    }
+    for name in [CONNECTION_TO_PROJECT, GROUP_TO_PROJECT] {
+        actions.add_action(&to_project_action(name, &list, &sender));
     }
     actions.add_action(&set_tag_action(list.clone(), sender.clone()));
     actions.add_action(&set_favourite_action(list.clone(), sender.clone()));
@@ -158,6 +161,38 @@ fn setting_action(
             }
         };
         sender.deliver(input);
+    });
+    action
+}
+
+// Takes the item's id and the project's, empty for no project.
+fn to_project_action(
+    name: &'static str,
+    list: &Rc<SavedConnectionList>,
+    sender: &InputSender<SessionWindowInput>,
+) -> gio::SimpleAction {
+    let action = gio::SimpleAction::new(name, Some(&<(String, String)>::static_variant_type()));
+    let (list, sender) = (list.clone(), sender.clone());
+    action.connect_activate(move |_, target| {
+        let Some((id, project)) = target.and_then(|target| target.get::<(String, String)>()) else {
+            tracing::warn!(action = name, "a picker action came without its target");
+            return;
+        };
+        let item = if name == GROUP_TO_PROJECT {
+            group(&list, Some(id.as_str()), name).map(|group| LibraryItem::Group(group.id))
+        } else {
+            connection(&list, Some(id), name).map(|saved| LibraryItem::Connection(saved.id))
+        };
+        let project = crate::ui::projects::project_from_target(&project)
+            .filter(|project| project.is_none_or(|id| list.projects().iter().any(|held| held.id == id)));
+        let (Some(item), Some(project)) = (item, project) else {
+            tracing::warn!(action = name, "a picker action named a project the list no longer has");
+            return;
+        };
+        sender.deliver(SessionWindowInput::Library(LibraryEdit::MoveToProject {
+            item,
+            project,
+        }));
     });
     action
 }
@@ -512,7 +547,7 @@ fn ask_for_rename(
 
 fn ask_for_delete(root: gtk::Widget, group: ConnectionGroup, subgroups: bool, sender: InputSender<SessionWindowInput>) {
     glib::spawn_future_local(async move {
-        if super::delete_group_dialog::ask_delete_group(&root, group.name.as_str(), subgroups).await {
+        if super::delete_group_dialog::ask_delete_group(&root, &group.name.shown(), subgroups).await {
             sender.deliver(SessionWindowInput::Library(LibraryEdit::DeleteGroup(group.id)));
         }
     });

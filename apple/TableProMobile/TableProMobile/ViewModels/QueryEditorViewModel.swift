@@ -55,8 +55,11 @@ final class QueryEditorViewModel {
     private(set) var rowsAffectedTotal = 0
     private(set) var interruption: ScriptInterruption?
     private(set) var cutLongValues = false
+    var selection = RowSelection()
     // Each request as it went to the server, split again after a statement changed how the session reads literals.
     @ObservationIgnored private(set) var sentStatements: [String] = []
+    // The session and the database and schema the result was read on.
+    @ObservationIgnored private(set) var resultPlacement: ConnectionCoordinator.TablePlacement?
     @ObservationIgnored private(set) var ranTransactionRollBack = false
 
     @ObservationIgnored private var unitKind: QueryScript.UnitKind = .statement
@@ -139,6 +142,38 @@ final class QueryEditorViewModel {
         return try ClipboardExporter.exportRows(
             columns: columns, rows: rows.map(\.cells), format: format, databaseType: databaseType, driver: driver
         )
+    }
+
+    nonisolated enum ResultsExportSource: Sendable {
+        case rerun(String)
+        case buffered(ExportRowSet)
+    }
+
+    var bufferedRowCount: Int { buffer.count }
+
+    // A file wants the whole result, which only running the statement again gives, and only a read may run twice:
+    // `INSERT ... RETURNING`, `CALL` or a batch would write again (critic M9). It runs on a connection of its own, so
+    // `reproducible` says that connection reads what the session read (`SET @v` then `SELECT @v` does not). Anything
+    // else exports the rows shown.
+    func resultsExportSource(
+        databaseType: DatabaseType,
+        runsReadOnly: Bool,
+        reproducible: Bool
+    ) throws(ClipboardExporter.IncompleteValues) -> ResultsExportSource {
+        if reproducible,
+           let statement = Self.rerunnableStatement(sentStatements, databaseType: databaseType, runsReadOnly: runsReadOnly) {
+            return .rerun(statement)
+        }
+        return .buffered(try ExportRowSet(columns: buffer.columns, cells: buffer.window.rows.map(\.cells)))
+    }
+
+    // `runsReadOnly`: the driver runs the statement in the engine's read-only mode. The classifier alone is not enough,
+    // since `SELECT post_payment(42)` reads as a read and its function writes, so without that mode nothing runs twice.
+    nonisolated static func rerunnableStatement(_ sent: [String], databaseType: DatabaseType, runsReadOnly: Bool) -> String? {
+        guard runsReadOnly, sent.count == 1, let statement = sent.first,
+              !statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !SQLWriteClassifier.isWriteQuery(statement, databaseType: databaseType) else { return nil }
+        return statement
     }
 
     // The export text and the pasteboard's copy of it are held beside the values already on screen.
@@ -267,18 +302,27 @@ final class QueryEditorViewModel {
         return error.message
     }
 
-    func run(driver: DatabaseDriver, script: QueryScript, maxRows: Int = QueryEditorViewModel.maxBufferedRows) async {
+    func run(
+        driver: DatabaseDriver,
+        script: QueryScript,
+        maxRows: Int = QueryEditorViewModel.maxBufferedRows,
+        enforcesReadOnly: Bool = false,
+        placement: ConnectionCoordinator.TablePlacement? = nil
+    ) async {
         fetchTask?.cancel()
         let options = StreamOptions(
             textTruncationBytes: 4_096,
             inlineBinary: false,
             maxRows: maxRows,
-            lazyContext: nil
+            lazyContext: nil,
+            enforcesReadOnly: enforcesReadOnly
         )
         runID &+= 1
         let run = runID
         phase = .running
+        selection.end()
         sentStatements = []
+        resultPlacement = placement
         buffer.reset()
         executionTime = 0
         rowsAffectedTotal = 0
@@ -308,6 +352,7 @@ final class QueryEditorViewModel {
     func reset() {
         runID &+= 1
         fetchTask?.cancel()
+        selection.end()
         buffer.reset()
         executionTime = 0
         rowsAffectedTotal = 0
@@ -366,7 +411,9 @@ final class QueryEditorViewModel {
                     }
                     rowsAffectedTotal += buffer.rowsAffected ?? 0
                     if run == runID, script.statements(in: unit).contains(where: {
-                        TransactionRollBackClassifier.rollsBackTransaction($0, statusMessage: buffer.statusMessage)
+                        TransactionRollBackClassifier.rollsBackTransaction(
+                            $0, grammar: script.lexicalGrammar, statusMessage: buffer.statusMessage
+                        )
                     }) {
                         ranTransactionRollBack = true
                     }

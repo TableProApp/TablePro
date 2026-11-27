@@ -1,13 +1,14 @@
 use std::io;
 
 use crate::exit::Exit;
-use crate::host::HostError;
+use crate::host::{HostError, Places};
 
 // core/crates/mcp/src/tool_error.rs: a failed tool answers "<code>: <message>".
-const TOOL_CODES: [&str; 9] = [
+const TOOL_CODES: [&str; 10] = [
     "invalid_argument",
     "not_found",
     "not_connected",
+    "out_of_scope",
     "denied",
     "user_cancelled",
     "timeout",
@@ -24,11 +25,11 @@ pub(crate) enum CommandError {
     OpensInApp,
     #[error("TablePro is not running. Start it, then run the command again.")]
     NotRunning,
-    #[error("TablePro's MCP server is off. Turn on Preferences > MCP > Enable MCP Server, then run the command again.")]
+    #[error("{}", server_off(Places::PREFERENCES))]
     ServerOff,
-    #[error("TablePro's MCP server has not started. Preferences > MCP shows why.")]
+    #[error("{}", no_token(Places::PREFERENCES))]
     NoToken,
-    #[error("TablePro's MCP server does not answer on port {port}. Preferences > MCP shows why.")]
+    #[error("{}", not_answering(*.port, Places::PREFERENCES))]
     NotAnswering { port: u16 },
     #[error(
         "The MCP token changed while the command ran. Run it again; if it keeps failing, another program answers on port {port}."
@@ -75,6 +76,17 @@ impl CommandError {
                 code: "unknown".to_owned(),
                 message: text.to_owned(),
             },
+        }
+    }
+
+    // As the app the command came with names its settings and its secret store.
+    pub(crate) fn message(&self, places: Places) -> String {
+        match self {
+            Self::ServerOff => server_off(places),
+            Self::NoToken => no_token(places),
+            Self::NotAnswering { port } => not_answering(*port, places),
+            Self::Host(error) => error.message(places),
+            other => other.to_string(),
         }
     }
 
@@ -132,9 +144,81 @@ impl CommandError {
     }
 }
 
+fn server_off(places: Places) -> String {
+    format!(
+        "TablePro's MCP server is off. Turn on {} > Enable MCP Server, then run the command again.",
+        places.mcp_settings
+    )
+}
+
+fn no_token(places: Places) -> String {
+    format!(
+        "TablePro's MCP server has not started. {} shows why.",
+        places.mcp_settings
+    )
+}
+
+fn not_answering(port: u16, places: Places) -> String {
+    format!(
+        "TablePro's MCP server does not answer on port {port}. {} shows why.",
+        places.mcp_settings
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SETTINGS: Places = Places {
+        mcp_settings: "Settings > MCP",
+        token_store: "Credential Manager",
+    };
+
+    #[test]
+    fn a_message_names_the_places_of_the_app_it_came_with() {
+        let cases = [
+            (
+                CommandError::ServerOff,
+                "TablePro's MCP server is off. Turn on Preferences > MCP > Enable MCP Server, then run the command \
+again.",
+                "TablePro's MCP server is off. Turn on Settings > MCP > Enable MCP Server, then run the command again.",
+            ),
+            (
+                CommandError::NoToken,
+                "TablePro's MCP server has not started. Preferences > MCP shows why.",
+                "TablePro's MCP server has not started. Settings > MCP shows why.",
+            ),
+            (
+                CommandError::NotAnswering { port: 7 },
+                "TablePro's MCP server does not answer on port 7. Preferences > MCP shows why.",
+                "TablePro's MCP server does not answer on port 7. Settings > MCP shows why.",
+            ),
+            (
+                CommandError::Host(HostError::Keyring {
+                    reason: "locked".to_owned(),
+                }),
+                "Could not read the MCP token from the keyring: locked",
+                "Could not read the MCP token from Credential Manager: locked",
+            ),
+            (
+                CommandError::Host(HostError::ForeignServer { port: 7 }),
+                "Another program holds port 7, so the command did not send it TablePro's token. Quit that program, \
+or pick another port in Preferences > MCP.",
+                "Another program holds port 7, so the command did not send it TablePro's token. Quit that program, \
+or pick another port in Settings > MCP.",
+            ),
+        ];
+
+        for (error, preferences, settings) in cases {
+            assert_eq!(error.to_string(), preferences);
+            assert_eq!(error.message(Places::PREFERENCES), preferences);
+            assert_eq!(error.message(SETTINGS), settings);
+        }
+        assert_eq!(
+            CommandError::NoAnswer { seconds: 1 }.message(SETTINGS),
+            "TablePro did not answer within 1 seconds."
+        );
+    }
 
     #[test]
     fn a_tool_code_maps_to_its_exit_status() {

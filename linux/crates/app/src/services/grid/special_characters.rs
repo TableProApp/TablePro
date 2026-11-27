@@ -190,7 +190,7 @@ fn hex_label(value: u32) -> Cow<'static, str> {
     Cow::Owned(format!("{value:04X}"))
 }
 
-/// A one-line view's text with each special character written as its mark.
+/// A view's text with each special character written as its mark.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Revealed {
     pub text: String,
@@ -205,8 +205,9 @@ pub struct Mark {
 }
 
 /// `None` when `text` holds nothing to mark, so a plain value costs no copy.
-pub fn reveal(text: &str) -> Option<Revealed> {
-    let mut found = special_characters(text, true).peekable();
+/// `line_breaks` is for a one-line view; a view that breaks its lines keeps LF and CR.
+pub fn reveal(text: &str, line_breaks: bool) -> Option<Revealed> {
+    let mut found = special_characters(text, line_breaks).peekable();
     found.peek()?;
     let mut shown = String::with_capacity(text.len() + 8);
     let mut marks = Vec::new();
@@ -252,7 +253,7 @@ mod tests {
     fn plain_text_spaces_and_tabs_are_not_marked() {
         assert!(marked("plain text\twith a tab", true).is_empty());
         assert!(marked("ünïcödé 日本語", true).is_empty());
-        assert_eq!(reveal("plain text"), None);
+        assert_eq!(reveal("plain text", true), None);
     }
 
     #[test]
@@ -357,7 +358,7 @@ mod tests {
 
     #[test]
     fn reveal_writes_labels_and_keeps_special_spaces() {
-        let revealed = reveal("a\u{200b}b\u{a0}c\nd").expect("marks");
+        let revealed = reveal("a\u{200b}b\u{a0}c\nd", true).expect("marks");
         assert_eq!(revealed.text, "aZWSPb\u{a0}cLFd");
         assert_eq!(
             revealed.marks,
@@ -372,6 +373,26 @@ mod tests {
                 },
                 Mark {
                     range: 9..11,
+                    labelled: true
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn reveal_keeps_line_breaks_for_a_view_that_breaks_its_lines() {
+        assert_eq!(reveal("one\ntwo\r\n", false), None);
+        let revealed = reveal("a\u{200b}b\nc\u{1}", false).expect("marks");
+        assert_eq!(revealed.text, "aZWSPb\ncSOH");
+        assert_eq!(
+            revealed.marks,
+            [
+                Mark {
+                    range: 1..5,
+                    labelled: true
+                },
+                Mark {
+                    range: 8..11,
                     labelled: true
                 },
             ]

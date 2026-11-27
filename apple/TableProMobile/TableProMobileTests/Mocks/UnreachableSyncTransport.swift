@@ -19,6 +19,10 @@ struct UnreachableSyncTransport: IOSSyncTransport {
 
     func ensureZoneExists() async throws {}
 
+    func saveSubscription() async throws {
+        throw CKError(.notAuthenticated)
+    }
+
     func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         PullResult(changedRecords: [], deletedRecordIDs: [], newToken: nil)
     }

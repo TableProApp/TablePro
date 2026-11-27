@@ -177,6 +177,9 @@
                             <toolkit:SettingsCard x:Uid="SshPasswordCard" x:Name="SshPasswordCard">
                                 <PasswordBox x:Name="SshPasswordInput" AutomationProperties.AutomationId="SshPasswordInput" x:Uid="SshPasswordInput" MinWidth="240" />
                             </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="SshJumpHostsCard">
+                                <TextBox x:Name="SshJumpHostsBox" AutomationProperties.AutomationId="SshJumpHostsBox" x:Uid="SshJumpHostsBox" MinWidth="240" TextChanged="OnSshSummaryChanged" />
+                            </toolkit:SettingsCard>
                         </toolkit:SettingsExpander.Items>
                     </toolkit:SettingsExpander>
 
@@ -216,6 +219,22 @@
                                     <ComboBoxItem x:Uid="SafeModeOff" Tag="Off" />
                                     <ComboBoxItem x:Uid="SafeModeConfirm" Tag="ConfirmWrites" />
                                     <ComboBoxItem x:Uid="SafeModeReadOnly" Tag="ReadOnly" />
+                                </ComboBox>
+                            </toolkit:SettingsCard>
+                            <!-- In AiPolicy's order: Ask, Allow, Never. -->
+                            <toolkit:SettingsCard x:Uid="AiPolicyCard" x:Name="AiPolicyCard">
+                                <ComboBox x:Name="AiPolicyBox" x:Uid="AiPolicyBox" MinWidth="240" AutomationProperties.AutomationId="AiPolicyBox" SelectionChanged="OnAiPolicyChanged">
+                                    <ComboBoxItem x:Uid="AiPolicyAsk" />
+                                    <ComboBoxItem x:Uid="AiPolicyAllow" />
+                                    <ComboBoxItem x:Uid="AiPolicyNever" />
+                                </ComboBox>
+                            </toolkit:SettingsCard>
+                            <!-- In ExternalAccess's order: Blocked, ReadOnly, ReadWrite. -->
+                            <toolkit:SettingsCard x:Uid="ExternalAccessCard" x:Name="ExternalAccessCard">
+                                <ComboBox x:Name="ExternalAccessBox" x:Uid="ExternalAccessBox" MinWidth="240" AutomationProperties.AutomationId="ExternalAccessBox" SelectionChanged="OnExternalAccessChanged">
+                                    <ComboBoxItem x:Uid="ExternalAccessBlocked" />
+                                    <ComboBoxItem x:Uid="ExternalAccessReadOnly" />
+                                    <ComboBoxItem x:Uid="ExternalAccessReadWrite" />
                                 </ComboBox>
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="ConnectionTimeoutCard">

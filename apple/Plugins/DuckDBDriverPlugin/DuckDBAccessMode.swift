@@ -14,14 +14,14 @@ import Foundation
 /// `DuckDBError` -- and a rejected value leaves the config untouched, so the open then **succeeds
 /// read-write with writes allowed**. A caller that ignores `duckdb_set_config`'s return therefore
 /// ships a read-only toggle that silently does nothing.
-enum DuckDBAccessMode: String {
+nonisolated enum DuckDBAccessMode: String {
     case readWrite = "READ_WRITE"
     case readOnly = "READ_ONLY"
 
     static let configurationOption = "access_mode"
 }
 
-extension DuckDBAccessMode {
+nonisolated extension DuckDBAccessMode {
     static let fieldId = "duckdbReadOnly"
 
     /// Read-only applies to a database file, whatever it is called. Measured: `access_mode` of

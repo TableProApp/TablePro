@@ -37,6 +37,7 @@ pub(crate) mod tests;
 mod window_actions;
 mod work_notifier;
 
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -58,7 +59,7 @@ use tablepro_session::{
     ClaimError, ConnectError, ConnectIntent, ConnectSource, CredentialSource, MonitorSignal, PendingSession,
     RequestTarget, Session, SessionClaim, SessionKey,
 };
-use tablepro_storage::{CredentialDemand, SavedConnection};
+use tablepro_storage::{ConnectionListState, CredentialDemand, SavedConnection};
 
 pub(super) use self::connect_failed_page::ConnectFailedPage;
 use self::connect_failure_view::ConnectFailureView;
@@ -69,13 +70,15 @@ pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage, TakenFailure, source_key};
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
-pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, ScriptInput, SessionWindowInput};
+pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, ScriptInput, SessionWindowInput, WaitingScript};
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::connection_link::without_password;
 use crate::services::secret_save_report::{ReportingCredentials, SecretSaveOutcome};
 use crate::services::session_context::SessionContext;
+use crate::services::setup_guide::{SetupEnding, SetupGate, should_show};
 use crate::ui::connect_dialog::{ConnectDialogMode, ConnectSubmission};
+use crate::ui::setup_guide::{SetupGuide, SetupGuideInit};
 use crate::ui::welcome_view::WelcomeView;
 use crate::ui::workspace::{Workspace, WorkspaceInit, WorkspaceInput, WorkspaceShell};
 use crate::workspace::{
@@ -102,6 +105,10 @@ pub(crate) struct WindowState {
     /// Reaches the application's other windows.
     host: Rc<dyn WindowHost>,
     context: Rc<SessionContext>,
+    // The setup guide, while it is the window's page.
+    setup: RefCell<Option<SetupGuide>>,
+    // Only the launch's first picker window offers the guide, once, when its library is read.
+    offer_guide: Cell<bool>,
 }
 
 impl Default for SessionWindow {
@@ -154,6 +161,10 @@ impl SessionWindow {
         let welcome = WelcomeView::new(list.clone(), Some(services.tasks.clone()));
         crate::ui::picker::install_picker_actions(&welcome, list.clone(), input.clone());
         let picker = PickerPage::new(&welcome, self.application().as_ref());
+        picker.set_project_menu(&services.project_menu.section());
+        if let Some(app) = self.application() {
+            services.project_menu.attach(&app);
+        }
         let searching = welcome.downgrade();
         picker.search_entry().connect_search_changed(move |entry| {
             if let Some(welcome) = searching.upgrade() {
@@ -180,21 +191,35 @@ impl SessionWindow {
         imp.list_observer.set(Some(list.connect_state_changed(move |_| {
             if let Some(window) = window.upgrade() {
                 window.show_connection_list_banner();
+                window.show_active_project();
+                window.offer_setup_guide();
+            }
+        })));
+        // A switch publishes no list, so the label and the radio follow the scope apart from it.
+        let window = self.downgrade();
+        imp.scope_observer.set(Some(list.connect_scope_changed(move || {
+            if let Some(window) = window.upgrade() {
+                window.show_active_project();
             }
         })));
         imp.welcome.replace(Some(welcome));
         let _ = imp.picker.set(picker);
+        let offer_guide = matches!(launch, WindowLaunch::Picker) && services.claim_first_picker_window();
         let _ = imp.state.set(WindowState {
             services,
             host,
             context,
+            setup: RefCell::new(None),
+            offer_guide: Cell::new(offer_guide),
         });
 
         self.render();
         self.show_connection_list_banner();
+        self.show_active_project();
         self.watch_state_files();
         input.deliver(SessionWindowInput::LoadConnections);
         self.open_launch(launch, &input);
+        self.offer_setup_guide();
     }
 
     fn open_launch(&self, launch: WindowLaunch, input: &InputSender<SessionWindowInput>) {
@@ -214,6 +239,7 @@ impl SessionWindow {
                 }
                 imp.restoring.replace(keys);
             }
+            WindowLaunch::Setup => self.show_setup_guide(),
         }
     }
 
@@ -239,6 +265,16 @@ impl SessionWindow {
     #[cfg(test)]
     pub(crate) fn manage_tags(&self) -> Option<std::rc::Rc<crate::ui::tags::ManageTagsDialog>> {
         self.imp().manage_tags.borrow().clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn manage_projects(&self) -> Option<std::rc::Rc<crate::ui::projects::ManageProjectsDialog>> {
+        self.imp().manage_projects.borrow().clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn picker_page(&self) -> Option<PickerPage> {
+        self.imp().picker.get().cloned()
     }
 
     /// What the window's actions, pages and background work send it.
@@ -314,6 +350,10 @@ impl SessionWindow {
             presenter.abort();
         }
         self.stop_state_file_watches();
+        // Closing the window is quitting: the guide ends unseen (core ADR 0057).
+        if let Some(guide) = self.state().and_then(|state| state.setup.take()) {
+            guide.shutdown();
+        }
         self.release_session();
         drop(imp.dialog.take());
         if let Some(welcome) = imp.welcome.take() {
@@ -321,6 +361,9 @@ impl SessionWindow {
         }
         if let (Some(observer), Some(state)) = (imp.list_observer.take(), imp.state.get()) {
             state.services.saved_connections.disconnect_state_changed(observer);
+        }
+        if let (Some(observer), Some(state)) = (imp.scope_observer.take(), imp.state.get()) {
+            state.services.saved_connections.disconnect_scope_changed(observer);
         }
         drop(imp.inhibitor.take());
     }
@@ -349,6 +392,12 @@ impl SessionWindow {
             .and_then(|connects| connects.first().map(|pending| pending.id))
         {
             Some(id) => SessionPage::Connecting(id),
+            None if self
+                .state()
+                .is_some_and(|state| state.setup.try_borrow().is_ok_and(|setup| setup.is_some())) =>
+            {
+                SessionPage::Setup
+            }
             None => SessionPage::Picker,
         }
     }
@@ -528,6 +577,8 @@ impl SessionWindow {
             SessionWindowInput::UpdateTag(tag) => self.on_update_tag(tag),
             SessionWindowInput::DeleteTag(id) => self.on_delete_tag(id),
             SessionWindowInput::ManageTags => self.on_manage_tags(),
+            SessionWindowInput::NewProject => self.on_new_project(),
+            SessionWindowInput::ManageProjects => self.on_manage_projects(),
             SessionWindowInput::ExportConnections => self.on_export_connections(),
             SessionWindowInput::ImportConnections => self.on_import_connections(),
             SessionWindowInput::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes),
@@ -603,6 +654,9 @@ impl SessionWindow {
 
     fn render(&self) {
         let page = self.page();
+        if page != SessionPage::Setup {
+            self.leave_setup_guide();
+        }
         if self.imp().shown.replace(Some(page)) != Some(page) {
             self.show_page(page);
         }
@@ -657,6 +711,15 @@ impl SessionWindow {
                 (
                     shell.clone().map(|shell| shell.upcast()),
                     shell.map(|shell| shell.toast_overlay()),
+                    ShownPage::Other,
+                )
+            }
+            SessionPage::Setup => {
+                self.set_title(Some(&crate::i18n::gettext("TablePro")));
+                let guide = self.state().and_then(|state| state.setup.borrow().clone());
+                (
+                    guide.clone().map(|guide| guide.upcast()),
+                    guide.map(|guide| guide.toast_overlay()),
                     ShownPage::Other,
                 )
             }
@@ -1237,6 +1300,10 @@ impl SessionWindow {
         match input {
             ScriptInput::Open(file) => self.on_open_script(file),
             ScriptInput::Loaded { file, text, target } => self.on_script_loaded(file, text, target),
+            ScriptInput::Shared { title, sql } => {
+                let target = self.relational_front().and_then(|workspace| workspace.key());
+                self.place_waiting_script(WaitingScript::Shared { title, sql }, target);
+            }
             ScriptInput::For { key, scripts } => self.on_scripts_for(key, scripts),
             ScriptInput::DropWaiting => {
                 self.imp().waiting_scripts.borrow_mut().clear();
@@ -1245,22 +1312,23 @@ impl SessionWindow {
         }
     }
 
+    fn relational_front(&self) -> Option<Workspace> {
+        self.workspace()
+            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
+    }
+
     // The session in front now is the one it goes to, even if another comes forward during a slow read.
     fn on_open_script(&self, file: gio::File) {
         let Some(input) = self.input() else {
             return;
         };
-        let target = self
-            .workspace()
-            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
-            .and_then(|workspace| workspace.key());
+        let target = self.relational_front().and_then(|workspace| workspace.key());
         glib::spawn_future_local(async move {
             let text = crate::ui::editor::load_text(&file).await;
             input.deliver(SessionWindowInput::Script(ScriptInput::Loaded { file, text, target }));
         });
     }
 
-    // A script opens in the relational session in front and is never run.
     fn on_script_loaded(&self, file: gio::File, text: Result<String, String>, target: Option<SessionKey>) {
         let text = match text {
             Ok(text) => text,
@@ -1276,6 +1344,11 @@ impl SessionWindow {
         if self.focus_bound_tab(&file) {
             return;
         }
+        self.place_waiting_script(WaitingScript::File { file, text }, target);
+    }
+
+    // A script opens in the relational session in front and is never run.
+    fn place_waiting_script(&self, script: WaitingScript, target: Option<SessionKey>) {
         let chosen = target.and_then(|key| {
             self.workspaces()
                 .into_iter()
@@ -1286,24 +1359,24 @@ impl SessionWindow {
             .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
             .and_then(|workspace| workspace.sender());
         match front {
-            Some(input) => input.deliver(WorkspaceInput::OpenScript { file, text }),
-            None if self.page() != SessionPage::Shell => self.wait_for_session(file, text),
-            None => self.ask_elsewhere(vec![(file, text)]),
+            Some(input) => input.deliver(script_input(script)),
+            None if self.page() != SessionPage::Shell => self.wait_for_session(script),
+            None => self.ask_elsewhere(vec![script]),
         }
     }
 
-    fn wait_for_session(&self, file: gio::File, text: String) {
+    fn wait_for_session(&self, script: WaitingScript) {
         {
             let mut waiting = self.imp().waiting_scripts.borrow_mut();
-            waiting.retain(|(kept, _)| !kept.equal(&file));
-            waiting.push((file, text));
+            waiting.retain(|kept| !kept.same_as(&script));
+            waiting.push(script);
         }
         self.show_waiting_scripts();
     }
 
     // A session that holds keys or documents runs no SQL, so the script
     // asks for a connection in a window of its own.
-    fn ask_elsewhere(&self, scripts: Vec<(gio::File, String)>) {
+    fn ask_elsewhere(&self, scripts: Vec<WaitingScript>) {
         if scripts.is_empty() {
             return;
         }
@@ -1316,11 +1389,14 @@ impl SessionWindow {
             tracing::warn!("no window to open a SQL file in");
             return;
         };
-        for (file, text) in scripts {
-            window.send(SessionWindowInput::Script(ScriptInput::Loaded {
-                file,
-                text: Ok(text),
-                target: None,
+        for script in scripts {
+            window.send(SessionWindowInput::Script(match script {
+                WaitingScript::File { file, text } => ScriptInput::Loaded {
+                    file,
+                    text: Ok(text),
+                    target: None,
+                },
+                WaitingScript::Shared { title, sql } => ScriptInput::Shared { title, sql },
             }));
         }
     }
@@ -1357,7 +1433,7 @@ impl SessionWindow {
     }
 
     // The session left between the hand-over and now: they wait here instead, behind the picker's banner.
-    fn on_scripts_for(&self, key: SessionKey, scripts: Vec<(gio::File, String)>) {
+    fn on_scripts_for(&self, key: SessionKey, scripts: Vec<WaitingScript>) {
         match self
             .workspaces()
             .into_iter()
@@ -1365,26 +1441,26 @@ impl SessionWindow {
         {
             Some(workspace) => self.open_scripts_in(&workspace, scripts),
             None => {
-                for (file, text) in scripts {
-                    self.wait_for_session(file, text);
+                for script in scripts {
+                    self.wait_for_session(script);
                 }
             }
         }
     }
 
     // A session that runs no SQL leaves them waiting for one that does.
-    fn open_scripts_in(&self, workspace: &Workspace, scripts: Vec<(gio::File, String)>) {
-        let scripts: Vec<(gio::File, String)> = scripts
+    fn open_scripts_in(&self, workspace: &Workspace, scripts: Vec<WaitingScript>) {
+        let scripts: Vec<WaitingScript> = scripts
             .into_iter()
-            .filter(|(file, _)| !self.focus_bound_tab(file))
+            .filter(|script| !script.file().is_some_and(|file| self.focus_bound_tab(file)))
             .collect();
         let input = workspace
             .sender()
             .filter(|_| workspace.data_model() == Some(DataModel::Relational));
         match input {
             Some(input) => {
-                for (file, text) in scripts {
-                    input.deliver(WorkspaceInput::OpenScript { file, text });
+                for script in scripts {
+                    input.deliver(script_input(script));
                 }
             }
             None => self.ask_elsewhere(scripts),
@@ -1396,22 +1472,7 @@ impl SessionWindow {
             return;
         };
         let banner = picker.script_banner();
-        let title = match self.imp().waiting_scripts.borrow().as_slice() {
-            [] => None,
-            [(file, _)] => Some(crate::i18n::gettext_f(
-                "Choose a connection to open “{name}”",
-                &[("name", &file_display_name(&file.uri()))],
-            )),
-            waiting => {
-                let count = waiting.len();
-                Some(crate::i18n::ngettext_f(
-                    "Choose a connection to open {n} SQL file",
-                    "Choose a connection to open {n} SQL files",
-                    u32::try_from(count).unwrap_or(u32::MAX),
-                    &[("n", &count.to_string())],
-                ))
-            }
-        };
+        let title = waiting_title(&self.imp().waiting_scripts.borrow());
         match title {
             Some(title) => {
                 banner.set_title(&title);
@@ -1424,6 +1485,16 @@ impl SessionWindow {
     #[cfg(test)]
     pub(crate) fn script_banner(&self) -> Option<adw::Banner> {
         self.imp().picker.get().map(PickerPage::script_banner)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn toast_titles(&self) -> Vec<String> {
+        self.imp()
+            .toasts
+            .borrow()
+            .iter()
+            .filter_map(|toast| toast.title().map(String::from))
+            .collect()
     }
 
     /// The dialog may be editing a connection the window shows or already
@@ -1594,7 +1665,7 @@ impl SessionWindow {
         match self.page() {
             SessionPage::Connecting(_) => self.stop_connects(),
             SessionPage::Failed => drop(self.imp().failed.take()),
-            SessionPage::Picker | SessionPage::Shell => return,
+            SessionPage::Picker | SessionPage::Shell | SessionPage::Setup => return,
         }
         self.connects_changed();
     }
@@ -1944,7 +2015,7 @@ fn connect_saved(
             .get(&saved.driver_id)
             .as_deref()
             .map(DatabaseDriver::capabilities),
-        route(saved.ssh.is_some()),
+        route(saved.ssh.as_ref().is_some_and(|ssh| ssh.enabled)),
     );
     async move {
         let connected = connect_flow::connect_saved(
@@ -2117,9 +2188,49 @@ fn attempt_error(error: &ConnectError, server_name_shown: bool) -> AttemptError 
 /// connect: the connection, or the file.
 fn source_name(source: &ConnectSource) -> String {
     match source {
-        ConnectSource::Saved(saved) => saved.name.clone(),
+        ConnectSource::Saved(saved) => tablepro_storage::shown_name(&saved.name),
         ConnectSource::Intent(intent) => intent.request.metadata.name.clone(),
         ConnectSource::File(identity) => file_display_name(&identity.uri),
+    }
+}
+
+fn script_input(script: WaitingScript) -> WorkspaceInput {
+    match script {
+        WaitingScript::File { file, text } => WorkspaceInput::OpenScript { file, text },
+        WaitingScript::Shared { sql, .. } => WorkspaceInput::OpenInEditor { sql, database: None },
+    }
+}
+
+fn waiting_title(waiting: &[WaitingScript]) -> Option<String> {
+    match waiting {
+        [] => None,
+        [WaitingScript::File { file, .. }] => Some(crate::i18n::gettext_f(
+            "Choose a connection to open “{name}”",
+            &[("name", &file_display_name(&file.uri()))],
+        )),
+        [WaitingScript::Shared { title, .. }] if !title.trim().is_empty() => Some(crate::i18n::gettext_f(
+            "Choose a connection to open “{name}”",
+            &[("name", title.trim())],
+        )),
+        [WaitingScript::Shared { .. }] => Some(crate::i18n::gettext("Choose a connection to open the shared query")),
+        waiting if waiting.iter().all(|script| script.file().is_some()) => {
+            let count = waiting.len();
+            Some(crate::i18n::ngettext_f(
+                "Choose a connection to open {n} SQL file",
+                "Choose a connection to open {n} SQL files",
+                u32::try_from(count).unwrap_or(u32::MAX),
+                &[("n", &count.to_string())],
+            ))
+        }
+        waiting => {
+            let count = waiting.len();
+            Some(crate::i18n::ngettext_f(
+                "Choose a connection to open {n} query",
+                "Choose a connection to open {n} queries",
+                u32::try_from(count).unwrap_or(u32::MAX),
+                &[("n", &count.to_string())],
+            ))
+        }
     }
 }
 
@@ -2127,6 +2238,179 @@ fn file_display_name(uri: &str) -> String {
     let file = gio::File::for_uri(uri);
     file.basename()
         .map_or_else(|| uri.to_owned(), |name| name.to_string_lossy().into_owned())
+}
+
+impl SessionWindow {
+    // The gate's launch rows, read once the first picker window's library has an answer (core ADR 0057).
+    fn offer_setup_guide(&self) {
+        let Some(state) = self.state().filter(|state| state.offer_guide.get()) else {
+            return;
+        };
+        let list = state.services.saved_connections.state();
+        if matches!(list, ConnectionListState::Loading) {
+            return;
+        }
+        state.offer_guide.set(false);
+        let gate = SetupGate {
+            opened_from_menu: false,
+            library_ready: matches!(list, ConnectionListState::Ready(_)),
+            connections: state.services.saved_connections.connections().len(),
+            seen: state.services.settings.setup_guide_seen(),
+            first_picker_window: true,
+        };
+        if self.page() == SessionPage::Picker && should_show(&gate) {
+            self.show_setup_guide();
+        }
+    }
+
+    // The menu's Setup Guide opens over the picker, or in a window of its own beside a busy one.
+    fn open_setup_guide(&self) {
+        match self.page() {
+            SessionPage::Picker => self.show_setup_guide(),
+            SessionPage::Setup => {}
+            SessionPage::Connecting(_) | SessionPage::Failed | SessionPage::Shell => {
+                let opened = self
+                    .application()
+                    .and_downcast::<crate::application::TableProApplication>()
+                    .and_then(|app| app.open_window(WindowLaunch::Setup));
+                if opened.is_none() {
+                    tracing::warn!("no window opened for the setup guide");
+                }
+            }
+        }
+    }
+
+    fn show_setup_guide(&self) {
+        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+            return;
+        };
+        if state.setup.borrow().is_some() {
+            return;
+        }
+        let services = &state.services;
+        let (importing, filing, finishing) = (self.downgrade(), self.downgrade(), self.downgrade());
+        let guide = SetupGuide::new(SetupGuideInit {
+            dirs: tablepro_linux_platform::foreign_app_dirs(),
+            drivers: services.drivers.clone(),
+            connections: services.storage.connections().clone(),
+            tasks: services.tasks.clone(),
+            settings: services.settings.clone(),
+            on_import: Box::new(move |review, plan, done| {
+                if let Some(window) = importing.upgrade() {
+                    window.import_from_app(
+                        review,
+                        plan,
+                        Box::new(move |written: Vec<SavedConnection>| {
+                            done(written.iter().map(|saved| saved.id).collect());
+                        }),
+                    );
+                }
+            }),
+            on_import_file: Box::new(move || {
+                if let Some(window) = filing.upgrade() {
+                    window.end_setup_guide(None);
+                    input.deliver(SessionWindowInput::ImportConnections);
+                }
+            }),
+            on_end: Box::new(move |ending| {
+                if let Some(window) = finishing.upgrade() {
+                    window.end_setup_guide(Some(ending));
+                }
+            }),
+        });
+        state.setup.replace(Some(guide.clone()));
+        self.render();
+        guide.start();
+    }
+
+    // Finish and Skip run the guide's ending; the file import has its own way on.
+    fn end_setup_guide(&self, ending: Option<SetupEnding>) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let Some(guide) = state.setup.take() else {
+            return;
+        };
+        guide.shutdown();
+        mark_setup_guide_seen(state);
+        self.render();
+        match ending {
+            Some(SetupEnding::NewConnection) => self.send(SessionWindowInput::OpenConnectDialog),
+            Some(SetupEnding::Sample) => self.open_sample(),
+            Some(SetupEnding::Open(id)) => self.open_stored(id),
+            Some(SetupEnding::Select(ids)) => self.focus_connections(&ids),
+            Some(SetupEnding::Stay) | None => {}
+        }
+    }
+
+    // Leaving the page by another route, such as a connect from the menu, ends the guide with nothing run.
+    fn leave_setup_guide(&self) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let Some(guide) = state.setup.try_borrow_mut().ok().and_then(|mut setup| setup.take()) else {
+            return;
+        };
+        guide.shutdown();
+        mark_setup_guide_seen(state);
+    }
+
+    fn open_sample(&self) {
+        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+            return;
+        };
+        let data = state.services.storage.paths().data.clone();
+        let store = state.services.storage.connections().clone();
+        let name = crate::i18n::gettext("Chinook (Sample)");
+        let blocking = state.services.tasks.clone();
+        crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
+            let made = blocking
+                .spawn_blocking_task(move || crate::services::sample_database::ensure_blocking(&data, &store, &name))
+                .await;
+            let failure = match made {
+                Ok(Ok(saved)) => {
+                    input.deliver(SessionWindowInput::OpenSaved(Box::new(saved)));
+                    return;
+                }
+                Ok(Err(error)) => error.to_string(),
+                Err(failure) => failure.to_string(),
+            };
+            tracing::warn!(%failure, "the sample database was not set up");
+            input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext(
+                "The sample database could not be set up.",
+            )));
+        });
+    }
+
+    // The store's own list, which holds a write at once; the pickers' list follows it a moment later.
+    fn open_stored(&self, id: uuid::Uuid) {
+        let stored = self
+            .state()
+            .and_then(|state| match state.services.storage.connections().snapshot().state {
+                ConnectionListState::Ready(list) => list.connections.iter().find(|saved| saved.id == id).cloned(),
+                ConnectionListState::Loading | ConnectionListState::Unavailable(_) => None,
+            });
+        match stored {
+            Some(saved) => self.send(SessionWindowInput::OpenSaved(Box::new(saved))),
+            None => tracing::warn!(%id, "an imported connection to open is gone"),
+        }
+    }
+
+    // Every way an import shows its connections comes here, the picker window an import elsewhere picks included.
+    fn focus_connections(&self, ids: &[uuid::Uuid]) {
+        if let Some(picker) = self.imp().picker.get() {
+            picker.end_search();
+        }
+        if let Some(welcome) = self.imp().welcome.borrow().as_ref() {
+            welcome.focus_connections(ids);
+        }
+    }
+}
+
+fn mark_setup_guide_seen(state: &WindowState) {
+    if let Err(error) = state.services.settings.set_setup_guide_seen(true) {
+        tracing::warn!(%error, "the setup guide was not marked seen");
+    }
 }
 
 /// The Edit button: named after the setting that fixes a TLS failure

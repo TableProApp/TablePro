@@ -20,7 +20,7 @@ use super::device_limit_dialog::DeviceLimitDialog;
 use crate::i18n::{gettext, gettext_f};
 use crate::services::account_service::{AccountHandle, AccountStart};
 use crate::services::telemetry::Telemetry;
-use crate::ui::error_text::{account_error_message, offline_file_message};
+use crate::ui::error_text::{account_error_message, account_unavailable_message, offline_file_message};
 use crate::ui::icons;
 
 const CANCEL: &str = "cancel";
@@ -537,18 +537,7 @@ impl AccountPage {
         let imp = self.imp();
         let group = imp.account_group.get();
         let start = imp.deps.get().map(|deps| deps.handle.start.borrow().clone());
-        let unavailable = match &start {
-            None | Some(AccountStart::Starting | AccountStart::Ready(_)) => None,
-            Some(AccountStart::NoMachineId(detail)) => Some(gettext_f(
-                "TablePro accounts need this computer’s machine ID, which could not be read: {detail}",
-                &[("detail", detail)],
-            )),
-            Some(AccountStart::Misconfigured(detail)) => Some(gettext_f(
-                "This development build’s account settings are not valid: {detail}",
-                &[("detail", detail)],
-            )),
-            Some(AccountStart::Failed(error)) => Some(account_error_message(error)),
-        };
+        let unavailable = start.as_ref().and_then(account_unavailable_message);
         if let Some(reason) = unavailable {
             self.add(&group, &warning_row(&gettext("Accounts Unavailable"), &reason));
             return;
@@ -1124,8 +1113,18 @@ mod tests {
     use chrono::TimeDelta;
     use tablepro_account::{
         Account, AccountSettings, AppClient, BrowserLauncher, CallbackPage, DeviceDescription, Endpoints,
-        EntitlementClaims, EntitlementProblem, LicenseClaim, MachineId, Membership, SignedIn, TeamClaim, Url, fakes,
+        EntitlementClaims, EntitlementProblem, FixedServer, LicenseClaim, MachineId, Membership, ServerSettings,
+        SignedIn, TeamClaim, Url, fakes,
     };
+
+    // A stand-in for tablepro.app that signs with the test key, as `fakes::claims` names it.
+    fn stub_server(endpoints: Endpoints) -> FixedServer {
+        FixedServer {
+            endpoints,
+            keys: fakes::keys().expect("the test key"),
+            issuer: fakes::ISSUER.to_owned(),
+        }
+    }
     use tokio::sync::watch;
 
     use super::*;
@@ -1198,41 +1197,29 @@ mod tests {
 
         // An account whose service nothing answers, so only what a test sends shows.
         fn ready(&self) {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-            let base = format!("http://{}", listener.local_addr().expect("its address"));
-            drop(listener);
+            // No test binds port 1, so a connect there is refused, unlike a freed port another test can take.
+            let base = "http://127.0.0.1:1".to_owned();
             let endpoints = Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints");
             let machine = MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID");
-            self.ready_with(
-                endpoints,
-                fakes::keys().expect("the test key"),
-                machine,
-                self.browser.clone(),
-            );
+            self.ready_with(stub_server(endpoints), machine, self.browser.clone());
         }
 
-        fn ready_with(
-            &self,
-            endpoints: Endpoints,
-            keys: tablepro_account::EntitlementKeys,
-            machine_id: MachineId,
-            browser: Arc<dyn BrowserLauncher>,
-        ) {
+        fn ready_with(&self, server: FixedServer, machine_id: MachineId, browser: Arc<dyn BrowserLauncher>) {
             let settings = AccountSettings {
                 client: AppClient::LINUX,
-                endpoints,
+                server: ServerSettings::Fixed(server),
                 device: DeviceDescription {
                     name: "Ada's laptop".to_owned(),
                     app_version: "0.1.0".to_owned(),
                     os_version: "Ubuntu 26.04".to_owned(),
                 },
                 machine_id,
-                keys,
                 account_file: self.dir.path().join("account.json"),
                 callback_page: CallbackPage {
                     finished: String::new(),
                     unknown: String::new(),
                 },
+                legacy_entitlement_file: None,
             };
             let account = Account::new(
                 settings,
@@ -1333,6 +1320,7 @@ mod tests {
             entitlement: Some(fakes::entitlement(&claims).expect("an entitlement")),
             problem: None,
             remembered: true,
+            session_id: None,
         }))
     }
 
@@ -1378,7 +1366,7 @@ mod tests {
             Some("Use your plan on this computer. Everything else works without an account.")
         );
         assert!(!imp.plan_group.is_visible());
-        assert!(!imp.features_group.is_visible());
+        assert_eq!(harness.titles(&imp.features_group), ["Pro Options for Shared Links"]);
         assert!(!imp.devices_group.is_visible());
         assert!(!imp.teams_group.is_visible());
         assert_eq!(
@@ -1543,7 +1531,11 @@ mod tests {
 
         assert!(imp.features_group.is_visible());
         assert_eq!(imp.features_group.title(), "Features");
-        assert_eq!(harness.titles(&imp.features_group), ["Data Rewind", "Result Charts"]);
+        // The page's own render lists the features Linux has, Pro's share options among them.
+        assert_eq!(
+            harness.titles(&imp.features_group),
+            ["Pro Options for Shared Links", "Data Rewind", "Result Charts"]
+        );
         assert_eq!(marked("Data Rewind"), (true, false));
         assert_eq!(marked("Result Charts"), (false, true));
         harness.audit();
@@ -1637,6 +1629,7 @@ mod tests {
             entitlement: None,
             problem: Some(EntitlementProblem::DeviceLimitReached(holders.clone())),
             remembered: true,
+            session_id: None,
         })));
         let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(700).build());
         window.set_content(Some(&harness.page));
@@ -1695,6 +1688,7 @@ mod tests {
                 entitlement: None,
                 problem: Some(problem),
                 remembered: true,
+                session_id: None,
             })));
             harness
                 .page
@@ -1726,12 +1720,7 @@ mod tests {
         let machine = MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID");
         let stub = limit_stub(&machine);
         let endpoints = Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints");
-        harness.ready_with(
-            endpoints,
-            fakes::keys().expect("the test key"),
-            machine,
-            Arc::new(Approving),
-        );
+        harness.ready_with(stub_server(endpoints), machine, Arc::new(Approving));
         let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(700).build());
         window.set_content(Some(&harness.page));
         let toasts = Rc::new(RefCell::new(Vec::new()));
@@ -1803,12 +1792,7 @@ mod tests {
         let machine = MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID");
         let stub = limit_stub_then(&machine, false);
         let endpoints = Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints");
-        harness.ready_with(
-            endpoints,
-            fakes::keys().expect("the test key"),
-            machine,
-            Arc::new(Approving),
-        );
+        harness.ready_with(stub_server(endpoints), machine, Arc::new(Approving));
         let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(700).build());
         window.set_content(Some(&harness.page));
         let toasts = Rc::new(RefCell::new(Vec::new()));
@@ -1846,12 +1830,7 @@ mod tests {
         let machine = MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID");
         let stub = limit_stub(&machine);
         let endpoints = Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints");
-        harness.ready_with(
-            endpoints,
-            fakes::keys().expect("the test key"),
-            machine,
-            Arc::new(Approving),
-        );
+        harness.ready_with(stub_server(endpoints), machine, Arc::new(Approving));
         let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(700).build());
         window.set_content(Some(&harness.page));
         let refresh = "POST /v2/devices/dev_here/entitlement";
@@ -2164,12 +2143,7 @@ mod tests {
         let revoking = Arc::new(AtomicBool::new(true));
         let stub = sign_out_stub(&machine, revoking.clone());
         let endpoints = Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints");
-        harness.ready_with(
-            endpoints,
-            fakes::keys().expect("the test key"),
-            machine,
-            Arc::new(Approving),
-        );
+        harness.ready_with(stub_server(endpoints), machine, Arc::new(Approving));
         let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(700).build());
         window.set_content(Some(&harness.page));
         let shows = |title: &str| {
@@ -2212,12 +2186,7 @@ mod tests {
         let revoking = Arc::new(AtomicBool::new(true));
         let stub = sign_out_stub(&machine, revoking.clone());
         let endpoints = Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints");
-        harness.ready_with(
-            endpoints,
-            fakes::keys().expect("the test key"),
-            machine,
-            Arc::new(Approving),
-        );
+        harness.ready_with(stub_server(endpoints), machine, Arc::new(Approving));
         let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(700).build());
         window.set_content(Some(&harness.page));
         let shows = |title: &str| {
@@ -2257,12 +2226,7 @@ mod tests {
         let machine = MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID");
         let stub = sign_out_stub(&machine, Arc::new(AtomicBool::new(false)));
         let endpoints = Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints");
-        harness.ready_with(
-            endpoints,
-            fakes::keys().expect("the test key"),
-            machine,
-            Arc::new(Approving),
-        );
+        harness.ready_with(stub_server(endpoints), machine, Arc::new(Approving));
         let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(700).build());
         window.set_content(Some(&harness.page));
         let asked_me = || stub.requests().iter().filter(|it| *it == "GET /v2/me").count();
@@ -2308,7 +2272,12 @@ mod tests {
                 email: email.clone(),
                 profile: tempfile::tempdir().expect("a browser profile"),
             });
-            harness.ready_with(endpoints, keys, machine, browser);
+            let server = FixedServer {
+                issuer: endpoints.api_origin(),
+                endpoints,
+                keys,
+            };
+            harness.ready_with(server, machine, browser);
             let collector = crate::test_support::PostHogCollector::start();
             harness.share_usage_data(&collector);
             let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(900).build());

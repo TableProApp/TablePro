@@ -145,6 +145,19 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// statements after it may still have run and returned results.
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult?
 
+    // In order, in one exchange, stopping at the first failure: nothing after it reaches the server. One outcome per
+    // statement that ran, a failure last. Nil when this batch cannot be held to that, and the host sends each alone.
+    func executeStatements(_ statements: [PluginBatchStatement]) async throws -> [PluginBatchStatementOutcome]?
+
+    /// Runs `statement`, a `COPY ... FROM STDIN`, and sends it `rows` a piece at a time through the engine's copy
+    /// protocol, holding the session until the copy ends. A driver declares `PluginCapabilities.copyFromStandardInput`
+    /// for it; the default throws `PluginDriverUnsupportedOperation.copyFromStandardInput`.
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult
+
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
 
     /// What `fetchTables(schema:)` lists for every schema `fetchSchemas()` lists, in one call, each
@@ -241,6 +254,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// What `fetchUserDefinedTypes(schema:)` lists for each named schema, in one call, each type
     /// carrying its own schema. Nil means the host asks each schema in turn.
     func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]?
+
+    /// The side kinds of a catalog load in as few round trips as the engine allows, one answer per kind asked.
+    /// The default asks each kind in turn.
+    func fetchCatalogSideObjects(_ request: PluginCatalogSideRequest) async -> PluginCatalogSideObjects
 
     /// Reads one type again, definition included. The type must be one this driver listed,
     /// because its `identity` is the driver's own key for finding it.
@@ -340,6 +357,24 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var tableDDLIncludesForeignKeys: Bool { get }
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]]
     var providesBulkIndexFetch: Bool { get }
+    // Which `fetchAll...` reads answer every table the way its own read does, so an export may read a schema once
+    // instead. A table a declared read leaves out has none of that kind.
+    var exportBulkReads: PluginExportBulkReads { get }
+    // What an export reads in place of `fetchAllColumns`, `fetchAllForeignKeys` and `fetchAllIndexes`. A String key
+    // equates names a server can keep apart (NFC and NFD spellings), so an answer holding two such names throws
+    // rather than merge them, and the export reads each table alone.
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]]
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
+    func fetchAllIndexesForExport(schema: String?) async throws -> [String: [PluginIndexInfo]]
+    // `fetchIndexDDL`, `fetchCommentDDL`, `fetchDependentSequences` and `fetchDependentTypes` for every table of the
+    // schema, keyed by table name.
+    func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]]
+    func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]]
+    func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]]
+    func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]]
+    // `fetchTableDDL` for the tables of the schema it can answer from one snapshot, keyed by table name, each the text
+    // the per-table read gives. A table it leaves out is read alone.
+    func fetchAllTableDDL(schema: String?) async throws -> [String: String]
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata]
     var providesBulkTableMetadataFetch: Bool { get }
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
@@ -475,6 +510,21 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]?
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String?
 
+    // The schema the caller's scope names, nil for the session's. The defaults forward to the schema-less
+    // requirements above, so a driver that only answers those keeps qualifying with its session schema.
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String?
+    func generateModifyColumnSQL(table: String, schema: String?, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String?
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String?
+    func generateAddIndexSQL(table: String, schema: String?, index: PluginIndexDefinition) -> String?
+    func generateDropIndexSQL(table: String, schema: String?, indexName: String) -> String?
+    func generateModifyIndexSQL(table: String, schema: String?, oldIndexName: String, newIndex: PluginIndexDefinition) -> String?
+    func generateAddForeignKeySQL(table: String, schema: String?, fk: PluginForeignKeyDefinition) -> String?
+    func generateDropForeignKeySQL(table: String, schema: String?, constraintName: String) -> String?
+    func generateAddCheckConstraintSQL(table: String, schema: String?, constraint: PluginCheckConstraintDefinition) -> String?
+    func generateDropCheckConstraintSQL(table: String, schema: String?, constraintName: String) -> String?
+    func generateRenameCheckConstraintSQL(table: String, schema: String?, from oldName: String, to newName: String) -> String?
+    func generateModifyPrimaryKeySQL(table: String, schema: String?, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]?
+
     /// The statements that put `table`'s columns into `desiredOrder`, or nil where the engine
     /// cannot reorder them.
     ///
@@ -606,6 +656,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// answers ORA-03405 and creates nothing. Only the driver knows where its own statements end, so a driver whose
     /// DDL holds more than one statement answers here. The default is that one string, sent whole.
     func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]?
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]?
 
     // Definition SQL for clipboard copy (optional — return nil if not supported)
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
@@ -744,6 +795,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String?
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String?
     func generateDropRoutineSQL(name: String, signature: String?, schema: String?, isFunction: Bool) -> String?
+    // A dump's drop of a table, view or materialized view, which succeeds when the relation is missing. Nil keeps the
+    // export's own `DROP ... IF EXISTS`.
+    func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String?
     var triggerEditUsesReplace: Bool { get }
 
     /// Whether an object whose definition this driver reports as `CREATE OR REPLACE` is replaced by running that
@@ -891,6 +945,10 @@ public extension PluginDatabaseDriver {
 
     func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]? { nil }
 
+    func fetchCatalogSideObjects(_ request: PluginCatalogSideRequest) async -> PluginCatalogSideObjects {
+        await fetchCatalogSideObjectsOneByOne(request)
+    }
+
     func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo {
         guard let definition = type.definition, !definition.isEmpty else {
             throw PluginObjectSourceError.unsupported(type.name)
@@ -975,6 +1033,7 @@ public extension PluginDatabaseDriver {
         schema: String?,
         isFunction: Bool
     ) -> String? { nil }
+    func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String? { nil }
     var triggerEditUsesReplace: Bool { false }
     var replacesDefinitionsInPlace: Bool { false }
     var supportsTransactionalDDL: Bool { false }
@@ -1067,10 +1126,10 @@ public extension PluginDatabaseDriver {
     // Whether `fetchAllColumns` reads every table in one request or a fixed few, whatever its completeness.
     var fetchesAllColumnsInOneRequest: Bool { providesBulkColumnFetch }
 
-    /// Default: fetches columns per-table sequentially (N+1 round-trips).
-    /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.COLUMNS).
+    // One read per table. A driver with a schema-wide query overrides it.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let tables = try await fetchTables(schema: schema)
+        try PluginCatalogNameCollision.requireDistinctSpellings(tables.map(\.name))
         var result: [String: [PluginColumnInfo]] = [:]
         for table in tables {
             try Task.checkCancellation()
@@ -1102,10 +1161,10 @@ public extension PluginDatabaseDriver {
     /// CockroachDB and Redshift as variants of its own type and neither has the bulk query.
     var providesBulkForeignKeyFetch: Bool { false }
 
-    /// Default: fetches foreign keys per-table sequentially (N+1 round-trips).
-    /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.KEY_COLUMN_USAGE).
+    // One read per table. A driver with a schema-wide query overrides it.
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let tables = try await fetchTables(schema: schema)
+        try PluginCatalogNameCollision.requireDistinctSpellings(tables.map(\.name))
         var result: [String: [PluginForeignKeyInfo]] = [:]
         for table in tables {
             try Task.checkCancellation()
@@ -1132,10 +1191,30 @@ public extension PluginDatabaseDriver {
     /// Answers whether `fetchAllIndexes` is a single query rather than the N+1 default below.
     var providesBulkIndexFetch: Bool { false }
 
-    /// Default: fetches indexes per-table sequentially (N+1 round-trips).
-    /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.STATISTICS).
+    var exportBulkReads: PluginExportBulkReads { [] }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await fetchAllColumns(schema: schema)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await fetchAllForeignKeys(schema: schema)
+    }
+
+    func fetchAllIndexesForExport(schema: String?) async throws -> [String: [PluginIndexInfo]] {
+        try await fetchAllIndexes(schema: schema)
+    }
+
+    func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] { [:] }
+    func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] { [:] }
+    func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] { [:] }
+    func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]] { [:] }
+    func fetchAllTableDDL(schema: String?) async throws -> [String: String] { [:] }
+
+    // One read per table. A driver with a schema-wide query overrides it.
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
         let tables = try await fetchTables(schema: schema)
+        try PluginCatalogNameCollision.requireDistinctSpellings(tables.map(\.name))
         var result: [String: [PluginIndexInfo]] = [:]
         for table in tables {
             try Task.checkCancellation()
@@ -1148,13 +1227,11 @@ public extension PluginDatabaseDriver {
     /// Answers whether `fetchAllTableMetadata` is a single query rather than the N+1 default below.
     var providesBulkTableMetadataFetch: Bool { false }
 
-    /// Default: fetches metadata per-table sequentially (N+1 round-trips).
-    /// SQL drivers should override with a single bulk query (e.g. SHOW TABLE STATUS with no filter).
-    ///
-    /// A table whose metadata cannot be read is left out rather than throwing. The caller wants
-    /// the descriptive fields, and one unreadable table is not a reason to lose the other 199.
+    // One read per table. A table whose metadata cannot be read is left out: one unreadable table is not a reason to
+    // lose the rest.
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
         let tables = try await fetchTables(schema: schema)
+        try PluginCatalogNameCollision.requireDistinctSpellings(tables.map(\.name))
         var result: [String: PluginTableMetadata] = [:]
         for table in tables {
             try Task.checkCancellation()
@@ -1351,6 +1428,81 @@ public extension PluginDatabaseDriver {
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? { nil }
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? { nil }
 
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
+        generateAddColumnSQL(table: table, column: column)
+    }
+
+    func generateModifyColumnSQL(
+        table: String,
+        schema: String?,
+        oldColumn: PluginColumnDefinition,
+        newColumn: PluginColumnDefinition
+    ) -> String? {
+        generateModifyColumnSQL(table: table, oldColumn: oldColumn, newColumn: newColumn)
+    }
+
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
+        generateDropColumnSQL(table: table, columnName: columnName)
+    }
+
+    func generateAddIndexSQL(table: String, schema: String?, index: PluginIndexDefinition) -> String? {
+        generateAddIndexSQL(table: table, index: index)
+    }
+
+    func generateDropIndexSQL(table: String, schema: String?, indexName: String) -> String? {
+        generateDropIndexSQL(table: table, indexName: indexName)
+    }
+
+    func generateModifyIndexSQL(
+        table: String,
+        schema: String?,
+        oldIndexName: String,
+        newIndex: PluginIndexDefinition
+    ) -> String? {
+        generateModifyIndexSQL(table: table, oldIndexName: oldIndexName, newIndex: newIndex)
+    }
+
+    func generateAddForeignKeySQL(table: String, schema: String?, fk: PluginForeignKeyDefinition) -> String? {
+        generateAddForeignKeySQL(table: table, fk: fk)
+    }
+
+    func generateDropForeignKeySQL(table: String, schema: String?, constraintName: String) -> String? {
+        generateDropForeignKeySQL(table: table, constraintName: constraintName)
+    }
+
+    func generateAddCheckConstraintSQL(
+        table: String,
+        schema: String?,
+        constraint: PluginCheckConstraintDefinition
+    ) -> String? {
+        generateAddCheckConstraintSQL(table: table, constraint: constraint)
+    }
+
+    func generateDropCheckConstraintSQL(table: String, schema: String?, constraintName: String) -> String? {
+        generateDropCheckConstraintSQL(table: table, constraintName: constraintName)
+    }
+
+    func generateRenameCheckConstraintSQL(
+        table: String,
+        schema: String?,
+        from oldName: String,
+        to newName: String
+    ) -> String? {
+        generateRenameCheckConstraintSQL(table: table, from: oldName, to: newName)
+    }
+
+    func generateModifyPrimaryKeySQL(
+        table: String,
+        schema: String?,
+        oldColumns: [String],
+        newColumns: [String],
+        constraintName: String?
+    ) -> [String]? {
+        generateModifyPrimaryKeySQL(
+            table: table, oldColumns: oldColumns, newColumns: newColumns, constraintName: constraintName
+        )
+    }
+
     func generateColumnReorderPlan(
         table: String,
         schema: String?,
@@ -1406,6 +1558,10 @@ public extension PluginDatabaseDriver {
 
     func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
         generateCreateTableSQL(definition: definition).map { [$0] }
+    }
+
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
+        generateCreateTableStatements(definition: definition)
     }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
@@ -1508,6 +1664,18 @@ public extension PluginDatabaseDriver {
 
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult? {
         nil
+    }
+
+    func executeStatements(_ statements: [PluginBatchStatement]) async throws -> [PluginBatchStatementOutcome]? {
+        nil
+    }
+
+    func copyFromStandardInput(
+        statement: String,
+        rows: PluginCopyData,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        throw PluginDriverUnsupportedOperation.copyFromStandardInput
     }
 
     /// The bounded read for a driver whose `streamRows` yields rows as they arrive and whose

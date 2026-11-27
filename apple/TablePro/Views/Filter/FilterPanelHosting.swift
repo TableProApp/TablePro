@@ -8,25 +8,15 @@ import TableProPluginKit
 
 @MainActor
 internal protocol FilterPanelActions: AnyObject {
-    func applyAllFilters()
-    func applySoloFilter(_ filter: TableFilter)
-    func clearAppliedFiltersAndReload()
-    func removeAllFiltersAndReload()
+    func applyCheckedFilters()
+    func applyFiltersInCurrentMode()
+    func applyFilterAlone(_ filterID: UUID)
+    func turnOffFilters()
+    func removeFilter(_ filterID: UUID)
+    func removeAllFilters()
     func closeFilterPanel()
     func focusGrid()
-}
-
-internal extension FilterPanelActions {
-    func reload(after outcome: TabFilterState.RemoveFilterOutcome) {
-        switch outcome {
-        case .noChange:
-            return
-        case .clear:
-            clearAppliedFiltersAndReload()
-        case .reapply:
-            applyAllFilters()
-        }
-    }
+    func openFilterSettings()
 }
 
 @MainActor
@@ -38,8 +28,8 @@ internal protocol FilterSQLPreviewing: AnyObject {
 @MainActor
 internal protocol FilterPresetStoring: AnyObject {
     func loadAllPresets() -> [FilterPreset]
-    func savePreset(_ preset: FilterPreset)
-    func deletePreset(_ preset: FilterPreset)
+    func savePreset(_ preset: FilterPreset) throws
+    func deletePreset(_ preset: FilterPreset) throws
 }
 
 extension FilterPresetStorage: FilterPresetStoring {}

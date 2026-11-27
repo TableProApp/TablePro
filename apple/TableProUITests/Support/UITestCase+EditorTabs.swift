@@ -1,8 +1,6 @@
 import XCTest
 
 extension UITestCase {
-    // MARK: - Editor tabs
-
     internal func editorTabs(titled title: String? = nil, in window: XCUIElement) -> XCUIElementQuery {
         let tabs = window.descendants(matching: .any).matching(identifier: "editor-tab")
         guard let title else { return tabs }
@@ -30,8 +28,6 @@ extension UITestCase {
         )
     }
 
-    // MARK: - Results
-
     internal func resultSetChooser(in window: XCUIElement) -> XCUIElement {
         window.descendants(matching: .any).matching(identifier: "result-set-menu").firstMatch
     }
@@ -52,16 +48,10 @@ extension UITestCase {
         grid.staticTexts.matching(NSPredicate(format: "value == %@", text)).firstMatch
     }
 
-    // MARK: - Key bindings
-
     // Picks a key bindings mode in Settings > Editor and closes Settings. A new sandbox starts on Standard.
     internal func chooseKeyBindings(_ title: String, in app: XCUIApplication) {
-        app.typeShortcut(.settings)
-        let settings = window("settings", in: app)
-        XCTAssertTrue(settings.waitToExist(timeout: 10), "Cmd+, must open Settings")
-        let editorPane = settings.toolbars.buttons["Editor"]
-        XCTAssertTrue(editorPane.waitToExist(timeout: 10))
-        editorPane.click()
+        let settings = openSettings(in: app)
+        selectSettingsPane("editor", in: settings)
 
         let keyBindings = settings.popUpButtons["key-bindings-picker"]
         XCTAssertTrue(scrollUntilHittable(keyBindings, in: settings, timeout: 30), "The Editor pane must offer key bindings")
@@ -78,8 +68,6 @@ extension UITestCase {
         settings.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(settings.waitForNonExistence(timeout: 10), "Settings must close")
     }
-
-    // MARK: - Editor text
 
     internal func editorText(_ editor: XCUIElement) -> String {
         (editor.value as? String) ?? ""

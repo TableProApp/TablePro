@@ -69,7 +69,10 @@ extension DatabaseManager {
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
         for statement in Self.startupStatements(from: commands, databaseType: databaseType, grammar: grammar) {
             do {
-                _ = try await driver.execute(query: statement)
+                // Teradata ANSI keeps `DATABASE` pending and takes only COMMIT after it; a failed commit fails the statement.
+                _ = try await AppDefinitionCommit.run(on: driver, refusesOpenTransaction: false) {
+                    try await driver.execute(query: statement)
+                }
                 Self.startupLogger.info(
                     "Startup command succeeded for '\(connectionName, privacy: .private)': \(statement, privacy: .private)"
                 )

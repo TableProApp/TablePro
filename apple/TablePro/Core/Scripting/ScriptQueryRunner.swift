@@ -101,7 +101,7 @@ internal enum ScriptQueryRunner {
         // Before anything connects: a script asking for rows is not consent to load extensions.
         try await ScriptConnectGate.authorizeConnect(connectionId: request.connectionId)
 
-        let scope = try await bridge.resolveScope(
+        let scope = try await bridge.resolveStatementScope(
             connectionId: request.connectionId,
             database: request.database,
             schema: request.schema
@@ -110,10 +110,12 @@ internal enum ScriptQueryRunner {
         let rowLimit = (request.rowLimit ?? defaultRowLimit).clamped(to: 1...maximumRowLimit)
         let timeout = (request.timeoutSeconds ?? defaultTimeoutSeconds).clamped(to: 1...maximumTimeoutSeconds)
 
+        let generation = await bridge.driverGeneration(of: request.connectionId)
         let planned = try await bridge.plannedScript(scope: scope, query: request.sql, maxRows: rowLimit)
         let operation = try await ExternalStatementGate.approve(
             PendingOperation(
                 scope: scope,
+                driverGeneration: generation,
                 databaseType: snapshot.databaseType,
                 statements: [planned.statement],
                 kind: OperationKind.from(classification.tier),

@@ -58,6 +58,8 @@ mod imp {
         #[template_child]
         pub columns_button: TemplateChild<gtk4::Button>,
         #[template_child]
+        pub view_button: TemplateChild<gtk4::MenuButton>,
+        #[template_child]
         pub transaction_bar: TemplateChild<gtk4::Box>,
         #[template_child]
         pub transaction_label: TemplateChild<gtk4::Label>,
@@ -80,6 +82,8 @@ mod imp {
         /// The lines whose page is built, most recently shown first.
         pub(super) built: RefCell<VecDeque<KeptPage>>,
         pub(super) highlights: RefCell<std::collections::HashMap<u32, Vec<crate::services::grid::HighlightRule>>>,
+        /// Whether the tab's results wrap their text, from its first result on. A new run keeps it.
+        pub(super) wrap: Cell<Option<bool>>,
     }
 
     #[glib::object_subclass]
@@ -301,6 +305,10 @@ impl ResultsPane {
         }
         imp.stack.set_visible_child_name(&page_name(index));
         let grid = imp.built.borrow().front().and_then(|kept| kept.grid.clone());
+        // A page kept from before the tab's last toggle.
+        if let (Some(grid), Some(wraps)) = (&grid, imp.wrap.get()) {
+            grid.set_wrap_text(wraps);
+        }
         self.show_grid(grid.as_ref());
         // A collapsed list covers the result it just picked.
         if imp.split_view.is_collapsed() {
@@ -316,6 +324,24 @@ impl ResultsPane {
         self.imp().details_toggle.set_visible(grid.is_some());
         self.imp().highlight_button.set_visible(grid.is_some());
         self.imp().columns_button.set_visible(grid.is_some());
+        self.imp().view_button.set_visible(grid.is_some());
+    }
+
+    /// A result's grid is built on demand, so the tab's choice lives here:
+    /// the first grid gives it and every later one takes it.
+    fn share_wrap(&self, grid: &DataGrid) {
+        let imp = self.imp();
+        match imp.wrap.get() {
+            Some(wraps) => grid.set_wrap_text(wraps),
+            None => imp.wrap.set(Some(grid.wraps_text())),
+        }
+        let weak = self.downgrade();
+        grid.actions()
+            .connect_action_state_changed(Some("wrap-text"), move |_, _, state| {
+                if let (Some(pane), Some(wraps)) = (weak.upgrade(), state.get::<bool>()) {
+                    pane.imp().wrap.set(Some(wraps));
+                }
+            });
     }
 
     fn remember_highlights(&self, page: &KeptPage) {
@@ -346,6 +372,7 @@ impl ResultsPane {
         if let Some(grid) = &grid {
             let rules = imp.highlights.borrow_mut().remove(&index).unwrap_or_default();
             grid.set_highlight_rules(rules);
+            self.share_wrap(grid);
         }
         imp.stack.add_named(&widget, Some(&page_name(index)));
         let evicted: Vec<KeptPage> = {
@@ -733,6 +760,61 @@ mod tests {
         pane.clear();
         pane.append(&[command()]);
         assert!(pane.kept_grid(0).expect("new run").highlight_rules().is_empty());
+    }
+
+    #[gtk4::test]
+    fn wrap_text_follows_the_tab_across_results_eviction_and_a_new_run() {
+        use crate::ui::data_grid::test_grid::{Grid, GridSpec, named, results};
+        use tablepro_core::Value;
+
+        let pane = pane();
+        pane.set_page_builder(|_| {
+            let fixture = Grid::build(
+                GridSpec::results(vec![named("status", "text", false)]),
+                results(&[vec![Value::Text("open".to_owned())]]),
+            );
+            fixture.window.set_child(None::<&gtk4::Widget>);
+            let grid = fixture.grid.clone();
+            Some(ResultPage {
+                widget: grid.clone().upcast(),
+                grid: Some(grid),
+            })
+        });
+        pane.append(&vec![command(); 10]);
+        assert!(pane.imp().view_button.is_visible());
+        let first = pane.kept_grid(0).expect("first result");
+        assert!(!first.wraps_text(), "a result wraps by default");
+
+        first.set_wrap_text(true);
+        pane.select(1);
+        assert!(
+            pane.kept_grid(1).expect("second result").wraps_text(),
+            "a result built after the toggle does not wrap"
+        );
+        for index in 2..10 {
+            pane.select(index);
+        }
+        assert!(pane.kept_grid(0).is_none());
+        pane.select(0);
+        assert!(pane.kept_grid(0).expect("restored result").wraps_text());
+        pane.rebuild_page(0);
+        assert!(pane.kept_grid(0).expect("rebuilt result").wraps_text());
+
+        pane.kept_grid(0).expect("rebuilt result").set_wrap_text(false);
+        pane.select(9);
+        assert!(
+            !pane.kept_grid(9).expect("kept result").wraps_text(),
+            "a page kept from before the toggle still wraps"
+        );
+
+        pane.kept_grid(9).expect("kept result").set_wrap_text(true);
+        pane.clear();
+        assert!(!pane.imp().view_button.is_visible());
+        pane.append(&[command()]);
+        assert!(
+            pane.kept_grid(0).expect("new run").wraps_text(),
+            "a new run forgot the tab's choice"
+        );
     }
 
     #[gtk4::test]

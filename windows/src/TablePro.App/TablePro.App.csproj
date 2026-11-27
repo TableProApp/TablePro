@@ -35,8 +35,12 @@
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
     <Content Include="Assets\**" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="$(RepositoryRoot)apple/TablePro/Resources/SampleDatabases/Chinook.sqlite"
+    <Content Include="$(RepositoryRoot)core/resources/Chinook.sqlite"
              Link="Assets\Samples\Chinook.sqlite"
+             CopyToOutputDirectory="PreserveNewest" />
+    <!-- Its license asks for the notice to travel with every copy. -->
+    <Content Include="$(RepositoryRoot)core/resources/Chinook.LICENSE"
+             Link="Assets\Samples\Chinook.LICENSE"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

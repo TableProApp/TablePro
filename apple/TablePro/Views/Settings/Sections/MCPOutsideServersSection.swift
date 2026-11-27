@@ -1,57 +1,55 @@
-//
-//  MCPOutsideServersSection.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProMCP
 
-/// Below the built-in server's sections because it is the opposite direction: what TablePro may ask
-/// of an outside server. It works whether or not the built-in server is on.
+// The opposite direction from the server above it, what TablePro may ask of an outside server, so it shows whether or not the server is on.
 internal struct MCPOutsideServersSection: View {
+    private struct SheetTarget: Identifiable {
+        let id: UUID
+        let server: MCPServerConfiguration?
+    }
+
     @ObservedObject private var store = MCPServerStore.shared
 
-    @State private var editing: MCPServerConfiguration?
-    @State private var isAdding = false
-    @State private var deleteCandidate: MCPServerConfiguration?
+    @State private var sheet: SheetTarget?
+    @State private var removalCandidate: MCPServerConfiguration?
 
     var body: some View {
         Section {
             if store.servers.isEmpty {
-                emptyState
+                Text("No servers")
+                    .foregroundStyle(.secondary)
             } else {
                 ForEach(store.servers) { server in
                     row(server)
                 }
             }
 
-            Button {
-                isAdding = true
-            } label: {
-                Label(String(localized: "Add Server…"), systemImage: "plus")
-            }
+            // swiftlint:disable:next line_length
+            SettingsHelpRow("A session can call tools on a server you add here once you allow it on a connection. Every call waits for you to approve it, and the arguments leave this Mac.")
         } header: {
             Text("Outside MCP Servers")
         } footer: {
-            Text("A session can call tools on a server you add here once you allow it on a connection. Every call waits for you to approve it, and the arguments leave this Mac.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SettingsSectionActions {
+                Button(String(localized: "Add Server…")) {
+                    sheet = SheetTarget(id: UUID(), server: nil)
+                }
+                .accessibilityIdentifier("mcp-outside-server-add")
+            }
         }
-        .sheet(isPresented: $isAdding) {
-            MCPOutsideServerSheet(server: nil)
-        }
-        .sheet(item: $editing) { server in
-            MCPOutsideServerSheet(server: server)
+        .sheet(item: $sheet) { target in
+            MCPOutsideServerSheet(server: target.server)
         }
         .alert(
-            String(localized: "Remove server?"),
-            isPresented: deleteAlertBinding,
-            presenting: deleteCandidate
+            String(localized: "Remove Server?"),
+            isPresented: removalBinding,
+            presenting: removalCandidate
         ) { server in
-            Button(String(localized: "Cancel"), role: .cancel) { deleteCandidate = nil }
             Button(String(localized: "Remove"), role: .destructive) {
                 store.remove(id: server.id)
-                deleteCandidate = nil
+                removalCandidate = nil
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                removalCandidate = nil
             }
         } message: { server in
             Text(String(
@@ -62,61 +60,29 @@ internal struct MCPOutsideServersSection: View {
     }
 
     private func row(_ server: MCPServerConfiguration) -> some View {
-        Button {
-            editing = server
-        } label: {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(server.name)
-                    Text(server.endpoint.absoluteString)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                Spacer(minLength: 8)
-                Text(reachText(server))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(server.name)
-        .accessibilityValue(reachText(server))
-        .contextMenu {
-            Button(String(localized: "Edit…")) { editing = server }
-            Divider()
-            Button(role: .destructive) {
-                deleteCandidate = server
-            } label: {
-                Text(String(localized: "Remove…"))
-            }
-        }
+        SettingsRecordRow(
+            title: server.name,
+            subtitle: server.endpoint.absoluteString,
+            value: Self.reach(of: server)
+        )
+        .infoButton(
+            onEdit: { sheet = SheetTarget(id: server.id, server: server) },
+            removal: .remove { removalCandidate = server },
+            identifier: "mcp-outside-server-edit-\(server.id.uuidString)"
+        )
     }
 
-    /// How far the server reaches, which is the one thing about it worth reading at a glance. A
-    /// server allowed nowhere is inert, and saying so is more use than a status dot that would have
-    /// to connect to mean anything.
-    private func reachText(_ server: MCPServerConfiguration) -> String {
+    // How far a server reaches is the one thing worth reading at a glance: one allowed nowhere is inert.
+    static func reach(of server: MCPServerConfiguration) -> String {
         let count = server.allowedConnectionIds.count
-        if count == 0 { return String(localized: "No connections") }
-        if count == 1 { return String(localized: "1 connection") }
-        return String(format: String(localized: "%d connections"), count)
+        guard count > 0 else { return String(localized: "No connections") }
+        return String(AttributedString(localized: "^[\(count) connection](inflect: true)").characters)
     }
 
-    private var emptyState: some View {
-        Text("No servers yet.")
-            .foregroundStyle(.secondary)
-    }
-
-    private var deleteAlertBinding: Binding<Bool> {
+    private var removalBinding: Binding<Bool> {
         Binding(
-            get: { deleteCandidate != nil },
-            set: { if !$0 { deleteCandidate = nil } }
+            get: { removalCandidate != nil },
+            set: { if !$0 { removalCandidate = nil } }
         )
     }
 }

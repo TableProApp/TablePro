@@ -406,7 +406,7 @@ internal struct ObjectCopyPlanner {
         }
         guard namesAnIndex else { return occupied }
         let existing = try await existingTargetIndexes(request, endpoint: endpoint, connection: connection)
-        let replaced = Set(drafts.filter(\.dropsFirst).map(\.targetTable))
+        let replaced = Set(drafts.filter(\.dropsFirst).map { CatalogName($0.targetTable) })
         return occupied.union(ObjectCopyIndexNames.kept(existing, droppingFirst: replaced))
     }
 
@@ -416,7 +416,7 @@ internal struct ObjectCopyPlanner {
         _ request: ObjectCopyRequest,
         endpoint: DatabaseEndpoint,
         connection: DatabaseConnection
-    ) async throws -> [String: [String]] {
+    ) async throws -> [CatalogName: [String]] {
         guard !request.destination.createsDatabase,
               ObjectCopyIndexNames.sharesOneNamespace(request.target.databaseType)
         else { return [:] }
@@ -767,12 +767,12 @@ internal struct ObjectCopyPlanner {
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
-            let builder = SchemaSyncScriptBuilder(
-                targetDriver: plugin, targetDatabaseType: driver.connection.type
-            )
             var result: [String: ObjectCopyTableDDL] = [:]
             for input in inputs {
                 try Task.checkCancellation()
+                let builder = SchemaSyncScriptBuilder(
+                    targetDriver: plugin, targetDatabaseType: driver.connection.type, targetSchema: input.targetSchema
+                )
                 var ddl = ObjectCopyTableDDL()
                 if input.dropsFirst {
                     ddl.drop = Self.dropStatements(

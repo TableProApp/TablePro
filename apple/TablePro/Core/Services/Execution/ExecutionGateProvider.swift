@@ -4,6 +4,8 @@
 //
 
 import Foundation
+import TableProPluginKit
+import TableProSQLGrammar
 
 internal enum ExecutionGateProvider {
     /// A driver that declares no read-only mode gets every statement treated as a write, unless the
@@ -48,13 +50,38 @@ internal enum ExecutionGateProvider {
         case .stored(let stored): (nil, stored)
         case .unknown: (nil, nil)
         }
-        let managedMinimum = ManagedPolicyResolver.minimumSafeModeLevel(policy: ManagedPolicyReader.shared)
+        let floor: SafeModeLevel? = if let connection {
+            AgentModeSafeModeFloor.effectiveFloor(for: connection)?.level
+        } else {
+            ManagedPolicyResolver.minimumSafeModeLevel(policy: ManagedPolicyReader.shared)
+        }
         return ReadOnlyFunctionPolicy(
             functionsCanWrite: liveDriver?.enforcesReadOnlyMode != true
                 && PluginMetadataRegistry.queryFunctionsCanWrite.contains(databaseType),
-            levelIsHeld: managedMinimum?.blocksAllWrites == true
-                || connection?.safeModeFloor?.level.blocksAllWrites == true
+            floor: floor
         )
+    }
+
+    // A session holding a transaction or a table lock runs a read as it is, since the read-only mode would end what it
+    // holds, so a function the read calls is checked as on a driver without the mode.
+    static func liveReadOnlyFunctionPolicy(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        in manager: DatabaseManager? = nil
+    ) async -> ReadOnlyFunctionPolicy {
+        let (policy, driver): (ReadOnlyFunctionPolicy, DatabaseDriver?) = await MainActor.run {
+            let policy = readOnlyFunctionPolicy(connectionId: connectionId, databaseType: databaseType, in: manager)
+            guard case .live(let driver, _) = (manager ?? .shared).connectionState(connectionId) else {
+                return (policy, nil)
+            }
+            return (policy, driver)
+        }
+        guard !policy.functionsCanWrite, PluginMetadataRegistry.queryFunctionsCanWrite.contains(databaseType),
+              let driver
+        else { return policy }
+        var live = policy
+        live.functionsCanWrite = await driver.heldSessionTransactionState() != .idle
+        return live
     }
 
     static let shared: ExecutionGate = DefaultExecutionGate(
@@ -82,7 +109,43 @@ internal enum ExecutionGateProvider {
             }
         },
         readOnlyFunctionPolicyResolver: { connectionId, databaseType in
-            await readOnlyFunctionPolicy(connectionId: connectionId, databaseType: databaseType)
+            await liveReadOnlyFunctionPolicy(connectionId: connectionId, databaseType: databaseType)
+        },
+        bareNameCallResolver: { request, reading in
+            await callsBareFunction(request, reading: reading)
         }
     )
+
+    static let callableCatalog = SQLCallableCatalogCache()
+
+    // Asks the session's catalog. A catalog that cannot be read leaves the name unexplained, so it counts as a call.
+    static func callsBareFunction(
+        _ request: OperationRequest,
+        reading: SQLBareNameReading,
+        catalog: SQLCallableCatalogCache = callableCatalog,
+        metadata: (any ScopedMetadataProviding)? = nil
+    ) async -> Bool {
+        let (provider, resolved) = await MainActor.run {
+            let provider: any ScopedMetadataProviding = metadata ?? DatabaseManager.shared
+            return (provider, request.scope ?? request.runsIn ?? provider.browseScope(for: request.connectionId))
+        }
+        guard let scope = resolved else { return true }
+        do {
+            return try await catalog.callsFunction(reading, connectionId: scope.connectionId, schema: scope.schema) { query in
+                try await provider.withMetadataRead(scope: scope, workload: .interactive) { driver in
+                    try await driver.executeCatalogRead(query: query).rows.map { row in
+                        row.map { cell -> String? in
+                            switch cell {
+                            case .null: return nil
+                            case .text(let text): return text
+                            case .bytes(let data): return String(bytes: data, encoding: .utf8)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            return true
+        }
+    }
 }

@@ -40,6 +40,7 @@ struct FilterValueTextField: NSViewRepresentable {
     var allowsMultiLine: Bool = false
     var onSubmit: () -> Void = {}
     var onCancel: () -> Void = {}
+    var onApplyAlone: (() -> Void)?
 
     nonisolated static func suggestions(for input: String, in completions: [String]) -> [String] {
         guard !input.isEmpty else { return [] }
@@ -108,6 +109,12 @@ struct FilterValueTextField: NSViewRepresentable {
         if popupVisible { return .dismissPopup }
         if recentlyDismissedPopup { return .consume }
         return .closeBar
+    }
+
+    // Return or keypad Enter with Option and Command and no other modifier key; Caps Lock and fn do not count.
+    nonisolated static func isApplyAloneKey(characters: String?, modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        guard characters == "\r" || characters == "\u{3}" else { return false }
+        return modifierFlags.intersection([.command, .option, .control, .shift]) == [.command, .option]
     }
 
     // A row lines its pop-ups up against one line of this field, whatever control holds its value.
@@ -190,6 +197,7 @@ struct FilterValueTextField: NSViewRepresentable {
         context.coordinator.completionSource = completionSource
         context.coordinator.onSubmit = onSubmit
         context.coordinator.onCancel = onCancel
+        context.coordinator.onApplyAlone = onApplyAlone
 
         return textField
     }
@@ -201,6 +209,7 @@ struct FilterValueTextField: NSViewRepresentable {
         context.coordinator.completionSource = completionSource
         context.coordinator.onSubmit = onSubmit
         context.coordinator.onCancel = onCancel
+        context.coordinator.onApplyAlone = onApplyAlone
         context.coordinator.textField = textField
 
         let controlSize = Self.controlSize(of: context.environment)
@@ -241,13 +250,14 @@ struct FilterValueTextField: NSViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSTextFieldDelegate {
+    final class Coordinator: NSObject, NSTextFieldDelegate, NSPopoverDelegate {
         var text: Binding<String>
         var focusedId: Binding<UUID?>
         var identity: UUID
         var completionSource: FilterCompletionSource
         var onSubmit: () -> Void
         var onCancel: () -> Void
+        var onApplyAlone: (() -> Void)?
         weak var textField: NSTextField?
 
         private let suggestionState = SuggestionState()
@@ -365,6 +375,24 @@ struct FilterValueTextField: NSViewRepresentable {
                 return true
             }
             return false
+        }
+
+        func handleKeyEquivalent(_ event: NSEvent) -> Bool {
+            guard let onApplyAlone,
+                  FilterValueTextField.isApplyAloneKey(
+                      characters: event.charactersIgnoringModifiers,
+                      modifierFlags: event.modifierFlags
+                  ) else { return false }
+            dismissSuggestions()
+            onApplyAlone()
+            return true
+        }
+
+        // A semitransient popover closes on clicks elsewhere without telling its presenter, which then
+        // routed Down and Return to a list no one could see.
+        func popoverDidClose(_ notification: Notification) {
+            guard let closed = notification.object as? NSPopover, closed === suggestionPopover else { return }
+            suggestionPopover = nil
         }
 
         private func handleSuggestionCommand(_ commandSelector: Selector) -> Bool {
@@ -498,6 +526,7 @@ struct FilterValueTextField: NSViewRepresentable {
                     dismiss()
                 }
             }
+            popover.delegate = self
             suggestionPopover = popover
         }
 
@@ -604,6 +633,14 @@ struct FilterValueTextField: NSViewRepresentable {
                 owner?.handleResignedFirstResponder()
             }
             return result
+        }
+
+        // The window offers key equivalents to every view, so only the field being edited may take one.
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            if currentEditor() != nil, owner?.handleKeyEquivalent(event) == true {
+                return true
+            }
+            return super.performKeyEquivalent(with: event)
         }
     }
 

@@ -2,6 +2,11 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
+public sealed record CellTextHead(string Text, bool Cut);
+
+// Bytes is the value's start, Length the whole value's.
+public sealed record CellBytes(ReadOnlyMemory<byte> Bytes, long Length);
+
 // Held by the core and readable while its rows still arrive.
 public sealed class ResultSet : IDisposable
 {
@@ -31,8 +36,81 @@ public sealed class ResultSet : IDisposable
         return CoreCall.Run(() => _set.CellText(checked((ulong)row), checked((uint)column)));
     }
 
+    // The text a filter on the cell's column binds back to the very value stored; null for SQL NULL and for a value no
+    // filter text reads back as, such as 'true' in a SQLite BOOLEAN column.
+    public string? GetFilterText(long row, int column)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        return CoreCall.Run(() => _set.FilterText(checked((ulong)row), checked((uint)column)));
+    }
+
+    // A value's start for a viewer, read without copying the rest: its text with line breaks kept, or a binary
+    // value's hex. Null for SQL NULL.
+    public CellTextHead? GetCellTextHead(long row, int column, int maxCharacters)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxCharacters);
+        return CoreCall.Run(() => _set.CellTextHead(checked((ulong)row), checked((uint)column), (uint)maxCharacters))
+            is { } head ? new CellTextHead(head.Text, head.Cut) : null;
+    }
+
+    // A binary value's first maxBytes and its whole length. Null for SQL NULL or a value that is not binary.
+    public CellBytes? GetCellBytes(long row, int column, long maxBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxBytes);
+        return CoreCall.Run(() => _set.CellBytes(checked((ulong)row), checked((uint)column), (ulong)maxBytes))
+            is { } binary ? new CellBytes(binary.Bytes, Mapping.Count(binary.Length)) : null;
+    }
+
     // Each thread that reads windows opens its own.
     public ResultCursor OpenCursor() => new(_set.OpenCursor());
+
+    // The share sheet's columns as it starts them, from the first visibleColumns columns and the first maxRows rows:
+    // what the detectors saw in each column's name and values.
+    public async Task<IReadOnlyList<ShareColumnMasking>> GetShareMaskingAsync(int visibleColumns, long maxRows)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        var columns = await CoreCall.RunAsync(() => _set.ShareMasking(checked((uint)visibleColumns), limit))
+            .ConfigureAwait(false);
+        return [.. columns.Select(Mapping.ColumnMasking)];
+    }
+
+    // What a share of maxRows with the sheet's choices sends, without building it: cheap enough for each choice.
+    public async Task<ShareSummary> GetShareSummaryAsync(
+        int visibleColumns, long maxRows, IReadOnlyList<ShareColumnChoice> columns)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        ArgumentNullException.ThrowIfNull(columns);
+        var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        Native.ShareColumnChoice[] choices = [.. columns.Select(Mapping.Choice)];
+        var summary = await CoreCall.RunAsync(
+                () => _set.ShareSummary(checked((uint)visibleColumns), limit, choices))
+            .ConfigureAwait(false);
+        return Mapping.Summary(summary);
+    }
+
+    // The rows a share of maxRows with the sheet's choices sends, as a finished set: removed columns left out and
+    // every value masked as the link's, so the preview shows a Stable Hash the core computed.
+    public async Task<ResultSet> GetSharePreviewAsync(
+        int visibleColumns, long maxRows, IReadOnlyList<ShareColumnChoice> columns)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        ArgumentNullException.ThrowIfNull(columns);
+        var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        Native.ShareColumnChoice[] choices = [.. columns.Select(Mapping.Choice)];
+        var preview = await CoreCall.RunAsync(
+                () => _set.SharePreview(checked((uint)visibleColumns), limit, choices))
+            .ConfigureAwait(false);
+        return new ResultSet(preview, Index);
+    }
 
     // For a statement that cannot run again: a new set over the rows held, sorted stably; this one keeps its order.
     public Task<ResultSet> SortedAsync(int column, bool ascending)

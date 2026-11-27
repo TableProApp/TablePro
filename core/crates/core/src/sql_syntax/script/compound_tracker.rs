@@ -32,6 +32,12 @@ pub(crate) struct CompoundTracker {
     identifier_count: usize,
     identifiers: [u8; 4],
     begin_depth: u32,
+    /// PostgreSQL's only routine body outside a literal is `BEGIN ATOMIC
+    /// ... END` (gram.y, `opt_routine_body`), so a `begin` opens one only
+    /// in a statement that defines a routine and only when `atomic` is the
+    /// next token: `CREATE FUNCTION begin()`, `RETURN begin` and, inside a
+    /// body, `SELECT begin atomic FROM t` name things.
+    follows_begin: bool,
     trigger: TriggerState,
     batch: BatchState,
 }
@@ -86,6 +92,7 @@ impl CompoundTracker {
             identifier_count: 0,
             identifiers: [0; 4],
             begin_depth: 0,
+            follows_begin: false,
             trigger: TriggerState::Start,
             batch: BatchState::default(),
         }
@@ -99,11 +106,10 @@ impl CompoundTracker {
         }
         match self.rule {
             CompoundRule::None => {}
-            CompoundRule::RoutineBody => {
-                if kind == ScriptTokenKind::Word {
-                    self.observe_routine_word(text);
-                }
-            }
+            CompoundRule::RoutineBody => match kind {
+                ScriptTokenKind::Word => self.observe_routine_word(text),
+                _ => self.follows_begin = false,
+            },
             CompoundRule::TriggerBody => self.trigger = advance_trigger(self.trigger, classify_trigger(kind, text)),
             CompoundRule::Batch => self.batch.observe(kind, text),
         }
@@ -122,7 +128,10 @@ impl CompoundTracker {
             self.reset();
         } else if self.rule == CompoundRule::TriggerBody {
             self.trigger = TriggerState::Semi;
+        } else if self.begin_depth > 0 {
+            self.start_body_statement();
         }
+        self.follows_begin = false;
         ends
     }
 
@@ -142,11 +151,17 @@ impl CompoundTracker {
             && (second == b'f'
                 || second == b'p'
                 || (second == b'o' && third == b'r' && (fourth == b'f' || fourth == b'p')));
-        if !creates_routine || self.paren_depth != 0 {
+        let follows_begin = std::mem::take(&mut self.follows_begin);
+        if self.paren_depth != 0 || (self.begin_depth == 0 && !creates_routine) {
             return;
         }
         if word.eq_ignore_ascii_case("begin") {
-            self.begin_depth += 1;
+            self.follows_begin = creates_routine;
+        } else if word.eq_ignore_ascii_case("atomic") {
+            if follows_begin {
+                self.begin_depth += 1;
+                self.start_body_statement();
+            }
         } else if word.eq_ignore_ascii_case("case") {
             if self.begin_depth >= 1 {
                 self.begin_depth += 1;
@@ -154,6 +169,13 @@ impl CompoundTracker {
         } else if word.eq_ignore_ascii_case("end") {
             self.begin_depth = self.begin_depth.saturating_sub(1);
         }
+    }
+
+    /// A statement inside the body starts, and its own words decide
+    /// whether it defines a routine.
+    fn start_body_statement(&mut self) {
+        self.identifier_count = 0;
+        self.identifiers = [0; 4];
     }
 }
 
@@ -215,6 +237,18 @@ mod tests {
         );
         assert!(!tracker.semicolon_ends_statement());
         feed(&mut tracker, &["END"]);
+        assert!(tracker.semicolon_ends_statement());
+    }
+
+    #[test]
+    fn a_begin_before_anything_but_atomic_is_a_name() {
+        let mut tracker = CompoundTracker::new(CompoundRule::RoutineBody, true);
+        feed(
+            &mut tracker,
+            &[
+                "CREATE", "FUNCTION", "begin", "(", ")", "RETURNS", "int", "RETURN", "begin",
+            ],
+        );
         assert!(tracker.semicolon_ends_statement());
     }
 

@@ -98,6 +98,7 @@ extension DataGridCommands {
         return GridRowsClipboardPayload(
             columns: projection.columns(model.rows.columns),
             copying: rows,
+            absentColumns: rows.map { model.rows.absentColumns(of: $0.id) },
             expressionColumns: rows.map { changeState?.expressionColumns(forRow: $0.id) ?? [] },
             projection: projection
         )

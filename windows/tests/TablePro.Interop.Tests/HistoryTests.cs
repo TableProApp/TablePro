@@ -39,8 +39,8 @@ public sealed class HistoryTests : IDisposable
             Outcome = new HistoryOutcome.Failed("no such column: nope"),
         };
         var refused = await history.RecordAsync(session, failed, cancellationToken);
-        var named = await history.SearchAsync("name people", null, null, 50, cancellationToken);
-        var both = await history.SearchAsync("PEOPLE", null, null, 50, cancellationToken);
+        var named = await history.SearchAsync("name people", null, null, null, 50, cancellationToken);
+        var both = await history.SearchAsync("PEOPLE", null, null, null, 50, cancellationToken);
 
         var entry = Assert.Single(named.Entries);
         Assert.Equal(id, entry.Id);
@@ -68,8 +68,8 @@ public sealed class HistoryTests : IDisposable
 
         var mine = await history.RecordAsync(first, Ran("SELECT 1", At), cancellationToken);
         await history.RecordAsync(second, Ran("SELECT 2", At.AddSeconds(1)), cancellationToken);
-        var onlyFirst = await history.SearchAsync(string.Empty, first.Id, null, 50, cancellationToken);
-        var every = await history.SearchAsync(string.Empty, null, null, 50, cancellationToken);
+        var onlyFirst = await history.SearchAsync(string.Empty, first.Id, null, null, 50, cancellationToken);
+        var every = await history.SearchAsync(string.Empty, null, null, null, 50, cancellationToken);
 
         Assert.Equal(mine, Assert.Single(onlyFirst.Entries).Id);
         Assert.Equal(2, every.Entries.Count);
@@ -88,8 +88,8 @@ public sealed class HistoryTests : IDisposable
             ids.Add(await history.RecordAsync(session, run, cancellationToken));
         }
 
-        var first = await history.SearchAsync(string.Empty, null, null, 2, cancellationToken);
-        var second = await history.SearchAsync(string.Empty, null, first.Next, 2, cancellationToken);
+        var first = await history.SearchAsync(string.Empty, null, null, null, 2, cancellationToken);
+        var second = await history.SearchAsync(string.Empty, null, null, first.Next, 2, cancellationToken);
 
         Assert.Equal([ids[2], ids[1]], first.Entries.Select(run => (long?)run.Id));
         Assert.NotNull(first.Next);
@@ -108,12 +108,33 @@ public sealed class HistoryTests : IDisposable
 
         var id = gone ?? throw new InvalidOperationException("The run was not kept.");
         await history.DeleteAsync([id], cancellationToken);
-        var afterDelete = await history.SearchAsync(string.Empty, null, null, 50, cancellationToken);
+        var afterDelete = await history.SearchAsync(string.Empty, null, null, null, 50, cancellationToken);
         await history.ClearAsync(cancellationToken);
-        var afterClear = await history.SearchAsync(string.Empty, null, null, 50, cancellationToken);
+        var afterClear = await history.SearchAsync(string.Empty, null, null, null, 50, cancellationToken);
 
         Assert.Equal(left, Assert.Single(afterDelete.Entries).Id);
         Assert.Empty(afterClear.Entries);
+    }
+
+    [Fact]
+    public async Task APruneKeepsTheNewestRunsTheCountAllows()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var session = await OpenAsync("app.sqlite", cancellationToken);
+        using var history = await _core.OpenHistoryAsync(cancellationToken);
+        var now = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        await history.RecordAsync(session, Ran("SELECT 'years ago'", now.AddDays(-800)), cancellationToken);
+        await history.RecordAsync(session, Ran("SELECT 'older'", now.AddMinutes(-2)), cancellationToken);
+        var newer = await history.RecordAsync(session, Ran("SELECT 'newer'", now.AddMinutes(-1)), cancellationToken);
+        var newest = await history.RecordAsync(session, Ran("SELECT 'newest'", now), cancellationToken);
+
+        var aged = await history.PruneAsync(365, 0, cancellationToken);
+        var capped = await history.PruneAsync(0, 2, cancellationToken);
+        var kept = await history.SearchAsync(string.Empty, null, null, null, 50, cancellationToken);
+
+        Assert.Equal(1, aged);
+        Assert.Equal(1, capped);
+        Assert.Equal([newest, newer], kept.Entries.Select(entry => (long?)entry.Id));
     }
 
     // SQLite withholds a statement that sets an encryption key, and text whose quote never closes.
@@ -126,7 +147,7 @@ public sealed class HistoryTests : IDisposable
 
         var key = await history.RecordAsync(session, Ran("PRAGMA key = 'hunter2'", At), cancellationToken);
         var unclosed = await history.RecordAsync(session, Ran("SELECT 'hunter2", At), cancellationToken);
-        var kept = await history.SearchAsync(string.Empty, null, null, 50, cancellationToken);
+        var kept = await history.SearchAsync(string.Empty, null, null, null, 50, cancellationToken);
 
         Assert.Null(key);
         Assert.Null(unclosed);

@@ -181,7 +181,8 @@ internal struct InspectorFieldListView: View {
                 : nil,
             editor: kind,
             allowsNullAndDefault: offersDatabaseValues,
-            isBinaryValue: field.isBinaryValue
+            isBinaryValue: field.isBinaryValue,
+            documentID: field.editorID
         )
     }
 

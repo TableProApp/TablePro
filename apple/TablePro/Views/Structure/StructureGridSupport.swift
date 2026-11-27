@@ -309,7 +309,7 @@ extension DataGridModel {
     // An owner that rebuilds whole rows reports them here; the model reloads only when it must.
     func applyHeldSnapshot(from previous: StructureGridSnapshot, to current: StructureGridSnapshot) {
         guard let cells = previous.changedCells(to: current) else {
-            reloadHeldRows(columnsChanged: previous.rows.columns != current.rows.columns || columns.isEmpty)
+            reloadRows()
             return
         }
         guard !cells.isEmpty else { return }

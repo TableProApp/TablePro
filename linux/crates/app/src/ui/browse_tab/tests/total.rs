@@ -503,3 +503,29 @@ fn an_estimate_started_before_saving_cannot_restore_an_old_total() {
     assert!(count_button(&harness).is_sensitive());
     assert_eq!(count_calls(&harness), 0);
 }
+
+fn shared_total(harness: &Harness) -> Option<u64> {
+    let subjects = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = subjects.clone();
+    harness
+        .tab()
+        .connect_share_requested(move |_, subject| sink.borrow_mut().push(subject));
+    harness.activate_grid("share");
+    let subjects = subjects.borrow();
+    let [subject] = subjects.as_slice() else {
+        panic!("one share, not {}", subjects.len());
+    };
+    subject.table.as_ref().expect("the table's view").total
+}
+
+// A link names its whole only from a count someone made; an estimate can be far off.
+#[gtk4::test]
+fn a_share_takes_an_exact_count_and_never_an_estimate() {
+    let estimated_only = Harness::open(estimated(RowCountEstimate::Approximate(5_000_000)), []);
+    wait_until(WAIT, || paginator(&estimated_only).contains("of about")).expect("the estimate in the paginator");
+    let counted = Harness::open(estimated(RowCountEstimate::Approximate(40)), []);
+    wait_until(WAIT, || paginator(&counted) == "Rows 1 – 2 of 2").expect("the exact total");
+
+    assert_eq!(shared_total(&estimated_only), None);
+    assert_eq!(shared_total(&counted), Some(2));
+}

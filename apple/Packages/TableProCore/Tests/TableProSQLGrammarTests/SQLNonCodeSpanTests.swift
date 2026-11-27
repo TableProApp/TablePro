@@ -198,9 +198,34 @@ struct SQLNonCodeSpanTests {
         #expect(end("E'x' -- c\n'y' z", postgreSQL) == 13)
         #expect(end("E'x'\n-- c\n'y' z", postgreSQL) == 13)
         #expect(end("E'x'\n'y'\n\n'z' w", postgreSQL) == 13)
-        #expect(end("E'x'\u{00A0}\n\u{3000}'y' z", postgreSQL) == 10)
         #expect(end("E'x'\u{200C}\n'y' z", postgreSQL) == 4)
         #expect(SQLNonCodeSpan.span(at: 0, in: "E'x'\r\n'y'\n'z'" as NSString, grammar: postgreSQL)?.newlines == 2)
+    }
+
+    // Measured: PostgreSQL 17.11 answers a syntax error at the second string, and DuckDB 1.5.4 returns `xy`.
+    @Test("A non-ASCII space between the parts of a continued string is a name on PostgreSQL and a blank on DuckDB 1.5")
+    func nonASCIISpaceBeforeAContinuedString() {
+        let text = "E'x'\u{00A0}\n\u{3000}'y' z"
+        for engine in ["PostgreSQL", "CockroachDB", "Redshift", "KingbaseES"] {
+            let readings = SQLLexicalReadings.resolve(databaseTypeId: engine, declared: nil, session: nil)
+            for grammar in readings.all where grammar.contains(.escapeStringPrefix) {
+                #expect(end(text, grammar) == 4, "\(engine)")
+                #expect(end("E'x'\n\u{00A0}'y' z", grammar) == 4, "\(engine)")
+            }
+        }
+        let duckDB15 = Self.execution("DuckDB").union(.escapeStringContinuations)
+        #expect(end(text, duckDB15) == 10)
+        #expect(end(text, duckDB15.subtracting(.nonASCIISpacesEndNames)) == 4)
+    }
+
+    // Measured on PostgreSQL 17.11: psql ran the statement after `'\'`.
+    @Test("Every gate reading sees the statement after a string a non-ASCII space keeps from continuing")
+    func nonASCIISpaceBeforeAContinuedStringHidesNothing() {
+        let sql = "SELECT E'a'\u{00A0}\n'\\'; DROP TABLE t; --'"
+        for engine in ["PostgreSQL", "CockroachDB", "Redshift", "KingbaseES", "DuckDB", "Nonesuch"] {
+            #expect(Self.tier(sql, engine) == .destructive, "\(engine)")
+        }
+        #expect(Self.statements(sql, "PostgreSQL") == 2)
     }
 
     @Test("An E'...' ends at its quote without a line break, across a block comment, or on DuckDB")
@@ -376,5 +401,43 @@ struct SQLNonCodeSpanTests {
             of: "SELECT eval/*!*/('x')", grammar: [.parenthesizedParameterNames], revealingExecutableComments: true
         )
         #expect(sqlite == "SELECT eval     (   )")
+    }
+
+    private func needsMoreText(_ text: String, at index: Int = 0, _ grammar: SQLLexicalGrammar) -> Bool {
+        let buffer = text as NSString
+        let span = SQLNonCodeSpan.span(at: index, in: buffer, grammar: grammar)
+        return SQLNonCodeSpan.needsMoreText(span, at: index, in: buffer, grammar: grammar)
+    }
+
+    private static let continued: SQLLexicalGrammar = [.escapeStringPrefix, .escapeStringContinuations]
+    private static let longTag: String = "$" + String(repeating: "t", count: 40)
+    private static let longName: String = "$" + String(repeating: "p", count: 40)
+    private static let blanks = String(repeating: " ", count: 20)
+
+    private static let unsettled: [(String, SQLLexicalGrammar)] = [
+        (longTag, .taggedDollarQuotes),
+        ("'a doubled quote may follow'", .ansi),
+        ("-- a comment with no line break", .ansi),
+        ("/* open comment ", .ansi),
+        (longName, .parenthesizedParameterNames),
+        ("E'x'" + blanks + "-", continued),
+        ("E'x'\n" + blanks + "-- c", continued),
+    ]
+
+    private static let settled: [(String, SQLLexicalGrammar)] = [
+        ("'abc' + 1          ", .ansi),
+        ("E'x'" + blanks + "+ 1", continued),
+        ("-- note\nSELECT 1 FROM t", .ansi),
+        ("SELECT 1 FROM t WHERE a = 1", .ansi),
+    ]
+
+    @Test("A reader of a buffer waits when more text could change the span", arguments: unsettled)
+    func waitsForMoreText(text: String, grammar: SQLLexicalGrammar) {
+        #expect(needsMoreText(text, grammar), "\(text)")
+    }
+
+    @Test("A span whose end no later text can move is settled", arguments: settled)
+    func settledSpan(text: String, grammar: SQLLexicalGrammar) {
+        #expect(!needsMoreText(text, grammar), "\(text)")
     }
 }

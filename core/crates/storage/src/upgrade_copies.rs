@@ -1,6 +1,8 @@
 // Why a file an older build wrote is copied before its first write in a newer format: core ADR 0012.
 
 use std::io::ErrorKind;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -95,30 +97,19 @@ pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) 
     remove_leftovers_blocking(path)?;
     let copy = vacant_name(path, version, SystemTime::now())?;
     let partial = partial_name(&copy);
-    // VACUUM INTO refuses a file that is not empty, and creates a missing
-    // one from the umask: made here, it is 0600 like the database.
-    crate::fs::create_private_file_if_missing(&partial)?;
-    let target = partial.to_str().ok_or_else(|| StorageError::Write {
-        path: partial.clone(),
-        source: std::io::Error::new(ErrorKind::InvalidInput, "the path is not UTF-8"),
-    })?;
-    if let Err(error) = sqlx::query("VACUUM INTO ?").bind(target).execute(pool).await {
-        let _ = remove_with_sidecars(&partial);
-        return Err(StorageError::Write {
-            path: copy,
-            source: database_io_error(&error),
-        });
-    }
+    let write_error = |source| StorageError::Write {
+        path: copy.clone(),
+        source,
+    };
+    // SQLite creates the copy from the umask, so only the owner may reach the folder before it is 0600.
+    crate::fs::ensure_private_dir(parent_of(&partial))?;
+    vacuum_into_new_file(pool, &partial).await.map_err(write_error)?;
     if let Err(error) = crate::query_history::scrub_copy(&partial).await {
         let _ = remove_with_sidecars(&partial);
         return Err(error);
     }
     // Renamed into place only once on disk, so a copy cut short by a
     // power cut never carries a name that says it is whole.
-    let write_error = |source| StorageError::Write {
-        path: copy.clone(),
-        source,
-    };
     // Windows flushes only a handle opened for writing.
     let landed = std::fs::OpenOptions::new()
         .write(true)
@@ -134,6 +125,29 @@ pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) 
     }
     prune_blocking(path, &copy)?;
     Ok(copy)
+}
+
+// The SQLite documentation allows a target that exists if it is empty, and macOS 27's SQLite refuses
+// one even then, so SQLite only ever gets a name that is free. A file already there is not ours to remove.
+async fn vacuum_into_new_file(pool: &SqlitePool, target: &Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(target) {
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Ok(_) => return Err(std::io::Error::from(ErrorKind::AlreadyExists)),
+        Err(error) => return Err(error),
+    }
+    let name = target
+        .to_str()
+        .ok_or_else(|| std::io::Error::new(ErrorKind::InvalidInput, "the path is not UTF-8"))?;
+    if let Err(error) = sqlx::query("VACUUM INTO ?").bind(name).execute(pool).await {
+        let _ = remove_with_sidecars(target);
+        return Err(database_io_error(&error));
+    }
+    #[cfg(unix)]
+    if let Err(error) = std::fs::set_permissions(target, std::fs::Permissions::from_mode(0o600)) {
+        let _ = remove_with_sidecars(target);
+        return Err(error);
+    }
+    Ok(())
 }
 
 // A copy of the connection list keeps no connection the list no longer has, so a deleted one is gone
@@ -376,7 +390,6 @@ fn database_io_error(error: &sqlx::Error) -> std::io::Error {
 #[cfg(test)]
 #[cfg(unix)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
     use std::time::{Duration, UNIX_EPOCH};
 
     use serde::{Deserialize, Serialize};
@@ -526,6 +539,39 @@ mod tests {
                 .count(),
             0
         );
+    }
+
+    // The empty 0600 file the copy step once made first: macOS 27's SQLite refuses it, and upstream
+    // SQLite writes into it, so the step refuses it itself whatever SQLite is linked.
+    #[tokio::test]
+    async fn the_copy_step_takes_only_a_name_that_is_free() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("items.db");
+        let pool = database(&path).await;
+        base().run(&pool).await.expect("the older schema");
+        let taken = root.path().join(".items.db.v1-100.partial");
+        crate::fs::create_private_file_if_missing(&taken).expect("an empty file");
+
+        let refused = vacuum_into_new_file(&pool, &taken)
+            .await
+            .expect_err("a copy into a file already there");
+        let free = root.path().join(".items.db.v1-101.partial");
+        vacuum_into_new_file(&pool, &free)
+            .await
+            .expect("a copy into a free name");
+
+        assert_eq!(refused.kind(), ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::metadata(&taken).expect("still there").len(), 0);
+        assert_eq!(
+            std::fs::metadata(&free).expect("the copy").permissions().mode() & 0o777,
+            0o600
+        );
+        let copied = database(&free).await;
+        let tables: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE name = 'items'")
+            .fetch_one(&copied)
+            .await
+            .expect("count");
+        assert_eq!(tables, 1);
     }
 
     #[tokio::test]
@@ -699,7 +745,7 @@ mod tests {
             database: "app".to_owned(),
             username: "admin".to_owned(),
             tls: tablepro_core::TlsConfig::disabled(),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
             external_access: Default::default(),
             ai_policy: Default::default(),
             query_timeout_secs: None,
@@ -708,10 +754,14 @@ mod tests {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         }
     }
 

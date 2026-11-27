@@ -61,6 +61,8 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
     internal let definitionMatches: Bool
     // What the source recorded for a routine or trigger, such as MySQL's sql_mode, set around its CREATE.
     internal let sourceCreationScope: PluginStatementScope?
+    // Why the row is compared but never scripted, such as a definition read from another schema than the target's.
+    internal let scriptRefusal: String?
 
     internal init(
         identity: CompareObjectIdentity,
@@ -73,7 +75,8 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
         sourceIndexes: [EditableIndexDefinition]? = nil,
         targetIndexes: [EditableIndexDefinition]? = nil,
         definitionMatches: Bool = false,
-        sourceCreationScope: PluginStatementScope? = nil
+        sourceCreationScope: PluginStatementScope? = nil,
+        scriptRefusal: String? = nil
     ) {
         self.identity = identity
         self.status = status
@@ -86,6 +89,7 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
         self.targetIndexes = targetIndexes
         self.definitionMatches = definitionMatches
         self.sourceCreationScope = sourceCreationScope
+        self.scriptRefusal = scriptRefusal
     }
 
     // PluginStatementScope is only Equatable; equal results share an identity.
@@ -110,7 +114,7 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
     internal var isComparable: Bool { comparisonError == nil }
 
     internal var suggestedAction: TableSyncAction {
-        guard comparisonError == nil else { return .skip }
+        guard comparisonError == nil, scriptRefusal == nil else { return .skip }
         switch status {
         case .onlyInSource: return .create
         case .onlyInTarget: return .drop
@@ -120,7 +124,7 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
     }
 
     internal var availableActions: [TableSyncAction] {
-        guard comparisonError == nil else { return [.skip] }
+        guard comparisonError == nil, scriptRefusal == nil else { return [.skip] }
         switch status {
         case .onlyInSource: return [.skip, .create]
         case .onlyInTarget: return [.skip, .drop]

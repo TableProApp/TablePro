@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-enum PostgreSQLRoleAttribute: String, CaseIterable {
+nonisolated enum PostgreSQLRoleAttribute: String, CaseIterable {
     case superuser = "SUPERUSER"
     case createdb = "CREATEDB"
     case createrole = "CREATEROLE"
@@ -43,7 +43,7 @@ enum PostgreSQLRoleAttribute: String, CaseIterable {
     }
 }
 
-enum PostgreSQLPrincipalQueries {
+nonisolated enum PostgreSQLPrincipalQueries {
     private static let data = PluginPrivilegeCategoryKey.data
     private static let structure = PluginPrivilegeCategoryKey.structure
     private static let administration = PluginPrivilegeCategoryKey.administration

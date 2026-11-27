@@ -4,11 +4,14 @@ use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
 use secrecy::SecretString;
+use tablepro_account::RefreshTokenVaults;
+use tablepro_ai::{AiClient, ModelCatalog};
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
-    SafeModeLevel, WorkspaceSettings,
+    SafeModeLevel, UnsupportedFeature, WorkspaceSettings,
 };
+use tablepro_mcp::TokenVault;
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
     ConnectError, ConnectRequest, ConnectServices, ConnectionMetadata, Connector, CredentialSource, DefaultDeadlines,
@@ -19,15 +22,18 @@ use tablepro_storage::{ConnectionStore, CredentialDemand, KeyringCredentials, Sa
 use tokio::sync::OnceCell;
 use uuid::Uuid;
 
+use crate::ai::AiAssistant;
 use crate::cancel_token::{CancelToken, token};
 use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
 use crate::history::QueryHistoryStore;
-use crate::host::{HostConfig, HostSecretStore, HostSecrets};
+use crate::host::{HostConfig, HostRefreshTokens, HostSecretStore, HostSecrets};
 use crate::library::{
-    ConnectionLibrary, ConnectionRecord, ConnectionSecrets, LibraryWrites, apply, blank, keep_proved_secrets, parse_id,
-    tls_config,
+    ConnectionLibrary, ConnectionRecord, ConnectionSecrets, LibraryWrites, apply, blank, keep_proved_secrets,
+    library_icon, parse_id, tls_config,
 };
+use crate::mcp::open_sessions::OpenSessions;
+use crate::mcp::{HistoryAccess, StoredTokens};
 use crate::prompter::{HostPrompter, HostPrompterBridge};
 use crate::runtime::{self, on_runtime};
 use crate::session::DatabaseSession;
@@ -40,6 +46,8 @@ pub struct Core {
     deadlines: Arc<DefaultDeadlines>,
     vault: Arc<dyn SecretVault>,
     items: Arc<dyn SecretItems>,
+    // The TablePro account's, in the same store as every other secret.
+    refresh_tokens: RefreshTokens,
     paths: Option<StoragePaths>,
     store: Option<ConnectionStore>,
     writes: LibraryWrites,
@@ -47,6 +55,14 @@ pub struct Core {
     history: Arc<OnceCell<Arc<QueryHistoryStore>>>,
     pub(crate) tasks: Tasks,
     pub(crate) ssh: Arc<InProcessSsh>,
+    client_version: String,
+    // One AI client for the app, built on first use.
+    ai_client: Arc<OnceCell<AiClient>>,
+    // Refreshed into the storage folder's cache, or the bundled copy without one.
+    pub(crate) ai_catalog: ModelCatalog,
+    // The saved connections' sessions `connect_saved` opened, which the MCP server reaches.
+    open_sessions: Arc<OpenSessions>,
+    mcp_tokens: Arc<dyn TokenVault>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -66,15 +82,24 @@ impl Core {
     pub fn new(config: HostConfig, secrets: Box<dyn HostSecrets>) -> Result<Arc<Self>, CoreError> {
         let tasks = runtime::tasks()?;
         let host = Arc::new(HostSecretStore::new(secrets, tasks.clone()));
-        Ok(Self::build(config, host.clone(), host, tasks))
+        Ok(Self::build(
+            config,
+            SystemSecrets {
+                vault: host.clone(),
+                items: host.clone(),
+                refresh_tokens: Arc::new(HostRefreshTokens(host.clone())),
+                folder_token: None,
+            },
+            tasks,
+        ))
     }
 
     // Secrets go to the platform's own store: Credential Manager on Windows.
     #[uniffi::constructor]
     pub fn with_system_secrets(config: HostConfig) -> Result<Arc<Self>, CoreError> {
         let tasks = runtime::tasks()?;
-        let (vault, items) = system_secrets(&tasks)?;
-        Ok(Self::build(config, vault, items, tasks))
+        let secrets = system_secrets(&tasks)?;
+        Ok(Self::build(config, secrets, tasks))
     }
 
     pub fn drivers(&self) -> Vec<DriverInfo> {
@@ -85,6 +110,18 @@ impl Core {
             .collect();
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         drivers
+    }
+
+    // Every assistant shares the core's one AI client.
+    pub fn ai_assistant(&self) -> Arc<AiAssistant> {
+        Arc::new(AiAssistant::new(
+            self.items.clone(),
+            self.store.clone(),
+            self.tasks.clone(),
+            self.client_version.clone(),
+            self.ai_client.clone(),
+            self.ai_catalog.clone(),
+        ))
     }
 
     pub fn library(&self) -> Result<Arc<ConnectionLibrary>, CoreError> {
@@ -102,9 +139,10 @@ impl Core {
         let paths = self.paths.clone().ok_or_else(no_storage)?;
         let history = self.history.clone();
         let tasks = self.tasks.clone();
+        let connections = self.store.clone();
         on_runtime(&self.tasks, async move {
             history
-                .get_or_try_init(|| QueryHistoryStore::open(paths, tasks))
+                .get_or_try_init(|| QueryHistoryStore::open(paths, tasks, connections))
                 .await
                 .cloned()
         })
@@ -165,9 +203,11 @@ impl Core {
     }
 
     // Typed secrets come first, then Credential Manager; `keep` is stored once it logs in; no prompter, no SSH asks.
+    // `database`, in place of the saved one, opens the connection in another of the server's databases.
     pub async fn connect_saved(
         &self,
         id: String,
+        database: Option<String>,
         secrets: ConnectionSecrets,
         keep: ConnectionSecrets,
         prompter: Option<Box<dyn HostPrompter>>,
@@ -183,6 +223,7 @@ impl Core {
         let tasks = self.tasks.clone();
         let prompter = self.prompter(prompter);
         let cancel = token(cancel);
+        let open_sessions = self.open_sessions.clone();
         on_runtime(&self.tasks, async move {
             let reader = store.clone();
             let saved = tasks
@@ -203,8 +244,18 @@ impl Core {
                 CredentialDemand::default(),
             )
             .await?;
+            let database = database.filter(|name| !name.is_empty());
+            let request = match database.as_deref() {
+                Some(database) => refreshed
+                    .request
+                    .in_database(database)
+                    .ok_or(DriverError::Unsupported {
+                        feature: UnsupportedFeature::NetworkConnection,
+                    })?,
+                None => refreshed.request,
+            };
             let pending = connector
-                .establish(refreshed.request, interaction(prompter.as_ref()), cancel.clone())
+                .establish(request, interaction(prompter.as_ref()), cancel.clone())
                 .await?;
             if cancel.is_cancelled() {
                 let report = pending.discard().await;
@@ -225,6 +276,7 @@ impl Core {
                     prompter,
                 },
             );
+            open_sessions.add(id, database, &session);
             let stamped = tasks
                 .spawn_blocking_task(move || store.touch_last_opened_blocking(id))
                 .await;
@@ -248,6 +300,7 @@ impl Core {
             id => Some(parse_id(id)?),
         };
         let tls = tls_config(&record.tls)?;
+        let icon = record.icon.as_ref().map(library_icon).transpose()?;
         let name = record.name.trim().to_owned();
         let store = self.store.clone();
         let registry = self.registry.clone();
@@ -269,7 +322,7 @@ impl Core {
                 _ => None,
             };
             let mut saved = stored.unwrap_or_else(|| blank(id.unwrap_or_else(Uuid::new_v4)));
-            apply(&record, &tls, name, saved.group_id, &mut saved);
+            apply(&record, &tls, icon, name, saved.group_id, &mut saved);
             let credentials = Prefilled::new(&saved, vault, secrets);
             let refreshed = resolve_saved(
                 &saved,
@@ -291,32 +344,44 @@ impl Core {
 }
 
 impl Core {
-    fn build(config: HostConfig, vault: Arc<dyn SecretVault>, items: Arc<dyn SecretItems>, tasks: Tasks) -> Arc<Self> {
+    fn build(config: HostConfig, secrets: SystemSecrets, tasks: Tasks) -> Arc<Self> {
         let liveness = LivenessPolicy::DESKTOP;
         let deadlines = Arc::new(DefaultDeadlines::new(liveness));
         let ssh = Arc::new(InProcessSsh::system());
+        let client_version = config.client_version.clone();
         let services = ConnectServices {
             environment: ConnectEnvironment::new(config.client_version),
             ssh: ssh.clone(),
             liveness,
         };
-        let paths = config
-            .storage_dir
-            .filter(|dir| !dir.trim().is_empty())
-            .map(|dir| storage_paths(Path::new(&dir)));
+        let storage_dir = config.storage_dir.filter(|dir| !dir.trim().is_empty());
+        let mcp_tokens = match (&secrets.folder_token, &storage_dir) {
+            (Some(folder_token), Some(dir)) => folder_token(dir),
+            _ => Arc::new(StoredTokens(secrets.items.clone())) as Arc<dyn TokenVault>,
+        };
+        let paths = storage_dir.map(|dir| storage_paths(Path::new(&dir)));
         let store = paths.as_ref().map(ConnectionStore::new);
+        let ai_catalog = paths.as_ref().map_or_else(ModelCatalog::bundled, |paths| {
+            ModelCatalog::new(paths.cache.join("ai-models"))
+        });
         Arc::new(Self {
             registry: Arc::new(drivers::registry()),
             connector: Arc::new(DriverConnector::new(services, deadlines.clone())),
             deadlines,
-            vault,
-            items,
+            vault: secrets.vault,
+            items: secrets.items,
+            refresh_tokens: secrets.refresh_tokens,
             paths,
             store,
             writes: LibraryWrites::default(),
             history: Arc::default(),
             tasks,
             ssh,
+            client_version,
+            ai_client: Arc::default(),
+            ai_catalog,
+            open_sessions: Arc::default(),
+            mcp_tokens,
         })
     }
 
@@ -328,8 +393,44 @@ impl Core {
         self.vault.clone()
     }
 
+    pub(crate) fn connection_store(&self) -> Result<ConnectionStore, CoreError> {
+        self.store.clone().ok_or_else(no_storage)
+    }
+
+    pub(crate) fn registry(&self) -> Arc<DriverRegistry> {
+        self.registry.clone()
+    }
+
+    pub(crate) fn writes(&self) -> LibraryWrites {
+        self.writes.clone()
+    }
+
     pub fn secret_items(&self) -> Arc<dyn SecretItems> {
         self.items.clone()
+    }
+
+    pub(crate) fn refresh_tokens(&self) -> RefreshTokens {
+        self.refresh_tokens.clone()
+    }
+
+    pub(crate) fn open_sessions(&self) -> Arc<OpenSessions> {
+        self.open_sessions.clone()
+    }
+
+    pub(crate) fn history_access(&self) -> HistoryAccess {
+        HistoryAccess {
+            paths: self.paths.clone(),
+            store: self.history.clone(),
+            connections: self.store.clone(),
+        }
+    }
+
+    pub(crate) fn client_version(&self) -> String {
+        self.client_version.clone()
+    }
+
+    pub(crate) fn mcp_tokens(&self) -> Arc<dyn TokenVault> {
+        self.mcp_tokens.clone()
     }
 }
 
@@ -356,15 +457,33 @@ fn no_storage() -> CoreError {
     CoreError::failed("ffi.no_storage", "the core was started without a storage folder")
 }
 
-type SystemSecrets = (Arc<dyn SecretVault>, Arc<dyn SecretItems>);
+// Where each sign-in keeps its refresh token, chosen by its server and account file.
+pub(crate) type RefreshTokens = Arc<dyn RefreshTokenVaults>;
+
+struct SystemSecrets {
+    vault: Arc<dyn SecretVault>,
+    items: Arc<dyn SecretItems>,
+    refresh_tokens: RefreshTokens,
+    // The platform store's MCP token for a data folder; None keeps it as the host's `SecretItem::McpToken`.
+    folder_token: Option<FolderTokens>,
+}
+
+type FolderTokens = Arc<dyn Fn(&str) -> Arc<dyn TokenVault> + Send + Sync>;
 
 #[cfg(windows)]
 fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
     let manager = Arc::new(crate::credential_manager::CredentialManager::new(
-        "TablePro",
+        crate::credential_manager::PREFIX,
         tasks.clone(),
     ));
-    Ok((manager.clone(), manager))
+    Ok(SystemSecrets {
+        vault: manager.clone(),
+        items: manager.clone(),
+        refresh_tokens: Arc::new(crate::credential_manager::SignInTokens(manager.clone())),
+        folder_token: Some(Arc::new(move |dir: &str| {
+            Arc::new(crate::credential_manager::FolderToken::new(manager.clone(), dir)) as Arc<dyn TokenVault>
+        })),
+    })
 }
 
 #[cfg(not(windows))]
@@ -565,6 +684,21 @@ mod tests {
     struct NoItems;
 
     #[async_trait]
+    impl tablepro_account::RefreshTokenVault for NoItems {
+        async fn load_refresh_token(&self) -> Result<Option<SecretString>, SecretError> {
+            Ok(None)
+        }
+
+        async fn store_refresh_token(&self, _: &SecretString) -> Result<(), SecretError> {
+            Ok(())
+        }
+
+        async fn delete_refresh_token(&self) -> Result<(), SecretError> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
     impl SecretItems for NoItems {
         async fn load_item(&self, _: SecretItem) -> Result<Option<SecretString>, SecretError> {
             Ok(None)
@@ -587,8 +721,12 @@ mod tests {
                 client_version: "test".to_owned(),
                 storage_dir: Some(dir.path().display().to_string()),
             },
-            Arc::new(Vault::default()),
-            Arc::new(NoItems),
+            SystemSecrets {
+                vault: Arc::new(Vault::default()),
+                items: Arc::new(NoItems),
+                refresh_tokens: Arc::new(tablepro_account::SingleVault(Arc::new(NoItems))),
+                folder_token: None,
+            },
             runtime::tasks().unwrap(),
         );
         let mut stored = blank(Uuid::new_v4());
@@ -608,7 +746,14 @@ mod tests {
         };
 
         let connect = core
-            .connect_saved(stored.id.to_string(), typed(), ConnectionSecrets::default(), None, None)
+            .connect_saved(
+                stored.id.to_string(),
+                None,
+                typed(),
+                ConnectionSecrets::default(),
+                None,
+                None,
+            )
             .await
             .unwrap_err();
         let test = core
@@ -638,6 +783,12 @@ mod tests {
             username: None,
             jump_hosts: Vec::new(),
             auth: SavedSshAuth::Agent,
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
         let typed = || vec![(SecretKind::DatabasePassword, SecretString::from("typed"))];
         let held = |vault: Arc<dyn SecretVault>, id| async move {
@@ -718,6 +869,12 @@ mod tests {
                 },
                 _ => SavedSshAuth::Password,
             },
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
         saved
     }

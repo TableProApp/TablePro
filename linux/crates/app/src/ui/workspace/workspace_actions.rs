@@ -10,6 +10,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 
+use super::tab_rename::RENAME_TAB;
 use super::workspace_tabs::ActiveTabCommand;
 use super::{TransferInput, WorkspaceInput, WorkspaceShell};
 use crate::runtime::DeliverInput;
@@ -84,6 +85,18 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
         })
         .build()]);
     set_enabled(window, "refresh-page", false);
+    let renaming = shell.downgrade();
+    window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(RENAME_TAB)
+        .activate(move |_, _, _| {
+            if let Some(shell) = renaming.upgrade()
+                && let Some(page) = shell.tab_view().selected_page()
+            {
+                shell.start_rename(&page);
+            }
+        })
+        .build()]);
+    // Off until the tab in front can take a name, so F2 goes on to whatever else wants it.
+    set_enabled(window, RENAME_TAB, false);
     let reopening = shell.downgrade();
     window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(REOPEN_CLOSED_TAB)
         .activate(move |_, _, _| {
@@ -156,6 +169,7 @@ pub(super) fn remove(window: &adw::ApplicationWindow) {
     window.remove_action(SHOW_TABS);
     window.remove_action(SAVE_CHANGES);
     window.remove_action("refresh-page");
+    window.remove_action(RENAME_TAB);
 }
 
 /// Offer Export Database and Import SQL File where the session in front
@@ -258,5 +272,6 @@ mod tests {
         assert!(window.lookup_action(CLOSE_ALL_TABS).is_none());
         assert!(window.lookup_action(SWITCH_RECENT_TAB).is_none());
         assert!(window.lookup_action(SHOW_TABS).is_none());
+        assert!(window.lookup_action(RENAME_TAB).is_none());
     }
 }

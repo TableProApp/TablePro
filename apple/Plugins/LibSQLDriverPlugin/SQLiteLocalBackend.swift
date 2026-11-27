@@ -31,8 +31,12 @@ struct LibSQLLocalRawResult: Sendable {
     let isTruncated: Bool
 }
 
+// Its jobs run on a queue of its own, since a statement and a lock wait each block the thread.
 actor SQLiteLocalBackend {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteLocalBackend")
+
+    nonisolated private let executor = SQLiteConnectionExecutor(label: "com.TablePro.libsql.connection")
+    nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
 
     private let runtime: any LibSQLLocalDatabaseRuntime
     private var db: OpaquePointer?
@@ -149,10 +153,7 @@ actor SQLiteLocalBackend {
         )
     }
 
-    func streamQuery(
-        _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) throws {
+    func streamQuery(_ query: String, into spill: PluginRowSpill) throws {
         guard let db else {
             throw LibSQLError.notConnected
         }
@@ -166,46 +167,43 @@ actor SQLiteLocalBackend {
 
         let firstStep = runtime.stepFirst(statement)
         let columnCount = firstStep.count
-        continuation.yield(.header(PluginStreamHeader(
+        spill.yield(PluginStreamHeader(
             columns: firstStep.names,
             columnTypeNames: firstStep.typeNames,
             estimatedRowCount: nil
-        )))
+        ))
 
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
+        var batch = PluginRowBatcher()
 
         var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
             if Task.isCancelled {
                 if !batch.isEmpty {
-                    _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
+                    spill.deliver(batch.rows)
                 }
-                continuation.finish(throwing: CancellationError())
+                spill.finish(throwing: CancellationError())
                 return
             }
 
-            batch.append(rowValues(of: statement, count: columnCount))
-            if batch.count >= batchSize {
-                // Blocks the actor's thread: an await here would let another call reach the handle mid-statement.
-                _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
-                batch.removeAll(keepingCapacity: true)
+            if batch.append(rowValues(of: statement, count: columnCount)) {
+                // Synchronous on the actor's thread: an await here would let another call reach the handle mid-statement.
+                guard spill.deliver(batch.rows) else { return }
+                batch.removeAll()
             }
             stepResult = sqlite3_step(statement)
         }
 
         if !batch.isEmpty {
-            _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
+            spill.deliver(batch.rows)
         }
 
         do {
             try validateCompletion(stepResult, on: db)
         } catch {
-            continuation.finish(throwing: error)
+            spill.finish(throwing: error)
             return
         }
-        continuation.finish()
+        spill.finish()
     }
 
     private func validateCompletion(_ stepResult: Int32, on db: OpaquePointer) throws {

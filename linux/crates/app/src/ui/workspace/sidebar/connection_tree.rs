@@ -30,7 +30,7 @@ use super::tree_row::TreeRow;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::connection_search::ConnectionSearch;
 use crate::services::library_outline::{DropSpot, LibraryItem, LibraryOutline, LibrarySection};
-use crate::services::saved_connection_list::{SavedConnectionList, StateObserverId};
+use crate::services::saved_connection_list::{SavedConnectionList, ScopeObserverId, StateObserverId};
 use crate::services::saved_connection_object::SavedConnectionObject;
 use crate::ui::library_drag::{Zone, ZoneKind, zone};
 use crate::ui::store_sync;
@@ -105,6 +105,7 @@ pub(super) struct TreeInner {
     failures: RefCell<HashMap<SessionKey, String>>,
     saved: Rc<SavedConnectionList>,
     saved_watch: Cell<Option<StateObserverId>>,
+    scope_watch: Cell<Option<ScopeObserverId>>,
     /// The search as typed, trimmed; empty for none.
     query: RefCell<String>,
     search: RefCell<ConnectionSearch>,
@@ -190,6 +191,7 @@ impl ConnectionTree {
                 failures: RefCell::new(HashMap::new()),
                 saved,
                 saved_watch: Cell::new(None),
+                scope_watch: Cell::new(None),
                 query: RefCell::new(String::new()),
                 search: RefCell::new(ConnectionSearch::default()),
                 search_watch: RefCell::new(None),
@@ -210,6 +212,14 @@ impl ConnectionTree {
             }
         });
         inner.saved_watch.set(Some(watch));
+        // A switch publishes no list, so the scope is followed apart from it.
+        let tree = Rc::downgrade(&inner);
+        let watch = inner.saved.connect_scope_changed(move || {
+            if let Some(tree) = tree.upgrade() {
+                tree.rebuild();
+            }
+        });
+        inner.scope_watch.set(Some(watch));
         inner.rebuild();
         Self { inner }
     }
@@ -383,6 +393,9 @@ impl ConnectionTree {
         if let Some(watch) = inner.saved_watch.take() {
             inner.saved.disconnect_state_changed(watch);
         }
+        if let Some(watch) = inner.scope_watch.take() {
+            inner.saved.disconnect_scope_changed(watch);
+        }
         if let Some((entry, handler)) = inner.search_watch.take()
             && let Some(entry) = entry.upgrade()
         {
@@ -439,10 +452,14 @@ impl TreeInner {
 
     fn saved_name(&self, key: &SessionKey) -> Option<String> {
         match key {
-            SessionKey::Saved(id) => self.saved.get(*id).map(|saved| saved.name),
-            SessionKey::SavedIn { id, database } => {
-                self.saved.get(*id).map(|saved| sibling_title(&saved.name, database))
-            }
+            SessionKey::Saved(id) => self
+                .saved
+                .get(*id)
+                .map(|saved| tablepro_storage::shown_name(&saved.name)),
+            SessionKey::SavedIn { id, database } => self
+                .saved
+                .get(*id)
+                .map(|saved| sibling_title(&tablepro_storage::shown_name(&saved.name), database)),
             SessionKey::File(_) => None,
         }
     }
@@ -514,11 +531,33 @@ impl TreeInner {
         let mut laid = Laid::default();
         let mut desired = self.lay_out(&outline, None, &file_based, &mut laid);
         // Only a list built by hand files a connection under a group it lacks.
-        for object in &listed {
-            if let Some(saved) = object.saved()
-                && !laid.kept.contains(&SessionKey::Saved(saved.id))
-            {
-                desired.extend(self.connection_rows(saved, object.file_based(), &mut laid));
+        // The active project's connections only: one of another project shows while the window holds it.
+        for saved in self.saved.listed().iter() {
+            if !laid.kept.contains(&SessionKey::Saved(saved.id)) {
+                let file = file_based.get(&saved.id).copied().unwrap_or_default();
+                desired.extend(self.connection_rows(saved, file, &mut laid));
+            }
+        }
+        // A connection of another project the window holds keeps its row, after the project's own.
+        let mut outside: Vec<tablepro_storage::SavedConnection> = {
+            let nodes = self.nodes.borrow();
+            let mut ids: Vec<Uuid> = nodes
+                .keys()
+                .filter(|key| !laid.kept.contains(*key) && self.holds(key))
+                .filter_map(|key| match key {
+                    SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => Some(*id),
+                    SessionKey::File(_) => None,
+                })
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            ids.into_iter().filter_map(|id| self.saved.get(id)).collect()
+        };
+        outside.sort_by_cached_key(|saved| (saved.name.to_lowercase(), saved.id));
+        for saved in &outside {
+            if !laid.kept.contains(&SessionKey::Saved(saved.id)) {
+                let file = file_based.get(&saved.id).copied().unwrap_or_default();
+                desired.extend(self.connection_rows(saved, file, &mut laid));
             }
         }
         let held: Vec<(SessionKey, TreeNode)> = self
@@ -593,7 +632,7 @@ impl TreeInner {
                     let Some(group) = outline.group(id) else {
                         continue;
                     };
-                    let node = self.group_node(id, group.name.as_str());
+                    let node = self.group_node(id, &group.name.shown());
                     let children = self.lay_out(outline, Some(id), file_based, laid);
                     laid.stores.push((node.clone(), children));
                     rows.push(node);
@@ -631,12 +670,20 @@ impl TreeInner {
     ) -> Vec<TreeNode> {
         let key = SessionKey::Saved(saved.id);
         let color = saved.color.map_or("", crate::ui::connection_appearance::color_class);
-        let node = self.node_for(&key, &saved.name);
-        node.update(&saved.name, connection_icon(saved.icon, file_based), color);
+        let name = tablepro_storage::shown_name(&saved.name);
+        let node = self.node_for(&key, &name);
+        node.update(
+            &name,
+            connection_icon(
+                saved.icon.as_ref().and_then(tablepro_storage::LibraryIcon::named),
+                file_based,
+            ),
+            color,
+        );
         laid.kept.insert(key);
         let mut rows = vec![node];
         for (sibling, database) in self.siblings_of(saved.id) {
-            let title = sibling_title(&saved.name, &database);
+            let title = sibling_title(&name, &database);
             let node = self.node_for(&sibling, &title);
             node.update(&title, crate::ui::icons::DRIVE_HARDDISK, color);
             laid.kept.insert(sibling);
@@ -904,7 +951,8 @@ impl TreeInner {
         match &key {
             SessionKey::Saved(id) => match self.saved.get(*id) {
                 Some(saved) => {
-                    let group = saved.group_id.and_then(|group| self.saved.outline().label(group));
+                    // An open connection of another project is found by its group too.
+                    let group = self.saved.group_label(&saved);
                     search.matches(&saved, group.as_deref(), &self.saved.tags())
                 }
                 None => search.matches_name(&node.title()),

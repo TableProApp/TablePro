@@ -39,11 +39,13 @@ pub struct QueryImportOutcome {
 }
 
 // Refused with ImportOutdated when the library changed since the review, which would make its
-// duplicates, and the connections Keep Existing names, stale.
+// duplicates, and the connections Keep Existing names, stale. Another app has no projects, so every new
+// entry lands in `project`; one that replaces a saved connection keeps the project it has.
 pub fn apply_blocking(
     review: &ImportReview,
     plan: &ImportPlan,
     store: &ConnectionStore,
+    project: Option<Uuid>,
 ) -> Result<AppliedImport, StorageError> {
     let entries = plan
         .connections()
@@ -52,6 +54,7 @@ pub fn apply_blocking(
             connection: planned.connection.clone(),
             group_path: planned.group_path.clone(),
             replaces: planned.replaces,
+            project_id: project,
         })
         .collect();
     let saved = store.add_imported_blocking(review.library(), entries)?;
@@ -98,7 +101,7 @@ pub fn apply_blocking(
                 query: NewSavedQuery {
                     name: planned.name.clone(),
                     query: text,
-                    connection_id,
+                    connection_id: Some(connection_id),
                     connection_name: connection_name.to_owned(),
                 },
             })
@@ -110,7 +113,7 @@ pub fn apply_blocking(
 // A name the connection already holds is left alone, since a save under it would overwrite that query.
 pub async fn save_queries(applied: &AppliedImport, store: &SavedQueries) -> QueryImportOutcome {
     let mut outcome = QueryImportOutcome::default();
-    let mut held: HashMap<Uuid, Option<HashSet<String>>> = HashMap::new();
+    let mut held: HashMap<Option<Uuid>, Option<HashSet<String>>> = HashMap::new();
     for imported in &applied.queries {
         let connection = imported.query.connection_id;
         let names = match held.entry(connection) {
@@ -145,9 +148,16 @@ pub async fn save_queries(applied: &AppliedImport, store: &SavedQueries) -> Quer
     outcome
 }
 
-async fn held_names(store: &SavedQueries, connection: Uuid) -> Option<HashSet<String>> {
-    match store.list(Some(connection)).await {
-        Ok(queries) => Some(queries.into_iter().map(|query| query.name).collect()),
+// A connection's list also shows the queries with no connection, whose names are another place's.
+async fn held_names(store: &SavedQueries, connection: Option<Uuid>) -> Option<HashSet<String>> {
+    match store.list(connection).await {
+        Ok(queries) => Some(
+            queries
+                .into_iter()
+                .filter(|query| query.connection_id == connection)
+                .map(|query| query.name)
+                .collect(),
+        ),
         Err(error) => {
             tracing::warn!(
                 code = error.code(),

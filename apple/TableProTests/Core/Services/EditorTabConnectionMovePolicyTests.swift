@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -38,7 +39,6 @@ struct EditorTabConnectionMovePolicyTests {
         MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
     }
@@ -75,14 +75,13 @@ struct EditorTabConnectionMovePolicyTests {
         #expect(coordinator.canMoveTabToConnection(tabId))
     }
 
-    @Test("Grid edits snapshotted on a background tab hold it back")
+    @Test("Grid edits staged on a background tab hold it back")
     func backgroundGridEditsStay() {
         let coordinator = makeCoordinator()
         defer { coordinator.teardown() }
         let selected = addQueryTab(to: coordinator)
-        let edited = addQueryTab(to: coordinator) { tab in
-            tab.pendingChanges.deletedRowIDs = [.existing(0)]
-        }
+        let edited = addQueryTab(to: coordinator)
+        coordinator.changeManager(forTab: edited).recordRowDeletion(rowID: .existing(0), originalRow: ["1"])
         coordinator.tabManager.selectedTabId = selected
 
         #expect(!coordinator.canMoveTabToConnection(edited))

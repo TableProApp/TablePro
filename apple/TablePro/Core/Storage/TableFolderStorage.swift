@@ -11,28 +11,22 @@ extension Notification.Name {
     static let tableFoldersDidChange = Notification.Name("TableFoldersDidChange")
 }
 
-/// The folders tables and views are filed into, one document per connection.
-///
-/// A folder only records which objects belong to it, so nothing here ever reaches the database:
-/// deleting a folder puts its objects back in their sections. Every edit goes through `commit`,
-/// which persists before it marks anything for sync, because a sync mark can start a push that
-/// reads this store.
+// A folder only records which objects it holds, so nothing here ever reaches the database.
 @MainActor
 internal final class TableFolderStorage: TableScopedSettingsStore {
-    static let shared = TableFolderStorage()
+    static let shared = TableFolderStorage(core: .shared)
     nonisolated static let connectionIdUserInfoKey = "connectionId"
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TableFolderStorage")
 
-    private struct Document: Codable, Equatable {
+    struct Document: Codable, Equatable {
         var folders: [TableFolder] = []
         var items: [TableFolderItem] = []
 
         var isEmpty: Bool { folders.isEmpty && items.isEmpty }
     }
 
-    /// The sync marks one edit leaves. Deletions are marked first, so an id an edit both removed and
-    /// wrote back ends up waiting to be saved rather than deleted.
+    // Deletions are marked first, so an id an edit both removed and wrote back ends up saved, not deleted.
     private struct SyncMarks {
         var dirtyFolders: [String] = []
         var deletedFolders: [String] = []
@@ -48,18 +42,24 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
     private let syncTracker: SyncChangeTracker
     private let notificationCenter: NotificationCenter
     private var documents: [UUID: Document] = [:]
-    /// Connections whose stored folders did not decode. They read as empty and are never written,
-    /// so a damaged or newer document is left for a fix rather than replaced by the next edit.
+    // Read as empty and never written, so a damaged or newer document is not replaced by the next edit.
     private var unreadableConnectionIds: Set<UUID> = []
+    // Nil keeps the folders out of the core, for a store nothing else reads.
+    private(set) var coreMirror: CoreMirror<TableFolderCoreAdapter>?
 
     init(
         defaults: KeyValueStore = AppStorageEnvironment.shared.defaults,
         syncTracker: SyncChangeTracker = .shared,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        core: CoreHistoryDatabase? = nil,
+        mirrorDefaults: UserDefaults = AppStorageEnvironment.shared.defaults
     ) {
         self.store = defaults
         self.syncTracker = syncTracker
         self.notificationCenter = notificationCenter
+        if let core {
+            coreMirror = CoreMirror(adapter: TableFolderCoreAdapter(store: self, database: core), defaults: mirrorDefaults)
+        }
     }
 
     // MARK: - Reading
@@ -93,8 +93,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         storedConnectionIds().flatMap { document(for: $0).items }
     }
 
-    /// "New Folder", then "New Folder 2" and up, the way Finder numbers an untitled folder. Compared
-    /// without regard to case, because two folders a Move to menu cannot tell apart are no help.
+    // Ignores case, because two folders a Move to menu cannot tell apart are no help.
     func availableFolderName(in scope: DatabaseScope) -> String {
         let taken = Set(layout(in: scope).folders.map { $0.name.lowercased() })
         let base = String(localized: "New Folder")
@@ -139,7 +138,6 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         commit(document, for: connectionId, marks: SyncMarks(dirtyFolders: [id.uuidString]))
     }
 
-    /// The folder goes and its objects return to their sections.
     func deleteFolder(id: UUID, connectionId: UUID) {
         var document = document(for: connectionId)
         guard !document.folders.extract(where: { $0.id == id }).isEmpty else { return }
@@ -150,7 +148,6 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         ))
     }
 
-    /// Files each object into the folder, taking it out of whichever folder held it before.
     func fileObjects(_ names: [String], in scope: DatabaseScope, into folderId: UUID) {
         var document = document(for: scope.connectionId)
         guard document.folders.contains(where: { $0.id == folderId && $0.scope == scope }) else { return }
@@ -194,9 +191,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
 
     // MARK: - Undo
 
-    /// The folders and placements an edit is about to touch, as they are now. Restoring it writes
-    /// back only these entries, so anything else that changed in between, a rename from another
-    /// window or a pull from another Mac, is left alone.
+    // Only these entries are restored, so a rename from another window or a pull from another Mac in between survives.
     func capture(folderIds: Set<UUID>, itemKeys: Set<TableFolderItemKey>, connectionId: UUID) -> TableFolderRevision {
         let document = document(for: connectionId)
         var folders: [UUID: TableFolder?] = [:]
@@ -214,12 +209,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         return TableFolderRevision(connectionId: connectionId, folders: folders, items: items)
     }
 
-    /// Puts the captured entries back and returns what they were just before, which is the redo.
-    ///
-    /// A folder that still exists gets its name back and stays where it is now: a schema renamed
-    /// since the edit has moved the folder and its objects together, and putting the old scope back
-    /// would strand the folder away from them. Taking a folder away takes every object still filed
-    /// in it too, so nothing is left pointing at a folder that is gone.
+    // Returns the redo. A live folder keeps its scope, since a schema rename since the edit moved its objects with it.
     @discardableResult
     func restore(_ revision: TableFolderRevision) -> TableFolderRevision {
         let current = capture(
@@ -270,11 +260,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
 
     // MARK: - Remote changes
 
-    /// Applies what another Mac pushed, marking nothing: a mark here would push the change straight
-    /// back at the device that made it. An item may arrive before its folder does, and it waits in
-    /// the store until the folder lands, because the sidebar only places items whose folder exists.
-    /// A connection kept Local only here takes no folder change from anywhere else, the way the
-    /// connection itself does not.
+    // Marks nothing: a mark would push the change straight back to the Mac that made it.
     func applyRemote(folders: [TableFolder], items: [TableFolderItem], excluding keptLocal: Set<UUID> = []) {
         let foldersByConnection = Dictionary(grouping: folders) { $0.scope.connectionId }
         let itemsByConnection = Dictionary(grouping: items) { $0.scope.connectionId }
@@ -293,10 +279,10 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
             touched[connectionId] = document
         }
         commitRemote(touched)
+        coreMirror?.schedulePush()
     }
 
-    /// A folder deleted elsewhere takes its placements with it here too. The other Mac tombstoned
-    /// them as well, so waiting for those deletions would only leave the objects hidden in between.
+    // Placements go with their folder; waiting for their own tombstones would hide the objects meanwhile.
     func removeRemote(folderIds: Set<UUID>, itemSyncIds: Set<String>, excluding keptLocal: Set<UUID> = []) {
         guard !folderIds.isEmpty || !itemSyncIds.isEmpty else { return }
         var touched: [UUID: Document] = [:]
@@ -314,6 +300,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
             discardedItems += removedItems.map(\.syncId)
         }
         commitRemote(touched)
+        coreMirror?.schedulePush()
         syncTracker.discardDirty(.tableFolder, ids: discardedFolders)
         syncTracker.discardDirty(.tableFolderItem, ids: discardedItems)
     }
@@ -322,6 +309,42 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         let written = touched.filter { $0.value != document(for: $0.key) && persist($0.value, for: $0.key) }
         guard !written.isEmpty else { return }
         postChange(for: Set(written.keys))
+    }
+
+    // MARK: - The core's copy
+
+    var hasUnreadableDocumentsAfterReadingAll: Bool {
+        _ = storedConnectionIds().map(document(for:))
+        return hasUnreadableDocuments
+    }
+
+    // The core's copy written back, marking nothing: it came from this Mac or a pull, never a new edit here.
+    func applyCoreRecords(
+        folders: [TableFolder],
+        items: [TableFolderItem],
+        removedFolderIds: Set<UUID>,
+        removedItemKeys: Set<TableFolderItemKey>
+    ) {
+        let connections = Set(folders.map(\.scope.connectionId))
+            .union(items.map(\.scope.connectionId))
+            .union(storedConnectionIds())
+        var touched: [UUID: Document] = [:]
+        for connectionId in connections {
+            var document = document(for: connectionId)
+            let before = document
+            let incomingFolders = folders.filter { $0.scope.connectionId == connectionId }
+            let incomingItems = items.filter { $0.scope.connectionId == connectionId }
+            let replacedFolders = Set(incomingFolders.map(\.id)).union(removedFolderIds)
+            let replacedItems = Set(incomingItems.map(\.key)).union(removedItemKeys)
+            document.folders.removeAll { replacedFolders.contains($0.id) }
+            document.folders += incomingFolders
+            document.items.removeAll { replacedItems.contains($0.key) }
+            document.items += incomingItems
+            if document != before {
+                touched[connectionId] = document
+            }
+        }
+        commitRemote(touched)
     }
 
     // MARK: - TableScopedSettingsStore
@@ -340,8 +363,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         ))
     }
 
-    /// A placement arriving in the renamed container replaces one the container already held for
-    /// the same object, so no two placements ever share a key or a CloudKit record.
+    // An arriving placement replaces one already there, so no two placements share a key or a CloudKit record.
     func renameContainer(
         connectionId: UUID,
         fromDatabase: String,
@@ -382,7 +404,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         unfileObjects([scope.table], in: Self.folderScope(of: scope))
     }
 
-    /// The folders of a dropped database or schema go with it, because the objects they held did.
+    // The folders go too, because the objects they held did.
     func dropContainer(connectionId: UUID, database: String, schema: String?) {
         var document = document(for: connectionId)
         let doomedFolders = document.folders.extract { $0.scope.isInside(database: database, schema: schema) }
@@ -401,7 +423,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
             guard !document.isEmpty else { continue }
             documents[connectionId] = Document()
             unreadableConnectionIds.remove(connectionId)
-            store.setDataValue(nil, forKey: Self.key(for: connectionId))
+            store.removeValue(for: Self.key(for: connectionId))
             let folderIds = document.folders.map(\.id.uuidString)
             let itemIds = document.items.map(\.syncId)
             if leavesTombstones {
@@ -413,21 +435,24 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
             }
             purged.insert(connectionId)
         }
+        if !purged.isEmpty {
+            coreMirror?.schedulePush()
+        }
         postChange(for: purged)
     }
 
-    /// `CatalogEditAdoption` builds every `TableScope` from a resolved `DatabaseScope`, so the
-    /// database is always present there. The fallback only keeps a hand-built scope from crashing.
+    // `CatalogEditAdoption` always sets the database; the fallback only covers a hand-built scope.
     private static func folderScope(of scope: TableScope) -> DatabaseScope {
         DatabaseScope(connectionId: scope.connectionId, database: scope.database ?? "", schema: scope.schema)
     }
 
     // MARK: - Persistence
 
-    /// Persists, then marks, then notifies, and does none of it when the write did not land.
+    // Persists before marking, because a sync mark can start a push that reads this store.
     @discardableResult
     private func commit(_ document: Document, for connectionId: UUID, marks: SyncMarks) -> Bool {
         guard persist(document, for: connectionId) else { return false }
+        coreMirror?.schedulePush()
         syncTracker.markDeleted(.tableFolder, ids: marks.deletedFolders, owner: connectionId)
         syncTracker.markDeleted(.tableFolderItem, ids: marks.deletedItems, owner: connectionId)
         syncTracker.markDirty(.tableFolder, ids: marks.dirtyFolders)
@@ -438,25 +463,13 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
 
     private func document(for connectionId: UUID) -> Document {
         if let cached = documents[connectionId] { return cached }
-        guard let loaded = loadDocument(for: connectionId) else {
+        let stored = store.read(Self.key(for: connectionId))
+        if stored.isUnreadable {
             unreadableConnectionIds.insert(connectionId)
-            documents[connectionId] = Document()
-            return Document()
         }
+        let loaded = stored.value ?? Document()
         documents[connectionId] = loaded
         return loaded
-    }
-
-    private func loadDocument(for connectionId: UUID) -> Document? {
-        guard let data = store.dataValue(forKey: Self.key(for: connectionId)) else { return Document() }
-        do {
-            return try JSONDecoder().decode(Document.self, from: data)
-        } catch {
-            Self.logger.error(
-                "Failed to decode table folders for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
-            )
-            return nil
-        }
     }
 
     private func persist(_ document: Document, for connectionId: UUID) -> Bool {
@@ -466,19 +479,16 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         }
         guard !document.isEmpty else {
             documents[connectionId] = document
-            store.setDataValue(nil, forKey: Self.key(for: connectionId))
+            store.removeValue(for: Self.key(for: connectionId))
             return true
         }
         do {
-            store.setDataValue(try JSONEncoder().encode(document), forKey: Self.key(for: connectionId))
-            documents[connectionId] = document
-            return true
+            try store.write(document, to: Self.key(for: connectionId))
         } catch {
-            Self.logger.error(
-                "Failed to encode table folders for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
-            )
             return false
         }
+        documents[connectionId] = document
+        return true
     }
 
     private func storedConnectionIds() -> [UUID] {
@@ -488,8 +498,8 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         return Array(Set(stored).union(documents.keys))
     }
 
-    private static func key(for connectionId: UUID) -> String {
-        PreferenceKeys.tableFolders(connectionId: connectionId).name
+    private static func key(for connectionId: UUID) -> JSONDefaultsKey<Document> {
+        PreferenceKeys.tableFolders(connectionId: connectionId)
     }
 
     private func postChange(for connectionIds: Set<UUID>) {
@@ -511,8 +521,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
     }
 }
 
-/// Some folders and placements of one connection as they stood at a moment. A nil value means the
-/// entry did not exist then.
+// A nil value means the entry did not exist when captured.
 internal struct TableFolderRevision: Equatable {
     internal let connectionId: UUID
     internal let folders: [UUID: TableFolder?]
@@ -520,7 +529,6 @@ internal struct TableFolderRevision: Equatable {
 }
 
 private extension Array {
-    /// Removes the elements that match and returns them, in one pass over the array.
     mutating func extract(where shouldExtract: (Element) -> Bool) -> [Element] {
         var extracted: [Element] = []
         removeAll { element in

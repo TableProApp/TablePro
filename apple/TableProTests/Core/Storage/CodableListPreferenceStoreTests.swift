@@ -16,7 +16,7 @@ struct CodableListPreferenceStoreTests {
     private let pool = EphemeralDefaultsPool()
 
     private func makeStore() throws -> CodableListPreferenceStore<Item> {
-        CodableListPreferenceStore(key: DefaultsKey<[Item]>("com.TablePro.test.items"), store: try pool.make().defaults)
+        CodableListPreferenceStore(key: JSONDefaultsKey<[Item]>("com.TablePro.test.items"), store: try pool.make().defaults)
     }
 
     @Test("Loading an unset key returns an empty list")

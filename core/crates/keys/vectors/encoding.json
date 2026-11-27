@@ -1,0 +1,777 @@
+{
+  "area": "encoding",
+  "suite": "tp1",
+  "format": 1,
+  "about": "LP framing, ids, scopes, purposes, labels, origins, base64url, Base32, versions and padding (ADR 0056, Suite and encoding). The LP cases at 65,535 and 65,536 bytes frame `repeat_count` copies of `repeat_byte_hex` and give the frame's first 4 bytes and the SHA-256 of the whole frame.",
+  "lp": [
+    {
+      "name": "LP of an empty field",
+      "op": "lp",
+      "input": {
+        "bytes_hex": ""
+      },
+      "output": {
+        "lp_hex": "00000000"
+      }
+    },
+    {
+      "name": "LP of a field with zero bytes inside",
+      "op": "lp",
+      "input": {
+        "bytes_hex": "00010000"
+      },
+      "output": {
+        "lp_hex": "0000000400010000"
+      }
+    },
+    {
+      "name": "LP at 65535 bytes",
+      "op": "lp",
+      "input": {
+        "repeat_byte_hex": "ab",
+        "repeat_count": 65535
+      },
+      "output": {
+        "lp_prefix_hex": "0000ffff",
+        "lp_sha256_hex": "558aceb869bb65581c5795dbf0c76bf788933ce456564469c76938fe1e6945b3"
+      }
+    },
+    {
+      "name": "LP at 65536 bytes",
+      "op": "lp",
+      "input": {
+        "repeat_byte_hex": "ab",
+        "repeat_count": 65536
+      },
+      "output": {
+        "lp_prefix_hex": "00010000",
+        "lp_sha256_hex": "009c2f45df727624538e4f54ede8378b37b137006e855e7ef4f500a95436cc66"
+      }
+    }
+  ],
+  "uuids": [
+    {
+      "name": "UUID 019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8 as 16 bytes",
+      "op": "uuid",
+      "input": {
+        "uuid": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8"
+      },
+      "output": {
+        "bytes_hex": "019a6b2e8f3c7d41b2a56c0e9f14d7b8",
+        "lp_hex": "00000010019a6b2e8f3c7d41b2a56c0e9f14d7b8"
+      }
+    },
+    {
+      "name": "UUID DB09A1EA-A519-42FF-94F3-CEEE6232F1C2 as 16 bytes",
+      "op": "uuid",
+      "input": {
+        "uuid": "DB09A1EA-A519-42FF-94F3-CEEE6232F1C2"
+      },
+      "output": {
+        "bytes_hex": "db09a1eaa51942ff94f3ceee6232f1c2",
+        "lp_hex": "00000010db09a1eaa51942ff94f3ceee6232f1c2"
+      }
+    }
+  ],
+  "record_ids": [
+    {
+      "name": "record id 019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/history/2 as UTF-8 text",
+      "op": "record_id_text",
+      "input": {
+        "record_id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/history/2"
+      },
+      "output": {
+        "lp_hex": "0000002e30313941364232452d384633432d374434312d423241352d3643304539463134443742382f686973746f72792f32"
+      }
+    },
+    {
+      "name": "record id connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password as UTF-8 text",
+      "op": "record_id_text",
+      "input": {
+        "record_id": "connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password"
+      },
+      "output": {
+        "lp_hex": "00000038636f6e6e656374696f6e2f36463143324139452d304234442d344338452d394135312d3344374532423146304334342f70617373776f7264"
+      }
+    }
+  ],
+  "scopes": [
+    {
+      "name": "personal scope",
+      "op": "scope",
+      "input": {
+        "type": "personal",
+        "owner": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8"
+      },
+      "output": {
+        "bytes_hex": "00000008706572736f6e616c00000010019a6b2e8f3c7d41b2a56c0e9f14d7b8"
+      }
+    },
+    {
+      "name": "history scope",
+      "op": "scope",
+      "input": {
+        "type": "history",
+        "owner": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8"
+      },
+      "output": {
+        "bytes_hex": "00000007686973746f727900000010019a6b2e8f3c7d41b2a56c0e9f14d7b8"
+      }
+    },
+    {
+      "name": "team scope",
+      "op": "scope",
+      "input": {
+        "type": "team",
+        "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"
+      },
+      "output": {
+        "bytes_hex": "000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63"
+      }
+    }
+  ],
+  "purposes": [
+    {
+      "name": "purpose account",
+      "op": "purpose",
+      "input": {
+        "purpose": "account"
+      },
+      "output": {
+        "lp_hex": "000000076163636f756e74"
+      }
+    },
+    {
+      "name": "purpose trust",
+      "op": "purpose",
+      "input": {
+        "purpose": "trust"
+      },
+      "output": {
+        "lp_hex": "000000057472757374"
+      }
+    },
+    {
+      "name": "purpose personal",
+      "op": "purpose",
+      "input": {
+        "purpose": "personal"
+      },
+      "output": {
+        "lp_hex": "00000008706572736f6e616c"
+      }
+    },
+    {
+      "name": "purpose history",
+      "op": "purpose",
+      "input": {
+        "purpose": "history"
+      },
+      "output": {
+        "lp_hex": "00000007686973746f7279"
+      }
+    },
+    {
+      "name": "purpose team",
+      "op": "purpose",
+      "input": {
+        "purpose": "team"
+      },
+      "output": {
+        "lp_hex": "000000047465616d"
+      }
+    }
+  ],
+  "labels": [
+    {
+      "name": "tablepro/v1/recovery-checksum",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/recovery-checksum"
+      },
+      "output": {
+        "prefix_hex": "0000001d7461626c6570726f2f76312f7265636f766572792d636865636b73756d00000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/identity",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/identity"
+      },
+      "output": {
+        "prefix_hex": "000000147461626c6570726f2f76312f6964656e7469747900000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/recovery-wrap",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/recovery-wrap"
+      },
+      "output": {
+        "prefix_hex": "000000197461626c6570726f2f76312f7265636f766572792d7772617000000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/recovery",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/recovery"
+      },
+      "output": {
+        "prefix_hex": "000000147461626c6570726f2f76312f7265636f7665727900000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/account",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/account"
+      },
+      "output": {
+        "prefix_hex": "000000137461626c6570726f2f76312f6163636f756e7400000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/replace",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/replace"
+      },
+      "output": {
+        "prefix_hex": "000000137461626c6570726f2f76312f7265706c61636500000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/cancel",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/cancel"
+      },
+      "output": {
+        "prefix_hex": "000000127461626c6570726f2f76312f63616e63656c00000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/device",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/device"
+      },
+      "output": {
+        "prefix_hex": "000000127461626c6570726f2f76312f64657669636500000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/key-id",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/key-id"
+      },
+      "output": {
+        "prefix_hex": "000000127461626c6570726f2f76312f6b65792d696400000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/version",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/version"
+      },
+      "output": {
+        "prefix_hex": "000000137461626c6570726f2f76312f76657273696f6e00000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/wrap",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/wrap"
+      },
+      "output": {
+        "prefix_hex": "000000107461626c6570726f2f76312f7772617000000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/wrap-sig",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/wrap-sig"
+      },
+      "output": {
+        "prefix_hex": "000000147461626c6570726f2f76312f777261702d73696700000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/ring-key",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/ring-key"
+      },
+      "output": {
+        "prefix_hex": "000000147461626c6570726f2f76312f72696e672d6b657900000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/ring",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/ring"
+      },
+      "output": {
+        "prefix_hex": "000000107461626c6570726f2f76312f72696e6700000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/envelope-key",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/envelope-key"
+      },
+      "output": {
+        "prefix_hex": "000000187461626c6570726f2f76312f656e76656c6f70652d6b657900000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/envelope",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/envelope"
+      },
+      "output": {
+        "prefix_hex": "000000147461626c6570726f2f76312f656e76656c6f706500000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/history-key",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/history-key"
+      },
+      "output": {
+        "prefix_hex": "000000177461626c6570726f2f76312f686973746f72792d6b657900000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/history",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/history"
+      },
+      "output": {
+        "prefix_hex": "000000137461626c6570726f2f76312f686973746f727900000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/sas-commit",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/sas-commit"
+      },
+      "output": {
+        "prefix_hex": "000000167461626c6570726f2f76312f7361732d636f6d6d697400000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/sas",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/sas"
+      },
+      "output": {
+        "prefix_hex": "0000000f7461626c6570726f2f76312f73617300000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/fingerprint",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/fingerprint"
+      },
+      "output": {
+        "prefix_hex": "000000177461626c6570726f2f76312f66696e6765727072696e7400000003747031"
+      }
+    },
+    {
+      "name": "tablepro/v1/state",
+      "op": "label",
+      "input": {
+        "label": "tablepro/v1/state"
+      },
+      "output": {
+        "prefix_hex": "000000117461626c6570726f2f76312f737461746500000003747031"
+      }
+    }
+  ],
+  "origins": [
+    {
+      "name": "origin of https://sync.example.com:443/v2/sync",
+      "op": "origin",
+      "input": {
+        "url": "https://sync.example.com:443/v2/sync"
+      },
+      "output": {
+        "origin": "https://sync.example.com",
+        "lp_hex": "0000001868747470733a2f2f73796e632e6578616d706c652e636f6d"
+      }
+    },
+    {
+      "name": "origin of https://Sync.Example.com",
+      "op": "origin",
+      "input": {
+        "url": "https://Sync.Example.com"
+      },
+      "output": {
+        "origin": "https://sync.example.com",
+        "lp_hex": "0000001868747470733a2f2f73796e632e6578616d706c652e636f6d"
+      }
+    },
+    {
+      "name": "origin of https://sync.example.com:8443/",
+      "op": "origin",
+      "input": {
+        "url": "https://sync.example.com:8443/"
+      },
+      "output": {
+        "origin": "https://sync.example.com:8443",
+        "lp_hex": "0000001d68747470733a2f2f73796e632e6578616d706c652e636f6d3a38343433"
+      }
+    },
+    {
+      "name": "origin of http://localhost:8080",
+      "op": "origin",
+      "input": {
+        "url": "http://localhost:8080"
+      },
+      "output": {
+        "origin": "http://localhost:8080",
+        "lp_hex": "00000015687474703a2f2f6c6f63616c686f73743a38303830"
+      }
+    }
+  ],
+  "base64url": [
+    {
+      "name": "base64url of 32 bytes",
+      "op": "base64url",
+      "input": {
+        "text": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "len": 32
+      },
+      "output": {
+        "bytes_hex": "0101010101010101010101010101010101010101010101010101010101010101"
+      }
+    },
+    {
+      "name": "non-zero pad bits",
+      "op": "base64url",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQF",
+        "len": 32
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "padding",
+      "op": "base64url",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "AQ==",
+        "len": 1
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "the standard alphabet",
+      "op": "base64url",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "+/8",
+        "len": 2
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "a wrong length",
+      "op": "base64url",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "text": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ",
+        "len": 32
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    }
+  ],
+  "base32": [
+    {
+      "name": "Base32 of 0xff, final bits zero",
+      "op": "base32",
+      "input": {
+        "bytes_hex": "ff"
+      },
+      "output": {
+        "text": "ZW"
+      }
+    },
+    {
+      "name": "Base32 of 5 bytes",
+      "op": "base32",
+      "input": {
+        "bytes_hex": "00443214c7"
+      },
+      "output": {
+        "text": "01234567"
+      }
+    }
+  ],
+  "versions": [
+    {
+      "name": "version 0",
+      "op": "version",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "value": 0
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "version 2^31",
+      "op": "version",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
+      "input": {
+        "value": 2147483648
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement",
+      "clause": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31"
+    },
+    {
+      "name": "version 2^31-1",
+      "op": "version",
+      "input": {
+        "value": 2147483647
+      },
+      "output": {
+        "ok": true
+      }
+    }
+  ],
+  "padding": [
+    {
+      "name": "P(0)",
+      "op": "padded_len",
+      "input": {
+        "n": 0
+      },
+      "output": {
+        "padded_len": 64
+      }
+    },
+    {
+      "name": "P(63)",
+      "op": "padded_len",
+      "input": {
+        "n": 63
+      },
+      "output": {
+        "padded_len": 64
+      }
+    },
+    {
+      "name": "P(64)",
+      "op": "padded_len",
+      "input": {
+        "n": 64
+      },
+      "output": {
+        "padded_len": 128
+      }
+    },
+    {
+      "name": "P(127)",
+      "op": "padded_len",
+      "input": {
+        "n": 127
+      },
+      "output": {
+        "padded_len": 128
+      }
+    },
+    {
+      "name": "P(128)",
+      "op": "padded_len",
+      "input": {
+        "n": 128
+      },
+      "output": {
+        "padded_len": 256
+      }
+    },
+    {
+      "name": "P(255)",
+      "op": "padded_len",
+      "input": {
+        "n": 255
+      },
+      "output": {
+        "padded_len": 256
+      }
+    },
+    {
+      "name": "P(256)",
+      "op": "padded_len",
+      "input": {
+        "n": 256
+      },
+      "output": {
+        "padded_len": 512
+      }
+    },
+    {
+      "name": "P(511)",
+      "op": "padded_len",
+      "input": {
+        "n": 511
+      },
+      "output": {
+        "padded_len": 512
+      }
+    },
+    {
+      "name": "P(512)",
+      "op": "padded_len",
+      "input": {
+        "n": 512
+      },
+      "output": {
+        "padded_len": 1024
+      }
+    },
+    {
+      "name": "P(1023)",
+      "op": "padded_len",
+      "input": {
+        "n": 1023
+      },
+      "output": {
+        "padded_len": 1024
+      }
+    },
+    {
+      "name": "P(1024)",
+      "op": "padded_len",
+      "input": {
+        "n": 1024
+      },
+      "output": {
+        "padded_len": 2048
+      }
+    },
+    {
+      "name": "P(2047)",
+      "op": "padded_len",
+      "input": {
+        "n": 2047
+      },
+      "output": {
+        "padded_len": 2048
+      }
+    },
+    {
+      "name": "P(2048)",
+      "op": "padded_len",
+      "input": {
+        "n": 2048
+      },
+      "output": {
+        "padded_len": 4096
+      }
+    },
+    {
+      "name": "P(4095)",
+      "op": "padded_len",
+      "input": {
+        "n": 4095
+      },
+      "output": {
+        "padded_len": 4096
+      }
+    },
+    {
+      "name": "P(4096)",
+      "op": "padded_len",
+      "input": {
+        "n": 4096
+      },
+      "output": {
+        "padded_len": 8192
+      }
+    },
+    {
+      "name": "P(8191)",
+      "op": "padded_len",
+      "input": {
+        "n": 8191
+      },
+      "output": {
+        "padded_len": 8192
+      }
+    },
+    {
+      "name": "P(8192)",
+      "op": "padded_len",
+      "input": {
+        "n": 8192
+      },
+      "output": {
+        "padded_len": 12288
+      }
+    }
+  ],
+  "unpad": [
+    {
+      "name": "no 0x80",
+      "op": "unpad",
+      "row": "Padding with no 0x80, a non-zero byte after it, or a length off the scale",
+      "input": {
+        "padded_hex": "41000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "Padding with no 0x80, a non-zero byte after it, or a length off the scale"
+    },
+    {
+      "name": "a non-zero byte after 0x80",
+      "op": "unpad",
+      "row": "Padding with no 0x80, a non-zero byte after it, or a length off the scale",
+      "input": {
+        "padded_hex": "41800000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "Padding with no 0x80, a non-zero byte after it, or a length off the scale"
+    },
+    {
+      "name": "a length off the scale",
+      "op": "unpad",
+      "row": "Padding with no 0x80, a non-zero byte after it, or a length off the scale",
+      "input": {
+        "padded_hex": "008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "error": "keys.encoding",
+      "server": null,
+      "clause": "Padding with no 0x80, a non-zero byte after it, or a length off the scale"
+    }
+  ]
+}

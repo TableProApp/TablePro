@@ -12,7 +12,6 @@ private let sessionStateLogger = Logger(subsystem: "com.TablePro", category: "Se
 enum SessionStateFactory {
     struct SessionState {
         let tabManager: QueryTabManager
-        let changeManager: DataChangeManager
         let toolbarState: ConnectionToolbarState
         let coordinator: MainContentCoordinator
     }
@@ -85,8 +84,6 @@ enum SessionStateFactory {
                 database: databaseName, name: tableName, to: schemaName
             )
         }
-        let changeMgr = DataChangeManager()
-        changeMgr.databaseType = connection.type
         let toolbarSt = ConnectionToolbarState(connection: connection)
 
         let session = DatabaseManager.shared.session(for: connection.id)
@@ -107,7 +104,6 @@ enum SessionStateFactory {
         let coord = MainContentCoordinator(
             connection: connection,
             tabManager: tabMgr,
-            changeManager: changeMgr,
             toolbarState: toolbarSt,
             tabSessionRegistry: tabSessionRegistry,
             queryExecutor: queryExecutor
@@ -122,7 +118,6 @@ enum SessionStateFactory {
 
         return SessionState(
             tabManager: tabMgr,
-            changeManager: changeMgr,
             toolbarState: toolbarSt,
             coordinator: coord
         )

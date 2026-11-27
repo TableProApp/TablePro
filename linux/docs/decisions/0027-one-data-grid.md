@@ -1,6 +1,6 @@
 # 0027: One data grid on GtkColumnView, with rows and a focused cell
 
-- **Status**: Accepted; row numbers superseded by [0044](0044-pinned-row-numbers.md)
+- **Status**: Accepted; row numbers superseded by [0044](0044-pinned-row-numbers.md); the share sheet's sample rows amended by [0046](0046-share-links-and-the-tablepro-scheme.md); one line per row superseded by [0047](0047-wrapped-text-in-the-data-grid.md)
 - **Date**: 2026-10-25
 
 ## Context

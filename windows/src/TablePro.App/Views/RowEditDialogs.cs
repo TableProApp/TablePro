@@ -57,7 +57,7 @@ internal static class RowEditDialogs
     public static async Task<bool> ConfirmDeleteAsync(FrameworkElement owner, string table, int rows) =>
         await ShowAsync(owner, new ContentDialog
         {
-            Title = rows == 1 ? Strings.Format("DeleteRowsTitleOne", table) : Strings.Format("DeleteRowsTitleMany", rows, table),
+            Title = Strings.Plural("DeleteRowsTitle", rows, rows, table),
             Content = Strings.Get("DeleteRowsMessage"),
             PrimaryButtonText = Strings.Get("DeleteRowsAction"),
             CloseButtonText = Strings.Get("Cancel"),
@@ -112,13 +112,15 @@ internal static class RowEditDialogs
         });
     }
 
-    public static async Task ShowSaveFailedAsync(FrameworkElement owner, string message, bool incomplete)
+    // Unknown names how the rows are read again: a table tab's Refresh, a query result's Discard.
+    public static async Task ShowSaveFailedAsync(
+        FrameworkElement owner, string message, bool incomplete, string unknown = "SaveUnknownMessage")
     {
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
         content.Children.Add(new TextBlock
         {
-            Text = Strings.Get(incomplete ? "SaveUnknownMessage" : "SaveFailedPending"),
+            Text = Strings.Get(incomplete ? unknown : "SaveFailedPending"),
             TextWrapping = TextWrapping.Wrap,
         });
         await ShowAsync(owner, new ContentDialog
@@ -140,7 +142,7 @@ internal static class RowEditDialogs
     }
 
     private static string Title(string name, int statements) =>
-        $"{Strings.Get(name)} ({(statements == 1 ? Strings.Get("StatementCountOne") : Strings.Format("StatementCountMany", statements))})";
+        Strings.Format("JoinParenthetical", Strings.Get(name), Strings.Plural("StatementCount", statements, statements));
 
     private static TextBlock StatementsBlock(IReadOnlyList<PlannedStatement> statements, string automationId)
     {

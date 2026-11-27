@@ -1,8 +1,3 @@
-//
-//  WorkspaceRailViewController.swift
-//  TablePro
-//
-
 import AppKit
 import Combine
 import Observation
@@ -10,11 +5,7 @@ import os
 import OSLog
 import TableProConnectionLibrary
 
-/// The window a rail belongs to. A window hosts several connections and shows one at a time, so
-/// which row the rail highlights is a question only the window can answer, and the answer changes.
-/// The rail used to capture the connection its window was created for, which could name the right
-/// row exactly once: after the window switched to a second connection the rail kept highlighting
-/// the first, and clicking the row it was already standing on did nothing.
+// Only the window knows which of its connections is on screen, so the rail asks rather than capturing one.
 @MainActor
 internal protocol WorkspaceRailHost: AnyObject {
     var hostedConnectionIds: [UUID] { get }
@@ -22,20 +13,12 @@ internal protocol WorkspaceRailHost: AnyObject {
     func selectHostedConnection(_ connectionId: UUID)
 }
 
-/// Middle-click closes the row under the pointer, which is what a list of open things does
-/// everywhere it exists: browser tabs, and every database client surveyed. `NSTableView` routes no
-/// action for the tertiary button, so the row is resolved from the click point the same way
-/// `menu(for:)` resolves one.
-///
-/// The table owns its own look, so a test hosting it gets the configuration the strip really ships
-/// with: a source list rewrites cells and pads rows in ways a free-standing cell never shows.
+// AppKit table on purpose: `NSTableView` routes no middle-click, and a source list pads rows a free cell never shows.
 @MainActor
 internal final class WorkspaceRailTableView: NSTableView {
     internal var onMiddleClick: ((Int) -> Void)?
 
-    /// Set by the window's rule the moment the strip is told to hide. AppKit hides a collapsing split
-    /// item only once its animation ends, and until then the list kept its full frame, so a window
-    /// first shown during that animation picked it as its first key view.
+    // Set the moment the strip hides: AppKit hides a collapsing item only after its animation, so the list could take first key view.
     internal var isStripShown = true
 
     override internal var canBecomeKeyView: Bool {
@@ -53,8 +36,7 @@ internal final class WorkspaceRailTableView: NSTableView {
         backgroundColor = .clear
         allowsMultipleSelection = false
         allowsEmptySelection = true
-        /// A source list draws the selection over the spacing too, so spacing would only pad the
-        /// inside of the fill. The tile's own padding is what separates one entry from the next.
+        // A source list draws the selection over the spacing, so the tile's own padding separates entries.
         intercellSpacing = NSSize(width: 0, height: 0)
     }
 
@@ -63,9 +45,7 @@ internal final class WorkspaceRailTableView: NSTableView {
         fatalError("WorkspaceRailTableView does not support NSCoder init")
     }
 
-    /// Read from the rows themselves, because where they start is the source list's to decide: it
-    /// pads the first one down from the document's top, and a model that assumed otherwise is what
-    /// left a slice of the previous tile showing.
+    // Read from the rows: the source list pads the first one down from the document's top.
     internal func scrollGeometry(viewportHeight: CGFloat) -> WorkspaceRailScrollGeometry {
         let first = numberOfRows > 0 ? rect(ofRow: 0) : .zero
         return WorkspaceRailScrollGeometry(
@@ -113,10 +93,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     private let scrollView = NSScrollView()
     private let tableView = WorkspaceRailTableView()
 
-    /// `rowSizeStyle` is the only route to the sidebar icon size preference, but any value
-    /// other than `.custom` makes the table impose the system row height and ignore
-    /// `heightOfRow`, which the rail's stacked cell needs. This unattached table lets AppKit
-    /// resolve the preference so the rail itself can stay `.custom`.
+    // Resolves the sidebar icon size; anything but `.custom` on the rail itself would ignore `heightOfRow`.
     private let rowSizeProbe = NSTableView()
 
     private var entries: [WorkspaceRailEntry] = []
@@ -131,22 +108,15 @@ internal final class WorkspaceRailViewController: NSViewController {
     private let scrollObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private var contentTopConstraint: NSLayoutConstraint?
 
-    /// A scroll is settled once it has stopped changing, which is the only signal every input
-    /// device gives. `NSScrollViewWillStartLiveScroll`/`DidEndLiveScroll` would be the obvious pair,
-    /// and `NSScrollView.h` says outright that a legacy mouse is not bracketed by them, which is the
-    /// device most likely to leave the strip resting mid-tile.
+    // Settled once the scroll stops changing: a legacy mouse never posts the live-scroll pair.
     private var scrollSettle: DispatchWorkItem?
 
-    /// A reorder scrolls the strip itself as the pointer nears an edge, so settling during one would
-    /// fight the drag it is reacting to.
+    // A reorder autoscrolls the strip, so settling during one would fight the drag.
     private var isReordering = false
 
     private var needsSelectionReveal = false
 
-    /// What the rail last put on screen as selected, which after every `applySelection` is the
-    /// workspace the host is really showing. A commit for that same workspace has nothing to do,
-    /// and is the case the arrow keys hit constantly as they move the highlight across a row the
-    /// window is already on.
+    // A commit for the workspace already applied has nothing to do, which is what the arrow keys hit constantly.
     private var appliedSelection: WorkspaceID?
 
     internal init() {
@@ -187,10 +157,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         scrollView.autohidesScrollers = true
         scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = false
-        /// The bottom inset is the rail's own, and `contentInsets` and the automatic flag are one
-        /// property: writing the inset clears the flag anyway, so it is cleared here where it can be
-        /// read. Nothing is given up, because the automatic inset reads the scroll view's own safe
-        /// area, which `pinContentBelowTitleBar` has already reduced to nothing.
+        // Writing `contentInsets` clears the automatic flag anyway, and the safe area here is already zero.
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentView.postsBoundsChangedNotifications = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -204,10 +171,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         pinContentBelowTitleBar()
     }
 
-    /// The rail is a full-height sidebar, so AppKit gives it a top safe-area inset that
-    /// clears the window buttons and does not move when the native tab bar appears.
-    /// Anchoring to `NSWindow.contentLayoutGuide` instead tracked the tab bar and made the
-    /// rail jump between workspaces with different tab counts.
+    // The safe-area inset clears the window buttons and stays put when the native tab bar appears; the content layout guide did not.
     private func pinContentBelowTitleBar() {
         contentTopConstraint?.isActive = false
         let constraint = scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
@@ -227,9 +191,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             .sink { [weak self] _ in
                 self?.reload()
             }
-        /// Changing the Appearance setting means leaving TablePro and coming back, and AppKit
-        /// publishes that. `effectiveRowSizeStyle` is then re-read, which is the documented way to
-        /// ask what the system resolved. The undocumented defaults key this used to observe is gone.
+        // An Appearance change happens outside the app, so the system row size is re-read on return.
         let observer = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -252,9 +214,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         scrollObserver.withLockUnchecked { $0 = observer }
     }
 
-    /// Re-armed on every bounds change, so the strip settles once the scrolling stops rather than
-    /// once per frame of it. Settling itself changes the bounds, which comes back through here and
-    /// finds nothing left to do.
+    // Re-armed on every bounds change, so the strip settles once scrolling stops, not once per frame.
     private func scheduleScrollSettle() {
         scrollSettle?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -283,8 +243,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         }
     }
 
-    /// Recomputed rather than set once, because the row count, the row height and the viewport all
-    /// move: an entry opens or closes, the sidebar icon size changes, the window resizes.
+    // Recomputed: the row count, the row height and the viewport all move.
     private var scrollGeometry: WorkspaceRailScrollGeometry {
         tableView.scrollGeometry(viewportHeight: scrollView.contentView.bounds.height)
     }
@@ -295,12 +254,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: inset, right: 0)
     }
 
-    /// Asked for when the highlight moves, and held until the strip has a viewport to move inside.
-    ///
-    /// The rail is laid out after `viewDidLoad` has already applied the first selection, so the
-    /// clip view can still be zero high when the entry to show is below the fold. Nothing arrives
-    /// later to say so: `NSView.boundsDidChangeNotification` is not posted for a bounds change that
-    /// came from the frame resizing, and `NSTableView` does not reveal a selection it already holds.
+    // Held until the clip view has a height: no bounds notification follows a frame resize, and `NSTableView` never reveals a selection it already holds.
     private func requestSelectionReveal() {
         needsSelectionReveal = true
         revealSelectedRowIfNeeded()
@@ -312,9 +266,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         revealSelectedRow()
     }
 
-    /// Silent while the entry is already whole and on screen. Every rail lists every workspace, so
-    /// one window's change reloads all of them; the callers are the paths where the highlight
-    /// actually moved, so a strip whose own entry did not change stays where its window left it.
+    // Silent while the entry is whole on screen: every rail reloads on any window's change.
     private func revealSelectedRow() {
         let clipView = scrollView.contentView
         guard let origin = scrollGeometry.revealOrigin(
@@ -340,8 +292,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         }
     }
 
-    /// Reported from here rather than from the split view's resize callback, which runs before the
-    /// strip inside the item has taken its new width.
+    // Not the split view's resize callback, which runs before the strip has its new width.
     override func viewDidLayout() {
         super.viewDidLayout()
         tableView.sizeLastColumnToFit()
@@ -351,8 +302,6 @@ internal final class WorkspaceRailViewController: NSViewController {
         reportedWidth = view.frame.width
         onWidthChange?()
     }
-
-    // MARK: - Data
 
     private func reload() {
         entries = WorkspaceRailStore.entries
@@ -386,19 +335,15 @@ internal final class WorkspaceRailViewController: NSViewController {
         "\(workspace.connectionId.uuidString.prefix(8)):\(workspace.container.isEmpty ? "-" : workspace.container)"
     }
 
-    /// Which window's rail a line came from. Every rail lists every workspace, so without this
-    /// a log of two connections switching back and forth cannot be attributed.
+    // Every rail lists every workspace, so a log line names which window's rail wrote it.
     private var railName: String {
         guard let connectionId = host?.selectedConnectionId else { return "none" }
         return String(connectionId.uuidString.prefix(8))
     }
 
-    /// Re-arms itself, because `withObservationTracking` fires once per registration.
     private func observeRowSizePreference() {
-        /// `objectWillChange` covers every settings group, so the row size is compared here
-        /// to keep the rebuild as rare as the per-property tracking made it.
         var lastRowSize = AppSettingsManager.shared.general.sidebarRowSize
-        rowSizeObservation = AppSettingsManager.shared.onMainActorChange { [weak self] in
+        rowSizeObservation = AppSettingsManager.shared.generalSlice.onMainActorChange { [weak self] in
             let current = AppSettingsManager.shared.general.sidebarRowSize
             guard current != lastRowSize else { return }
             lastRowSize = current
@@ -406,8 +351,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         }
     }
 
-    /// The rail sits directly beside the object list, so it takes the same size. Following only the
-    /// system preference left the two disagreeing the moment the user set a size of their own.
+    // Same size as the object list beside it, including a size the user set.
     private var resolvedRowSizeStyle: NSTableView.RowSizeStyle {
         let preference = AppSettingsManager.shared.general.sidebarRowSize
         guard preference == .matchSystem else {
@@ -424,19 +368,13 @@ internal final class WorkspaceRailViewController: NSViewController {
         tableView.reloadData()
         applyBottomInset()
         applySelection()
-        /// Every tile edge moved, and a scroll offset that moves nothing posts no bounds change, so
-        /// neither the settle nor the reveal would run on its own: the strip stayed mid-tile.
+        // A scroll offset that moves nothing posts no bounds change, so neither the settle nor the reveal would run on its own.
         requestSelectionReveal()
         scheduleScrollSettle()
         onLayoutChange?(resolved)
     }
 
-    /// Both halves move: the window switches which connection it shows, and that connection's tabs
-    /// switch which entry is in front. Neither can be captured at init.
-    ///
-    /// The entry this window shows, not the one the connection browses: a window a tab was torn off
-    /// into shares its connection's cursor with the window it came from, and highlighting the cursor
-    /// named an entry whose tabs that window was not showing.
+    // The entry this window shows, not the connection's browse cursor, which a torn-off window shares.
     private var activeWorkspace: WorkspaceID? {
         guard let connectionId = host?.selectedConnectionId else { return nil }
         if let shown = WindowManager.shared.coordinator(for: connectionId, in: view.window)?
@@ -446,8 +384,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         return WorkspaceRailStore.browsedWorkspace(for: connectionId)
     }
 
-    /// Called when the window changes which connection it is showing. The entry list is unchanged
-    /// by that, only which row is current, so this moves the highlight instead of reloading.
+    // The entry list is unchanged by a connection switch, so only the highlight moves.
     internal func refreshSelection() {
         applySelection()
     }
@@ -483,32 +420,20 @@ internal final class WorkspaceRailViewController: NSViewController {
         requestSelectionReveal()
     }
 
-    // MARK: - Activation
-
     @objc
     private func handleRowClick() {
         commit(row: tableView.clickedRow)
     }
 
-    /// Return opens the highlighted row, the same contract every AppKit list keeps.
     override func insertNewline(_ sender: Any?) {
         commit(row: tableView.selectedRow)
     }
 
-    /// Close means the entry highlighted here while the strip holds the keyboard, and the
-    /// connection when that entry is the only one it has.
-    ///
-    /// The selector is the window's, deliberately: `performClose:` reaching the responder chain
-    /// finds this implementation before the window's whenever the strip is focused, which is the
-    /// same mechanism that gives Cut and Copy a different meaning in each view. The window used to
-    /// ask whether the strip had focus and branch on the answer, which is this rule written out by
-    /// hand.
+    // Found before the window's `performClose:` whenever the strip is focused; closes the connection when the entry is its only one.
     @objc
     internal func performClose(_ sender: Any?) {
         guard let workspace = appliedSelection else {
-            /// Nothing highlighted means the strip has no entry to close, not that Close does
-            /// nothing: swallowing it here would leave the command dead in a window that has tabs,
-            /// which is the failure this whole route exists to prevent.
+            // Swallowing Close here would leave the command dead in a window that has tabs.
             view.window?.performClose(sender)
             return
         }
@@ -518,8 +443,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     private func commit(row: Int) {
         guard entries.indices.contains(row) else { return }
         let workspace = entries[row].workspace
-        /// The highlighted entry is clicked again to retry a switch that failed: its tabs are on
-        /// screen, but the object browser stayed where it was.
+        // Clicking the highlighted entry again retries a switch whose object browser stayed behind.
         guard workspace != appliedSelection
             || WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId) != workspace
         else {
@@ -581,19 +505,13 @@ internal final class WorkspaceRailViewController: NSViewController {
         return (window, host)
     }
 
-    /// Going to an entry of a connection: its tabs come forward, and the object tree follows to its
-    /// container once the switch lands. `BrowseCursorCoordinator.goToEntry` holds both halves, so the order cannot be got
-    /// wrong here.
+    // `BrowseCursorCoordinator.goToEntry` brings the tabs forward and moves the tree, in that order.
     private func moveBrowseCursor(of window: NSWindow, to workspace: WorkspaceID) {
         guard !workspace.container.isEmpty else {
             Self.logger.debug("moveBrowseCursor skipped: unnamed container")
             return
         }
-        /// Resolved by connection through the window that hosts it, never by window alone.
-        /// `coordinator(forWindow:)` answers with the window's selected workspace, so a row for any
-        /// other connection moved the browse cursor of the one on screen instead: it switched the
-        /// visible connection to a database named after a different one, or failed against a
-        /// database that connection does not have.
+        // By connection, never by window alone, which answers with the window's selected workspace.
         guard let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId, in: window) else {
             Self.logger.error(
                 """
@@ -607,8 +525,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         coordinator.browseCursorCoordinator.goToEntry(workspace.container)
     }
 
-    /// The menu command is a commit, not a highlight: it names the workspace it goes to, so it
-    /// has to get there without a second keystroke.
+    // A commit, not a highlight: the command names where it goes.
     internal func activateWorkspace(offsetBy offset: Int) {
         guard let next = WorkspaceRailOrdering.cycled(
             in: entries.map(\.id),
@@ -620,8 +537,6 @@ internal final class WorkspaceRailViewController: NSViewController {
         requestSelectionReveal()
         commit(row: row)
     }
-
-    // MARK: - Context Menu
 
     private func contextMenu() -> NSMenu {
         let menu = NSMenu()
@@ -683,12 +598,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         close(workspace)
     }
 
-    /// Named for the rail rather than for the command, because `closeConnection(_:)` is the File
-    /// menu's own nil-target action on `MainSplitViewController`. `@objc` puts this in the
-    /// responder chain whatever its access level, and the rail sits ahead of the controller there,
-    /// so sharing the name meant the menu bar's Close Connection resolved here instead, found a
-    /// sender carrying no `representedObject`, and returned having done nothing at all. The rail's
-    /// own items set `target` explicitly, so nothing here depends on the selector's spelling.
+    // Not `closeConnection(_:)`: that is the File menu's nil-target action, and the rail sits ahead of its owner in the responder chain.
     @objc
     private func closeWorkspaceConnection(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID else { return }
@@ -704,9 +614,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         Task { await WorkspaceCloseAction.close(workspace) }
     }
 
-    /// Named after what the engine calls a container, not after the row. "Close “logs”" would read
-    /// as the connection on the one key the app already uses for exactly that, and its translations
-    /// say so: the Turkish for `Close “%@”` is "close %@'s connection".
+    // Named after the container: "Close %@" reads as closing the connection in some languages.
     internal static func containerCloseTitle(for entry: WorkspaceRailEntry) -> String {
         let format = entry.containerTarget == .schema
             ? String(localized: "Close Schema “%@”")
@@ -714,7 +622,6 @@ internal final class WorkspaceRailViewController: NSViewController {
         return String(format: format, entry.container)
     }
 
-    /// Read from the entries this rail is showing, which is the list the user is looking at.
     private func closeScope(for workspace: WorkspaceID) -> WorkspaceCloseAction.Scope {
         guard !workspace.container.isEmpty else { return .connection }
         let count = entries.count { $0.workspace.connectionId == workspace.connectionId }
@@ -725,9 +632,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         Task { await ConnectionCloseAction.close(connectionId: connectionId) }
     }
 
-    /// Hands the connection's database file back to the rest of the machine and keeps the session,
-    /// so the tabs, the schema cache and the row the user was on all stay where they are. The next
-    /// query takes the file again.
+    // Releases the database file and keeps the session, so tabs, schema cache and position stay; the next query takes it again.
     @objc
     private func releaseWorkspaceFileLock(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID,
@@ -756,16 +661,13 @@ internal final class WorkspaceRailViewController: NSViewController {
         shown.host.performConnectionAction(action, for: workspace.connectionId)
     }
 
-    /// Ends the session, which every workspace of the connection shares, so the other rows for it
-    /// go quiet too. No window closes: each one repaints from its own phase.
+    // Every workspace of the connection shares the session, so its other rows go quiet too; no window closes.
     @objc
     private func disconnectWorkspace(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID,
               let entry = entries.first(where: { $0.workspace.connectionId == workspace.connectionId })
         else { return }
-        /// The rail's own window, not the connection's most recent one: the user is looking at this
-        /// window, and the connection's most recent window can be behind it or miniaturized, which
-        /// would put the confirmation sheet somewhere they cannot see and read as a dead menu item.
+        // This window, not the connection's most recent one, which can be behind it or miniaturized.
         let presentingWindow = view.window
         Task {
             await ConnectionDisconnectAction.disconnect(
@@ -777,14 +679,8 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 }
 
-// MARK: - CloseCommandNaming
-
 extension WorkspaceRailViewController: CloseCommandNaming {
-    /// The strip's own contextual menu names what it would close, and the menu bar has to agree with
-    /// it word for word: the command is the same one, so an entry that is its connection's only one
-    /// reads "Close Connection" in both, because that is what closing it takes.
-    /// nil while nothing is highlighted, so the resolver falls back to the window, which is where
-    /// the command goes in that state too.
+    // Matches the strip's own menu word for word; nil while nothing is highlighted, so the window's title applies.
     internal var closeCommandTitle: String? {
         guard let workspace = appliedSelection,
               let entry = entries.first(where: { $0.workspace == workspace })
@@ -795,8 +691,6 @@ extension WorkspaceRailViewController: CloseCommandNaming {
         return Self.containerCloseTitle(for: entry)
     }
 }
-
-// MARK: - NSMenuDelegate
 
 extension WorkspaceRailViewController: NSMenuDelegate {
     internal func menuNeedsUpdate(_ menu: NSMenu) {
@@ -883,8 +777,6 @@ extension WorkspaceRailViewController: NSMenuDelegate {
     }
 }
 
-// MARK: - NSTableViewDataSource
-
 extension WorkspaceRailViewController: NSTableViewDataSource {
     internal func numberOfRows(in tableView: NSTableView) -> Int {
         entries.count
@@ -948,8 +840,6 @@ extension WorkspaceRailViewController: NSTableViewDataSource {
     }
 }
 
-// MARK: - NSTableViewDelegate
-
 extension WorkspaceRailViewController: NSTableViewDelegate {
     internal func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         rowHeight
@@ -985,20 +875,11 @@ extension WorkspaceRailViewController: NSTableViewDelegate {
         )
     }
 
-    /// Selection is the highlight, not the commit.
-    ///
-    /// `NSTableView` selects on mouse-down, before the drag threshold, so committing here meant
-    /// grabbing an icon to reorder first switched to it and the rest of the drag happened in a
-    /// window that was no longer key. Arrow keys were worse: one press onto another connection's
-    /// row raised that window, so the rail lost key status and the next press went somewhere else
-    /// entirely. Commit belongs on the table's action, which fires after tracking ends, and on
-    /// Return, which is how every AppKit list opens the row the user arrowed to.
+    // Selection is the highlight, not the commit: `NSTableView` selects on mouse-down, before a reorder drag starts.
     internal func tableViewSelectionDidChange(_ notification: Notification) {
         let row = tableView.selectedRow
         guard entries.indices.contains(row) else { return }
-        /// The arrow keys move the highlight through `NSTableView` itself, which reveals the row it
-        /// lands on by scrolling the least it can and so stops between entries. Landing on the
-        /// boundary here keeps the strip from having to slide again once the scroll settles.
+        // `NSTableView` scrolls the least it can and stops between entries, so the reveal lands on a boundary.
         requestSelectionReveal()
         Self.logger.debug(
             """

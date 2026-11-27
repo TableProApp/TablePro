@@ -1,8 +1,4 @@
-//  Minting a token is a grant, so the store makes the caller state the grant: `generate` takes the
-//  connection scope and the expiry with no defaults, because the defaults it used to carry handed
-//  every caller that forgot them a token over every connection that never expired. Two tokens may
-//  share a name; pairing no longer revokes an existing token because a new client claimed the same
-//  one, which let any caller name an installed client and take its access away.
+// generate has no default scope or expiry, and a shared name never revokes another client's token.
 
 import Foundation
 import TableProMCP
@@ -889,6 +885,88 @@ struct MCPTokenStoreTests {
         #expect(access.allows(allowed))
         #expect(access.allows(UUID()) == false)
         #expect(ConnectionAccess.all.allows(UUID()))
+    }
+
+    @Test("Only a token a person made is user managed")
+    func userManagedExcludesTableProsOwnTokens() {
+        #expect(makeToken().isUserManaged)
+        #expect(makeToken(isClaudeAgentCredential: true).isUserManaged == false)
+        let bridge = MCPAuthToken(
+            id: UUID(),
+            name: MCPTokenStore.stdioBridgeTokenName,
+            prefix: "tp_abc12",
+            tokenHash: "fakehash",
+            salt: "fakesalt",
+            permissions: .readWrite,
+            connectionAccess: .all,
+            createdAt: Date.now,
+            lastUsedAt: nil,
+            expiresAt: nil,
+            isActive: true,
+            isBridgeCredential: true
+        )
+        #expect(bridge.isUserManaged == false)
+    }
+
+    @Test("Every permission tier explains what it allows")
+    func permissionSummariesAreNotEmpty() {
+        for permissions in TokenPermissions.allCases {
+            #expect(!permissions.summary.isEmpty)
+        }
+    }
+
+    @Test("Adding, revoking and deleting a client token each announce a membership change")
+    func membershipChangesAreAnnounced() async throws {
+        let store = makeStore()
+        var changes = store.membershipChanges.changes().makeAsyncIterator()
+
+        let issued = try await store.generate(
+            name: "Raycast",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            isClaudeAgentCredential: false,
+            extraScopes: []
+        )
+        let afterGenerate: Void? = await changes.next()
+        #expect(afterGenerate != nil)
+
+        await store.revoke(tokenId: issued.token.id)
+        let afterRevoke: Void? = await changes.next()
+        #expect(afterRevoke != nil)
+
+        await store.delete(tokenId: issued.token.id)
+        let afterDelete: Void? = await changes.next()
+        #expect(afterDelete != nil)
+    }
+
+    @Test("An expired Claude Agent token left by a crashed turn is dropped at load, and a live one is kept")
+    func expiredAgentTokenIsDroppedAtLoad() async throws {
+        let expiredAgent = makeToken(
+            name: MCPTokenStore.claudeAgentTokenName,
+            expiresAt: Date.now.addingTimeInterval(-60),
+            isClaudeAgentCredential: true
+        )
+        let liveAgent = makeToken(
+            name: MCPTokenStore.claudeAgentTokenName,
+            expiresAt: Date.now.addingTimeInterval(3_600),
+            isClaudeAgentCredential: true
+        )
+        let expiredClient = makeToken(name: "Raycast", expiresAt: Date.now.addingTimeInterval(-60))
+        let credentials = InMemoryCredentialStore(
+            seed: try MCPTokenStore.encodeStored(tokens: [expiredAgent, liveAgent, expiredClient], undecoded: [])
+        )
+
+        let store = makeStore(credentials)
+        await store.loadFromDisk()
+
+        #expect(await store.token(id: expiredAgent.id) == nil)
+        #expect(await store.token(id: liveAgent.id) != nil)
+        #expect(await store.token(id: expiredClient.id) != nil)
+        let saved = MCPTokenStore.decodeStored(Data(credentials.storedText.utf8)).tokens.map { $0.id }
+        #expect(saved.contains(expiredAgent.id) == false)
+        #expect(saved.contains(expiredClient.id))
     }
 }
 

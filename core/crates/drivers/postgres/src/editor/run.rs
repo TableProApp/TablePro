@@ -3,13 +3,16 @@ use std::sync::atomic::Ordering;
 
 use futures_util::StreamExt;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken};
-use tablepro_core::sql_syntax::{SourceTable, SqlGrammar};
-use tablepro_core::{DriverError, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, SinkFlow, Truncation, Value};
+use tablepro_core::sql_syntax::{SourceTable, SqlGrammar, turns_read_write};
+use tablepro_core::{
+    DriverError, ReadOnlyRefusal, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, SinkFlow, Truncation, Value,
+};
 use tokio_postgres::{SimpleQueryMessage, SimpleQueryStream};
 use tracing::debug;
 
 use super::cursor_flight::{
-    CLOSE, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, SAVEPOINT, correct_position, declare, fetch, needs_plain_statement,
+    CLOSE, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, SAVEPOINT, correct_position, declare, fetch,
+    needs_plain_statement, rebase_position,
 };
 use super::editor_dispatch::{CursorOwner, Flight, Wrap, fallback, plan};
 use super::result_origin::{self, TracedTable, traceable};
@@ -38,9 +41,9 @@ enum Role {
 }
 
 pub(crate) struct Run<'a> {
-    core: &'a mut SessionCore,
+    pub(super) core: &'a mut SessionCore,
     sink: &'a mut dyn ResultSink,
-    watch: StopWatch,
+    pub(super) watch: StopWatch,
     limit: RowLimit,
     sink_gone: bool,
     notices_sent: u64,
@@ -107,6 +110,8 @@ impl<'a> Run<'a> {
                 let class = classify(rest, &tokens);
                 self.watch.begin_statement(self.core.statement_timeout());
                 if let Some(error) = self.statement(statement.text(rest), class).await? {
+                    let before = sql.get(..offset + statement.range.start).unwrap_or_default();
+                    let error = rebase_position(error, before.chars().count());
                     return Ok(match self.watch.fired() {
                         Some(interrupt) => end_after_stop(interrupt, &error),
                         None => RunEnd::Failed(error),
@@ -127,6 +132,11 @@ impl<'a> Run<'a> {
     }
 
     async fn statement(&mut self, text: &str, class: StatementClass) -> Result<Option<DriverError>, Lost> {
+        // Until its first query the user's transaction can still be made writable, after the SET TRANSACTION READ ONLY
+        // the driver sends behind their BEGIN too.
+        if self.core.read_only && turns_read_write(text, SqlGrammar::PostgreSql) {
+            return Ok(Some(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)));
+        }
         match plan(class, self.core.tracker.state(), self.core.read_only) {
             Flight::Refuse(error) => Ok(Some(error)),
             Flight::Simple(wrap) => self.simple(text, class, wrap).await,
@@ -368,6 +378,11 @@ impl<'a> Run<'a> {
         Err(Lost)
     }
 
+    /// One of the driver's own statements, its notices dropped.
+    pub(super) async fn control(&mut self, sql: &str) -> Result<Option<DriverError>, Lost> {
+        self.exchange(sql, Role::Control).await
+    }
+
     /// Send one message and read everything it returns, keeping the first
     /// error. Its notices reach the sink unless it is the driver's own.
     async fn exchange(&mut self, sql: &str, role: Role) -> Result<Option<DriverError>, Lost> {
@@ -574,7 +589,7 @@ fn truncation(truncated: bool, cursor: bool) -> Truncation {
 
 /// How a run that was stopped ends. The server's 57014 is the
 /// acknowledgement; any other error was the statement's own.
-fn end_after_stop(interrupt: Interrupt, error: &DriverError) -> RunEnd {
+pub(super) fn end_after_stop(interrupt: Interrupt, error: &DriverError) -> RunEnd {
     match interrupt {
         Interrupt::Cancelled | Interrupt::ConsumerGone => RunEnd::Cancelled,
         Interrupt::DeadlineElapsed => RunEnd::TimedOut {

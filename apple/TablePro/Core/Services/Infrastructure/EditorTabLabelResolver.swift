@@ -30,7 +30,8 @@ internal enum EditorTabLabelResolver {
         var containersByTitle: [String: Set<String>] = [:]
 
         for tab in tabs {
-            let container = tab.tableContext.tableName == nil
+            // A typed name is drawn as typed, whatever table the tab's last run named.
+            let container = tab.tableContext.tableName == nil || tab.isNamedByUser
                 ? ""
                 : WorkspaceAnchoring.containerName(of: tab, target: target) ?? ""
             containers[tab.id] = container

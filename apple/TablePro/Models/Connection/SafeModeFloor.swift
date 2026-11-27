@@ -99,4 +99,11 @@ internal extension SafeModeFloor {
     static func levels(allowedBy floor: SafeModeFloor?) -> [SafeModeLevel] {
         SafeModeLevel.allCases.filter { floor?.allows($0) ?? true }
     }
+
+    // The level a refusal at Read-Only tells the user to switch to: the weakest the menu offers above `floor`, never
+    // below Alert. Nil when the floor itself is Read-Only.
+    static func levelThatWrites(above floor: SafeModeLevel?) -> SafeModeLevel? {
+        guard let floor, floor.strictness > SafeModeLevel.alert.strictness else { return .alert }
+        return floor.blocksAllWrites ? nil : floor
+    }
 }

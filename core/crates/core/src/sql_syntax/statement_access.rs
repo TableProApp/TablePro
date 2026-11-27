@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::script::{ScriptPlan, ScriptToken, ScriptTokenKind};
-use crate::sql_syntax::state_changing_functions::{changes_state, duckdb_call};
+use crate::sql_syntax::state_changing_functions::{changes_state, duckdb_call, duckdb_destroys};
 use crate::unicode_blank::is_blank;
 
 /// What running a piece of SQL can do, from its own words. Ordered, so
@@ -467,7 +467,12 @@ fn in_expression(part: &[Code<'_>], index: usize) -> bool {
 fn calls_mutator(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
     let arguments = match decodes_unicode_names(grammar) && spelled_in_escapes(part, index) {
         true => after_uescape(part, index + 1),
-        false if changes_state(part[index].text) || runs_duckdb_call(&part[index], grammar) => index + 1,
+        false
+            if (changes_state(part[index].text) || runs_duckdb_call(&part[index], grammar))
+                && !declares_columns(part, index) =>
+        {
+            index + 1
+        }
         false => return false,
     };
     part.get(arguments).is_some_and(|next| next.kind == Kind::Open)
@@ -502,6 +507,140 @@ fn after_uescape(part: &[Code<'_>], index: usize) -> usize {
     }
     let strings = part[index + 1..].iter().take_while(|token| token.kind == Kind::Literal);
     index + 1 + strings.count()
+}
+
+// A clause word before the alias says the AS is not in a FROM or JOIN list.
+const CLAUSES_OUTSIDE_TABLE_LISTS: [&str; 21] = [
+    "SELECT",
+    "WHERE",
+    "GROUP",
+    "HAVING",
+    "QUALIFY",
+    "WINDOW",
+    "ORDER",
+    "LIMIT",
+    "OFFSET",
+    "UNION",
+    "INTERSECT",
+    "EXCEPT",
+    "RETURNING",
+    "SET",
+    "VALUES",
+    "INTO",
+    "TABLE",
+    "CREATE",
+    "WITH",
+    "DEFINE",
+    "MEASURES",
+];
+
+// `WITH name(a) AS (` declares a CTE's columns and `FROM t AS name(a)` an alias's: a call there is a parse error.
+pub(super) fn declares_columns(part: &[Code<'_>], index: usize) -> bool {
+    let Some(before) = index.checked_sub(1) else {
+        return false;
+    };
+    if part[before].kind == Kind::Comma {
+        return ends_common_table_expression(part, before) && opens_common_table_expression(part, index + 1);
+    }
+    if leads_common_table_expressions(part, before) {
+        return opens_common_table_expression(part, index + 1);
+    }
+    part[before].is_word(&["AS"]) && aliases_relation(part, before)
+}
+
+// `(a, b) AS [[NOT] MATERIALIZED] (`.
+fn opens_common_table_expression(part: &[Code<'_>], open: usize) -> bool {
+    let Some(close) = matching_close(part, open) else {
+        return false;
+    };
+    let after_as = match part.get(close + 1..).unwrap_or_default() {
+        [keyword, rest @ ..] if keyword.is_word(&["AS"]) => rest,
+        _ => return false,
+    };
+    let body = match after_as {
+        [not, hint, rest @ ..] if not.is_word(&["NOT"]) && hint.is_word(&["MATERIALIZED"]) => rest,
+        [hint, rest @ ..] if hint.is_word(&["MATERIALIZED"]) => rest,
+        rest => rest,
+    };
+    body.first().is_some_and(|token| token.kind == Kind::Open)
+}
+
+// Every item back to the WITH is a CTE, so a FROM list's `f() AS (a int), g(` is not one.
+fn ends_common_table_expression(part: &[Code<'_>], separator: usize) -> bool {
+    let mut separator = separator;
+    loop {
+        let Some(keyword) = separator
+            .checked_sub(1)
+            .and_then(|close| matching_open(part, close))
+            .and_then(|body| body_keyword(part, body))
+        else {
+            return false;
+        };
+        let mut name = keyword.checked_sub(1);
+        if let Some(close) = name.filter(|&close| part[close].kind == Kind::Close) {
+            name = matching_open(part, close).and_then(|columns| columns.checked_sub(1));
+        }
+        let Some(name) = name.filter(|&name| part[name].kind == Kind::Word) else {
+            return false;
+        };
+        match name.checked_sub(1) {
+            Some(before) if part[before].kind == Kind::Comma => separator = before,
+            Some(before) => return leads_common_table_expressions(part, before),
+            None => return false,
+        }
+    }
+}
+
+fn leads_common_table_expressions(part: &[Code<'_>], word: usize) -> bool {
+    part[word].is_word(&["WITH"])
+        || (part[word].is_word(&["RECURSIVE"]) && word.checked_sub(1).is_some_and(|with| part[with].is_word(&["WITH"])))
+}
+
+// The AS of `AS [[NOT] MATERIALIZED] (`.
+fn body_keyword(part: &[Code<'_>], body: usize) -> Option<usize> {
+    let word_at = |back: usize, set: &[&str]| body.checked_sub(back).is_some_and(|at| part[at].is_word(set));
+    if word_at(1, &["AS"]) {
+        Some(body - 1)
+    } else if word_at(1, &["MATERIALIZED"]) && word_at(2, &["AS"]) {
+        Some(body - 2)
+    } else if word_at(1, &["MATERIALIZED"]) && word_at(2, &["NOT"]) && word_at(3, &["AS"]) {
+        Some(body - 3)
+    } else {
+        None
+    }
+}
+
+// Only a FROM or JOIN list holds one: ClickHouse's `CREATE TABLE t AS remote(...)` is a call.
+fn aliases_relation(part: &[Code<'_>], keyword: usize) -> bool {
+    let depth = part[keyword].depth;
+    for token in part[..keyword].iter().rev() {
+        match token.kind {
+            _ if token.depth > depth => {}
+            _ if token.depth < depth => return false,
+            Kind::Open | Kind::Close | Kind::Comma | Kind::Quoted | Kind::Literal => {}
+            Kind::Other if token.text == "." => {}
+            Kind::Word if token.is_word(&["FROM", "JOIN"]) => return true,
+            Kind::Word if !token.is_word(&CLAUSES_OUTSIDE_TABLE_LISTS) => {}
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn matching_close(part: &[Code<'_>], open: usize) -> Option<usize> {
+    let depth = part.get(open).filter(|token| token.kind == Kind::Open)?.depth;
+    part.iter()
+        .enumerate()
+        .skip(open + 1)
+        .find(|(_, token)| token.kind == Kind::Close && token.depth == depth)
+        .map(|(close, _)| close)
+}
+
+fn matching_open(part: &[Code<'_>], close: usize) -> Option<usize> {
+    let depth = part.get(close).filter(|token| token.kind == Kind::Close)?.depth;
+    part[..close]
+        .iter()
+        .rposition(|token| token.kind == Kind::Open && token.depth == depth)
 }
 
 /// A verb MySQL also has as a function, called as one.
@@ -624,11 +763,28 @@ fn destructive(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
         if defines_routine(statement) {
             return false;
         }
-        if statement_destroys(statement, grammar) {
+        if statement_destroys(statement, grammar) || calls_duckdb_destroyer(statement, grammar) {
             return true;
         }
     }
     false
+}
+
+// Whatever keyword runs it, CALL included. A name spelled in escapes may be one.
+fn calls_duckdb_destroyer(statement: &[Code<'_>], grammar: SqlGrammar) -> bool {
+    grammar == SqlGrammar::DuckDb
+        && (0..statement.len()).any(|index| {
+            let arguments = match statement[index].kind {
+                Kind::Quoted if spelled_in_escapes(statement, index) => after_uescape(statement, index + 1),
+                Kind::Word | Kind::Quoted
+                    if duckdb_destroys(statement[index].text) && !declares_columns(statement, index) =>
+                {
+                    index + 1
+                }
+                _ => return false,
+            };
+            statement.get(arguments).is_some_and(|next| next.kind == Kind::Open)
+        })
 }
 
 /// `CREATE [OR REPLACE | OR ALTER] [DEFINER = …] [CONSTRAINT] TRIGGER`
@@ -869,6 +1025,33 @@ mod tests {
             ] {
                 assert!(access(sql, grammar) >= StatementAccess::Write, "{grammar:?}: {sql}");
             }
+        }
+    }
+
+    // Read-Only keeps these back on every app before the driver sees them.
+    #[test]
+    fn statements_that_turn_read_only_off_are_writes() {
+        for (grammar, sql) in [
+            (SqlGrammar::PostgreSql, "SET TRANSACTION READ WRITE"),
+            (SqlGrammar::PostgreSql, "SET LOCAL transaction_read_only = off"),
+            (
+                SqlGrammar::PostgreSql,
+                "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE",
+            ),
+            (SqlGrammar::PostgreSql, "SET default_transaction_read_only = off"),
+            (SqlGrammar::PostgreSql, "BEGIN READ WRITE"),
+            (SqlGrammar::PostgreSql, "START TRANSACTION READ WRITE"),
+            (
+                SqlGrammar::PostgreSql,
+                "SELECT set_config('default_transaction_read_only', 'off', false)",
+            ),
+            (SqlGrammar::MySql, "SET SESSION TRANSACTION READ WRITE"),
+            (SqlGrammar::MySql, "SET TRANSACTION READ WRITE"),
+            (SqlGrammar::MySql, "SET @@session.transaction_read_only = 0"),
+            (SqlGrammar::MySql, "SET tx_read_only = 0"),
+            (SqlGrammar::MySql, "START TRANSACTION READ WRITE"),
+        ] {
+            assert!(access(sql, grammar) >= StatementAccess::Write, "{grammar:?}: {sql}");
         }
     }
 
@@ -1560,6 +1743,40 @@ mod tests {
     }
 
     #[test]
+    fn a_motherduck_function_writes_and_one_that_drops_or_deletes_destroys() {
+        for sql in [
+            "SELECT * FROM md_create_database('x')",
+            "FROM __md_force_detach('x', true)",
+            "SELECT * FROM md_list_databases()",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Write, "{sql}");
+        }
+        for sql in [
+            "CALL md_drop_database('prod')",
+            "SELECT * FROM md_drop_database('prod')",
+            "CALL md_delete_dive('d')",
+            "SELECT * FROM MD_DELETE_DIVE('d')",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Destructive, "{sql}");
+        }
+        assert_eq!(
+            access("CALL md_drop_database('prod')", SqlGrammar::PostgreSql),
+            StatementAccess::Write
+        );
+        assert_eq!(
+            access("SELECT * FROM md_drop_database('x')", SqlGrammar::PostgreSql),
+            StatementAccess::Read
+        );
+        for sql in [
+            "SELECT md_total FROM orders",
+            "SELECT md_drop_x FROM t",
+            "EXPLAIN SELECT * FROM md_drop_database('prod')",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Read, "{sql}");
+        }
+    }
+
+    #[test]
     fn a_function_that_runs_sql_text_or_signals_writes() {
         for sql in [
             "SELECT dblink('host=db', 'DELETE FROM orders')",
@@ -1620,6 +1837,8 @@ mod tests {
             "SELECT * FROM json_execute_serialized_sql(json_serialize_sql('SELECT nextval(''s'')'))",
             "SELECT * FROM dbgen(sf = 0.01)",
             "SELECT * FROM DSDGEN(sf = 0.01)",
+            "CALL dbgen(sf => 0.01)",
+            "CALL pragma_version()",
         ] {
             assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Write, "{sql}");
         }
@@ -1641,6 +1860,43 @@ mod tests {
             access(
                 "SELECT * FROM postgres_scan('pg', 'public', 'orders')",
                 SqlGrammar::DuckDb
+            ),
+            StatementAccess::Read
+        );
+    }
+
+    #[test]
+    fn a_column_list_a_cte_or_an_alias_declares_is_not_a_call() {
+        for sql in [
+            "WITH query(n) AS (VALUES (1)) SELECT n FROM query",
+            "WITH glob(n) AS (VALUES (1)) SELECT n FROM glob",
+            "WITH md_drop_report(n) AS (VALUES (1)) SELECT n FROM md_drop_report",
+            "WITH report(n) AS (VALUES (1)) SELECT n FROM report",
+            "SELECT * FROM range(3) AS md_drop(a)",
+            "WITH RECURSIVE md_t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM md_t WHERE n < 3) SELECT * FROM md_t",
+            "WITH md_drop_m(n) AS MATERIALIZED (SELECT 1) SELECT n FROM md_drop_m",
+            "WITH a AS (SELECT 1), md_drop_b(n) AS NOT MATERIALIZED (SELECT 2) SELECT n FROM md_drop_b",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Read, "{sql}");
+        }
+        assert_eq!(
+            access(
+                "WITH md_x(n) AS (SELECT * FROM md_drop_database('p')) SELECT n FROM md_x",
+                SqlGrammar::DuckDb
+            ),
+            StatementAccess::Destructive
+        );
+        assert_eq!(
+            access(
+                "SELECT * FROM f() AS (a int), dblink('c', 'DELETE FROM t') AS (n int)",
+                SqlGrammar::PostgreSql
+            ),
+            StatementAccess::Write
+        );
+        assert_eq!(
+            access(
+                "WITH nextval(n) AS (SELECT 1) SELECT n FROM nextval",
+                SqlGrammar::PostgreSql
             ),
             StatementAccess::Read
         );

@@ -208,4 +208,101 @@ struct ImportStopResultTests {
         #expect(value.hasWrites)
         #expect(ImportStopResult(ledger: value).fileText(for: 0).contains("emptied"))
     }
+
+    private final class Interrupts: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+
+        var count: Int { lock.withLock { value } }
+
+        func record() { lock.withLock { value += 1 } }
+    }
+
+    // Admits one call and holds it inside `interruptible` until `release` opens.
+    private static func copyInFlight(
+        on run: ImportRun,
+        interrupts: Interrupts,
+        release: AsyncGate
+    ) async throws -> Task<Void, Never> {
+        #expect(try await run.admit(.data) == .proceed)
+        let inside = AsyncGate()
+        let call = Task {
+            _ = try? await run.interruptible(by: { interrupts.record() }) {
+                await inside.open()
+                await release.wait()
+            }
+            run.release()
+        }
+        await inside.wait()
+        return call
+    }
+
+    @Test("Stop during a COPY ends it at once and stops the run with rollback, asking nothing")
+    func stopInterruptsACopy() async throws {
+        let run = ImportRun()
+        let interrupts = Interrupts()
+        let release = AsyncGate()
+        let call = try await Self.copyInFlight(on: run, interrupts: interrupts, release: release)
+
+        run.requestPause()
+
+        #expect(interrupts.count == 1)
+        #expect(run.currentPhase == .stopping(.rollBack))
+        #expect(run.questionIfPaused() == nil)
+        await release.open()
+        await call.value
+        await #expect(throws: PluginImportCancellationError.self) { try await run.admit(.data) }
+        await #expect(throws: PluginImportCancellationError.self) { try await run.admit(.commit) }
+        #expect(try await run.admit(.rollback) == .proceed)
+        run.release()
+        #expect(interrupts.count == 1)
+    }
+
+    @Test("Closing the import during a COPY ends the COPY too")
+    func teardownInterruptsACopy() async throws {
+        let run = ImportRun()
+        let interrupts = Interrupts()
+        let release = AsyncGate()
+        let call = try await Self.copyInFlight(on: run, interrupts: interrupts, release: release)
+
+        run.stop(.rollBack)
+
+        #expect(interrupts.count == 1)
+        await release.open()
+        await call.value
+    }
+
+    @Test("Once the COPY returned, Stop pauses for the question as for any statement")
+    func stopAfterTheCopyPauses() async throws {
+        let run = ImportRun()
+        let interrupts = Interrupts()
+        #expect(try await run.admit(.data) == .proceed)
+        try await run.interruptible(by: { interrupts.record() }) {}
+
+        run.requestPause()
+
+        #expect(run.currentPhase == .pausing)
+        run.release()
+        #expect(run.questionIfPaused() != nil)
+        #expect(interrupts.count == 0)
+    }
+
+    @Test("A Stop between a COPY's admission and its start stops it before a row is sent")
+    func stopBeforeTheCopyStarts() async throws {
+        let run = ImportRun()
+        let interrupts = Interrupts()
+        #expect(try await run.admit(.data) == .proceed)
+        run.requestPause()
+
+        let bodyRuns = Interrupts()
+        await #expect(throws: PluginImportCancellationError.self) {
+            try await run.interruptible(by: { interrupts.record() }) { bodyRuns.record() }
+        }
+
+        #expect(bodyRuns.count == 0)
+        #expect(interrupts.count == 0)
+        #expect(run.currentPhase == .stopping(.rollBack))
+        run.release()
+        #expect(run.questionIfPaused() == nil)
+    }
 }

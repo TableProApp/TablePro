@@ -9,7 +9,7 @@
 
 import Foundation
 
-enum DuckDBFileKinds {
+nonisolated enum DuckDBFileKinds {
     /// DuckDB's own storage format. Opening a path that does not exist creates the
     /// database there, which is what the connection form's file field offers.
     static let database = ["duckdb", "ddb"]

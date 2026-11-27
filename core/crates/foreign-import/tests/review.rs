@@ -24,8 +24,9 @@ use tablepro_foreign_import::{
 };
 use tablepro_storage::saved_queries::NewSavedQuery;
 use tablepro_storage::{
-    ConnectionColor, ConnectionList, ConnectionStore, QueryHistory, SavedConnection, SavedSshAuth, SavedSshConfig,
-    StorageError, StoragePaths,
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionProject, ConnectionProjectName,
+    ConnectionStore, QueryHistory, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpHost, StorageError,
+    StoragePaths,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -441,7 +442,7 @@ fn a_duplicate_whose_saved_connection_guards_more_is_offered_as_copy_only() {
     let base = existing(settings(), "Production").expect("a saved connection");
     let guarded = [
         SavedConnection {
-            safe_mode: SafeModeLevel::ConfirmWrites,
+            safe_mode: SafeModeLevel::Alert,
             ..base.clone()
         },
         SavedConnection {
@@ -834,7 +835,7 @@ fn a_duckdb_file_comes_from_the_field_the_macos_app_keeps_it_in() {
 #[test]
 fn an_imported_connection_starts_as_a_new_one_does_in_the_app() {
     let saved = mapped(settings()).expect("a supported engine");
-    assert_eq!(saved.safe_mode, SafeModeLevel::Off);
+    assert_eq!(saved.safe_mode, SafeModeLevel::Silent);
     assert_eq!(saved.external_access, ExternalAccess::ReadOnly);
     assert_eq!(saved.ai_policy, AiPolicy::Ask);
     assert_eq!(saved.query_timeout_secs, None);
@@ -1062,6 +1063,12 @@ fn each_ssh_sign_in_maps_and_carries_only_its_own_secret() {
                 username: Some("deploy".to_owned()),
                 jump_hosts: Vec::new(),
                 auth: expected,
+                enabled: true,
+                kept_key_path: None,
+                agent_socket: None,
+                totp: Default::default(),
+                remote_file: Default::default(),
+                unknown: Default::default(),
             })
         );
         assert!(row.carries_credentials);
@@ -1092,7 +1099,7 @@ fn applied_secrets(review: &ImportReview) -> Vec<(SecretKind, String)> {
     };
     let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro"));
     let selection = ImportSelection::defaults(review);
-    let Ok(applied) = apply_blocking(review, &plan(review, &selection), &store) else {
+    let Ok(applied) = apply_blocking(review, &plan(review, &selection), &store, None) else {
         return Vec::new();
     };
     applied
@@ -1132,6 +1139,12 @@ fn an_agent_tunnel_keeps_no_password_a_blank_port_and_user_are_left_out_and_a_re
             username: None,
             jump_hosts: Vec::new(),
             auth: SavedSshAuth::Agent,
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         })
     );
     assert!(!review.connections()[0].carries_credentials);
@@ -1171,7 +1184,11 @@ fn jump_hosts_become_hops_and_what_a_hop_cannot_keep_is_noted() {
     });
 
     assert_eq!(
-        row.connection.and_then(|saved| saved.ssh).map(|ssh| ssh.jump_hosts),
+        row.connection.and_then(|saved| saved.ssh).map(|ssh| ssh
+            .jump_hosts
+            .iter()
+            .map(SshJumpHost::destination)
+            .collect::<Vec<_>>()),
         Some(vec![
             "ops@jump1:2200".to_owned(),
             "[fd00::1]".to_owned(),
@@ -1753,7 +1770,7 @@ fn the_write_adds_groups_copies_and_replacements_and_hands_back_secrets_in_plan_
     assert!(selection.resolve("c3", Resolution::Replace(held.id), &review));
     selection.set_selected(false, "c4", &review);
 
-    let applied = apply_blocking(&review, &plan(&review, &selection), &store).expect("the write");
+    let applied = apply_blocking(&review, &plan(&review, &selection), &store, None).expect("the write");
 
     let summary: Vec<(&str, bool, String)> = applied
         .connections
@@ -1791,6 +1808,124 @@ fn the_write_adds_groups_copies_and_replacements_and_hands_back_secrets_in_plan_
 }
 
 #[test]
+fn a_new_connection_lands_in_the_project_given_and_a_replaced_one_keeps_its_own() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let store = store_in(dir.path());
+    let name = |name: &str| ConnectionProjectName::new(name).expect("a project name");
+    let acme = store
+        .create_project_blocking(ConnectionProject::new(name("Acme")))
+        .expect("a project");
+    let globex = store
+        .create_project_blocking(ConnectionProject::new(name("Globex")))
+        .expect("a project");
+    let mut held = existing(on_host("Kept", "kept.example.com"), "Kept").expect("a saved connection");
+    held.project_id = Some(globex.id);
+    store.upsert_blocking(held.clone()).expect("a save");
+    let review = review_in(
+        collected(
+            vec![
+                connection("c1", named("Fresh")),
+                connection("c2", on_host("Kept", "kept.example.com")),
+            ],
+            Vec::new(),
+        ),
+        store.list_blocking().expect("the list"),
+        &drivers(),
+        &|_| true,
+    );
+    let mut selection = ImportSelection::defaults(&review);
+    selection.set_selected(true, "c2", &review);
+    assert!(selection.resolve("c2", Resolution::Replace(held.id), &review));
+
+    let applied = apply_blocking(&review, &plan(&review, &selection), &store, Some(acme.id)).expect("the write");
+
+    let projects: Vec<(&str, Option<Uuid>)> = applied
+        .connections
+        .iter()
+        .map(|applied| (applied.reference.as_str(), applied.connection.project_id))
+        .collect();
+    assert_eq!(projects, [("c1", Some(acme.id)), ("c2", Some(globex.id))]);
+}
+
+#[test]
+fn a_replaced_connection_filed_in_a_group_stays_in_its_project() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let store = store_in(dir.path());
+    let name = |name: &str| ConnectionProjectName::new(name).expect("a project name");
+    let acme = store
+        .create_project_blocking(ConnectionProject::new(name("Acme")))
+        .expect("a project");
+    let globex = store
+        .create_project_blocking(ConnectionProject::new(name("Globex")))
+        .expect("a project");
+    let team = store
+        .create_group_blocking(ConnectionGroup {
+            project_id: Some(globex.id),
+            ..ConnectionGroup::new(ConnectionGroupName::new("Team").expect("a group name"), None)
+        })
+        .expect("a group");
+    let mut loose = existing(on_host("Loose", "loose.example.com"), "Loose").expect("a saved connection");
+    loose.project_id = Some(globex.id);
+    let mut filed = existing(on_host("Filed", "filed.example.com"), "Filed").expect("a saved connection");
+    filed.group_id = Some(team.id);
+    store.upsert_blocking(loose.clone()).expect("a save");
+    store.upsert_blocking(filed.clone()).expect("a save");
+    let in_work = |reference: &str, settings: ForeignConnection| CollectedConnection {
+        group_path: vec!["Work".to_owned()],
+        ..connection(reference, settings)
+    };
+    let review = review_in(
+        collected(
+            vec![
+                in_work("c1", on_host("Loose", "loose.example.com")),
+                in_work("c2", on_host("Filed", "filed.example.com")),
+                in_work("c3", named("Fresh")),
+            ],
+            Vec::new(),
+        ),
+        store.list_blocking().expect("the list"),
+        &drivers(),
+        &|_| true,
+    );
+    let mut selection = ImportSelection::defaults(&review);
+    selection.set_selected(true, "c1", &review);
+    selection.set_selected(true, "c2", &review);
+    assert!(selection.resolve("c1", Resolution::Replace(loose.id), &review));
+    assert!(selection.resolve("c2", Resolution::Replace(filed.id), &review));
+
+    let applied = apply_blocking(&review, &plan(&review, &selection), &store, Some(acme.id)).expect("the write");
+
+    let after = store.list_blocking().expect("the list");
+    let projects: Vec<(&str, bool, Option<Uuid>)> = applied
+        .connections
+        .iter()
+        .map(|applied| {
+            (
+                applied.reference.as_str(),
+                applied.replaced,
+                after.effective_project(&applied.connection),
+            )
+        })
+        .collect();
+    assert_eq!(
+        projects,
+        [
+            ("c1", true, Some(globex.id)),
+            ("c2", true, Some(globex.id)),
+            ("c3", false, Some(acme.id))
+        ]
+    );
+    assert_eq!(
+        applied.connections[0].connection.group_id,
+        applied.connections[1].connection.group_id
+    );
+    assert_ne!(
+        applied.connections[2].connection.group_id,
+        applied.connections[0].connection.group_id
+    );
+}
+
+#[test]
 fn a_library_changed_since_the_review_is_refused() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let store = store_in(dir.path());
@@ -1803,7 +1938,12 @@ fn a_library_changed_since_the_review_is_refused() {
     let meanwhile = existing(on_host("Meanwhile", "elsewhere"), "Meanwhile").expect("a saved connection");
     store.upsert_blocking(meanwhile).expect("a save");
 
-    let refused = apply_blocking(&review, &plan(&review, &ImportSelection::defaults(&review)), &store);
+    let refused = apply_blocking(
+        &review,
+        &plan(&review, &ImportSelection::defaults(&review)),
+        &store,
+        None,
+    );
 
     assert!(matches!(refused, Err(StorageError::ImportOutdated)));
     assert_eq!(store.list_blocking().expect("the list").connections.len(), 1);
@@ -1835,10 +1975,10 @@ fn queries_land_on_their_connections_and_a_name_the_connection_holds_is_left_alo
     selection.set_selected(true, "c2", &review);
     assert_eq!(selection.resolution("c2"), Some(Resolution::KeepExisting(held.id)));
 
-    let applied = apply_blocking(&review, &plan(&review, &selection), &store).expect("the write");
+    let applied = apply_blocking(&review, &plan(&review, &selection), &store, None).expect("the write");
     assert_eq!(applied.connections.len(), 1);
     let fresh = applied.connections[0].connection.id;
-    let targets: Vec<(&str, &str, Uuid, &str)> = applied
+    let targets: Vec<(&str, &str, Option<Uuid>, &str)> = applied
         .queries
         .iter()
         .map(|imported| {
@@ -1859,9 +1999,9 @@ fn queries_land_on_their_connections_and_a_name_the_connection_holds_is_left_alo
     assert_eq!(
         targets,
         [
-            ("q1", "Report", fresh, "Fresh"),
-            ("q2", "Locks", held.id, "Kept"),
-            ("q3", "Sizes", held.id, "Kept")
+            ("q1", "Report", Some(fresh), "Fresh"),
+            ("q2", "Locks", Some(held.id), "Kept"),
+            ("q3", "Sizes", Some(held.id), "Kept")
         ]
     );
 
@@ -1876,7 +2016,7 @@ fn queries_land_on_their_connections_and_a_name_the_connection_holds_is_left_alo
             .save(NewSavedQuery {
                 name: "Locks".to_owned(),
                 query: "select 'mine'".to_owned(),
-                connection_id: held.id,
+                connection_id: Some(held.id),
                 connection_name: "Kept".to_owned(),
             })
             .await

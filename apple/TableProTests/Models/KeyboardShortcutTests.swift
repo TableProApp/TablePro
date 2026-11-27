@@ -1,12 +1,3 @@
-//
-//  KeyboardShortcutTests.swift
-//  TableProTests
-//
-//  Pins the keyboard shortcut model: keyCode-based defaults, context-scoped
-//  conflict detection, the built-in editor shortcut registry, bare-key handling,
-//  and migration from the legacy character-string storage.
-//
-
 import AppKit
 import Foundation
 @testable import TablePro
@@ -27,9 +18,7 @@ struct EditorBuiltInNameTests {
 }
 
 struct DefaultShortcutHygieneTests {
-    /// Control-Tab is not a system hotkey the way Control-1 is (that one switches Spaces, which is
-    /// why this rule exists). It is the chord AppKit itself gives tab switching in every app with
-    /// window tabs, so the recent-tab commands are the one exception, and only on Tab.
+    // Control-1 switches Spaces, which is why the rule exists; Control-Tab is AppKit's own tab switching.
     private static let controlTabDefaults: Set<ShortcutAction> = [.switchToRecentTab, .switchToLeastRecentTab]
 
     @Test("No default uses Control without Command, apart from Control-Tab tab switching")
@@ -112,6 +101,20 @@ struct ReservedShortcutTests {
         #expect(ShortcutAction.reservedConflict(for: key, context: .global) != nil)
     }
 
+    @Test("Shift and Option text keys are reserved while text can have focus", arguments: [
+        BoundKey.special(.delete, shift: true),
+        .special(.forwardDelete, shift: true),
+        .special(.space, shift: true),
+        .special(.space, option: true),
+        .special(.escape, option: true),
+    ])
+    func textInputKeysAreReserved(key: BoundKey) {
+        #expect(ShortcutAction.reservedConflict(for: key, context: .editor) != nil)
+        #expect(ShortcutAction.reservedConflict(for: key, context: .global) != nil)
+        #expect(ShortcutAction.reservedConflict(for: key, context: .dataGrid) == nil)
+        #expect(ShortcutAction.addRow.shadowsStandardTextEditingBinding(key))
+    }
+
     @Test("Cmd+Delete does not conflict in data-grid context because focus resolves it")
     func commandDeleteDoesNotConflictInGrid() {
         let key = BoundKey.special(.delete, command: true)
@@ -175,11 +178,13 @@ struct StandardTextEditingBindingTests {
 }
 
 struct BareKeyValidationTests {
-    @Test("Grid actions allow bare keys")
-    func gridActionsAllowBareKeys() {
+    // Changed on purpose: nothing dispatches a bare key for Delete or Clear Selection.
+    @Test("Only Preview FK Reference allows a bare key")
+    func onlyPreviewFKReferenceAllowsBareKeys() {
         #expect(ShortcutAction.previewFKReference.allowsBareKey)
-        #expect(ShortcutAction.clearSelection.allowsBareKey)
-        #expect(ShortcutAction.delete.allowsBareKey)
+        #expect(!ShortcutAction.clearSelection.allowsBareKey)
+        #expect(!ShortcutAction.delete.allowsBareKey)
+        #expect(ShortcutAction.allCases.filter { $0.allowsBareKey } == [.previewFKReference])
     }
 
     @Test("Menu actions reject bare keys")
@@ -188,9 +193,7 @@ struct BareKeyValidationTests {
         #expect(!ShortcutAction.executeQuery.allowsBareKey)
     }
 
-    /// The recorder tells the user a shortcut needs Command or Control, so the capture rule has
-    /// to be exactly that. Option and Shift only ever qualify a combo, they never carry one, and
-    /// a letter key held with either alone is a text-input keystroke rather than a shortcut.
+    // A letter with Option or Shift alone is typing, not a shortcut.
     @Test("Option and Shift cannot hold a shortcut without Command or Control")
     func optionAndShiftAloneAreNotRecordable() {
         func capture(_ flags: NSEvent.ModifierFlags) -> BoundKey? {
@@ -275,6 +278,19 @@ struct ShortcutConflictTests {
         )
         #expect(conflict == nil)
     }
+
+    @Test("A key the focused grid reads conflicts with an editor binding, whose menu item would take it first")
+    func gridReadKeyConflictsAcrossContexts() {
+        let settings = KeyboardSettings.default
+        #expect(settings.findConflict(for: .special(.return, command: true), excluding: .openValueEditor) == .executeQuery)
+        #expect(settings.findConflict(for: .special(.return, option: true), excluding: .formatQuery) == .openValueEditor)
+    }
+
+    @Test("An editor action bound to the grid-read default stands that default down")
+    func editorOverrideClaimsGridReadDefault() {
+        let settings = KeyboardSettings(shortcuts: [ShortcutAction.formatQuery.rawValue: .special(.return, option: true)])
+        #expect(settings.shortcut(for: .openValueEditor) == nil)
+    }
 }
 
 struct KeyboardSettingsSanitizeTests {
@@ -284,6 +300,12 @@ struct KeyboardSettingsSanitizeTests {
         let sanitized = settings.sanitized()
         #expect(!sanitized.isCustomized(.toggleInspector))
         #expect(sanitized.shortcut(for: .toggleInspector) == KeyboardSettings.defaultShortcuts[.toggleInspector])
+    }
+
+    @Test("A bare-key override on Delete is dropped on load, since nothing dispatches it")
+    func dropsBareDeleteOverride() {
+        let settings = KeyboardSettings(shortcuts: [ShortcutAction.delete.rawValue: .special(.forwardDelete)])
+        #expect(!settings.sanitized().isCustomized(.delete))
     }
 
     @Test("Bare-key override on a grid action survives")
@@ -444,5 +466,229 @@ struct ShortcutHintTests {
             for: .manageConnections
         )
         #expect(hint == "Manage Connections")
+    }
+}
+
+struct ShortcutAcceptanceTests {
+    @Test("Command or Control makes any key bindable")
+    func commandOrControlIsAccepted() {
+        #expect(ShortcutAction.refresh.accepts(.character("e", command: true)))
+        #expect(ShortcutAction.refresh.accepts(.character("e", control: true)))
+    }
+
+    @Test("A bare function key is accepted")
+    func functionKeyIsAccepted() {
+        #expect(ShortcutAction.refresh.accepts(BoundKey(keyCode: KeyCode.f5.rawValue)))
+    }
+
+    @Test("Option or Shift alone on a letter is refused")
+    func optionLetterIsRefused() {
+        #expect(!ShortcutAction.refresh.accepts(.character("e", option: true)))
+        #expect(!ShortcutAction.refresh.accepts(.character("e", shift: true)))
+        #expect(!ShortcutAction.refresh.accepts(.special(.return)))
+    }
+
+    @Test("A modified Delete, Escape or Space is accepted for a menu action")
+    func modifiedBareRecordableKeyIsAccepted() {
+        #expect(ShortcutAction.addRow.accepts(.special(.delete, option: true)))
+        #expect(ShortcutAction.addRow.accepts(.special(.space, shift: true)))
+        #expect(ShortcutAction.addRow.accepts(.special(.escape, option: true)))
+    }
+
+    @Test("A bare Space is accepted only for Preview FK Reference")
+    func bareSpaceOnlyForPreview() {
+        #expect(ShortcutAction.previewFKReference.accepts(.special(.space)))
+        #expect(!ShortcutAction.delete.accepts(.special(.space)))
+        #expect(!ShortcutAction.clearSelection.accepts(.special(.forwardDelete)))
+    }
+
+    @Test("An action's own default is always accepted")
+    func ownDefaultIsAccepted() {
+        for (action, key) in KeyboardSettings.defaultShortcuts {
+            #expect(action.accepts(key), "\(action.rawValue) refuses its own default \(key.displayString)")
+        }
+    }
+
+    @Test("Preview FK Reference explains that Space and function keys also work")
+    func previewRefusalNamesItsExtraKeys() {
+        #expect(ShortcutAction.previewFKReference.modifierRefusal == String(localized: "Use ⌘ or ⌃, Space, or a function key."))
+        #expect(ShortcutAction.refresh.modifierRefusal == String(localized: "Add ⌘ or ⌃ to this shortcut."))
+    }
+
+    @Test("Capturing keeps the raw chord that BoundKey(from:) would refuse")
+    func capturingKeepsRawChord() throws {
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.option, .function],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "e",
+            charactersIgnoringModifiers: "e",
+            isARepeat: false,
+            keyCode: KeyCode.e.rawValue
+        ))
+        #expect(BoundKey(from: event) == nil)
+        #expect(BoundKey(capturing: event) == BoundKey(keyCode: KeyCode.e.rawValue, option: true))
+    }
+}
+
+struct KeyboardSettingsEditingTests {
+    private let modules: Set<AppModule> = []
+
+    @Test("boundKey maps a cleared shortcut to nil")
+    func boundKeyHidesCleared() {
+        var settings = KeyboardSettings.default
+        #expect(settings.boundKey(for: .refresh) == .character("r", command: true))
+        settings.clearShortcut(for: .refresh)
+        #expect(settings.shortcut(for: .refresh) == .cleared)
+        #expect(settings.boundKey(for: .refresh) == nil)
+    }
+
+    @Test("Assigning a new key stores an override")
+    func assigningStoresOverride() {
+        let settings = KeyboardSettings.default.assigning(.character("j", command: true), to: .refresh)
+        #expect(settings.shortcuts[ShortcutAction.refresh.rawValue] == .character("j", command: true))
+    }
+
+    @Test("Assigning the default again stores nothing")
+    func assigningDefaultDropsOverride() {
+        let custom = KeyboardSettings.default.assigning(.character("j", command: true), to: .refresh)
+        let back = custom.assigning(.character("r", command: true), to: .refresh)
+        #expect(!back.isCustomized(.refresh))
+        #expect(back == .default)
+    }
+
+    @Test("Assigning the default keeps the override while another override claims it")
+    func assigningClaimedDefaultKeepsOverride() {
+        let claimed = KeyboardSettings(shortcuts: [ShortcutAction.executeQuery.rawValue: .character("r", command: true)])
+        let settings = claimed.assigning(.character("r", command: true), to: .refresh)
+        #expect(settings.isCustomized(.refresh))
+    }
+
+    @Test("Clearing an action with a default stores the cleared marker")
+    func clearingWithDefault() {
+        let settings = KeyboardSettings.default.clearing(.refresh)
+        #expect(settings.shortcuts[ShortcutAction.refresh.rawValue] == .cleared)
+        #expect(settings.boundKey(for: .refresh) == nil)
+    }
+
+    @Test("Clearing an action with no default removes its override")
+    func clearingWithoutDefault() {
+        let custom = KeyboardSettings.default.assigning(.character("j", command: true), to: .manageConnections)
+        let settings = custom.clearing(.manageConnections)
+        #expect(!settings.isCustomized(.manageConnections))
+        #expect(settings.boundKey(for: .manageConnections) == nil)
+    }
+
+    @Test("Resetting removes the override")
+    func resettingRestoresDefault() {
+        let settings = KeyboardSettings.default.clearing(.refresh).resetting(.refresh)
+        #expect(settings == .default)
+    }
+
+    @Test("The count leaves out entries for actions that no longer exist")
+    func customizedCountSkipsUnknownEntries() {
+        let settings = KeyboardSettings(shortcuts: [
+            ShortcutAction.refresh.rawValue: .character("j", command: true),
+            "future.unknown.action": .character("x", command: true),
+        ])
+        #expect(settings.customizedCount == 1)
+        #expect(KeyboardSettings.default.customizedCount == 0)
+    }
+
+    @Test("Conflicts list every contending holder of the key")
+    func conflictsListEveryHolder() {
+        let key = BoundKey.character("j", command: true, option: true, control: true)
+        let settings = KeyboardSettings(shortcuts: [
+            ShortcutAction.formatQuery.rawValue: key,
+            ShortcutAction.addRow.rawValue: key,
+        ])
+        #expect(settings.conflicts(for: key, excluding: .newTab, enabledModules: modules) == [.formatQuery, .addRow])
+        #expect(settings.conflicts(for: key, excluding: .formatQuery, enabledModules: modules) == [])
+    }
+
+    @Test("Reassigning clears every customized holder in one value")
+    func reassigningClearsCustomizedHolders() {
+        let key = BoundKey.character("j", command: true, option: true, control: true)
+        let settings = KeyboardSettings(shortcuts: [
+            ShortcutAction.formatQuery.rawValue: key,
+            ShortcutAction.addRow.rawValue: key,
+        ])
+        let next = settings.reassigning(key, to: .newTab, enabledModules: modules)
+        #expect(next.boundKey(for: .newTab) == key)
+        #expect(next.boundKey(for: .formatQuery) == nil)
+        #expect(next.boundKey(for: .addRow) == nil)
+        #expect(next.conflicts(for: key, excluding: .newTab, enabledModules: modules).isEmpty)
+    }
+
+    @Test("Reassigning leaves a holder on its default uncustomized, standing down")
+    func reassigningStandsDownDefaultHolder() {
+        let next = KeyboardSettings.default.reassigning(.character("r", command: true), to: .executeQuery, enabledModules: modules)
+        #expect(next.boundKey(for: .executeQuery) == .character("r", command: true))
+        #expect(!next.isCustomized(.refresh))
+        #expect(next.boundKey(for: .refresh) == nil)
+        #expect(next.defaultClaimant(for: .refresh) == .executeQuery)
+    }
+
+    @Test("A default nobody claimed has no claimant")
+    func unclaimedDefaultHasNoClaimant() {
+        #expect(KeyboardSettings.default.defaultClaimant(for: .refresh) == nil)
+        #expect(KeyboardSettings.default.defaultClaimant(for: .manageConnections) == nil)
+    }
+}
+
+struct KeyboardShortcutFilterTests {
+    private let modules: Set<AppModule> = []
+
+    private func actions(_ query: String, in settings: KeyboardSettings = .default) -> [ShortcutAction] {
+        ShortcutAction.settingsSections(matching: query, in: settings, enabledModules: modules).flatMap { $0.actions }
+    }
+
+    @Test("An empty query lists every available action under its category")
+    func emptyQueryListsEverything() {
+        let sections = ShortcutAction.settingsSections(matching: "  ", in: .default, enabledModules: modules)
+        let categories = sections.map { $0.category }
+        let rows = sections.flatMap { $0.actions }
+        #expect(categories == [.editor, .dataGrid, .navigation, .connections])
+        #expect(rows.count == ShortcutAction.allCases.filter { $0.module == nil }.count)
+    }
+
+    @Test("Debug rows appear only while the Routine Debugger is on")
+    func debugRowsFollowTheModule() {
+        let on = ShortcutAction.settingsSections(matching: "", in: .default, enabledModules: [.routineDebugger])
+        #expect(on.contains { $0.category == .debug })
+    }
+
+    @Test("Matching ignores case and diacritics")
+    func matchingIsLocalizedStandard() {
+        #expect(actions("refresh") == [.refresh])
+        #expect(actions("RÉFRESH") == [.refresh])
+    }
+
+    @Test("Every term has to match, against the name or the category")
+    func everyTermMustMatch() {
+        #expect(actions("copy csv") == [.copyAsCsv, .copyAsCsvWithHeaders])
+        #expect(actions("data grid refresh") == [.refresh])
+        #expect(actions("refresh zzz").isEmpty)
+    }
+
+    @Test("A term with a modifier glyph also matches the bound key")
+    func glyphTermMatchesKey() {
+        #expect(actions("⌘R").contains(.refresh))
+        let custom = KeyboardSettings.default.assigning(.character("k", command: true, option: true, control: true), to: .manageConnections)
+        #expect(actions("⌃⌥⌘K", in: custom) == [.manageConnections])
+    }
+
+    @Test("A cleared key never matches a glyph term")
+    func clearedKeyDoesNotMatch() {
+        let cleared = KeyboardSettings.default.clearing(.refresh)
+        #expect(!actions("⌘R", in: cleared).contains(.refresh))
+    }
+
+    @Test("No match leaves no sections")
+    func noMatchLeavesNoSections() {
+        #expect(ShortcutAction.settingsSections(matching: "zzzz", in: .default, enabledModules: modules).isEmpty)
     }
 }

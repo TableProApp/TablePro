@@ -680,6 +680,21 @@ License: CC0-1.0
  On Debian systems, the complete text of the CC0 1.0 Universal license
  can be found in "/usr/share/common-licenses/CC0-1.0".
 
+Files: core/resources/Chinook.sqlite
+Copyright: 2008-2024 Luis Rocha
+License: Expat
+ Chinook Database
+ --------------------------------------
+ Copyright (c) 2008-2024 Luis Rocha
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and
+ to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 Files: vendor/adler2-2.0.1/*
 Copyright: Jonas Schievink <jonasschievink@gmail.com>
 License: 0BSD or Apache-2.0 or Expat
@@ -3025,7 +3040,7 @@ License: Apache-2.0 or Expat
  DEALINGS IN THE SOFTWARE.
 
 Files: vendor/bindgen-0.71.1/*
- vendor/bindgen-0.72.1/*
+ vendor/bindgen-0.73.2/*
 Copyright: 2013, Jyun-Yan You
 License: BSD-3-Clause
  BSD 3-Clause License
@@ -7518,8 +7533,8 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
-Files: vendor/duckdb-1.20000.1/*
- vendor/libduckdb-sys-1.20000.1/*
+Files: vendor/duckdb-1.20001.0/*
+ vendor/libduckdb-sys-1.20001.0/*
 Copyright: 2021-2026 Stichting DuckDB Foundation
 License: Expat
  Copyright 2021-2026 Stichting DuckDB Foundation
@@ -8988,7 +9003,7 @@ License: Apache-2.0 or Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/form_urlencoded-1.2.2/*
+Files: vendor/form_urlencoded-1.2.3/*
 Copyright: 2013-2016 The rust-url developers
 License: Apache-2.0 or Expat
  On Debian systems, the complete text of the Apache License, Version 2.0
@@ -11875,7 +11890,7 @@ License: Apache-2.0 or Expat
 
 Files: vendor/idna-1.1.0/*
  vendor/percent-encoding-2.3.2/*
- vendor/url-2.5.8/*
+ vendor/url-2.5.9/*
 Copyright: 2013-2025 The rust-url developers
 License: Apache-2.0 or Expat
  On Debian systems, the complete text of the Apache License, Version 2.0
@@ -12509,7 +12524,7 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-Files: vendor/lcms2-6.2.0/*
+Files: vendor/lcms2-6.3.0/*
 Copyright: Kornel Lesiński
 License: Expat
  Copyright (c) Kornel Lesiński
@@ -12532,7 +12547,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/lcms2-sys-4.0.7/*
+Files: vendor/lcms2-sys-4.2.0/*
 Copyright: Kornel Lesiński <kornel@geekhood.net>
 License: Expat
 
@@ -13107,7 +13122,7 @@ License: Apache-2.0 or Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/libsqlite3-sys-0.37.0/*
+Files: vendor/libsqlite3-sys-0.40.0/*
 Copyright: 2014 The rusqlite developers
 License: Expat
  Copyright (c) 2014 The rusqlite developers
@@ -19627,7 +19642,8 @@ License: Apache-2.0
  See the License for the specific language governing permissions and
  limitations under the License.
 
-Files: vendor/sqlx-0.9.0/*
+Files: vendor/sqlx-0.9.1/*
+ vendor/sqlx-postgres-0.9.1/*
 Copyright: SQLx Contributors
 License: Apache-2.0 or Expat
  On Debian systems, the complete text of the Apache License, Version 2.0
@@ -19686,11 +19702,11 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-Files: vendor/sqlx-core-0.9.0/*
- vendor/sqlx-macros-0.9.0/*
- vendor/sqlx-macros-core-0.9.0/*
- vendor/sqlx-mysql-0.9.0/*
- vendor/sqlx-sqlite-0.9.0/*
+Files: vendor/sqlx-core-0.9.1/*
+ vendor/sqlx-macros-0.9.1/*
+ vendor/sqlx-macros-core-0.9.1/*
+ vendor/sqlx-mysql-0.9.1/*
+ vendor/sqlx-sqlite-0.9.1/*
 Copyright: SQLx Contributors
 License: Apache-2.0 or Expat
  Copyright (C) SQLx Contributors
@@ -19719,13 +19735,6 @@ License: Apache-2.0 or Expat
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
-
-Files: vendor/sqlx-postgres-0.9.0/*
-Copyright: Ryan Leckey <leckey.ryan@gmail.com>
- Austin Bonander <austin.bonander@gmail.com>
- Chloe Ross <orangesnowfox@gmail.com>
- Daniel Akhterov <akhterovd@gmail.com>
-License: Apache-2.0 or Expat
 
 Files: vendor/sse-stream-0.2.6/*
 Copyright: 2024 4t145
@@ -25296,7 +25305,7 @@ Copyright: the IANA Time Zone Database contributors
 License: public-domain
  Unless specified below, all files in the tz code and data (including this LICENSE file) are in the public domain.
 
-Files: vendor/lcms2-sys-4.0.7/vendor/*
+Files: vendor/lcms2-sys-4.2.0/vendor/*
 Copyright: 2023 Marti Maria Saguer
 License: Expat
  MIT License
@@ -25322,7 +25331,7 @@ License: Expat
  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Files: vendor/lcms2-sys-4.0.7/vendor/src/cmssm.c
+Files: vendor/lcms2-sys-4.2.0/vendor/src/cmssm.c
 Copyright: 2001 softSurfer
  2023 Marti Maria Saguer
  2001, softSurfer (www.softsurfer.com)
@@ -25371,7 +25380,7 @@ Files: vendor/lexical-write-float-1.0.6/src/compact.rs
 Copyright: Andrea Samoljuk
 License: BSL-1.0
 
-Files: vendor/libduckdb-sys-1.20000.1/duckdb.tar.gz
+Files: vendor/libduckdb-sys-1.20001.0/duckdb.tar.gz
 Copyright: 2021 The fast_float authors
  Daniel Lemire
  The Mbed TLS Contributors
@@ -26318,44 +26327,9 @@ Copyright: 1993 Sun Microsystems, Inc.
  2005-2020 Rich Felker, et al.
 License: Expat and SunPro
 
-Files: vendor/libsqlite3-sys-0.37.0/sqlite3/*
+Files: vendor/libsqlite3-sys-0.40.0/sqlite3/*
 Copyright: D. Richard Hipp and the other SQLite authors
 License: public-domain
- The author disclaims copyright to this source code. In place of a legal notice, here is a blessing:
- .
- May you do good and not evil.
- May you find forgiveness for yourself and forgive others.
- May you share freely, never taking more than you give.
-
-Files: vendor/libsqlite3-sys-0.37.0/sqlcipher/*
-Copyright: D. Richard Hipp and the other SQLite authors
- 2008-2020 Zetetic LLC
-License: BSD-3-Clause and public-domain
- Copyright (c) 2008-2020 Zetetic LLC
- All rights reserved.
- .
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions are met:
-     * Redistributions of source code must retain the above copyright
-       notice, this list of conditions and the following disclaimer.
-     * Redistributions in binary form must reproduce the above copyright
-       notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.
-     * Neither the name of the ZETETIC LLC nor the
-       names of its contributors may be used to endorse or promote products
-       derived from this software without specific prior written permission.
- .
- THIS SOFTWARE IS PROVIDED BY ZETETIC LLC ''AS IS'' AND ANY
- EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- DISCLAIMED. IN NO EVENT SHALL ZETETIC LLC BE LIABLE FOR ANY
- DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- .
  The author disclaims copyright to this source code. In place of a legal notice, here is a blessing:
  .
  May you do good and not evil.

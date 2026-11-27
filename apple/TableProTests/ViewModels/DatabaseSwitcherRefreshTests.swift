@@ -50,15 +50,14 @@ private final class DatabaseNameCountingDriver: DatabaseDriver, @unchecked Senda
         QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
     }
 
-    func fetchTables() async throws -> [TableInfo] { [] }
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
             avgRowLength: nil, rowCount: nil, comment: nil, engine: nil,
@@ -148,6 +147,21 @@ struct DatabaseSwitcherRefreshTests {
         await viewModel.refreshDatabases()
 
         #expect(driver.reads == ["databases"])
+        #expect(viewModel.databases.map(\.name) == ["analytics", "testdb"])
+    }
+
+    // The sidebar read the list on connect, and the switcher read it again on open (#4542).
+    @Test("Opening the switcher after the sidebar listed the databases reads nothing")
+    func switcherTakesTheTreesList() async {
+        let (connection, driver) = connect(databaseNames: ["testdb", "analytics"])
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        await DatabaseTreeMetadataService.shared.loadDatabases(connectionId: connection.id, databaseType: .pglite)
+        driver.forgetReads()
+        let viewModel = makeConnectedViewModel(connection)
+
+        await viewModel.fetchDatabases()
+
+        #expect(driver.reads.isEmpty)
         #expect(viewModel.databases.map(\.name) == ["analytics", "testdb"])
     }
 

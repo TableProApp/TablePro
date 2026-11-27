@@ -46,13 +46,15 @@ nonisolated enum SQLBuilder {
         }
     }
 
-    static func buildCount(table: String, schema: String?, type: DatabaseType) -> String {
-        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+    static func buildCount(table: String, schema: String?, database: String? = nil, type: DatabaseType) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         return "SELECT COUNT(*) FROM \(quoted)"
     }
 
-    static func buildSelect(table: String, schema: String?, type: DatabaseType, limit: Int, offset: Int) -> String {
-        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+    static func buildSelect(
+        table: String, schema: String?, database: String? = nil, type: DatabaseType, limit: Int, offset: Int
+    ) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
         return "SELECT * FROM \(quoted) \(pagination)"
     }
@@ -62,12 +64,13 @@ nonisolated enum SQLBuilder {
     static func buildSingleRowLookup(
         table: String,
         schema: String?,
+        database: String? = nil,
         key: [(column: String, value: String)],
         columns: [ColumnInfo],
         type: DatabaseType,
         driver: any DatabaseDriver
     ) -> String {
-        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         let predicate = key.isEmpty
             ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver, exactText: false)
         let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
@@ -135,24 +138,26 @@ nonisolated enum SQLBuilder {
     static func buildKeyMatchCount(
         table: String,
         schema: String?,
+        database: String? = nil,
         key: [(column: String, value: String)],
         columns: [ColumnInfo],
         type: DatabaseType,
         driver: any DatabaseDriver
     ) -> String {
-        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         return "SELECT COUNT(*) FROM \(quotedTable) WHERE \(keyPredicate(key, columns: columns, type: type, driver: driver))"
     }
 
     static func buildDelete(
         table: String,
         schema: String?,
+        database: String? = nil,
         type: DatabaseType,
         driver: any DatabaseDriver,
         primaryKeys: [(column: String, value: String)],
         columns: [ColumnInfo]
     ) -> String {
-        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         let predicate = keyPredicate(primaryKeys, columns: columns, type: type, driver: driver, uniqueIn: quotedTable)
         return "DELETE FROM \(quotedTable) WHERE \(predicate)"
     }
@@ -160,13 +165,14 @@ nonisolated enum SQLBuilder {
     static func buildUpdate(
         table: String,
         schema: String?,
+        database: String? = nil,
         type: DatabaseType,
         driver: any DatabaseDriver,
         changes: [(column: String, value: String?)],
         primaryKeys: [(column: String, value: String)],
         columns: [ColumnInfo]
     ) -> String {
-        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         let assignments = changes.map { col, val in
             let qcol = quoteIdentifier(col, for: type)
             if let val { return "\(qcol) = \(stringLiteral(val, for: type, driver: driver))" }
@@ -176,17 +182,20 @@ nonisolated enum SQLBuilder {
         return "UPDATE \(quotedTable) SET \(assignments) WHERE \(predicate)"
     }
 
+    // `firstWritableColumn` is the column Oracle names in a row of only defaults.
     static func buildInsert(
         table: String,
         schema: String?,
+        database: String? = nil,
         type: DatabaseType,
         driver: any DatabaseDriver,
         columns: [String],
-        values: [String?]
+        values: [String?],
+        firstWritableColumn: String? = nil
     ) -> String? {
-        let qualifiedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let qualifiedTable = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         guard !columns.isEmpty else {
-            return buildAllDefaultsInsert(qualifiedTable: qualifiedTable, for: type)
+            return buildAllDefaultsInsert(qualifiedTable: qualifiedTable, for: type, firstWritableColumn: firstWritableColumn)
         }
         let cols = columns.map { quoteIdentifier($0, for: type) }.joined(separator: ", ")
         let vals = values.map { val in
@@ -196,44 +205,57 @@ nonisolated enum SQLBuilder {
         return "INSERT INTO \(qualifiedTable) (\(cols)) VALUES (\(vals))"
     }
 
-    // Oracle accepts neither `() VALUES ()` nor `DEFAULT VALUES`, so it gets no statement.
-    static func buildAllDefaultsInsert(qualifiedTable: String, for type: DatabaseType) -> String? {
-        if speaksMySQLDialect(type) {
-            return "INSERT INTO \(qualifiedTable) () VALUES ()"
-        }
-        let takesDefaultValues = type.isSQLiteFamily || [.postgresql, .redshift, .mssql, .duckdb].contains(type)
-        return takesDefaultValues ? "INSERT INTO \(qualifiedTable) DEFAULT VALUES" : nil
+    // The macOS spelling through the shared `AllDefaultsInsert`: Oracle names one column with `VALUES (DEFAULT)`.
+    static func buildAllDefaultsInsert(
+        qualifiedTable: String,
+        for type: DatabaseType,
+        firstWritableColumn: String? = nil
+    ) -> String? {
+        AllDefaultsInsert.sql(
+            into: qualifiedTable,
+            databaseTypeId: type.rawValue,
+            firstWritableColumn: firstWritableColumn.map { quoteIdentifier($0, for: type) }
+        )
     }
 
     // SQLite has no TRUNCATE statement; a DELETE with no WHERE is its truncate.
-    static func truncateStatement(table: String, schema: String?, type: DatabaseType) -> String {
-        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+    static func truncateStatement(table: String, schema: String?, database: String? = nil, type: DatabaseType) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         return type.isSQLiteFamily ? "DELETE FROM \(quoted)" : "TRUNCATE TABLE \(quoted)"
     }
 
+    // Given a column to name, which every table with a column the server does not fill in has.
     static func supportsAllDefaultsInsert(_ type: DatabaseType) -> Bool {
-        buildAllDefaultsInsert(qualifiedTable: "t", for: type) != nil
+        buildAllDefaultsInsert(qualifiedTable: "t", for: type, firstWritableColumn: "c") != nil
     }
 
-    static func qualifiedIdentifier(table: String, schema: String?, for type: DatabaseType) -> String {
+    // SQL Server resolves `[schema].[table]` in the session's database, which a `USE` run in the Query tab moves, so
+    // it names the database too. MySQL's database already sits in `schema`; other engines have no third part.
+    static func qualifiedIdentifier(
+        table: String, schema: String?, database: String? = nil, for type: DatabaseType
+    ) -> String {
         let quotedTable = quoteIdentifier(table, for: type)
-        guard let schema, !schema.isEmpty else { return quotedTable }
-        return "\(quoteIdentifier(schema, for: type)).\(quotedTable)"
+        let quotedSchema = schema.flatMap { $0.isEmpty ? nil : quoteIdentifier($0, for: type) }
+        if type == .mssql, let database, !database.isEmpty {
+            return "\(quoteIdentifier(database, for: type)).\(quotedSchema ?? "").\(quotedTable)"
+        }
+        guard let quotedSchema else { return quotedTable }
+        return "\(quotedSchema).\(quotedTable)"
     }
 
     static func buildSelect(
-        table: String, schema: String?, type: DatabaseType,
+        table: String, schema: String?, database: String? = nil, type: DatabaseType,
         sortState: SortState,
         limit: Int, offset: Int
     ) -> String {
-        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         let orderBy = buildOrderByClause(sortState, for: type)
         let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
         return "SELECT * FROM \(quoted) \(pagination)"
     }
 
     static func buildFilteredSelect(
-        table: String, schema: String?, type: DatabaseType,
+        table: String, schema: String?, database: String? = nil, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
         columns: [ColumnInfo] = [],
         session: SQLSessionLexicalFacts? = nil,
@@ -242,7 +264,7 @@ nonisolated enum SQLBuilder {
         let dialect = dialectDescriptor(for: type)
         let generator = filterGenerator(dialect: dialect, type: type, session: session)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
-        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
         var sql = "SELECT * FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
@@ -251,7 +273,7 @@ nonisolated enum SQLBuilder {
     }
 
     static func buildFilteredSelect(
-        table: String, schema: String?, type: DatabaseType,
+        table: String, schema: String?, database: String? = nil, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
         columns: [ColumnInfo] = [],
         session: SQLSessionLexicalFacts? = nil,
@@ -262,7 +284,7 @@ nonisolated enum SQLBuilder {
         let generator = filterGenerator(dialect: dialect, type: type, session: session)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let orderBy = buildOrderByClause(sortState, for: type)
-        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
         var sql = "SELECT * FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
@@ -271,7 +293,7 @@ nonisolated enum SQLBuilder {
     }
 
     static func buildFilteredCount(
-        table: String, schema: String?, type: DatabaseType,
+        table: String, schema: String?, database: String? = nil, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
         columns: [ColumnInfo] = [],
         session: SQLSessionLexicalFacts? = nil
@@ -279,17 +301,65 @@ nonisolated enum SQLBuilder {
         let dialect = dialectDescriptor(for: type)
         let generator = filterGenerator(dialect: dialect, type: type, session: session)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
-        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         if whereClause.isEmpty {
             return "SELECT COUNT(*) FROM \(quoted)"
         }
         return "SELECT COUNT(*) FROM \(quoted) \(whereClause)"
     }
 
+    // MARK: - Export
+
+    // The data browser's rows with its filter, search and sort, every page of them: the table export a filtered view
+    // runs, as macOS exports `baseQueryForMore`.
+    static func buildExportSelect(
+        table: String,
+        schema: String?,
+        database: String? = nil,
+        type: DatabaseType,
+        filters: [TableFilter] = [],
+        logicMode: FilterLogicMode = .and,
+        columns: [ColumnInfo] = [],
+        session: SQLSessionLexicalFacts? = nil,
+        searchText: String? = nil,
+        searchColumns: [ColumnInfo] = [],
+        sortState: SortState = SortState()
+    ) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
+        let whereClause = buildSearchWhereClause(
+            searchText: searchText ?? "", searchColumns: searchColumns,
+            filters: filters, logicMode: logicMode, columns: columns, type: type, session: session
+        )
+        let orderBy = buildOrderByClause(sortState, for: type)
+        var sql = "SELECT * FROM \(quoted)"
+        if !whereClause.isEmpty { sql += " \(whereClause)" }
+        if !orderBy.isEmpty { sql += " \(orderBy)" }
+        return sql
+    }
+
+    // Rows picked in the browser, read again by their keys so the file holds whole values and bytes, not the page's
+    // previews.
+    static func buildRowsSelect(
+        table: String,
+        schema: String?,
+        database: String? = nil,
+        type: DatabaseType,
+        keys: [[(column: String, value: String)]],
+        columns: [ColumnInfo],
+        driver: any DatabaseDriver
+    ) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
+        let predicates = keys.filter { !$0.isEmpty }.map { key in
+            "(\(keyPredicate(key, columns: columns, type: type, driver: driver)))"
+        }
+        let condition = predicates.isEmpty ? "1 = 0" : predicates.joined(separator: " OR ")
+        return "SELECT * FROM \(quoted) WHERE \(condition)"
+    }
+
     // MARK: - Search
 
     static func buildSearchSelect(
-        table: String, schema: String?, type: DatabaseType,
+        table: String, schema: String?, database: String? = nil, type: DatabaseType,
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter] = [], logicMode: FilterLogicMode = .and,
         columns: [ColumnInfo] = [],
@@ -297,7 +367,7 @@ nonisolated enum SQLBuilder {
         sortState: SortState = SortState(),
         limit: Int, offset: Int
     ) -> String {
-        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
             filters: filters, logicMode: logicMode, columns: columns, type: type, session: session
@@ -311,13 +381,13 @@ nonisolated enum SQLBuilder {
     }
 
     static func buildSearchCount(
-        table: String, schema: String?, type: DatabaseType,
+        table: String, schema: String?, database: String? = nil, type: DatabaseType,
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter] = [], logicMode: FilterLogicMode = .and,
         columns: [ColumnInfo] = [],
         session: SQLSessionLexicalFacts? = nil
     ) -> String {
-        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
             filters: filters, logicMode: logicMode, columns: columns, type: type, session: session

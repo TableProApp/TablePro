@@ -8,17 +8,17 @@
       <item>
         <attribute name="label" translatable="yes">_Open SQL File…</attribute>
         <attribute name="action">editor.open-file</attribute>
-        <attribute name="accel">&lt;Primary&gt;o</attribute>
+        <attribute name="tablepro-key-of">editor.open-file</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Save</attribute>
         <attribute name="action">editor.save</attribute>
-        <attribute name="accel">&lt;Primary&gt;s</attribute>
+        <attribute name="tablepro-key-of">editor.save</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">Save _As…</attribute>
         <attribute name="action">editor.save-as</attribute>
-        <attribute name="accel">&lt;Primary&gt;&lt;Shift&gt;s</attribute>
+        <attribute name="tablepro-key-of">editor.save-as</attribute>
       </item>
     </section>
     <section>
@@ -31,9 +31,17 @@
         <attribute name="action">win.export-results</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">S_hare Query…</attribute>
+        <attribute name="action">editor.share-query</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Share Res_ult…</attribute>
+        <attribute name="action">editor.share-result</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">Forma_t</attribute>
         <attribute name="action">editor.format</attribute>
-        <attribute name="accel">&lt;Primary&gt;&lt;Shift&gt;f</attribute>
+        <attribute name="tablepro-key-of">editor.format</attribute>
       </item>
     </section>
     <section>
@@ -57,12 +65,12 @@
       <item>
         <attribute name="label" translatable="yes">_Find…</attribute>
         <attribute name="action">editor.find</attribute>
-        <attribute name="accel">&lt;Primary&gt;f</attribute>
+        <attribute name="tablepro-key-of">editor.find</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">Find and _Replace…</attribute>
         <attribute name="action">editor.find-replace</attribute>
-        <attribute name="accel">&lt;Primary&gt;h</attribute>
+        <attribute name="tablepro-key-of">editor.find-replace</attribute>
       </item>
     </section>
   </menu>

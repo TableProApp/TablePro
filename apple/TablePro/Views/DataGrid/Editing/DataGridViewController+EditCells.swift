@@ -11,7 +11,8 @@ extension DataGridViewController {
 
     func editCell(at coord: GridCoord) -> DataGridEditCell? {
         guard let row = model.row(at: coord.row), let column = model.columns.column(at: coord.displayColumn) else { return nil }
-        return DataGridEditCell(coord: coord, row: row, column: column)
+        let isUnloaded = model.rows.unloadedByteCount(row.id, column: column.dataIndex) != nil
+        return DataGridEditCell(coord: coord, row: row, column: column, isUnloaded: isUnloaded)
     }
 
     func editCell(for target: DataGridEditTarget) -> DataGridEditCell? {
@@ -38,19 +39,22 @@ extension DataGridViewController {
         guard model.configuration.isEditable,
               !isRowDeleted(cell.row.id),
               model.isColumnWritable(cell.column),
+              !model.configuration.checkboxColumns.contains(cell.column.dataIndex),
               !cell.isUnloaded,
               cell.column.type?.isBlobType != true,
               cell.value.asBytes == nil else { return nil }
         return cell.value.asText ?? ""
     }
 
-    func cellContext(for cell: DataGridEditCell) -> CellContext {
+    func cellContext(for cell: DataGridEditCell, locksAsReadOnly: Bool = false) -> CellContext {
         let name = cell.column.name
         let rows = model.rows
         let value = cell.value
         // A column the owner locked is not read-only content: it refuses with a beep instead (#2726).
-        let serverOwned = model.configuration.traits.immutableColumns.contains(name)
-            || model.changeState?.generatedColumns.contains(name) == true
+        let serverOwned = locksAsReadOnly
+            ? !model.isColumnWritable(cell.column)
+            : model.configuration.traits.immutableColumns.contains(name)
+                || model.changeState?.generatedColumns.contains(name) == true
         return CellContext(
             columnType: cell.column.type,
             value: value.asText,
@@ -168,7 +172,12 @@ extension DataGridViewController {
         guard let cell = editCell(at: coord) else { return }
         let target = cell.target
         guard loadsUnloadedValue(of: cell, then: { $0.openEditor(for: target) }) else { return }
-        let mode = CellInteractionResolver().resolve(cellContext(for: cell))
+        // A checkbox cell is its mark: a field over it would type text into a flag.
+        guard !model.configuration.checkboxColumns.contains(cell.column.dataIndex) else { return }
+        present(CellInteractionResolver().resolve(cellContext(for: cell)), for: cell)
+    }
+
+    func present(_ mode: CellInteractionMode, for cell: DataGridEditCell) {
         switch mode {
         case .blocked:
             return

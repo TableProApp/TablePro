@@ -18,6 +18,18 @@ nonisolated private extension MSSQLRawResult {
             isTruncated: isTruncated
         )
     }
+
+    // Bytes stay bytes, as the Mac's plugin bridges them.
+    nonisolated func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
+        PluginQueryResult(
+            columns: columns.map(\.name),
+            columnTypeNames: columns.map(\.type.canonicalName),
+            rows: rows.map { $0.map(\.pluginCell) },
+            rowsAffected: affectedRows,
+            executionTime: executionTime,
+            isTruncated: isTruncated
+        )
+    }
 }
 
 nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @unchecked Sendable {
@@ -38,11 +50,17 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     nonisolated(unsafe) private(set) var currentSchema: String? = "dbo"
     // A connection that names no database opens in the login's default one, which only the server knows.
     private let sessionDatabaseName = OSAllocatedUnfairLock<String?>(initialState: nil)
+    // Where the app last put the session (the open, a switch), which a `USE` the user runs never moves. Catalog reads
+    // run there, so a list read while such a run is in flight still lists the picker's database.
+    private let appDatabaseName = OSAllocatedUnfairLock<String?>(initialState: nil)
 
     var currentDatabase: String? {
         sessionDatabaseName.withLock { $0 }
     }
     nonisolated(unsafe) private(set) var serverVersion: String?
+
+    // What an export learned of the server's principals, for the life of the connection, as on the Mac.
+    let principalState = OSAllocatedUnfairLock(initialState: MSSQLPrincipalState())
 
     // This form collects no CA for FreeTDS, so a verify mode from the Mac or an import cannot be honoured here.
     static let verifyModeUnavailableMessage = String(localized: """
@@ -113,7 +131,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
             }
         }
 
-        _ = try? await sessionDatabase()
+        let opened = try? await sessionDatabase()
+        appDatabaseName.withLock { $0 = opened }
 
         if let serverSchema = try? await runQuery(MSSQLSchemaQueries.currentSchema).rows.first?.first ?? nil,
            !serverSchema.isEmpty {
@@ -154,6 +173,75 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
         } catch let error as MSSQLCoreError {
             throw mapToConnectionError(error)
         }
+    }
+
+    private func pluginResult(_ query: String) async throws -> PluginQueryResult {
+        let startTime = Date()
+        do {
+            let raw = try await conn.executeQuery(query)
+            return raw.toPluginResult(executionTime: Date().timeIntervalSince(startTime))
+        } catch let error as MSSQLCoreError {
+            throw mapToConnectionError(error)
+        }
+    }
+
+    func executeParameterized(query: String, parameters: [PluginCellValue], typeNames: [String?]?) async throws
+        -> QueryResult {
+        try await runQuery(Self.boundStatement(query, parameters: parameters))
+    }
+
+    // The Mac's binding: `?` placeholders become `sp_executesql` parameters typed by their values.
+    static func boundStatement(_ query: String, parameters: [PluginCellValue]) -> String {
+        guard !parameters.isEmpty else { return query }
+        let statement = MSSQLParameterBatch.spExecuteSql(query: query, parameters: parameters.map(MSSQLParameter.init))
+        return statement.isEmpty ? query : statement.executeSqlText
+    }
+
+    // In `database`, or where the app last put the session when it names none.
+    func catalogCells(_ statement: String, parameters: [PluginCellValue] = [], in database: String?) async throws
+        -> PluginQueryResult {
+        try await pluginResult(catalogRead(Self.boundStatement(statement, parameters: parameters), in: database))
+    }
+
+    // The first result set's rows, a FreeTDS batch at a time. A consumer that stops or lets the stream go ends the
+    // request on the server.
+    func exportRows(query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let conn = self.conn
+        let abort = MSSQLStreamAbort()
+        let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error>(
+            bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)
+        ) { continuation in
+            continuation.onTermination = { @Sendable _ in abort.abort() }
+            Task {
+                do {
+                    try await conn.streamQuery(query, isAborted: { abort.isAborted }, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+        let source = MSSQLPulledElements(coreStream)
+        return AsyncThrowingStream(unfolding: { [self] in
+            do {
+                while let element = try await source.next() {
+                    switch element {
+                    case .header(let columns):
+                        return .header(PluginStreamHeader(
+                            columns: columns.map(\.name), columnTypeNames: columns.map(\.type.canonicalName)
+                        ))
+                    case .rows(let batch):
+                        return .rows(batch.map { $0.map(\.pluginCell) })
+                    case .affectedRows:
+                        continue
+                    }
+                }
+                // A cancelled reader's iterator ends as if the rows had, which must not read as the whole table.
+                try Task.checkCancellation()
+                return nil
+            } catch let error as MSSQLCoreError {
+                throw mapToConnectionError(error)
+            }
+        })
     }
 
     func cancelCurrentQuery() async throws {
@@ -291,10 +379,11 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
             throw mapToConnectionError(error)
         }
         sessionDatabaseName.withLock { $0 = name }
+        appDatabaseName.withLock { $0 = name }
     }
 
     func fetchSchemas() async throws -> [String] {
-        let result = try await runQuery(MSSQLSchemaQueries.schemas)
+        let result = try await runQuery(catalogRead(MSSQLSchemaQueries.schemas, in: nil))
         return result.rows.compactMap { $0.first ?? nil }
     }
 
@@ -310,10 +399,35 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
 
     // MARK: - Table Metadata
 
-    private var effectiveSchema: String { currentSchema ?? "dbo" }
+    var effectiveSchema: String { currentSchema ?? "dbo" }
+
+    // An empty schema is the current one, as on the Mac, never a schema named "".
+    private func schemaName(_ schema: String?) -> String {
+        MSSQLExportCatalog.effectiveSchema(schema, current: effectiveSchema)
+    }
+
+    // A system procedure called through a database name runs in that database and leaves the session where it is.
+    static func catalogStatement(_ statement: String, in database: String?) -> String {
+        guard let database, !database.isEmpty else { return statement }
+        return MSSQLPrincipalStatements.inDatabase(database, statement)
+    }
+
+    // The database a window names wins; a list, or a read that names none, goes where the app last put the session.
+    static func catalogTarget(named database: String?, appDatabase: String?) -> String? {
+        database.flatMap { $0.isEmpty ? nil : $0 } ?? appDatabase
+    }
+
+    private func catalogRead(_ statement: String, in database: String?) -> String {
+        Self.catalogStatement(
+            statement,
+            in: Self.catalogTarget(named: database, appDatabase: appDatabaseName.withLock { $0 })
+        )
+    }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let result = try await runQuery(MSSQLSchemaQueries.tables(schema: schema ?? effectiveSchema))
+        let result = try await runQuery(
+            catalogRead(MSSQLSchemaQueries.tables(schema: schemaName(schema)), in: nil)
+        )
         return result.rows.compactMap { row in
             MSSQLSchemaQueries.parseTableRow(row).map {
                 TableInfo(name: $0.name, type: $0.isView ? .view : .table)
@@ -322,7 +436,13 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let result = try await runQuery(MSSQLSchemaQueries.columns(schema: schema ?? effectiveSchema, table: table))
+        try await fetchColumns(table: table, schema: schema, database: nil)
+    }
+
+    func fetchColumns(table: String, schema: String?, database: String?) async throws -> [ColumnInfo] {
+        let result = try await runQuery(
+            catalogRead(MSSQLSchemaQueries.columns(schema: schemaName(schema), table: table), in: database)
+        )
         return result.rows.enumerated().compactMap { idx, row in
             MSSQLSchemaQueries.parseColumnRow(row).map { parsed in
                 ColumnInfo(
@@ -342,7 +462,13 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        let result = try await runQuery(MSSQLSchemaQueries.indexes(schema: schema ?? effectiveSchema, table: table))
+        try await fetchIndexes(table: table, schema: schema, database: nil)
+    }
+
+    func fetchIndexes(table: String, schema: String?, database: String?) async throws -> [IndexInfo] {
+        let result = try await runQuery(
+            catalogRead(MSSQLSchemaQueries.indexes(schema: schemaName(schema), table: table), in: database)
+        )
         var byName: [String: (unique: Bool, primary: Bool, cols: [String])] = [:]
         for row in result.rows {
             guard let parsed = MSSQLSchemaQueries.parseIndexRow(row) else { continue }
@@ -357,7 +483,13 @@ nonisolated final class MSSQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        let result = try await runQuery(MSSQLSchemaQueries.foreignKeys(schema: schema ?? effectiveSchema, table: table))
+        try await fetchForeignKeys(table: table, schema: schema, database: nil)
+    }
+
+    func fetchForeignKeys(table: String, schema: String?, database: String?) async throws -> [ForeignKeyInfo] {
+        let result = try await runQuery(
+            catalogRead(MSSQLSchemaQueries.foreignKeys(schema: schemaName(schema), table: table), in: database)
+        )
         return result.rows.compactMap { row in
             MSSQLSchemaQueries.parseForeignKeyRow(row).map {
                 ForeignKeyInfo(name: $0.constraintName, column: $0.columnName,
@@ -401,6 +533,37 @@ nonisolated private extension MSSQLRawCell {
     var keyText: String? {
         guard case .string(let value) = self else { return nil }
         return value
+    }
+
+    var pluginCell: PluginCellValue {
+        switch self {
+        case .null: return .null
+        case .string(let value): return .text(value)
+        case .bytes(let data): return .bytes(data)
+        }
+    }
+}
+
+nonisolated private extension MSSQLParameter {
+    init(_ value: PluginCellValue) {
+        switch value {
+        case .null: self = .null
+        case .text(let text): self = .text(text)
+        case .bytes(let data): self = .bytes(data)
+        }
+    }
+}
+
+// One consumer pulls the export stream, so one call at a time reaches the iterator.
+nonisolated private final class MSSQLPulledElements: @unchecked Sendable {
+    private var iterator: AsyncThrowingStream<MSSQLStreamElement, Error>.AsyncIterator
+
+    init(_ stream: AsyncThrowingStream<MSSQLStreamElement, Error>) {
+        iterator = stream.makeAsyncIterator()
+    }
+
+    func next() async throws -> MSSQLStreamElement? {
+        try await iterator.next()
     }
 }
 

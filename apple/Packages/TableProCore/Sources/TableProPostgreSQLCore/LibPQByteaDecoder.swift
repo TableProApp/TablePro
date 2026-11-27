@@ -20,69 +20,90 @@ import Foundation
 
 public enum LibPQByteaDecoder {
     public static func decode(_ text: String) -> Data? {
-        if text.isEmpty {
+        var text = text
+        return text.withUTF8 { decode(bytes: UnsafeRawBufferPointer($0)) }
+    }
+
+    // Reads libpq's buffer as it arrived: a value is never valid UTF-8 text to begin with.
+    public static func decode(bytes: UnsafeRawBufferPointer) -> Data? {
+        if bytes.isEmpty {
             return Data()
         }
-
-        let utf8 = Array(text.utf8)
-
-        // Hex format: \xHHHH...  (lowercase per PG docs, but accept uppercase too)
-        if utf8.count >= 2, utf8[0] == 0x5C, utf8[1] == 0x78 || utf8[1] == 0x58 {
-            let hexBytes = utf8.dropFirst(2)
-            guard hexBytes.count % 2 == 0 else { return nil }
-            var data = Data()
-            data.reserveCapacity(hexBytes.count / 2)
-            var iterator = hexBytes.makeIterator()
-            while let high = iterator.next(), let low = iterator.next() {
-                guard let h = hexNibble(high), let l = hexNibble(low) else { return nil }
-                data.append((h << 4) | l)
-            }
-            return data
+        if bytes.count >= 2, bytes[0] == 0x5C, bytes[1] == 0x78 || bytes[1] == 0x58 {
+            return decodeHex(UnsafeRawBufferPointer(rebasing: bytes[2...]))
         }
+        return decodeEscape(bytes)
+    }
 
-        // Escape format: walk bytes; \\ → 0x5C, \nnn (3 octal digits) → byte, others literal.
-        var data = Data()
-        data.reserveCapacity(utf8.count)
-        var i = 0
-        while i < utf8.count {
-            let byte = utf8[i]
-            if byte == 0x5C {
-                guard i + 1 < utf8.count else { return nil }
-                let next = utf8[i + 1]
-                if next == 0x5C {
-                    data.append(0x5C)
-                    i += 2
+    private static func decodeHex(_ digits: UnsafeRawBufferPointer) -> Data? {
+        guard digits.count % 2 == 0 else { return nil }
+        var data = Data(count: digits.count / 2)
+        let isValid = data.withUnsafeMutableBytes { (output: UnsafeMutableRawBufferPointer) -> Bool in
+            hexNibbles.withUnsafeBufferPointer { nibbles in
+                var seen: UInt8 = 0
+                var index = 0
+                while index < output.count {
+                    let high = nibbles[Int(digits[index * 2])]
+                    let low = nibbles[Int(digits[index * 2 + 1])]
+                    seen |= high | low
+                    output[index] = (high << 4) | (low & 0x0F)
+                    index += 1
+                }
+                return seen & invalidNibble == 0
+            }
+        }
+        return isValid ? data : nil
+    }
+
+    // Walks bytes: \\ → 0x5C, \nnn (3 octal digits) → byte, others literal.
+    private static func decodeEscape(_ bytes: UnsafeRawBufferPointer) -> Data? {
+        var data = Data(count: bytes.count)
+        let written = data.withUnsafeMutableBytes { (output: UnsafeMutableRawBufferPointer) -> Int? in
+            var read = 0
+            var written = 0
+            while read < bytes.count {
+                let byte = bytes[read]
+                guard byte == 0x5C else {
+                    output[written] = byte
+                    written += 1
+                    read += 1
                     continue
                 }
-                guard i + 3 < utf8.count else { return nil }
-                let d0 = utf8[i + 1]
-                let d1 = utf8[i + 2]
-                let d2 = utf8[i + 3]
-                guard let n0 = octalNibble(d0),
-                      let n1 = octalNibble(d1),
-                      let n2 = octalNibble(d2) else { return nil }
-                let value = (UInt16(n0) << 6) | (UInt16(n1) << 3) | UInt16(n2)
+                guard read + 1 < bytes.count else { return nil }
+                if bytes[read + 1] == 0x5C {
+                    output[written] = 0x5C
+                    written += 1
+                    read += 2
+                    continue
+                }
+                guard read + 3 < bytes.count,
+                      let high = octalDigit(bytes[read + 1]),
+                      let middle = octalDigit(bytes[read + 2]),
+                      let low = octalDigit(bytes[read + 3]) else { return nil }
+                let value = (UInt16(high) << 6) | (UInt16(middle) << 3) | UInt16(low)
                 guard value <= 0xFF else { return nil }
-                data.append(UInt8(value))
-                i += 4
-            } else {
-                data.append(byte)
-                i += 1
+                output[written] = UInt8(value)
+                written += 1
+                read += 4
             }
+            return written
         }
+        guard let written else { return nil }
+        data.count = written
         return data
     }
 
-    private static func hexNibble(_ byte: UInt8) -> UInt8? {
-        switch byte {
-        case 0x30...0x39: return byte - 0x30          // 0-9
-        case 0x41...0x46: return byte - 0x41 + 10     // A-F
-        case 0x61...0x66: return byte - 0x61 + 10     // a-f
-        default: return nil
-        }
-    }
+    private static let invalidNibble: UInt8 = 0x80
 
-    private static func octalNibble(_ byte: UInt8) -> UInt8? {
+    private static let hexNibbles: [UInt8] = {
+        var table = [UInt8](repeating: invalidNibble, count: 256)
+        for (value, digit) in "0123456789".utf8.enumerated() { table[Int(digit)] = UInt8(value) }
+        for (value, digit) in "abcdef".utf8.enumerated() { table[Int(digit)] = UInt8(value + 10) }
+        for (value, digit) in "ABCDEF".utf8.enumerated() { table[Int(digit)] = UInt8(value + 10) }
+        return table
+    }()
+
+    private static func octalDigit(_ byte: UInt8) -> UInt8? {
         guard byte >= 0x30, byte <= 0x37 else { return nil }
         return byte - 0x30
     }

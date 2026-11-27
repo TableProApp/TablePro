@@ -41,6 +41,8 @@ public sealed class ConnectionDraftTests
             GroupId = Guid.NewGuid(),
             LastOpened = DateTimeOffset.UnixEpoch,
             Tags = [Guid.NewGuid()],
+            AiPolicy = AiPolicy.Never,
+            ExternalAccess = ExternalAccess.Blocked,
             Ssh = before.Ssh! with { JumpHosts = ["jump"] },
         };
 
@@ -52,6 +54,53 @@ public sealed class ConnectionDraftTests
         var otherJump = before with { Ssh = before.Ssh! with { JumpHosts = ["other"] } };
         Assert.True(ConnectionDraft.ChangesConnect(before, otherJump));
         Assert.True(ConnectionDraft.ChangesConnect(before, before with { Ssh = null }));
+    }
+
+    [Fact]
+    public void JumpHostsShowAsOneListAndAnEditedListIsSavedAsOneEntry()
+    {
+        var saved = new SavedConnection(
+            Guid.NewGuid(), "Server", "postgres", "db", 5432, "app", "user", TlsSettings.Disabled,
+            Ssh: new SshSettings("bastion", 22, "ops", ["ops@jump1:2200", "jump2"], SshAuthMethod.Agent));
+        var draft = ConnectionDraft.From(saved, Postgres);
+
+        Assert.Equal("ops@jump1:2200, jump2", draft.JumpHosts);
+
+        draft.JumpHosts = " jump3, jump4 ";
+        Assert.Equal(["jump3, jump4"], draft.ToConnection().Ssh!.JumpHosts);
+        Assert.True(ConnectionDraft.ChangesConnect(saved, draft.ToConnection()));
+
+        draft.JumpHosts = "  ";
+        Assert.Empty(draft.ToConnection().Ssh!.JumpHosts);
+    }
+
+    [Fact]
+    public void AUrlStartsANewConnectionFilledAsTheEngineChooserFillsIt()
+    {
+        var url = new ParsedConnectionUrl("postgres", "db.example.com", null, "app", "secret", "shop", TlsMode.Require);
+
+        var draft = ConnectionDraft.FromUrl(url, Postgres);
+
+        Assert.True(draft.IsNew);
+        Assert.Equal("postgres", draft.EngineId);
+        Assert.Equal("db.example.com", draft.Host);
+        Assert.Equal("5432", draft.Port);
+        Assert.Equal("app", draft.UserName);
+        Assert.Equal("secret", draft.Password);
+        Assert.Equal("shop", draft.Database);
+        Assert.Equal(TlsMode.Require, draft.TlsMode);
+        Assert.Equal("shop@db.example.com", draft.SuggestedName());
+    }
+
+    [Fact]
+    public void AFileUrlStartsAFileConnectionOnItsPath()
+    {
+        var path = AbsolutePath("shop.sqlite");
+        var draft = ConnectionDraft.FromUrl(new ParsedConnectionUrl("sqlite", string.Empty, null, string.Empty, null, path, null), Sqlite);
+
+        Assert.True(draft.IsFileEngine);
+        Assert.Equal(path, draft.Database);
+        Assert.Empty(draft.Validate());
     }
 
     [Fact]
@@ -148,6 +197,30 @@ public sealed class ConnectionDraftTests
         Assert.Equal(saved.Ssh.Port, back.Ssh.Port);
         Assert.Equal(saved.Ssh.KeyPath, back.Ssh.KeyPath);
         Assert.Equal(SshAuthMethod.PrivateKey, back.Ssh.Auth);
+    }
+
+    [Fact]
+    public void TheExternalClientsLevelIsSavedOnlyWhenTheFormChangesIt()
+    {
+        var stored = new SavedConnection(
+            Guid.NewGuid(), "prod", "postgres", "db.example.com", 5432, "shop", "app", TlsSettings.Disabled)
+        {
+            ExternalAccess = ExternalAccess.ReadWrite,
+        };
+        var fresh = ConnectionDraft.New(Postgres);
+
+        var untouched = ConnectionDraft.From(stored, Postgres);
+        var changed = ConnectionDraft.From(stored, Postgres);
+        changed.ExternalAccess = ExternalAccess.Blocked;
+        var unread = ConnectionDraft.From(stored with { ExternalAccess = null }, Postgres);
+
+        Assert.Equal(ExternalAccess.ReadWrite, untouched.ExternalAccess);
+        Assert.Equal(ExternalAccess.ReadWrite, untouched.ToConnection().ExternalAccess);
+        Assert.Equal(ExternalAccess.Blocked, changed.ToConnection().ExternalAccess);
+        Assert.Equal(ExternalAccess.ReadOnly, unread.ExternalAccess);
+        Assert.Null(unread.ToConnection().ExternalAccess);
+        Assert.Equal(ExternalAccess.ReadOnly, fresh.ExternalAccess);
+        Assert.Null(fresh.ToConnection().ExternalAccess);
     }
 
     [Fact]
@@ -281,6 +354,21 @@ public sealed class ConnectionDraftTests
     }
 
     [Fact]
+    public void AModeTheEngineDoesNotOfferRoundsUpRatherThanToAWeakerDefault()
+    {
+        var saved = new SavedConnection(
+            Guid.NewGuid(), "RDS", "postgres", "db.example.com", 5432, "app", "app",
+            new TlsSettings(TlsMode.VerifyCa));
+        var draft = ConnectionDraft.From(saved, Postgres);
+
+        draft.FollowTlsDefault(Postgres);
+
+        Assert.Equal(TlsMode.VerifyFull, draft.TlsMode);
+        Assert.Equal(TlsMode.VerifyFull, TlsModes.AtLeastIn(TlsMode.VerifyCa, Postgres.SupportedTlsModes));
+        Assert.Equal(TlsMode.Require, TlsModes.AtLeastIn(TlsMode.Prefer, ClickHouse.SupportedTlsModes));
+    }
+
+    [Fact]
     public void ASavedModeStaysWhenThePortMoves()
     {
         var saved = new SavedConnection(
@@ -362,4 +450,18 @@ public sealed class ConnectionDraftTests
         Assert.Equal("db.internal", draft.ServerName);
         Assert.Equal(string.Empty, draft.ClientCertificate);
     }
+}
+
+public sealed class PastedUrlTests
+{
+    [Theory]
+    [InlineData("postgresql://app@db:5432/shop", "postgresql://app@db:5432/shop")]
+    [InlineData("  mysql://root@localhost/app  \r\nsecond line", "mysql://root@localhost/app")]
+    [InlineData("\n\nsqlite:///C:/data/shop.db", "sqlite:///C:/data/shop.db")]
+    [InlineData("SELECT * FROM t", null)]
+    [InlineData("see postgresql://db/shop", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void OnlyAFirstLineNamingASchemeIsAUrl(string? text, string? expected) =>
+        Assert.Equal(expected, PastedUrl.In(text));
 }

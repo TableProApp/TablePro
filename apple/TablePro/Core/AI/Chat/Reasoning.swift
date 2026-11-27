@@ -5,61 +5,72 @@
 
 import Foundation
 
+// `off` is stored only where a model takes an explicit off; nil sends nothing and leaves the server's default.
 enum ReasoningEffort: String, Codable, Sendable, CaseIterable, Identifiable {
+    case off
     case minimal
     case low
     case medium
     case high
     case xhigh
+    case max
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
+        case .off:     return String(localized: "Off")
         case .minimal: return String(localized: "Minimal")
         case .low:     return String(localized: "Low")
         case .medium:  return String(localized: "Medium")
         case .high:    return String(localized: "High")
         case .xhigh:   return String(localized: "Extra High")
+        case .max:     return String(localized: "Maximum")
         }
     }
 
-    var openAIWireValue: String { rawValue }
-
-    var xaiReasoningEffort: String {
-        switch self {
-        case .minimal, .low: return "low"
-        case .medium:        return "medium"
-        case .high, .xhigh:  return "high"
-        }
+    // `none` is how OpenAI-style APIs spell off. A spelling of no level here, such as Requesty's `min`, is left out.
+    init?(wireValue: String) {
+        let value = wireValue.lowercased()
+        self.init(rawValue: value == "none" ? "off" : value)
     }
 
-    var anthropicEffortValue: String {
-        switch self {
-        case .minimal, .low: return "low"
-        case .medium:        return "medium"
-        case .high:          return "high"
-        case .xhigh:         return "xhigh"
-        }
+    var wireValue: String {
+        self == .off ? "none" : rawValue
+    }
+
+    // A level list in wire order, without `off`, with unknown and repeated values dropped.
+    static func levels(fromWire values: [String]) -> [ReasoningEffort] {
+        var seen: Set<ReasoningEffort> = []
+        return values.compactMap(ReasoningEffort.init(wireValue:))
+            .filter { $0 != .off && seen.insert($0).inserted }
+            .sorted { $0.rank < $1.rank }
+    }
+
+    var rank: Int {
+        Self.allCases.firstIndex(of: self) ?? 0
     }
 
     var anthropicBudgetTokens: Int {
         switch self {
-        case .minimal: return 1_024
-        case .low:     return 2_048
-        case .medium:  return 8_192
-        case .high:    return 16_384
-        case .xhigh:   return 32_768
+        case .off, .minimal: return 1_024
+        case .low:           return 2_048
+        case .medium:        return 8_192
+        case .high:          return 16_384
+        case .xhigh:         return 32_768
+        case .max:           return 65_536
         }
     }
 
-    var autoScaledMaxOutputTokens: Int {
+    var autoScaledMaxOutputTokens: Int? {
         switch self {
+        case .off:     return nil
         case .minimal: return 4_096
         case .low:     return 8_192
         case .medium:  return 16_384
         case .high:    return 32_768
         case .xhigh:   return 65_536
+        case .max:     return 128_000
         }
     }
 }

@@ -24,8 +24,11 @@ extension DatabaseConnection {
         }
         set {
             let kept = newValue.filter { !$0.trimmedPattern.isEmpty }
+            // Stable key order, so the same rules always store the same text and the editor's merge sees no change.
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
             guard !kept.isEmpty,
-                  let data = try? JSONEncoder().encode(kept),
+                  let data = try? encoder.encode(kept),
                   let json = String(data: data, encoding: .utf8) else {
                 additionalFields.removeValue(forKey: Self.maskingRulesKey)
                 return

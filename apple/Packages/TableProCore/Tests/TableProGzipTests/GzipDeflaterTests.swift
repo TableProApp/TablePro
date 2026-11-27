@@ -1,0 +1,186 @@
+import Foundation
+import TableProGzip
+import TableProWireIO
+import Testing
+import zlib
+
+private enum DeflaterFixture {
+    static func directory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    static func randomBytes(_ count: Int) -> Data {
+        var generator = SystemRandomNumberGenerator()
+        return Data((0..<count).map { _ in UInt8.random(in: 0...255, using: &generator) })
+    }
+
+    static func dumpText(lines: Int) -> Data {
+        Data((0..<lines).map { "INSERT INTO t VALUES (\($0), 'row \($0)');\n" }.joined().utf8)
+    }
+
+    static let gzipPath = "/usr/bin/gzip"
+
+    static func gunzip(_ source: URL, to destination: URL) throws -> Int32 {
+        FileManager.default.createFile(atPath: destination.path(percentEncoded: false), contents: nil)
+        let output = try FileHandle(forWritingTo: destination)
+        defer { try? output.close() }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: gzipPath)
+        process.arguments = ["-dc", source.path(percentEncoded: false)]
+        // Apple's gzip reads extra options from GZIP.
+        process.environment = [:]
+        process.standardOutput = output
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+}
+
+@Test("Compressed data inflates back to itself", arguments: [0, 1, 4_096, 3 << 20])
+func deflatedDataRoundTrips(count: Int) throws {
+    let input = DeflaterFixture.dumpText(lines: count / 40 + 1).prefix(count)
+    let packed = try GzipDeflater.compress(Data(input))
+    #expect(packed.prefix(2) == Data([0x1F, 0x8B]))
+    #expect(try GzipInflater.decompress(packed, budget: .init(limit: .max, ratioLimit: .max, grace: .max)) == Data(input))
+}
+
+@Test("Bytes that do not compress still round trip")
+func incompressibleBytesRoundTrip() throws {
+    let input = DeflaterFixture.randomBytes(1 << 20)
+    let packed = try GzipDeflater.compress(input)
+    #expect(try GzipInflater.decompress(packed) == input)
+}
+
+@Test("A compressed file larger than one read chunk inflates back to its source")
+func compressedFileRoundTrips() throws {
+    let directory = try DeflaterFixture.directory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appendingPathComponent("dump.sql")
+    let input = DeflaterFixture.dumpText(lines: 60_000) + DeflaterFixture.randomBytes(300_000)
+    #expect(input.count > 1 << 20)
+    try input.write(to: source)
+    let destination = directory.appendingPathComponent("dump.sql.gz")
+
+    var reported: [(Int64, Int64)] = []
+    try GzipFile.compress(source: source, to: destination, isCancelled: { false }) { reported.append(($0, $1)) }
+
+    #expect(try GzipInflater.decompress(Data(contentsOf: destination)) == input)
+    #expect(reported.first.map { $0.0 == 0 } == true)
+    #expect(reported.last.map { $0.0 == Int64(input.count) && $0.1 == Int64(input.count) } == true)
+}
+
+@Test(
+    "gzip -d reads what the deflater writes",
+    .enabled(if: FileManager.default.isExecutableFile(atPath: DeflaterFixture.gzipPath)),
+    arguments: [0, 5_000, 2 << 20]
+)
+func systemGzipReadsTheOutput(count: Int) throws {
+    let directory = try DeflaterFixture.directory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appendingPathComponent("dump.sql")
+    let input = Data((DeflaterFixture.dumpText(lines: count / 40 + 1) + DeflaterFixture.randomBytes(count / 4)).prefix(count))
+    try input.write(to: source)
+    let packed = directory.appendingPathComponent("dump.sql.gz")
+    try GzipFile.compress(source: source, to: packed, isCancelled: { false })
+    let unpacked = directory.appendingPathComponent("unpacked.sql")
+
+    #expect(try DeflaterFixture.gunzip(packed, to: unpacked) == 0)
+    #expect(try Data(contentsOf: unpacked) == input)
+}
+
+@Test("A stop partway through a file throws and leaves nothing at the destination")
+func cancellationLeavesNoPartialFile() throws {
+    let directory = try DeflaterFixture.directory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appendingPathComponent("dump.sql")
+    try DeflaterFixture.randomBytes(3 << 20).write(to: source)
+    let destination = directory.appendingPathComponent("dump.sql.gz")
+
+    var checks = 0
+    #expect(throws: CancellationError.self) {
+        try GzipFile.compress(source: source, to: destination, isCancelled: {
+            checks += 1
+            return checks > 2
+        })
+    }
+    #expect(checks == 3)
+    #expect(!FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)))
+}
+
+@Test("A stop before the trailer is written throws rather than leaving a cut stream")
+func cancellationAfterTheLastChunkThrows() throws {
+    let directory = try DeflaterFixture.directory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appendingPathComponent("dump.sql")
+    try DeflaterFixture.dumpText(lines: 10).write(to: source)
+    let destination = directory.appendingPathComponent("dump.sql.gz")
+
+    var checks = 0
+    #expect(throws: CancellationError.self) {
+        try GzipFile.compress(source: source, to: destination, isCancelled: {
+            checks += 1
+            return checks > 1
+        })
+    }
+    #expect(!FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)))
+}
+
+// zlib's raw inflate, the reader a ZIP entry of method 8 gets.
+private func rawInflate(_ packed: Data, expectedCount: Int) throws -> Data {
+    var stream = z_stream()
+    guard inflateInit2_(&stream, -MAX_WBITS, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
+        throw GzipError.compressionFailed
+    }
+    defer { inflateEnd(&stream) }
+    var output = Data(count: max(expectedCount, 1))
+    let status = packed.withUnsafeBytes { input in
+        output.withUnsafeMutableBytes { out in
+            stream.next_in = UnsafeMutablePointer(mutating: input.bindMemory(to: UInt8.self).baseAddress)
+            stream.avail_in = uInt(input.count)
+            stream.next_out = out.bindMemory(to: UInt8.self).baseAddress
+            stream.avail_out = uInt(out.count)
+            return inflate(&stream, Z_FINISH)
+        }
+    }
+    #expect(status == Z_STREAM_END)
+    return output.prefix(Int(stream.total_out))
+}
+
+@Test("A raw stream has no gzip header and inflates back as a bare deflate stream", arguments: [0, 1, 4_096, 3 << 20])
+func rawDeflateRoundTrips(count: Int) throws {
+    let input = Data(DeflaterFixture.dumpText(lines: count / 40 + 1).prefix(count))
+    for level in [GzipDeflater.Level.standard, .fastest] {
+        var packed = Data()
+        let deflater = try GzipDeflater(container: .raw, level: level)
+        let sink: (UnsafeRawBufferPointer) throws -> Void = { packed.append($0.assumingMemoryBound(to: UInt8.self)) }
+        try input.withUnsafeBytes { try deflater.deflate($0, into: sink) }
+        try deflater.finish(into: sink)
+        #expect(packed.prefix(2) != Data([0x1F, 0x8B]))
+        #expect(try rawInflate(packed, expectedCount: input.count) == input)
+    }
+}
+
+@Test("A sync flush writes out every byte taken so far, and the stream still finishes whole")
+func syncFlushWritesEverythingTaken() throws {
+    let first = DeflaterFixture.dumpText(lines: 20_000)
+    let second = DeflaterFixture.dumpText(lines: 500)
+    let deflater = try GzipDeflater()
+    var output = Data()
+    let sink: (UnsafeRawBufferPointer) throws -> Void = { output.append($0.assumingMemoryBound(to: UInt8.self)) }
+    try first.withUnsafeBytes { try deflater.deflate($0, into: sink) }
+    try deflater.flush(into: sink)
+    let flushed = output
+
+    var inflatedPrefix = Data()
+    let inflater = try GzipInflater(budget: .init(limit: .max, ratioLimit: .max, grace: .max))
+    try flushed.withUnsafeBytes { raw in
+        try inflater.inflate(raw) { inflatedPrefix.append($0.assumingMemoryBound(to: UInt8.self)) }
+    }
+    #expect(inflatedPrefix == first)
+
+    try second.withUnsafeBytes { try deflater.deflate($0, into: sink) }
+    try deflater.finish(into: sink)
+    #expect(try GzipInflater.decompress(output, budget: .init(limit: .max, ratioLimit: .max, grace: .max)) == first + second)
+}

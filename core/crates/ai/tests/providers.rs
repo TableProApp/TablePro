@@ -21,8 +21,8 @@ use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use secrecy::SecretString;
 use tablepro_ai::{
-    AiClient, AiError, ChatMessage, ChatRequest, Endpoint, ReplyEnd, ReplyEvent, StopReason, Usage, collect_reply,
-    list_models, stream_reply,
+    AiClient, AiError, Catalog, ChatMessage, ChatRequest, Endpoint, ModelCatalog, ModelInfo, ReplyEnd, ReplyEvent,
+    StopReason, Usage, collect_reply, list_models, stream_reply,
 };
 use tablepro_core::AiProvider;
 use tokio::net::TcpListener;
@@ -460,30 +460,123 @@ async fn no_model_is_refused_before_anything_is_sent() {
     assert!(server.seen().is_empty());
 }
 
+fn ids(models: &[ModelInfo]) -> Vec<&str> {
+    models.iter().map(|model| model.id.as_str()).collect()
+}
+
+/// A catalog of its own, so a test does not follow the bundled one's data.
+fn catalog() -> ModelCatalog {
+    let catalog = Catalog::parse(
+        br#"{"schema":1,"generated":"2026-11-24T00:00:00Z","providers":{
+            "anthropic":{"default":"claude-opus-5-5","models":[
+                {"id":"claude-opus-5-5","name":"Opus from the catalog","apis":["messages"]},
+                {"id":"claude-sonnet-4-5","name":"Claude Sonnet 4.5","deprecated":true,"apis":["messages"]}]},
+            "openai":{"default":"gpt-5.5","models":[
+                {"id":"gpt-5.5","name":"GPT-5.5","released":"2026-04-23","apis":["responses","chat-completions"]},
+                {"id":"gpt-5.5-pro","name":"GPT-5.5 Pro","released":"2026-04-23","apis":["responses"]},
+                {"id":"gpt-4.1","name":"GPT-4.1","released":"2025-04-14","apis":["responses","chat-completions"]}]}}}"#,
+    )
+    .expect("the test catalog");
+    ModelCatalog::fixed(catalog)
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_models_are_listed_sorted() {
     let server = Server::start(Answer::Json(
-        r#"{"object":"list","data":[{"id":"qwen3"},{"id":"llama3.2:latest"},{"id":"qwen3"}]}"#.to_owned(),
+        r#"{"object":"list","data":[{"id":"qwen3","name":"Qwen 3"},{"id":"llama3.2:latest"},{"id":"qwen3"}]}"#
+            .to_owned(),
     ))
     .await;
     let endpoint = Endpoint::new(AiProvider::OpenAiCompatible, &server.base(), "", None).unwrap();
 
-    let models = list_models(&client(), &endpoint).await.unwrap();
+    let models = list_models(&client(), &endpoint, &catalog()).await.unwrap();
 
-    assert_eq!(models, ["llama3.2:latest", "qwen3"]);
+    assert_eq!(ids(&models), ["llama3.2:latest", "qwen3"]);
+    assert_eq!(models[1].name.as_deref(), Some("Qwen 3"));
+    assert!(models.iter().all(|model| !model.offline && !model.default));
     let seen = server.seen();
     assert_eq!(seen[0].method, "GET");
     assert_eq!(seen[0].path, "/v1/models");
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_closed_port_says_it_could_not_reach_the_host() {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
-    drop(listener);
-    let endpoint = Endpoint::new(AiProvider::OpenAiCompatible, &format!("http://{address}/v1"), "m", None).unwrap();
+async fn anthropics_list_keeps_its_order_and_names_and_marks_the_deprecated() {
+    let server = Server::start(Answer::Json(
+        r#"{"data":[
+            {"type":"model","id":"claude-sonnet-4-5","display_name":"Claude Sonnet 4.5","created_at":"2025-09-29T00:00:00Z","lifecycle":"deprecated"},
+            {"type":"model","id":"claude-mythos-5","display_name":"Claude Mythos 5","created_at":"2026-11-01T00:00:00Z","lifecycle":"active"},
+            {"type":"model","id":"claude-opus-5-5","display_name":"Claude Opus 5.5","created_at":"2026-10-20T00:00:00Z","lifecycle":"active"}
+        ],"has_more":false}"#
+            .to_owned(),
+    ))
+    .await;
+    let endpoint = Endpoint::new(
+        AiProvider::Anthropic,
+        &server.base(),
+        "",
+        Some(SecretString::from("sk-ant")),
+    )
+    .unwrap();
 
-    let models = list_models(&client(), &endpoint).await;
+    let models = list_models(&client(), &endpoint, &catalog()).await.unwrap();
+
+    assert_eq!(
+        ids(&models),
+        ["claude-opus-5-5", "claude-mythos-5", "claude-sonnet-4-5"]
+    );
+    assert_eq!(models[0].name.as_deref(), Some("Claude Opus 5.5"));
+    assert!(models[0].default);
+    assert!(models[2].deprecated);
+    assert_eq!(server.seen()[0].path, "/v1/models?limit=1000");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn openai_lists_only_chat_models_newest_first() {
+    let server = Server::start(Answer::Json(
+        r#"{"object":"list","data":[
+            {"id":"gpt-4.1","object":"model","created":1744588800,"owned_by":"system","shutdown_date":"2026-12-01"},
+            {"id":"whisper-1","object":"model","created":1677532384,"owned_by":"openai-internal"},
+            {"id":"gpt-5.5-pro","object":"model","created":1776902400,"owned_by":"system"},
+            {"id":"ft:gpt-5.5:acme::abc123","object":"model","created":1777000000,"owned_by":"acme"},
+            {"id":"gpt-5.5","object":"model","created":1776902400,"owned_by":"system"}
+        ]}"#
+        .to_owned(),
+    ))
+    .await;
+    let endpoint = Endpoint::new(
+        AiProvider::OpenAi,
+        &server.base(),
+        "",
+        Some(SecretString::from("sk-openai")),
+    )
+    .unwrap();
+
+    let models = list_models(&client(), &endpoint, &catalog()).await.unwrap();
+
+    assert_eq!(ids(&models), ["gpt-5.5", "ft:gpt-5.5:acme::abc123", "gpt-4.1"]);
+    assert!(models[0].default);
+    assert_eq!(models[1].name.as_deref(), Some("GPT-5.5"));
+    assert!(models[2].deprecated, "a shutdown date was announced");
+}
+
+#[test]
+fn a_failed_list_leaves_the_catalogs_models_offline() {
+    let offline = catalog().offline_models(AiProvider::OpenAi);
+
+    assert_eq!(ids(&offline), ["gpt-5.5", "gpt-4.1"]);
+    assert!(offline.iter().all(|model| model.offline));
+    assert_eq!(
+        catalog().default_model(AiProvider::Anthropic).as_deref(),
+        Some("claude-opus-5-5")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_closed_port_says_it_could_not_reach_the_host() {
+    // Port 1 is below every system's ephemeral range, so no test's listener takes it and the request is refused.
+    let endpoint = Endpoint::new(AiProvider::OpenAiCompatible, "http://127.0.0.1:1/v1", "m", None).unwrap();
+
+    let models = list_models(&client(), &endpoint, &catalog()).await;
 
     assert!(
         matches!(models, Err(AiError::Unreachable { ref host, .. }) if host == "127.0.0.1"),

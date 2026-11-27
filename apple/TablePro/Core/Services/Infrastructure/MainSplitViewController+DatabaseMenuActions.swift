@@ -14,7 +14,6 @@ extension MainSplitViewController {
 
     // The window owns switching because a disconnected workspace has no command actions.
     func openConnectionSwitcher() {
-        view.window?.makeFirstResponder(nil)
         switcherPresenter.present(
             from: view.window,
             anchoredTo: MainWindowToolbar.connection,
@@ -50,7 +49,6 @@ extension MainSplitViewController {
         else { return }
         let sourceConnectionId = source.connectionId
         let title = tab.title
-        view.window?.makeFirstResponder(nil)
         switcherPresenter.present(
             from: view.window,
             anchoredTo: MainWindowToolbar.connection,
@@ -176,7 +174,7 @@ extension MainSplitViewController {
             isManualCommitOn: DatabaseManager.shared.commitMode(for: coordinator.connectionId) == .manual,
             canHoldTransactions: reportsState,
             holdsTransaction: hold != nil,
-            canCommit: hold.map { ConnectionTransactionActions.offersCommit($0, safeModeLevel: session.safeModeLevel) } ?? false
+            canCommit: hold.map { ConnectionTransactionActions.offersCommit($0) } ?? false
         )
     }
 

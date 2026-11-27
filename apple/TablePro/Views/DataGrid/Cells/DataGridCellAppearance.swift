@@ -18,6 +18,8 @@ struct DataGridCellAppearance: Equatable {
     let accessoryColor: NSColor?
     let checkboxMark: DataGridCheckboxMark?
     let specialCharacterColor: NSColor?
+    // NULL, Empty and the other stand-ins stay one line in a grid that wraps.
+    let isPlaceholder: Bool
 
     static func resolve(
         kind: DataGridCellKind,
@@ -102,7 +104,8 @@ struct DataGridCellAppearance: Equatable {
             accessoryRole: accessoryRole,
             accessoryColor: accessoryRole?.color(selectionText: palette.selectionText),
             checkboxMark: kind == .checkbox ? checkboxMark : nil,
-            specialCharacterColor: specialCharacterColor
+            specialCharacterColor: specialCharacterColor,
+            isPlaceholder: content.placeholder != nil
         )
     }
 

@@ -23,21 +23,21 @@ extension CassandraPluginDriver {
         return definition
     }
 
-    /// False until the whole-schema scope is checked against a live server. This driver has no
-    /// per-table trigger read, so the protocol default answers with nothing and a comparison has
-    /// never listed its triggers; opting in here would change what is compared rather than only
-    /// how fast it is read.
+    // Unchecked on a live server: with no per-table read, opting in would change what Compare lists, not its speed.
     var providesBulkTriggerFetch: Bool { false }
 
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await cassandraTriggerList(keyspace: resolveKeyspace(schema), table: nil)
     }
 
-    /// A Cassandra trigger is a pointer to a Java class the server loads, so there is no body to
-    /// show. The class name is presented as what it is rather than as an empty source pane.
+    // A Cassandra trigger points at a Java class the server loads, so its DDL names the class instead of a body.
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String {
         if let definition = trigger.definition, !definition.isEmpty { return definition }
         throw PluginObjectSourceError.unsupported(trigger.name)
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        CassandraObjectQueries.dropTriggerStatement(name: name, keyspace: resolveKeyspace(schema), table: table)
     }
 
     private func fetchCassandraFunctions(keyspace: String) async throws -> [PluginRoutineInfo] {

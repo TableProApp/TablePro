@@ -106,6 +106,20 @@ extension DamengPluginDriver {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await PluginNameSpellings.readEachTable(try await fetchTables(schema: schema).map(\.name)) {
+            try await fetchForeignKeys(table: $0, schema: schema)
+        }
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let owner = effectiveSchema(schema)
         let result = try await executeParameterized(
             query: """
@@ -140,6 +154,9 @@ extension DamengPluginDriver {
                 """,
             parameters: [.text(owner)]
         )
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
+        }
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard let table = row[safe: 0]?.asText,
@@ -303,6 +320,15 @@ extension DamengPluginDriver {
             tableCount: result.rows.first?.first?.asText.flatMap(Int.init),
             isSystemDatabase: DamengSystemSchemas.listed.contains(database)
         )
+    }
+
+    // NUM_ROWS is the last statistics gather, and NULL on a table that never had one.
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        let result = try await executeParameterized(
+            query: "SELECT NUM_ROWS FROM SYS.ALL_TABLES WHERE OWNER = ? AND TABLE_NAME = ?",
+            parameters: [.text(effectiveSchema(schema)), .text(table)]
+        )
+        return result.rows.first?[safe: 0]?.asText.flatMap(Int.init)
     }
 
     /// `ALL_TAB_COMMENTS.OWNER` really is the schema, unlike `ALL_COL_COMMENTS.OWNER`, which is

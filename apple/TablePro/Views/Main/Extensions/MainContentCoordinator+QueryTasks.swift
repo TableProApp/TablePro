@@ -84,6 +84,44 @@ extension MainContentCoordinator {
         cancelQueryTask(for: tabId, delivery: .background)
     }
 
+    // The reads opening a table starts by itself: a moved tab drops them and the window it lands in reads the table again.
+    private func holdsOnlyAutomaticTableReads(_ tab: QueryTab) -> Bool {
+        guard tab.tabType == .table, !tab.pagination.isCountingExact, !tab.pagination.isLoadingMore else { return false }
+        guard hasLoadedTableRows(tab) else { return true }
+        return !tabExecution.isBusy(tab.id) && !tab.pagination.isLoading
+    }
+
+    // Not `isExecuting`: Fetch All and an exact row count run on the tab without claiming it.
+    internal func holdsWorkThatCannotMove(_ tab: QueryTab) -> Bool {
+        guard tabExecution.isBusy(tab.id) || tab.pagination.isBusy else { return false }
+        return !holdsOnlyAutomaticTableReads(tab)
+    }
+
+    // Answers whether the rows had landed, which leaves only their keys and row count for the destination to fetch.
+    internal func abandonAutomaticTableReads(of tabId: UUID) -> Bool {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }),
+              tabExecution.isBusy(tabId) || tab.pagination.isBusy,
+              holdsOnlyAutomaticTableReads(tab)
+        else { return false }
+        let rowsLanded = hasLoadedTableRows(tab)
+        supersedeExecution(for: tabId)
+        tabManager.mutate(tabId: tabId) { $0.pagination.isLoading = false }
+        return rowsLanded
+    }
+
+    // Not a reload: reading the rows again would drop what the user has selected or edited since they landed.
+    internal func resumeTableMetadataAndCount(of tab: QueryTab) {
+        guard let tableName = tab.tableContext.tableName, let scope = scope(for: tab) else { return }
+        let isView = tab.tableContext.knowsView(named: tableName)
+        tabManager.mutate(tabId: tab.id) { $0.pagination.isCountPending = true }
+        launchPhase2Work(
+            tableName: tableName,
+            tabId: tab.id,
+            connectionType: connection.type,
+            schemaTask: startSchemaFetch(tableName, uncached: true, isView: isView, scope: scope)
+        )
+    }
+
     /// What Stop and `Cmd+.` do, on the tab the user is looking at and on nothing else.
     ///
     /// The driver cancel goes out inline, because the user is waiting on it, and the claim ends in

@@ -69,10 +69,11 @@ extension DatabaseManager {
     internal func noteSessionStatements(_ statements: [String], ranOn driver: DatabaseDriver, scope: DatabaseScope) async {
         guard !statements.isEmpty,
               let session = activeSessions[scope.connectionId],
-              let dialect = SQLSessionDialect(TransactionEngineFamily.of(session.connection.type)),
               let key = sessionKey(for: scope),
               isLiveSessionDriver(driver, for: key)
         else { return }
+        noteAuthoredStatements(ranOn: driver, for: scope.connectionId)
+        guard let dialect = SQLSessionDialect(TransactionEngineFamily.of(session.connection.type)) else { return }
         let databaseType = session.connection.type
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
         // A reconnect runs the startup commands again, so what they set up is never lost.
@@ -115,6 +116,15 @@ extension DatabaseManager {
                 localized: "The connection to %1$@ was lost while it waited, and the server rolled back its open transaction. The new session does not have what the old one set up either: %2$@. Set it up again, then run the statements."
             ),
             database, kinds
+        )
+    }
+
+    static func temporaryTableLostMessage(database: String) -> String {
+        String(
+            format: String(
+                localized: "The connection to %@ was lost while it waited and has been reconnected. This temporary table went with the old session. Create it again in a query tab."
+            ),
+            database
         )
     }
 }

@@ -4,38 +4,22 @@
 //
 
 import Foundation
-import os
 
 final class CodableListPreferenceStore<Element: Codable & Identifiable>: @unchecked Sendable {
-    private static var logger: Logger {
-        Logger(subsystem: "com.TablePro", category: "CodableListPreferenceStore")
-    }
-
-    private let key: DefaultsKey<[Element]>
+    private let key: JSONDefaultsKey<[Element]>
     private let store: KeyValueStore
 
-    init(key: DefaultsKey<[Element]>, store: KeyValueStore) {
+    init(key: JSONDefaultsKey<[Element]>, store: KeyValueStore) {
         self.key = key
         self.store = store
     }
 
     func load() -> [Element] {
-        guard let data = store.dataValue(forKey: key.name) else { return [] }
-        do {
-            return try JSONDecoder().decode([Element].self, from: data)
-        } catch {
-            Self.logger.error("Failed to decode \(self.key.name, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            return []
-        }
+        store.read(key).value ?? []
     }
 
     func save(_ elements: [Element]) {
-        do {
-            let data = try JSONEncoder().encode(elements)
-            store.setDataValue(data, forKey: key.name)
-        } catch {
-            Self.logger.error("Failed to encode \(self.key.name, privacy: .public): \(error.publicLogShape, privacy: .public)")
-        }
+        try? store.write(elements, to: key)
     }
 
     func add(_ element: Element) {

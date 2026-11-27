@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::services::connection_search::ConnectionSearch;
 use crate::services::file_location;
 use crate::services::library_outline::{DropSpot, LibraryItem, LibraryOutline, LibrarySection};
-use crate::services::saved_connection_list::{SavedConnectionList, StateObserverId};
+use crate::services::saved_connection_list::{SavedConnectionList, ScopeObserverId, StateObserverId};
 use crate::services::saved_connection_object::SavedConnectionObject;
 use crate::ui::picker::{
     LibraryNode, LibraryRow, NodeLook, Seen, bind_row, connect_action, connection_look, group_look, library_item,
@@ -28,6 +28,7 @@ const LIST: &str = "list";
 const FOUND: &str = "found";
 const NO_RESULTS: &str = "no-results";
 const EMPTY: &str = "empty";
+const EMPTY_PROJECT: &str = "empty-project";
 
 type Key = (LibrarySection, LibraryItem);
 
@@ -48,6 +49,12 @@ mod imp {
         pub home: Cell<bool>,
         #[template_child]
         pub found_view: TemplateChild<gtk::ListView>,
+        #[template_child]
+        pub no_results_page: TemplateChild<adw::StatusPage>,
+        #[template_child]
+        pub search_all_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub empty_project_page: TemplateChild<adw::StatusPage>,
         pub(super) parts: OnceCell<super::Parts>,
     }
 
@@ -121,8 +128,11 @@ pub(super) struct Parts {
     known: RefCell<HashSet<Uuid>>,
     search: RefCell<ConnectionSearch>,
     focus: Cell<Option<Uuid>>,
+    // Connections an import wrote, whose groups open once their rows arrive.
+    reveal: RefCell<Vec<Uuid>>,
     menu: gtk::PopoverMenu,
     state_changed: RefCell<Option<StateObserverId>>,
+    scope_changed: RefCell<Option<ScopeObserverId>>,
 }
 
 impl Parts {
@@ -165,8 +175,10 @@ impl Parts {
             known: RefCell::new(HashSet::new()),
             search: RefCell::default(),
             focus: Cell::new(None),
+            reveal: RefCell::new(Vec::new()),
             menu,
             state_changed: RefCell::new(None),
+            scope_changed: RefCell::new(None),
         }
     }
 
@@ -264,8 +276,9 @@ impl<'a> Pass<'a> {
     }
 
     // A found row is drawn and acted on as a Recent one: no drag, no drop and no Move Up or Down.
+    // Only the active project's connections are searched.
     fn found(&self) -> Vec<LibraryNode> {
-        let connections = self.parts.list.connections();
+        let connections = self.parts.list.listed();
         let present: HashSet<Uuid> = connections.iter().map(|saved| saved.id).collect();
         let mut held = self.parts.found_nodes.borrow_mut();
         held.retain(|id, _| present.contains(id));
@@ -330,8 +343,16 @@ impl WelcomeView {
                 view.rebuild();
             }
         });
+        // A switch publishes no list, so the scope is followed apart from it.
+        let weak = view.downgrade();
+        let scope = list.connect_scope_changed(move || {
+            if let Some(view) = weak.upgrade() {
+                view.rebuild();
+            }
+        });
         if let Some(parts) = view.imp().parts.get() {
             parts.state_changed.replace(Some(observer));
+            parts.scope_changed.replace(Some(scope));
         }
         view.rebuild();
         view
@@ -344,6 +365,9 @@ impl WelcomeView {
         };
         if let Some(observer) = parts.state_changed.take() {
             parts.list.disconnect_state_changed(observer);
+        }
+        if let Some(observer) = parts.scope_changed.take() {
+            parts.list.disconnect_scope_changed(observer);
         }
         if parts.menu.parent().is_some() {
             parts.menu.popdown();
@@ -406,6 +430,40 @@ impl WelcomeView {
         };
         parts.focus.set(Some(id));
         self.take_focus();
+    }
+
+    // The list selects one row, so several imported connections are shown in their open groups, the first focused.
+    pub(crate) fn focus_connections(&self, ids: &[Uuid]) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        // A search would hide them, and its flat list has no groups to open.
+        self.set_search("");
+        parts.reveal.replace(ids.to_vec());
+        self.reveal_imported();
+        if let Some(first) = ids.first() {
+            self.focus_connection(*first);
+        }
+    }
+
+    fn reveal_imported(&self) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        let waiting = parts.reveal.take();
+        let mut still = Vec::new();
+        for id in waiting {
+            let listed = parts
+                .nodes
+                .borrow()
+                .contains_key(&(LibrarySection::Tree, LibraryItem::Connection(id)));
+            if listed {
+                self.reveal(id);
+            } else {
+                still.push(id);
+            }
+        }
+        parts.reveal.replace(still);
     }
 
     fn attach(&self) {
@@ -588,6 +646,7 @@ impl WelcomeView {
         parts.found_filter.changed(gtk::FilterChange::Different);
         self.refresh_page();
         self.restore_focus(held);
+        self.reveal_imported();
         self.take_focus();
         if at_top {
             self.go_home();
@@ -653,7 +712,15 @@ impl WelcomeView {
         };
         // A list still loading, or one that cannot be read, shows no promise to add to it; the banner says why.
         let empty = matches!(parts.list.state(), ConnectionListState::Ready(_)) && parts.list.outline().is_empty();
-        let page = if empty {
+        let project = parts.list.active_project();
+        let page = if empty && let Some(project) = &project {
+            // Not the first-run page: the library has connections, this project has none.
+            imp.empty_project_page.set_title(&crate::i18n::gettext_f(
+                "No Connections in {project}",
+                &[("project", project.name.as_str())],
+            ));
+            EMPTY_PROJECT
+        } else if empty {
             EMPTY
         } else if !parts.searching() {
             LIST
@@ -662,6 +729,16 @@ impl WelcomeView {
         } else {
             FOUND
         };
+        if page == NO_RESULTS {
+            let title = match &project {
+                Some(project) => {
+                    crate::i18n::gettext_f("No Results in {project}", &[("project", project.name.as_str())])
+                }
+                None => crate::i18n::gettext("No Results Found"),
+            };
+            imp.no_results_page.set_title(&title);
+            imp.search_all_button.set_visible(project.is_some());
+        }
         if imp.stack.visible_child_name().as_deref() != Some(page) {
             imp.stack.set_visible_child_name(page);
         }
@@ -736,6 +813,8 @@ impl WelcomeView {
         };
         parts.focus.set(None);
         list_view.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+        // GtkListBase moves the keyboard to the row only from inside the list, and the search or a menu may hold it.
+        list_view.grab_focus();
     }
 
     // Open the groups the connection `id` sits in, outermost first.
@@ -986,6 +1065,16 @@ impl WelcomeView {
         self.imp().stack.visible_child_name().map(|name| name.to_string())
     }
 
+    // The status page on screen: its title, and its button when it shows one.
+    pub(crate) fn status(&self) -> Option<(String, Option<gtk::Button>)> {
+        let page = self.imp().stack.visible_child().and_downcast::<adw::StatusPage>()?;
+        let button = page
+            .child()
+            .and_downcast::<gtk::Button>()
+            .filter(|button| button.is_visible());
+        Some((page.title().to_string(), button))
+    }
+
     pub(crate) fn node(&self, section: LibrarySection, title: &str) -> Option<LibraryNode> {
         let parts = self.imp().parts.get()?;
         let nodes = parts.nodes.borrow();
@@ -993,6 +1082,10 @@ impl WelcomeView {
             .iter()
             .find(|((held, _), node)| *held == section && node.title() == title)
             .map(|(_, node)| node.clone())
+    }
+
+    pub(crate) fn focused_title(&self) -> Option<String> {
+        self.focused_node().map(|(node, _)| node.title())
     }
 
     pub(crate) fn found_node(&self, title: &str) -> Option<LibraryNode> {

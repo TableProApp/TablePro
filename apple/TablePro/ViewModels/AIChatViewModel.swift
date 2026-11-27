@@ -30,7 +30,7 @@ final class AIChatViewModel: ObservableObject {
     @Published var showAIAccessConfirmation = false
     @Published var selectedProviderId: UUID?
     @Published var selectedModel: String?
-    @Published var availableModels: [UUID: [String]] = [:]
+    @Published var availableModels: [UUID: [AIModelInfo]] = [:]
     @Published private(set) var providerSettingsRevision = 0
     private var modelListSources: [UUID: AIModelListSource] = [:]
     private var staleModelLists: Set<UUID> = []
@@ -49,8 +49,9 @@ final class AIChatViewModel: ObservableObject {
         return services.schemaService.tables(for: id)
     }
 
-    @Published var columnsByTable: [String: [ColumnInfo]] = [:]
-    @Published var foreignKeysByTable: [String: [ForeignKeyInfo]] = [:]
+    // Keyed by name bytes: a schema can hold two tables whose names Swift's String equates.
+    @Published var columnsByTable: [CatalogName: [ColumnInfo]] = [:]
+    @Published var foreignKeysByTable: [CatalogName: [ForeignKeyInfo]] = [:]
 
     @Published var currentQuery: String?
     @Published var queryResults: String?
@@ -109,10 +110,15 @@ final class AIChatViewModel: ObservableObject {
     var onDeviceTurnID: UUID?
     @Published var onDeviceRefusal: OnDeviceRefusal?
     var queryContextMetadata: any ScopedMetadataProviding
-    var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
+    var inFlightColumnFetches: [CatalogName: Task<Void, Never>] = [:]
     var inFlightSchemaLoad: Task<Void, Never>?
     var relevantTableNames: [String] = []
     var schemaRanker: @Sendable (AISchemaRankingInput) -> [String] = AISchemaContext.relevantTableNames(for:)
+    var customSlashCommandNamed: @MainActor (String) -> CustomSlashCommand? = {
+        CustomSlashCommandStorage.shared.command(named: $0)
+    }
+    // A custom command picked from the menu keeps its identity, so Send runs it even when a built-in shares its name.
+    var composedCustomCommand: CustomSlashCommand?
     @Published var tableMentions = TableMentionIndex.empty
     var tableMentionSource: [TableInfo] = []
     var tableMentionBuild: Task<Void, Never>?
@@ -123,7 +129,8 @@ final class AIChatViewModel: ObservableObject {
     // A release bumps it, so a load still reading from disk lands in nothing.
     var transcriptEpoch = 0
     var bulkColumnReadTableCount: Int?
-    var schemaCacheScope: String?
+    // Compared by bytes, so a switch between two schemas whose names Swift's String equates drops the cache.
+    var schemaCacheScope: CatalogName?
     // A custom command's message carries its rendered schema, so its tables are ranked by the user's words.
     var schemaQuestionOverride: (turnID: UUID, text: String)?
     nonisolated(unsafe) var streamingTask: Task<Void, Never>?
@@ -192,8 +199,30 @@ final class AIChatViewModel: ObservableObject {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !attachedImages.isEmpty else { return }
 
+        if let composed = composedCustomCommand,
+           let invocation = SlashCommand.invocation(in: text),
+           invocation.name.caseInsensitiveCompare(composed.name) == .orderedSame,
+           composed.isValid {
+            guard !isStreaming else { return }
+            composedCustomCommand = nil
+            inputText = ""
+            Task { await runCustomSlashCommand(composed, body: invocation.body) }
+            return
+        }
+        composedCustomCommand = nil
+
         if let parsed = SlashCommand.parse(text) {
             runSlashCommand(parsed.command, body: parsed.body)
+            return
+        }
+
+        if let invocation = SlashCommand.invocation(in: text),
+           let command = customSlashCommandNamed(invocation.name),
+           command.isValid {
+            guard !isStreaming else { return }
+            // Cleared now, so a second Return before the task runs finds nothing to send.
+            inputText = ""
+            Task { await runCustomSlashCommand(command, body: invocation.body) }
             return
         }
 
@@ -242,7 +271,9 @@ final class AIChatViewModel: ObservableObject {
     // A router lists text-only models beside vision ones, so the provider's own list narrows its type.
     nonisolated static func acceptsImages(config: AIProviderConfig, model: String, catalog: AIModelCatalog) -> Bool {
         guard let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) else { return false }
-        return descriptor.supportsImages(fetched: catalog.fetchedInfo(providerID: config.id, modelID: model))
+        return descriptor.supportsImages(
+            fetched: catalog.info(providerID: config.id, source: AIModelSource(config: config), modelID: model)
+        )
     }
 
     func sendWithContext(prompt: String, schemaQuestion: String? = nil) {
@@ -470,8 +501,9 @@ final class AIChatViewModel: ObservableObject {
     }
 
     private enum ModelListOutcome: Sendable {
-        case listed([String])
-        case failed
+        case listed([AIModelInfo])
+        // The catalog's models for the provider, shown until its own list answers.
+        case failed(offline: [AIModelInfo])
         case notReady
     }
 
@@ -510,17 +542,22 @@ final class AIChatViewModel: ObservableObject {
                 let catalogRevision = entry.catalogRevision
                 group.addTask {
                     let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
-                    do {
-                        let models = try await transport.fetchAvailableModels()
-                        AIModelCatalog.shared.store(providerID: config.id, models: models, ifUnchangedSince: catalogRevision)
-                        return (config.id, .listed(models.map(\.id)))
-                    } catch is CancellationError {
-                        return (config.id, .notReady)
-                    } catch CopilotError.serverNotRunning {
-                        return (config.id, .notReady)
-                    } catch {
-                        return (config.id, .failed)
+                    let result = await AIModelCatalog.list(for: config, using: transport)
+                    guard let error = result.error else {
+                        AIModelCatalog.shared.store(
+                            providerID: config.id,
+                            models: result.models,
+                            ifUnchangedSince: catalogRevision
+                        )
+                        return (config.id, .listed(result.models))
                     }
+                    if error is CancellationError {
+                        return (config.id, .notReady)
+                    }
+                    if case .serverNotRunning? = error as? CopilotError {
+                        return (config.id, .notReady)
+                    }
+                    return (config.id, .failed(offline: result.models))
                 }
             }
 
@@ -544,10 +581,13 @@ final class AIChatViewModel: ObservableObject {
             case .listed(let models) where !models.isEmpty:
                 availableModels[id] = models
                 modelListSources[id] = entry.source
-            case .failed where modelListSources[id] == entry.source && availableModels[id]?.isEmpty == false:
+            case .failed where modelListSources[id] == entry.source && availableModels[id]?.contains(where: { !$0.isOffline }) == true:
                 break
-            case .listed, .failed:
-                // Recorded empty, so a dead server is asked again only after a change or a save.
+            case .failed(let offline):
+                // Recorded, so a dead server is asked again only after a change or a save.
+                availableModels[id] = offline
+                modelListSources[id] = entry.source
+            case .listed:
                 availableModels[id] = []
                 modelListSources[id] = entry.source
             }
@@ -582,11 +622,62 @@ final class AIChatViewModel: ObservableObject {
     }
 
     func trimMessagesIfNeeded() {
-        if messages.count > Self.maxMessageCount {
-            messages.removeFirst(messages.count - Self.maxMessageCount)
+        let kept = Self.trimmed(messages, limit: Self.maxMessageCount)
+        if kept.count != messages.count {
+            messages = kept
         }
-        while messages.first?.role == .assistant {
-            messages.removeFirst()
+    }
+
+    // Cuts only whole call/result pairs or whole earlier exchanges, oldest first: a result whose call was cut makes
+    // providers refuse the request, and one question can run hundreds of tool rounds, so the exchange being answered
+    // keeps its question and its last turn whatever its length.
+    static func trimmed(_ turns: [ChatTurn], limit: Int) -> [ChatTurn] {
+        var kept = turns
+        if let firstQuestion = kept.firstIndex(where: opensRound), firstQuestion > 0 {
+            kept.removeFirst(firstQuestion)
+        }
+        while kept.count > limit {
+            let questions = kept.indices.filter { opensRound(kept[$0]) }
+            if questions.count > 1 {
+                if let pair = oldestPair(in: kept, before: questions[1]) {
+                    kept.removeSubrange(pair...(pair + 1))
+                } else {
+                    kept.removeFirst(questions[1])
+                }
+                continue
+            }
+            // The last turn is the one being answered, so a pair always ends before it.
+            guard let pair = oldestPair(in: kept, before: kept.count - 1) else { break }
+            kept.removeSubrange(pair...(pair + 1))
+        }
+        return kept
+    }
+
+    private static func opensRound(_ turn: ChatTurn) -> Bool {
+        guard turn.role == .user else { return false }
+        return !turn.blocks.contains { block in
+            if case .toolResult = block.kind { return true }
+            return false
+        }
+    }
+
+    // An assistant turn that calls tools, then a user turn holding only results for those calls. Never the turn at 0.
+    private static func oldestPair(in turns: [ChatTurn], before end: Int) -> Int? {
+        guard end >= 3 else { return nil }
+        return (1..<(end - 1)).first { index in
+            let call = turns[index]
+            let answer = turns[index + 1]
+            guard call.role == .assistant, answer.role == .user else { return false }
+            let calls = Set(call.blocks.compactMap { block -> String? in
+                guard case .toolUse(let use) = block.kind else { return nil }
+                return use.id
+            })
+            let answered = answer.blocks.compactMap { block -> String? in
+                guard case .toolResult(let result) = block.kind else { return nil }
+                return result.toolUseId
+            }
+            return !calls.isEmpty && !answered.isEmpty && answered.count == answer.blocks.count
+                && Set(answered).isSubset(of: calls)
         }
     }
 }
@@ -603,5 +694,30 @@ struct AIModelListSource: Equatable, Sendable {
         type = config.type
         presetID = config.presetID
         endpoint = config.endpoint
+    }
+}
+
+// The chat panel's model menu for one provider.
+enum AIChatModelMenu {
+    // The saved and the picked model always appear, even when the provider's list no longer has them.
+    static func entries(listed: [AIModelInfo], saved: String, selected: String?) -> [AIModelInfo] {
+        var entries = listed
+        for id in [saved, selected ?? ""] where !id.isEmpty && !entries.contains(where: { $0.id == id }) {
+            entries.append(AIModelInfo(id: id))
+        }
+        return entries
+    }
+
+    // One pass per provider menu: a router lists hundreds of models.
+    static func titles(for models: [AIModelInfo]) -> [String: String] {
+        var titles = AIModelInfo.titles(for: models)
+        for model in models where model.isDeprecated {
+            titles[model.id] = String(format: String(localized: "%@ (deprecated)"), titles[model.id] ?? model.label)
+        }
+        return titles
+    }
+
+    static func label(for modelID: String, in listed: [AIModelInfo]) -> String {
+        listed.first { $0.id == modelID }?.label ?? modelID
     }
 }

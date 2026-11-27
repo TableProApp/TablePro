@@ -17,15 +17,18 @@ use tablepro_core::sql_syntax::script::unicode_spaces::blanked_spaces;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptDiagnostic, ScriptPlan, ScriptToken, ScriptTokenKind};
 use tablepro_core::statement::{BoundParam, Statement};
 use tablepro_core::value::Value;
-use tablepro_core::{DriverError, QueryResult, ResultEvent, RowBatch, RowLimit, Truncation, UnsupportedFeature};
+use tablepro_core::{
+    DriverError, QueryResult, ResultEvent, RowBatch, RowLimit, TransactionState, Truncation, UnsupportedFeature,
+};
 use tokio::sync::mpsc;
 
 use crate::decode::value_at;
 use crate::duck_type::DuckType;
 use crate::encode::bind_all;
 use crate::errors::map_error;
-use crate::instance::{Link, attach_unless_open};
+use crate::instance::{AttachTarget, Link, attach_unless_open};
 use crate::result_origin::{TracedTable, traced_table};
+use crate::transaction_state::transaction_state;
 
 /// What a run of statements did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -170,7 +173,8 @@ impl Events {
 }
 
 // Each statement goes to DuckDB alone, so each result set streams by itself. `traced` is the file's catalogue when the
-// session is outside a transaction: a lookup inside one could fail and abort it.
+// session is outside a transaction: a lookup inside one could fail and abort it. `session` is where the session's
+// transaction stands as the run starts.
 pub(crate) fn run_script(
     link: &Link,
     sql: &str,
@@ -178,8 +182,10 @@ pub(crate) fn run_script(
     events: &mut Events,
     halt: &dyn Fn() -> bool,
     mut traced: Option<&str>,
+    session: TransactionState,
 ) -> Result<StreamOutcome, DriverError> {
     let mut outcome = StreamOutcome::default();
+    let mut known = Some(session).filter(|state| *state != TransactionState::Unknown);
     for statement in split_statements(sql) {
         if halt() {
             outcome.halted = true;
@@ -194,39 +200,88 @@ pub(crate) fn run_script(
             outcome.halted = true;
             break;
         }
-        if traced.is_some() && controls_transaction(statement) {
+        let controls = controls_transaction(statement);
+        if controls {
             traced = None;
         }
-        match attach_path(statement) {
-            Some(path) => {
-                // DuckDB leaves a HIDDEN database out of what it lists, so
-                // no check could tell another window it is open.
-                if attach_hides(statement) {
-                    return Err(DriverError::Unsupported {
-                        feature: UnsupportedFeature::HiddenAttach,
-                    });
-                }
-                let targets = attach_targets(link, statement, path)?;
-                let ran = attach_unless_open(link, &targets, || {
-                    // A stop that came while the ATTACH waited its turn:
-                    // DuckDB clears an interrupt as a statement starts.
-                    if halt() {
-                        return Ok(false);
-                    }
-                    run_statement(link, statement, &[], limit, None, events, &mut outcome).map(|()| true)
-                })?;
-                if !ran {
-                    outcome.halted = true;
-                    break;
-                }
+        // DuckDB prepares through a statement that never writes, and a binding that does, as nextval() in a SET value
+        // or a table function's argument does, invalidates the database once that statement's own transaction
+        // commits (ADR 0040). Outside a transaction each statement gets one it runs in; a BEGIN inside one aborts it.
+        // A state DuckDB cannot say leaves the statement as it was: no other way returns its result.
+        let owns = !controls && {
+            let state = known.unwrap_or_else(|| transaction_state(link));
+            if state != TransactionState::Unknown {
+                known = Some(state);
             }
-            None => run_statement(link, statement, &[], limit, source.as_ref(), events, &mut outcome)?,
+            state == TransactionState::Idle
+        };
+        if owns {
+            batch(link, "BEGIN TRANSACTION")?;
+        }
+        let ran = run_one(link, statement, limit, source.as_ref(), events, halt, &mut outcome);
+        if owns {
+            end_own_transaction(link, &ran)?;
+        }
+        if !ran? {
+            outcome.halted = true;
+            break;
+        }
+        if controls {
+            known = transaction_after(statement);
         }
         if outcome.consumer_gone {
             break;
         }
     }
     Ok(outcome)
+}
+
+// False when a stop came before the statement started.
+fn run_one(
+    link: &Link,
+    statement: &str,
+    limit: Option<RowLimit>,
+    source: Option<&TracedTable>,
+    events: &mut Events,
+    halt: &dyn Fn() -> bool,
+    outcome: &mut StreamOutcome,
+) -> Result<bool, DriverError> {
+    let Some(path) = attach_path(statement) else {
+        return run_statement(link, statement, &[], limit, source, events, outcome).map(|()| true);
+    };
+    // DuckDB leaves a HIDDEN database out of what it lists, so no check
+    // could tell another window it is open.
+    if attach_hides(statement) {
+        return Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::HiddenAttach,
+        });
+    }
+    let targets = attach_targets(link, statement, path)?;
+    attach_unless_open(link, &targets, || {
+        // A stop that came while the ATTACH waited its turn: DuckDB clears
+        // an interrupt as a statement starts.
+        if halt() {
+            return Ok(false);
+        }
+        run_statement(link, statement, &[], limit, None, events, outcome).map(|()| true)
+    })
+}
+
+// Stops are held off the COMMIT and the ROLLBACK, which a stop would cut short, and back on for the rest of the run. A
+// COMMIT of a transaction a read left aborted ends it without an error, as the read's own transaction ends outside one.
+fn end_own_transaction(link: &Link, ran: &Result<bool, DriverError>) -> Result<(), DriverError> {
+    link.hold_stops();
+    let ended = match ran {
+        Ok(true) => batch(link, "COMMIT").inspect_err(|_| {
+            let _ = batch(link, "ROLLBACK");
+        }),
+        Ok(false) | Err(_) => {
+            let _ = batch(link, "ROLLBACK");
+            Ok(())
+        }
+    };
+    link.stop_handle().set_stoppable(true);
+    ended
 }
 
 /// Run a read the app built, every row of it.
@@ -467,6 +522,15 @@ pub(crate) fn controls_transaction(sql: &str) -> bool {
     })
 }
 
+/// Where a transaction statement that ran leaves the session.
+fn transaction_after(statement: &str) -> Option<TransactionState> {
+    match words(statement).first()?.as_str() {
+        "BEGIN" | "START" => Some(TransactionState::InTransaction),
+        "COMMIT" | "END" | "ROLLBACK" | "ABORT" => Some(TransactionState::Idle),
+        _ => None,
+    }
+}
+
 /// The words an ATTACH may carry before its path.
 const ATTACH_WORDS: [&str; 6] = ["DATABASE", "IF", "NOT", "EXISTS", "OR", "REPLACE"];
 
@@ -546,7 +610,7 @@ fn closes_last(tokens: &[ScriptToken], open: usize) -> bool {
 ///
 /// A path that does not evaluate refuses the ATTACH: a misread boundary
 /// would otherwise let DuckDB open a file nothing checked.
-fn attach_targets(link: &Link, statement: &str, path: Range<usize>) -> Result<Vec<PathBuf>, DriverError> {
+fn attach_targets(link: &Link, statement: &str, path: Range<usize>) -> Result<Vec<AttachTarget>, DriverError> {
     // DuckDB turns some non-ASCII spaces into spaces before it reads the
     // ATTACH, as far as its own reading of quotes goes, and starts again
     // in the query below. So the path goes in as DuckDB reads it there.
@@ -594,7 +658,13 @@ fn attach_targets(link: &Link, statement: &str, path: Range<usize>) -> Result<Ve
     Ok(readings
         .into_iter()
         .filter(|path| !path.is_empty() && !path.starts_with(":memory:"))
-        .map(|path| resolved_like_duckdb(expand_path(path, home.as_deref())))
+        .map(|path| {
+            let asked = expand_path(path, home.as_deref());
+            AttachTarget {
+                opened: resolved_like_duckdb(asked.clone()),
+                asked,
+            }
+        })
         .collect())
 }
 
@@ -925,6 +995,8 @@ mod tests {
 
     /// Measured against DuckDB 1.5: a missing part is passed by its text,
     /// a link is followed before the `..` after it.
+    // Windows makes a symbolic link only in Developer Mode or with an administrator's right.
+    #[cfg(unix)]
     #[test]
     fn a_path_is_resolved_as_duckdb_opens_it() {
         let root = tempfile::tempdir().unwrap();

@@ -23,8 +23,9 @@ use crate::dialect::RedisDialect;
 use crate::editor_session::RedisEditorSession;
 use crate::endpoint::RedisEndpoint;
 use crate::link::{Link, command, stoppable};
+use crate::server_version::ServerReport;
 use crate::workspace_link::{BetweenCommands, OwnLink, WorkspaceCall, WorkspaceLink};
-use crate::{key_read, key_scan, stream_read};
+use crate::{key_read, key_scan, numbered_databases, stream_read};
 
 /// A workspace's link to one Redis server: one multiplexed link behind
 /// the sidebar's listing and every key read.
@@ -34,6 +35,7 @@ pub(crate) struct RedisConnection {
     workspace: Arc<WorkspaceLink>,
     settings: WorkspaceSettings,
     server: ServerInfo,
+    cluster: bool,
     dialect: Arc<RedisDialect>,
     link: LinkWatch,
     closed: AtomicBool,
@@ -50,7 +52,7 @@ impl RedisConnection {
         endpoint: Arc<RedisEndpoint>,
         first: Link,
         settings: WorkspaceSettings,
-        server: ServerInfo,
+        server: ServerReport,
     ) -> Self {
         let grace = endpoint.liveness().cancel_grace;
         Self {
@@ -58,7 +60,8 @@ impl RedisConnection {
             endpoint,
             calls: OwnedCalls::new(grace),
             settings,
-            server,
+            server: server.info,
+            cluster: server.cluster,
             dialect: Arc::new(RedisDialect),
             link: LinkWatch::new(),
             closed: AtomicBool::new(false),
@@ -217,6 +220,15 @@ impl Connection for RedisConnection {
     async fn list_objects(&self, _scope: &ObjectScope, _options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
         self.ensure_open()?;
         Ok(Vec::new())
+    }
+
+    // The workspace's link stays on the connection's own database, so that is the one marked.
+    async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
+        let (own, cluster) = (self.endpoint.database(), self.cluster);
+        self.read(options, move |link, stop| async move {
+            numbered_databases::list(&link, own, cluster, &stop).await
+        })
+        .await
     }
 
     async fn fetch_columns(&self, _table: &TableRef, _options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {

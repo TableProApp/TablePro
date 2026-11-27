@@ -4,13 +4,14 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 
 | Data | Backend | API |
 |---|---|---|
-| Saved connections | JSON file | `ConnectionStore` |
+| Saved connections, with their SSH and credential profiles | JSON file | `ConnectionStore` |
 | Database passwords, SSH passwords and key passphrases | `oo7`: the host's Secret Service, or the Secret portal inside Flatpak | `SecretStore`, read at each connect by `KeyringCredentials` |
 | The TablePro account's refresh token | the same keyring, or memory alone when none answers | `SecretStore` through the app's `KeyringRefreshToken`, a `tablepro_account::RefreshTokenVault` |
 | The account's device ID and last entitlement, or an imported offline file | JSON file | `tablepro-account` ([core ADR 0016](../../core/docs/decisions/0016-tablepro-accounts.md), [ADR 0038](decisions/0038-account-page-and-license-ask.md)) |
 | The usage data's anonymous ID and what it sent once | JSON file | `Telemetry` in the app crate ([ADR 0039](decisions/0039-usage-data.md)) |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
-| Query history, saved queries with their folders and keywords, and favourite tables and databases | SQLite, one database ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `QueryHistory`, `SavedQueries`, `SavedQueryFolders`, `Favourites` |
+| Query history, saved queries with their folders and keywords, favourite tables and databases, and table folders | SQLite, one database ([core ADR 0017](../../core/docs/decisions/0017-favourites.md)) | `QueryHistory`, `SavedQueries`, `SavedQueryFolders`, `Favourites`, `TableFolders` |
+| Team Library items, one file per server and account | JSON file | `TeamLibraryStore` |
 | Editor tab text | one file per tab | `DraftStore` |
 | Open tabs, open sessions, column layouts, filters, highlight rules | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
 
@@ -20,38 +21,57 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 
 `ConnectionStore` holds the saved-connection list, one store per storage root:
 
-- `load_blocking`, `list_blocking`, `upsert_blocking`, `insert_after_blocking`, `update_blocking`, `remove_blocking`, `touch_last_opened_blocking`, the group and favourite operations below, `preview_import_blocking`, `apply_import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock and an exclusive lock on `connections.json.lock` beside the list across read, change and write, and reads the file again first, so neither another thread nor another process on the same root (a second app, a hand edit, a sync tool) loses an entry to a stale copy. A lock file that cannot be made or locked (NFS without lockd, SMB) is logged and the write goes ahead on the re-read alone. A read also reads the file again, keeps the list it has when the file cannot be read, and publishes a list it finds changed. `update_blocking` changes one entry as the list holds it at the write, so a last-opened stamp from another window in between is kept.
+- `load_blocking`, `list_blocking`, `upsert_blocking`, `insert_after_blocking`, `update_blocking`, `remove_blocking`, `touch_last_opened_blocking`, the group, favourite and project operations below, `preview_import_blocking`, `apply_import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock and an exclusive lock on `connections.json.lock` beside the list across read, change and write, and reads the file again first, so neither another thread nor another process on the same root (a second app, a hand edit, a sync tool) loses an entry to a stale copy. A lock file that cannot be made or locked (NFS without lockd, SMB) is logged and the write goes ahead on the re-read alone. A read also reads the file again, keeps the list it has when the file cannot be read, and publishes a list it finds changed. `update_blocking` changes one entry as the list holds it at the write, so a last-opened stamp from another window in between is kept.
 - A write goes through `write_document_blocking` first and the cached list changes only once it landed, so a failed write leaves both as they were. The first write over a file an older build wrote keeps a copy of it first ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
 - A file that another version wrote in a newer format is refused; one in the same format is read and written whichever build wrote it.
 - `subscribe` hands out a watch of `ConnectionListSnapshot`, so every picker sees every writer's change.
 - A file that cannot be read, or that holds a format newer than this build's, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside. A file broken after the list was read is found by the next change, which refuses it the same way; a file that cannot be read at all then fails the change with `Io` and leaves the list shown. Reset reads the file first and refuses when another process already reset or rewrote it.
 - A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
-- `safe_mode` is the connection's Safe Mode level: `off`, `confirm_writes` or `read_only`. It has no default, since guessing Off would drop a guard.
+- `safe_mode` is the connection's Safe Mode level, the macOS app's six: `off` (Silent), `confirm_writes` (Alert), `alert_full`, `safe_mode`, `safe_mode_full` and `read_only`; the first three keep the names earlier builds wrote, and `silent` and `alert` read too. It has no default, since guessing Off would drop a guard. A session runs `SafeModeLevel::enforced`: the Full levels ask before reads and the Safe Mode levels for proof, which no app on the core does yet, so those three run as Read-Only, rounded up and never down. The Linux form and menus offer Off, Confirm Writes and Read-Only; a stored level shows as the one it runs, and saving that keeps the stored level (`SafeModeLevel::edited`).
 - `external_access` is what MCP clients may do on the connection: `blocked`, `read_only` or `read_write` ([ADR 0022](decisions/0022-ai-assistant-and-mcp-server.md)). A new connection starts at `read_only`. It has no default either.
-- `ai_policy` is what the AI assistant may send from the connection: `ask`, `allow` or `never`. A new connection starts at `ask`. It has no default either.
+- `tls.mode` may be `verify_ca`, which macOS holds: it checks the chain and not the name, no engine offers it yet, and a connect refuses it. A form shows a mode its engine does not offer as the weakest offered one at least as strict (`TlsMode::at_least_in`), never the engine's weaker default.
+- `ai_policy` is what the AI assistant may send from the connection: `ask`, `allow`, `never` or `app_default`, which follows the app's own AI setting as a macOS connection that never picked one does. A new connection starts at `ask`. It has no default either. Linux has no app default, so it shows `app_default` as Ask Each Time and a save of that keeps it (`AiPolicy::edited`).
 - `query_timeout_secs` is the editor's query timeout on the connection, in seconds, with 0 for none. Left out, the connection follows the timeout in Preferences, and it is written back without one.
-- The file's `groups` list is the library's folders, a tree ([core ADR 0006](../../core/docs/decisions/0006-connection-library.md)). Each `ConnectionGroup` has an `id`, a `name` (`ConnectionGroupName`: in a connection name's form, not empty, of any length as on macOS, no control characters, which a read turns into spaces), a `parent_id` (none for a top-level group), an `order` among its siblings, and an optional `color` and `icon` (`GroupIcon`: one of the `ConnectionIcon` names, or the SF Symbol a macOS group wears, which Linux does not draw). Groups nest at most 3 levels. A new or moved group may not share a name with a sibling in any case; an imported file can still bring two that differ only in case. A group reordered inside its own parent is checked for neither rule, so two such groups, or one a hand-edited file nests deeper than 3 levels, still reorder.
-- A connection's `group_id` names its group, none for the top of the list, and its `order` is its place there. Every write numbers each group's groups and connections from 0, so a new entry, or one moved to another group, goes last there. `insert_after_blocking` saves a new entry right after another one, in that one's group, in one write; when that one is gone it is saved as `upsert_blocking` saves it. A read roots a group whose parent is missing or that sits on a cycle, keeps the first of two entries with one id, and moves a connection whose group is missing to the top.
+- The file's `groups` list is the library's folders, a tree ([core ADR 0006](../../core/docs/decisions/0006-connection-library.md)). Each `ConnectionGroup` has an `id`, a `name` (`ConnectionGroupName`, kept as written: a new or renamed group's name passes `ConnectionGroupName::new`, in a connection name's form, not empty, of any length as on macOS, no control characters; `shown` cleans a stored one for display and `same_name` compares that form), a `parent_id` (none for a top-level group), an `order` among its siblings, and an optional `color` and `icon` (`LibraryIcon`: one of the `ConnectionIcon` names, or the SF Symbol a macOS group wears, which Linux does not draw). Groups nest at most 3 levels. A new or moved group may not share a name with a sibling in any case, where a top-level group's siblings are the top-level groups of its project; an imported file can still bring two that differ only in case. A group reordered inside its own parent is checked for neither rule, so two such groups, or one a hand-edited file nests deeper than 3 levels, still reorder.
+- A connection's `group_id` names its group, none for the top of the list, and its `order` is its place there. Places are kept as stored: siblings may share a number or skip one, and a list reads them by number, then in file order. A move numbers the list it changes from 0 and changes the group or parent of the moved entries only, and a new entry, or one moved to another group, goes after the last there. An edit keeps a group the list lacks when the entry was already filed there. `insert_after_blocking` saves a new entry right after another one, in that one's group, in one write; when that one is gone it is saved as `upsert_blocking` saves it. A group whose parent is missing or that sits on a cycle reads at the top (`GroupTree::parent`), and a connection whose group is missing reads at the top (`ConnectionList::group_of`, `connections_in`), while each keeps the id it was stored with: a pull can bring a connection before its group. A read keeps the first of two entries with one id.
 - `create_group_blocking`, `rename_group_blocking`, `set_group_color_blocking`, `set_group_icon_blocking`, `move_groups_blocking` (to another parent, before a sibling), `delete_group_blocking`, `move_connections_blocking` (to a group, before a connection) and `move_connections_to_group_named_blocking` change the tree. Each refuses what would break it with a `StorageError` carrying a stable code: `GroupNotFound`, `GroupExists`, `GroupNameTaken`, `GroupCycle`, `GroupTooDeep`, `ConnectionNotFound`. Deleting a group deletes the groups inside it and moves their connections to the top of the list. `GroupTree::can_place` and `GroupTree::can_create_in` apply the same parent, cycle and depth rules without writing, so the app can turn off a move or a New Subgroup the store would refuse.
+- The file's `projects` list holds every `ConnectionProject` ([core ADR 0067](../../core/docs/decisions/0067-connection-projects.md)): an `id`, a `name` (`ConnectionProjectName`, in a group name's form), an `order`, and an optional `color` and `icon` as a group has. No two projects share a name in any case. All Connections is no project and has no entry.
+- A top-level group's `project_id` is its project, and its subgroups and their connections follow it. A connection's own `project_id` counts only while it has no group. `ConnectionList::effective_project`, `effective_group_project` and `ProjectMembership` read it that way, and ignore a `project_id` stored on a subgroup or a grouped connection. Every read and write drops a `project_id` no project holds, keeps the first of two projects with one id and numbers the projects from 0.
+- `ConnectionList::scoped(project)` is the list one project shows: its connections, its groups with the empty ones, the favourites among them, and every tag and project. `None`, or an id no project holds, is the whole list. `recent` and `connections_in` of the result are the project's. The active project is each app's own per-device setting, never in this file.
+- `create_project_blocking`, `rename_project_blocking`, `set_project_color_blocking`, `set_project_icon_blocking`, `move_projects_blocking` (before another project), `delete_project_blocking`, `move_connections_to_project_blocking` and `move_groups_to_project_blocking` change the projects, with the codes `ProjectNotFound`, `ProjectExists` and `ProjectNameTaken`. Deleting a project keeps its groups and connections, in no project. A connection in a group is refused with `ConnectionGrouped` and a subgroup with `GroupNotTopLevel`: the top-level group decides for both. `create_group_blocking` makes a top-level group in the project it names, and a new ungrouped connection is saved with its `project_id`.
+- Every local change keeps the membership whole: a connection filed in a group drops its own `project_id`; one moved out to the top, or left there when its group is deleted, stays in the project it was in unless the change names another; a group moved under another drops its own; a subgroup moved to the top stays in the project of the top-level group it left. `apply_cloud_pull_blocking` does none of this and keeps each `project_id` it finds.
 - `favorites` lists the favourite connections in their order. `add_favorites_blocking` adds or moves some before a given one, `remove_favorites_blocking` takes them off, and deleting a connection drops it. `ConnectionList::recent` is the opened connections, newest first, without the favourites.
 - The Linux app's picker and the window's tree show the groups as a tree in the library's order, empty ones too, each group's subgroups above its connections. Only the Move to Group menus and the search results name a group by its path from the top, such as `Work / Staging`. The picker also has a Favourites section, in the favourites' order, and a Recent section with the last 5 connections opened, favourites left out. New Group makes a group at the top and New Subgroup makes one inside a group, up to 3 levels. Groups and connections move by drag and drop, or with Move Up and Move Down.
-- The file's `tags` list holds every `ConnectionTag`: an `id`, a `name` (`ConnectionTagName`: in a connection name's form, 1 to 32 characters, no control characters, cleaned on read as a group's is and cut to 32) and a `color` from the same palette as `color`. No two tags share a name in any case: `create_tag_blocking` and `update_tag_blocking` refuse one with `TagNameTaken`.
-- A connection's `tags` are ids from that list. Every write drops an id the list lacks and a repeated one, so `delete_tag_blocking` takes the tag off every connection in the same write, and a connection saved with a tag deleted meanwhile loses it.
-- `icon` is one of the `ConnectionIcon` names. The app draws each with a symbolic icon from the theme (`crates/app/src/ui/icons.rs`).
-- A connection's `name` is stored and compared as the list shows it: characters that show as nothing (U+200B, U+FEFF) dropped, control characters and every other space (U+00A0, U+2007) as a plain space, no blanks around it, and in Unicode NFC, so a name that looks like a saved one is the same name. Tag and group names take the same form.
-- A stored group or tag name made only of invisible characters, which macOS accepts for a group, reads as its Unicode escapes, so the group still shows. A new name of that kind is refused.
+- The file's `tags` list holds every `ConnectionTag`: an `id`, a `name` (`ConnectionTagName`, kept as written; a new or renamed one is in a connection name's form, 1 to 32 characters, no control characters), an optional `color` from the same palette as `color` (a macOS tag can have none) and `is_preset`, set on the tags macOS starts every library with. `create_tag_blocking` and `update_tag_blocking` refuse a name another tag holds in any case with `TagNameTaken`; a library written as another app holds it can still bring two.
+- A connection's `tags` are ids from that list, each once. One the list lacks reads as no tag and stays, since a pull can bring a connection before its tag; `delete_tag_blocking` takes the tag off every connection in the same write.
+- `icon` is a `LibraryIcon`: one of the `ConnectionIcon` names, stored as the name's id as earlier builds wrote it, or an SF Symbol a Mac picked, stored as `{"symbol": ...}`. The app draws a named one with a symbolic icon from the theme (`crates/app/src/ui/icons.rs`) and a symbol as the default icon; the form shows a symbol as no icon and a save keeps it.
+- A connection's `name` is stored as written. The form, a rename and a file import write it as `shown_name` gives it: characters that show as nothing (U+200B, U+FEFF) dropped, control characters and every other space (U+00A0, U+2007) as a plain space, no blanks around it, and in Unicode NFC, so a typed or imported name that looks like a saved one is the same name. A file import cleans tag and group names the same way, cuts a tag's to 32 characters and leaves out a group or tag whose name is blank.
+- A group or tag name made only of invisible characters, which macOS accepts for a group, shows as its Unicode escapes. A new name of that kind is refused.
 - An import is previewed first: `preview_import_blocking` works out every entry as it will be saved and writes nothing, the app shows each one with its host, and `apply_import_blocking` writes that result, or refuses with `ImportOutdated` when the list changed in between. For an added entry the preview also names its SSH server and a TLS mode looser than a new connection's; for an updated one, the name it had when the file renames it (`ImportChange::Updated`, `renamed_from`). An imported entry never takes a name another entry holds or held before the import, whatever order the file lists them in. An updated entry whose name the file keeps keeps it, even when another entry has the same one.
 - On import, a tag is matched by id, then by name in any case, and added only when neither matches, so importing a file twice leaves one tag of each name. A tag matched by id takes the file's colour, and its name unless another tag has it. A connection updated by an import takes the file's tags and icon.
-- On import, a group is matched by id, then by the exact name under the same parent, then by that name in any case among the groups the list had before the import, and otherwise added last in its place. So a file's own `Work` and `work` stay two groups, as a read of that file gives. A group matched by id keeps its place and takes the file's colour, icon, and name unless a sibling has it. Those renames come first, so a name one of them frees or takes decides how the rest match, whatever order the file lists them in. A group the file nests below the third level is not added: it and the groups under it map to the third-level group above them, so their connections land there, as macOS cuts the path. A connection updated by an import takes the file's group, going last there when the group changed; an added one keeps the file's order after the list's own. The file's favourites are added, and an import never removes one.
+- On import, a project is matched by id, then by name in any case, the first in order when two share one, and added last otherwise. One matched by id takes the file's colour and icon, and its name unless another project has it. `preview_import_into_blocking` names the project that a new top-level group or ungrouped connection the file files under none lands in; an entry the import only updates keeps its project unless the file names one.
+- On import, a group is matched by id, then by the exact name under the same parent (for a top-level group, among the top-level groups of its project), then by that name in any case among the groups the list had before the import, and otherwise added last in its place. So a file's own `Work` and `work` stay two groups, as a read of that file gives. A group matched by id keeps its place and takes the file's colour, icon, and name unless a sibling has it. Those renames come first, so a name one of them frees or takes decides how the rest match, whatever order the file lists them in. A group the file nests below the third level is not added: it and the groups under it map to the third-level group above them, so their connections land there, as macOS cuts the path. A connection updated by an import takes the file's group, going last there when the group changed; an added one keeps the file's order after the list's own. The file's favourites are added, and an import never removes one.
 - An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A copy is saved with `insert_after_blocking`, right after its original, as on macOS. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again. Edits and copies run one at a time, so two windows editing one connection never leave the host of one with the password of the other.
+
+- An entry of `connections`, `groups`, `tags`, `ssh_profiles` or `credential_profiles` that this build cannot read, such as one with a value a newer build wrote or without a field that has no default, is held: it is left out of the list, written back as it was after the entries the list holds, and replaced by a readable entry with its id. The rest of the file stays usable. `ConnectionList::unreadable` names the held connections. A connection also keeps the keys it does not know (`SavedConnection::unknown`) and writes them back.
+- Beyond the form's fields, a connection carries `details` (`ConnectionDetails`: `startup_sql`, `ai_rules`, `ai_allowed_tools`, `ssh_profile_id`, `ssh_route`, `credential_profile_id`, `credential_reference`, `redis_database` and the plugin's `additional_fields`) and `device` (`DeviceOnly`: `local_only`, `is_sample`, `origin`, the `password_source` file or command, and the Cloudflare, Cloud SQL proxy, SOCKS and tunnel command settings). Both sit flat in the entry. `field_trust` classes each additional field as the macOS app's `ConnectionFieldTrust` does, and `apple/scripts/ci/check-connection-field-trust.py` fails when the two tables differ.
+- An export carries the connections as `SavedConnection::portable` gives them: no `device`, no unknown key, no detail that runs, sends or signs in on the reader's device, and only portable additional fields. An import takes the same from the file and keeps an updated entry's own. Neither carries the profiles.
+- `ssh_profiles` holds `SshProfile`s (a name and an SSH setting) and `credential_profiles` holds `CredentialProfile`s (a name, a user, where the password comes from, the secure plugin fields and an order). `save_*_profile_blocking` adds one or replaces the one with its id; deleting one leaves the connections that name it naming it.
+- `store` is the file's `StoreIdentity` ([Store identity and the change journal](#store-identity-and-the-change-journal)).
+- `replace_library_blocking(over, build)` writes the whole library (`LibraryWrite { connections, groups, tags, favorites }`) in one commit, for another app's store moving into the core: every id and value as given, nothing trimmed, checked, cleaned or placed. `over` is the SHA-256 of the file the host last checked (`None`: no file); a file that changed since is refused with `LibraryChanged`, and `build` makes the write from that same file under the same lock. What the store would otherwise drop is refused: a repeated id, favourite or tag on a connection with `RepeatedId`, a favourite of no connection the file keeps with `ConnectionNotFound`. A connection this build cannot read stays unless the write names its id. The profiles are left as they are. It returns the SHA-256, in hex, of the bytes the file holds after it, and `read_library_blocking` returns the list with the SHA-256 of the bytes it was decoded from, so a host can tag exactly the bytes a write leaves and check a read's against its tag (`None` while there is no file). A read vouches for nothing.
+- `rebuild_library_blocking` writes the same way for a file its host cannot vouch for: the file then holds only what the write names, with no entry this build cannot read and no profile, and a new `StoreIdentity` generation, as a restore starts. A file this build cannot read is moved aside first (`Rebuilt.set_aside`), and the journal is told the write against nothing, so no id from the replaced file goes out as a deletion.
 
 ### SSH settings
 
 `SavedConnection.ssh` holds an optional `SavedSshConfig`:
 
+- `enabled`, left out while it is on. A tunnel switched off keeps its settings, as macOS keeps them, and a connect does not dial it.
 - `host`, plus optional `port` and `username`. Leaving them out lets `~/.ssh/config` decide.
-- `jump_hosts`: `[user@]host[:port]` entries, empty for a direct connection.
-- `auth`, tagged by `kind`: `agent`, `private_key` (optional `path` and `has_passphrase`), `password` or `keyboard_interactive`.
+- `jump_hosts`: one `SshJumpHost` per hop, empty for a direct connection. A hop with no id, auth or key path is stored as `[user@]host[:port]`, as earlier builds wrote one, while that text reads back as the same hop, and an entry of that form may list several hops with commas. A macOS hop adds an `id`, an `auth` (`agent` or `private_key`) and a `key_path`, and is stored as an object. A connect refuses a hop with a key of its own (`SshDestinationProblem::JumpHostKey`): OpenSSH's `-J` signs in to each hop with the agent and the SSH configuration only.
+- `auth`, tagged by `kind`: `agent`, `private_key` (optional `path` and `has_passphrase`), `password`, `keyboard_interactive` or `none`, which a connect dials as `agent` since both transports try the none method first. The form shows `none` as the agent and a save keeps it.
+- `kept_key_path`: the key file kept while `auth` is not a key, as the macOS form keeps it. A connect reads only the key auth's own `path`.
+- `agent_socket`, `totp` (`mode`, `algorithm`, `digits`, `period`) and `remote_file` (`path`, `access`): what macOS keeps for the tunnel. A connect refuses a remote file with `ConfigError::RemoteFileOverSsh`, since only the macOS app opens one. The form shows none of these and a save keeps them (`SavedSshConfig::kept_over`), with the ids and keys of the hops it still names.
+- Keys a newer build wrote inside the settings stay (`unknown`), and `TlsConfig::unknown` keeps those inside `tls`. `SshProfile` keeps its own in its `ssh`.
 
 SSH passwords and key passphrases sit in the keyring next to database passwords. The system OpenSSH client runs every combination ([ADR 0013](decisions/0013-openssh-client-transport.md)), and asks for a missing secret through the app's prompts.
 
@@ -123,6 +143,23 @@ and a menu still open on it finds no connection and does nothing.
 The purge waits for the drafts a just-closed workspace is still writing
 (`WorkspaceStore::writes_in_flight`). The window holds the process until the
 delete ends, as it does for every other write to the connection list.
+
+## Store identity and the change journal
+
+Each store carries a `StoreIdentity`, a `generation` and a `sequence` ([core ADR 0054](../../core/docs/decisions/0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md), The engine), which sync keeps beside its bases:
+
+- `connections.json` and a Team Library file keep it as `store`. A file without one, as an older build writes it, gets a new generation at its next write.
+- `history.db` keeps it in the one row of `store_identity`, made when the database opens. A trigger on each table that syncs (`history`, `saved_queries`, `saved_query_folders`, `favourite_tables`, `favourite_databases`, `table_folders`, `table_folder_items`) raises the sequence on every insert, update and delete, whichever process makes it. Trimming an upgrade copy puts its sequence back.
+- Every write keeps the generation and raises the sequence. `StoreIdentity::compared_with` tells sync whether the store continues, is another generation (restored, replaced or copied in) or went back (an older copy). Both of the last two put its kinds into refill. A host that restores a store from a backup of its own calls `start_new_generation`; Reset of an unreadable connection list starts one with the next write.
+- Each store's write path tells a `ChangeJournal`, once per commit, after the write and outside every lock the store holds, a `JournalEntry` for each kind the commit changed with the records it wrote and the records it deleted ([core ADR 0060](../../core/docs/decisions/0060-the-change-journal-names-the-records-each-write-changed-and-a-store-is-one-file.md)). A `RecordRef` names a record as its store does: a UUID (a saved query, folder or history entry by its `record_id`), a Team Library item by its team and client id, the table a favourite or a table folder item names, or a favourite database. A favourite's place change writes its connection. `set_journal` on `ConnectionStore`, `QueryHistory` (for every handle it gives out) and `TeamLibraryStore` sets it. A write that changes nothing tells nothing.
+
+## Table folders
+
+`QueryHistory::table_folders` gives the folders a person files a connection's tables in, per database and schema (`table_folders`), and the table each file names (`table_folder_items`, one folder per table). Ids are UUIDs, times whole milliseconds. No foreign key joins them: an item whose folder is missing reads as unfiled. `put` keeps a folder's own id and times, deleting a folder takes its items with it, and `SavedQueries::delete_for_connection` takes a deleted connection's folders and items with its saved queries and favourites.
+
+## Team Library
+
+`TeamLibraryStore` keeps one account's Team Library items, per team, at `$XDG_STATE_HOME/<dir>/team-library/<digest>.json`, the digest a SHA-256 over a fixed label, the server's API origin and the account id, so a server's id never names a path. The file records its owner, and a file bound to another one is refused with `StoreOwnerMismatch`. An item is its kind (`connection`, `folder` or `query`), the client id the team stores, byte for byte, and its fields as a JSON object the store does not read.
 
 ## Where files go
 
@@ -196,6 +233,37 @@ at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
 paging, and the `saved_queries` table. Favorites metadata, ordering, coherent reads
 and mutation notifications follow [core ADR 0017](../../core/docs/decisions/0017-favourites.md).
 
+`20261126000000_record_ids.sql` gives each saved query, folder and history entry
+the id it syncs under ([core ADR 0052](../../core/docs/decisions/0052-synced-records-have-canonical-ids.md)):
+
+- `record_id` is a random UUIDv4 kept as lower-case text. The store's API names a
+  query or a folder by it; a history entry keeps its integer `id` for what never
+  leaves the device, which the full-text index joins on and pages, pins and the
+  upgrade copies use.
+- A folder's parent and a query's folder are record ids with no foreign key, and
+  no synced table has a referential action: deleting a folder deletes the folders
+  under it and moves their queries to the top in the store's own code. A
+  reference nothing answers to reads as the top level.
+- A query or a folder with no connection shows in every connection. A
+  connection's list and snapshot hold those too, and deleting a connection's data
+  keeps them.
+- Names stay unique among one connection's queries, or among those with none;
+  folder names among one connection's folders under one parent, or none. A
+  keyword is unique among every query that shows where its query shows.
+- Saved queries and folders keep `created_at` and `updated_at` in whole
+  milliseconds.
+- `SavedQueries::put` and `SavedQueryFolders::put` write records a pull or
+  another store brings under their own ids. Where two meet in one place under
+  one name or keyword, the one created first keeps it, then the lowest id; each
+  other takes the first free `<name> (2)` or loses its keyword, as an edit of
+  this device's own.
+- A put stores a folder name in the form the list shows and a keyword as
+  `set_keyword` keeps it, since the unique indexes compare the stored text; a
+  keyword a local save refuses is cleared. Names keep their first 200
+  characters. A folder cycle the batch closes sends its folder created last to
+  the top, and a folder 64 levels deep or more goes to the top too. Each such
+  change is an edit of this device's own.
+
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
 which makes sqlx refuse every database that already applied it.
@@ -229,7 +297,9 @@ an FTS5 trigram index over that column, answers a term of three
 characters or more as a quoted phrase, so quotes and FTS5 operators stay
 literal; a shorter term goes through `instr`.
 
-`HistoryQuery` also narrows by connection, by `StatusFilter` and by a
+`HistoryQuery` also narrows by connection, by a list of connections
+(`connections`, a project's, bound as one JSON array so its size meets no
+limit), by `StatusFilter` and by a
 start time. A cancelled run is stored with `success = 0`, so Failed leaves
 it out explicitly.
 
@@ -267,6 +337,9 @@ can tell whether a re-pinned entry falls in the pages already read.
   copy, a temporary file and the journals of a copy that is gone.
 - `connections_with_history` lists each connection the history holds
   under the name of its latest run, so a renamed connection shows once.
+  `connections_with_history_in` keeps the list to the connections it is
+  given, and `SavedQueries::list_for` lists the saved queries of a set of
+  connections, as a project's views need.
 
 ### Following the saved queries
 
@@ -279,7 +352,7 @@ during a refresh and clear when the front connection changes. Confirmed saves,
 renames, moves and deletions hold the process until the write finishes.
 
 The editor first inserts without replacement and asks for confirmation if the
-name is taken. Confirmed replacement updates the same row id. The existence check
+name is taken. Confirmed replacement keeps the query's record id. The existence check
 and write share a transaction, so simultaneous saves report which one
 replaced the query. Renames update only the stored name and modification
 time, leaving newer SQL and the connection identity intact.
@@ -347,6 +420,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `grid-use-system-font` | `b` | `true` | |
 | `grid-font` | `s` | `Monospace 10` | |
 | `show-invisible-characters` | `b` | `true` | |
+| `grid-wrap-text` | `b` | `false` | What a new tab's grid opens with; an open tab keeps its own |
 | `auto-show-inspector` | `b` | `false` | |
 | `row-copy-format` | `s` | `rows` | rows, rows-headers, json, csv, csv-headers, markdown |
 | `default-sort` | `s` | `none` | `none`, `primary-key`, `first-column` |
@@ -356,6 +430,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `null-display` | `s` | `NULL` | Displayed as at most 20 characters, without control characters; blank uses NULL |
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
+| `active-project` | `s` | empty | The id of the project the lists show; empty, or an id no project has, is All Connections ([core ADR 0067](../../core/docs/decisions/0067-connection-projects.md)). Per device, never in `connections.json` |
 | `last-seen-version` | `s` | empty | |
 | `share-usage-data` | `b` | `true` | |
 | `usage-days` | `u` | `0` | |
@@ -420,7 +495,7 @@ Highlight rules are restored before the table grid starts reporting edits. A que
 
 `StorageError` is the crate's `thiserror` enum:
 
-- Files: `Io` and `Permissions` with the path, `Write` with the path and GLib's error, `Serde`, `DocumentUnavailable` for a JSON document that cannot be used, and `DraftNotUtf8`.
+- Files: `Io` and `Permissions` with the path, `Write` with the path and GLib's error, `Serde`, `DocumentUnavailable` for a JSON document that cannot be used, with a code for each `DocumentProblemKind` (`storage.document_unreadable`, `_corrupt`, `_missing_version`, `_unsupported_version`, `_newer_version`, `_upgrade_failed`), and `DraftNotUtf8`.
 - `Schema` with a reason: a Reset of a connection list that is readable, a name `DraftScope::new` refuses, or, from `tablepro-session`, a connections write task that failed.
 - The history database: `Database`, `HistoryNewerThanApp`, `HistoryMigration`, and `TooLarge` for a query over the size limit.
 - The saved queries: `EmptyName`, `NotFound`, and `TooLarge` for a name or query over its limit.
@@ -432,6 +507,7 @@ A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`;
 ## Changing a format
 
 - A JSON document is a `VersionedDocument` with a `version` field. Every document starts at version 1 with no upgrade step: builds before the first release left no format to read ([ADR 0033](decisions/0033-no-compatibility-with-pre-release-states.md)). A new shape bumps its `VERSION` and appends a step to its `UPGRADES`, which turns a file of the version before into the new shape. `decode_document` runs an older file through every step it is behind, oldest first, so a user who skipped releases keeps their data. A step that shipped is never changed or dropped.
+- One exception: an optional field marked `#[serde(default, skip_serializing_if = ...)]` keeps the version. A file without it reads as before, and an older build reads a file with it and drops the field, while a bumped version would make that build refuse the file. The workspace file's editor tab took `database`, then `name`, `ordinal` and `untitled` this way, and the connection list took `projects` and `project_id`: a build before them drops the project list and every membership on its next write, which is its next connect ([core ADR 0067](../../core/docs/decisions/0067-connection-projects.md)).
 - The upgrade happens in memory. The file stays as it was until the next save, which keeps a copy of it and then writes the current version ([Copies before a format upgrade](#copies-before-a-format-upgrade)).
 - A file older than the first step, one a step cannot read, or one in a format newer than the build's is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
 - Each released version of the connection list and the workspace file has a golden file that a test reads into the model it was written from: `core/crates/storage/tests/fixtures/connections-v1.json` and `crates/app/tests/fixtures/workspace-v1.json`. Once a release ships it, a fixture is never edited. A format change adds the new version's fixture and updates the expected models of the old ones, which then read through the upgrade.
@@ -450,8 +526,10 @@ that replaces it with a newer format ([core ADR 0012](../../core/docs/decisions/
 - `tablepro_storage::upgrade_copies` makes them. A JSON document's copy is its
   bytes as read, written 0600 by `write_private_blocking`; a copy whose bytes
   match the newest one is not made again. The history's is `VACUUM INTO` through
-  the open connection, so it holds what the WAL holds too, into a 0600
-  `.partial` file. Its full-text indexes are then optimized with `secure_delete`
+  the open connection, so it holds what the WAL holds too, into a `.partial`
+  name that is free: macOS 27's SQLite refuses any file already there, even an
+  empty one. SQLite creates it from the umask in the 0700 folder, and it is set
+  to 0600 right after. Its full-text indexes are then optimized with `secure_delete`
   on, since `VACUUM INTO` copies the words of entries deleted before, and only
   then is it synced and renamed into place.
 - Each file keeps its newest 3 copies (`KEPT_PER_FILE`); a new one deletes the

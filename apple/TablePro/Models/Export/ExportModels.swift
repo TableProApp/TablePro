@@ -78,6 +78,17 @@ enum ExportPreselection: Equatable {
         return names.first
     }
 
+    // A file-based engine's database is a path: `/path/to/shop.sqlite` exports as `shop.csv`.
+    @MainActor
+    func defaultFileName(database: String, type: DatabaseType) -> String? {
+        if let singleTableName { return singleTableName }
+        let name = containerNames.count == 1 ? containerNames[0] : database
+        guard !name.isEmpty else { return nil }
+        guard PluginManager.shared.connectionMode(for: type) == .fileBased else { return name }
+        let stem = (DatabaseEndpoint.label(for: name, type: type) as NSString).deletingPathExtension
+        return stem.isEmpty ? name : stem
+    }
+
     func selectsAllObjects(in container: DatabaseContainerRef) -> Bool {
         guard case .containers(let refs) = self else { return false }
         return refs.contains { $0.covers(container) }
@@ -221,6 +232,9 @@ struct ExportObjectItem: Identifiable, Hashable {
     /// The table a trigger fires for. Nil for every other kind.
     let parentTable: String?
 
+    // Function or procedure, so the drop names the right statement. Nil for every other kind.
+    let routineKind: PluginRoutineKind?
+
     var isSelected: Bool = false
     var optionValues: [Bool] = []
 
@@ -234,6 +248,7 @@ struct ExportObjectItem: Identifiable, Hashable {
         kind: PluginExportObjectKind,
         identity: String? = nil,
         parentTable: String? = nil,
+        routineKind: PluginRoutineKind? = nil,
         isSelected: Bool = false,
         optionValues: [Bool] = [],
         rowScope: PluginExportRowScope = .unrestricted
@@ -244,6 +259,7 @@ struct ExportObjectItem: Identifiable, Hashable {
         self.kind = kind
         self.identity = identity
         self.parentTable = parentTable
+        self.routineKind = routineKind
         self.isSelected = isSelected
         self.optionValues = optionValues
         self.rowScope = rowScope
@@ -283,6 +299,8 @@ struct ExportObjectItem: Identifiable, Hashable {
 struct ExportDatabaseItem: Identifiable {
     let id: UUID
     let name: String
+    // What the row shows. `name` stays the identity: a file-based engine's is the full path.
+    let title: String
     var objects: [ExportObjectItem]
     var isExpanded: Bool = true
     /// Kinds the tree has not read for this container yet. A collapsed schema lists its tables
@@ -298,12 +316,14 @@ struct ExportDatabaseItem: Identifiable {
     init(
         id: UUID = UUID(),
         name: String,
+        title: String? = nil,
         objects: [ExportObjectItem],
         isExpanded: Bool = true,
         unloadedKinds: Set<PluginExportObjectKind> = []
     ) {
         self.id = id
         self.name = name
+        self.title = title ?? name
         self.objects = objects
         self.isExpanded = isExpanded
         self.unloadedKinds = unloadedKinds
@@ -367,6 +387,7 @@ struct ExportDatabaseItem: Identifiable {
         var copy = ExportDatabaseItem(
             id: id,
             name: name,
+            title: title,
             objects: objects,
             isExpanded: isExpanded,
             unloadedKinds: unloadedKinds
@@ -491,17 +512,12 @@ extension ExportObjectItem {
         return normalizedItem
     }
 
-    /// Clears every option the format says this kind does not support, so a routine never carries a
-    /// `Data` flag that would make it look exportable for a phase it has no rows for.
     func maskingUnsupportedOptions(
         columns: [PluginExportOptionColumn],
         supports: (String, PluginExportObjectKind) -> Bool
     ) -> ExportObjectItem {
-        guard optionValues.count == columns.count else { return self }
         var masked = self
-        masked.optionValues = zip(columns, optionValues).map { column, value in
-            supports(column.id, kind) ? value : false
-        }
+        masked.optionValues = ExportOptionMask.masked(optionValues, columns: columns, kind: kind, supports: supports)
         return masked
     }
 

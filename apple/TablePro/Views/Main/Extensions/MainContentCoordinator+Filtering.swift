@@ -7,14 +7,6 @@ import Foundation
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    func clearAppliedFiltersAndReload() {
-        filterCoordinator.clearAppliedFiltersAndReload()
-    }
-
-    func removeAllFiltersAndReload() {
-        filterCoordinator.removeAllFiltersAndReload()
-    }
-
     var supportsColumnSort: Bool {
         services.pluginManager.supportsColumnSort(for: connection.type)
     }
@@ -45,5 +37,9 @@ extension MainContentCoordinator {
 
     func rebuildTableQuery(at tabIndex: Int) {
         filterCoordinator.rebuildTableQuery(at: tabIndex)
+    }
+
+    func rebuildTableQuery(forTab tabId: UUID) {
+        filterCoordinator.rebuildTableQuery(forTab: tabId)
     }
 }

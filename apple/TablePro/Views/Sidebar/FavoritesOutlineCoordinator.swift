@@ -306,6 +306,14 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         return favoriteNode.content.filePath
     }
 
+    internal var selectedShareCommand: FavoritesMenuCommand? {
+        guard case .query(let favoriteNode) = selectedNode()?.kind else { return nil }
+        if let favorite = favoriteNode.asFavorite {
+            return .shareFavorite(favorite)
+        }
+        return favoriteNode.asLinkedFavorite.map(FavoritesMenuCommand.shareLinkedFavorite)
+    }
+
     internal func performMenuCommand(_ command: FavoritesMenuCommand) {
         owner.actions.performMenuCommand(command)
     }
@@ -332,7 +340,8 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
             databaseEntityName: owner.input.databaseEntityName,
             activeDatabase: owner.input.activeDatabase,
             linkedFileGitStates: owner.input.linkedFileGitStates,
-            linkedFolderGitStates: owner.input.linkedFolderGitStates
+            linkedFolderGitStates: owner.input.linkedFolderGitStates,
+            sharesLinks: ShareAvailability.isAvailable
         )
         SidebarMenuBuilder.fill(
             menu,

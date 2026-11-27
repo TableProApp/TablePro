@@ -1,6 +1,5 @@
-use crate::conformance::{ConformanceEngine, CorpusColumn};
+use crate::conformance::{ConformanceEngine, ValueCorpus};
 
-/// An engine with a corpus of real values for the value corpus case.
 pub trait ValueCorpusEngine: ConformanceEngine {
-    fn value_corpus(&self) -> Vec<CorpusColumn>;
+    fn value_corpus(&self) -> ValueCorpus;
 }

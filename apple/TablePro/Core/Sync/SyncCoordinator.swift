@@ -33,9 +33,25 @@ final class SyncCoordinator: ObservableObject {
     private let makeNetworkMonitor: () -> SyncNetworkMonitor?
     /// Why the license keeps sync off, or nil while it allows sync.
     private let licenseGate: @MainActor () -> DisableReason?
+    // Why a configuration profile keeps iCloud off, or nil while it allows iCloud.
+    private let policyGate: @MainActor () -> DisableReason?
+    private let policyChanges: AnyPublisher<DisableReason?, Never>
     let recordCreationDate: (CKRecord) -> Date?
+    // What a push may write: Production's schema, or one a test stands in.
+    let schema: SyncWritableSchema
     private var triggers: SyncTriggers?
     private var licenseCancellable: AnyCancellable?
+    private var policyCancellable: AnyCancellable?
+    // Counts the organization's stops, so a run that began before one keeps nothing after it, even once iCloud is
+    // allowed again.
+    private var policyStops = 0 {
+        didSet { policyStopCount.value = policyStops }
+    }
+    private var runPolicyStops = 0
+    // The same count for a store's actor, which asks it right before each write a pull makes.
+    private let policyStopCount = PolicyStopCount()
+    // Cancelled by a stop, so the transport sends no further batch or retry of it.
+    private var pushInFlight: Task<PushOutcome, any Error>?
     private var debounceTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var hasStarted = false
@@ -69,6 +85,12 @@ final class SyncCoordinator: ObservableObject {
     private var activationHeldForCooldown = false
     private var downloadIsAheadInRun = false
 
+    // While CloudKit's notices reach this Mac they bring other devices' changes, so an activation only covers a lost one.
+    nonisolated static let pushFallbackInterval: Duration = .seconds(15 * 60)
+    let pushChannel: SyncPushChannel
+    // Notices received when the last successful download began; one after that may be what a later download brings.
+    private var noticesAtLastDownload = 0
+
     init(
         services: AppServices = .live,
         recordCache: SyncRecordCache = SyncCoordinator.makeRecordCache(),
@@ -77,11 +99,23 @@ final class SyncCoordinator: ObservableObject {
         columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared,
         themeCatalog: ThemeCatalog = .shared,
         licenseGate: (@MainActor () -> DisableReason?)? = nil,
+        policyGate: @escaping @MainActor () -> DisableReason? = {
+            SyncProviderPolicy.disableReason(ManagedPolicyCenter.shared.snapshot)
+        },
+        // Each reading's own answer, so a stop counts even when iCloud is allowed again before the gate is read.
+        policyChanges: AnyPublisher<DisableReason?, Never> = ManagedPolicyCenter.shared.$snapshot
+            .dropFirst()
+            .map(SyncProviderPolicy.disableReason)
+            .eraseToAnyPublisher(),
         recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate },
-        activationClock: any Clock<Duration> = ContinuousClock()
+        activationClock: any Clock<Duration> = ContinuousClock(),
+        pushRegistrar: SyncPushRegistrar = .live,
+        schema: SyncWritableSchema = .production
     ) {
+        self.schema = schema
         self.services = services
         self.activationClock = activationClock
+        self.pushChannel = SyncPushChannel(registrar: pushRegistrar, metadata: services.syncMetadataStorage)
         self.makeTransport = transport
         self.makeNetworkMonitor = makeNetworkMonitor
         self.recordCreationDate = recordCreationDate
@@ -94,15 +128,9 @@ final class SyncCoordinator: ObservableObject {
         self.licenseGate = licenseGate ?? {
             SyncCoordinator.licenseDisableReason(for: featureAccess.check(.iCloudSync))
         }
+        self.policyGate = policyGate
+        self.policyChanges = policyChanges
         lastSyncDate = metadataStorage.lastSyncDate
-    }
-
-    nonisolated static func makeRecordCache() -> SyncRecordCache {
-        SyncRecordCache(
-            directory: AppStorageEnvironment.shared.supportDirectory
-                .appendingPathComponent("SyncRecordCache", isDirectory: true),
-            defaults: AppStorageEnvironment.shared.defaults
-        )
     }
 
     deinit {
@@ -120,6 +148,7 @@ final class SyncCoordinator: ObservableObject {
         hasStarted = true
 
         observeLicenseChanges()
+        observePolicyChanges()
         evaluateStatus()
         guard syncStatus.isEnabled else { return }
         Task { await sync(.launch) }
@@ -149,6 +178,10 @@ final class SyncCoordinator: ObservableObject {
         if trigger == .activation, holdsActivationBack() {
             return
         }
+        // The download still ahead in this run brings what the notice announced.
+        if trigger == .remoteChange, isRunning, downloadIsAheadInRun {
+            return
+        }
         guard !isRunning else {
             if !pendingTriggers.contains(trigger) {
                 pendingTriggers.append(trigger)
@@ -176,7 +209,7 @@ final class SyncCoordinator: ObservableObject {
         if previousError == nil || trigger == .userRequest {
             syncStatus = .syncing
         }
-        let result = await accountThenPushThenPull(admission)
+        let result = await accountThenPushThenPull(admission, startedBy: trigger)
         isRunning = false
         finish(result, previousError: previousError, from: generation)
         if uploadAgainRequested {
@@ -205,9 +238,10 @@ final class SyncCoordinator: ObservableObject {
         activationCooldown?.cancel()
         activationHeldForCooldown = false
         let clock = activationClock
+        let interval = activationHoldInterval
         activationCooldown = Task { [weak self] in
             do {
-                try await clock.sleep(for: Self.activationInterval)
+                try await clock.sleep(for: interval)
             } catch {
                 return
             }
@@ -221,7 +255,7 @@ final class SyncCoordinator: ObservableObject {
     }
 
     internal func runSyncCycle(_ admission: SyncAdmission = .full) async -> SyncError? {
-        await accountThenPushThenPull(admission).failure?.error
+        await accountThenPushThenPull(admission, startedBy: .userRequest).failure?.error
     }
 
     private struct CycleResult {
@@ -229,8 +263,9 @@ final class SyncCoordinator: ObservableObject {
         var failure: SyncStepFailure?
     }
 
-    private func accountThenPushThenPull(_ requested: SyncAdmission) async -> CycleResult {
+    private func accountThenPushThenPull(_ requested: SyncAdmission, startedBy trigger: SyncTrigger) async -> CycleResult {
         var admission = requested
+        runPolicyStops = policyStops
         downloadIsAheadInRun = true
         defer { downloadIsAheadInRun = false }
         switch await confirmAccount() {
@@ -242,6 +277,7 @@ final class SyncCoordinator: ObservableObject {
                 admission = .full
             }
         }
+        await pushChannel.saveSubscriptionIfNeeded { try await transport.saveSubscription() }
 
         /// Only a run that may upload creates the zone. A download looks for it, and finding it
         /// again is how this Mac learns another device brought deleted data back.
@@ -255,9 +291,20 @@ final class SyncCoordinator: ObservableObject {
             }
         }
 
-        let push = admission == .full ? await performPush() : PushReport()
-        let pullFailure = await performPull(echoGuard: push.echoGuard)
+        seedProjectMembershipIfNeeded()
+        let push = admission == .full && !isStoppedByPolicy ? await performPush() : PushReport()
+        // A provider the organization stops commits nothing more, so nothing else of this run is kept.
+        guard !isStoppedByPolicy else { return CycleResult(admission: admission, failure: nil) }
+        let noticesAtThisDownload = pushChannel.noticesReceived
+        let pull = await performPull(echoGuard: push.echoGuard)
+        guard !isStoppedByPolicy else { return CycleResult(admission: admission, failure: nil) }
+        let pullFailure = pull.failure
         if pullFailure == nil {
+            if trigger == .activation, pull.broughtRemoteChanges,
+               pushChannel.activationFoundUnannouncedChanges(noticesSince: noticesAtLastDownload) {
+                Self.logger.notice("An activation brought changes no CloudKit notice announced, so activations download once a minute again")
+            }
+            noticesAtLastDownload = noticesAtThisDownload
             startActivationCooldown()
         }
 
@@ -274,6 +321,7 @@ final class SyncCoordinator: ObservableObject {
             recordCache.removeAll()
             metadataStorage.deferredDeletions = []
             metadataStorage.saveToken(nil)
+            pushChannel.forgetSubscription()
         }
         metadataStorage.zoneState = nextZone
         return CycleResult(admission: admission, failure: failure)
@@ -334,6 +382,10 @@ final class SyncCoordinator: ObservableObject {
     private func finish(_ result: CycleResult, previousError: SyncError?, from generation: Int) {
         guard generation == statusGeneration else {
             Self.logger.info("Discarding a sync outcome the status moved on from")
+            return
+        }
+        if let reason = policyGate() {
+            decide(.disabled(reason))
             return
         }
         let settlement = SyncSettlement(failure: result.failure, admission: result.admission, previousError: previousError)
@@ -435,6 +487,7 @@ final class SyncCoordinator: ObservableObject {
 
         // Clear token to force a full fetch on first sync after enabling
         metadataStorage.saveToken(nil)
+        pushChannel.forgetSubscription()
         metadataStorage.deferredDeletions = []
         /// Turning sync on is the person's choice to upload, a removed zone included.
         metadataStorage.zoneState = .unknown
@@ -463,6 +516,7 @@ final class SyncCoordinator: ObservableObject {
         metadataStorage.zoneState = .unknown
         metadataStorage.saveToken(nil)
         metadataStorage.deferredDeletions = []
+        pushChannel.forgetSubscription()
         recordCache.removeAll()
         markAllLocalDataDirty()
         await markSQLFavoritesDirty()
@@ -473,86 +527,20 @@ final class SyncCoordinator: ObservableObject {
         await sync(.userRequest)
     }
 
-    /// Marks existing SQL favorites and folders dirty. Separate from `markAllLocalDataDirty`
-    /// because the favorite store is an actor and must be read asynchronously.
-    private func markSQLFavoritesDirty() async {
-        let favorites = await services.sqlFavoriteManager.fetchFavorites()
-        changeTracker.markDirty(.favorite, ids: favorites.map { $0.id.uuidString })
-
-        let folders = await services.sqlFavoriteManager.fetchFolders()
-        changeTracker.markDirty(.favoriteFolder, ids: folders.map { $0.id.uuidString })
-    }
-
-    /// Marks every synced record dirty so the first sync after enabling pushes the lot.
-    ///
-    /// Every type is marked as one batch. Marking record by record posted a change notification per
-    /// record, and an account with a few hundred saved column layouts built a chain of hundreds of
-    /// tasks each waiting on its predecessor until the app stopped responding to the switch that
-    /// started it.
-    private func markAllLocalDataDirty() {
-        let connections = services.connectionStorage.loadConnections()
-        changeTracker.markDirty(
-            .connection,
-            ids: connections.filter(\.participatesInSync).map { $0.id.uuidString }
-        )
-
-        let groups = services.groupStorage.loadGroups()
-        changeTracker.markDirty(.group, ids: groups.map { $0.id.uuidString })
-
-        let tags = services.tagStorage.loadTags()
-        changeTracker.markDirty(.tag, ids: tags.map { $0.id.uuidString })
-
-        let sshProfiles = services.sshProfileStorage.loadProfiles()
-        changeTracker.markDirty(.sshProfile, ids: sshProfiles.map { $0.id.uuidString })
-
-        let credentialProfiles = services.credentialProfileStorage.loadProfiles()
-        changeTracker.markDirty(.credentialProfile, ids: credentialProfiles.map { $0.id.uuidString })
-
-        let favoriteTables = services.favoriteTablesStorage.loadFavorites()
-        changeTracker.markDirty(
-            .tableFavorite,
-            ids: favoriteTables.map { FavoriteTablesStorage.syncId(for: $0) }
-        )
-
-        let favoriteDatabases = services.favoriteDatabasesStorage.loadFavorites()
-        changeTracker.markDirty(
-            .favoriteDatabase,
-            ids: favoriteDatabases.map { FavoriteDatabasesStorage.syncId(for: $0) }
-        )
-
-        let tableFolderIds = tableFolderSyncIds()
-        changeTracker.markDirty(.tableFolder, ids: tableFolderIds.folders)
-        changeTracker.markDirty(.tableFolderItem, ids: tableFolderIds.items)
-
-        let settingsCategories = AppSettingsCategory.synced + [CustomSlashCommandStorage.syncCategory]
-        let columnLayoutCategories = columnLayouts().customizedStorageKeys()
-            .map { FileColumnLayoutPersister.syncCategory(for: $0) }
-        let themeCategories = themeCatalog.syncCategories
-        changeTracker.markDirty(.settings, ids: settingsCategories + columnLayoutCategories + themeCategories)
-
-        let summary = [
-            "connections=\(connections.count)",
-            "groups=\(groups.count)",
-            "tags=\(tags.count)",
-            "sshProfiles=\(sshProfiles.count)",
-            "favoriteTables=\(favoriteTables.count)",
-            "tableFolders=\(tableFolderIds.folders.count)",
-            "settings=\(AppSettingsCategory.synced.count + 1)",
-            "themes=\(themeCategories.count)"
-        ].joined(separator: ", ")
-        Self.logger.info("Marked all local data dirty: \(summary, privacy: .public)")
-    }
-
     /// Called when user disables sync in settings
     func disableSync() {
-        decide(.disabled(.userDisabled))
+        decide(.disabled(policyGate() ?? .userDisabled))
     }
 
     // MARK: - Status
 
-    // The switch before the license: sync that was never turned on is off by choice, whatever the
-    // license says.
+    // The organization first, then the switch before the license: sync that was never turned on is
+    // off by choice, whatever the license says.
     private func evaluateStatus() {
+        if let reason = policyGate() {
+            decide(.disabled(reason))
+            return
+        }
         let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
             decide(.disabled(.userDisabled))
@@ -578,11 +566,16 @@ final class SyncCoordinator: ObservableObject {
     /// nothing left to move it.
     private func decide(_ status: SyncStatus) {
         statusGeneration += 1
+        if status == .disabled(.managedPolicy) {
+            policyStops += 1
+            pushInFlight?.cancel()
+        }
         syncStatus = status
         guard !status.isEnabled else {
             arm()
             return
         }
+        pushChannel.unregister()
         triggers = nil
         resetRetryState()
         pendingTriggers = []
@@ -593,21 +586,15 @@ final class SyncCoordinator: ObservableObject {
         activationHeldForCooldown = false
     }
 
-    // Exhaustive, so a paying customer the app could not reach the server about is never told to buy.
-    nonisolated static func licenseDisableReason(for access: ProFeatureAccess) -> DisableReason? {
-        switch access {
-        case .available:
-            return nil
-        case .expired:
-            return .licenseExpired
-        case .refreshFailed:
-            return .licenseUnverified
-        case .signedOut, .notIncluded:
-            return .licenseRequired
-        }
+    private var isStoppedByPolicy: Bool {
+        policyGate() != nil || policyStops != runPolicyStops
     }
 
     private func canSync() -> Bool {
+        guard policyGate() == nil else {
+            Self.logger.trace("Sync skipped: the organization's policy leaves iCloud out")
+            return false
+        }
         guard licenseGate() == nil else {
             Self.logger.trace("Sync skipped: license not available")
             return false
@@ -646,15 +633,22 @@ final class SyncCoordinator: ObservableObject {
         var interruption: Error?
         do {
             let transport = transport
-            outcome = try await SyncConflictRebase.push(
-                records: batch.records,
-                deletions: deletions,
-                edits: batch.editsByRecordID
-            ) {
-                try await transport.push(records: $0, deletions: $1)
-            } fetch: {
-                try await transport.fetch(recordIDs: $0)
+            let pushing = Task {
+                try await SyncConflictRebase.push(
+                    records: batch.records,
+                    deletions: deletions,
+                    edits: batch.editsByRecordID
+                ) { records, deletions in
+                    // Each round, the conflict retries included, is a push not yet sent.
+                    guard !isStoppedByPolicy else { throw CancellationError() }
+                    return try await transport.push(records: records, deletions: deletions)
+                } fetch: {
+                    try await transport.fetch(recordIDs: $0)
+                }
             }
+            pushInFlight = pushing
+            defer { pushInFlight = nil }
+            outcome = try await pushing.value
         } catch let interrupted as SyncPushInterruption {
             outcome = interrupted.completed
             interruption = interrupted.cause
@@ -662,6 +656,8 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.error("Push failed: \(error.localizedDescription)")
             return PushReport(failure: SyncStepFailure(error))
         }
+        // The server may have taken the batch; the next run's conflict rebase settles that from the last kept state.
+        guard !isStoppedByPolicy else { return PushReport() }
         outcome.acceptMissingDeletions(of: deletions)
 
         recordCache.store(outcome.savedBases(pushed: batch.editsByRecordID))
@@ -729,20 +725,15 @@ final class SyncCoordinator: ObservableObject {
 
     // MARK: - Pull
 
-    nonisolated static func isTokenExpired(_ error: Error) -> Bool {
-        SyncFailure(error) == .tokenExpired
-    }
-
-    // A delta never resends a record the token passed, and a category toggle starts no run, so every pull checks.
-    private func adoptReadableContent(for settings: SyncSettings) {
-        guard metadataStorage.adoptReadableRecordTypes(Self.readableContent(for: settings)) else { return }
-        metadataStorage.saveToken(nil)
-        Self.logger.info("Reading record types the last pull skipped: cleared sync token for full fetch")
+    private struct PullReport {
+        var failure: SyncStepFailure?
+        // A delta that carried records this run did not upload, which another device sent.
+        var broughtRemoteChanges = false
     }
 
     /// Reports a failed download instead of passing over it: a run whose pull failed did not bring
     /// this Mac up to date, and must not say Synced or move Last Synced.
-    private func performPull(echoGuard: SyncEchoGuard?) async -> SyncStepFailure? {
+    private func performPull(echoGuard: SyncEchoGuard?) async -> PullReport {
         // Applied with the categories recorded here, so one turned off during the download is still read once.
         let settings = services.appSettingsStorage.loadSync()
         adoptReadableContent(for: settings)
@@ -754,22 +745,27 @@ final class SyncCoordinator: ObservableObject {
 
         do {
             let result = try await transport.pull(since: token)
-            return await applyPull(result, isFullFetch: token == nil, settings: settings, echoGuard: echoGuard)
-                ? nil : .pullNotSaved
+            guard !isStoppedByPolicy else { return PullReport() }
+            guard await applyPull(result, isFullFetch: token == nil, settings: settings, echoGuard: echoGuard) else {
+                return PullReport(failure: .pullNotSaved)
+            }
+            return PullReport(broughtRemoteChanges: token != nil && result.carriesRemoteChanges(besides: echoGuard))
         } catch let error where Self.isTokenExpired(error) {
+            guard !isStoppedByPolicy else { return PullReport() }
             Self.logger.warning("Change token expired, clearing and retrying with full fetch")
             metadataStorage.saveToken(nil)
             do {
                 let result = try await transport.pull(since: nil)
+                guard !isStoppedByPolicy else { return PullReport() }
                 return await applyPull(result, isFullFetch: true, settings: settings, echoGuard: echoGuard)
-                    ? nil : .pullNotSaved
+                    ? PullReport() : PullReport(failure: .pullNotSaved)
             } catch {
                 Self.logger.error("Full fetch after token expiry failed: \(error.localizedDescription)")
-                return SyncStepFailure(error)
+                return PullReport(failure: SyncStepFailure(error))
             }
         } catch {
             Self.logger.error("Pull failed: \(error.localizedDescription)")
-            return SyncStepFailure(error)
+            return PullReport(failure: SyncStepFailure(error))
         }
     }
 
@@ -779,9 +775,14 @@ final class SyncCoordinator: ObservableObject {
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
     ) async -> Bool {
-        guard await applyPullResult(result, settings: settings, echoGuard: echoGuard, isFullFetch: isFullFetch) else {
+        let transport = transport
+        let recovery = await recoveringHeldChanges(into: result, zoneID: await transport.currentZoneID) {
+            try await transport.fetch(recordIDs: $0)
+        }
+        guard await applyPullResult(recovery.result, settings: settings, echoGuard: echoGuard, isFullFetch: isFullFetch) else {
             return false
         }
+        settleRecoveredHeldChanges(recovery.recovered)
         if isFullFetch {
             seedLocalThemesIfPending(after: result)
             await finishSavedQueriesRefill(after: result, settings: settings)
@@ -799,15 +800,19 @@ final class SyncCoordinator: ObservableObject {
         let settings = settings ?? services.appSettingsStorage.loadSync()
         let zoneID = await transport.currentZoneID
         let deferred = deferredDeletions(dueIn: result, settings: settings, zoneID: zoneID)
+        // Read once, before anything is applied: a reload after the pull wrote the library would write it again.
+        let unreadableNames = unreadableRecordNames()
+        let held = heldDeletions(dueIn: result, settings: settings, unreadable: unreadableNames, zoneID: zoneID)
         // Read before anything is applied, while the local stores still hold every record the fetch is checked against.
         let pushed = echoGuard?.pushedRecordIDs ?? []
         let missing = isFullFetch
             ? await deletionsProvenByFullFetch(result, settings: settings, zoneID: zoneID, pushed: pushed)
             : []
-        let deletedRecordIDs = (result.deletedRecordIDs + deferred.due + missing).filter { recordID in
+        let deletedRecordIDs = (result.deletedRecordIDs + deferred.due + held.due + missing).filter { recordID in
             echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
         }
         let pendingEdits = await recordNamesWithPendingEdits()
+        guard !isStoppedByPolicy else { return false }
         let admitted = PullResult(
             changedRecords: result.changedRecords.filter { !pendingEdits.contains($0.recordID.recordName) },
             deletedRecordIDs: result.deletedRecordIDs,
@@ -815,13 +820,16 @@ final class SyncCoordinator: ObservableObject {
         )
         let storesPersisted = applyRemoteChanges(
             admitted,
+            unreadableNames: unreadableNames,
             deletedRecordIDs: deletedRecordIDs,
             settings: settings,
             echoGuard: echoGuard
         )
+        guard !isStoppedByPolicy else { return false }
         let favoritesOutcome = await services.sqlFavoriteManager.applyRemote(
             remoteSQLFavoriteBatch(from: admitted, deletedRecordIDs: deletedRecordIDs, settings: settings),
-            echoGuard: echoGuard
+            echoGuard: echoGuard,
+            isStopped: { [policyStopCount, runPolicyStops] in policyStopCount.value != runPolicyStops }
         )
 
         /// The token and the cache are the record of what this device holds, so neither is
@@ -829,8 +837,8 @@ final class SyncCoordinator: ObservableObject {
         /// were never written and the server never sent them again, and the cached record then
         /// stood in as the merge base for an edit that had no local base at all. Not saving it
         /// means the next pull replays the batch, which every apply here is written to survive.
-        guard storesPersisted, favoritesOutcome != .failed else {
-            Self.logger.error("Pull not acknowledged: a store refused to persist part of the batch")
+        guard storesPersisted, favoritesOutcome != .failed, !isStoppedByPolicy else {
+            Self.logger.error("Pull not acknowledged: a store refused part of the batch, or the policy stopped iCloud")
             return false
         }
 
@@ -838,13 +846,17 @@ final class SyncCoordinator: ObservableObject {
             metadataStorage.saveToken(newToken)
         }
 
-        // Only what the local copy took: a record of a category this Mac does not sync stays out until a full fetch applies it.
+        // Only what the local copy took: a record of a category this Mac does not sync stays out until a full fetch
+        // applies it, and one whose copy here it cannot read until a build that reads the copy fetches it.
+        let readsProjects = isProjectSyncWritable()
         recordCache.store(admitted.changedRecords.filter { record in
             echoGuard?.withholds(record.recordID, tracker: changeTracker) != true
-                && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) } == true
+                && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) && ($0 != .project || readsProjects) } == true
+                && !unreadableNames.contains(record.recordID.recordName)
         })
-        recordCache.remove(result.deletedRecordIDs + deferred.due + missing)
+        recordCache.remove(result.deletedRecordIDs + deferred.due + held.due + missing)
         settleDeferredDeletions(deferred, after: result, settings: settings)
+        settleHeldDeletions(held)
 
         Self.logger.info(
             "Pull completed: \(result.changedRecords.count) changed, \(result.deletedRecordIDs.count) deleted"
@@ -882,6 +894,7 @@ final class SyncCoordinator: ObservableObject {
     /// not commit its token: the batch has to arrive again.
     private func applyRemoteChanges(
         _ result: PullResult,
+        unreadableNames: Set<String>,
         deletedRecordIDs: [CKRecord.ID],
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
@@ -891,6 +904,7 @@ final class SyncCoordinator: ObservableObject {
         changeTracker.isSuppressed = true
         let effects = applyRemoteRecords(
             result.changedRecords,
+            unreadableNames: unreadableNames,
             deletedRecordIDs: deletedRecordIDs,
             settings: settings,
             echoGuard: echoGuard
@@ -906,6 +920,7 @@ final class SyncCoordinator: ObservableObject {
 
     private func applyRemoteRecords(
         _ changedRecords: [CKRecord],
+        unreadableNames: Set<String>,
         deletedRecordIDs: [CKRecord.ID],
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
@@ -917,6 +932,8 @@ final class SyncCoordinator: ObservableObject {
         let connectionTombstoneIds = Set(metadataStorage.tombstones(for: .connection).map(\.id))
         let groupTombstoneIds = Set(metadataStorage.tombstones(for: .group).map(\.id))
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
+        let projectTombstoneIds = Set(metadataStorage.tombstones(for: .project).map(\.id))
+        let readsProjects = isProjectSyncWritable()
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
         let credentialTombstoneIds = Set(metadataStorage.tombstones(for: .credentialProfile).map(\.id))
         let settingsTombstoneIds = Set(metadataStorage.tombstones(for: .settings).map(\.id))
@@ -925,6 +942,12 @@ final class SyncCoordinator: ObservableObject {
         let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
         var tableFolderRecords: [CKRecord] = []
         var connectionBatch: RemoteConnectionBatch?
+        var heldNames: Set<String> = []
+        let pendingDeletions = SyncPendingDeletions.parse(deletedRecordIDs, settings: settings, readsProjects: readsProjects)
+        // Read before any record lands: the update that takes a member out of a group can come with the group's deletion.
+        let membershipBefore = pendingDeletions.groups.isEmpty
+            ? nil
+            : membershipBeforePull(bringing: changedRecords, readsProjects: readsProjects)
 
         func persistConnectionBatch() {
             guard let batch = connectionBatch else { return }
@@ -942,6 +965,13 @@ final class SyncCoordinator: ObservableObject {
                 continue
             }
             guard let type = SyncRecordType(rawValue: record.recordType), settings.syncs(type) else { continue }
+            // A Local only copy never takes a remote change, read or not.
+            if unreadableNames.contains(record.recordID.recordName) {
+                if !isKeptOffSync(record.recordID.recordName) {
+                    heldNames.insert(record.recordID.recordName)
+                }
+                continue
+            }
             // A record whose apply can read or write the library sees every connection record before it.
             if !Self.leavesConnectionLibraryAlone(type) {
                 persistConnectionBatch()
@@ -981,16 +1011,26 @@ final class SyncCoordinator: ObservableObject {
                 applyRemoteDatabaseFavorite(record, tombstoneIds: databaseFavoriteTombstoneIds)
             case .tableFolder, .tableFolderItem:
                 tableFolderRecords.append(record)
+            case .project:
+                // Not applied and not cached until the type is readable, when a full fetch brings it.
+                guard readsProjects else { continue }
+                switch applyRemoteProject(record, tombstoneIds: projectTombstoneIds) {
+                case .applied: groupsOrTagsChanged = true
+                case .failed: persistenceFailed = true
+                case .skipped: break
+                }
             case .favorite, .favoriteFolder:
                 break
             }
         }
         persistConnectionBatch()
         applyRemoteTableFolderRecords(tableFolderRecords)
+        holdChanges(heldNames)
 
         var effects = applyRemoteDeletions(
-            SyncPendingDeletions.parse(deletedRecordIDs, settings: settings),
-            alongside: tableFavorites
+            pendingDeletions,
+            alongside: tableFavorites,
+            membershipBefore: membershipBefore
         )
         actualConnectionChanges = actualConnectionChanges || effects.connectionsChanged
         groupsOrTagsChanged = groupsOrTagsChanged || effects.groupsOrTagsChanged
@@ -1045,25 +1085,16 @@ final class SyncCoordinator: ObservableObject {
             localConnection,
             in: remoteRecord.recordID.zoneID,
             base: base,
-            publisher: services.connectionStorage.sshRoutePublisherId
+            publisher: services.connectionStorage.sshRoutePublisherId,
+            schema: schema
         )
         guard let merged = edit.rebased(onto: remoteRecord) else { return nil }
 
         do {
-            return try SyncRecordMapper.toConnection(merged)
+            return try SyncRecordMapper.toConnection(merged, readsProject: isProjectSyncWritable())
         } catch {
             Self.logger.error("Failed to merge local edits: \(error.localizedDescription)")
             return nil
-        }
-    }
-
-    // Groups and tags write only their own store, and the rest are collected and applied after the loop.
-    private static func leavesConnectionLibraryAlone(_ type: SyncRecordType) -> Bool {
-        switch type {
-        case .connection, .group, .tag, .tableFavorite, .tableFolder, .tableFolderItem, .favorite, .favoriteFolder:
-            return true
-        case .settings, .sshProfile, .credentialProfile, .favoriteDatabase:
-            return false
         }
     }
 
@@ -1076,7 +1107,7 @@ final class SyncCoordinator: ObservableObject {
     ) {
         let remoteConnection: DatabaseConnection
         do {
-            remoteConnection = try SyncRecordMapper.toConnection(record)
+            remoteConnection = try SyncRecordMapper.toConnection(record, readsProject: isProjectSyncWritable())
         } catch {
             Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
             return
@@ -1114,7 +1145,12 @@ final class SyncCoordinator: ObservableObject {
             batch.cleanedIds.insert(remoteConnection.id.uuidString)
         }
         if let index {
-            batch.replace(at: index, with: kept.adoptingDeviceLocalState(from: batch.connections[index]))
+            var adopted = kept.adoptingDeviceLocalState(from: batch.connections[index])
+            // Until a record can carry a project, membership is this Mac's own and a pull leaves it.
+            if !isProjectSyncWritable() {
+                adopted.projectId = batch.connections[index].projectId
+            }
+            batch.replace(at: index, with: adopted)
         } else {
             var inserted = kept
             inserted.origin = .synced
@@ -1133,97 +1169,6 @@ final class SyncCoordinator: ObservableObject {
         }
         connectionsCleanedOnPull.formUnion(batch.cleanedIds)
         return .applied
-    }
-
-    private func applyRemoteGroup(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
-        guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return .skipped }
-        if tombstoneIds.contains(remoteGroup.id.uuidString) { return .skipped }
-
-        return services.groupStorage.applyRemoteGroup(remoteGroup)
-    }
-
-    @discardableResult
-    private func applyRemoteTag(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
-        guard let remoteTag = SyncRecordMapper.toTag(record) else { return .skipped }
-        if tombstoneIds.contains(remoteTag.id.uuidString) { return .skipped }
-
-        return services.tagStorage.applyRemoteTag(remoteTag)
-    }
-
-    private static func availableProfileName(
-        basedOn name: String,
-        taken profiles: [CredentialProfile]
-    ) -> String {
-        let used = Set(profiles.map { $0.name.lowercased() })
-        for index in 2...99 {
-            let candidate = String(format: String(localized: "%1$@ (%2$lld)"), name, Int64(index))
-            if !used.contains(candidate.lowercased()) { return candidate }
-        }
-        return name
-    }
-
-    /// False when the profile could not be persisted, which withholds the pull token so the record
-    /// arrives again rather than being acknowledged and lost.
-    private func applyRemoteCredentialProfile(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        let remoteProfile: CredentialProfile
-        do {
-            remoteProfile = try SyncRecordMapper.toCredentialProfile(record)
-        } catch {
-            Self.logger.error(
-                "Skipping remote credential profile \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)"
-            )
-            return true
-        }
-        if tombstoneIds.contains(remoteProfile.id.uuidString) { return true }
-
-        var profiles = services.credentialProfileStorage.loadProfiles()
-        if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
-            /// The password mode's payload never crosses the wire, so a `.source` this Mac already
-            /// holds is kept rather than replaced by the `prompt` the remote had to send instead.
-            var merged = remoteProfile
-            if case .source = profiles[index].passwordMode, remoteProfile.passwordMode == .prompt {
-                merged.passwordMode = profiles[index].passwordMode
-            }
-            profiles[index] = merged
-        } else {
-            /// Two Macs can hold same-named profiles with different ids, which is what happens when
-            /// someone recreated one by hand before they synced. The editor forbids duplicate names
-            /// and every picker offers a profile by name alone, so the arriving one is renamed
-            /// rather than landing as an indistinguishable second row.
-            var arriving = remoteProfile
-            if profiles.contains(where: { $0.name.compare(arriving.name, options: .caseInsensitive) == .orderedSame }) {
-                arriving.name = Self.availableProfileName(basedOn: arriving.name, taken: profiles)
-            }
-            profiles.append(arriving)
-        }
-        guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
-        /// The connections linked to it carry a copy of the username, which every raw reader uses.
-        services.credentialProfileStorage.writeUsernameThrough(remoteProfile, byUser: false)
-        return true
-    }
-
-    // False keeps the change token, so a profile this Mac failed to save arrives again.
-    private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        let remoteProfile: SSHProfile
-        do {
-            remoteProfile = try SyncRecordMapper.toSSHProfile(record)
-        } catch {
-            Self.logger.error("Skipping remote SSH profile \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            return true
-        }
-        if tombstoneIds.contains(remoteProfile.id.uuidString) { return true }
-
-        var profiles = services.sshProfileStorage.loadProfiles()
-        if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
-            profiles[index] = remoteProfile
-        } else {
-            profiles.append(remoteProfile)
-        }
-        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
-        /// A linked connection stores the profile's configuration, so an edit that arrives from
-        /// another Mac has to reach those connections too or they keep tunnelling to the old host.
-        services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile, byUser: false)
-        return true
     }
 
     private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
@@ -1294,6 +1239,7 @@ final class SyncCoordinator: ObservableObject {
             localChanges: observeLocalChanges(),
             networkMonitor: observeNetwork()
         )
+        pushChannel.register()
 
         /// Empty local storage (a fresh install or a wipe) needs a full fetch: a delta returns nothing.
         if services.connectionStorage.loadConnections().isEmpty {
@@ -1336,6 +1282,23 @@ final class SyncCoordinator: ObservableObject {
                     guard let self else { return }
                     debounceTask = nil
                     await sync(.localChange)
+                }
+            }
+    }
+
+    // A provider no longer allowed stops at once, with no last run. One allowed again is decided a turn later, once
+    // the center holds the values the gate reads, and then waits for the switch.
+    private func observePolicyChanges() {
+        policyCancellable = policyChanges
+            .sink { [weak self] reason in
+                guard let self else { return }
+                if let reason {
+                    decide(.disabled(reason))
+                    return
+                }
+                Task { @MainActor [weak self] in
+                    self?.evaluateStatus()
+                    self?.requestSync(.launch)
                 }
             }
     }
@@ -1415,5 +1378,14 @@ private final class SyncTriggers {
 
     deinit {
         NotificationCenter.default.removeObserver(accountObserver)
+    }
+}
+
+private final class PolicyStopCount: Sendable {
+    private let count = OSAllocatedUnfairLock(initialState: 0)
+
+    var value: Int {
+        get { count.withLock { $0 } }
+        set { count.withLock { $0 = newValue } }
     }
 }

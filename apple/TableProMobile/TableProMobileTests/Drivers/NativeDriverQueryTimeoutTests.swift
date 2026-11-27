@@ -38,16 +38,19 @@ struct NativeDriverQueryTimeoutTests {
         #expect(MSSQLDriver.sessionSetupStatements(queryTimeoutSeconds: 0).isEmpty)
     }
 
-    @Test("An Oracle query timeout reaches the core that ends a statement past it")
-    func oracleTimeoutReachesCore() throws {
+    // The driver applies it to the plugin on connect (`PluginBackedDriverTests`), and the plugin to its core.
+    @Test("The factory hands an Oracle connection's query timeout to its plugin driver")
+    func oracleTimeoutReachesThePlugin() throws {
         let timed = DatabaseConnection(name: "Shop", type: .oracle, host: "db.example.com", queryTimeoutSeconds: 45)
         let untimed = DatabaseConnection(name: "Shop", type: .oracle, host: "db.example.com")
 
-        let timedDriver = try #require(try IOSDriverFactory().createDriver(for: timed, password: nil) as? OracleDriver)
-        let untimedDriver = try #require(try IOSDriverFactory().createDriver(for: untimed, password: nil) as? OracleDriver)
+        let timedDriver = try #require(try IOSDriverFactory().createDriver(for: timed, password: nil) as? OracleBackedDriver)
+        let untimedDriver = try #require(
+            try IOSDriverFactory().createDriver(for: untimed, password: nil) as? OracleBackedDriver
+        )
 
         #expect(timedDriver.queryTimeoutSeconds == 45)
-        #expect(untimedDriver.queryTimeoutSeconds == 0)
+        #expect(untimedDriver.queryTimeoutSeconds == nil)
     }
 
     private static func postgreSQLSession(queryTimeoutSeconds: Int?) async throws -> [String] {

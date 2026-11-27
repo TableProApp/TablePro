@@ -61,6 +61,17 @@ internal final class ConnectionApprovalStore {
         Self.logger.info("Approved \(self.kind.logName, privacy: .public) for a connection")
     }
 
+    // Approves `connection` only where it asks for no more than `reviewed` did, at the same destination.
+    internal func approve(_ connection: DatabaseConnection, asReviewed reviewed: DatabaseConnection) {
+        guard dialedDestination(connection).digest == dialedDestination(reviewed).digest,
+              kind.items(in: connection).isSubset(of: kind.items(in: reviewed))
+        else {
+            Self.logger.info("Left \(self.kind.logName, privacy: .public) unapproved: the saved definition differs from the one shown")
+            return
+        }
+        approve(connection)
+    }
+
     internal func revoke(for connectionId: UUID) {
         var all = approvals()
         guard all.removeValue(forKey: connectionId.uuidString) != nil else { return }
@@ -109,24 +120,21 @@ internal final class ConnectionApprovalStore {
         return true
     }
 
+    private var approvalsKey: JSONDefaultsKey<Approvals> {
+        JSONDefaultsKey(kind.storageKey)
+    }
+
     private func approvals() -> Approvals {
-        guard let data = defaults.data(forKey: kind.storageKey),
-              let decoded = try? JSONDecoder().decode(Approvals.self, from: data)
-        else { return [:] }
-        return decoded
+        defaults.read(approvalsKey).value ?? [:]
     }
 
     private func save(_ approvals: Approvals) {
         let kept = approvals.filter { !$0.value.isEmpty }
         guard !kept.isEmpty else {
-            defaults.removeObject(forKey: kind.storageKey)
+            defaults.removeValue(for: approvalsKey)
             return
         }
-        guard let data = try? JSONEncoder().encode(kept) else {
-            Self.logger.error("Could not encode \(self.kind.logName, privacy: .public)")
-            return
-        }
-        defaults.set(data, forKey: kind.storageKey)
+        try? defaults.write(kept, to: approvalsKey)
     }
 }
 

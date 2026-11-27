@@ -42,6 +42,13 @@ public sealed record HistoryEntry(
     HistoryOutcome Outcome,
     bool Pinned);
 
+public enum HistoryExportFormat
+{
+    // Each run as it ran, under comments that say where and when.
+    Sql,
+    Csv,
+}
+
 // Next is null on the last page.
 public sealed record HistoryPage(IReadOnlyList<HistoryEntry> Entries, HistoryCursor? Next);
 
@@ -79,10 +86,12 @@ public sealed class QueryHistory : IDisposable
         return await CoreCall.RunAsync(() => _store.Record(session.Handle, native)).ConfigureAwait(false);
     }
 
-    // Every word of text appears in the run, in any case. Pinned runs come first, then the newest.
+    // Every word of text appears in the run, in any case. Pinned runs come first, then the newest. projectId keeps
+    // the runs of the connections that project holds now; null, and an id no project holds, keep every run.
     public async Task<HistoryPage> SearchAsync(
         string text,
         Guid? connectionId,
+        Guid? projectId,
         HistoryCursor? after,
         int limit,
         CancellationToken cancellationToken = default)
@@ -92,7 +101,12 @@ public sealed class QueryHistory : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         // A search only reads, so one the caller stopped waiting for is left to finish.
         var page = await CoreCall.RunAsync(
-                () => _store.Search(text, connectionId?.ToString(), after?.Position, checked((uint)limit)))
+                () => _store.Search(
+                    text,
+                    connectionId?.ToString(),
+                    projectId?.ToString(),
+                    after?.Position,
+                    checked((uint)limit)))
             .WaitAsync(cancellationToken)
             .ConfigureAwait(false);
         return new HistoryPage(
@@ -108,11 +122,50 @@ public sealed class QueryHistory : IDisposable
         return CoreCall.RunAsync(() => _store.Delete(native));
     }
 
+    // Every run of one connection, pinned ones too, for a connection deleted with its history. Returns how many went.
+    public async Task<long> DeleteForConnectionAsync(Guid connectionId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var removed = await CoreCall.RunAsync(() => _store.DeleteForConnection(connectionId.ToString()))
+            .ConfigureAwait(false);
+        return Mapping.Count(removed);
+    }
+
+    // Drops unpinned runs older than retentionDays (0 keeps every age), then the oldest past maxEntries (0 keeps the
+    // store's own cap). Returns how many went.
+    public async Task<long> PruneAsync(int retentionDays, int maxEntries, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(retentionDays);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxEntries);
+        cancellationToken.ThrowIfCancellationRequested();
+        var removed = await CoreCall.RunAsync(() => _store.Prune(checked((uint)retentionDays), checked((uint)maxEntries)))
+            .ConfigureAwait(false);
+        return Mapping.Count(removed);
+    }
+
     public Task ClearAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return CoreCall.RunAsync(() => _store.Clear());
     }
+
+    // A pinned run comes first in every search and is never pruned.
+    public Task SetPinnedAsync(long id, bool pinned) => CoreCall.RunAsync(() => _store.SetPinned(id, pinned));
+
+    // The file at path appears only once whole.
+    public Task ExportAsync(IReadOnlyList<long> ids, HistoryExportFormat format, string path)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        long[] native = [.. ids];
+        var tag = format == HistoryExportFormat.Csv ? Native.HistoryExportFormat.Csv : Native.HistoryExportFormat.Sql;
+        return CoreCall.RunAsync(() => _store.Export(native, tag, path));
+    }
+
+    // The same database, so every store from one QueryHistory sees the others' writes.
+    public SavedQueries OpenSavedQueries() => new(CoreCall.Run(() => _store.SavedQueries()));
+
+    public Favourites OpenFavourites() => new(CoreCall.Run(() => _store.Favourites()));
 
     public void Dispose() => _store.Dispose();
 

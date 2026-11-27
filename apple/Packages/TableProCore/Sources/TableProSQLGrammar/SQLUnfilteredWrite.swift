@@ -6,12 +6,26 @@ public enum SQLUnfilteredWrite: Sendable, Equatable {
     case delete
 
     public static func writes(in sql: String, grammar: SQLLexicalGrammar) -> [SQLUnfilteredWrite] {
+        writes(in: sql, grammar: grammar, readsRecordIds: false)
+    }
+
+    static func writes(in sql: String, grammar: SQLLexicalGrammar, readsRecordIds: Bool) -> [SQLUnfilteredWrite] {
         SQLStatementScanner.executableStatements(in: sql, grammar: grammar).flatMap { statement in
             // On T-SQL a statement can begin inside another without a `;`.
             SQLUnterminatedStatements.runnable(in: statement.sql, grammar: grammar).flatMap { text in
-                writes(inStatement: text as NSString, grammar: grammar)
+                writes(inStatement: text as NSString, grammar: grammar, readsRecordIds: readsRecordIds)
             }
         }
+    }
+
+    // SurrealQL's `DELETE person:tobie` has no WHERE and removes the one record its id names.
+    private static func writes(
+        inStatement source: NSString,
+        grammar: SQLLexicalGrammar,
+        readsRecordIds: Bool
+    ) -> [SQLUnfilteredWrite] {
+        if readsRecordIds, SurrealRecordDelete.namesOneRecord(source, grammar: grammar) { return [] }
+        return writes(inStatement: source, grammar: grammar)
     }
 
     private static let period = UInt16(UnicodeScalar(".").value)
@@ -150,5 +164,147 @@ public enum SQLUnfilteredWrite: Sendable, Equatable {
         let previous = tokens[index - 1]
         if previous.word == "AS" { return true }
         return previous.kind == .other && source.character(at: previous.location) == period
+    }
+}
+
+// SurrealDB 2.3 and 3.0 (`parse_delete_stmt`) read `DELETE [FROM] [ONLY]`, the targets, then WITH, WHERE, RETURN,
+// TIMEOUT, PARALLEL and EXPLAIN. A `table:key` target with the key right after the colon names one record
+// (`parse_record_id_or_range`); a `..` or `>` after the key makes it a range. A table, a parameter, a subquery, an
+// edge (`t:a->e`), a field (`t:a.f`), a second target or a key this does not read is every row.
+private struct SurrealRecordDelete {
+    private static let clauses: Set<String> = ["WITH", "WHERE", "RETURN", "TIMEOUT", "PARALLEL", "EXPLAIN"]
+    private static let openBracket = UInt16(UnicodeScalar("[").value)
+    private static let openBrace = UInt16(UnicodeScalar("{").value)
+    private static let closers: [UInt16: UInt16] = [
+        SqlLexer.openParen: SqlLexer.closeParen,
+        openBracket: UInt16(UnicodeScalar("]").value),
+        openBrace: UInt16(UnicodeScalar("}").value),
+    ]
+    private static let closing = Set(closers.values)
+    private static let colon = UInt16(UnicodeScalar(":").value)
+    private static let period = UInt16(UnicodeScalar(".").value)
+    private static let plus = UInt16(UnicodeScalar("+").value)
+    private static let smallU = UInt16(UnicodeScalar("u").value)
+
+    let text: NSString
+    let grammar: SQLLexicalGrammar
+    var index = 0
+
+    static func namesOneRecord(_ text: NSString, grammar: SQLLexicalGrammar) -> Bool {
+        var reader = SurrealRecordDelete(text: text, grammar: grammar)
+        return reader.readsOneRecordDelete()
+    }
+
+    private mutating func readsOneRecordDelete() -> Bool {
+        skipBlanks()
+        guard word() == "DELETE" else { return false }
+        skipKeyword("FROM")
+        skipKeyword("ONLY")
+        skipBlanks()
+        guard readsName(), peek() == Self.colon else { return false }
+        index += 1
+        guard readsKey() else { return false }
+        skipBlanks()
+        guard let next = peek() else { return true }
+        if next == SqlLexer.semicolon {
+            index += 1
+            skipBlanks()
+            return peek() == nil
+        }
+        return word().map(Self.clauses.contains) == true
+    }
+
+    // `parse_record_id_key`: an integer with or without a sign, a name, a `u"..."` UUID, or an array or object. A
+    // generated key such as `rand()` is left unread.
+    private mutating func readsKey() -> Bool {
+        guard let first = peek() else { return false }
+        if first == Self.plus || first == SqlLexer.dash {
+            index += 1
+            let digits = index
+            while let next = peek(), next >= 0x30, next <= 0x39 {
+                index += 1
+            }
+            return index > digits
+        }
+        if first == Self.smallU, index + 1 < text.length,
+           [SqlLexer.singleQuote, SqlLexer.doubleQuote].contains(text.character(at: index + 1)) {
+            return readsQuoted(at: index + 1)
+        }
+        if first == Self.openBracket || first == Self.openBrace {
+            return readsValues()
+        }
+        return readsName()
+    }
+
+    // A string is a value, so `person:"tobie"` is not a key SurrealDB parses.
+    private mutating func readsName() -> Bool {
+        if let first = peek(), first == SqlLexer.backtick || first == SqlLexer.openAngleQuote {
+            return readsQuoted(at: index)
+        }
+        return word() != nil
+    }
+
+    private mutating func readsQuoted(at start: Int) -> Bool {
+        guard let span = SQLNonCodeSpan.span(at: start, in: text, grammar: grammar), span.kind == .quoted,
+              span.isTerminated
+        else { return false }
+        index = span.end
+        return true
+    }
+
+    // Whatever an array or object key holds, it is one key. A `..` inside is still read as a range.
+    private mutating func readsValues() -> Bool {
+        var expected: [UInt16] = []
+        while let next = peek() {
+            if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) {
+                index = max(span.end, index + 1)
+                continue
+            }
+            if let closer = Self.closers[next] {
+                expected.append(closer)
+            } else if Self.closing.contains(next) {
+                guard expected.popLast() == next else { return false }
+                if expected.isEmpty {
+                    index += 1
+                    return true
+                }
+            } else if next == Self.period, index + 1 < text.length, text.character(at: index + 1) == Self.period {
+                return false
+            }
+            index += 1
+        }
+        return false
+    }
+
+    private mutating func skipKeyword(_ keyword: String) {
+        skipBlanks()
+        let start = index
+        if word() != keyword { index = start }
+    }
+
+    private mutating func skipBlanks() {
+        while index < text.length {
+            let blank = StatementBlank.blankLength(in: text, at: index)
+            if blank > 0 {
+                index += blank
+            } else if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar), span.kind.isComment {
+                index = max(span.end, index + 1)
+            } else {
+                return
+            }
+        }
+    }
+
+    private mutating func word() -> String? {
+        let start = index
+        while let next = peek(), SqlDollarQuote.isIdentifierPart(next) {
+            index += 1
+        }
+        guard index > start else { return nil }
+        return text.substring(with: NSRange(location: start, length: index - start)).uppercased()
+    }
+
+    private func peek() -> UInt16? {
+        index < text.length ? text.character(at: index) : nil
     }
 }

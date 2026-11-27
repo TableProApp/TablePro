@@ -2,10 +2,8 @@ import SwiftUI
 import TableProPluginKit
 
 struct SidebarTreeView: View {
-    @ObservedObject private var databaseManager = DatabaseManager.shared
-    @ObservedObject private var schemaService = SchemaService.shared
-    // Read through the view model's listing scan; observed so a listing that lands redraws the verdicts.
-    @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
+    private var databaseManager: DatabaseManager { .shared }
+    private var schemaService: SchemaService { .shared }
 
     let connectionId: UUID
     @ObservedObject var viewModel: SidebarViewModel
@@ -14,8 +12,10 @@ struct SidebarTreeView: View {
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     weak var coordinator: MainContentCoordinator?
+    // Also carries the all-schema listing the view model's scan reads, so a listing that lands redraws the verdicts.
+    @ObservedObject var catalog: ConnectionSidebarCatalog
 
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var sidebarDisplay = SidebarDisplayPreferences.shared
 
     private var activeDatabase: String? {
         let name = coordinator?.browseDatabaseName ?? ""
@@ -35,7 +35,7 @@ struct SidebarTreeView: View {
             schemaService.schemas(for: connectionId),
             systemSchemas: systemSchemas,
             activeSchema: coordinator?.toolbarState.currentSchema,
-            showsSystem: settingsManager.general.showSystemContainers,
+            showsSystem: sidebarDisplay.options.showSystemContainers,
             selected: sidebarState.schemaFilter(for: activeDatabase),
             pinned: Set(pendingTruncates.union(pendingDeletes).compactMap(\.qualifyingSchema))
         )
@@ -45,14 +45,14 @@ struct SidebarTreeView: View {
         viewModel.filterQuery
     }
 
-    /// The same verdict the outline applies, so the empty state and the rows can never disagree about
-    /// whether a schema survived the filter.
-    private var visibleSchemas: [String] {
+    // The outline's own verdict, so the empty state and the rows never disagree.
+    private func visibleSchemas(of schemas: [String]) -> [String] {
         guard !searchText.isEmpty else { return schemas }
         // The listing of the database the schemas were read from, which during a switch is the one being left.
         let listingMatches = schemaService.loadedScope(for: connectionId).flatMap {
             viewModel.schemaListingMatches(database: $0.database, searchText: searchText)
         }
+        let database = activeDatabase
         return schemas.filter { schema in
             DatabaseTreeFilter.hierarchicalSchemaSearchVerdict(
                 schema: schema,
@@ -63,7 +63,8 @@ struct SidebarTreeView: View {
                     connectionId: connectionId,
                     schema: schema,
                     searchText: searchText,
-                    database: activeDatabase
+                    database: database,
+                    filter: { viewModel.containerBuckets(database: database ?? "", schema: schema, source: $0) }
                 ),
                 listingMatches: listingMatches,
                 listingCoversSchema: !systemSchemas.contains(schema)
@@ -72,10 +73,11 @@ struct SidebarTreeView: View {
     }
 
     var body: some View {
+        let schemas = self.schemas
         Group {
             if schemas.isEmpty {
                 emptySchemasState
-            } else if !searchText.isEmpty && visibleSchemas.isEmpty {
+            } else if !searchText.isEmpty && visibleSchemas(of: schemas).isEmpty {
                 noMatchState
             } else {
                 VStack(spacing: 0) {
@@ -83,7 +85,8 @@ struct SidebarTreeView: View {
                         connectionId: connectionId,
                         database: activeDatabase,
                         databaseType: viewModel.databaseType,
-                        sidebarState: sidebarState
+                        sidebarState: sidebarState,
+                        catalog: catalog
                     )
                     treeList
                 }
@@ -91,8 +94,6 @@ struct SidebarTreeView: View {
         }
     }
 
-    /// Same outline the other two sidebar shapes use. See `SidebarView.tableList` for why a SwiftUI
-    /// `List` cannot serve here.
     private var treeList: some View {
         DatabaseTreeOutlineView(
             connectionId: connectionId,
@@ -108,10 +109,10 @@ struct SidebarTreeView: View {
             activeDatabase: activeDatabase,
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
-            showRecentTables: settingsManager.general.showRecentTables,
-            showSystemContainers: settingsManager.general.showSystemContainers,
-            showsPartitions: settingsManager.general.showPartitions,
-            rowSizePreference: settingsManager.general.sidebarRowSize
+            showRecentTables: sidebarDisplay.options.showRecentTables,
+            showSystemContainers: sidebarDisplay.options.showSystemContainers,
+            showsPartitions: sidebarDisplay.options.showPartitions,
+            rowSizePreference: sidebarDisplay.options.rowSize
         )
     }
 

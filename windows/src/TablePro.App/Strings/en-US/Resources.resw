@@ -46,7 +46,7 @@
     <value>N</value>
   </data>
   <data name="MenuOpenFile.Text" xml:space="preserve">
-    <value>Open database file...</value>
+    <value>Open file...</value>
   </data>
   <data name="MenuOpenFile.AccessKey" xml:space="preserve">
     <value>O</value>
@@ -279,14 +279,8 @@
   <data name="RunButton.Label" xml:space="preserve">
     <value>Run</value>
   </data>
-  <data name="RunButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Run (Ctrl+Enter)</value>
-  </data>
   <data name="StopButton.Label" xml:space="preserve">
     <value>Stop</value>
-  </data>
-  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Stop (Shift+F5)</value>
   </data>
   <data name="TableCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Table commands</value>
@@ -344,24 +338,6 @@
   </data>
   <data name="NewConnectionCard.Description" xml:space="preserve">
     <value>Connect to PostgreSQL, MySQL, SQL Server, MongoDB, Redis and more</value>
-  </data>
-  <data name="OpenFileCard.Header" xml:space="preserve">
-    <value>Open a database file</value>
-  </data>
-  <data name="OpenFileCard.Description" xml:space="preserve">
-    <value>SQLite and DuckDB files on this PC</value>
-  </data>
-  <data name="ImportCard.Header" xml:space="preserve">
-    <value>Import a connections file</value>
-  </data>
-  <data name="ImportCard.Description" xml:space="preserve">
-    <value>Connections exported from TablePro. Passwords are not in the file, so each one asks on its first connect.</value>
-  </data>
-  <data name="SampleCard.Header" xml:space="preserve">
-    <value>Try the sample database</value>
-  </data>
-  <data name="SampleCard.Description" xml:space="preserve">
-    <value>Chinook, a small music store in SQLite</value>
   </data>
   <data name="ConnectionTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Saved connections</value>
@@ -431,6 +407,29 @@
   </data>
   <data name="RowLimitBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Row limit</value>
+  </data>
+  <data name="ResultsKeptCard.Header" xml:space="preserve">
+    <value>Results kept per run</value>
+  </data>
+  <data name="ResultsKeptCard.Description" xml:space="preserve">
+    <value>A run that returns more results with rows keeps only the newest.</value>
+  </data>
+  <data name="ResultsKeptBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Results kept per run</value>
+  </data>
+  <data name="ResultsKeptNoLimit" xml:space="preserve">
+    <value>No limit</value>
+  </data>
+  <data name="ResultsKeptOption" xml:space="preserve">
+    <value>{0:N0}</value>
+  </data>
+  <data name="ResultsDropped_one" xml:space="preserve">
+    <value>{0} · {1:N0} earlier result was dropped.</value>
+    <comment>{0} is the status of the result shown, {1} the number of earlier results the limit dropped.</comment>
+  </data>
+  <data name="ResultsDropped_other" xml:space="preserve">
+    <value>{0} · {1:N0} earlier results were dropped.</value>
+    <comment>{0} is the status of the result shown, {1} the number of earlier results the limit dropped.</comment>
   </data>
   <data name="TimeoutCard.Header" xml:space="preserve">
     <value>Query timeout</value>
@@ -591,6 +590,9 @@
   <data name="TlsMode_VerifyFull" xml:space="preserve">
     <value>Required, verify the certificate and host</value>
   </data>
+  <data name="TlsMode_VerifyCa" xml:space="preserve">
+    <value>Required, verify the certificate but not the host</value>
+  </data>
   <data name="TlsMode_Strict" xml:space="preserve">
     <value>Strict (TDS 8.0), verify the certificate and host</value>
   </data>
@@ -641,6 +643,21 @@
   </data>
   <data name="ConnectionTimeoutBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Query timeout in seconds</value>
+  </data>
+  <data name="MaskStyle_Full" xml:space="preserve">
+    <value>Full</value>
+  </data>
+  <data name="MaskStyle_LastFour" xml:space="preserve">
+    <value>Last 4 characters</value>
+  </data>
+  <data name="MaskStyle_Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="MaskStyle_Hash" xml:space="preserve">
+    <value>Stable hash</value>
+  </data>
+  <data name="MaskStyle_Null" xml:space="preserve">
+    <value>NULL</value>
   </data>
   <data name="AppearanceExpander.Header" xml:space="preserve">
     <value>Appearance</value>
@@ -734,6 +751,32 @@
   </data>
   <data name="NoMatches" xml:space="preserve">
     <value>No object matches</value>
+  </data>
+  <data name="VimModeName" xml:space="preserve">
+    <value>Vim mode: {0}</value>
+  </data>
+  <data name="VimModeNormal" xml:space="preserve">
+    <value>NORMAL</value>
+    <comment>Vim's name for its mode, as Vim's own translation words it.</comment>
+  </data>
+  <data name="VimModeInsert" xml:space="preserve">
+    <value>INSERT</value>
+  </data>
+  <data name="VimModeReplace" xml:space="preserve">
+    <value>REPLACE</value>
+  </data>
+  <data name="VimModeVisual" xml:space="preserve">
+    <value>VISUAL</value>
+  </data>
+  <data name="VimModeVisualLine" xml:space="preserve">
+    <value>VISUAL LINE</value>
+  </data>
+  <data name="VimRecording" xml:space="preserve">
+    <value>recording @{0}</value>
+  </data>
+  <data name="VimKeysRecording" xml:space="preserve">
+    <value>{0} recording @{1}</value>
+    <comment>{0} is the keys typed so far, {1} the register a macro is recorded into.</comment>
   </data>
   <data name="EditorName" xml:space="preserve">
     <value>SQL editor, {0}</value>
@@ -831,8 +874,13 @@
   <data name="DeleteConnectionTitle" xml:space="preserve">
     <value>Delete {0}?</value>
   </data>
-  <data name="DeleteConnectionMessage" xml:space="preserve">
-    <value>The connection and its saved passwords leave this PC. This can't be undone.</value>
+  <data name="DeleteConnectionsMessage_one" xml:space="preserve">
+    <value>The connection, its saved passwords and its saved queries leave this PC. This can't be undone.</value>
+    <comment>{0} is the number of connections.</comment>
+  </data>
+  <data name="DeleteConnectionsMessage_other" xml:space="preserve">
+    <value>The connections, their saved passwords and their saved queries leave this PC. This can't be undone.</value>
+    <comment>{0} is the number of connections.</comment>
   </data>
   <data name="DeleteGroupTitle" xml:space="preserve">
     <value>Delete the group {0}?</value>
@@ -966,6 +1014,9 @@
   <data name="NewFileOnConnect" xml:space="preserve">
     <value>The file is made when you connect</value>
   </data>
+  <data name="NewFileExists" xml:space="preserve">
+    <value>This file exists, so it opens as it is</value>
+  </data>
   <data name="Testing" xml:space="preserve">
     <value>Testing...</value>
   </data>
@@ -983,6 +1034,10 @@
   </data>
   <data name="Error_Unknown" xml:space="preserve">
     <value>Something went wrong ({0}).</value>
+  </data>
+  <data name="ErrorWithServerMessage" xml:space="preserve">
+    <value>{0} {1}</value>
+    <comment>{0} is the app's sentence for an error, {1} the database server's own message.</comment>
   </data>
   <data name="Error_driver_file_not_found" xml:space="preserve">
     <value>The database file isn't there.</value>
@@ -1116,8 +1171,23 @@
   <data name="Error_library_import_unreadable" xml:space="preserve">
     <value>The file couldn't be read.</value>
   </data>
-  <data name="Error_storage_document_unavailable" xml:space="preserve">
-    <value>The file isn't a TablePro connections file.</value>
+  <data name="Error_storage_document_unreadable" xml:space="preserve">
+    <value>The file couldn't be read.</value>
+  </data>
+  <data name="Error_storage_document_corrupt" xml:space="preserve">
+    <value>The file is damaged: it isn't valid JSON.</value>
+  </data>
+  <data name="Error_storage_document_missing_version" xml:space="preserve">
+    <value>The file isn't a TablePro connections file: it has no version.</value>
+  </data>
+  <data name="Error_storage_document_unsupported_version" xml:space="preserve">
+    <value>An earlier TablePro wrote this file, in a format this version no longer reads.</value>
+  </data>
+  <data name="Error_storage_document_newer_version" xml:space="preserve">
+    <value>A newer TablePro wrote this file. Update TablePro to open it.</value>
+  </data>
+  <data name="Error_storage_document_upgrade_failed" xml:space="preserve">
+    <value>An earlier TablePro wrote this file, and it couldn't be brought up to date.</value>
   </data>
   <data name="Error_storage_group_name_taken" xml:space="preserve">
     <value>Another group here has this name.</value>
@@ -1191,11 +1261,13 @@
   <data name="DeleteTagMessage" xml:space="preserve">
     <value>It comes off every connection that has it.</value>
   </data>
-  <data name="DeleteConnectionsTitle" xml:space="preserve">
-    <value>Delete {0} connections?</value>
+  <data name="DeleteConnectionsTitle_one" xml:space="preserve">
+    <value>Delete {0:N0} connection?</value>
+    <comment>{0} is the number of connections, more than one in English; one connection is named instead.</comment>
   </data>
-  <data name="DeleteConnectionsMessage" xml:space="preserve">
-    <value>The connections and their saved passwords leave this PC. This can't be undone.</value>
+  <data name="DeleteConnectionsTitle_other" xml:space="preserve">
+    <value>Delete {0:N0} connections?</value>
+    <comment>{0} is the number of connections, more than one in English; one connection is named instead.</comment>
   </data>
   <data name="DropAddFavorites" xml:space="preserve">
     <value>Add to Favorites</value>
@@ -1223,9 +1295,6 @@
   </data>
   <data name="Error_library_tag_not_found" xml:space="preserve">
     <value>That tag is gone. The list shows the tags there are now.</value>
-  </data>
-  <data name="Error_ffi_page_unsupported" xml:space="preserve">
-    <value>This engine reads a table only from its start, so it has no later pages.</value>
   </data>
   <data name="Secret_DatabasePassword" xml:space="preserve">
     <value>Password</value>
@@ -1278,6 +1347,35 @@
   <data name="TransactionLost" xml:space="preserve">
     <value>The connection was lost, and its open transaction with it. The next run opens a new connection.</value>
   </data>
+  <data name="RolledBackTitle" xml:space="preserve">
+    <value>Transaction rolled back</value>
+  </data>
+  <data name="RolledBackMessage" xml:space="preserve">
+    <value>A transaction was open on this tab when TablePro last closed. The server rolled it back.</value>
+  </data>
+  <data name="RecoveredEditsTitle" xml:space="preserve">
+    <value>Unsaved changes restored</value>
+  </data>
+  <data name="RecoveredEditsMessage" xml:space="preserve">
+    <value>TablePro closed before these changes were saved. They are pending again.</value>
+  </data>
+  <data name="RecoveredUncertainMessage" xml:space="preserve">
+    <value>TablePro closed before it knew whether these changes were saved. They are pending again.</value>
+  </data>
+  <data name="RecoveredWaitingTitle" xml:space="preserve">
+    <value>Unsaved changes waiting</value>
+  </data>
+  <data name="RecoveredWaiting_one" xml:space="preserve">
+    <value>TablePro closed before {0:N0} change was saved. It comes back as pending when a page shows its row and the table can take it.</value>
+    <comment>{0} is the number of changes not saved.</comment>
+  </data>
+  <data name="RecoveredWaiting_other" xml:space="preserve">
+    <value>TablePro closed before {0:N0} changes were saved. They come back as pending when a page shows their rows and the table can take them.</value>
+    <comment>{0} is the number of changes not saved.</comment>
+  </data>
+  <data name="DiscardWaitingButton.Content" xml:space="preserve">
+    <value>Discard</value>
+  </data>
   <data name="ReconnectButton.Content" xml:space="preserve">
     <value>Reconnect</value>
   </data>
@@ -1290,8 +1388,13 @@
   <data name="TransactionElsewhereFailed" xml:space="preserve">
     <value>{0} has a failed transaction.</value>
   </data>
-  <data name="TransactionElsewhereMany" xml:space="preserve">
-    <value>{0} tabs have open transactions.</value>
+  <data name="TransactionElsewhereTabs_one" xml:space="preserve">
+    <value>{0:N0} tab has an open transaction.</value>
+    <comment>{0} is the number of other tabs, always more than one in English.</comment>
+  </data>
+  <data name="TransactionElsewhereTabs_other" xml:space="preserve">
+    <value>{0:N0} tabs have open transactions.</value>
+    <comment>{0} is the number of other tabs, always more than one in English.</comment>
   </data>
   <data name="CloseHeldTabTitle" xml:space="preserve">
     <value>Close {0}?</value>
@@ -1303,31 +1406,37 @@
     <value>Close and roll back</value>
   </data>
   <data name="ShutdownBlockedUnsaved" xml:space="preserve">
-    <value>Table changes are not saved.</value>
+    <value>Changes are not saved.</value>
   </data>
   <data name="ShutdownBlockedTransaction" xml:space="preserve">
     <value>A transaction is open.</value>
   </data>
   <data name="ShutdownBlockedBoth" xml:space="preserve">
-    <value>Table changes are not saved, and a transaction is open.</value>
+    <value>Changes are not saved, and a transaction is open.</value>
   </data>
-  <data name="ConfirmRunTitleOne" xml:space="preserve">
+  <data name="ConfirmRunTitle_one" xml:space="preserve">
     <value>Run this statement?</value>
+    <comment>{0} is the number of statements.</comment>
   </data>
-  <data name="ConfirmRunTitleMany" xml:space="preserve">
-    <value>Run these {0} statements?</value>
+  <data name="ConfirmRunTitle_other" xml:space="preserve">
+    <value>Run these {0:N0} statements?</value>
+    <comment>{0} is the number of statements.</comment>
   </data>
-  <data name="ConfirmRunWriteOne" xml:space="preserve">
+  <data name="ConfirmRunWrite_one" xml:space="preserve">
     <value>It changes the database on {0}, which asks before every write.</value>
+    <comment>{0} is the connection, {1} the number of statements.</comment>
   </data>
-  <data name="ConfirmRunWriteMany" xml:space="preserve">
+  <data name="ConfirmRunWrite_other" xml:space="preserve">
     <value>They change the database on {0}, which asks before every write.</value>
+    <comment>{0} is the connection, {1} the number of statements.</comment>
   </data>
-  <data name="ConfirmRunDestructiveOne" xml:space="preserve">
+  <data name="ConfirmRunDestructive_one" xml:space="preserve">
     <value>It drops or empties a table, or changes every row of one, on {0}.</value>
+    <comment>{0} is the connection, {1} the number of statements.</comment>
   </data>
-  <data name="ConfirmRunDestructiveMany" xml:space="preserve">
+  <data name="ConfirmRunDestructive_other" xml:space="preserve">
     <value>Some of them drop or empty a table, or change every row of one, on {0}.</value>
+    <comment>{0} is the connection, {1} the number of statements.</comment>
   </data>
   <data name="ConfirmRunButton" xml:space="preserve">
     <value>Run</value>
@@ -1368,11 +1477,21 @@
   <data name="StatusPage" xml:space="preserve">
     <value>Rows {0:N0}-{1:N0} · {2:N0} ms</value>
   </data>
-  <data name="StatusPageOf" xml:space="preserve">
-    <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
+  <data name="StatusPageOf_one" xml:space="preserve">
+    <value>{0:N0}-{1:N0} of {2:N0} row · {3:N0} ms</value>
+    <comment>Rows {0} to {1} of {2}, which picks the form; {3} is how long the read took.</comment>
   </data>
-  <data name="StatusPageOfAbout" xml:space="preserve">
+  <data name="StatusPageOf_other" xml:space="preserve">
+    <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
+    <comment>Rows {0} to {1} of {2}, which picks the form; {3} is how long the read took.</comment>
+  </data>
+  <data name="StatusPageOfAbout_one" xml:space="preserve">
+    <value>{0:N0}-{1:N0} of about {2:N0} row · {3:N0} ms</value>
+    <comment>Rows {0} to {1} of about {2}, which picks the form; {3} is how long the read took.</comment>
+  </data>
+  <data name="StatusPageOfAbout_other" xml:space="preserve">
     <value>{0:N0}-{1:N0} of about {2:N0} rows · {3:N0} ms</value>
+    <comment>Rows {0} to {1} of about {2}, which picks the form; {3} is how long the read took.</comment>
   </data>
   <data name="MenuMoveTab.Text" xml:space="preserve">
     <value>Move tab to new window</value>
@@ -1386,6 +1505,15 @@
   <data name="MenuCloseThisTab" xml:space="preserve">
     <value>Close tab</value>
   </data>
+  <data name="MenuRenameTab" xml:space="preserve">
+    <value>Rename tab</value>
+  </data>
+  <data name="MenuRenameTabKeys" xml:space="preserve">
+    <value>F2</value>
+  </data>
+  <data name="TabRenameBoxName" xml:space="preserve">
+    <value>Tab name</value>
+  </data>
   <data name="TabWindowTitle" xml:space="preserve">
     <value>{0} - TablePro</value>
   </data>
@@ -1395,11 +1523,21 @@
   <data name="GoToPageButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
     <value>Go to page</value>
   </data>
-  <data name="PageSizeLabel" xml:space="preserve">
-    <value>{0:N0} rows</value>
+  <data name="PageSizeLabel_one" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>The page size.</comment>
   </data>
-  <data name="PageSizeOption" xml:space="preserve">
+  <data name="PageSizeLabel_other" xml:space="preserve">
     <value>{0:N0} rows</value>
+    <comment>The page size.</comment>
+  </data>
+  <data name="PageSizeOption_one" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>A page size.</comment>
+  </data>
+  <data name="PageSizeOption_other" xml:space="preserve">
+    <value>{0:N0} rows</value>
+    <comment>A page size.</comment>
   </data>
   <data name="PageSizeAll" xml:space="preserve">
     <value>All rows...</value>
@@ -1416,8 +1554,13 @@
   <data name="AllRowsTitle" xml:space="preserve">
     <value>Show all rows</value>
   </data>
-  <data name="AllRowsMessage" xml:space="preserve">
+  <data name="AllRowsMessage_one" xml:space="preserve">
+    <value>This loads all {0:N0} row on one page. A large table uses a lot of memory.</value>
+    <comment>{0} is the number of rows in the table.</comment>
+  </data>
+  <data name="AllRowsMessage_other" xml:space="preserve">
     <value>This loads all {0:N0} rows on one page. A large table uses a lot of memory.</value>
+    <comment>{0} is the number of rows in the table.</comment>
   </data>
   <data name="AllRowsButton" xml:space="preserve">
     <value>Show all</value>
@@ -1457,6 +1600,21 @@
   </data>
   <data name="PageSizeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Default page size</value>
+  </data>
+  <data name="CountThresholdCard.Header" xml:space="preserve">
+    <value>Count rows if estimate less than</value>
+  </data>
+  <data name="CountThresholdCard.Description" xml:space="preserve">
+    <value>Tables with more estimated rows use approximate counts to avoid slow COUNT(*) queries</value>
+  </data>
+  <data name="CountThresholdBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Count rows if estimate less than</value>
+  </data>
+  <data name="CountThresholdOption" xml:space="preserve">
+    <value>{0:N0}</value>
+  </data>
+  <data name="CountThresholdAlways" xml:space="preserve">
+    <value>Always count</value>
   </data>
   <data name="SshTrustTitle" xml:space="preserve">
     <value>Trust this SSH server?</value>
@@ -1623,17 +1781,21 @@ New fingerprint: {2}</value>
   <data name="ResultPicker.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Result set</value>
   </data>
-  <data name="CloseRunningTitleOne" xml:space="preserve">
+  <data name="CloseRunningTitle_one" xml:space="preserve">
     <value>Stop the running query?</value>
+    <comment>{0} is the number of queries still running.</comment>
   </data>
-  <data name="CloseRunningTitleMany" xml:space="preserve">
-    <value>Stop {0} running queries?</value>
+  <data name="CloseRunningTitle_other" xml:space="preserve">
+    <value>Stop {0:N0} running queries?</value>
+    <comment>{0} is the number of queries still running.</comment>
   </data>
-  <data name="CloseRunningRollsBackOne" xml:space="preserve">
+  <data name="CloseRunningRollsBack_one" xml:space="preserve">
     <value>Closing stops it before it finishes, and rolls back any transaction it has open.</value>
+    <comment>{0} is the number of queries still running.</comment>
   </data>
-  <data name="CloseRunningRollsBackMany" xml:space="preserve">
+  <data name="CloseRunningRollsBack_other" xml:space="preserve">
     <value>Closing stops them before they finish, and rolls back any transaction they have open.</value>
+    <comment>{0} is the number of queries still running.</comment>
   </data>
   <data name="CloseRunningTab" xml:space="preserve">
     <value>{0} on {1}</value>
@@ -1647,14 +1809,8 @@ New fingerprint: {2}</value>
   <data name="AddRowButton.Label" xml:space="preserve">
     <value>Add row</value>
   </data>
-  <data name="AddRowButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Add row (Ctrl+Shift+N)</value>
-  </data>
   <data name="DuplicateRowButton.Label" xml:space="preserve">
     <value>Duplicate row</value>
-  </data>
-  <data name="DuplicateRowButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Duplicate row (Ctrl+Shift+D)</value>
   </data>
   <data name="DeleteRowsButton.Label" xml:space="preserve">
     <value>Delete</value>
@@ -1665,17 +1821,11 @@ New fingerprint: {2}</value>
   <data name="SaveChangesButton.Label" xml:space="preserve">
     <value>Save changes</value>
   </data>
-  <data name="SaveChangesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Save changes (Ctrl+S)</value>
-  </data>
   <data name="DiscardChangesButton.Label" xml:space="preserve">
     <value>Discard changes</value>
   </data>
   <data name="PreviewSqlButton.Label" xml:space="preserve">
     <value>Preview SQL</value>
-  </data>
-  <data name="PreviewSqlButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Preview SQL (Ctrl+Shift+P)</value>
   </data>
   <data name="MenuSaveChanges.Text" xml:space="preserve">
     <value>Save</value>
@@ -1721,6 +1871,67 @@ New fingerprint: {2}</value>
   </data>
   <data name="GridMenuCopy" xml:space="preserve">
     <value>Copy</value>
+  </data>
+  <data name="GridMenuViewValue" xml:space="preserve">
+    <value>View value...</value>
+  </data>
+  <data name="GridMenuExport" xml:space="preserve">
+    <value>Export results...</value>
+  </data>
+  <data name="GridMenuOpenReferenced" xml:space="preserve">
+    <value>Open referenced row</value>
+  </data>
+  <data name="GridMenuShowReferencing" xml:space="preserve">
+    <value>Show referencing rows</value>
+  </data>
+  <data name="ReferenceKey" xml:space="preserve">
+    <value>{0} ({1})</value>
+    <comment>{0} is a model's name that another model shares, {1} the model's id.</comment>
+  </data>
+  <data name="ReferenceKeyThrough" xml:space="preserve">
+    <value>{0} through {1}</value>
+  </data>
+  <data name="ReferenceUnevenKey" xml:space="preserve">
+    <value>Can't read the columns of the key {0}.</value>
+  </data>
+  <data name="ReferenceUnknownSchema" xml:space="preserve">
+    <value>Can't tell which schema {0} is in.</value>
+  </data>
+  <data name="ReferenceNoFilterText" xml:space="preserve">
+    <value>Can't filter {0} on this value.</value>
+  </data>
+  <data name="ReferenceComparedOtherwise" xml:space="preserve">
+    <value>Can't filter {0} on this key: its columns differ in type or collation.</value>
+  </data>
+  <data name="ValueViewerTitle" xml:space="preserve">
+    <value>Value of {0}</value>
+  </data>
+  <data name="ValueViewerModes" xml:space="preserve">
+    <value>View as</value>
+  </data>
+  <data name="ValueViewerText" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ValueViewerJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="ValueViewerHex" xml:space="preserve">
+    <value>Hex</value>
+  </data>
+  <data name="ValueViewerImage" xml:space="preserve">
+    <value>Image</value>
+  </data>
+  <data name="ValueViewerCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ValueViewerClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="ValueViewerCut" xml:space="preserve">
+    <value>Only the start of this value shows here, and Copy takes that part.</value>
+  </data>
+  <data name="ValueViewerCopyFailed" xml:space="preserve">
+    <value>The value could not be put on the clipboard.</value>
   </data>
   <data name="GridDefaultText" xml:space="preserve">
     <value>DEFAULT</value>
@@ -1773,11 +1984,13 @@ New fingerprint: {2}</value>
   <data name="SaveBeforeCloseTab" xml:space="preserve">
     <value>Do you want to save changes to {0}?</value>
   </data>
-  <data name="DeleteRowsTitleOne" xml:space="preserve">
-    <value>Delete this row from {0}?</value>
+  <data name="DeleteRowsTitle_one" xml:space="preserve">
+    <value>Delete this row from {1}?</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
   </data>
-  <data name="DeleteRowsTitleMany" xml:space="preserve">
-    <value>Delete {0} rows from {1}?</value>
+  <data name="DeleteRowsTitle_other" xml:space="preserve">
+    <value>Delete {0:N0} rows from {1}?</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
   </data>
   <data name="DeleteRowsMessage" xml:space="preserve">
     <value>This permanently deletes the selected rows from the database and can't be undone.</value>
@@ -1794,11 +2007,11 @@ New fingerprint: {2}</value>
   <data name="SaveReviewAction" xml:space="preserve">
     <value>Execute</value>
   </data>
-  <data name="StatementCountOne" xml:space="preserve">
-    <value>1 statement</value>
+  <data name="StatementCount_one" xml:space="preserve">
+    <value>{0:N0} statement</value>
   </data>
-  <data name="StatementCountMany" xml:space="preserve">
-    <value>{0} statements</value>
+  <data name="StatementCount_other" xml:space="preserve">
+    <value>{0:N0} statements</value>
   </data>
   <data name="CopyAllButton" xml:space="preserve">
     <value>Copy all</value>
@@ -2196,11 +2409,13 @@ New fingerprint: {2}</value>
   <data name="ExportRunning" xml:space="preserve">
     <value>Exporting to {0}...</value>
   </data>
-  <data name="ExportDoneOne" xml:space="preserve">
+  <data name="ExportDone_one" xml:space="preserve">
     <value>Exported {0:N0} row to {1}</value>
+    <comment>{0} is the number of rows, {1} the file.</comment>
   </data>
-  <data name="ExportDoneMany" xml:space="preserve">
+  <data name="ExportDone_other" xml:space="preserve">
     <value>Exported {0:N0} rows to {1}</value>
+    <comment>{0} is the number of rows, {1} the file.</comment>
   </data>
   <data name="ExportCancelled" xml:space="preserve">
     <value>The export was cancelled. No file was written.</value>
@@ -2259,6 +2474,12 @@ New fingerprint: {2}</value>
   <data name="Error_driver_unsupported" xml:space="preserve">
     <value>This database doesn't support that.</value>
   </data>
+  <data name="Error_unsupported_minimum_version" xml:space="preserve">
+    <value>This server's version is older than TablePro supports.</value>
+  </data>
+  <data name="Error_driver_catalog_too_large" xml:space="preserve">
+    <value>The database's structure is larger than TablePro reads at once.</value>
+  </data>
   <data name="TableViews.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Data or structure</value>
   </data>
@@ -2270,9 +2491,6 @@ New fingerprint: {2}</value>
   </data>
   <data name="FilterButton.Label" xml:space="preserve">
     <value>Filter</value>
-  </data>
-  <data name="FilterButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Filter rows (Ctrl+Shift+F)</value>
   </data>
   <data name="ReloadDiscardFilter" xml:space="preserve">
     <value>Applying or clearing filters will reload data and discard all unsaved changes.</value>
@@ -2550,13 +2768,3626 @@ New fingerprint: {2}</value>
   <data name="Error_filter_raw_unsupported" xml:space="preserve">
     <value>This engine takes no Raw SQL filter. Clear the filter and add rules instead.</value>
   </data>
-  <data name="StatusRunsIn" xml:space="preserve">
-    <value>Runs in {0}</value>
-  </data>
   <data name="HistoryListEvery" xml:space="preserve">
     <value>Queries run on every connection</value>
   </data>
   <data name="HistoryDetailConnection" xml:space="preserve">
     <value>{0} · {1}</value>
+  </data>
+  <data name="AccountCallbackFinished" xml:space="preserve">
+    <value>You can close this tab and go back to TablePro.</value>
+  </data>
+  <data name="AccountCallbackUnknown" xml:space="preserve">
+    <value>TablePro is not waiting for this sign-in. Start it again from TablePro.</value>
+  </data>
+  <data name="AccountHeader.Text" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="AccountTitle" xml:space="preserve">
+    <value>TablePro account</value>
+  </data>
+  <data name="AccountSignedOut" xml:space="preserve">
+    <value>Sign in to share links and use your plan on this computer. Everything else works without an account.</value>
+  </data>
+  <data name="AccountSigningIn" xml:space="preserve">
+    <value>Finish signing in in the web browser that opened.</value>
+  </data>
+  <data name="AccountSignedInDescription" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
+  <data name="AccountPlanPro" xml:space="preserve">
+    <value>Pro</value>
+  </data>
+  <data name="AccountPlanFree" xml:space="preserve">
+    <value>Free</value>
+  </data>
+  <data name="AccountOffline" xml:space="preserve">
+    <value>Using an offline file. Sign in to share links.</value>
+  </data>
+  <data name="AccountSignIn" xml:space="preserve">
+    <value>Sign in...</value>
+  </data>
+  <data name="AccountSignOut" xml:space="preserve">
+    <value>Sign out</value>
+  </data>
+  <data name="AccountRefresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="AccountTryAgain" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="AccountRemoveDevice" xml:space="preserve">
+    <value>Remove a device...</value>
+  </data>
+  <data name="AccountErrorTitle" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="AccountExpiredTitle" xml:space="preserve">
+    <value>Plan not verified lately</value>
+  </data>
+  <data name="AccountExpiredMessage" xml:space="preserve">
+    <value>The last verification of your plan ran out. Connect to the internet and refresh.</value>
+  </data>
+  <data name="AccountRefreshFailedTitle" xml:space="preserve">
+    <value>Could not verify your plan</value>
+  </data>
+  <data name="AccountDeviceLimitMessage" xml:space="preserve">
+    <value>Your license is in use on as many devices as it allows. Remove one to use it on this computer.</value>
+  </data>
+  <data name="AccountNotRememberedTitle" xml:space="preserve">
+    <value>Sign-in not saved</value>
+  </data>
+  <data name="AccountNotRememberedMessage" xml:space="preserve">
+    <value>Credential Manager did not take the sign-in, so TablePro asks for it again the next time it starts.</value>
+  </data>
+  <data name="AccountDetails.Header" xml:space="preserve">
+    <value>Plan</value>
+  </data>
+  <data name="AccountDetails.Description" xml:space="preserve">
+    <value>TablePro checks your plan with the account service once a day.</value>
+  </data>
+  <data name="AccountRefreshButton.Content" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ManageAccountCard.Header" xml:space="preserve">
+    <value>Manage account</value>
+  </data>
+  <data name="ManageAccountCard.Description" xml:space="preserve">
+    <value>Opens in your web browser</value>
+  </data>
+  <data name="ManageSharedLinksCard.Header" xml:space="preserve">
+    <value>Manage shared links</value>
+  </data>
+  <data name="ManageSharedLinksCard.Description" xml:space="preserve">
+    <value>See, extend and revoke your links in your web browser</value>
+  </data>
+  <data name="DevicesExpander.Header" xml:space="preserve">
+    <value>Devices</value>
+  </data>
+  <data name="DevicesExpander.Description" xml:space="preserve">
+    <value>The computers that use your plan</value>
+  </data>
+  <data name="DeviceLimitTitle" xml:space="preserve">
+    <value>Device limit reached</value>
+  </data>
+  <data name="DeviceLimitMessage" xml:space="preserve">
+    <value>Your license is in use on as many devices as it allows. Remove one to use it on this computer.</value>
+  </data>
+  <data name="DeviceRemove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="DeviceRemoveName" xml:space="preserve">
+    <value>Remove {0}</value>
+  </data>
+  <data name="DeviceThisComputer" xml:space="preserve">
+    <value>This computer</value>
+  </data>
+  <data name="DeviceLastSeen" xml:space="preserve">
+    <value>{0} · last seen {1:d}</value>
+  </data>
+  <data name="DeviceOfflineUntil" xml:space="preserve">
+    <value>{0} · offline file until {1:d}</value>
+  </data>
+  <data name="DeviceRemovedNotRefreshed" xml:space="preserve">
+    <value>{0} was removed. {1}</value>
+  </data>
+  <data name="DevicePlatform_windows" xml:space="preserve">
+    <value>Windows</value>
+  </data>
+  <data name="DevicePlatform_macos" xml:space="preserve">
+    <value>macOS</value>
+  </data>
+  <data name="DevicePlatform_linux" xml:space="preserve">
+    <value>Linux</value>
+  </data>
+  <data name="DevicePlatform_ios" xml:space="preserve">
+    <value>iOS</value>
+  </data>
+  <data name="PlanFeaturesExpander.Header" xml:space="preserve">
+    <value>Features</value>
+  </data>
+  <data name="PlanFeaturesExpander.Description" xml:space="preserve">
+    <value>What your plan includes on this computer</value>
+  </data>
+  <data name="PlanFeatureIncluded" xml:space="preserve">
+    <value>Included</value>
+  </data>
+  <data name="PlanFeatureNotIncluded" xml:space="preserve">
+    <value>Not included</value>
+  </data>
+  <data name="PlanFeature_shared_links" xml:space="preserve">
+    <value>Pro options for shared links</value>
+  </data>
+  <data name="PlanFeatureDescription_shared_links" xml:space="preserve">
+    <value>Share without the Free plan's limits on live links, rows and expiry.</value>
+  </data>
+  <data name="BuyLicenseLink.Content" xml:space="preserve">
+    <value>Buy a license</value>
+  </data>
+  <data name="LicensingGuideLink.Content" xml:space="preserve">
+    <value>Learn more about licensing</value>
+  </data>
+  <data name="LicenseNeedsPlan" xml:space="preserve">
+    <value>{0} needs a paid plan</value>
+    <comment>{0} is the name of a feature.</comment>
+  </data>
+  <data name="LicenseDeviceLimitMessage" xml:space="preserve">
+    <value>Remove a device in Settings to use your plan on this computer.</value>
+  </data>
+  <data name="LicenseOfflineExpiredTitle" xml:space="preserve">
+    <value>Your offline file has expired</value>
+  </data>
+  <data name="LicenseOfflineExpiredMessage" xml:space="preserve">
+    <value>Sign in to use your plan on this computer.</value>
+  </data>
+  <data name="LicenseNotVerifiedMessage" xml:space="preserve">
+    <value>Connect to the internet to verify your plan.</value>
+  </data>
+  <data name="LicenseBuy" xml:space="preserve">
+    <value>Buy a license</value>
+  </data>
+  <data name="LicenseUpgrade" xml:space="preserve">
+    <value>Upgrade plan</value>
+  </data>
+  <data name="LicenseOpenAccountSettings" xml:space="preserve">
+    <value>Open account settings</value>
+  </data>
+  <data name="LicenseAskTitle_one" xml:space="preserve">
+    <value>You've used TablePro on {0:N0} day</value>
+    <comment>{0} is the number of days TablePro was in use.</comment>
+  </data>
+  <data name="LicenseAskTitle_other" xml:space="preserve">
+    <value>You've used TablePro on {0:N0} days</value>
+    <comment>{0} is the number of days TablePro was in use.</comment>
+  </data>
+  <data name="LicenseAskMessage" xml:space="preserve">
+    <value>TablePro is free for everyone, at work too, and none of it will become paid. If TablePro is part of your work now, please buy a license. Licenses are what pay for the next release.</value>
+  </data>
+  <data name="LicenseAskBuy.Content" xml:space="preserve">
+    <value>Buy a license</value>
+  </data>
+  <data name="LicenseAskPersonal.Content" xml:space="preserve">
+    <value>I use it personally</value>
+  </data>
+  <data name="MenuShareResult.Text" xml:space="preserve">
+    <value>Share result...</value>
+  </data>
+  <data name="MenuShareQuery.Text" xml:space="preserve">
+    <value>Share query...</value>
+  </data>
+  <data name="MenuManageSharedLinks.Text" xml:space="preserve">
+    <value>Manage shared links...</value>
+  </data>
+  <data name="ShareResultCommand" xml:space="preserve">
+    <value>Share result...</value>
+  </data>
+  <data name="ShareQueryCommand" xml:space="preserve">
+    <value>Share query...</value>
+  </data>
+  <data name="ShareCommand" xml:space="preserve">
+    <value>Share...</value>
+  </data>
+  <data name="ShareResultTitle" xml:space="preserve">
+    <value>Share result</value>
+  </data>
+  <data name="ShareQueryTitle" xml:space="preserve">
+    <value>Share query</value>
+  </data>
+  <data name="ShareAction" xml:space="preserve">
+    <value>Share</value>
+  </data>
+  <data name="ShareDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="ShareTitleField" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="ShareNoteField" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="ShareNotePlaceholder" xml:space="preserve">
+    <value>Optional</value>
+  </data>
+  <data name="ShareExpiresField" xml:space="preserve">
+    <value>Expires</value>
+  </data>
+  <data name="ShareHideSql" xml:space="preserve">
+    <value>Hide SQL</value>
+  </data>
+  <data name="SharePasswordField" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="ShareAllowDownload" xml:space="preserve">
+    <value>Allow viewers to download</value>
+  </data>
+  <data name="Expiry_OneDay" xml:space="preserve">
+    <value>1 day</value>
+  </data>
+  <data name="Expiry_SevenDays" xml:space="preserve">
+    <value>7 days</value>
+  </data>
+  <data name="Expiry_ThirtyDays" xml:space="preserve">
+    <value>30 days</value>
+  </data>
+  <data name="Expiry_Never" xml:space="preserve">
+    <value>Never</value>
+  </data>
+  <data name="ExpiryWithProTag" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
+  <data name="ProTag" xml:space="preserve">
+    <value>Pro</value>
+  </data>
+  <data name="ProTagName" xml:space="preserve">
+    <value>Pro: see the plans in your web browser</value>
+  </data>
+  <data name="SharePreviewHeader" xml:space="preserve">
+    <value>Rows that will be shared</value>
+  </data>
+  <data name="SharePasswordBlank" xml:space="preserve">
+    <value>A password can't be only spaces or tabs.</value>
+  </data>
+  <data name="ShareSqlTooLong" xml:space="preserve">
+    <value>This query is too long to share. A link holds up to 256 KB of SQL.</value>
+  </data>
+  <data name="SharePreviewMasked" xml:space="preserve">
+    <value>Masked: {0}</value>
+  </data>
+  <data name="ShareNoColumns" xml:space="preserve">
+    <value>Keep or mask at least one column to share.</value>
+  </data>
+  <data name="ShareTooLargeCell" xml:space="preserve">
+    <value>This result is too large to share: a value in {0} is over 256 KB. Mask or remove that column to share the rest.</value>
+  </data>
+  <data name="ShareTooLargeFirstRow" xml:space="preserve">
+    <value>This result is too large to share: its first row alone is over 4.5 MB. Mask or remove columns to share it.</value>
+  </data>
+  <data name="ShareColumnsHeader" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="ShareColumnsSummary_one" xml:space="preserve">
+    <value>{0:N0} column masked, {1:N0} removed.</value>
+    <comment>{0} is the number of masked columns, which picks the form; {1} the number removed.</comment>
+  </data>
+  <data name="ShareColumnsSummary_other" xml:space="preserve">
+    <value>{0:N0} columns masked, {1:N0} removed.</value>
+    <comment>{0} is the number of masked columns, which picks the form; {1} the number removed.</comment>
+  </data>
+  <data name="ShareColumnsDetected" xml:space="preserve">
+    <value>TablePro masked columns that look sensitive. Check them before sharing.</value>
+  </data>
+  <data name="ShareColumn_Keep" xml:space="preserve">
+    <value>Keep</value>
+  </data>
+  <data name="ShareColumn_Mask" xml:space="preserve">
+    <value>Mask</value>
+  </data>
+  <data name="ShareColumn_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="ShareColumnActionName" xml:space="preserve">
+    <value>Sharing for {0}</value>
+  </data>
+  <data name="ShareColumnStyleName" xml:space="preserve">
+    <value>Mask style for {0}</value>
+  </data>
+  <data name="ShareColumnLooksLike" xml:space="preserve">
+    <value>Looks like: {0}</value>
+  </data>
+  <data name="ShareHideSqlSuggestion" xml:space="preserve">
+    <value>This query contains what looks like personal data ({0}). Turn on Hide SQL to keep the query private.</value>
+  </data>
+  <data name="SensitiveName_Email" xml:space="preserve">
+    <value>email address</value>
+  </data>
+  <data name="SensitiveName_Phone" xml:space="preserve">
+    <value>phone number</value>
+  </data>
+  <data name="SensitiveName_Secret" xml:space="preserve">
+    <value>password or secret</value>
+  </data>
+  <data name="SensitiveName_NationalId" xml:space="preserve">
+    <value>ID number</value>
+  </data>
+  <data name="SensitiveName_CardOrAccount" xml:space="preserve">
+    <value>card or account number</value>
+  </data>
+  <data name="SensitiveName_Address" xml:space="preserve">
+    <value>postal address</value>
+  </data>
+  <data name="SensitiveName_BirthDate" xml:space="preserve">
+    <value>date of birth</value>
+  </data>
+  <data name="SensitiveName_IpAddress" xml:space="preserve">
+    <value>IP address</value>
+  </data>
+  <data name="SensitiveName_PersonName" xml:space="preserve">
+    <value>person's name</value>
+  </data>
+  <data name="SensitiveValue_Card" xml:space="preserve">
+    <value>card number</value>
+  </data>
+  <data name="SensitiveValue_Iban" xml:space="preserve">
+    <value>IBAN</value>
+  </data>
+  <data name="SensitiveValue_Jwt" xml:space="preserve">
+    <value>JSON Web Token</value>
+  </data>
+  <data name="SensitiveValue_ApiKey" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="SensitiveValue_Email" xml:space="preserve">
+    <value>email address</value>
+  </data>
+  <data name="SensitiveValue_Phone" xml:space="preserve">
+    <value>phone number</value>
+  </data>
+  <data name="SensitiveValue_Ip" xml:space="preserve">
+    <value>IP address</value>
+  </data>
+  <data name="ShareCapNote_one" xml:space="preserve">
+    <value>Shares the first {0:N0} of {1:N0} row.</value>
+    <comment>{0} is the number of rows shared, {1} the result's rows, which picks the form.</comment>
+  </data>
+  <data name="ShareCapNote_other" xml:space="preserve">
+    <value>Shares the first {0:N0} of {1:N0} rows.</value>
+    <comment>{0} is the number of rows shared, {1} the result's rows, which picks the form.</comment>
+  </data>
+  <data name="ShareFooterFree" xml:space="preserve">
+    <value>Free · {0} · {1}</value>
+    <comment>{0} counts the links against the plan's limit, {1} says how many rows a link shares.</comment>
+  </data>
+  <data name="ShareFooterPro_one" xml:space="preserve">
+    <value>Pro · {0:N0} link</value>
+    <comment>{0} is the number of live links.</comment>
+  </data>
+  <data name="ShareFooterPro_other" xml:space="preserve">
+    <value>Pro · {0:N0} links</value>
+    <comment>{0} is the number of live links.</comment>
+  </data>
+  <data name="ShareAtCapFree_one" xml:space="preserve">
+    <value>You have {0:N0} live link. Free allows {1:N0}. Revoke one to share another.</value>
+    <comment>{0} is the number of live links, {1} the plan's limit.</comment>
+  </data>
+  <data name="ShareAtCapFree_other" xml:space="preserve">
+    <value>You have {0:N0} live links. Free allows {1:N0}. Revoke one to share another.</value>
+    <comment>{0} is the number of live links, {1} the plan's limit.</comment>
+  </data>
+  <data name="ShareAtCapPro_one" xml:space="preserve">
+    <value>You have {0:N0} live link. Pro allows {1:N0}. Revoke one to share another.</value>
+    <comment>{0} is the number of live links, {1} the plan's limit.</comment>
+  </data>
+  <data name="ShareAtCapPro_other" xml:space="preserve">
+    <value>You have {0:N0} live links. Pro allows {1:N0}. Revoke one to share another.</value>
+    <comment>{0} is the number of live links, {1} the plan's limit.</comment>
+  </data>
+  <data name="ShareAtCapProAllows" xml:space="preserve">
+    <value>Pro allows up to {0:N0}.</value>
+    <comment>{0} is the number of live links Pro allows.</comment>
+  </data>
+  <data name="ShareUntitled" xml:space="preserve">
+    <value>Untitled link</value>
+  </data>
+  <data name="ShareLinkCreated" xml:space="preserve">
+    <value>Created {0:d}</value>
+  </data>
+  <data name="ShareLinkCreatedExpires" xml:space="preserve">
+    <value>Created {0:d} · expires {1:d}</value>
+  </data>
+  <data name="ShareRevoke" xml:space="preserve">
+    <value>Revoke</value>
+  </data>
+  <data name="ShareRevokeName" xml:space="preserve">
+    <value>Revoke {0}</value>
+  </data>
+  <data name="ShareLoading" xml:space="preserve">
+    <value>Loading...</value>
+  </data>
+  <data name="ShareCreating" xml:space="preserve">
+    <value>Creating the link...</value>
+  </data>
+  <data name="ShareSigningIn" xml:space="preserve">
+    <value>Finish signing in in the web browser that opened.</value>
+  </data>
+  <data name="ShareSignIn" xml:space="preserve">
+    <value>Sign in...</value>
+  </data>
+  <data name="ShareOpenAccount" xml:space="preserve">
+    <value>Open account</value>
+  </data>
+  <data name="ShareRetry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="ShareLinkCopied" xml:space="preserve">
+    <value>Link copied</value>
+  </data>
+  <data name="ShareCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ShareOpenInBrowser" xml:space="preserve">
+    <value>Open in browser</value>
+  </data>
+  <data name="ShareRowsGone" xml:space="preserve">
+    <value>These rows are no longer held. Run the query again to share them.</value>
+  </data>
+  <data name="ShareSecretInSql" xml:space="preserve">
+    <value>This query may contain a secret ({0}). Anyone with the link can read it.</value>
+  </data>
+  <data name="ShareSecretColumns" xml:space="preserve">
+    <value>Some columns may hold secrets: {0}.</value>
+  </data>
+  <data name="SecretKind_AwsAccessKey" xml:space="preserve">
+    <value>an AWS access key</value>
+  </data>
+  <data name="SecretKind_PrivateKey" xml:space="preserve">
+    <value>a private key</value>
+  </data>
+  <data name="SecretKind_JsonWebToken" xml:space="preserve">
+    <value>a JSON web token</value>
+  </data>
+  <data name="SecretKind_GitHubToken" xml:space="preserve">
+    <value>a GitHub token</value>
+  </data>
+  <data name="SecretKind_SlackToken" xml:space="preserve">
+    <value>a Slack token</value>
+  </data>
+  <data name="SecretKind_StripeKey" xml:space="preserve">
+    <value>a Stripe key</value>
+  </data>
+  <data name="SecretKind_GoogleApiKey" xml:space="preserve">
+    <value>a Google API key</value>
+  </data>
+  <data name="SecretKind_UrlCredentials" xml:space="preserve">
+    <value>a password in a URL</value>
+  </data>
+  <data name="SecretKind_AssignedSecret" xml:space="preserve">
+    <value>a password or token</value>
+  </data>
+  <data name="ShareErrorSignedOut" xml:space="preserve">
+    <value>Sign in to your TablePro account to share links.</value>
+  </data>
+  <data name="ShareErrorEmailUnverified" xml:space="preserve">
+    <value>Verify your email address to share links.</value>
+  </data>
+  <data name="ShareErrorProRequired" xml:space="preserve">
+    <value>This option needs TablePro Pro.</value>
+  </data>
+  <data name="ShareErrorSharingDisabled" xml:space="preserve">
+    <value>Sharing is turned off for this account.</value>
+  </data>
+  <data name="ShareErrorTeamSharingDisabled" xml:space="preserve">
+    <value>Public links are turned off for this team.</value>
+  </data>
+  <data name="ShareErrorTooLarge" xml:space="preserve">
+    <value>This result is too large to share.</value>
+  </data>
+  <data name="ShareErrorRateLimited" xml:space="preserve">
+    <value>Too many links just now. Try again in a moment.</value>
+  </data>
+  <data name="ShareErrorOffline" xml:space="preserve">
+    <value>You appear to be offline. Try again once you're connected.</value>
+  </data>
+  <data name="ShareErrorFailed" xml:space="preserve">
+    <value>The link couldn't be created. Try again.</value>
+  </data>
+  <data name="ShareReadingRows" xml:space="preserve">
+    <value>Reading the rows...</value>
+  </data>
+  <data name="ShareTableNoSql" xml:space="preserve">
+    <value>TablePro cannot write this table's query for its database, so the link shares the rows without SQL and opens nothing in TablePro.</value>
+  </data>
+  <data name="ShareAsField" xml:space="preserve">
+    <value>Share as</value>
+  </data>
+  <data name="ShareAsPersonal" xml:space="preserve">
+    <value>Personal</value>
+  </data>
+  <data name="ShareAsTeamOff" xml:space="preserve">
+    <value>{0} · Public links are off for this team.</value>
+  </data>
+  <data name="ShareAtCapTeam_one" xml:space="preserve">
+    <value>{0} has {1:N0} live link. The team allows {2:N0}. Revoke one to share another.</value>
+    <comment>{0} is the team, {1} the number of live links, {2} the team's limit.</comment>
+  </data>
+  <data name="ShareAtCapTeam_other" xml:space="preserve">
+    <value>{0} has {1:N0} live links. The team allows {2:N0}. Revoke one to share another.</value>
+    <comment>{0} is the team, {1} the number of live links, {2} the team's limit.</comment>
+  </data>
+  <data name="ShareSuspended" xml:space="preserve">
+    <value>Suspended</value>
+  </data>
+  <data name="ShareColumnsNote_one" xml:space="preserve">
+    <value>Shares the first {0:N0} column.</value>
+  </data>
+  <data name="ShareColumnsNote_other" xml:space="preserve">
+    <value>Shares the first {0:N0} columns.</value>
+  </data>
+  <data name="ShareColumnsCut_one" xml:space="preserve">
+    <value>The link shares the first {0:N0} column.</value>
+  </data>
+  <data name="ShareColumnsCut_other" xml:space="preserve">
+    <value>The link shares the first {0:N0} columns.</value>
+  </data>
+  <data name="SharedLinkTitle" xml:space="preserve">
+    <value>Shared link</value>
+  </data>
+  <data name="SharedQueryTitle" xml:space="preserve">
+    <value>Shared query</value>
+  </data>
+  <data name="SharedLinkUnavailable" xml:space="preserve">
+    <value>This shared link is no longer available.</value>
+  </data>
+  <data name="SharedLinkHidesSql" xml:space="preserve">
+    <value>This shared result hides its SQL, so there is nothing to open.</value>
+  </data>
+  <data name="SharedLinkPasswordTitle" xml:space="preserve">
+    <value>This link is password protected.</value>
+  </data>
+  <data name="SharedLinkPasswordWrong" xml:space="preserve">
+    <value>That password is not correct.</value>
+  </data>
+  <data name="SharedLinkOpenButton" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="SharedLinkNoConnection" xml:space="preserve">
+    <value>Connect to a database to open this query in a new tab. It never runs on its own.</value>
+  </data>
+  <data name="SharedLinkCopySql" xml:space="preserve">
+    <value>Copy SQL</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Error_account_unreachable" xml:space="preserve">
+    <value>TablePro's account service could not be reached. Check the internet connection and try again.</value>
+  </data>
+  <data name="Error_account_browser" xml:space="preserve">
+    <value>The web browser did not open the sign-in page.</value>
+  </data>
+  <data name="Error_account_sign_in_timed_out" xml:space="preserve">
+    <value>The sign-in was not finished in the web browser in time. Try again.</value>
+  </data>
+  <data name="Error_account_sign_in_canceled" xml:space="preserve">
+    <value>The sign-in was canceled.</value>
+  </data>
+  <data name="Error_account_sign_in_refused" xml:space="preserve">
+    <value>The account service refused the sign-in.</value>
+  </data>
+  <data name="Error_account_sign_in_issuer_mismatch" xml:space="preserve">
+    <value>TablePro could not confirm that the sign-in came from its account service. Sign in again.</value>
+  </data>
+  <data name="Error_account_signed_out" xml:space="preserve">
+    <value>Sign in to your TablePro account first.</value>
+  </data>
+  <data name="Error_account_device_revoked" xml:space="preserve">
+    <value>This computer was removed from your account. Sign in again to use it.</value>
+  </data>
+  <data name="Error_account_device_limit_reached" xml:space="preserve">
+    <value>Your license is in use on as many devices as it allows. Remove one to use it on this computer.</value>
+  </data>
+  <data name="Error_account_other_account" xml:space="preserve">
+    <value>The offline file is for another account than the one signed in.</value>
+  </data>
+  <data name="Error_account_refused" xml:space="preserve">
+    <value>The account service refused the request.</value>
+  </data>
+  <data name="Error_account_rate_limited" xml:space="preserve">
+    <value>The account service asked for fewer requests. Try again in a moment.</value>
+  </data>
+  <data name="Error_account_entitlement" xml:space="preserve">
+    <value>TablePro could not verify the plan the account service sent.</value>
+  </data>
+  <data name="Error_account_storage" xml:space="preserve">
+    <value>TablePro could not keep the account's state in its data folder.</value>
+  </data>
+  <data name="Error_account_protocol" xml:space="preserve">
+    <value>The account service sent an answer TablePro does not understand.</value>
+  </data>
+  <data name="Error_account_no_machine_id" xml:space="preserve">
+    <value>This computer has no machine ID, which the TablePro account needs.</value>
+  </data>
+  <data name="Error_account_email_unverified" xml:space="preserve">
+    <value>Verify your email address to share links.</value>
+  </data>
+  <data name="Error_account_pro_required" xml:space="preserve">
+    <value>This option needs TablePro Pro.</value>
+  </data>
+  <data name="Error_account_sharing_disabled" xml:space="preserve">
+    <value>Sharing is turned off for this account.</value>
+  </data>
+  <data name="Error_account_team_sharing_disabled" xml:space="preserve">
+    <value>Public links are turned off for this team.</value>
+  </data>
+  <data name="Error_account_seat_required" xml:space="preserve">
+    <value>A team link needs a seat in the team.</value>
+  </data>
+  <data name="Error_account_not_found" xml:space="preserve">
+    <value>That link or team was not found.</value>
+  </data>
+  <data name="Error_account_share_limit_reached" xml:space="preserve">
+    <value>Every live link is taken. Revoke one to share another.</value>
+  </data>
+  <data name="Error_account_share_revoked" xml:space="preserve">
+    <value>This link was revoked.</value>
+  </data>
+  <data name="Error_account_share_removed" xml:space="preserve">
+    <value>This link was removed by TablePro.</value>
+  </data>
+  <data name="Error_account_validation_failed" xml:space="preserve">
+    <value>The account service refused what was sent.</value>
+  </data>
+  <data name="Error_account_snapshot_too_large" xml:space="preserve">
+    <value>This result is too large to share.</value>
+  </data>
+  <data name="Error_account_share_password_required" xml:space="preserve">
+    <value>This link is password protected.</value>
+  </data>
+  <data name="Error_account_share_password_wrong" xml:space="preserve">
+    <value>That password is not correct.</value>
+  </data>
+  <data name="Error_ffi_account_config" xml:space="preserve">
+    <value>The account settings of this build are not valid.</value>
+  </data>
+  <data name="Error_ffi_share_needs_result" xml:space="preserve">
+    <value>A result share needs its rows.</value>
+  </data>
+  <data name="Error_ffi_share_unfinished" xml:space="preserve">
+    <value>The rows are still arriving. Share them once the query finishes.</value>
+  </data>
+  <data name="MenuDuplicate" xml:space="preserve">
+    <value>Duplicate</value>
+  </data>
+  <data name="CopyNamePattern" xml:space="preserve">
+    <value>{0} (Copy)</value>
+  </data>
+  <data name="CopyNameNumberedPattern" xml:space="preserve">
+    <value>{0} (Copy {1})</value>
+  </data>
+  <data name="DuplicateFailed" xml:space="preserve">
+    <value>The connection couldn't be duplicated. {0}</value>
+  </data>
+  <data name="ExportConnectionsButton.Label" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="ExportConnectionsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Export the connections to a file, without their passwords</value>
+  </data>
+  <data name="MenuExportConnections.Text" xml:space="preserve">
+    <value>Export connections...</value>
+  </data>
+  <data name="ExportConnectionsFileName" xml:space="preserve">
+    <value>TablePro connections</value>
+  </data>
+  <data name="ConnectionsFileType" xml:space="preserve">
+    <value>TablePro connections</value>
+  </data>
+  <data name="ExportConnectionsDone_one" xml:space="preserve">
+    <value>Exported {0:N0} connection. Its password is not in the file.</value>
+    <comment>{0} is the number of connections.</comment>
+  </data>
+  <data name="ExportConnectionsDone_other" xml:space="preserve">
+    <value>Exported {0:N0} connections. Passwords are not in the file.</value>
+    <comment>{0} is the number of connections.</comment>
+  </data>
+  <data name="ExportConnectionsFailed" xml:space="preserve">
+    <value>The connections couldn't be exported. {0}</value>
+  </data>
+  <data name="Error_storage_name_taken" xml:space="preserve">
+    <value>Another saved query of this connection has that name.</value>
+  </data>
+  <data name="Error_storage_empty_name" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="Error_storage_too_large" xml:space="preserve">
+    <value>It's too large to save.</value>
+  </data>
+  <data name="Error_storage_not_found" xml:space="preserve">
+    <value>It's gone. It may have been deleted.</value>
+  </data>
+  <data name="Error_storage_folder_name_taken" xml:space="preserve">
+    <value>Another folder in the same place has that name.</value>
+  </data>
+  <data name="Error_storage_folder_name_invalid" xml:space="preserve">
+    <value>A folder name can't hold control characters.</value>
+  </data>
+  <data name="Error_storage_folder_cycle" xml:space="preserve">
+    <value>A folder can't go inside itself.</value>
+  </data>
+  <data name="MenuSaveQuery.Text" xml:space="preserve">
+    <value>Save query...</value>
+  </data>
+  <data name="MenuSaveQuery.AccessKey" xml:space="preserve">
+    <value>Q</value>
+  </data>
+  <data name="MenuShowSavedQueries.Text" xml:space="preserve">
+    <value>Show saved queries</value>
+  </data>
+  <data name="MenuShowSavedQueries.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="SavedQueriesCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Saved queries commands</value>
+  </data>
+  <data name="SavedQueriesHeader.Text" xml:space="preserve">
+    <value>Saved queries</value>
+  </data>
+  <data name="NewSavedFolderButton.Label" xml:space="preserve">
+    <value>New folder</value>
+  </data>
+  <data name="NewSavedFolderButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>New folder</value>
+  </data>
+  <data name="CloseSavedQueriesButton.Label" xml:space="preserve">
+    <value>Close saved queries</value>
+  </data>
+  <data name="CloseSavedQueriesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close saved queries</value>
+  </data>
+  <data name="SavedQueriesTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Queries saved for this connection</value>
+  </data>
+  <data name="SavedQueriesEmpty.Text" xml:space="preserve">
+    <value>No saved queries. Save one from a query tab with Query &gt; Save query.</value>
+  </data>
+  <data name="SavedQueriesUnavailableTitle" xml:space="preserve">
+    <value>Saved queries are unavailable</value>
+  </data>
+  <data name="SavedQueriesUnavailableMessage" xml:space="preserve">
+    <value>The history database couldn't be opened, so queries can't be saved.</value>
+  </data>
+  <data name="SavedQueriesReadFailedTitle" xml:space="preserve">
+    <value>The saved queries couldn't be read</value>
+  </data>
+  <data name="SavedQueriesChangeFailedTitle" xml:space="preserve">
+    <value>The change couldn't be saved</value>
+  </data>
+  <data name="SavedQueryMenuInsert" xml:space="preserve">
+    <value>Insert in editor</value>
+  </data>
+  <data name="SavedQueryMenuOpen" xml:space="preserve">
+    <value>Open in new tab</value>
+  </data>
+  <data name="SavedQueryMenuCopy" xml:space="preserve">
+    <value>Copy query</value>
+  </data>
+  <data name="SavedQueryMenuMoveTo" xml:space="preserve">
+    <value>Move to</value>
+  </data>
+  <data name="SavedQueryMenuTopLevel" xml:space="preserve">
+    <value>Top level</value>
+  </data>
+  <data name="SavedQueryMenuNewSubfolder" xml:space="preserve">
+    <value>New subfolder...</value>
+  </data>
+  <data name="SavedQueryMenuDeleteFolder" xml:space="preserve">
+    <value>Delete folder</value>
+  </data>
+  <data name="DeleteSavedQueryTitle" xml:space="preserve">
+    <value>Delete saved query?</value>
+  </data>
+  <data name="DeleteSavedQueryMessage" xml:space="preserve">
+    <value>"{0}" will be deleted.</value>
+  </data>
+  <data name="DeleteSavedFolderTitle" xml:space="preserve">
+    <value>Delete folder?</value>
+  </data>
+  <data name="DeleteSavedFolderMessage" xml:space="preserve">
+    <value>The folders inside "{0}" are deleted too, and every query it holds moves to the top level.</value>
+  </data>
+  <data name="NewSavedFolderTitle" xml:space="preserve">
+    <value>New folder</value>
+  </data>
+  <data name="NewSavedSubfolderTitle" xml:space="preserve">
+    <value>New subfolder</value>
+  </data>
+  <data name="RenameSavedFolderTitle" xml:space="preserve">
+    <value>Rename folder</value>
+  </data>
+  <data name="NewSavedFolderName" xml:space="preserve">
+    <value>New folder</value>
+  </data>
+  <data name="SaveQueryTitle" xml:space="preserve">
+    <value>Save query</value>
+  </data>
+  <data name="EditSavedQueryTitle" xml:space="preserve">
+    <value>Edit saved query</value>
+  </data>
+  <data name="SaveQueryAction" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="SavedQueryNameHeader" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="SavedQueryFolderHeader" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="SavedQueryNoFolder" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="SavedQuerySqlHeader" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="SavedQueryUntitled" xml:space="preserve">
+    <value>Untitled</value>
+  </data>
+  <data name="ReplaceSavedQueryMessage" xml:space="preserve">
+    <value>A saved query named {0} already exists. Replace it?</value>
+  </data>
+  <data name="ReplaceButton" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="HistoryMenuSaveQuery" xml:space="preserve">
+    <value>Save query...</value>
+  </data>
+  <data name="HistoryMenuPin" xml:space="preserve">
+    <value>Pin</value>
+  </data>
+  <data name="HistoryMenuUnpin" xml:space="preserve">
+    <value>Unpin</value>
+  </data>
+  <data name="HistoryPinned" xml:space="preserve">
+    <value>Pinned</value>
+  </data>
+  <data name="ObjectMenuImportCsv" xml:space="preserve">
+    <value>Import CSV...</value>
+  </data>
+  <data name="ImportCsvTitle" xml:space="preserve">
+    <value>Import into {0}</value>
+  </data>
+  <data name="ImportCsvFile" xml:space="preserve">
+    <value>From {0}</value>
+  </data>
+  <data name="ImportCsvAction" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="ImportCsvDelimiter" xml:space="preserve">
+    <value>Delimiter</value>
+  </data>
+  <data name="ImportCsvDelimiterComma" xml:space="preserve">
+    <value>Comma</value>
+  </data>
+  <data name="ImportCsvDelimiterSemicolon" xml:space="preserve">
+    <value>Semicolon</value>
+  </data>
+  <data name="ImportCsvDelimiterTab" xml:space="preserve">
+    <value>Tab</value>
+  </data>
+  <data name="ImportCsvDelimiterPipe" xml:space="preserve">
+    <value>Pipe</value>
+  </data>
+  <data name="ImportCsvHasHeader" xml:space="preserve">
+    <value>First row is a header</value>
+  </data>
+  <data name="ImportCsvNullText" xml:space="preserve">
+    <value>NULL text</value>
+  </data>
+  <data name="ImportCsvNullTextPlaceholder" xml:space="preserve">
+    <value>An empty field</value>
+  </data>
+  <data name="ImportCsvReading" xml:space="preserve">
+    <value>Reading the file...</value>
+  </data>
+  <data name="ImportCsvPlanning" xml:space="preserve">
+    <value>Reading the whole file...</value>
+  </data>
+  <data name="ImportCsvFields_one" xml:space="preserve">
+    <value>{0:N0} field</value>
+  </data>
+  <data name="ImportCsvFields_other" xml:space="preserve">
+    <value>{0:N0} fields</value>
+  </data>
+  <data name="ImportCsvRows_one" xml:space="preserve">
+    <value>{0:N0} row</value>
+  </data>
+  <data name="ImportCsvRows_other" xml:space="preserve">
+    <value>{0:N0} rows</value>
+  </data>
+  <data name="ImportCsvSummary" xml:space="preserve">
+    <value>{0}, {1}.</value>
+  </data>
+  <data name="ImportCsvSummaryTruncated" xml:space="preserve">
+    <value>{0}. Showing the first {1}; the whole file is imported.</value>
+  </data>
+  <data name="ImportCsvNoRows" xml:space="preserve">
+    <value>The file has no rows to import.</value>
+  </data>
+  <data name="ImportCsvNothingMapped" xml:space="preserve">
+    <value>Every column is set to Skip. Pick a field for at least one column to import.</value>
+  </data>
+  <data name="ImportCsvColumns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="ImportCsvSkip" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="ImportCsvFieldNumber" xml:space="preserve">
+    <value>Field {0}</value>
+  </data>
+  <data name="ImportCsvFieldSample" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ImportCsvServerFilled" xml:space="preserve">
+    <value>The database fills this column</value>
+  </data>
+  <data name="ImportCsvUsesDefault" xml:space="preserve">
+    <value>Uses the column's own default</value>
+  </data>
+  <data name="ImportCsvLeftOut" xml:space="preserve">
+    <value>Left out of the import</value>
+  </data>
+  <data name="ImportCsvNoValues" xml:space="preserve">
+    <value>No values in the file</value>
+  </data>
+  <data name="ImportCsvRowFault" xml:space="preserve">
+    <value>Line {0}, column {1}: "{2}" {3}</value>
+  </data>
+  <data name="ImportCsvRowFaultUnknown" xml:space="preserve">
+    <value>The column can't hold this value.</value>
+  </data>
+  <data name="ImportCsvReviewTitle_one" xml:space="preserve">
+    <value>Import {0:N0} row into {1}?</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
+  </data>
+  <data name="ImportCsvReviewTitle_other" xml:space="preserve">
+    <value>Import {0:N0} rows into {1}?</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
+  </data>
+  <data name="ImportCsvReview_one" xml:space="preserve">
+    <value>The import runs {0:N0} statement.</value>
+  </data>
+  <data name="ImportCsvReview_other" xml:space="preserve">
+    <value>The import runs {0:N0} statements.</value>
+  </data>
+  <data name="ImportCsvDone_one" xml:space="preserve">
+    <value>Imported {0:N0} row into {1}.</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
+  </data>
+  <data name="ImportCsvDone_other" xml:space="preserve">
+    <value>Imported {0:N0} rows into {1}.</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
+  </data>
+  <data name="ImportCsvLine" xml:space="preserve">
+    <value>Line {0}</value>
+  </data>
+  <data name="ImportCsvLines" xml:space="preserve">
+    <value>Lines {0} to {1}</value>
+  </data>
+  <data name="ImportCsvSomeLines" xml:space="preserve">
+    <value>Some lines</value>
+  </data>
+  <data name="ImportCsvRolledBack" xml:space="preserve">
+    <value>{0} could not be written, so the import was rolled back and no rows were added.</value>
+  </data>
+  <data name="ImportCsvNotWritten" xml:space="preserve">
+    <value>No rows were imported.</value>
+  </data>
+  <data name="ImportCsvUnknown" xml:space="preserve">
+    <value>The import did not finish, so the table may hold some of the rows. Refresh it to see what is there.</value>
+  </data>
+  <data name="ImportCsvStopped" xml:space="preserve">
+    <value>Import stopped. The table may hold some of the rows.</value>
+  </data>
+  <data name="Error_import_unreadable" xml:space="preserve">
+    <value>That file could not be read.</value>
+  </data>
+  <data name="Error_import_too_large" xml:space="preserve">
+    <value>That file is too large to import in one go. An import reads up to 64 MB.</value>
+  </data>
+  <data name="Error_import_not_utf8" xml:space="preserve">
+    <value>The file isn't UTF-8 text. Save it as UTF-8 and import it again.</value>
+  </data>
+  <data name="Error_import_malformed" xml:space="preserve">
+    <value>The file couldn't be read as CSV.</value>
+  </data>
+  <data name="Error_import_no_columns" xml:space="preserve">
+    <value>The file has no columns.</value>
+  </data>
+  <data name="Error_import_too_many_fields" xml:space="preserve">
+    <value>A line has more than 4,096 fields, more than any table holds. Check the delimiter.</value>
+  </data>
+  <data name="Error_import_mapping_invalid" xml:space="preserve">
+    <value>A column is set to a field the file doesn't have. Check the mapping and import again.</value>
+  </data>
+  <data name="Error_import_no_table_columns" xml:space="preserve">
+    <value>The table has no columns to import into.</value>
+  </data>
+  <data name="Error_import_not_confirmed" xml:space="preserve">
+    <value>Safe Mode asks before this import. Import again to answer it.</value>
+  </data>
+  <data name="Error_import_safe_mode_changed" xml:space="preserve">
+    <value>The connection's Safe Mode changed. Import again to see what it asks.</value>
+  </data>
+  <data name="Error_import_not_planned" xml:space="preserve">
+    <value>Nothing is ready to import. Import again.</value>
+  </data>
+  <data name="ImportCsvRunning" xml:space="preserve">
+    <value>Importing the file into {1}...</value>
+  </data>
+  <data name="ImportCsvSampleDefault" xml:space="preserve">
+    <value>DEFAULT</value>
+  </data>
+  <data name="ImportCsvSampleEmpty" xml:space="preserve">
+    <value>(empty)</value>
+  </data>
+  <data name="SaveQueryCommand" xml:space="preserve">
+    <value>Save query...</value>
+  </data>
+  <data name="ImportCsvUnknownLines" xml:space="preserve">
+    <value>{0} could not be written, and the table has no transaction to undo the import, so it may hold some of the rows. Refresh it to see what is there.</value>
+  </data>
+  <data name="KeyTabCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Key commands</value>
+  </data>
+  <data name="KeyLoadMoreButton.Label" xml:space="preserve">
+    <value>Load more</value>
+  </data>
+  <data name="KeyLoadMoreButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Read the next entries</value>
+  </data>
+  <data name="KeyRefreshButton.Label" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="KeyRefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Read the key again from the start</value>
+  </data>
+  <data name="KeyErrorBar.Title" xml:space="preserve">
+    <value>Could not read the key</value>
+  </data>
+  <data name="KeyGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="KeyLoadingRing.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reading the key</value>
+  </data>
+  <data name="KeyMissingTitle.Text" xml:space="preserve">
+    <value>This key does not exist</value>
+  </data>
+  <data name="KeyMissingText.Text" xml:space="preserve">
+    <value>It may have expired or been deleted. Refresh reads it again.</value>
+  </data>
+  <data name="KeyOtherTitle.Text" xml:space="preserve">
+    <value>No viewer for this type</value>
+  </data>
+  <data name="KeyOtherMessage" xml:space="preserve">
+    <value>TablePro cannot show a value of type {0} here. Read it with the module's own commands in a query tab.</value>
+  </data>
+  <data name="KeyStatusReading" xml:space="preserve">
+    <value>Reading...</value>
+  </data>
+  <data name="KeyStatusShown_one" xml:space="preserve">
+    <value>{0:N0} shown</value>
+    <comment>{0} is the number of rows shown.</comment>
+  </data>
+  <data name="KeyStatusShown_other" xml:space="preserve">
+    <value>{0:N0} shown</value>
+    <comment>{0} is the number of rows shown.</comment>
+  </data>
+  <data name="KeyStatusShownOf_one" xml:space="preserve">
+    <value>{0:N0} of {1:N0} shown</value>
+    <comment>{0} is the number of rows shown, {1} the key's length, which picks the form.</comment>
+  </data>
+  <data name="KeyStatusShownOf_other" xml:space="preserve">
+    <value>{0:N0} of {1:N0} shown</value>
+    <comment>{0} is the number of rows shown, {1} the key's length, which picks the form.</comment>
+  </data>
+  <data name="KeyStatusMissing" xml:space="preserve">
+    <value>Key not found</value>
+  </data>
+  <data name="KeyStatusFailed" xml:space="preserve">
+    <value>Read failed</value>
+  </data>
+  <data name="KeyStatusStopped" xml:space="preserve">
+    <value>Stopped</value>
+  </data>
+  <data name="KeyType_Text" xml:space="preserve">
+    <value>String</value>
+  </data>
+  <data name="KeyType_Hash" xml:space="preserve">
+    <value>Hash</value>
+  </data>
+  <data name="KeyType_List" xml:space="preserve">
+    <value>List</value>
+  </data>
+  <data name="KeyType_Set" xml:space="preserve">
+    <value>Set</value>
+  </data>
+  <data name="KeyType_SortedSet" xml:space="preserve">
+    <value>Sorted set</value>
+  </data>
+  <data name="KeyType_Stream" xml:space="preserve">
+    <value>Stream</value>
+  </data>
+  <data name="KeyLengthBytes_one" xml:space="preserve">
+    <value>{0:N0} byte</value>
+  </data>
+  <data name="KeyLengthBytes_other" xml:space="preserve">
+    <value>{0:N0} bytes</value>
+  </data>
+  <data name="KeyLengthFields_one" xml:space="preserve">
+    <value>{0:N0} field</value>
+  </data>
+  <data name="KeyLengthFields_other" xml:space="preserve">
+    <value>{0:N0} fields</value>
+  </data>
+  <data name="KeyLengthElements_one" xml:space="preserve">
+    <value>{0:N0} element</value>
+  </data>
+  <data name="KeyLengthElements_other" xml:space="preserve">
+    <value>{0:N0} elements</value>
+  </data>
+  <data name="KeyLengthMembers_one" xml:space="preserve">
+    <value>{0:N0} member</value>
+  </data>
+  <data name="KeyLengthMembers_other" xml:space="preserve">
+    <value>{0:N0} members</value>
+  </data>
+  <data name="KeyLengthEntries_one" xml:space="preserve">
+    <value>{0:N0} entry</value>
+  </data>
+  <data name="KeyLengthEntries_other" xml:space="preserve">
+    <value>{0:N0} entries</value>
+  </data>
+  <data name="KeyTtlNone" xml:space="preserve">
+    <value>No expiry</value>
+  </data>
+  <data name="KeyTtlUnknown" xml:space="preserve">
+    <value>Expiry unknown</value>
+  </data>
+  <data name="KeyTtlSeconds" xml:space="preserve">
+    <value>Expires in {0} s</value>
+  </data>
+  <data name="KeyTtlMinutes" xml:space="preserve">
+    <value>Expires in {0} min</value>
+  </data>
+  <data name="KeyTtlMinutesAnd" xml:space="preserve">
+    <value>Expires in {0} min {1} s</value>
+  </data>
+  <data name="KeyTtlHours" xml:space="preserve">
+    <value>Expires in {0} h</value>
+  </data>
+  <data name="KeyTtlHoursAnd" xml:space="preserve">
+    <value>Expires in {0} h {1} min</value>
+  </data>
+  <data name="KeyTtlDays" xml:space="preserve">
+    <value>Expires in {0:N0} d</value>
+  </data>
+  <data name="KeyTtlDaysAnd" xml:space="preserve">
+    <value>Expires in {0:N0} d {1} h</value>
+  </data>
+  <data name="KeyCut_one" xml:space="preserve">
+    <value>Showing the first {0:N0} byte of {1:N0}.</value>
+    <comment>{0} is the number of bytes shown, {1} the value's length in bytes.</comment>
+  </data>
+  <data name="KeyCut_other" xml:space="preserve">
+    <value>Showing the first {0:N0} bytes of {1:N0}.</value>
+    <comment>{0} is the number of bytes shown, {1} the value's length in bytes.</comment>
+  </data>
+  <data name="QueryDatabaseButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>The database this tab runs in</value>
+  </data>
+  <data name="QueryDatabaseButtonName" xml:space="preserve">
+    <value>Database: {0}</value>
+  </data>
+  <data name="QueryDatabaseNone" xml:space="preserve">
+    <value>No database</value>
+  </data>
+  <data name="QueryDatabaseEmpty" xml:space="preserve">
+    <value>No databases</value>
+  </data>
+  <data name="SqlFileType" xml:space="preserve">
+    <value>SQL file</value>
+  </data>
+  <data name="FileChangedTitle" xml:space="preserve">
+    <value>Changed on disk</value>
+  </data>
+  <data name="FileChangedMessage" xml:space="preserve">
+    <value>Another program changed {0}.</value>
+  </data>
+  <data name="FileChangedReload" xml:space="preserve">
+    <value>Reload</value>
+  </data>
+  <data name="FileGoneTitle" xml:space="preserve">
+    <value>File deleted or moved</value>
+  </data>
+  <data name="FileGoneMessage" xml:space="preserve">
+    <value>{0} is no longer where it was. Save as... keeps your text in a new file.</value>
+  </data>
+  <data name="FileGoneSaveAs" xml:space="preserve">
+    <value>Save as...</value>
+  </data>
+  <data name="FileChangedSaveTitle" xml:space="preserve">
+    <value>{0} changed on disk</value>
+  </data>
+  <data name="FileChangedSaveMessage" xml:space="preserve">
+    <value>Another program changed the file since it was opened or saved here. Overwrite it with your text, or reload it and lose your changes.</value>
+  </data>
+  <data name="FileChangedSaveOverwrite" xml:space="preserve">
+    <value>Overwrite</value>
+  </data>
+  <data name="FileChangedSaveReload" xml:space="preserve">
+    <value>Reload from disk</value>
+  </data>
+  <data name="FileSaveFailedTitle" xml:space="preserve">
+    <value>Couldn't save {0}</value>
+  </data>
+  <data name="FileEncodingFailedMessage" xml:space="preserve">
+    <value>The text holds {0}, which {1} can't store, so the file was left as it was. Save as... writes UTF-8.</value>
+  </data>
+  <data name="FileReloadFailedTitle" xml:space="preserve">
+    <value>Couldn't reload {0}</value>
+  </data>
+  <data name="SqlFileEncodingUtf8" xml:space="preserve">
+    <value>UTF-8</value>
+  </data>
+  <data name="SqlFileEncodingUtf16LittleEndian" xml:space="preserve">
+    <value>UTF-16 LE</value>
+  </data>
+  <data name="SqlFileEncodingUtf16BigEndian" xml:space="preserve">
+    <value>UTF-16 BE</value>
+  </data>
+  <data name="SqlFileEncodingUtf32LittleEndian" xml:space="preserve">
+    <value>UTF-32 LE</value>
+  </data>
+  <data name="SqlFileEncodingUtf32BigEndian" xml:space="preserve">
+    <value>UTF-32 BE</value>
+  </data>
+  <data name="SqlFileEncodingLatin1" xml:space="preserve">
+    <value>Western (ISO Latin 1)</value>
+  </data>
+  <data name="FontFamilyCard.Header" xml:space="preserve">
+    <value>Font</value>
+  </data>
+  <data name="FontFamilyCard.Description" xml:space="preserve">
+    <value>The monospaced font of the SQL editor</value>
+  </data>
+  <data name="FontFamilyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Editor font</value>
+  </data>
+  <data name="FontFamilyDefault" xml:space="preserve">
+    <value>Default (Cascadia Mono)</value>
+  </data>
+  <data name="WordWrapCard.Header" xml:space="preserve">
+    <value>Word wrap</value>
+  </data>
+  <data name="WordWrapCard.Description" xml:space="preserve">
+    <value>Long lines wrap to fit the editor. When off, they scroll sideways.</value>
+  </data>
+  <data name="WordWrapSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Word wrap</value>
+  </data>
+  <data name="StatementCard.Header" xml:space="preserve">
+    <value>Highlight current statement</value>
+  </data>
+  <data name="StatementCard.Description" xml:space="preserve">
+    <value>A band behind the statement at the cursor, which Run statement at cursor runs</value>
+  </data>
+  <data name="StatementSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Highlight current statement</value>
+  </data>
+  <data name="FoldingCard.Header" xml:space="preserve">
+    <value>Code folding</value>
+  </data>
+  <data name="FoldingCard.Description" xml:space="preserve">
+    <value>Chevrons in the line number gutter fold statements, brackets, BEGIN blocks and block comments. Ctrl+Shift+[ folds and Ctrl+Shift+] unfolds.</value>
+  </data>
+  <data name="FoldingSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Code folding</value>
+  </data>
+  <data name="VimCard.Header" xml:space="preserve">
+    <value>Vim mode</value>
+  </data>
+  <data name="VimCard.Description" xml:space="preserve">
+    <value>Normal, Insert and Visual modes with Vim's motions, operators, registers and macros. :w runs the query and :q closes the tab.</value>
+  </data>
+  <data name="VimSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Vim mode</value>
+  </data>
+  <data name="LightSchemeCard.Header" xml:space="preserve">
+    <value>Light color scheme</value>
+  </data>
+  <data name="LightSchemeCard.Description" xml:space="preserve">
+    <value>The SQL editor's colors in the light theme</value>
+  </data>
+  <data name="LightSchemeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Light color scheme</value>
+  </data>
+  <data name="DarkSchemeCard.Header" xml:space="preserve">
+    <value>Dark color scheme</value>
+  </data>
+  <data name="DarkSchemeCard.Description" xml:space="preserve">
+    <value>The SQL editor's colors in the dark theme</value>
+  </data>
+  <data name="DarkSchemeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Dark color scheme</value>
+  </data>
+  <data name="ColorSchemeDefault" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="GoToError" xml:space="preserve">
+    <value>Go to Error</value>
+  </data>
+  <data name="GridHeader.Text" xml:space="preserve">
+    <value>Data grid</value>
+  </data>
+  <data name="GridFontCard.Header" xml:space="preserve">
+    <value>Font</value>
+  </data>
+  <data name="GridFontCard.Description" xml:space="preserve">
+    <value>The font of the cells in every result and table grid</value>
+  </data>
+  <data name="GridFontBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Grid font</value>
+  </data>
+  <data name="GridFontDefault" xml:space="preserve">
+    <value>Default (Segoe UI)</value>
+  </data>
+  <data name="GridFontSizeCard.Header" xml:space="preserve">
+    <value>Font size</value>
+  </data>
+  <data name="GridFontSizeCard.Description" xml:space="preserve">
+    <value>The size of the text in the grid's cells</value>
+  </data>
+  <data name="GridFontSizeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Grid font size</value>
+  </data>
+  <data name="NullDisplayCard.Header" xml:space="preserve">
+    <value>NULL display</value>
+  </data>
+  <data name="NullDisplayCard.Description" xml:space="preserve">
+    <value>What a grid shows in a cell that holds NULL, up to 20 characters</value>
+  </data>
+  <data name="NullDisplayBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>NULL display</value>
+  </data>
+  <data name="GridWrapCard.Header" xml:space="preserve">
+    <value>Wrap text in cells</value>
+  </data>
+  <data name="GridWrapCard.Description" xml:space="preserve">
+    <value>Long values wrap onto up to 10 lines in new tabs. An open tab keeps its own choice.</value>
+  </data>
+  <data name="GridWrapSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Wrap text in cells</value>
+  </data>
+  <data name="HistoryRetentionCard.Header" xml:space="preserve">
+    <value>Keep runs for</value>
+  </data>
+  <data name="HistoryRetentionCard.Description" xml:space="preserve">
+    <value>Older runs are removed, except pinned ones</value>
+  </data>
+  <data name="HistoryRetentionBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Keep runs for</value>
+  </data>
+  <data name="HistoryRetentionDays_one" xml:space="preserve">
+    <value>{0:N0} day</value>
+  </data>
+  <data name="HistoryRetentionDays_other" xml:space="preserve">
+    <value>{0:N0} days</value>
+  </data>
+  <data name="HistoryRetentionYear" xml:space="preserve">
+    <value>1 year</value>
+  </data>
+  <data name="HistoryRetentionForever" xml:space="preserve">
+    <value>Forever</value>
+  </data>
+  <data name="HistoryMaxCard.Header" xml:space="preserve">
+    <value>Maximum runs</value>
+  </data>
+  <data name="HistoryMaxCard.Description" xml:space="preserve">
+    <value>The oldest runs past this number are removed, except pinned ones</value>
+  </data>
+  <data name="HistoryMaxBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Maximum runs</value>
+  </data>
+  <data name="HistoryMaxOption" xml:space="preserve">
+    <value>{0:N0}</value>
+  </data>
+  <data name="HistoryMaxUnlimited" xml:space="preserve">
+    <value>Unlimited</value>
+  </data>
+  <data name="ClearHistoryCard.Header" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="ClearHistoryCard.Description" xml:space="preserve">
+    <value>Removes every connection's runs, pinned ones too</value>
+  </data>
+  <data name="ClearHistorySettingsButton.Content" xml:space="preserve">
+    <value>Clear history...</value>
+  </data>
+  <data name="ClearHistoryConfirm" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="ClearHistoryUnavailable" xml:space="preserve">
+    <value>The history could not be opened, so nothing was cleared.</value>
+  </data>
+  <data name="ClearHistoryDone" xml:space="preserve">
+    <value>The history is empty.</value>
+  </data>
+  <data name="EnvironmentLabel" xml:space="preserve">
+    <value>Environment: {0}</value>
+  </data>
+  <data name="ConnectionInDatabase" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
+  <data name="DatabaseNone" xml:space="preserve">
+    <value>No database</value>
+  </data>
+  <data name="DatabaseButtonName" xml:space="preserve">
+    <value>Database: {0}</value>
+  </data>
+  <data name="DatabaseButtonTip" xml:space="preserve">
+    <value>Switch database</value>
+  </data>
+  <data name="DatabaseNoneListed" xml:space="preserve">
+    <value>No databases to switch to</value>
+  </data>
+  <data name="MenuReplace.Text" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="MenuReplace.AccessKey" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MenuSwitchDatabase.Text" xml:space="preserve">
+    <value>Switch database...</value>
+  </data>
+  <data name="MenuSwitchDatabase.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MenuOpenRecent.Text" xml:space="preserve">
+    <value>Open recent</value>
+  </data>
+  <data name="MenuOpenRecent.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="MenuSaveAs.Text" xml:space="preserve">
+    <value>Save as...</value>
+  </data>
+  <data name="MenuSaveAs.AccessKey" xml:space="preserve">
+    <value>A</value>
+  </data>
+  <data name="MenuClearRecent" xml:space="preserve">
+    <value>Clear recent files</value>
+  </data>
+  <data name="SqlFileWaits" xml:space="preserve">
+    <value>{0} opens in a query tab once a connection is connected.</value>
+  </data>
+  <data name="FileOpenFailedTitle" xml:space="preserve">
+    <value>Couldn't open {0}</value>
+  </data>
+  <data name="TabTitleUnsaved" xml:space="preserve">
+    <value>{0} •</value>
+  </data>
+  <data name="TabUnsavedStatus" xml:space="preserve">
+    <value>Unsaved changes</value>
+  </data>
+  <data name="MenuNewDatabase.Text" xml:space="preserve">
+    <value>New database...</value>
+  </data>
+  <data name="MenuNewSchema.Text" xml:space="preserve">
+    <value>New schema...</value>
+  </data>
+  <data name="ObjectMenuOpenInNewTab" xml:space="preserve">
+    <value>Open in new tab</value>
+  </data>
+  <data name="ObjectMenuTruncate" xml:space="preserve">
+    <value>Truncate...</value>
+  </data>
+  <data name="ObjectMenuDrop" xml:space="preserve">
+    <value>Drop...</value>
+  </data>
+  <data name="ObjectMenuNewSchema" xml:space="preserve">
+    <value>New schema...</value>
+  </data>
+  <data name="ObjectMenuNewDatabase" xml:space="preserve">
+    <value>New database...</value>
+  </data>
+  <data name="ObjectMenuNewKeyspace" xml:space="preserve">
+    <value>New keyspace...</value>
+  </data>
+  <data name="ObjectMenuDropSchema" xml:space="preserve">
+    <value>Drop schema “{0}”...</value>
+  </data>
+  <data name="ObjectMenuDropDatabase" xml:space="preserve">
+    <value>Drop database “{0}”...</value>
+  </data>
+  <data name="ObjectMenuDropKeyspace" xml:space="preserve">
+    <value>Drop keyspace “{0}”...</value>
+  </data>
+  <data name="DatabaseMenuDropDatabase" xml:space="preserve">
+    <value>Drop database</value>
+  </data>
+  <data name="DatabaseMenuDropKeyspace" xml:space="preserve">
+    <value>Drop keyspace</value>
+  </data>
+  <data name="TruncateTitle" xml:space="preserve">
+    <value>Truncate table '{0}'</value>
+  </data>
+  <data name="TruncateMessage" xml:space="preserve">
+    <value>Every row of the table will be deleted. This can't be undone.</value>
+  </data>
+  <data name="TruncateAction" xml:space="preserve">
+    <value>Truncate</value>
+  </data>
+  <data name="TruncateCascade" xml:space="preserve">
+    <value>Cascade</value>
+  </data>
+  <data name="TruncateCascadeDetail" xml:space="preserve">
+    <value>Also empty the tables whose foreign keys point at this one</value>
+  </data>
+  <data name="TruncateRestartIdentity" xml:space="preserve">
+    <value>Restart identity</value>
+  </data>
+  <data name="TruncateRestartIdentityDetail" xml:space="preserve">
+    <value>Start the table's numbering again</value>
+  </data>
+  <data name="TruncateRefusedTitle" xml:space="preserve">
+    <value>Cannot truncate table</value>
+  </data>
+  <data name="TruncateRefusedMessage" xml:space="preserve">
+    <value>Foreign keys on other tables point at {0}: {1}. Drop those foreign keys first, or delete the rows in a query.</value>
+  </data>
+  <data name="TruncateFailed" xml:space="preserve">
+    <value>Truncate failed</value>
+  </data>
+  <data name="DropTableTitle" xml:space="preserve">
+    <value>Drop table '{0}'</value>
+  </data>
+  <data name="DropTableMessage" xml:space="preserve">
+    <value>All rows and the table definition will be removed. This can't be undone.</value>
+  </data>
+  <data name="DropAction" xml:space="preserve">
+    <value>Drop</value>
+  </data>
+  <data name="DropCascade" xml:space="preserve">
+    <value>Cascade</value>
+  </data>
+  <data name="DropTableCascadeDetail" xml:space="preserve">
+    <value>Also drop the views and foreign keys that depend on this table</value>
+  </data>
+  <data name="DropTableCascadeNamed" xml:space="preserve">
+    <value>Also drop the views that depend on this table, and the foreign keys of {0} that point at it. Those tables and their rows stay.</value>
+  </data>
+  <data name="DropTableRefusedTitle" xml:space="preserve">
+    <value>Cannot drop table</value>
+  </data>
+  <data name="DropTableRefusedMessage" xml:space="preserve">
+    <value>Foreign keys on other tables point at {0}: {1}. Drop those foreign keys first.</value>
+  </data>
+  <data name="DropTableFailed" xml:space="preserve">
+    <value>Drop failed</value>
+  </data>
+  <data name="DropSchemaTitle" xml:space="preserve">
+    <value>Drop schema “{0}”?</value>
+  </data>
+  <data name="DropSchemaCascadeDetail" xml:space="preserve">
+    <value>Drop everything the schema holds with it</value>
+  </data>
+  <data name="DropSchemaFailed" xml:space="preserve">
+    <value>Drop failed</value>
+  </data>
+  <data name="DropDatabaseTitle" xml:space="preserve">
+    <value>Drop database “{0}”?</value>
+  </data>
+  <data name="DropKeyspaceTitle" xml:space="preserve">
+    <value>Drop keyspace “{0}”?</value>
+  </data>
+  <data name="DropContainerMessage" xml:space="preserve">
+    <value>All tables and data will be permanently deleted.</value>
+  </data>
+  <data name="DropDatabaseForce" xml:space="preserve">
+    <value>Close other connections first</value>
+  </data>
+  <data name="DropDatabaseForceDetail" xml:space="preserve">
+    <value>End every other session on the database before it is dropped</value>
+  </data>
+  <data name="DropDatabaseFailed" xml:space="preserve">
+    <value>Drop failed</value>
+  </data>
+  <data name="DropKeyspaceFailed" xml:space="preserve">
+    <value>Drop failed</value>
+  </data>
+  <data name="NewSchemaTitle" xml:space="preserve">
+    <value>New schema</value>
+  </data>
+  <data name="NewDatabaseTitle" xml:space="preserve">
+    <value>New database</value>
+  </data>
+  <data name="NewKeyspaceTitle" xml:space="preserve">
+    <value>New keyspace</value>
+  </data>
+  <data name="CreateAction" xml:space="preserve">
+    <value>Create</value>
+  </data>
+  <data name="CreateSchemaFailed" xml:space="preserve">
+    <value>Could not create schema</value>
+  </data>
+  <data name="CreateDatabaseFailed" xml:space="preserve">
+    <value>Could not create database</value>
+  </data>
+  <data name="CreateKeyspaceFailed" xml:space="preserve">
+    <value>Could not create keyspace</value>
+  </data>
+  <data name="CatalogName" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="CatalogOwner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="CatalogTemplate" xml:space="preserve">
+    <value>Template</value>
+  </data>
+  <data name="CatalogEncoding" xml:space="preserve">
+    <value>Encoding</value>
+  </data>
+  <data name="CatalogLocale" xml:space="preserve">
+    <value>Locale</value>
+  </data>
+  <data name="CatalogCharacterSet" xml:space="preserve">
+    <value>Character set</value>
+  </data>
+  <data name="CatalogCollation" xml:space="preserve">
+    <value>Collation</value>
+  </data>
+  <data name="CatalogDurableWrites" xml:space="preserve">
+    <value>Durable writes</value>
+  </data>
+  <data name="CatalogDurableWritesDetail" xml:space="preserve">
+    <value>Write each change to the commit log before it is acknowledged</value>
+  </data>
+  <data name="CatalogTablets" xml:space="preserve">
+    <value>Tablets</value>
+  </data>
+  <data name="CatalogFirstCollection" xml:space="preserve">
+    <value>First collection</value>
+  </data>
+  <data name="CatalogCluster" xml:space="preserve">
+    <value>Run on</value>
+  </data>
+  <data name="CatalogClusterNone" xml:space="preserve">
+    <value>This server only</value>
+  </data>
+  <data name="CatalogDefault" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="CatalogDefaultNamed" xml:space="preserve">
+    <value>Default ({0})</value>
+  </data>
+  <data name="CatalogReplication" xml:space="preserve">
+    <value>Replication</value>
+  </data>
+  <data name="CatalogReplicationFactor" xml:space="preserve">
+    <value>Replication factor</value>
+  </data>
+  <data name="CatalogReplicationSimple" xml:space="preserve">
+    <value>Simple</value>
+  </data>
+  <data name="CatalogReplicationTopology" xml:space="preserve">
+    <value>Network topology</value>
+  </data>
+  <data name="CatalogReplicasIn" xml:space="preserve">
+    <value>Replicas in {0}</value>
+  </data>
+  <data name="CatalogChangeUnknown" xml:space="preserve">
+    <value>It may have run in part, so the objects are read again.</value>
+  </data>
+  <data name="On" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="Error_catalog_unsupported" xml:space="preserve">
+    <value>This database engine can't do that.</value>
+  </data>
+  <data name="Error_catalog_invalid_name" xml:space="preserve">
+    <value>Enter a name the server can take.</value>
+  </data>
+  <data name="Error_catalog_invalid_option" xml:space="preserve">
+    <value>The server can't take one of these options.</value>
+  </data>
+  <data name="Error_catalog_refused" xml:space="preserve">
+    <value>This change can't be written for this database.</value>
+  </data>
+  <data name="Error_catalog_not_confirmed" xml:space="preserve">
+    <value>Safe Mode asks before this change. Try again to answer it.</value>
+  </data>
+  <data name="Error_catalog_already_run" xml:space="preserve">
+    <value>This change already ran.</value>
+  </data>
+  <data name="Error_catalog_not_as_planned" xml:space="preserve">
+    <value>The connection would run other statements than the ones shown. Try again.</value>
+  </data>
+  <data name="Error_catalog_safe_mode_changed" xml:space="preserve">
+    <value>The connection's Safe Mode changed. Try again to see what it asks.</value>
+  </data>
+  <data name="ExportRunningRows_one" xml:space="preserve">
+    <value>Exporting to {0}... {1:N0} row</value>
+    <comment>{0} is the file, {1} the number of rows written so far.</comment>
+  </data>
+  <data name="ExportRunningRows_other" xml:space="preserve">
+    <value>Exporting to {0}... {1:N0} rows</value>
+    <comment>{0} is the file, {1} the number of rows written so far.</comment>
+  </data>
+  <data name="ExportRunningRowsOf_one" xml:space="preserve">
+    <value>Exporting to {0}... {1:N0} of {2:N0} row</value>
+    <comment>{0} is the file, {1} the rows written so far, {2} the rows in all, which picks the form.</comment>
+  </data>
+  <data name="ExportRunningRowsOf_other" xml:space="preserve">
+    <value>Exporting to {0}... {1:N0} of {2:N0} rows</value>
+    <comment>{0} is the file, {1} the rows written so far, {2} the rows in all, which picks the form.</comment>
+  </data>
+  <data name="GridMenuFilter" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="CellFilter_Equal" xml:space="preserve">
+    <value>{0} = “{1}”</value>
+  </data>
+  <data name="CellFilter_NotEqual" xml:space="preserve">
+    <value>{0} != “{1}”</value>
+  </data>
+  <data name="CellFilter_Greater" xml:space="preserve">
+    <value>{0} &gt; “{1}”</value>
+  </data>
+  <data name="CellFilter_Less" xml:space="preserve">
+    <value>{0} &lt; “{1}”</value>
+  </data>
+  <data name="CellFilter_IsNull" xml:space="preserve">
+    <value>{0} is NULL</value>
+  </data>
+  <data name="CellFilter_IsNotNull" xml:space="preserve">
+    <value>{0} is not NULL</value>
+  </data>
+  <data name="Error_ffi_export_duplicate_columns" xml:space="preserve">
+    <value>SQL INSERT names each column once. Name the columns apart with AS and run the query again.</value>
+  </data>
+  <data name="CatalogChangeRunning" xml:space="preserve">
+    <value>Running the change on {0}...</value>
+  </data>
+  <data name="CatalogChangeStopped" xml:space="preserve">
+    <value>The change was stopped. It may have run in part, so the objects are read again.</value>
+  </data>
+  <data name="ImportAppFromFile.Text" xml:space="preserve">
+    <value>Import from file...</value>
+  </data>
+  <data name="ImportAppFromApp.Text" xml:space="preserve">
+    <value>Import from another app...</value>
+  </data>
+  <data name="ImportAppMenu.Text" xml:space="preserve">
+    <value>Import from another app...</value>
+  </data>
+  <data name="ImportAppTitle" xml:space="preserve">
+    <value>Import from another app</value>
+  </data>
+  <data name="ImportAppReviewTitle" xml:space="preserve">
+    <value>Import from {0}</value>
+  </data>
+  <data name="ImportAppSourcesHeader" xml:space="preserve">
+    <value>Choose the app to import from</value>
+  </data>
+  <data name="ImportAppLooking" xml:space="preserve">
+    <value>Looking for apps on this PC...</value>
+  </data>
+  <data name="ImportAppSourcesFailed" xml:space="preserve">
+    <value>TablePro couldn't look for other apps on this PC.</value>
+  </data>
+  <data name="ImportAppSourceFile" xml:space="preserve">
+    <value>Choose an export file to import</value>
+  </data>
+  <data name="ImportAppSourceNotFound" xml:space="preserve">
+    <value>Not found on this PC</value>
+  </data>
+  <data name="ImportAppSourceConnections_one" xml:space="preserve">
+    <value>{0:N0} connection found</value>
+  </data>
+  <data name="ImportAppSourceConnections_other" xml:space="preserve">
+    <value>{0:N0} connections found</value>
+  </data>
+  <data name="ImportAppSourceQueries_one" xml:space="preserve">
+    <value>{0:N0} saved query</value>
+  </data>
+  <data name="ImportAppSourceQueries_other" xml:space="preserve">
+    <value>{0:N0} saved queries</value>
+  </data>
+  <data name="ImportAppPasswords" xml:space="preserve">
+    <value>Import passwords</value>
+  </data>
+  <data name="ImportAppQueries" xml:space="preserve">
+    <value>Import saved queries</value>
+  </data>
+  <data name="ImportAppPasswords_DecryptedWhileReading" xml:space="preserve">
+    <value>Saved passwords are decrypted while reading</value>
+  </data>
+  <data name="ImportAppPasswords_PasswordFile" xml:space="preserve">
+    <value>Read from the password file of {0} when it keeps one there</value>
+  </data>
+  <data name="ImportAppPasswords_KeyInCredentialManager" xml:space="preserve">
+    <value>Decrypted with the key {0} keeps in Credential Manager</value>
+  </data>
+  <data name="ImportAppPasswords_SystemStore" xml:space="preserve">
+    <value>{0} keeps passwords in the system's store, and Windows doesn't let TablePro read it</value>
+  </data>
+  <data name="ImportAppQueries_Scripts" xml:space="preserve">
+    <value>Scripts import with the connection they run on. Scripts with a default name start unchecked.</value>
+  </data>
+  <data name="ImportAppQueries_Consoles" xml:space="preserve">
+    <value>Query consoles import with their data source. Consoles with a default name start unchecked.</value>
+  </data>
+  <data name="ImportAppQueries_GlobalFolder" xml:space="preserve">
+    <value>{0} keeps saved queries apart from its connections, and TablePro keeps each with a connection</value>
+  </data>
+  <data name="ImportAppQueries_NotInExport" xml:space="preserve">
+    <value>The {0} export file has no saved queries</value>
+  </data>
+  <data name="ImportAppContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="ImportAppAction" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="ImportAppReading" xml:space="preserve">
+    <value>Reading connections from {0}...</value>
+  </data>
+  <data name="ImportAppRead_NotFound" xml:space="preserve">
+    <value>The files of {0} aren't where it keeps them.</value>
+  </data>
+  <data name="ImportAppRead_NothingFound" xml:space="preserve">
+    <value>{0} has no saved connections to import.</value>
+  </data>
+  <data name="ImportAppRead_Unreadable" xml:space="preserve">
+    <value>The connections of {0} couldn't be read. Its files may be from a version TablePro doesn't know.</value>
+  </data>
+  <data name="ImportAppRead_Library" xml:space="preserve">
+    <value>Your saved connections couldn't be read, so nothing was imported.</value>
+  </data>
+  <data name="ImportAppRead_Other" xml:space="preserve">
+    <value>The connections couldn't be read.</value>
+  </data>
+  <data name="ImportAppPasswordsLeftBehind" xml:space="preserve">
+    <value>Passwords stay where {0} keeps them, which Windows doesn't let TablePro read. Enter them when you connect.</value>
+  </data>
+  <data name="ImportAppPasswordsStopped" xml:space="preserve">
+    <value>Some passwords weren't read. Enter them when you connect.</value>
+  </data>
+  <data name="ImportAppConnectionsHeader" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="ImportAppQueriesHeader" xml:space="preserve">
+    <value>Saved queries</value>
+  </data>
+  <data name="ImportAppResolution" xml:space="preserve">
+    <value>If the connection is already there</value>
+  </data>
+  <data name="ImportAppResolution_Add" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="ImportAppResolution_AddCopy" xml:space="preserve">
+    <value>Add as copy</value>
+  </data>
+  <data name="ImportAppResolution_Replace" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="ImportAppResolution_KeepExisting" xml:space="preserve">
+    <value>Keep existing, add queries</value>
+  </data>
+  <data name="ImportAppMatches" xml:space="preserve">
+    <value>Matches “{0}”</value>
+  </data>
+  <data name="ImportAppNote_UnsupportedEngine" xml:space="preserve">
+    <value>TablePro can't open {0} connections</value>
+  </data>
+  <data name="ImportAppNote_SshKeyMissing" xml:space="preserve">
+    <value>SSH private key not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_JumpHostKeyMissing" xml:space="preserve">
+    <value>Jump host key not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_CaCertificateMissing" xml:space="preserve">
+    <value>CA certificate not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_ClientCertificateMissing" xml:space="preserve">
+    <value>Client certificate not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_ClientKeyMissing" xml:space="preserve">
+    <value>Client key not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_TlsModeChanged" xml:space="preserve">
+    <value>SSL {0} becomes {1}</value>
+  </data>
+  <data name="ImportAppNote_TlsSettingsNotRead" xml:space="preserve">
+    <value>Its TLS settings couldn't be read, so it would connect without TLS</value>
+  </data>
+  <data name="ImportAppNote_TlsFromDriverDefault" xml:space="preserve">
+    <value>SSL {0} is on because the other app encrypts this connection by default</value>
+  </data>
+  <data name="ImportAppNote_TlsNotKept" xml:space="preserve">
+    <value>SSL {0} isn't kept: this engine connects without TLS</value>
+  </data>
+  <data name="ImportAppNote_CaFileNotKept" xml:space="preserve">
+    <value>CA certificate {0} isn't kept: {1}</value>
+  </data>
+  <data name="ImportAppNote_ClientIdentityNotKept" xml:space="preserve">
+    <value>The client certificate isn't kept: {0}</value>
+  </data>
+  <data name="ImportAppNote_SshNotKept" xml:space="preserve">
+    <value>The SSH tunnel isn't kept: a database file opens on this PC</value>
+  </data>
+  <data name="ImportAppNote_SshKeyNotKept" xml:space="preserve">
+    <value>SSH key {0} isn't kept</value>
+  </data>
+  <data name="ImportAppNote_JumpHostNotKept" xml:space="preserve">
+    <value>Jump host {0} isn't kept</value>
+  </data>
+  <data name="ImportAppNote_JumpHostPasswordNotKept" xml:space="preserve">
+    <value>Jump host {0} signs in through the SSH agent or the SSH config</value>
+  </data>
+  <data name="ImportAppNote_JumpHostKeyNotKept" xml:space="preserve">
+    <value>The key {1} of jump host {0} isn't kept</value>
+  </data>
+  <data name="ImportAppNote_FieldsNotKept" xml:space="preserve">
+    <value>Not kept: {0}</value>
+  </data>
+  <data name="ImportAppSsl_Disabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="ImportAppSsl_Preferred" xml:space="preserve">
+    <value>Preferred</value>
+  </data>
+  <data name="ImportAppSsl_Required" xml:space="preserve">
+    <value>Required</value>
+  </data>
+  <data name="ImportAppSsl_VerifyCa" xml:space="preserve">
+    <value>Verify CA</value>
+  </data>
+  <data name="ImportAppSsl_VerifyIdentity" xml:space="preserve">
+    <value>Verify identity</value>
+  </data>
+  <data name="ImportAppFileReason_EngineLacks" xml:space="preserve">
+    <value>this engine doesn't take one</value>
+  </data>
+  <data name="ImportAppFileReason_ModeLacks" xml:space="preserve">
+    <value>the SSL mode doesn't use it</value>
+  </data>
+  <data name="ImportAppFileReason_RelativePath" xml:space="preserve">
+    <value>its path isn't a full path</value>
+  </data>
+  <data name="ImportAppFileReason_Incomplete" xml:space="preserve">
+    <value>a certificate needs its key, and a key its certificate</value>
+  </data>
+  <data name="ImportAppQueryOn" xml:space="preserve">
+    <value>On {0}</value>
+  </data>
+  <data name="ImportAppQuery_NoConnection" xml:space="preserve">
+    <value>Not imported: TablePro keeps each saved query with a connection</value>
+  </data>
+  <data name="ImportAppQuery_ConnectionSkipped" xml:space="preserve">
+    <value>Not imported: its connection isn't imported</value>
+  </data>
+  <data name="ImportAppQuery_TooLarge" xml:space="preserve">
+    <value>Not imported: larger than a saved query can be</value>
+  </data>
+  <data name="ImportAppQuery_NameTooLong" xml:space="preserve">
+    <value>Not imported: its name is longer than a saved query's can be</value>
+  </data>
+  <data name="ImportAppQuery_AddedByAnotherRow" xml:space="preserve">
+    <value>Another query of this name is imported for its connection</value>
+  </data>
+  <data name="ImportAppSummaryConnections_one" xml:space="preserve">
+    <value>{0:N0} of {1:N0} connection selected</value>
+    <comment>{0} is the number selected, {1} the number found, which picks the form.</comment>
+  </data>
+  <data name="ImportAppSummaryConnections_other" xml:space="preserve">
+    <value>{0:N0} of {1:N0} connections selected</value>
+    <comment>{0} is the number selected, {1} the number found, which picks the form.</comment>
+  </data>
+  <data name="ImportAppSummaryQueries_one" xml:space="preserve">
+    <value>{0:N0} of {1:N0} saved query selected</value>
+    <comment>{0} is the number selected, {1} the number found, which picks the form.</comment>
+  </data>
+  <data name="ImportAppSummaryQueries_other" xml:space="preserve">
+    <value>{0:N0} of {1:N0} saved queries selected</value>
+    <comment>{0} is the number selected, {1} the number found, which picks the form.</comment>
+  </data>
+  <data name="ImportAppImporting" xml:space="preserve">
+    <value>Importing...</value>
+  </data>
+  <data name="ImportAppDone_Connections_one" xml:space="preserve">
+    <value>Imported {0:N0} connection.</value>
+    <comment>{0} is the number of connections imported.</comment>
+  </data>
+  <data name="ImportAppDone_Connections_other" xml:space="preserve">
+    <value>Imported {0:N0} connections.</value>
+    <comment>{0} is the number of connections imported.</comment>
+  </data>
+  <data name="ImportAppDone_QueriesAdded_one" xml:space="preserve">
+    <value>Added {0:N0} saved query.</value>
+    <comment>{0} is the number of saved queries.</comment>
+  </data>
+  <data name="ImportAppDone_QueriesAdded_other" xml:space="preserve">
+    <value>Added {0:N0} saved queries.</value>
+    <comment>{0} is the number of saved queries.</comment>
+  </data>
+  <data name="ImportAppDone_QueriesNotAdded_one" xml:space="preserve">
+    <value>{0:N0} saved query couldn't be added.</value>
+    <comment>{0} is the number of saved queries.</comment>
+  </data>
+  <data name="ImportAppDone_QueriesNotAdded_other" xml:space="preserve">
+    <value>{0:N0} saved queries couldn't be added.</value>
+    <comment>{0} is the number of saved queries.</comment>
+  </data>
+  <data name="ImportAppDone_PasswordsNotKept_one" xml:space="preserve">
+    <value>{0:N0} password couldn't be kept in Credential Manager.</value>
+    <comment>{0} is the number of passwords.</comment>
+  </data>
+  <data name="ImportAppDone_PasswordsNotKept_other" xml:space="preserve">
+    <value>{0:N0} passwords couldn't be kept in Credential Manager.</value>
+    <comment>{0} is the number of passwords.</comment>
+  </data>
+  <data name="ImportAppDone_Nothing" xml:space="preserve">
+    <value>Nothing was imported.</value>
+  </data>
+  <data name="ImportAppDone_Outdated" xml:space="preserve">
+    <value>The saved connections changed while you were deciding. Import again.</value>
+  </data>
+  <data name="ImportAppDone_Failed" xml:space="preserve">
+    <value>Nothing was imported.</value>
+  </data>
+  <data name="ResultEditPreviewButton.Label" xml:space="preserve">
+    <value>Preview SQL</value>
+  </data>
+  <data name="ResultEditDiscardRun" xml:space="preserve">
+    <value>Running the query will discard all unsaved changes.</value>
+  </data>
+  <data name="ResultEditDiscardDatabase" xml:space="preserve">
+    <value>Switching the database will discard all unsaved changes.</value>
+  </data>
+  <data name="ResultEditNotCopyable" xml:space="preserve">
+    <value>Rows of this result can't be duplicated, since some values were read as text that may not name them exactly.</value>
+  </data>
+  <data name="ResultEditSaveUnknown" xml:space="preserve">
+    <value>The save may have been written. Discard the changes to read the rows again before you save again.</value>
+  </data>
+  <data name="ResultEditSaveBlocked" xml:space="preserve">
+    <value>The last save may have been written. Discard the changes to read the rows again before you save.</value>
+  </data>
+  <data name="ResultEditNotOneSelect" xml:space="preserve">
+    <value>Only the rows of one SELECT can be edited.</value>
+  </data>
+  <data name="ResultEditMoreThanOneTable" xml:space="preserve">
+    <value>Rows from more than one table, a subquery or a CTE can't be edited.</value>
+  </data>
+  <data name="ResultEditCollapsed" xml:space="preserve">
+    <value>Grouped, distinct or computed rows can't be edited.</value>
+  </data>
+  <data name="ResultEditUntraced" xml:space="preserve">
+    <value>Only rows read straight from a table can be edited.</value>
+  </data>
+  <data name="ResultEditKeyNotShown" xml:space="preserve">
+    <value>The result leaves out part of the table's primary key, so its rows can't be edited.</value>
+  </data>
+  <data name="ResultEditNoPrimaryKey" xml:space="preserve">
+    <value>Rows of a table without a primary key can't be edited.</value>
+  </data>
+  <data name="ResultEditKeyUnreadable" xml:space="preserve">
+    <value>These rows can't be edited here, because their key can't be read back exactly.</value>
+  </data>
+  <data name="ResultEditColumnsChanged" xml:space="preserve">
+    <value>The table changed since the query ran. Run it again to edit its rows.</value>
+  </data>
+  <data name="ResultEditSeveralResults" xml:space="preserve">
+    <value>Rows can be edited when the run returns one result.</value>
+  </data>
+  <data name="ResultEditOpenTransaction" xml:space="preserve">
+    <value>Rows read inside an open transaction can't be edited here.</value>
+  </data>
+  <data name="ResultEditUnknownTransaction" xml:space="preserve">
+    <value>The server doesn't say whether a transaction is open, so these rows can't be edited here.</value>
+  </data>
+  <data name="ResultEditOtherDatabase" xml:space="preserve">
+    <value>Rows from another database than the connection's can't be edited here.</value>
+  </data>
+  <data name="ResultEditColumnsUnread" xml:space="preserve">
+    <value>The table's columns couldn't be read, so its rows can't be edited.</value>
+  </data>
+  <data name="ResultEditRunAgain" xml:space="preserve">
+    <value>Run the query again to edit its rows.</value>
+  </data>
+  <data name="NewFromUrlButton.Label" xml:space="preserve">
+    <value>New from URL</value>
+  </data>
+  <data name="SshJumpHostsCard.Header" xml:space="preserve">
+    <value>Jump hosts</value>
+  </data>
+  <data name="SshJumpHostsCard.Description" xml:space="preserve">
+    <value>Servers to pass through first, as user@host:port, separated by commas</value>
+  </data>
+  <data name="SshJumpHostsBox.PlaceholderText" xml:space="preserve">
+    <value>user@bastion:22</value>
+  </data>
+  <data name="SshJumpHostsBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Jump hosts</value>
+  </data>
+  <data name="FieldJumpHosts" xml:space="preserve">
+    <value>Enter each jump host as user@host:port, separated by commas</value>
+  </data>
+  <data name="SshThroughSummary" xml:space="preserve">
+    <value>{0} through {1}</value>
+  </data>
+  <data name="MenuGroupColor" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="ColumnsButton.Label" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="DetailsButton.Label" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="GridMenuHideColumn" xml:space="preserve">
+    <value>Hide column</value>
+  </data>
+  <data name="GridMenuShowAllColumns" xml:space="preserve">
+    <value>Show all columns</value>
+  </data>
+  <data name="GridMenuMoveLeft" xml:space="preserve">
+    <value>Move column left</value>
+  </data>
+  <data name="GridMenuMoveLeftKeys" xml:space="preserve">
+    <value>Alt+Left</value>
+  </data>
+  <data name="GridMenuMoveRight" xml:space="preserve">
+    <value>Move column right</value>
+  </data>
+  <data name="GridMenuMoveRightKeys" xml:space="preserve">
+    <value>Alt+Right</value>
+  </data>
+  <data name="GridMenuFreeze" xml:space="preserve">
+    <value>Freeze up to this column</value>
+  </data>
+  <data name="GridMenuFreezeTooWide" xml:space="preserve">
+    <value>These columns would leave too little room to scroll the rest.</value>
+  </data>
+  <data name="GridMenuUnfreeze" xml:space="preserve">
+    <value>Unfreeze columns</value>
+  </data>
+  <data name="GridMenuColumns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="GridMenuWrapText" xml:space="preserve">
+    <value>Wrap text</value>
+  </data>
+  <data name="GridMenuResetColumns" xml:space="preserve">
+    <value>Reset columns</value>
+  </data>
+  <data name="DetailsPaneName" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="DetailsRowView" xml:space="preserve">
+    <value>Row</value>
+  </data>
+  <data name="DetailsTableView" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="DetailsNoRow" xml:space="preserve">
+    <value>No row is selected.</value>
+  </data>
+  <data name="DetailsNewRow" xml:space="preserve">
+    <value>New row</value>
+  </data>
+  <data name="DetailsDeletedRow" xml:space="preserve">
+    <value>Row marked for delete</value>
+  </data>
+  <data name="DetailsRowNumber" xml:space="preserve">
+    <value>Row {0:N0}</value>
+  </data>
+  <data name="DetailsTypeEdited" xml:space="preserve">
+    <value>{0}, edited</value>
+  </data>
+  <data name="DetailsNullText" xml:space="preserve">
+    <value>NULL</value>
+  </data>
+  <data name="DetailsTextCut" xml:space="preserve">
+    <value>Too long to edit here. Open it from the cell's View value.</value>
+  </data>
+  <data name="DetailsFieldMenu" xml:space="preserve">
+    <value>More for {0}</value>
+  </data>
+  <data name="DetailsCopyValue" xml:space="preserve">
+    <value>Copy value</value>
+  </data>
+  <data name="DetailsTableLoading" xml:space="preserve">
+    <value>Reading the table's details...</value>
+  </data>
+  <data name="DetailsTableUnavailable" xml:space="preserve">
+    <value>The table's details could not be read.</value>
+  </data>
+  <data name="DetailsNotKept" xml:space="preserve">
+    <value>Not reported</value>
+  </data>
+  <data name="DetailsRowsExact" xml:space="preserve">
+    <value>{0:N0}</value>
+  </data>
+  <data name="DetailsRowsAbout" xml:space="preserve">
+    <value>About {0:N0}</value>
+  </data>
+  <data name="DetailsRows" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="DetailsDataSize" xml:space="preserve">
+    <value>Data size</value>
+  </data>
+  <data name="DetailsIndexSize" xml:space="preserve">
+    <value>Index size</value>
+  </data>
+  <data name="DetailsTotalSize" xml:space="preserve">
+    <value>Total size</value>
+  </data>
+  <data name="DetailsComment" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="SummarySentence" xml:space="preserve">
+    <value>Sum: {0}   Average: {1}   Count: {2}</value>
+  </data>
+  <data name="SummaryCountOnly" xml:space="preserve">
+    <value>Count: {0}</value>
+  </data>
+  <data name="SummaryCount" xml:space="preserve">
+    <value>Count</value>
+  </data>
+  <data name="SummaryNumbers" xml:space="preserve">
+    <value>Numbers</value>
+  </data>
+  <data name="SummaryEmpty" xml:space="preserve">
+    <value>Empty</value>
+  </data>
+  <data name="SummaryNotANumber" xml:space="preserve">
+    <value>Not a number</value>
+  </data>
+  <data name="SummarySum" xml:space="preserve">
+    <value>Sum</value>
+  </data>
+  <data name="SummaryAverage" xml:space="preserve">
+    <value>Average</value>
+  </data>
+  <data name="SummaryMinimum" xml:space="preserve">
+    <value>Minimum</value>
+  </data>
+  <data name="SummaryMaximum" xml:space="preserve">
+    <value>Maximum</value>
+  </data>
+  <data name="SummaryCopy" xml:space="preserve">
+    <value>Copy {0}</value>
+  </data>
+  <data name="LinkQueryTitle" xml:space="preserve">
+    <value>Open query from link</value>
+  </data>
+  <data name="LinkQueryMessage" xml:space="preserve">
+    <value>A link asks to open this SQL in a new query tab on {0}. Nothing runs until you run it.</value>
+  </data>
+  <data name="LinkQueryOpen" xml:space="preserve">
+    <value>Open query</value>
+  </data>
+  <data name="LinkConnectionFailedTitle" xml:space="preserve">
+    <value>Connection failed</value>
+  </data>
+  <data name="LinkNoConnection" xml:space="preserve">
+    <value>No saved connection with ID "{0}".</value>
+  </data>
+  <data name="NotificationsHeader.Text" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="NotifyCard.Header" xml:space="preserve">
+    <value>Notify when long-running work finishes</value>
+  </data>
+  <data name="NotifyCard.Description" xml:space="preserve">
+    <value>Only when the result is somewhere you are not: another app in front, the window minimized, or another tab selected</value>
+  </data>
+  <data name="NotifySwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Notify when long-running work finishes</value>
+  </data>
+  <data name="NotifyAfterCard.Header" xml:space="preserve">
+    <value>Only after</value>
+  </data>
+  <data name="NotifyAfterCard.Description" xml:space="preserve">
+    <value>How long a query has to run to notify. Keep it below the query timeout.</value>
+  </data>
+  <data name="NotifyAfterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Only after</value>
+  </data>
+  <data name="NotifyAfterSeconds_one" xml:space="preserve">
+    <value>{0:N0} second</value>
+  </data>
+  <data name="NotifyAfterSeconds_other" xml:space="preserve">
+    <value>{0:N0} seconds</value>
+  </data>
+  <data name="NotifyAfterMinutes_one" xml:space="preserve">
+    <value>{0:N0} minute</value>
+  </data>
+  <data name="NotifyAfterMinutes_other" xml:space="preserve">
+    <value>{0:N0} minutes</value>
+  </data>
+  <data name="NotificationsOffBar.Title" xml:space="preserve">
+    <value>Notifications are off for TablePro</value>
+  </data>
+  <data name="NotificationsOffBar.Message" xml:space="preserve">
+    <value>Windows shows none, so the taskbar button flashes instead.</value>
+  </data>
+  <data name="NotificationsOffLink.Content" xml:space="preserve">
+    <value>Open notification settings</value>
+  </data>
+  <data name="NotifyRows_one" xml:space="preserve">
+    <value>{0:N0} row in {1}</value>
+    <comment>{0} is the number of rows, {1} how long the query ran.</comment>
+  </data>
+  <data name="NotifyRows_other" xml:space="preserve">
+    <value>{0:N0} rows in {1}</value>
+    <comment>{0} is the number of rows, {1} how long the query ran.</comment>
+  </data>
+  <data name="NotifyAffected_one" xml:space="preserve">
+    <value>{0:N0} row changed in {1}</value>
+    <comment>{0} is the number of rows, {1} how long the query ran.</comment>
+  </data>
+  <data name="NotifyAffected_other" xml:space="preserve">
+    <value>{0:N0} rows changed in {1}</value>
+    <comment>{0} is the number of rows, {1} how long the query ran.</comment>
+  </data>
+  <data name="NotifyDone" xml:space="preserve">
+    <value>Finished in {0}</value>
+  </data>
+  <data name="DurationHoursMinutes" xml:space="preserve">
+    <value>{0:N0}h {1}m</value>
+    <comment>How long a query ran: {0} hours and {1} minutes.</comment>
+  </data>
+  <data name="DurationMinutesSeconds" xml:space="preserve">
+    <value>{0}m {1}s</value>
+    <comment>{0} minutes and {1} seconds.</comment>
+  </data>
+  <data name="DurationSeconds" xml:space="preserve">
+    <value>{0}s</value>
+    <comment>{0} seconds.</comment>
+  </data>
+  <data name="NotifyFailed" xml:space="preserve">
+    <value>Failed after {0}</value>
+  </data>
+  <data name="CellEditAsText" xml:space="preserve">
+    <value>Edit as text</value>
+  </data>
+  <data name="CellSetValue" xml:space="preserve">
+    <value>Set</value>
+  </data>
+  <data name="CellDateName" xml:space="preserve">
+    <value>Date for {0}</value>
+  </data>
+  <data name="CellTimeName" xml:space="preserve">
+    <value>Time for {0}</value>
+  </data>
+  <data name="ResultModes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Data or JSON</value>
+  </data>
+  <data name="ResultsDataView.Text" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="ResultsJsonView.Text" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="JsonModes" xml:space="preserve">
+    <value>Text or tree</value>
+  </data>
+  <data name="JsonTextMode" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="JsonTreeMode" xml:space="preserve">
+    <value>Tree</value>
+  </data>
+  <data name="CopyJson" xml:space="preserve">
+    <value>Copy JSON</value>
+  </data>
+  <data name="JsonTextName" xml:space="preserve">
+    <value>Rows as JSON</value>
+  </data>
+  <data name="JsonTreeName" xml:space="preserve">
+    <value>Rows as a JSON tree</value>
+  </data>
+  <data name="JsonRows" xml:space="preserve">
+    <value>Rows: {0:N0}</value>
+  </data>
+  <data name="JsonRowsOf" xml:space="preserve">
+    <value>Rows: {0:N0} of {1:N0}</value>
+  </data>
+  <data name="JsonRowsCapped" xml:space="preserve">
+    <value>{0} · The first {1:N0} only</value>
+  </data>
+  <data name="JsonRowsDeleted_one" xml:space="preserve">
+    <value>{0} · {1:N0} marked for deletion left out</value>
+    <comment>{0} is the line before, {1} the number of rows marked for deletion.</comment>
+  </data>
+  <data name="JsonRowsDeleted_other" xml:space="preserve">
+    <value>{0} · {1:N0} marked for deletion left out</value>
+    <comment>{0} is the line before, {1} the number of rows marked for deletion.</comment>
+  </data>
+  <data name="JsonTextCut" xml:space="preserve">
+    <value>{0} · The text shows its start; Copy JSON copies all of it</value>
+  </data>
+  <data name="JsonCopyFailed" xml:space="preserve">
+    <value>The JSON could not be put on the clipboard.</value>
+  </data>
+  <data name="AiHeader.Text" xml:space="preserve">
+    <value>AI assistant</value>
+  </data>
+  <data name="AiProviderCard.Header" xml:space="preserve">
+    <value>Provider</value>
+  </data>
+  <data name="AiProviderBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>AI provider</value>
+  </data>
+  <data name="AiProviderOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="AiProviderAnthropic" xml:space="preserve">
+    <value>Anthropic</value>
+  </data>
+  <data name="AiProviderOpenAI" xml:space="preserve">
+    <value>OpenAI</value>
+  </data>
+  <data name="AiProviderCompatible" xml:space="preserve">
+    <value>Ollama or compatible server</value>
+  </data>
+  <data name="AiProviderOffDescription" xml:space="preserve">
+    <value>Nothing is sent anywhere until you choose a provider.</value>
+  </data>
+  <data name="AiProviderOnDescription" xml:space="preserve">
+    <value>Your questions, your SQL and the structure of the tables involved go to this provider. Rows never do. Each connection's AI policy decides whether anything is sent from it.</value>
+  </data>
+  <data name="AiAddressCard.Header" xml:space="preserve">
+    <value>Server address</value>
+  </data>
+  <data name="AiAddressBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Server address</value>
+  </data>
+  <data name="AiAddressBox.PlaceholderText" xml:space="preserve">
+    <value>http://localhost:11434/v1</value>
+  </data>
+  <data name="AiAddressDescription" xml:space="preserve">
+    <value>An http or https address with its version path. A key goes over plain http only to this computer.</value>
+  </data>
+  <data name="AiAddressInvalid" xml:space="preserve">
+    <value>Enter an http or https address with its version path, such as http://localhost:11434/v1.</value>
+  </data>
+  <data name="AiKeyCard.Header" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="AiKeyHeader" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="AiKeyOptionalHeader" xml:space="preserve">
+    <value>API key (optional)</value>
+  </data>
+  <data name="AiKeyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="AiKeyBox.PlaceholderText" xml:space="preserve">
+    <value>Paste a key</value>
+  </data>
+  <data name="AiKeySaveButton.Content" xml:space="preserve">
+    <value>Save key</value>
+  </data>
+  <data name="AiKeyRemoveButton.Content" xml:space="preserve">
+    <value>Remove key</value>
+  </data>
+  <data name="AiKeyKept" xml:space="preserve">
+    <value>A key is kept in Windows Credential Manager.</value>
+  </data>
+  <data name="AiKeyNone" xml:space="preserve">
+    <value>No key is kept. Paste the provider's API key and save it.</value>
+  </data>
+  <data name="AiKeyNoneOptional" xml:space="preserve">
+    <value>No key is kept. A server on this computer usually needs none.</value>
+  </data>
+  <data name="AiKeySaved" xml:space="preserve">
+    <value>The key is saved in Windows Credential Manager.</value>
+  </data>
+  <data name="AiKeyRemoved" xml:space="preserve">
+    <value>The key is removed.</value>
+  </data>
+  <data name="AiModelCard.Header" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="AiModelCard.Description" xml:space="preserve">
+    <value>The model id the provider answers with. Open the list to read the models it offers.</value>
+  </data>
+  <data name="AiModelBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="AiModelBox.PlaceholderText" xml:space="preserve">
+    <value>Model id</value>
+  </data>
+  <data name="AiModelsReading" xml:space="preserve">
+    <value>Reading the provider's models...</value>
+  </data>
+  <data name="AiModelsFailed" xml:space="preserve">
+    <value>The models could not be read. {0}</value>
+  </data>
+  <data name="AiModelsNone" xml:space="preserve">
+    <value>The provider lists no models.</value>
+  </data>
+  <data name="AiModelsOffline" xml:space="preserve">
+    <value>The provider's models could not be read, so TablePro's own list is shown. {0}</value>
+    <comment>{0} is why the provider's list was not read.</comment>
+  </data>
+  <data name="AiModelDeprecated" xml:space="preserve">
+    <value>{0} (deprecated)</value>
+    <comment>{0} is a model's name; the provider is retiring the model.</comment>
+  </data>
+  <data name="AiModelWithId" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="AiPolicyCard.Header" xml:space="preserve">
+    <value>AI assistant</value>
+  </data>
+  <data name="AiPolicyCard.Description" xml:space="preserve">
+    <value>The assistant asks before it first sends this connection's table structure, and your answer lasts until it disconnects.</value>
+  </data>
+  <data name="AiPolicyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>AI assistant policy</value>
+  </data>
+  <data name="AiPolicyAsk.Content" xml:space="preserve">
+    <value>Ask each time</value>
+  </data>
+  <data name="AiPolicyAllow.Content" xml:space="preserve">
+    <value>Always allow</value>
+  </data>
+  <data name="AiPolicyNever.Content" xml:space="preserve">
+    <value>Never</value>
+  </data>
+  <data name="AiPolicyAskDescription" xml:space="preserve">
+    <value>The assistant asks before it first sends this connection's table structure, and your answer lasts until it disconnects.</value>
+  </data>
+  <data name="AiPolicyAllowDescription" xml:space="preserve">
+    <value>The assistant sends this connection's table structure and your SQL to the provider without asking. It reads no rows.</value>
+  </data>
+  <data name="AiPolicyNeverDescription" xml:space="preserve">
+    <value>Nothing from this connection is sent to the AI provider, and the assistant is off here.</value>
+  </data>
+  <data name="AssistantCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>AI assistant</value>
+  </data>
+  <data name="AssistantHeader.Text" xml:space="preserve">
+    <value>AI assistant</value>
+  </data>
+  <data name="AssistantNewButton.Label" xml:space="preserve">
+    <value>New conversation</value>
+  </data>
+  <data name="AssistantNewButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>New conversation</value>
+  </data>
+  <data name="AssistantCloseButton.Label" xml:space="preserve">
+    <value>Close AI assistant</value>
+  </data>
+  <data name="AssistantCloseButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close AI assistant</value>
+  </data>
+  <data name="AssistantOffText.Text" xml:space="preserve">
+    <value>Choose a provider in Settings to use the assistant.</value>
+  </data>
+  <data name="AssistantSettingsButton.Content" xml:space="preserve">
+    <value>Open Settings</value>
+  </data>
+  <data name="AssistantBlockedText.Text" xml:space="preserve">
+    <value>This connection's AI policy is Never, so the assistant sends nothing from it. Edit the connection to change it.</value>
+  </data>
+  <data name="AssistantComposer.PlaceholderText" xml:space="preserve">
+    <value>Ask about this connection</value>
+  </data>
+  <data name="AssistantComposer.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Question for the assistant</value>
+  </data>
+  <data name="AssistantSendButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Send</value>
+  </data>
+  <data name="AssistantSendButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Send (Enter)</value>
+  </data>
+  <data name="AssistantStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="AssistantStopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Stop the reply</value>
+  </data>
+  <data name="AssistantEmpty" xml:space="preserve">
+    <value>Questions go to {0} with this connection's table structure and the SQL in the editor. It reads no rows.</value>
+  </data>
+  <data name="AssistantSentStructure" xml:space="preserve">
+    <value>Sent with the structure of {0}</value>
+  </data>
+  <data name="AssistantWaiting" xml:space="preserve">
+    <value>Waiting for the reply</value>
+  </data>
+  <data name="AssistantRetry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="AssistantCopyCode" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="AssistantInsertCode" xml:space="preserve">
+    <value>Insert in editor</value>
+  </data>
+  <data name="AssistantLengthLimit" xml:space="preserve">
+    <value>The reply reached its length limit.</value>
+  </data>
+  <data name="AssistantRefused" xml:space="preserve">
+    <value>The model declined to answer.</value>
+  </data>
+  <data name="AssistantTokens_one" xml:space="preserve">
+    <value>{0:N0} token</value>
+    <comment>{0} is the number of tokens the reply used.</comment>
+  </data>
+  <data name="AssistantTokens_other" xml:space="preserve">
+    <value>{0:N0} tokens</value>
+    <comment>{0} is the number of tokens the reply used.</comment>
+  </data>
+  <data name="AssistantStopped" xml:space="preserve">
+    <value>Stopped.</value>
+  </data>
+  <data name="AssistantAnswered" xml:space="preserve">
+    <value>The assistant answered.</value>
+  </data>
+  <data name="AssistantNotAllowedNow" xml:space="preserve">
+    <value>The assistant may not send from this connection now.</value>
+  </data>
+  <data name="AssistantConsentTitle" xml:space="preserve">
+    <value>Use the AI assistant here?</value>
+  </data>
+  <data name="AssistantConsentMessage" xml:space="preserve">
+    <value>The assistant sends your questions, your SQL and the structure of the tables involved from “{0}” to {1}. It reads no rows. Your answer lasts until this connection disconnects.</value>
+  </data>
+  <data name="AssistantConsentAllow" xml:space="preserve">
+    <value>Allow</value>
+  </data>
+  <data name="AiDestinationServer" xml:space="preserve">
+    <value>the server at {0}</value>
+  </data>
+  <data name="AiDestinationProvider" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="AiExplain" xml:space="preserve">
+    <value>Explain with AI</value>
+  </data>
+  <data name="AiReview" xml:space="preserve">
+    <value>Review with AI</value>
+  </data>
+  <data name="AiOptimize" xml:space="preserve">
+    <value>Optimize with AI</value>
+  </data>
+  <data name="AiFix" xml:space="preserve">
+    <value>Fix with AI</value>
+  </data>
+  <data name="AiError_missing_key" xml:space="preserve">
+    <value>Add your {0} API key in Settings.</value>
+  </data>
+  <data name="AiError_missing_model" xml:space="preserve">
+    <value>Choose a model in Settings.</value>
+  </data>
+  <data name="AiError_invalid_address" xml:space="preserve">
+    <value>The server address in Settings is not an http or https address.</value>
+  </data>
+  <data name="AiError_key_over_plain_http" xml:space="preserve">
+    <value>An API key goes to another computer over https only. Use an https address, or remove the key.</value>
+  </data>
+  <data name="AiError_invalid_key" xml:space="preserve">
+    <value>The API key holds characters a key cannot have. Enter it again in Settings.</value>
+  </data>
+  <data name="AiError_tls" xml:space="preserve">
+    <value>A secure connection could not be set up: {0}</value>
+  </data>
+  <data name="AiError_unreachable" xml:space="preserve">
+    <value>TablePro could not reach {0}: {1}</value>
+  </data>
+  <data name="AiError_timed_out" xml:space="preserve">
+    <value>{0} did not answer in time.</value>
+  </data>
+  <data name="AiError_unauthorized" xml:space="preserve">
+    <value>{0} refused the API key. Check it in Settings.</value>
+  </data>
+  <data name="AiError_rate_limited" xml:space="preserve">
+    <value>{0} is limiting requests. Wait a moment and try again.</value>
+  </data>
+  <data name="AiError_status" xml:space="preserve">
+    <value>{0} answered with error {1}.</value>
+  </data>
+  <data name="AiError_provider" xml:space="preserve">
+    <value>The provider stopped the reply: {0}</value>
+  </data>
+  <data name="AiError_protocol" xml:space="preserve">
+    <value>The reply could not be read: {0}</value>
+  </data>
+  <data name="AiError_too_long" xml:space="preserve">
+    <value>The reply grew longer than TablePro keeps, so it stopped.</value>
+  </data>
+  <data name="AiError_blocked" xml:space="preserve">
+    <value>This connection's AI policy is Never, so nothing is sent from it.</value>
+  </data>
+  <data name="AiErrorServerSaid" xml:space="preserve">
+    <value>{0} The server said: {1}</value>
+  </data>
+  <data name="MenuShowAssistant.Text" xml:space="preserve">
+    <value>Show AI assistant</value>
+  </data>
+  <data name="MenuShowAssistant.AccessKey" xml:space="preserve">
+    <value>A</value>
+  </data>
+  <data name="MenuWrapText.Text" xml:space="preserve">
+    <value>Wrap text</value>
+  </data>
+  <data name="MenuWrapText.AccessKey" xml:space="preserve">
+    <value>W</value>
+  </data>
+  <data name="MenuAiReview.Text" xml:space="preserve">
+    <value>Review with AI</value>
+  </data>
+  <data name="MenuAiReview.AccessKey" xml:space="preserve">
+    <value>V</value>
+  </data>
+  <data name="MenuAiExplain.Text" xml:space="preserve">
+    <value>Explain with AI</value>
+  </data>
+  <data name="MenuAiExplain.AccessKey" xml:space="preserve">
+    <value>X</value>
+  </data>
+  <data name="MenuAiOptimize.Text" xml:space="preserve">
+    <value>Optimize with AI</value>
+  </data>
+  <data name="MenuAiOptimize.AccessKey" xml:space="preserve">
+    <value>O</value>
+  </data>
+  <data name="McpHeader.Text" xml:space="preserve">
+    <value>MCP server</value>
+  </data>
+  <data name="McpServerCard.Header" xml:space="preserve">
+    <value>Enable MCP server</value>
+  </data>
+  <data name="McpServerCard.Description" xml:space="preserve">
+    <value>AI clients and the tablepro command on this computer can use your saved connections while TablePro is open. Each connection's External clients level decides what they may do.</value>
+  </data>
+  <data name="McpServerSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>MCP server</value>
+  </data>
+  <data name="McpStatusCard.Header" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="McpRetryButton.Content" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="McpPortCard.Header" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="McpPortCard.Description" xml:space="preserve">
+    <value>On 127.0.0.1, which only this computer can reach.</value>
+  </data>
+  <data name="McpPortBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>MCP server port</value>
+  </data>
+  <data name="McpAddressCard.Header" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="McpCopyAddressButton.Content" xml:space="preserve">
+    <value>Copy address</value>
+  </data>
+  <data name="McpTokenCard.Header" xml:space="preserve">
+    <value>Authorization header</value>
+  </data>
+  <data name="McpTokenCard.Description" xml:space="preserve">
+    <value>Give a client the address and this header, which carries the access token. The token is kept in Windows Credential Manager and shown only when copied.</value>
+  </data>
+  <data name="McpCopyHeaderButton.Content" xml:space="preserve">
+    <value>Copy header</value>
+  </data>
+  <data name="McpRegenerateButton.Content" xml:space="preserve">
+    <value>Regenerate token...</value>
+  </data>
+  <data name="McpClientsExpander.Header" xml:space="preserve">
+    <value>Clients</value>
+  </data>
+  <data name="McpClientsNone" xml:space="preserve">
+    <value>No client has connected since the server started.</value>
+  </data>
+  <data name="McpClientsSeen" xml:space="preserve">
+    <value>The clients that connected since the server started.</value>
+  </data>
+  <data name="McpClientSeen" xml:space="preserve">
+    <value>Version {0}, last connected at {1}</value>
+  </data>
+  <data name="McpStatusOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="McpStatusStarting" xml:space="preserve">
+    <value>Starting...</value>
+  </data>
+  <data name="McpStatusRunning" xml:space="preserve">
+    <value>Running on port {0}</value>
+  </data>
+  <data name="McpFailurePortInUse" xml:space="preserve">
+    <value>Port {0} is in use by another program. Choose another port.</value>
+  </data>
+  <data name="McpFailureListen" xml:space="preserve">
+    <value>TablePro could not listen on port {0}.</value>
+  </data>
+  <data name="McpFailureNoRandomness" xml:space="preserve">
+    <value>The system's random number source failed, so no access token could be made.</value>
+  </data>
+  <data name="McpFailureInterrupted" xml:space="preserve">
+    <value>The server stopped unexpectedly.</value>
+  </data>
+  <data name="McpFailureToken" xml:space="preserve">
+    <value>The access token could not be read or kept. {0}</value>
+  </data>
+  <data name="McpRegenerateTitle" xml:space="preserve">
+    <value>Regenerate the access token?</value>
+  </data>
+  <data name="McpRegenerateMessage" xml:space="preserve">
+    <value>Clients that use the current token are refused until you give them the new one.</value>
+  </data>
+  <data name="McpRegenerateConfirm" xml:space="preserve">
+    <value>Regenerate</value>
+  </data>
+  <data name="McpRegenerated" xml:space="preserve">
+    <value>A new access token is made. Copy the header to your clients.</value>
+  </data>
+  <data name="McpAddressCopied" xml:space="preserve">
+    <value>The address is copied.</value>
+  </data>
+  <data name="McpHeaderCopied" xml:space="preserve">
+    <value>The header is copied, with the access token in it.</value>
+  </data>
+  <data name="McpCopyFailed" xml:space="preserve">
+    <value>The clipboard could not be written. Try again.</value>
+  </data>
+  <data name="ExternalAccessCard.Header" xml:space="preserve">
+    <value>External clients</value>
+  </data>
+  <data name="ExternalAccessCard.Description" xml:space="preserve">
+    <value>MCP clients and the tablepro command can read the schema and the data. Every write is refused.</value>
+  </data>
+  <data name="ExternalAccessBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>External clients level</value>
+  </data>
+  <data name="ExternalAccessBlocked.Content" xml:space="preserve">
+    <value>Blocked</value>
+  </data>
+  <data name="ExternalAccessReadOnly.Content" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="ExternalAccessReadWrite.Content" xml:space="preserve">
+    <value>Read and write</value>
+  </data>
+  <data name="ExternalAccessBlockedDescription" xml:space="preserve">
+    <value>MCP clients and the tablepro command do not see this connection.</value>
+  </data>
+  <data name="ExternalAccessReadOnlyDescription" xml:space="preserve">
+    <value>MCP clients and the tablepro command can read the schema and the data. Every write is refused.</value>
+  </data>
+  <data name="ExternalAccessReadWriteDescription" xml:space="preserve">
+    <value>MCP clients and the tablepro command can also write. Each statement waits for your approval in its window, and Safe Mode's Read only still refuses it.</value>
+  </data>
+  <data name="ClientWriteTitle" xml:space="preserve">
+    <value>Run statement from MCP client?</value>
+  </data>
+  <data name="ClientWriteMessage" xml:space="preserve">
+    <value>An MCP client asks to change the database on {0}.</value>
+  </data>
+  <data name="ClientWriteDestructive" xml:space="preserve">
+    <value>An MCP client asks to drop or empty a table, or change every row of one, on {0}.</value>
+  </data>
+  <data name="ClientWriteRun" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="EditorMenuUndo" xml:space="preserve">
+    <value>Undo</value>
+    <comment>The SQL editor's context menu.</comment>
+  </data>
+  <data name="EditorMenuRedo" xml:space="preserve">
+    <value>Redo</value>
+  </data>
+  <data name="EditorMenuCut" xml:space="preserve">
+    <value>Cut</value>
+  </data>
+  <data name="EditorMenuCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="EditorMenuPaste" xml:space="preserve">
+    <value>Paste</value>
+  </data>
+  <data name="EditorMenuSelectAll" xml:space="preserve">
+    <value>Select All</value>
+  </data>
+  <data name="EditorMenuToggleComment" xml:space="preserve">
+    <value>Toggle Line Comment</value>
+  </data>
+  <data name="EditorMenuFormat" xml:space="preserve">
+    <value>Format Query</value>
+  </data>
+  <data name="MenuFormatQuery.Text" xml:space="preserve">
+    <value>Format query</value>
+  </data>
+  <data name="MenuFormatQuery.AccessKey" xml:space="preserve">
+    <value>M</value>
+  </data>
+  <data name="CompletionListName" xml:space="preserve">
+    <value>Completions</value>
+  </data>
+  <data name="CompletionKeyword" xml:space="preserve">
+    <value>Keyword</value>
+  </data>
+  <data name="CompletionSchema" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="CompletionTable" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="CompletionView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="CompletionMaterializedView" xml:space="preserve">
+    <value>Materialized view</value>
+  </data>
+  <data name="CompletionColumn" xml:space="preserve">
+    <value>Column</value>
+  </data>
+  <data name="CompletionFunction" xml:space="preserve">
+    <value>Function</value>
+  </data>
+  <data name="CompletionRowName" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>{0} is the name a completion writes, {1} what it is: Table, View, Keyword, or a column's type.</comment>
+  </data>
+  <data name="CompletionAnnouncement" xml:space="preserve">
+    <value>{0}, {1:N0} of {2:N0}</value>
+    <comment>What Narrator reads for the selected completion. {0} is its name and kind, {1} its place in the list, {2} how many the list holds.</comment>
+  </data>
+  <data name="EditorMenuFold" xml:space="preserve">
+    <value>Fold</value>
+  </data>
+  <data name="EditorMenuUnfold" xml:space="preserve">
+    <value>Unfold</value>
+  </data>
+  <data name="EditorMenuFoldAll" xml:space="preserve">
+    <value>Fold All</value>
+  </data>
+  <data name="EditorMenuUnfoldAll" xml:space="preserve">
+    <value>Unfold All</value>
+  </data>
+  <data name="FindBarFind" xml:space="preserve">
+    <value>Find</value>
+    <comment>The find box's placeholder and name.</comment>
+  </data>
+  <data name="FindBarReplace" xml:space="preserve">
+    <value>Replace</value>
+    <comment>The replace box's placeholder and name.</comment>
+  </data>
+  <data name="FindBarMatchCaseLabel" xml:space="preserve">
+    <value>Aa</value>
+    <comment>The match case toggle's label: an upper and a lower case letter.</comment>
+  </data>
+  <data name="FindBarMatchCase" xml:space="preserve">
+    <value>Match case</value>
+  </data>
+  <data name="FindBarWholeWordLabel" xml:space="preserve">
+    <value>ab</value>
+    <comment>The whole word toggle's label: a short word.</comment>
+  </data>
+  <data name="FindBarWholeWord" xml:space="preserve">
+    <value>Match whole word</value>
+  </data>
+  <data name="FindBarRegex" xml:space="preserve">
+    <value>Use regular expression</value>
+  </data>
+  <data name="FindBarToggleReplace" xml:space="preserve">
+    <value>Toggle Replace</value>
+  </data>
+  <data name="FindBarPrevious" xml:space="preserve">
+    <value>Previous match (Shift+F3)</value>
+  </data>
+  <data name="FindBarNext" xml:space="preserve">
+    <value>Next match (F3)</value>
+  </data>
+  <data name="FindBarClose" xml:space="preserve">
+    <value>Close (Esc)</value>
+  </data>
+  <data name="FindBarReplaceButton" xml:space="preserve">
+    <value>Replace</value>
+    <comment>The button that replaces the current match.</comment>
+  </data>
+  <data name="FindBarReplaceTip" xml:space="preserve">
+    <value>Replace (Enter)</value>
+  </data>
+  <data name="FindBarReplaceAll" xml:space="preserve">
+    <value>Replace all</value>
+  </data>
+  <data name="FindBarReplaceAllTip" xml:space="preserve">
+    <value>Replace all (Ctrl+Alt+Enter)</value>
+  </data>
+  <data name="FindBarNoResults" xml:space="preserve">
+    <value>No results</value>
+  </data>
+  <data name="FindBarInvalidPattern" xml:space="preserve">
+    <value>Invalid pattern</value>
+  </data>
+  <data name="FindBarPosition" xml:space="preserve">
+    <value>{0:N0} of {1}</value>
+    <comment>{0} is the current match, {1} the number of matches.</comment>
+  </data>
+  <data name="FindBarAtLeast" xml:space="preserve">
+    <value>{0:N0}+</value>
+    <comment>More matches than the editor counted: at least {0}.</comment>
+  </data>
+  <data name="FindBarReplaced_one" xml:space="preserve">
+    <value>{0:N0} replaced</value>
+    <comment>{0} is the number of matches replaced.</comment>
+  </data>
+  <data name="FindBarReplaced_other" xml:space="preserve">
+    <value>{0:N0} replaced</value>
+    <comment>{0} is the number of matches replaced.</comment>
+  </data>
+  <data name="GridName" xml:space="preserve">
+    <value>Results</value>
+    <comment>A data grid's name for screen readers where its page names none.</comment>
+  </data>
+  <data name="GridUnreadable" xml:space="preserve">
+    <value>&lt;unreadable {0}&gt;</value>
+    <comment>A cell whose value the database driver could not read; {0} is the database type's name.</comment>
+  </data>
+  <data name="JoinParenthetical" xml:space="preserve">
+    <value>{0} ({1})</value>
+    <comment>A name or title, {0}, with a detail about it, {1}.</comment>
+  </data>
+  <data name="JoinSentences" xml:space="preserve">
+    <value>{0} {1}</value>
+    <comment>Two sentences one after the other.</comment>
+  </data>
+  <data name="JoinDot" xml:space="preserve">
+    <value>{0} · {1}</value>
+    <comment>Two short phrases on one line.</comment>
+  </data>
+  <data name="JoinLabelValue" xml:space="preserve">
+    <value>{0}: {1}</value>
+    <comment>A label, {0}, and its value, {1}.</comment>
+  </data>
+  <data name="ConnectionDescription" xml:space="preserve">
+    <value>{0}  {1}</value>
+    <comment>{0} is the database engine, {1} where the connection goes, such as user@host:5432/sales.</comment>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+    <comment>Between the items of a list of names, such as columns or tags.</comment>
+  </data>
+  <data name="ListAndTwo" xml:space="preserve">
+    <value>{0} and {1}</value>
+    <comment>Two names, such as the apps found on this PC.</comment>
+  </data>
+  <data name="ListAndLast" xml:space="preserve">
+    <value>{0}, and {1}</value>
+    <comment>Three or more names: the last, {1}, after the others, {0}, which are joined with ListSeparator.</comment>
+  </data>
+  <data name="ImportCsvReviewShown_one" xml:space="preserve">
+    <value>The first is shown.</value>
+    <comment>{0} is the number of statements the review shows.</comment>
+  </data>
+  <data name="ImportCsvReviewShown_other" xml:space="preserve">
+    <value>The first {0:N0} are shown.</value>
+    <comment>{0} is the number of statements the review shows.</comment>
+  </data>
+  <data name="ShareFooterLinks_one" xml:space="preserve">
+    <value>{0:N0} of {1:N0} link</value>
+    <comment>{0} is the number of live links, {1} the limit, which picks the form.</comment>
+  </data>
+  <data name="ShareFooterLinks_other" xml:space="preserve">
+    <value>{0:N0} of {1:N0} links</value>
+    <comment>{0} is the number of live links, {1} the limit, which picks the form.</comment>
+  </data>
+  <data name="ShareFooterRows_one" xml:space="preserve">
+    <value>first {0:N0} row</value>
+    <comment>{0} is the number of rows a link shares at most.</comment>
+  </data>
+  <data name="ShareFooterRows_other" xml:space="preserve">
+    <value>first {0:N0} rows</value>
+    <comment>{0} is the number of rows a link shares at most.</comment>
+  </data>
+  <data name="AppDisplayName" xml:space="preserve">
+    <value>TablePro</value>
+    <comment>The app's name in Start, the taskbar and its title bar.</comment>
+  </data>
+  <data name="AppDescription" xml:space="preserve">
+    <value>A native database client</value>
+    <comment>The app's description in its package.</comment>
+  </data>
+  <data name="AppPublisher" xml:space="preserve">
+    <value>TablePro</value>
+    <comment>The publisher's name in the app's package.</comment>
+  </data>
+  <data name="FileTypeSqlScript" xml:space="preserve">
+    <value>SQL script</value>
+    <comment>The name Windows shows for .sql files the app opens.</comment>
+  </data>
+  <data name="FileTypeSqlite" xml:space="preserve">
+    <value>SQLite database</value>
+  </data>
+  <data name="FileTypeDuckDb" xml:space="preserve">
+    <value>DuckDB database</value>
+  </data>
+  <data name="CommandDisplayName" xml:space="preserve">
+    <value>TablePro command</value>
+    <comment>The tablepro command's name in the app's package.</comment>
+  </data>
+  <data name="CommandDescription" xml:space="preserve">
+    <value>The tablepro command for terminals and scripts</value>
+  </data>
+  <data name="MenuCheckForUpdates" xml:space="preserve">
+    <value>Check for updates...</value>
+  </data>
+  <data name="MenuUpdateAvailable" xml:space="preserve">
+    <value>Update available...</value>
+  </data>
+  <data name="UpdateAvailableMessage" xml:space="preserve">
+    <value>TablePro {0} is available.</value>
+  </data>
+  <data name="UpdatedMessage" xml:space="preserve">
+    <value>TablePro was updated to {0}</value>
+  </data>
+  <data name="WhatsNewButton" xml:space="preserve">
+    <value>What's new</value>
+  </data>
+  <data name="UpdateInstallTitle" xml:space="preserve">
+    <value>Install TablePro {0}?</value>
+  </data>
+  <data name="UpdateInstallMessage" xml:space="preserve">
+    <value>TablePro closes, installs it and starts again.</value>
+  </data>
+  <data name="UpdateRestartButton" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="UpdatesHeader.Text" xml:space="preserve">
+    <value>Software update</value>
+  </data>
+  <data name="UpdateVersion" xml:space="preserve">
+    <value>TablePro {0}</value>
+  </data>
+  <data name="UpdateUnsupported" xml:space="preserve">
+    <value>Only TablePro installed from its package checks for updates.</value>
+  </data>
+  <data name="UpdateChecking" xml:space="preserve">
+    <value>Checking for updates...</value>
+  </data>
+  <data name="UpdateNeverChecked" xml:space="preserve">
+    <value>Last checked: never</value>
+  </data>
+  <data name="UpdateLastChecked" xml:space="preserve">
+    <value>Last checked: {0}</value>
+  </data>
+  <data name="UpdateCheckButton" xml:space="preserve">
+    <value>Check now</value>
+  </data>
+  <data name="UpdateInstallButton" xml:space="preserve">
+    <value>Install update...</value>
+  </data>
+  <data name="UpdateAvailableHeadline" xml:space="preserve">
+    <value>TablePro {0} is available</value>
+  </data>
+  <data name="UpdateInstallingHeadline" xml:space="preserve">
+    <value>Installing TablePro {0}</value>
+  </data>
+  <data name="UpdateInstallingDetail" xml:space="preserve">
+    <value>{0:P0} done. TablePro restarts once it is installed.</value>
+    <comment>{0} is how much of the update is installed, as a percentage.</comment>
+  </data>
+  <data name="UpdateReadyHeadline" xml:space="preserve">
+    <value>TablePro {0} is ready to install</value>
+  </data>
+  <data name="UpdateRestartToFinish" xml:space="preserve">
+    <value>Restart TablePro to finish updating.</value>
+  </data>
+  <data name="UpdateCheckFailedReason" xml:space="preserve">
+    <value>Couldn't check for updates: {0}</value>
+  </data>
+  <data name="UpdateFileUnreadable" xml:space="preserve">
+    <value>Couldn't check for updates: the update file is not an App Installer file.</value>
+  </data>
+  <data name="UpdateFileOtherPackage" xml:space="preserve">
+    <value>Couldn't check for updates: the update file installs another app.</value>
+  </data>
+  <data name="UpdateFileElsewhere" xml:space="preserve">
+    <value>Couldn't check for updates: the update file sends the install somewhere else.</value>
+  </data>
+  <data name="UpdateChannelCard.Header" xml:space="preserve">
+    <value>Update channel</value>
+  </data>
+  <data name="UpdateChannelCard.Description" xml:space="preserve">
+    <value>Betas get new features first. Switching back to Stable keeps the beta you have until a newer release ships.</value>
+  </data>
+  <data name="UpdateChannelBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Update channel</value>
+  </data>
+  <data name="UpdateChannelStable.Content" xml:space="preserve">
+    <value>Stable</value>
+  </data>
+  <data name="UpdateChannelBeta.Content" xml:space="preserve">
+    <value>Beta</value>
+  </data>
+  <data name="WhatsNewLink.Content" xml:space="preserve">
+    <value>What's new in this version</value>
+  </data>
+  <data name="UpdateInstallFailedTitle" xml:space="preserve">
+    <value>Couldn't install the update</value>
+  </data>
+  <data name="Key_Ctrl" xml:space="preserve">
+    <value>Ctrl</value>
+    <comment>Key names as Windows writes them in menus and tooltips, in this language.</comment>
+  </data>
+  <data name="Key_Alt" xml:space="preserve">
+    <value>Alt</value>
+  </data>
+  <data name="Key_Shift" xml:space="preserve">
+    <value>Shift</value>
+  </data>
+  <data name="Key_Join" xml:space="preserve">
+    <value>{0}+{1}</value>
+    <comment>Joins a modifier and what follows it, as Windows writes Ctrl+S.</comment>
+  </data>
+  <data name="Key_Enter" xml:space="preserve">
+    <value>Enter</value>
+  </data>
+  <data name="Key_Escape" xml:space="preserve">
+    <value>Esc</value>
+  </data>
+  <data name="Key_Space" xml:space="preserve">
+    <value>Space</value>
+  </data>
+  <data name="Key_Tab" xml:space="preserve">
+    <value>Tab</value>
+  </data>
+  <data name="Key_Backspace" xml:space="preserve">
+    <value>Backspace</value>
+  </data>
+  <data name="Key_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Key_Insert" xml:space="preserve">
+    <value>Insert</value>
+  </data>
+  <data name="Key_Left" xml:space="preserve">
+    <value>Left</value>
+  </data>
+  <data name="Key_Up" xml:space="preserve">
+    <value>Up</value>
+  </data>
+  <data name="Key_Right" xml:space="preserve">
+    <value>Right</value>
+  </data>
+  <data name="Key_Down" xml:space="preserve">
+    <value>Down</value>
+  </data>
+  <data name="Key_PageUp" xml:space="preserve">
+    <value>Page Up</value>
+  </data>
+  <data name="Key_PageDown" xml:space="preserve">
+    <value>Page Down</value>
+  </data>
+  <data name="Key_Home" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Key_End" xml:space="preserve">
+    <value>End</value>
+  </data>
+  <data name="TipWithKeys" xml:space="preserve">
+    <value>{0} ({1})</value>
+    <comment>A button's tooltip. {0} is what the button does, {1} the keys that do it too.</comment>
+  </data>
+  <data name="MenuSetupGuide.Text" xml:space="preserve">
+    <value>Setup guide</value>
+  </data>
+  <data name="MenuSetupGuide.AccessKey" xml:space="preserve">
+    <value>G</value>
+  </data>
+  <data name="SetupGuideCard.Header" xml:space="preserve">
+    <value>Set up TablePro</value>
+  </data>
+  <data name="SetupGuideCard.Description" xml:space="preserve">
+    <value>Import from another app, open the sample database and pick your keyboard shortcuts</value>
+  </data>
+  <data name="SetupTitle_Origin" xml:space="preserve">
+    <value>Welcome to TablePro</value>
+  </data>
+  <data name="SetupTitle_Import" xml:space="preserve">
+    <value>Import from other apps</value>
+  </data>
+  <data name="SetupTitle_FirstConnection" xml:space="preserve">
+    <value>First connection</value>
+  </data>
+  <data name="SetupTitle_Options" xml:space="preserve">
+    <value>Appearance and keys</value>
+  </data>
+  <data name="SetupDescription_Origin" xml:space="preserve">
+    <value>Bring your connections, or start with a new one.</value>
+  </data>
+  <data name="SetupDescription_Import" xml:space="preserve">
+    <value>Select the apps to import from. You review each one before anything is saved.</value>
+  </data>
+  <data name="SetupDescription_FirstConnection" xml:space="preserve">
+    <value>Choose what opens when you finish.</value>
+  </data>
+  <data name="SetupDescription_Options" xml:space="preserve">
+    <value>Changes apply now. You can change them later in Settings.</value>
+  </data>
+  <data name="SetupLooking.Text" xml:space="preserve">
+    <value>Looking for apps on this PC...</value>
+  </data>
+  <data name="SetupNoSources.Text" xml:space="preserve">
+    <value>No other database apps found on this PC.</value>
+  </data>
+  <data name="SetupPasswords.Content" xml:space="preserve">
+    <value>Import passwords</value>
+  </data>
+  <data name="SetupQueries.Content" xml:space="preserve">
+    <value>Import saved queries</value>
+  </data>
+  <data name="SetupSkip.Content" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="SetupContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="SetupFinish_Open" xml:space="preserve">
+    <value>Open connection</value>
+    <comment>The guide's last button when it ends by opening the one connection it imported.</comment>
+  </data>
+  <data name="SetupFinish_SelectInLibrary" xml:space="preserve">
+    <value>Show connections</value>
+  </data>
+  <data name="SetupFinish_NewConnection" xml:space="preserve">
+    <value>Add connection</value>
+  </data>
+  <data name="SetupFinish_Sample" xml:space="preserve">
+    <value>Open sample</value>
+  </data>
+  <data name="SetupFinish_Stay" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="SetupChosen" xml:space="preserve">
+    <value>Opens when you finish</value>
+    <comment>Read out on the card picked as the first connection.</comment>
+  </data>
+  <data name="SetupViewName" xml:space="preserve">
+    <value>Setup guide</value>
+  </data>
+  <data name="ShortcutsCard.Header" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="ShortcutsCard.Description" xml:space="preserve">
+    <value>Use the keys of the app you're used to. A key Windows or the editor keeps for itself stays as it is.</value>
+  </data>
+  <data name="ShortcutsBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="ShortcutPresetTablePro" xml:space="preserve">
+    <value>TablePro</value>
+    <comment>The choice that keeps TablePro's own keys.</comment>
+  </data>
+  <data name="SetupSourcesName" xml:space="preserve">
+    <value>Apps to import from</value>
+  </data>
+  <data name="SetupStepOf" xml:space="preserve">
+    <value>Step {0} of {1}</value>
+    <comment>Above the setup guide's title: the step shown, {0}, and the number of steps, {1}.</comment>
+  </data>
+  <data name="SetupStepTitleName" xml:space="preserve">
+    <value>{0}, step {1} of {2}</value>
+    <comment>What Narrator reads for the setup guide's title: the title, {0}, the step, {1}, and the number of steps, {2}.</comment>
+  </data>
+  <data name="SetupOriginList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>How to start</value>
+  </data>
+  <data name="SetupOtherAppTitle.Text" xml:space="preserve">
+    <value>Import from another app</value>
+  </data>
+  <data name="SetupOtherAppDetail.Text" xml:space="preserve">
+    <value>Connections and saved queries from apps on this PC</value>
+  </data>
+  <data name="SetupFoundApps" xml:space="preserve">
+    <value>Found on this PC: {0}</value>
+    <comment>The Import from another app card's detail once the guide finds apps with data: their names, {0}, joined with ListAndTwo or ListAndLast.</comment>
+  </data>
+  <data name="SetupFileTitle.Text" xml:space="preserve">
+    <value>Import a connections file</value>
+  </data>
+  <data name="SetupFileDetail.Text" xml:space="preserve">
+    <value>A file exported from TablePro. Each connection asks for its password the first time.</value>
+  </data>
+  <data name="SetupStartTitle.Text" xml:space="preserve">
+    <value>Start fresh</value>
+  </data>
+  <data name="SetupStartDetail.Text" xml:space="preserve">
+    <value>Add a connection or open the sample database</value>
+  </data>
+  <data name="SetupFirstConnectionList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>What opens when you finish</value>
+  </data>
+  <data name="SetupNewConnectionTitle.Text" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="SetupNewConnectionDetail.Text" xml:space="preserve">
+    <value>Enter a server's address or a connection URL, or open a database file</value>
+  </data>
+  <data name="SetupSampleTitle.Text" xml:space="preserve">
+    <value>Sample database</value>
+  </data>
+  <data name="SetupSampleDetail.Text" xml:space="preserve">
+    <value>A small music store database in SQLite</value>
+  </data>
+  <data name="SetupNoSourcesHint.Text" xml:space="preserve">
+    <value>Continue to add a connection or open the sample database.</value>
+  </data>
+  <data name="SetupNotFound" xml:space="preserve">
+    <value>Not found on this PC: {0}</value>
+    <comment>Under the apps found: the apps TablePro imports from that are not on this PC, {0}, joined with ListSeparator.</comment>
+  </data>
+  <data name="SetupImportConnections_one" xml:space="preserve">
+    <value>Import {0:N0} connection</value>
+    <comment>The import step's button: the connections the ticked apps hold.</comment>
+  </data>
+  <data name="SetupImportConnections_other" xml:space="preserve">
+    <value>Import {0:N0} connections</value>
+  </data>
+  <data name="SetupThemeHeader.Text" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="SetupThemeTiles.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="SetupThemeLight.Text" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="SetupThemeDark.Text" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="SetupThemeSystem.Text" xml:space="preserve">
+    <value>Use system setting</value>
+  </data>
+  <data name="MenuProject.Text" xml:space="preserve">
+    <value>Project</value>
+  </data>
+  <data name="MenuProject.AccessKey" xml:space="preserve">
+    <value>P</value>
+  </data>
+  <data name="ProjectSwitcherName" xml:space="preserve">
+    <value>Project: {0}</value>
+    <comment>What a screen reader calls the project switcher. {0} is the active project's name, or All connections.</comment>
+  </data>
+  <data name="ProjectSwitcher.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Switch project</value>
+  </data>
+  <data name="ProjectAllConnections" xml:space="preserve">
+    <value>All connections</value>
+    <comment>The built-in choice of the project switcher that shows every connection.</comment>
+  </data>
+  <data name="ProjectNew" xml:space="preserve">
+    <value>New project...</value>
+  </data>
+  <data name="ProjectManage" xml:space="preserve">
+    <value>Manage projects...</value>
+  </data>
+  <data name="NewProjectTitle" xml:space="preserve">
+    <value>New project</value>
+  </data>
+  <data name="ManageProjectsTitle" xml:space="preserve">
+    <value>Manage projects</value>
+  </data>
+  <data name="ManageProjectsList" xml:space="preserve">
+    <value>Projects</value>
+  </data>
+  <data name="ManageProjectsEmpty" xml:space="preserve">
+    <value>No projects yet. A project keeps one product's connections apart from the rest.</value>
+  </data>
+  <data name="ManageProjectsMoveUp" xml:space="preserve">
+    <value>Move up</value>
+  </data>
+  <data name="ManageProjectsMoveDown" xml:space="preserve">
+    <value>Move down</value>
+  </data>
+  <data name="DeleteProjectTitle" xml:space="preserve">
+    <value>Delete {0}?</value>
+    <comment>{0} is the project's name.</comment>
+  </data>
+  <data name="DeleteProjectMessage" xml:space="preserve">
+    <value>Its connections and groups are kept. They show in All connections.</value>
+  </data>
+  <data name="MenuMoveToProject" xml:space="preserve">
+    <value>Move to project</value>
+  </data>
+  <data name="MenuNoProject" xml:space="preserve">
+    <value>No project</value>
+  </data>
+  <data name="EmptyProjectTitle" xml:space="preserve">
+    <value>No connections in {0}</value>
+    <comment>{0} is the project's name.</comment>
+  </data>
+  <data name="EmptyProjectMessage.Text" xml:space="preserve">
+    <value>Add a connection, or move one here from All connections.</value>
+  </data>
+  <data name="EmptyProjectNewConnection.Content" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="SearchAllConnectionsButton.Content" xml:space="preserve">
+    <value>Search all connections</value>
+  </data>
+  <data name="HistoryListProject" xml:space="preserve">
+    <value>Queries run on this project's connections</value>
+  </data>
+  <data name="DeleteHistoryChoice_one" xml:space="preserve">
+    <value>Also delete its query history</value>
+    <comment>{0} is the number of connections.</comment>
+  </data>
+  <data name="DeleteHistoryChoice_other" xml:space="preserve">
+    <value>Also delete their query history</value>
+    <comment>{0} is the number of connections.</comment>
+  </data>
+  <data name="DeleteKeptSavedQueries_one" xml:space="preserve">
+    <value>The connection was deleted, but its saved queries couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose saved queries stayed.</comment>
+  </data>
+  <data name="DeleteKeptSavedQueries_other" xml:space="preserve">
+    <value>The connections were deleted, but the saved queries of {0:N0} of them couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose saved queries stayed.</comment>
+  </data>
+  <data name="DeleteKeptHistory_one" xml:space="preserve">
+    <value>The connection was deleted, but its query history couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose history stayed.</comment>
+  </data>
+  <data name="DeleteKeptHistory_other" xml:space="preserve">
+    <value>The connections were deleted, but the query history of {0:N0} of them couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose history stayed.</comment>
+  </data>
+  <data name="DeleteKeptBoth_one" xml:space="preserve">
+    <value>The connection was deleted, but its saved queries and query history couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose saved queries or history stayed.</comment>
+  </data>
+  <data name="DeleteKeptBoth_other" xml:space="preserve">
+    <value>The connections were deleted, but the saved queries and query history of {0:N0} of them couldn't be removed from this PC.</value>
+    <comment>{0} is the number of connections whose saved queries or history stayed.</comment>
+  </data>
+  <data name="Error_storage_project_not_found" xml:space="preserve">
+    <value>The project is gone. It may have been deleted.</value>
+  </data>
+  <data name="Error_storage_project_exists" xml:space="preserve">
+    <value>That project is already there.</value>
+  </data>
+  <data name="Error_storage_project_name_taken" xml:space="preserve">
+    <value>Another project has that name.</value>
+  </data>
+  <data name="Error_storage_connection_grouped" xml:space="preserve">
+    <value>A connection in a group moves with its group. Move the group instead.</value>
+  </data>
+  <data name="Error_storage_group_not_top_level" xml:space="preserve">
+    <value>Only a top-level group can move to a project.</value>
+  </data>
+  <data name="Error_project_name_empty" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="Error_project_name_control_character" xml:space="preserve">
+    <value>The name has a character that can't be shown.</value>
   </data>
 </root>

@@ -1,6 +1,6 @@
 # 0045: The tablepro command line and connection URLs
 
-- **Status**: Accepted
+- **Status**: Accepted; the link schemes amended by 0046
 - **Date**: 2026-11-08
 
 ## Context

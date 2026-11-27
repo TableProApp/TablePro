@@ -53,7 +53,7 @@ extension MainContentView {
             selectedTab.tableContext.tableName != nil
         {
             coordinator.restoreLastHiddenColumnsForTable()
-            if selectedTab.filterState.appliedFilters.isEmpty {
+            if !selectedTab.filterState.isFiltering {
                 coordinator.restoreFiltersForSelectedTab()
             } else if let tabIndex = tabManager.selectedTabIndex {
                 coordinator.rebuildTableQuery(at: tabIndex)
@@ -125,7 +125,7 @@ extension MainContentView {
             for: selectedTab?.tabType,
             connectionId: connection.id
         )
-        viewWindow?.isDocumentEdited = selectedTab.map(coordinator.showsUnsavedIndicator) ?? false
+        coordinator.contentWindow?.isDocumentEdited = selectedTab.map(coordinator.showsUnsavedIndicator) ?? false
     }
 
     // Called by WindowAccessor once the window exists.
@@ -144,7 +144,6 @@ extension MainContentView {
             connectionId: connection.id,
             windowId: windowId
         )
-        viewWindow = window
         coordinator.contentWindow = window
         coordinator.isKeyWindow = window.isKeyWindow
 
@@ -166,19 +165,21 @@ extension MainContentView {
     func setupCommandActions() {
         // `onAppear` refires on a connection switch; a second set of actions handled every broadcast twice and rebuilt both panes.
         guard commandActions == nil else { return }
+        // Bound to the state object: a closure naming `coordinator` captures this view, whose @State holds these actions.
+        let sidebarState = coordinator.windowSidebarState
         let actions = MainContentCommandActions(
             coordinator: coordinator,
             connection: connection,
             selectedTables: Binding(
-                get: { coordinator.windowSidebarState.selectedTables },
-                set: { coordinator.windowSidebarState.selectTables($0) }
+                get: { sidebarState.selectedTables },
+                set: { sidebarState.selectTables($0) }
             ),
             pendingTruncates: $pendingTruncates,
             pendingDeletes: $pendingDeletes,
             tableOperationOptions: $tableOperationOptions,
             trailingPaneState: trailingPaneState
         )
-        actions.window = viewWindow
+        actions.window = coordinator.contentWindow
         coordinator.commandActions = actions
         commandActions = actions
         coordinator.splitViewController?.rebuildTrailingPanes()

@@ -35,7 +35,7 @@ internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
         let key = Self.key(for: scope)
         let addedKey = Self.addedKey(for: scope)
         var first: [String: String] = [:]
-        var added = (Self.names(store.dataValue(forKey: addedKey)) ?? [:])
+        var added = (store.read(addedKey).value ?? [:])
             .filter { ValueDisplayFormat(rawValue: $0.value) == nil && formats[$0.key] == nil }
         for (column, format) in formats {
             if Self.namesReadBy083.contains(format.rawValue) {
@@ -44,34 +44,34 @@ internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
                 added[column] = format.rawValue
             }
         }
-        write(first, forKey: key)
-        write(added, forKey: addedKey)
+        write(first, to: key)
+        write(added, to: addedKey)
         removeLegacy(for: scope)
         sweepSchemas()
     }
 
     func load(for scope: TableScope) -> [String: ValueDisplayFormat]? {
-        let first = Self.names(store.dataValue(forKey: Self.key(for: scope)))
-        let added = Self.names(store.dataValue(forKey: Self.addedKey(for: scope)))
+        let first = store.read(Self.key(for: scope)).value
+        let added = store.read(Self.addedKey(for: scope)).value
         guard first != nil || added != nil else { return migrateLegacy(for: scope) }
         let names = (added ?? [:]).merging(first ?? [:]) { _, firstName in firstName }
         return names.compactMapValues(ValueDisplayFormat.init(rawValue:))
     }
 
     func clear(for scope: TableScope) {
-        store.setDataValue(nil, forKey: Self.key(for: scope))
-        store.setDataValue(nil, forKey: Self.addedKey(for: scope))
+        store.removeValue(for: Self.key(for: scope))
+        store.removeValue(for: Self.addedKey(for: scope))
         removeLegacy(for: scope)
         sweepSchemas()
     }
 
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {
-        let oldKey = Self.key(for: oldScope)
+        let oldKey = Self.key(for: oldScope).name
         if store.dataValue(forKey: oldKey) == nil {
             migrateLegacy(for: oldScope)
         }
-        store.moveValue(fromKey: oldKey, toKey: Self.key(for: newScope))
-        store.moveValue(fromKey: Self.addedKey(for: oldScope), toKey: Self.addedKey(for: newScope))
+        store.moveValue(fromKey: oldKey, toKey: Self.key(for: newScope).name)
+        store.moveValue(fromKey: Self.addedKey(for: oldScope).name, toKey: Self.addedKey(for: newScope).name)
     }
 
     func renameContainer(
@@ -118,7 +118,7 @@ internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
         var avro: Set<String> = []
         var protobuf: Set<String> = []
         for key in store.keys(withPrefix: Self.keyPrefix) where key.hasSuffix(Self.addedSuffix) {
-            for name in (Self.names(store.dataValue(forKey: key)) ?? [:]).values {
+            for name in (store.read(JSONDefaultsKey<[String: String]>(key)).value ?? [:]).values {
                 switch ValueDisplayFormat(rawValue: name) {
                 case .avro(let schemaID)?: avro.insert(schemaID)
                 case .protobufSchema(let schemaID, _)?: protobuf.insert(schemaID)
@@ -133,26 +133,26 @@ internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
     @discardableResult
     private func migrateLegacy(for scope: TableScope) -> [String: ValueDisplayFormat]? {
         let legacyKey = Self.legacyKey(for: scope)
-        guard let names = Self.names(store.dataValue(forKey: legacyKey)), !names.isEmpty else { return nil }
-        write(names, forKey: Self.key(for: scope))
-        store.setDataValue(nil, forKey: legacyKey)
+        guard let names = store.read(legacyKey).value, !names.isEmpty else { return nil }
+        write(names, to: Self.key(for: scope))
+        store.removeValue(for: legacyKey)
         return names.compactMapValues(ValueDisplayFormat.init(rawValue:))
     }
 
-    private func write(_ names: [String: String], forKey key: String) {
-        guard !names.isEmpty, let data = try? JSONEncoder().encode(names) else {
-            store.setDataValue(nil, forKey: key)
+    private func write(_ names: [String: String], to key: JSONDefaultsKey<[String: String]>) {
+        guard !names.isEmpty else {
+            store.removeValue(for: key)
             return
         }
-        store.setDataValue(data, forKey: key)
+        do {
+            try store.write(names, to: key)
+        } catch {
+            store.removeValue(for: key)
+        }
     }
 
     private func removeLegacy(for scope: TableScope) {
-        store.setDataValue(nil, forKey: Self.legacyKey(for: scope))
-    }
-
-    private static func names(_ data: Data?) -> [String: String]? {
-        data.flatMap { try? JSONDecoder().decode([String: String].self, from: $0) }
+        store.removeValue(for: Self.legacyKey(for: scope))
     }
 
     private static let keyPrefix = PreferenceKeys.columnDisplayFormatsPrefix
@@ -160,16 +160,16 @@ internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
     // A table key is four dot-joined, percent-encoded parts, so a fifth part never names another table.
     private static let addedSuffix = ".added"
 
-    private static func key(for scope: TableScope) -> String {
-        PreferenceKeys.columnDisplayFormats(scope).name
+    private static func key(for scope: TableScope) -> JSONDefaultsKey<[String: String]> {
+        PreferenceKeys.columnDisplayFormats(scope)
     }
 
-    private static func addedKey(for scope: TableScope) -> String {
-        key(for: scope) + addedSuffix
+    private static func addedKey(for scope: TableScope) -> JSONDefaultsKey<[String: String]> {
+        JSONDefaultsKey(key(for: scope).name + addedSuffix)
     }
 
-    private static func legacyKey(for scope: TableScope) -> String {
-        legacyKeyPrefix(for: scope.connectionId) + scope.table
+    private static func legacyKey(for scope: TableScope) -> JSONDefaultsKey<[String: String]> {
+        JSONDefaultsKey(legacyKeyPrefix(for: scope.connectionId) + scope.table)
     }
 
     private static func legacyKeyPrefix(for connectionId: UUID) -> String {

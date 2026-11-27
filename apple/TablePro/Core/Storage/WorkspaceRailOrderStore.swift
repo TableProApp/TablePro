@@ -15,7 +15,7 @@ internal final class WorkspaceRailOrderStore {
 
     internal init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults
-        self.cachedOrder = Self.decode(from: defaults)
+        self.cachedOrder = defaults.read(PreferenceKeys.workspaceRailOrder).value ?? []
     }
 
     internal var order: [WorkspaceID] {
@@ -33,25 +33,13 @@ internal final class WorkspaceRailOrderStore {
         setOrder(WorkspaceRailOrdering.merged(visibleOrder: visibleOrder, into: cachedOrder))
     }
 
-    /// Deleting a connection takes its arrangement with it. Nothing else ever removed an entry, so
-    /// the ids of deleted connections, and of databases that no longer exist, stayed in defaults for
-    /// good and every drag added more. `ConnectionLocalState.purge` is where the app already sheds a
-    /// deleted connection's local state, and it is the one caller.
+    // The one place entries leave, called from `ConnectionLocalState.purge`, so deleted connections stop piling up.
     internal func removeEntries(for connectionIds: Set<UUID>) {
         guard !connectionIds.isEmpty else { return }
         setOrder(cachedOrder.filter { !connectionIds.contains($0.connectionId) })
     }
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(cachedOrder) else { return }
-        defaults.set(data, forKey: PreferenceKeys.workspaceRailOrder.name)
-    }
-
-    private static func decode(from defaults: UserDefaults) -> [WorkspaceID] {
-        guard let data = defaults.data(forKey: PreferenceKeys.workspaceRailOrder.name),
-              let ids = try? JSONDecoder().decode([WorkspaceID].self, from: data) else {
-            return []
-        }
-        return ids
+        try? defaults.write(cachedOrder, to: PreferenceKeys.workspaceRailOrder)
     }
 }

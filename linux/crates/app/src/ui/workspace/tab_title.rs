@@ -48,12 +48,18 @@ impl ConnectionLabel {
 
     pub(crate) fn name(&self) -> String {
         let saved = match &self.key {
-            SessionKey::Saved(id) => self.saved.get(*id).map(|saved| saved.name),
+            SessionKey::Saved(id) => self
+                .saved
+                .get(*id)
+                .map(|saved| tablepro_storage::shown_name(&saved.name)),
             SessionKey::SavedIn { id, database } => self.saved.get(*id).map(|saved| {
                 // Translators: a connection and another of its server's databases, open beside it.
                 crate::i18n::gettext_f(
                     "{connection} · {database}",
-                    &[("connection", &saved.name), ("database", database)],
+                    &[
+                        ("connection", &tablepro_storage::shown_name(&saved.name)),
+                        ("database", database),
+                    ],
                 )
             }),
             SessionKey::File(_) => None,
@@ -179,6 +185,15 @@ pub(crate) fn resolve_tab_title(identity: &TabIdentity, naming: TableNaming) -> 
             };
             let tooltip = (!text.is_empty() && tooltip != label).then_some(tooltip);
             TabTitle { label, tooltip }
+        }
+        // The hover still says what the tab holds, which the typed name may not.
+        TabIdentity::NamedEditor { name, automatic } => {
+            let automatic = resolve_tab_title(&TabIdentity::Editor(automatic.clone()), naming);
+            let tooltip = automatic.tooltip.unwrap_or(automatic.label);
+            TabTitle {
+                tooltip: (tooltip != *name).then_some(tooltip),
+                label: name.clone(),
+            }
         }
     }
 }
@@ -339,5 +354,49 @@ mod tests {
 
         assert_eq!(title.label, "SELECT 1;");
         assert_eq!(title.tooltip, None);
+    }
+
+    fn named(name: &str, automatic: EditorLabel) -> TabIdentity {
+        TabIdentity::NamedEditor {
+            name: name.to_owned(),
+            automatic,
+        }
+    }
+
+    #[test]
+    fn a_typed_name_beats_the_number_and_the_tooltip_keeps_the_number() {
+        let title = resolve_tab_title(&named("Revenue", EditorLabel::Untitled(3)), TableNaming::Bare);
+
+        assert_eq!(title.label, "Revenue");
+        assert_eq!(title.tooltip.as_deref(), Some("Query 3"));
+    }
+
+    #[test]
+    fn a_typed_name_beats_the_script_and_the_tooltip_keeps_the_script() {
+        let script = "SELECT * FROM orders WHERE placed_at > now() - interval '1 day';";
+
+        let title = resolve_tab_title(&named("Revenue", EditorLabel::of(1, script, false)), TableNaming::Bare);
+
+        assert_eq!(title.label, "Revenue");
+        assert_eq!(title.tooltip.as_deref(), Some(script));
+    }
+
+    #[test]
+    fn a_typed_name_the_same_as_the_automatic_one_has_no_tooltip() {
+        let title = resolve_tab_title(&named("Query 3", EditorLabel::Untitled(3)), TableNaming::Bare);
+
+        assert_eq!(title.label, "Query 3");
+        assert_eq!(title.tooltip, None);
+    }
+
+    #[test]
+    fn a_typed_name_takes_the_connection_after_it_in_a_shared_bar() {
+        let title = name_place(
+            resolve_tab_title(&named("Revenue", EditorLabel::Untitled(2)), TableNaming::Bare),
+            "Shop",
+        );
+
+        assert_eq!(title.label, "Revenue (Shop)");
+        assert_eq!(title.tooltip.as_deref(), Some("Query 2\nShop"));
     }
 }

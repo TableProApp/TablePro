@@ -133,7 +133,7 @@ struct IntegrationsActivityLogPane: View {
         } label: {
             Label(String(localized: "Filters"), systemImage: ToolbarSymbols.filter(isActive: hasActiveFilters))
         }
-        // A toolbar-hosted Menu otherwise publishes "chevron.pulldown" from its label (see WelcomeViewOptionsMenu).
+        // A toolbar-hosted Menu otherwise publishes "chevron.pulldown" from its label.
         .accessibilityLabel(String(localized: "Filters"))
         .help(String(localized: "Filter activity"))
     }
@@ -222,8 +222,7 @@ struct IntegrationsActivityLogPane: View {
         }
 
         if let store = mcpServerManager.tokenStore {
-            // TablePro mints these afresh every rotation and every agent turn, so they are filtered by name.
-            tokens = await store.list().filter { !$0.isBridgeCredential && !$0.isClaudeAgentCredential }
+            tokens = await store.list().filter(\.isUserManaged)
         }
         connections = ConnectionStorage.shared.loadConnections()
 

@@ -27,8 +27,7 @@ struct XLSXWriterCellTypeTests {
             .appendingPathComponent("\(UUID().uuidString).xlsx")
         defer { try? FileManager.default.removeItem(at: destination) }
         try await writer.write(to: destination)
-        let written = try Data(contentsOf: destination)
-        let archive = try #require(String(bytes: written, encoding: .isoLatin1))
+        let archive = try XLSXArchiveContents(contentsOf: destination).text
         let start = try #require(archive.range(of: "<sheetData>"))
         let end = try #require(archive.range(of: "</sheetData>"))
         return String(archive[start.upperBound ..< end.lowerBound])
@@ -127,6 +126,20 @@ struct XLSXWriterCellTypeTests {
             + "<c r=\"B1\" t=\"inlineStr\"><is><t>1</t></is></c>"
             + "<c r=\"C1\" t=\"inlineStr\"><is><t>11</t></is></c>"
             + "</row>")
+    }
+
+    @Test("A string with leading or trailing whitespace asks Excel to keep it", arguments: [
+        "  A1", "Ada ", " ", "\tx", "x\n"
+    ])
+    func outerWhitespaceIsPreserved(value: String) async throws {
+        let xml = try await sheetXML(columnTypeNames: ["text"], row: [.text(value)])
+        #expect(xml == "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t xml:space=\"preserve\">\(value)</t></is></c></row>")
+    }
+
+    @Test("A string with whitespace only inside it gets no space attribute")
+    func innerWhitespaceNeedsNoAttribute() async throws {
+        let xml = try await sheetXML(columnTypeNames: ["text"], row: [.text("Ada Lovelace")])
+        #expect(xml == "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Ada Lovelace</t></is></c></row>")
     }
 
     @Test("A missing or unknown type name is untyped", arguments: ["", "  ", "interval", "geometry", "variant"])

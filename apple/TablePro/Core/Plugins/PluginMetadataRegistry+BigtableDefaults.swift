@@ -10,7 +10,7 @@ extension PluginMetadataRegistry {
             ("Bigtable", PluginMetadataSnapshot(
                 displayName: "Google Cloud Bigtable", iconName: "bigtable-icon", defaultPort: 0,
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "bigtable", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
                 brandColorHex: "#4285F4",
@@ -18,6 +18,7 @@ extension PluginMetadataRegistry {
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
+                    statementsCanSwitchDatabase: false,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: false,
@@ -39,7 +40,8 @@ extension PluginMetadataRegistry {
                     exactRowCountIsFullScan: true,
                     supportsColumnSort: false,
                     columnsAreSampled: true,
-                    supportsPrincipalConnectionLimit: false
+                    supportsPrincipalConnectionLimit: false,
+                    dataCommands: bigtableDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -70,6 +72,9 @@ extension PluginMetadataRegistry {
         ]
     }
 }
+
+// The driver's writes, each one MutateRow on the Bigtable Data API v2.
+private let bigtableDataCommands: Set<String> = ["INSERT", "PUT", "DELETE"]
 
 private let bigtableCompletions: [CompletionEntry] = [
     CompletionEntry(label: "GET row", insertText: "GET events/user#42"),

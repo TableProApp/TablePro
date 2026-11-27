@@ -44,7 +44,7 @@ enum CascadeDeletePreviewer {
         var tableNames: CascadeTableNames
         var checksTurnedOffBySave = false
         var dialect: CascadeSQLDialect
-        var readForeignKeys: @MainActor () async throws -> [String: [ForeignKeyInfo]]
+        var readForeignKeys: @MainActor () async throws -> [CatalogName: [ForeignKeyInfo]]
         // Nil for an engine without schemas. The keys read are the ones declared in the table's own schema.
         var readHasOtherSchemas: (@MainActor () async throws -> Bool)?
         // Nil when the counts run on the save's own connection and so see what it sees.
@@ -92,7 +92,7 @@ enum CascadeDeletePreviewer {
         environment: Environment,
         progress: Progress
     ) async {
-        let foreignKeys: [String: [ForeignKeyInfo]]
+        let foreignKeys: [CatalogName: [ForeignKeyInfo]]
         do {
             foreignKeys = try await environment.readForeignKeys()
         } catch {
@@ -239,7 +239,7 @@ extension CascadeDeletePreviewer.Environment {
         @MainActor
         func scalar(_ query: String, on route: ScopedDriverRoute) async throws -> String? {
             try await manager.withCancellableRead(
-                scope: scope, route: route, ownsSessionState: route != countRoute
+                scope: scope, route: route, sessionWork: route != countRoute ? .app : .independent
             ) { driver in
                 try await driver.execute(query: query).rows.first?.first?.asText
             }
@@ -297,19 +297,27 @@ extension CascadeDeletePreviewer.Environment {
 }
 
 // SQLite and SQL Server find a table whatever the case of its name, and a REFERENCES clause keeps
-// the spelling it was written in, so a key can name its parent in another case.
+// the spelling it was written in, so a key can name its parent in another case. SQLite folds ASCII
+// letters only, so `É` and `é` name two tables there; every other engine compares by bytes.
 struct CascadeTableNames: Equatable, Sendable {
     let ignoresCase: Bool
+    var foldsASCIIOnly = false
 
-    func key(_ table: String) -> String {
-        ignoresCase ? table.lowercased() : table
+    func key(_ table: String) -> CatalogName {
+        guard ignoresCase else { return CatalogName(table) }
+        guard foldsASCIIOnly else { return CatalogName(table.lowercased()) }
+        let folded = table.utf8.map { (65...90).contains($0) ? $0 + 32 : $0 }
+        return CatalogName(String(bytes: folded, encoding: .utf8) ?? table)
     }
 }
 
 extension CascadeTableNames {
     nonisolated init(databaseType: DatabaseType) {
         switch TransactionEngineFamily.of(databaseType) {
-        case .sqlite, .sqlServer: ignoresCase = true
+        case .sqlite:
+            ignoresCase = true
+            foldsASCIIOnly = true
+        case .sqlServer: ignoresCase = true
         default: ignoresCase = false
         }
     }

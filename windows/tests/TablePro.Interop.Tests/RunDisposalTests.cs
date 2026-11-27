@@ -52,6 +52,28 @@ public sealed class RunDisposalTests
         }
     }
 
+    // The results pane lets go of a set its limit dropped, while the grid may still read the one it shows.
+    [Fact]
+    public async Task AReleasedSetIsGoneFromTheRunAndAHandleStillHeldReadsOn()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+        using var run = database.Editor.Run(
+            "SELECT 1 AS a; SELECT 2 AS b; SELECT 3 AS c",
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.IsType<QueryOutcome.Completed>(await run.Completion);
+        using var shown = run.GetResultSet(0);
+
+        run.ReleaseSet(0);
+        run.ReleaseSet(1);
+        run.ReleaseSet(7);
+
+        Assert.Null(run.GetResultSet(0));
+        Assert.Null(run.GetResultSet(1));
+        using var kept = run.GetResultSet(2);
+        Assert.Equal("3", kept?.GetCellText(0, 0));
+        Assert.Equal("1", shown?.GetCellText(0, 0));
+    }
+
     [Fact]
     public async Task ARunDisposedAtOnceStillCompletes()
     {

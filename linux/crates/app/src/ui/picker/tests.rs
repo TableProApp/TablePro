@@ -8,8 +8,8 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_storage::{
-    ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionListState, ConnectionStore, SavedConnection,
-    StoragePaths,
+    ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionListState, ConnectionProject,
+    ConnectionProjectName, ConnectionStore, SavedConnection, StoragePaths,
 };
 use uuid::Uuid;
 
@@ -26,6 +26,7 @@ use crate::ui::picker::LibraryRow;
 use crate::ui::session_window::SessionWindow;
 use crate::ui::session_window::tests::{Script, TestWindow};
 use crate::ui::welcome_view::WelcomeView;
+use crate::ui::{LibraryEdit, SessionWindowInput};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -115,6 +116,432 @@ fn tag_names(view: &WelcomeView, title: &str) -> Vec<String> {
         .into_iter()
         .map(|tag| tag.name.as_str().to_owned())
         .collect()
+}
+
+fn project(name: &str, order: u32) -> ConnectionProject {
+    ConnectionProject {
+        order,
+        ..ConnectionProject::new(ConnectionProjectName::new(name).expect("a project name"))
+    }
+}
+
+struct Projects {
+    library: ConnectionList,
+    acme: ConnectionProject,
+    side: ConnectionProject,
+}
+
+// Acme: the group Work with w1, and the loose a1, a favourite. Side: s1, opened last. No project: n1.
+fn two_projects() -> Projects {
+    let (acme, side) = (project("Acme", 0), project("Side", 1));
+    let work = ConnectionGroup {
+        project_id: Some(acme.id),
+        ..group("Work")
+    };
+    let now = Utc::now();
+    let w1 = SavedConnection {
+        group_id: Some(work.id),
+        last_opened_at: Some(now - TimeDelta::hours(2)),
+        ..saved_connection("w1")
+    };
+    let a1 = SavedConnection {
+        project_id: Some(acme.id),
+        order: 0,
+        ..saved_connection("a1")
+    };
+    let s1 = SavedConnection {
+        project_id: Some(side.id),
+        last_opened_at: Some(now),
+        order: 1,
+        ..saved_connection("s1")
+    };
+    let n1 = SavedConnection {
+        order: 2,
+        ..saved_connection("n1")
+    };
+    let favourites = vec![a1.id, s1.id];
+    let library = ConnectionList::new(vec![w1, a1, s1, n1], Vec::new())
+        .with_groups(vec![work])
+        .with_favorites(favourites)
+        .with_projects(vec![acme.clone(), side.clone()]);
+    Projects { library, acme, side }
+}
+
+#[gtk4::test]
+fn a_project_narrows_favourites_recent_the_tree_and_the_search_in_every_picker() {
+    let pickers = Pickers::new();
+    let projects = two_projects();
+    pickers.show(projects.library.clone());
+    let all = [
+        section("Favourites", &["a1", "s1"]),
+        section("Recent", &["w1"]),
+        section("Connections", &["Work", "  w1", "a1", "s1", "n1"]),
+    ];
+    wait_until(WAIT, || pickers.every_picker(|sections| sections == all)).expect("every connection");
+
+    pickers.list.set_active_project(Some(projects.acme.id));
+
+    let acme = [
+        section("Favourites", &["a1"]),
+        section("Recent", &["w1"]),
+        section("Connections", &["Work", "  w1", "a1"]),
+    ];
+    wait_until(WAIT, || pickers.every_picker(|sections| sections == acme)).expect("the project's connections");
+    assert_eq!(
+        pickers
+            .list
+            .get(projects.library.connections[2].id)
+            .map(|saved| saved.name),
+        Some("s1".to_owned()),
+        "a connection of another project is gone from the lookup by id"
+    );
+
+    let view = &pickers.views[0];
+    view.set_search("1");
+    assert_eq!(view.sections(), [section("", &["w1", "a1"])]);
+    view.set_search("s1");
+    assert_eq!(view.visible_page().as_deref(), Some("no-results"));
+    let (title, button) = view.status().expect("the status page");
+    assert_eq!(title, "No Results in Acme");
+    let button = button.expect("Search All Connections");
+    assert_eq!(button.label().as_deref(), Some("Search All Connections"));
+    assert_eq!(button.action_name().as_deref(), Some("win.project"));
+    assert_eq!(
+        button.action_target_value().and_then(|target| target.get::<String>()),
+        Some(String::new())
+    );
+
+    pickers.list.set_active_project(None);
+    assert_eq!(
+        view.sections(),
+        [section("", &["s1"])],
+        "the search was lost with the switch"
+    );
+    view.set_search("nothing has this");
+    let (title, button) = view.status().expect("the status page");
+    assert_eq!(title, "No Results Found");
+    assert!(button.is_none(), "All Connections offers a wider search");
+}
+
+#[gtk4::test]
+fn an_empty_project_says_so_and_is_not_the_first_run_page() {
+    let pickers = Pickers::new();
+    let projects = two_projects();
+    let empty = project("Empty", 2);
+    let library =
+        projects
+            .library
+            .clone()
+            .with_projects(vec![projects.acme.clone(), projects.side.clone(), empty.clone()]);
+    pickers.show(library);
+    let view = &pickers.views[0];
+
+    pickers.list.set_active_project(Some(empty.id));
+
+    assert_eq!(view.visible_page().as_deref(), Some("empty-project"));
+    let (title, button) = view.status().expect("the status page");
+    assert_eq!(title, "No Connections in Empty");
+    let button = button.expect("New Connection");
+    assert_eq!(button.label().as_deref(), Some("New Connection"));
+    assert_eq!(button.action_name().as_deref(), Some("win.new-connection"));
+
+    pickers.list.set_active_project(Some(projects.side.id));
+    assert_eq!(view.visible_page().as_deref(), Some("list"));
+    pickers.show(ConnectionList::default());
+    assert_eq!(view.visible_page().as_deref(), Some("empty"), "the first-run page");
+    assert_eq!(view.status().map(|(title, _)| title).as_deref(), Some("No Connections"));
+}
+
+#[gtk4::test]
+fn a_deleted_active_project_falls_back_to_all_connections() {
+    let pickers = Pickers::new();
+    let projects = two_projects();
+    pickers.show(projects.library.clone());
+    pickers.list.set_active_project(Some(projects.side.id));
+    wait_until(WAIT, || pickers.every_picker(|sections| rows(sections) == ["s1", "s1"])).expect("Side's connection");
+    assert_eq!(pickers.list.scope().map(|scope| scope.name), Some("Side".to_owned()));
+
+    pickers.show(projects.library.clone().with_projects(vec![projects.acme.clone()]));
+
+    assert_eq!(pickers.list.active_project(), None);
+    assert_eq!(pickers.list.scope(), None);
+    assert!(
+        pickers.every_picker(
+            |sections| sections.last() == Some(&section("Connections", &["Work", "  w1", "a1", "s1", "n1"]))
+        ),
+        "{:?}",
+        pickers.views[0].sections()
+    );
+}
+
+#[gtk4::test]
+fn the_switcher_names_the_active_project_and_a_pick_switches_every_list() {
+    let test = TestWindow::picker("PickerProjectSwitch");
+    let store = test.services.storage.connections().clone();
+    let acme = store.create_project_blocking(project("Acme", 0)).expect("the project");
+    let picker = test.window.picker_page().expect("the picker page");
+    let button = picker.project_button();
+    assert_eq!(button.label().as_deref(), Some("All Connections"));
+    assert_eq!(button.tooltip_text().as_deref(), Some("Switch Project"));
+    crate::test_support::assert_labelled(&button).expect("the switcher's accessible name");
+    let state = || {
+        test.window
+            .action_state("project")
+            .and_then(|state| state.get::<String>())
+    };
+    assert_eq!(state(), Some(String::new()));
+    wait_until(WAIT, || test.services.saved_connections.projects().len() == 1).expect("the project in the list");
+
+    gtk::prelude::WidgetExt::activate_action(&test.window, "win.project", Some(&acme.id.to_string().to_variant()))
+        .expect("win.project");
+
+    wait_until(WAIT, || button.label().as_deref() == Some("Acme")).expect("the switcher to name the project");
+    assert_eq!(test.services.settings.active_project(), Some(acme.id));
+    assert_eq!(
+        test.services.active_project.get(),
+        Some(acme.id),
+        "the MCP host reads another project"
+    );
+    assert_eq!(state(), Some(acme.id.to_string()));
+    let view = picker_view(&test.window);
+    assert_eq!(view.visible_page().as_deref(), Some("empty-project"));
+    assert!(
+        test.services.saved_connections.get(test.saved.id).is_some(),
+        "a switch dropped a connection from the lookup by id"
+    );
+
+    store.delete_project_blocking(acme.id).expect("the delete");
+    wait_until(WAIT, || button.label().as_deref() == Some("All Connections")).expect("the fallback");
+    assert_eq!(state(), Some(String::new()));
+    assert_eq!(view.sections(), [section("Connections", &["Fake"])]);
+}
+
+#[gtk4::test]
+fn the_switcher_menu_is_a_radio_section_then_new_and_manage() {
+    let test = TestWindow::picker("PickerProjectMenu");
+    let store = test.services.storage.connections().clone();
+    let acme = store.create_project_blocking(project("Acme", 0)).expect("the project");
+    wait_until(WAIT, || test.services.saved_connections.projects().len() == 1).expect("the project in the list");
+    let picker = test.window.picker_page().expect("the picker page");
+    let menu = picker.project_button().menu_model().expect("the switcher's menu");
+
+    assert_eq!(menu.n_items(), 2);
+    let read = |section: i32| -> Vec<(String, Option<String>, Option<String>)> {
+        let items = menu.item_link(section, "section").expect("a section");
+        (0..items.n_items())
+            .map(|at| {
+                let attribute = |name: &str| {
+                    items
+                        .item_attribute_value(at, name, None)
+                        .and_then(|value| value.get::<String>())
+                };
+                (
+                    attribute("label").unwrap_or_default(),
+                    attribute("action"),
+                    attribute("target"),
+                )
+            })
+            .collect()
+    };
+    let radio = |label: &str, target: String| (label.to_owned(), Some("win.project".to_owned()), Some(target));
+    assert_eq!(
+        read(0),
+        [
+            radio("All Connections", String::new()),
+            radio("Acme", acme.id.to_string())
+        ]
+    );
+    assert_eq!(
+        read(1),
+        [
+            ("_New Project…".to_owned(), Some("win.new-project".to_owned()), None),
+            (
+                "_Manage Projects…".to_owned(),
+                Some("win.manage-projects".to_owned()),
+                None
+            ),
+        ]
+    );
+    // The same radio section, so the scope is reachable from a session window's main menu.
+    let primary = test.app.menu_by_id("project_menu").expect("the Project submenu");
+    assert_eq!(
+        primary.item_link(0, "section"),
+        menu.item_link(0, "section"),
+        "the main menu lists other projects"
+    );
+    for action in ["project", "new-project", "manage-projects"] {
+        assert!(test.window.lookup_action(action).is_some(), "win.{action} is missing");
+    }
+}
+
+#[gtk4::test]
+fn manage_projects_opens_one_dialog_per_window_and_follows_the_list() {
+    let test = TestWindow::picker("PickerManageProjects");
+    let manage = || {
+        gtk::prelude::WidgetExt::activate_action(&test.window, "win.manage-projects", None)
+            .expect("win.manage-projects");
+        wait_until(WAIT, || test.window.manage_projects().is_some()).expect("Manage Projects");
+        test.window.manage_projects().expect("Manage Projects")
+    };
+
+    let first = manage();
+    assert_eq!(first.page().as_deref(), Some("empty"));
+    assert!(Rc::ptr_eq(&first, &manage()), "a second ask opened a second dialog");
+    test.services
+        .storage
+        .connections()
+        .create_project_blocking(project("Acme", 0))
+        .expect("the project");
+    wait_until(WAIT, || {
+        first.rows() == [("Acme".to_owned(), "No connections".to_owned())]
+    })
+    .expect("the new project");
+
+    first.dialog.force_close();
+    wait_until(WAIT, || test.window.manage_projects().is_none()).expect("the closed dialog to be let go");
+}
+
+#[gtk4::test]
+fn new_project_makes_it_active_and_what_is_made_next_lands_in_it() {
+    let test = TestWindow::picker("PickerNewProject");
+    let store = test.services.storage.connections().clone();
+    let name = |name: &str| ConnectionProjectName::new(name).expect("a project name");
+
+    test.window
+        .send(SessionWindowInput::Library(LibraryEdit::CreateProject {
+            name: name("Acme"),
+            switch: true,
+        }));
+
+    let list = test.services.saved_connections.clone();
+    wait_until(WAIT, || list.active_project().is_some()).expect("the new project to be active");
+    let acme = list.active_project().expect("the project");
+    assert_eq!(acme.name.as_str(), "Acme");
+    assert_eq!(test.services.settings.active_project(), Some(acme.id));
+
+    test.window.send(SessionWindowInput::Library(LibraryEdit::CreateGroup {
+        parent: None,
+        name: ConnectionGroupName::new("Work").expect("a group name"),
+        with: None,
+    }));
+    wait_until(WAIT, || list.outline().groups().len() == 1).expect("the group in the project");
+    let work = list.outline().groups()[0].0;
+    assert_eq!(list.project_of_group(work), Some(acme.id));
+
+    test.window
+        .send(SessionWindowInput::Library(LibraryEdit::MoveToProject {
+            item: LibraryItem::Connection(test.saved.id),
+            project: Some(acme.id),
+        }));
+    wait_until(WAIT, || list.project_of(test.saved.id) == Some(acme.id)).expect("the connection to move");
+    assert_eq!(
+        picker_view(&test.window).sections(),
+        [section("Connections", &["Work", "Fake"])]
+    );
+
+    test.window
+        .send(SessionWindowInput::Library(LibraryEdit::CreateProject {
+            name: name("Side"),
+            switch: false,
+        }));
+    wait_until(WAIT, || list.projects().len() == 2).expect("the second project");
+    assert_eq!(
+        list.active_project().map(|project| project.id),
+        Some(acme.id),
+        "Manage Projects switched"
+    );
+
+    test.window
+        .send(SessionWindowInput::Library(LibraryEdit::DeleteProject(acme.id)));
+    wait_until(WAIT, || list.active_project().is_none()).expect("the fallback to All Connections");
+    let kept = store.list_blocking().expect("the list");
+    assert_eq!(kept.connections.len(), 1, "a deleted project took its connection");
+    assert_eq!(kept.groups.len(), 1, "a deleted project took its group");
+}
+
+#[gtk4::test]
+fn move_to_project_is_offered_to_an_ungrouped_connection_and_a_top_level_group_only() {
+    let test = TestWindow::picker("PickerMoveToProject");
+    let store = test.services.storage.connections().clone();
+    let acme = store.create_project_blocking(project("Acme", 0)).expect("the project");
+    let work = store.create_group_blocking(group("Work")).expect("the group");
+    let nested = store
+        .create_group_blocking(ConnectionGroup::new(
+            ConnectionGroupName::new("Nested").expect("a group name"),
+            Some(work.id),
+        ))
+        .expect("the subgroup");
+    let filed = SavedConnection {
+        group_id: Some(work.id),
+        ..saved_connection("Filed")
+    };
+    store.upsert_blocking(filed.clone()).expect("the save");
+    let list = test.services.saved_connections.clone();
+    wait_until(WAIT, || list.get(filed.id).is_some() && list.projects().len() == 1).expect("the list");
+    let outline = list.outline();
+    let offered = |menu: gtk::gio::Menu| -> Vec<(String, Option<String>)> {
+        super::connection_menu::tests::items(menu.upcast_ref())
+            .into_iter()
+            .filter(|(_, action, _)| action.as_deref().is_some_and(|action| action.ends_with("-to-project")))
+            .map(|(label, _, target)| {
+                (
+                    label,
+                    target
+                        .and_then(|target| target.get::<(String, String)>())
+                        .map(|(_, project)| project),
+                )
+            })
+            .collect()
+    };
+    let choices = vec![
+        ("_No Project".to_owned(), Some(String::new())),
+        ("Acme".to_owned(), Some(acme.id.to_string())),
+    ];
+
+    assert_eq!(
+        offered(super::connection_menu::connection_menu(
+            test.saved.id,
+            LibrarySection::Tree,
+            &outline,
+            &[]
+        )),
+        choices
+    );
+    assert_eq!(offered(super::group_menu::group_menu(work.id, &outline)), choices);
+    assert!(
+        offered(super::connection_menu::connection_menu(
+            filed.id,
+            LibrarySection::Tree,
+            &outline,
+            &[]
+        ))
+        .is_empty(),
+        "a grouped connection is offered a project of its own"
+    );
+    assert!(
+        offered(super::group_menu::group_menu(nested.id, &outline)).is_empty(),
+        "a subgroup is offered a project of its own"
+    );
+
+    let row = picker_row(&test.window, "Work");
+    row.activate_action(
+        "picker.group-to-project",
+        Some(&(work.id.to_string(), acme.id.to_string()).to_variant()),
+    )
+    .expect("picker.group-to-project");
+    wait_until(WAIT, || list.project_of(filed.id) == Some(acme.id)).expect("the group's connection to follow it");
+    row.activate_action(
+        "picker.connection-to-project",
+        Some(&(test.saved.id.to_string(), acme.id.to_string()).to_variant()),
+    )
+    .expect("picker.connection-to-project");
+    wait_until(WAIT, || list.project_of(test.saved.id) == Some(acme.id)).expect("the connection to move");
+    row.activate_action(
+        "picker.connection-to-project",
+        Some(&(test.saved.id.to_string(), String::new()).to_variant()),
+    )
+    .expect("picker.connection-to-project");
+    wait_until(WAIT, || list.project_of(test.saved.id).is_none()).expect("the connection to leave the project");
 }
 
 #[gtk4::test]
@@ -780,6 +1207,34 @@ fn a_search_for_a_tag_lists_every_connection_that_has_it() {
     );
     view.set_search("");
     assert_eq!(view.sections(), [everything]);
+}
+
+#[gtk4::test]
+fn revealing_imported_connections_clears_a_search_that_hides_them() {
+    let pickers = Pickers::new();
+    let view = &pickers.views[0];
+    let window = OwnedWindow::presented(adw::Window::new());
+    window.set_content(Some(view));
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let imported = library.connection("imported", Some(work));
+    library.connection("production", None);
+    pickers.show(library.list());
+    wait_until(WAIT, || view.row(LibrarySection::Tree, "Work").is_some()).expect("Work's row");
+    view.tree_row("Work").expect("Work's tree row").set_expanded(false);
+    view.set_search("production");
+    assert_eq!(view.sections(), [section("", &["production"])]);
+
+    view.focus_connections(&[imported]);
+
+    assert_eq!(view.visible_page().as_deref(), Some("list"));
+    assert_eq!(
+        view.sections(),
+        [section("Connections", &["Work", "  imported", "production"])],
+        "the search still hides the imported connection"
+    );
+    wait_until(WAIT, || view.focused_title().as_deref() == Some("imported"))
+        .expect("the imported connection to take the focus");
 }
 
 #[gtk4::test]

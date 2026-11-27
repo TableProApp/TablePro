@@ -32,6 +32,7 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
     private int _layoutVersion = -1;
     private int _inkVersion = -1;
     private int _generation = -1;
+    private float _drawnHeight = -1;
 
     public DrawnRow(DataGridView grid, bool frozen)
     {
@@ -113,7 +114,7 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
     protected override Size MeasureOverride(Size availableSize)
     {
         Draw();
-        return new Size(_grid.PaneWidth(_frozen), _grid.RowHeight);
+        return new Size(_grid.PaneWidth(_frozen), _grid.RowHeightOf(Row));
     }
 
     protected override Size ArrangeOverride(Size finalSize) => finalSize;
@@ -130,8 +131,9 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         painter.EnsureBrushes();
         var layoutVersion = _grid.LayoutVersion;
         var inkVersion = _grid.InkVersion(_frozen || _washed);
+        var rowHeight = (float)_grid.RowHeightOf(Row);
         if (Row == DrawnRowIndex && first == DrawnFirst && last == DrawnLast && layoutVersion == _layoutVersion
-            && inkVersion == _inkVersion && _generation == device.Generation)
+            && inkVersion == _inkVersion && _generation == device.Generation && rowHeight == _drawnHeight)
         {
             return;
         }
@@ -144,14 +146,16 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
             _layoutVersion = layoutVersion;
         }
         KeepColumns(first, last);
-        var rowHeight = (float)_grid.RowHeight;
+        var wraps = _grid.WrapsText;
+        // One line's box: the whole row until cells wrap, then the first line, where a NULL and the row number sit.
+        var lineBox = wraps ? (float)_grid.RowHeight : rowHeight;
         var columns = _grid.Columns;
         var layoutStarted = Stopwatch.GetTimestamp();
         for (var column = first; column <= last; column++)
         {
             if (IndexOf(column) < 0)
             {
-                AddCell(column, painter, rowHeight);
+                AddCell(column, painter, lineBox, wraps);
             }
         }
         _grid.Counters.LayoutMilliseconds += Stopwatch.GetElapsedTime(layoutStarted).TotalMilliseconds;
@@ -167,6 +171,11 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         {
             _surface = device.CreateSurface(need);
             _brush.Surface = _surface.Surface;
+        }
+        else if (wraps && _surface.Pixels.Height != need.Height)
+        {
+            // A recycled row may have held ten lines: with uneven rows the surface is as tall as its row, no taller.
+            _surface.Resize(new SizeInt32(Math.Max(need.Width, _surface.Pixels.Width), need.Height));
         }
         else if (_surface.Pixels.Width < need.Width || _surface.Pixels.Height < need.Height)
         {
@@ -196,7 +205,8 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         var tinted = _washed && _grid.SelectionBoxShown;
         if (_frozen)
         {
-            DrawRowNumber(context, painter, rowHeight, mark, rowSelected && selection.FirstColumn == 0 && selection.LastColumn == columns.Count - 1);
+            DrawRowNumber(context, painter, rowHeight, lineBox, mark,
+                rowSelected && selection.FirstColumn == 0 && selection.LastColumn == columns.Count - 1);
         }
         for (var i = 0; i < _cellCount; i++)
         {
@@ -216,8 +226,12 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
             }
             if (cell.Layout != 0)
             {
-                context->DrawTextLayout(new D2D_POINT_2F(x + CellPainter.Padding, 0), (IDWriteTextLayout*)cell.Layout,
-                    painter.InkBrush(cell.Ink, selected), D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
+                // A wrapped layout has no trimming, so a glyph wider than the column is cut at the layout box.
+                context->DrawTextLayout(new D2D_POINT_2F(x + CellPainter.Padding, cell.Top),
+                    (IDWriteTextLayout*)cell.Layout, painter.InkBrush(cell.Ink, selected),
+                    _grid.WrapsText
+                        ? D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT | D2D1_DRAW_TEXT_OPTIONS_CLIP
+                        : D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
             }
             var divider = new D2D_RECT_F(x + w - 1, 0, x + w, rowHeight);
             context->FillRectangle(&divider, painter.DividerBrush);
@@ -241,13 +255,15 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         DrawnRowIndex = Row;
         DrawnFirst = first;
         DrawnLast = last;
+        _drawnHeight = rowHeight;
         _inkVersion = _grid.InkVersion(_frozen || _washed);
         _generation = device.Generation;
         _grid.Counters.RowsDrawn++;
         _grid.Counters.DrawMilliseconds += Stopwatch.GetElapsedTime(started).TotalMilliseconds;
     }
 
-    private void DrawRowNumber(ID2D1DeviceContext* context, CellPainter painter, float rowHeight, RowMark mark, bool selected)
+    private void DrawRowNumber(ID2D1DeviceContext* context, CellPainter painter, float rowHeight, float lineBox,
+        RowMark mark, bool selected)
     {
         var width = (float)_grid.Columns.RowHeaderWidth;
         var back = new D2D_RECT_F(0, 0, width, rowHeight);
@@ -258,8 +274,8 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         {
             ReleaseNumber();
             (Row + 1).TryFormat(_number, out var length, provider: CultureInfo.CurrentCulture);
-            _numberLayout = (nint)painter.CreateRowNumber(_number.AsSpan(0, length), width - CellPainter.RowNumberPadding * 2, rowHeight,
-                deleted);
+            _numberLayout = (nint)painter.CreateRowNumber(_number.AsSpan(0, length),
+                width - CellPainter.RowNumberPadding * 2, lineBox, deleted);
             _numberRow = Row;
             _numberDeleted = deleted;
         }
@@ -272,11 +288,15 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         context->FillRectangle(&edge, painter.DividerBrush);
     }
 
-    private void AddCell(int column, CellPainter painter, float rowHeight)
+    private void AddCell(int column, CellPainter painter, float lineBox, bool wraps)
     {
         var cell = _grid.Cell(Row, column);
         var width = (float)(_grid.Columns.Width(column) - CellPainter.Padding * 2);
-        var layout = painter.CreateLayout(cell.Text, cell.State, width, rowHeight, out var ink);
+        var wrapped = wraps && DataGridView.Wraps(cell.State);
+        CellInk ink;
+        var layout = wrapped
+            ? painter.CreateWrapped(cell.Text, cell.State, width, _grid.RowLines(Row), out ink)
+            : painter.CreateLayout(cell.Text, cell.State, width, lineBox, out ink);
         if (_cellCount == _cells.Length)
         {
             Array.Resize(ref _cells, _cells.Length * 2);
@@ -285,6 +305,7 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         {
             Column = column,
             Layout = (nint)layout,
+            Top = wrapped ? painter.WrapInset(lineBox) : 0,
             Ink = ink,
             Marks = cell.State & (CellState.Modified | CellState.Inserted | CellState.Deleted),
             Hash = string.GetHashCode(cell.Text),
@@ -355,6 +376,7 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
     {
         public int Column;
         public nint Layout;
+        public float Top;
         public CellInk Ink;
         public CellState Marks;
         public int Hash;

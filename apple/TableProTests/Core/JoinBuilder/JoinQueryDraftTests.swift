@@ -9,7 +9,7 @@ struct JoinQueryDraftTests {
     private func draft(_ tables: [String]) -> JoinQueryDraft {
         var draft = JoinQueryDraft()
         for table in tables {
-            draft.add(table, in: graph)
+            draft.add(CatalogName(table), in: graph)
         }
         return draft
     }

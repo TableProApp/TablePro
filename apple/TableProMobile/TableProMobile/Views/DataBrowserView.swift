@@ -37,6 +37,10 @@ struct DataBrowserView: View {
     @State private var isCompletingCells = false
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @State private var exportItem: MobileExportItem?
+    @State private var showRowFilePicker = false
+    @State private var importFile: IdentifiableURL?
+    @State private var pendingSelectionDelete: PendingRowsDelete?
     @AppStorage(AppPreferences.rowLayoutKey) private var preferredLayout: RowLayout?
 
     private var activeSchema: String? {
@@ -46,6 +50,12 @@ struct DataBrowserView: View {
     private var browserSchema: String? {
         if let reference { return reference.schema }
         return activeSchema
+    }
+
+    // A SQL Server foreign key never leaves its database, so a referenced table is read where the key was.
+    private var browserDatabase: String? {
+        if let reference { return reference.database }
+        return coordinator.tableDatabase
     }
 
     private var displaySchema: String? {
@@ -71,6 +81,22 @@ struct DataBrowserView: View {
 
     private var columns: [ColumnInfo] { viewModel.columns }
     private var rows: [Row] { viewModel.window.rows }
+
+    private var isSelecting: Bool { viewModel.selection.isActive }
+
+    private var canExport: Bool {
+        session.map { ExportObjectListing.supportsExport($0.driver) } ?? false
+    }
+
+    private var canExportTable: Bool {
+        session.map { ExportObjectListing.supportsTableExport($0.driver) } ?? false
+    }
+
+    // Read-Only hides it, as it hides Insert Row; Confirm Writes asks when the import starts.
+    private var canImportRows: Bool {
+        allowsRowEditing && browsesSQLRows && !connection.safeModeLevel.blocksWrites && canExport
+            && !MobileImportFormats.rowFormats(for: connection.type).isEmpty
+    }
 
     private var pageReads: DataBrowserViewModel.SessionReadTracker {
         let viewModel = viewModel
@@ -116,15 +142,18 @@ struct DataBrowserView: View {
                 ]
             }
             .toolbar { topToolbar }
+            .toolbar { selectionBar }
+            .toolbar(isSelecting ? .hidden : .automatic, for: .tabBar)
+            .navigationBarBackButtonHidden(isSelecting)
             .bottomSafeAreaBar {
-                if showsPaginationBar {
+                if showsPaginationBar && !isSelecting {
                     paginationBar
                 }
             }
             .task {
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
-                    host: connection.host, schema: browserSchema, trackRead: pageReads
+                    host: connection.host, schema: browserSchema, database: browserDatabase, trackRead: pageReads
                 )
                 if let filters = reference?.filters() {
                     viewModel.seedFilters(filters)
@@ -136,23 +165,67 @@ struct DataBrowserView: View {
                 guard found, reference != nil, viewModel.takeSingleRowMatch() else { return }
                 showMatchedRow = true
             }
-            // A redial or another window's database switch hands this table a new session; a referenced table keeps its schema.
-            .onChange(of: BrowseSource(session: session, schema: browserSchema)) { _, source in
+            // A redial or another window's switch hands this table a new session; a referenced table keeps its schema and database.
+            .onChange(of: BrowseSource(session: session, schema: browserSchema, database: browserDatabase)) { _, source in
                 // The confirmation names a row of the table this browser showed before.
                 showDeleteConfirmation = false
                 deleteTarget = nil
+                pendingSelectionDelete = nil
                 guard source.driver != nil else { return }
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
-                    host: connection.host, schema: source.schema, trackRead: pageReads
+                    host: connection.host, schema: source.schema, database: source.database, trackRead: pageReads
                 )
                 Task { await viewModel.load(isInitial: true) }
             }
             .onChange(of: appState.sessionTransactions.rollBackCount(for: connection.id)) {
                 Task { await viewModel.load() }
             }
+            // A load an import refused runs once the import ends.
+            .onChange(of: coordinator.isImportRunning) { _, running in
+                guard !running, viewModel.waitsForImport else { return }
+                Task { await viewModel.load() }
+            }
             .onDisappear { viewModel.cancel() }
             .sheet(isPresented: $showInsertSheet) { insertSheet }
+            .sheet(item: $exportItem) { item in
+                MobileExportSheet(
+                    input: item.input,
+                    environment: .live(connectionManager: appState.connectionManager, coordinator: coordinator)
+                )
+            }
+            .fileImporter(
+                isPresented: $showRowFilePicker,
+                allowedContentTypes: ImportPickerTypes.contentTypes(for: MobileImportFormats.rowFormats(for: connection.type)),
+                allowsMultipleSelection: false
+            ) { result in
+                guard case .success(let urls) = result, let url = urls.first else { return }
+                importFile = IdentifiableURL(url: url)
+            }
+            .sheet(item: $importFile) { item in
+                MobileImportSheet(fileURL: item.url, presetTable: table.name) {
+                    Task { await viewModel.load() }
+                }
+                .environment(appState)
+                .environment(coordinator)
+            }
+            .confirmationDialog(
+                Text("^[Delete \(pendingSelectionDelete?.locators.count ?? 0) Row](inflect: true)?"),
+                isPresented: Binding(
+                    get: { pendingSelectionDelete != nil },
+                    set: { if !$0 { pendingSelectionDelete = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingSelectionDelete
+            ) { pending in
+                Button(role: .destructive) {
+                    Task { await performSelectionDelete(pending) }
+                } label: {
+                    Text("^[Delete \(pending.locators.count) Row](inflect: true)")
+                }
+            } message: { _ in
+                Text("This action cannot be undone.")
+            }
             .sheet(isPresented: $showFilterSheet) {
                 FilterSheetView(
                     filters: $viewModel.filters,
@@ -218,7 +291,10 @@ struct DataBrowserView: View {
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
             .navigationDestination(isPresented: $showStructure) {
-                StructureView(table: table, session: session, databaseType: connection.type, schema: viewModel.schema)
+                StructureView(
+                    table: table, session: session, databaseType: connection.type, schema: viewModel.schema,
+                    database: viewModel.database
+                )
                     .transactionBar(for: coordinator)
             }
             .navigationDestination(isPresented: $showMatchedRow) {
@@ -246,12 +322,10 @@ struct DataBrowserView: View {
     @ViewBuilder
     private var searchableContent: some View {
         if !browsesSQLRows {
-            content
-                .tableTitle(table.name, schema: displaySchema)
+            titled(content)
                 .navigationBarTitleDisplayMode(.inline)
         } else {
-            content
-                .tableTitle(table.name, schema: displaySchema)
+            titled(content)
                 .navigationBarTitleDisplayMode(.inline)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     LiteralSearchField("Search all columns", text: $searchText, isEditing: $searchFocused) {
@@ -313,6 +387,14 @@ struct DataBrowserView: View {
         }
     }
 
+    private func titled(_ view: some View) -> some View {
+        view.tableTitle(
+            table.name,
+            schema: displaySchema,
+            replacement: isSelecting ? Text("^[\(viewModel.selection.count) Row](inflect: true) Selected") : nil
+        )
+    }
+
     private var rowLayout: RowLayout {
         RowLayout.resolved(preferred: preferredLayout, idiom: UIDevice.current.userInterfaceIdiom)
     }
@@ -329,12 +411,14 @@ struct DataBrowserView: View {
 
     private var rowList: some View {
         let rows = rows
-        return List {
+        @Bindable var viewModel = viewModel
+        return List(selection: RowSelectionBinding.rows($viewModel.selection)) {
             ForEach(rows.indices, id: \.self) { index in
                 rowLink(index: index, row: rows[index].displayValues())
             }
         }
         .listStyle(.plain)
+        .environment(\.editMode, RowSelectionBinding.editMode($viewModel.selection))
     }
 
     private var rowGrid: some View {
@@ -342,28 +426,38 @@ struct DataBrowserView: View {
         return RowGrid(
             columns: columns,
             window: viewModel.window,
-            keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: primaryKeys)
+            keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: primaryKeys),
+            selectedRows: isSelecting ? viewModel.selection.rows : nil
         ) { index, line in
-            NavigationLink {
-                rowDetail(index: index)
-            } label: {
-                line
+            if let isSelected = viewModel.selection.pick(of: index) {
+                Button {
+                    viewModel.selection.toggle(index)
+                } label: {
+                    line
+                }
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            } else {
+                NavigationLink {
+                    rowDetail(index: index)
+                } label: {
+                    line
+                }
+                .hoverEffect()
+                .contextMenu {
+                    rowContextMenu(index: index)
+                } preview: {
+                    // The row itself can be thousands of points wide; the lift preview shows its card.
+                    RowCard(
+                        columns: columns,
+                        columnDetails: viewModel.columnDetails,
+                        row: rows.indices.contains(index) ? rows[index].displayValues() : [],
+                        previewFieldCount: DuoLayoutResolver.regularPreviewFieldCount
+                    )
+                    .padding()
+                    .frame(maxWidth: 360, alignment: .leading)
+                }
+                .accessibilityActions { deleteAccessibilityAction(index: index) }
             }
-            .hoverEffect()
-            .contextMenu {
-                rowContextMenu(index: index)
-            } preview: {
-                // The row itself can be thousands of points wide; the lift preview shows its card.
-                RowCard(
-                    columns: columns,
-                    columnDetails: viewModel.columnDetails,
-                    row: rows.indices.contains(index) ? rows[index].displayValues() : [],
-                    previewFieldCount: DuoLayoutResolver.regularPreviewFieldCount
-                )
-                .padding()
-                .frame(maxWidth: 360, alignment: .leading)
-            }
-            .accessibilityActions { deleteAccessibilityAction(index: index) }
         }
     }
 
@@ -377,7 +471,7 @@ struct DataBrowserView: View {
             .opacity(viewModel.isPageLoading ? 0.5 : 1)
             .allowsHitTesting(!viewModel.isPageLoading)
             .overlay { if viewModel.isPageLoading { ProgressView() } }
-            .animation(.default, value: viewModel.isPageLoading)
+            .motionAnimation(.default, value: viewModel.isPageLoading)
             .refreshable { await viewModel.load() }
     }
 
@@ -392,15 +486,17 @@ struct DataBrowserView: View {
             columnDetails: viewModel.columnDetails,
             databaseType: connection.type,
             schema: viewModel.schema,
+            database: viewModel.database,
             safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
             foreignKeys: viewModel.foreignKeys,
             onSaved: { Task { await viewModel.load() } },
-            loadFullValue: { [schema = viewModel.schema] ref in
+            loadFullValue: { [schema = viewModel.schema, database = viewModel.database] ref in
                 guard let session else { return nil }
                 // With autocommit off, a MySQL read opens a transaction; a failed read refreshes too, and never redials.
                 do {
                     let value = try await viewModel.loadFullValue(
-                        driver: session.driver, ref: ref, databaseType: connection.type, schema: schema
+                        driver: session.driver, ref: ref, databaseType: connection.type, schema: schema,
+                        database: database
                     )
                     await coordinator.refreshTransaction()
                     return value
@@ -413,22 +509,30 @@ struct DataBrowserView: View {
         )
     }
 
+    // In Select mode the row is the card alone, which the list's edit mode picks; a disabled link would draw it dimmed.
     private func rowLink(index: Int, row: [String?]) -> some View {
         let deleteKeys = deletableRow(at: index)
-        return NavigationLink {
-            rowDetail(index: index)
-        } label: {
-            RowCard(
-                columns: columns,
-                columnDetails: viewModel.columnDetails,
-                row: row,
-                previewFieldCount: DuoLayoutResolver.previewFieldCount(for: duoWidthClass)
-            )
+        let card = RowCard(
+            columns: columns,
+            columnDetails: viewModel.columnDetails,
+            row: row,
+            previewFieldCount: DuoLayoutResolver.previewFieldCount(for: duoWidthClass)
+        )
+        return Group {
+            if viewModel.selection.opensRowDetail {
+                NavigationLink {
+                    rowDetail(index: index)
+                } label: {
+                    card
+                }
+            } else {
+                card
+            }
         }
         .hoverEffect()
         .contextMenu { rowContextMenu(index: index) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if let deleteKeys {
+            if !isSelecting, let deleteKeys {
                 Button {
                     confirmDelete(deleteKeys)
                 } label: {
@@ -484,7 +588,7 @@ struct DataBrowserView: View {
         }
         let references = ForeignKeyReference.all(
             foreignKeys: viewModel.foreignKeys, columns: columns,
-            cells: cells, sourceSchema: viewModel.schema
+            cells: cells, sourceSchema: viewModel.schema, sourceDatabase: viewModel.database
         )
         if !references.isEmpty {
             Divider()
@@ -504,6 +608,31 @@ struct DataBrowserView: View {
 
     @ToolbarContentBuilder
     private var topToolbar: some ToolbarContent {
+        if isSelecting {
+            ToolbarItem(placement: .topBarLeading) {
+                let selectsAll = viewModel.selection.selectsAll(of: rows.count)
+                Button(selectsAll ? String(localized: "Deselect All") : String(localized: "Select All")) {
+                    if selectsAll {
+                        viewModel.selection.clearRows()
+                    } else {
+                        viewModel.selection.selectAll(count: rows.count)
+                    }
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    viewModel.selection.end()
+                } label: {
+                    Label("Done", systemImage: "checkmark")
+                }
+            }
+        } else {
+            browsingToolbar
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var browsingToolbar: some ToolbarContent {
         if browsesSQLRows {
             sortAndFilterItems
         }
@@ -515,9 +644,29 @@ struct DataBrowserView: View {
                     }
                     Divider()
                 }
+                Button {
+                    viewModel.selection.begin()
+                } label: {
+                    Label("Select Rows", systemImage: "checklist")
+                }
+                .disabled(rows.isEmpty)
                 RowLayoutPicker()
                 Divider()
-                Section("Export") {
+                if canExportTable || canImportRows {
+                    Section {
+                        if canExportTable {
+                            Button { presentTableExport() } label: {
+                                Label("Export…", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                        if canImportRows {
+                            Button { showRowFilePicker = true } label: {
+                                Label("Import Rows…", systemImage: "square.and.arrow.down")
+                            }
+                        }
+                    }
+                }
+                Section("Copy Page") {
                     ForEach(ExportFormat.offered(for: connection.type)) { format in
                         Button {
                             exportCompleted(viewModel.window.rows.map(\.cells), asOneRow: false, format: format) { text in
@@ -537,6 +686,43 @@ struct DataBrowserView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button { showInsertSheet = true } label: {
                     Label("Insert Row", systemImage: "plus")
+                }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var selectionBar: some ToolbarContent {
+        if isSelecting {
+            ToolbarItemGroup(placement: .bottomBar) {
+                let indices = viewModel.selection.indices(within: rows.count)
+                Button {
+                    presentSelectionExport(indices)
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .disabled(indices.isEmpty || !canExport)
+                Spacer()
+                Menu {
+                    ForEach(ExportFormat.offered(for: connection.type)) { format in
+                        Button(format.rawValue) {
+                            exportCompleted(indices.map(viewModel.cells(at:)), asOneRow: false, format: format) { text in
+                                ClipboardExporter.copyToClipboard(text)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .disabled(indices.isEmpty || isCompletingCells)
+                if canDeleteRows {
+                    Spacer()
+                    Button(role: .destructive) {
+                        confirmSelectionDelete(indices)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .disabled(indices.isEmpty || viewModel.rowLocators(at: indices) == nil)
                 }
             }
         }
@@ -635,6 +821,7 @@ struct DataBrowserView: View {
             session: session,
             databaseType: connection.type,
             schema: viewModel.schema,
+            database: viewModel.database,
             safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
             onInserted: { Task { await viewModel.load() } }
         )
@@ -652,6 +839,7 @@ struct DataBrowserView: View {
         let driver = session?.driver
         let tableName = table.name
         let databaseType = connection.type
+        let columnDetails = viewModel.columnDetails
         isCompletingCells = true
         Task {
             defer { isCompletingCells = false }
@@ -662,7 +850,7 @@ struct DataBrowserView: View {
                 }
                 deliver(try await Self.exportText(
                     completed, columns: exportColumns, asOneRow: asOneRow, format: format,
-                    tableName: tableName, databaseType: databaseType, driver: driver
+                    tableName: tableName, databaseType: databaseType, driver: driver, columnDetails: columnDetails
                 ))
             } catch let error where error is ClipboardExporter.IncompleteValues || error is ClipboardExporter.TooLarge
                         || error is CellLookupError {
@@ -693,32 +881,117 @@ struct DataBrowserView: View {
         format: ExportFormat,
         tableName: String,
         databaseType: DatabaseType,
-        driver: (any DatabaseDriver)?
+        driver: (any DatabaseDriver)?,
+        columnDetails: [ColumnInfo]
     ) async throws -> String {
         if asOneRow, let cells = rows.first {
             return try ClipboardExporter.exportRow(
                 columns: columns, cells: cells, format: format, tableName: tableName,
-                databaseType: databaseType, driver: driver
+                databaseType: databaseType, driver: driver, columnDetails: columnDetails
             )
         }
         return try ClipboardExporter.exportRows(
             columns: columns, rows: rows, format: format, tableName: tableName,
-            databaseType: databaseType, driver: driver
+            databaseType: databaseType, driver: driver, columnDetails: columnDetails
         )
     }
 
-    private func performDelete(_ pending: PendingRowDelete) async {
-        if let refusal = coordinator.databaseMoveRefusal {
-            viewModel.operationError = refusal
+    // MARK: - Export and Selection
+
+    private var exportDatabase: String? {
+        viewModel.database ?? (coordinator.activeDatabase.isEmpty ? nil : coordinator.activeDatabase)
+    }
+
+    private var exportSchema: String? {
+        coordinator.supportsSchemas ? viewModel.schema : nil
+    }
+
+    private func exportInput(title: String, scopes: [ExportScopeOption]) -> MobileExportInput {
+        MobileExportInput(
+            title: title,
+            fileName: table.name,
+            connectionId: connection.id,
+            databaseType: connection.type,
+            database: exportDatabase,
+            schema: exportSchema,
+            safeModeLevel: connection.safeModeLevel,
+            scopes: scopes
+        )
+    }
+
+    private func presentTableExport() {
+        var scopes: [ExportScopeOption] = []
+        if viewModel.narrowsRows, let query = viewModel.exportSelect() {
+            scopes.append(ExportScopeOption(
+                kind: .currentView,
+                source: .query(query),
+                detail: String(localized: "Every row that matches the search, filter and sort, not only this page.")
+            ))
+        }
+        scopes.append(ExportScopeOption(kind: .wholeTable, source: .table(table.name)))
+        exportItem = MobileExportItem(input: exportInput(title: String(localized: "Export Table"), scopes: scopes))
+    }
+
+    private func presentSelectionExport(_ indices: [Int]) {
+        do {
+            let source = try viewModel.selectedRowsExportSource(indices, readsAgain: coordinator.transactionHold == nil)
+            let detail = String(AttributedString(localized: "^[\(indices.count) row](inflect: true) selected.").characters)
+            exportItem = MobileExportItem(input: exportInput(
+                title: String(localized: "Export Rows"),
+                scopes: [ExportScopeOption(kind: .selectedRows, source: source, detail: detail)]
+            ))
+        } catch {
+            viewModel.operationError = AppError(
+                category: .query,
+                title: String(localized: "Cannot Export"),
+                message: error.localizedDescription,
+                recovery: nil,
+                underlying: error
+            )
+            hapticError.toggle()
+        }
+    }
+
+    private func confirmSelectionDelete(_ indices: [Int]) {
+        guard let locators = viewModel.rowLocators(at: indices), !locators.isEmpty else { return }
+        pendingSelectionDelete = PendingRowsDelete(locators: locators, source: viewModel.rowSource)
+    }
+
+    private func performSelectionDelete(_ pending: PendingRowsDelete) async {
+        guard !viewModel.refusesDelete(raisedOn: pending.source) else {
             hapticError.toggle()
             return
         }
+        let total = pending.locators.count
+        let deleted: Int
+        do {
+            deleted = try await coordinator.track(failed: { $0 < total }) { await viewModel.deleteRows(pending.locators) }
+        } catch {
+            viewModel.operationError = ConnectionCoordinator.refusal(for: error)
+            hapticError.toggle()
+            return
+        }
+        if deleted == total {
+            hapticSuccess.toggle()
+        } else {
+            hapticError.toggle()
+        }
+    }
+
+    private func performDelete(_ pending: PendingRowDelete) async {
         guard !viewModel.refusesDelete(raisedOn: pending.source) else {
             hapticError.toggle()
             return
         }
         let locator = pending.locator
-        let success = await coordinator.track(failed: { !$0 }) { await viewModel.deleteRow(locator) }
+        let success: Bool
+        do {
+            success = try await coordinator.track(failed: { !$0 }) { await viewModel.deleteRow(locator) }
+        } catch {
+            viewModel.operationError = ConnectionCoordinator.refusal(for: error)
+            hapticError.toggle()
+            return
+        }
         if success {
             hapticSuccess.toggle()
         } else {
@@ -732,12 +1005,19 @@ private struct PendingRowDelete {
     let source: DataBrowserViewModel.RowSource
 }
 
+private struct PendingRowsDelete {
+    let locators: [RowLocator]
+    let source: DataBrowserViewModel.RowSource
+}
+
 private struct BrowseSource: Equatable {
     let driver: ObjectIdentifier?
     let schema: String?
+    let database: String?
 
-    init(session: ConnectionSession?, schema: String?) {
+    init(session: ConnectionSession?, schema: String?, database: String?) {
         driver = session.map { ObjectIdentifier($0.driver) }
         self.schema = schema
+        self.database = database
     }
 }

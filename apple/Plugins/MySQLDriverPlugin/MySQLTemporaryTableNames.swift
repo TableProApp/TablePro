@@ -8,7 +8,7 @@ import Foundation
 // MySQL 8.4.11 lists a session's temporary tables nowhere an ordinary user can read (`INNODB_TEMP_TABLE_INFO` needs
 // PROCESS), so the names come from the statement text. Only the table part is kept: `SHOW CREATE TABLE name` on the
 // session resolves it in the browsed database and answers `CREATE TEMPORARY TABLE` for one.
-enum MySQLTemporaryTableNames {
+nonisolated enum MySQLTemporaryTableNames {
     static func created(by statement: String) -> String? {
         var reader = Reader(statement)
         guard reader.accept("CREATE") else { return nil }
@@ -53,7 +53,7 @@ enum MySQLTemporaryTableNames {
     }
 }
 
-private enum NameToken: Equatable {
+nonisolated private enum NameToken: Equatable {
     case word(String)
     case quoted(String)
     case dot
@@ -62,7 +62,7 @@ private enum NameToken: Equatable {
 }
 
 // A string literal is one `other` token, so a keyword inside one is never read.
-private struct Reader {
+nonisolated private struct Reader {
     private let scalars: [Unicode.Scalar]
     private var index = 0
     private var executableCommentDepth = 0

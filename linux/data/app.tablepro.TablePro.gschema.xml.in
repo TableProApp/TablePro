@@ -143,6 +143,12 @@
       <description>Whether cells and value fields mark zero-width, control and special space characters.</description>
     </key>
 
+    <key name="grid-wrap-text" type="b">
+      <default>false</default>
+      <summary>Wrap text in data grids</summary>
+      <description>Show long values on several lines in a data grid, up to 10 lines per row. Applies to tabs opened afterwards.</description>
+    </key>
+
     <key name="date-format" type="s">
       <choices>
         <choice value="iso"/>
@@ -219,6 +225,21 @@
       <description>Whether the SQL editor takes Vim's modes and commands. The editor's own Ctrl shortcuts keep working in every mode.</description>
     </key>
 
+    <key name="shortcut-preset" type="s">
+      <choices>
+        <choice value="tablepro"/>
+        <choice value="tableplus"/>
+        <choice value="dbeaver"/>
+        <choice value="datagrip"/>
+        <choice value="beekeeperstudio"/>
+        <choice value="navicat"/>
+        <choice value="dbx"/>
+      </choices>
+      <default>'tablepro'</default>
+      <summary>Keyboard shortcut preset</summary>
+      <description>Whose keyboard shortcuts TablePro follows: its own, or those of another database app. A key the preset moves leaves the command it displaces with no key; keys GNOME and GTK own stay as they are.</description>
+    </key>
+
     <key name="restore-session" type="b">
       <default>true</default>
       <summary>Restore session</summary>
@@ -229,6 +250,12 @@
       <default>''</default>
       <summary>Newest version launched</summary>
       <description>The newest TablePro release that has run, so the first launch of a later one can point to its release notes. Empty before the first launch.</description>
+    </key>
+
+    <key name="setup-guide-seen" type="b">
+      <default>false</default>
+      <summary>Setup guide seen</summary>
+      <description>Whether the setup guide has ended once, by its last step, Skip or leaving it. While false, the first window of a launch opens it over a library with no saved connection.</description>
     </key>
 
     <key name="share-usage-data" type="b">
@@ -277,7 +304,7 @@
     </key>
 
     <key name="ai-anthropic-model" type="s">
-      <default>'claude-opus-5-5'</default>
+      <default>''</default>
       <summary>Anthropic model</summary>
       <description>The model id the assistant asks Anthropic for.</description>
     </key>
@@ -310,6 +337,12 @@
       <default>'postgres'</default>
       <summary>Driver the connect dialog opens with</summary>
       <description>Id of the driver last connected to, so the dialog opens on it with its own default port.</description>
+    </key>
+
+    <key name="active-project" type="s">
+      <default>''</default>
+      <summary>Active project</summary>
+      <description>Id of the project whose connections the lists show. Empty shows all connections, as an id no project has does.</description>
     </key>
 
     <key name="csv-null-to-empty" type="b">

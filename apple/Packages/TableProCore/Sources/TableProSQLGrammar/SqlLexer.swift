@@ -393,6 +393,27 @@ public enum SqlLexer {
     /// `::` continues a name, as in `$a::b(...)`. A `$` inside a word starts no parameter: `a$b(` is the name `a$b`
     /// and a `(`.
     public static func skipParenthesizedParameterName(_ text: NSString, at offset: Int, length: Int) -> Span? {
+        guard var cursor = parameterNameEnd(text, at: offset, length: length),
+              cursor > offset + 1, cursor < length, text.character(at: cursor) == openParen
+        else {
+            return nil
+        }
+        cursor += 1
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == closeParen {
+                return Span(next: cursor + 1, newlines: 0)
+            }
+            if character == 0 || isSQLiteSpace(character) {
+                return Span(next: cursor, newlines: 0, isClosed: false)
+            }
+            cursor += 1
+        }
+        return Span(next: length, newlines: 0, isClosed: false)
+    }
+
+    // Where a Tcl-style parameter's name ends, before its `(`; nil when no parameter starts at `offset`.
+    public static func parameterNameEnd(_ text: NSString, at offset: Int, length: Int) -> Int? {
         guard parameterPrefixes.contains(text.character(at: offset)), !continuesSQLiteWord(text, at: offset) else {
             return nil
         }
@@ -406,19 +427,7 @@ public enum SqlLexer {
             guard character == colonUnit, cursor + 1 < length, text.character(at: cursor + 1) == colonUnit else { break }
             cursor += 2
         }
-        guard cursor > offset + 1, cursor < length, text.character(at: cursor) == openParen else { return nil }
-        cursor += 1
-        while cursor < length {
-            let character = text.character(at: cursor)
-            if character == closeParen {
-                return Span(next: cursor + 1, newlines: 0)
-            }
-            if character == 0 || isSQLiteSpace(character) {
-                return Span(next: cursor, newlines: 0, isClosed: false)
-            }
-            cursor += 1
-        }
-        return Span(next: length, newlines: 0, isClosed: false)
+        return cursor
     }
 
     /// Whether the prefix at `offset` is a `$` inside a word SQLite is already reading. `$` is one of its identifier

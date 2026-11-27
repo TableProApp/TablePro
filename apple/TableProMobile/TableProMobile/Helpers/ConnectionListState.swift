@@ -12,6 +12,7 @@ nonisolated enum ConnectionListState: Equatable, Sendable {
     static func resolve(
         loadStatus: LoadStatus,
         hasLibraryItems: Bool,
+        hasActiveProject: Bool,
         isSyncEnabled: Bool,
         syncStatus: SyncStatus,
         hasCompletedFirstSync: Bool
@@ -25,7 +26,8 @@ nonisolated enum ConnectionListState: Equatable, Sendable {
             break
         }
         let syncError = isSyncEnabled ? syncStatus.error : nil
-        if hasLibraryItems {
+        // The first run offers the sample database, which lands in no project, so a project shows its own empty list.
+        if hasLibraryItems || hasActiveProject {
             return .content(syncProblem: syncError)
         }
         guard isSyncEnabled, !hasCompletedFirstSync else {

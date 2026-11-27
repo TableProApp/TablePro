@@ -12,11 +12,10 @@ import Foundation
 import CLibSSH2
 import TableProSSHTransport
 
-// Every call goes through the serial sessionQueue: libssh2 is not thread-safe per session.
-nonisolated internal struct LibSSH2ChannelIO: SSHChannelIO {
+// libssh2 is not thread-safe per session: the session's SSHSessionPump makes every call on its queue.
+nonisolated internal struct LibSSH2ChannelIO: SSHChannelIO, @unchecked Sendable {
     let channel: OpaquePointer
     let session: OpaquePointer
-    let sessionQueue: DispatchQueue
 
     // libssh2 hands a transport error (-43 on EOF, -13 on DISCONNECT, -12, a failed re-key) to every channel call; only these end just one channel.
     private static let channelScopedErrors: Set<Int> = [
@@ -45,20 +44,34 @@ nonisolated internal struct LibSSH2ChannelIO: SSHChannelIO {
         return channelScopedErrors.contains(returnCode) ? .closed : .transportFailed
     }
 
+    // A read after the server's EOF answers EAGAIN only while its window adjust waits to send (channel.c,
+    // ssh2_channel_read), and freeing the channel with that packet half sent leaves every later send refused.
     func read(into buffer: UnsafeMutablePointer<CChar>, count: Int) -> ChannelReadResult {
-        let result = sessionQueue.sync { Int(tablepro_libssh2_channel_read(channel, buffer, count)) }
-        if result == Int(LIBSSH2_ERROR_EAGAIN), sessionQueue.sync(execute: { libssh2_channel_eof(channel) }) != 0 {
+        let result = Int(tablepro_libssh2_channel_read(channel, buffer, count))
+        if result == Int(LIBSSH2_ERROR_EAGAIN), libssh2_channel_eof(channel) != 0, !blockDirections().contains(.outbound) {
             return .closed
         }
         return Self.readResult(result)
     }
 
     func write(_ buffer: UnsafePointer<CChar>, count: Int) -> ChannelWriteResult {
-        Self.writeResult(sessionQueue.sync { Int(tablepro_libssh2_channel_write(channel, buffer, count)) })
+        Self.writeResult(Int(tablepro_libssh2_channel_write(channel, buffer, count)))
     }
 
     func blockDirections() -> RelayDirections {
-        RelayDirections(libssh2BlockDirections: sessionQueue.sync { libssh2_session_block_directions(session) })
+        RelayDirections(libssh2BlockDirections: libssh2_session_block_directions(session))
+    }
+
+    // read_avail counts the bytes another call already queued for this channel (channel.c, libssh2_channel_window_read_ex).
+    func hasQueuedInput() -> Bool {
+        var queued: UInt = 0
+        _ = libssh2_channel_window_read_ex(channel, &queued, nil)
+        return queued > 0 || libssh2_channel_eof(channel) != 0
+    }
+
+    // ssh2_channel_write answers EAGAIN with no window before it builds a packet, and with window once the packet is built.
+    func hasSendWindow() -> Bool {
+        libssh2_channel_window_write_ex(channel, nil) > 0
     }
 }
 

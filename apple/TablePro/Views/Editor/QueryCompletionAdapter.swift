@@ -48,10 +48,14 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
 
     private var service: QueryCompletionService
     private var configuration: Configuration?
+    // The caret's statement from the index the editor keeps, read on the request's own text.
+    var statementLocator: (
+        @MainActor (_ text: String, _ offset: Int, _ storage: NSTextStorage, _ grammar: SQLLexicalGrammar) async
+            -> QueryStatementHint?
+    )?
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
     private var session: Session?
 
-    private let debounceNanoseconds: UInt64 = 50_000_000
     private let maximumPrefixLength = 500
 
     init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType? = nil) {
@@ -105,33 +109,42 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         service.triggerCharacters
     }
 
+    // On the key or the menu command itself, so the interval covers everything up to the frame that shows the popup.
+    // A key composing in an input method asks for nothing, so it opens no interval either.
+    func completionRequestDidBegin(textView: TextViewController) {
+        guard !textView.textView.hasMarkedText() else { return }
+        InteractionTracer.shared.begin(.completion)
+    }
+
     func completionSuggestionsRequested(
         textView: TextViewController,
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
     ) async -> CodeSuggestionResponse? {
-        guard !textView.textView.hasMarkedText() else { return nil }
-        InteractionTracer.shared.begin(.completion)
-
-        do {
-            try await Task.sleep(nanoseconds: debounceNanoseconds)
-        } catch {
-            return nil
-        }
-
+        // No wait before the work: the window keeps one request in flight and asks again for the newest caret.
         guard !textView.textView.hasMarkedText() else { return nil }
 
         let liveCursorPosition = textView.cursorPositions.first ?? cursorPosition
-        // A copy: the storage string keeps changing during the request, and the response names the prefix it ranked.
-        let text = NSString(string: textView.textView.textStorage?.string ?? "")
+        // The request's one copy of the document: the storage keeps changing while the request runs off the main
+        // thread, and the response names the prefix it ranked.
+        let storage = textView.textView.textStorage
+        let snapshot = storage?.string ?? ""
+        let text = snapshot as NSString
         let offset = liveCursorPosition.range.location
         guard offset >= 0, offset <= text.length else { return nil }
 
+        let service = service
         let localStart = service.tokenStart(in: text, endingAt: offset)
+        var statement: QueryStatementHint?
+        if let storage, let grammar = service.statementGrammar, let locate = statementLocator {
+            statement = await locate(snapshot, offset, storage, grammar)
+            guard !Task.isCancelled else { return nil }
+        }
 
         guard let result = await service.completions(
             in: text,
             at: offset,
+            statement: statement,
             isManualTrigger: isManualTrigger
         ), !Task.isCancelled else {
             return nil
@@ -180,7 +193,8 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
 
     private func typedPrefix(in textView: TextViewController, at cursorPosition: CursorPosition, for session: Session) -> String? {
         let offset = cursorPosition.range.location
-        guard let text = textView.textView.textStorage?.string as NSString?,
+        // The live backing string: bridging the storage copies the whole document, on every key the popup is open.
+        guard let text = textView.textView.textStorage?.mutableString,
               offset >= 0, offset <= text.length,
               tokenStart(in: text, endingAt: offset, for: session) == session.tokenStart else { return nil }
         let length = offset - session.tokenStart
@@ -205,7 +219,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
               let entry = item as? SQLSuggestionEntry,
               let session else { return }
 
-        let text = textView.textView.textStorage?.string as NSString?
+        let text: NSString? = textView.textView.textStorage?.mutableString
         let cursor = cursorPosition?.range.location
 
         if entry.item.kind == .favorite, let snippet = SQLSnippet.parse(entry.item.insertText) {

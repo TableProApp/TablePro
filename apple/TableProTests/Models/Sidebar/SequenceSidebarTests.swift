@@ -110,7 +110,7 @@ struct SequenceListingConsumerTests {
             name: "orders_id_seq", type: "SEQUENCE", schema: "public", comment: nil, partitionCount: nil,
             ownedByTable: "orders", ownedByColumn: "id"
         )]
-        let tables = try await adapter(driver).fetchTables()
+        let tables = try await adapter(driver).fetchTables(schema: nil)
         let table = try #require(tables.first)
         #expect(table.type == .sequence)
         #expect(table.ownedByTable == "orders")

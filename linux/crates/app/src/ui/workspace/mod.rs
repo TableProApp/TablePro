@@ -33,6 +33,7 @@ mod structure_target;
 mod tab_factory;
 mod tab_identity;
 mod tab_index;
+mod tab_rename;
 mod tab_spec;
 mod tab_title;
 mod table_naming;
@@ -64,6 +65,7 @@ use libadwaita::prelude::*;
 use tablepro_core::meta::SchemaInfo;
 use tablepro_core::{DataModel, EditorSession};
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
+use tablepro_storage::LibraryIcon;
 use uuid::Uuid;
 
 pub(crate) use self::catalog_ops::DatabaseDrop;
@@ -85,6 +87,7 @@ use crate::application::AppServices;
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::session_context::SessionContext;
+use crate::services::share_subject::ShareSubject;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::workspace::{ApplicationInhibit, CloseBlocker, CloseGuards, WindowInhibitor, WorkspaceHandle};
 
@@ -190,6 +193,8 @@ pub(crate) struct WorkspaceModel {
     saved_queries_dialog: Option<super::saved_queries_dialog::SavedQueriesDialog>,
     import_dialog: Option<super::import_dialog::ImportCsvDialog>,
     driver_id: String,
+    account: crate::services::account_service::AccountHandle,
+    telemetry: crate::services::telemetry::Telemetry,
     /// The driver as the user knows it, for the header's subtitle.
     driver_name: String,
     /// Writes the tab list a moment after the last change.
@@ -304,6 +309,9 @@ pub enum ClosedTabDescriptor {
         query: String,
         file: Option<crate::workspace::EditorFileRecord>,
         database: Option<String>,
+        name: Option<String>,
+        ordinal: usize,
+        untitled: bool,
     },
     Table {
         schema: Option<String>,
@@ -340,6 +348,14 @@ pub struct EditorTabSlot {
     /// What the tab is named after, kept so titling the tabs again does
     /// not read the buffer.
     pub label: editor_label::EditorLabel,
+    // Apart from `label`, which goes on following the text, so clearing the name brings back the current one.
+    pub name: Option<String>,
+}
+
+impl EditorTabSlot {
+    pub(crate) fn is_untitled(&self) -> bool {
+        matches!(self.label, editor_label::EditorLabel::Untitled(_))
+    }
 }
 
 pub struct StructureTabSlot {
@@ -444,7 +460,13 @@ impl WorkspaceTab {
     pub(crate) fn identity(&self) -> tab_identity::TabIdentity {
         use tab_identity::TabIdentity;
         match self {
-            WorkspaceTab::Editor(slot) => TabIdentity::Editor(slot.label.clone()),
+            WorkspaceTab::Editor(slot) => match &slot.name {
+                Some(name) => TabIdentity::NamedEditor {
+                    name: name.clone(),
+                    automatic: slot.label.clone(),
+                },
+                None => TabIdentity::Editor(slot.label.clone()),
+            },
             WorkspaceTab::Structure(slot) => TabIdentity::Structure(structure_target::StructureTarget::of(
                 slot.schema.as_deref(),
                 &slot.table,
@@ -590,6 +612,11 @@ pub(crate) enum WorkspaceInput {
         tab: Uuid,
         offer: Box<ExportOffer>,
     },
+    // The tab it came from names a share that has no name of its own.
+    Share {
+        tab: Option<Uuid>,
+        subject: Box<ShareSubject>,
+    },
     /// An export a tab offered ended.
     ExportEnded {
         tab: Uuid,
@@ -699,6 +726,10 @@ pub(crate) enum WorkspaceInput {
     },
     /// Ctrl+Shift+T reopens a tab this session closed last.
     ReopenClosedTab(ClosedTabDescriptor),
+    RenameTab {
+        id: Uuid,
+        text: String,
+    },
     /// A browse tab's F5.
     RefreshTab(Uuid),
     /// Bring the tab to the front, for a notification about it.
@@ -861,6 +892,8 @@ impl Workspace {
             assistant,
             driver_name: driver_display_name(&context, &session.metadata().driver_id),
             driver_id: session.metadata().driver_id.clone(),
+            account: services.account(),
+            telemetry: services.telemetry(),
             context,
             key,
             input,
@@ -1239,9 +1272,10 @@ impl WorkspaceModel {
             workspace.notify_connection_name();
         }
         let icon = match &self.key {
-            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => {
-                self.saved_connections.get(*id).and_then(|saved| saved.icon)
-            }
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => self
+                .saved_connections
+                .get(*id)
+                .and_then(|saved| saved.icon.as_ref().and_then(LibraryIcon::named)),
             SessionKey::File(_) => None,
         }
         .map(|icon| crate::ui::icons::connection_icon(icon).to_owned());
@@ -1368,6 +1402,28 @@ impl WorkspaceModel {
         }
     }
 
+    fn on_share(&self, tab: Option<Uuid>, mut subject: ShareSubject) {
+        let Some(window) = self.window() else {
+            return;
+        };
+        // The tab's own title, without the connection a shared tab bar adds to it.
+        if subject.title.trim().is_empty()
+            && let Some(title) = tab.and_then(|tab| self.tab_title(tab))
+        {
+            subject.title = title.label;
+        }
+        if subject.dialect.is_none() {
+            subject.dialect = Some(self.driver_id.clone());
+        }
+        super::share_dialog::ShareDialog::new(super::share_dialog::ShareDialogInit {
+            subject,
+            account: self.account.clone(),
+            tasks: self.tasks.clone(),
+            telemetry: self.telemetry.clone(),
+        })
+        .present(Some(&window));
+    }
+
     fn update(&mut self, msg: WorkspaceInput) {
         match msg {
             WorkspaceInput::HealthChanged(health) => self.refresh_health_banner(&health),
@@ -1456,8 +1512,10 @@ impl WorkspaceModel {
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage(tab) => self.on_refresh_page(tab),
             WorkspaceInput::ExportResults { tab, offer } => self.on_export_results(tab, *offer),
+            WorkspaceInput::Share { tab, subject } => self.on_share(tab, *subject),
             WorkspaceInput::ExportEnded { tab, outcome } => self.on_export_ended(tab, outcome),
             WorkspaceInput::ReopenClosedTab(tab) => self.on_reopen_closed_tab(tab),
+            WorkspaceInput::RenameTab { id, text } => self.on_rename_tab(id, &text),
             WorkspaceInput::RefreshTab(id) => self.on_refresh_tab(id),
             WorkspaceInput::FocusTab(id) => self.focus_tab(id),
             WorkspaceInput::AskAssistant(request) => self.on_ask_assistant(*request),

@@ -18,14 +18,12 @@ actor SSHTunnelManager: TunnelManaging {
 
     private var tunnels: [UUID: LibSSH2Tunnel] = [:]
     private var creations = TunnelCreationGenerations()
+    // One SSH session per route, shared by every connection on it.
+    private let sessions = SSHSessions()
     private let localPortCandidates: @Sendable () -> [Int]
 
     /// Static registry for synchronous termination during app shutdown
     private static let tunnelRegistry = OSAllocatedUnfairLock(initialState: [UUID: LibSSH2Tunnel]())
-
-    /// Prevents App Nap from throttling SSH keepalive timers while tunnels are active.
-    /// Held as long as at least one tunnel exists; released when the last tunnel closes.
-    private var appNapActivity: NSObjectProtocol?
 
     init(localPortCandidates: @escaping @Sendable () -> [Int] = { Array(60_000...65_000).shuffled() }) {
         self.localPortCandidates = localPortCandidates
@@ -81,22 +79,20 @@ actor SSHTunnelManager: TunnelManaging {
         )
 
         try deadline.check(endpoint: timeoutEndpoint)
-        let listener = try LibSSH2TunnelFactory.bindLocalListener(candidates: localPortCandidates())
-        let creationTask = Task.detached {
-            try await LibSSH2TunnelFactory.createTunnel(
-                connectionId: connectionId,
-                config: config,
-                credentials: credentials,
-                destination: destination,
-                listener: listener,
-                deadline: deadline
-            )
-        }
-        let tunnel = try await withTaskCancellationHandler {
-            try await creationTask.value
-        } onCancel: {
-            creationTask.cancel()
-        }
+        let tunnel = try await SSHTunnelOpener.open(
+            connectionId: connectionId,
+            config: config,
+            credentials: credentials,
+            destination: destination,
+            sessions: sessions,
+            localPortCandidates: localPortCandidates,
+            deadline: deadline,
+            onDeath: { [weak self] tunnel in
+                Task { [weak self] in
+                    await self?.handleTunnelDeath(tunnel)
+                }
+            }
+        )
 
         do {
             try deadline.check(endpoint: timeoutEndpoint)
@@ -110,21 +106,19 @@ actor SSHTunnelManager: TunnelManaging {
             throw CancellationError()
         }
 
-        tunnel.onDeath = { [weak self] id in
-            Task { [weak self] in
-                await self?.handleTunnelDeath(connectionId: id)
-            }
-        }
-
         tunnels[connectionId] = tunnel
         Self.tunnelRegistry.withLock { $0[connectionId] = tunnel }
-
         tunnel.startForwarding(destination: destination)
-        tunnel.startKeepAlive()
+        // The shared session can die between the destination check and adoption, before this tunnel was listed.
+        guard tunnel.isRunning else {
+            tunnels.removeValue(forKey: connectionId)
+            Self.tunnelRegistry.withLock { $0[connectionId] = nil }
+            tunnel.close()
+            throw SSHTunnelError.tunnelCreationFailed("The SSH connection closed")
+        }
 
-        updateAppNapState()
-        Self.logger.info("Tunnel created for \(connectionId) on local port \(listener.port)")
-        return listener.port
+        Self.logger.info("Tunnel created for \(connectionId) on local port \(tunnel.localPort)")
+        return tunnel.localPort
     }
 
     // Also ends a creation still dialing, so nothing it builds is adopted after the close returned.
@@ -136,7 +130,6 @@ actor SSHTunnelManager: TunnelManaging {
     private func discardTunnel(connectionId: UUID) async throws {
         guard let tunnel = tunnels.removeValue(forKey: connectionId) else { return }
         Self.tunnelRegistry.withLock { $0[connectionId] = nil }
-        updateAppNapState()
         tunnel.close()
     }
 
@@ -145,11 +138,11 @@ actor SSHTunnelManager: TunnelManaging {
         let currentTunnels = tunnels
         tunnels.removeAll()
         Self.tunnelRegistry.withLock { $0.removeAll(); return }
-        updateAppNapState()
 
         for (_, tunnel) in currentTunnels {
             tunnel.close()
         }
+        await sessions.closeAll()
     }
 
     /// Synchronously terminate all SSH tunnel processes.
@@ -163,6 +156,7 @@ actor SSHTunnelManager: TunnelManaging {
         for tunnel in tunnelsToClose {
             tunnel.closeSync()
         }
+        LibSSH2SharedSession.closeAllSync()
     }
 
     /// Test SSH connectivity without creating a tunnel.
@@ -212,28 +206,13 @@ actor SSHTunnelManager: TunnelManaging {
 
     // MARK: - Private
 
-    private func handleTunnelDeath(connectionId: UUID) async {
-        guard tunnels.removeValue(forKey: connectionId) != nil else { return }
+    // Only the tunnel listed for its connection: one already replaced or closed has nothing to recover.
+    private func handleTunnelDeath(_ tunnel: LibSSH2Tunnel) async {
+        let connectionId = tunnel.connectionId
+        guard tunnels[connectionId] === tunnel else { return }
+        tunnels.removeValue(forKey: connectionId)
         Self.tunnelRegistry.withLock { $0[connectionId] = nil }
-        updateAppNapState()
         Self.logger.warning("Tunnel died for connection \(connectionId)")
         await DatabaseManager.shared.handleSSHTunnelDied(connectionId: connectionId)
-    }
-
-    // MARK: - App Nap Prevention
-
-    /// Acquires or releases an App Nap activity token based on whether tunnels exist.
-    private func updateAppNapState() {
-        if !tunnels.isEmpty && appNapActivity == nil {
-            appNapActivity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiatedAllowingIdleSystemSleep,
-                reason: "SSH tunnel keepalive requires timely execution"
-            )
-            Self.logger.debug("App Nap prevention acquired")
-        } else if tunnels.isEmpty, let activity = appNapActivity {
-            ProcessInfo.processInfo.endActivity(activity)
-            appNapActivity = nil
-            Self.logger.debug("App Nap prevention released")
-        }
     }
 }

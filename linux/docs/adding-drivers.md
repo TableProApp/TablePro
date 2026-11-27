@@ -32,7 +32,7 @@ What the shipped drivers use:
 | PostgreSQL | tokio-postgres 0.7.18, tokio-postgres-rustls 0.14 | deadpool-postgres 0.14.2 | `Transport::open` |
 | MySQL, MariaDB | sqlx 0.9 (`mysql`) | deadpool 0.13 | `Transport::route`, dialled by sqlx |
 | SQLite | sqlx 0.9 (`sqlite-unbundled`) | sqlx, one connection | a file path |
-| DuckDB | duckdb 1.20000.1 (`bundled`), DuckDB 2.0.0 compiled in ([ADR 0031](decisions/0031-duckdb-2.md)) | deadpool 0.13, connections to the one instance the process keeps per file | a file path |
+| DuckDB | duckdb 1.20001.0 (`bundled`), DuckDB 2.0.1 compiled in ([ADR 0031](decisions/0031-duckdb-2.md)) | deadpool 0.13, connections to the one instance the process keeps per file | a file path |
 | SQL Server | tiberius 0.13 | deadpool 0.13 | `Transport::open` |
 | ClickHouse | clickhouse 0.15 over hyper-util and hyper-rustls | hyper's connection pool | `Transport::open` |
 | Cassandra, ScyllaDB | scylla 1.9 (`rustls-023`) | none: one multiplexed connection per session | a loopback relay over `Transport::open` |
@@ -164,7 +164,7 @@ The `Connection` is a workspace's link to one server: the pool behind the sideba
 | `server_info`, `dialect`, `read_only` | Fixed at connect. |
 | `link_state`, `lost` | A `LinkWatch` shared by every call. `lost()` resolves when the link is gone: a failed probe, or a failed call that a check outside the pool confirmed. One dead backend in the pool does not resolve it, so the session monitor can act on it. |
 | `probe` | Whether the server answers. It never waits for a pool slot: with every slot busy it opens a connection of its own. |
-| `list_schemas`, `list_objects`, `fetch_columns`, `fetch_indexes`, `fetch_foreign_keys`, `fetch_outbound_foreign_keys`, `fetch_inbound_foreign_keys`, `fetch_table_definition`, `row_identity`, `table_estimate` | Catalogue reads. `fetch_table_definition` reads columns, keys and dependents in one call so they come from the same moment. `fetch_outbound_foreign_keys` and `fetch_inbound_foreign_keys` return the keys that definition lists, read alone for a table tab's cell menu. Each key names its other table as the sidebar does, and its columns as declared. `parent_compares_alike` and `child_compares_alike` are false when a value of one side, as text read under the other side's column type, can find other rows than the key matches: the two sides differ in type or collation and the engine compares them through a conversion. |
+| `list_schemas`, `list_objects`, `fetch_columns`, `fetch_indexes`, `fetch_foreign_keys`, `fetch_outbound_foreign_keys`, `fetch_inbound_foreign_keys`, `fetch_table_definition`, `row_identity`, `table_estimate` | Catalogue reads. `fetch_table_definition` reads columns, keys and dependents in one call so they come from the same moment. `fetch_outbound_foreign_keys` and `fetch_inbound_foreign_keys` return the keys that definition lists, read alone for a table tab's cell menu. Each key names its other table as the sidebar does, and its columns as declared. `parent_compares_alike` and `child_compares_alike` are false when a value of one side, as text read under the other side's column type, can find other rows than the key matches: the two sides differ in type or collation and the engine compares them through a conversion. A file engine's read holds at most a `CatalogBudget` and fails `CatalogTooLarge` past it (core ADR 0029). |
 | `fetch_character_sets` | The character sets the server offers, each with its default collation and every collation it takes, for the Structure tab's pickers. A read of its own after the definition, so its failure leaves the rest of the tab working. The default answers `Unsupported` (`UnsupportedFeature::CharacterSets`). |
 | `query_bound` | A generated read that keeps at most `limit` rows and reads one more to set `truncated`. |
 | `count_rows` | A generated count. |
@@ -300,6 +300,7 @@ An editor tab holds one session for as long as it is open, because the state a u
 - A statement the server refused ends the run with `RunEnd::Failed` in the `RunSummary`; an `Err` from `run` means the session itself failed.
 - `RunSummary` carries `elapsed`, the `RunEnd` (`Completed`, `Failed`, `Cancelled`, `TimedOut { server_cancelled }`) and the `TransactionState` after the run. `Unknown` is an answer of its own: the tab's close guard warns instead of guessing.
 - `close` stops a running statement, then closes the connection within `close_timeout`.
+- `copy_in(statement, rows, options)` runs a `COPY ... FROM STDIN` from an imported file and sends it the `CopyInPiece`s it receives, ending at `CopyInPiece::End`; a closed channel abandons the copy. The default refuses with `Unsupported { CopyFromStdin }`; only PostgreSQL implements it.
 
 ### `ResultSink` and backpressure
 

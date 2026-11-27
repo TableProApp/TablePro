@@ -112,3 +112,10 @@ struct CSVExportOptionsView: View {
         }
     }
 }
+
+extension CSVExportPlugin {
+    @MainActor
+    func settingsView() -> AnyView? {
+        AnyView(CSVExportOptionsView(plugin: self))
+    }
+}

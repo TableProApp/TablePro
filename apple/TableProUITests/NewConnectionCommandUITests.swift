@@ -61,7 +61,7 @@ final class NewConnectionCommandUITests: UITestCase {
             "New… only names the file; nothing is written before the connection opens"
         )
 
-        let connect = form.buttons["Save & Connect"]
+        let connect = form.buttons["connection-form-save-connect"]
         XCTAssertTrue(
             waitForPredicate(timeout: 10) { connect.exists && connect.isEnabled },
             "A named connection with a file path must be ready to connect"

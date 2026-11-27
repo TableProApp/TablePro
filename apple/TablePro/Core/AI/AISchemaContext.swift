@@ -1,17 +1,9 @@
-//
-//  AISchemaContext.swift
-//  TablePro
-//
-//  Builds AI system prompt context from current database connection schema.
-//
-
 import Foundation
 import TableProAutocomplete
 import TableProPluginKit
 import TableProSQLGrammar
 
-/// One table as the schema context describes it. The producer joins each table to its own columns
-/// and foreign keys, because a lookup by name cannot tell two schemas' tables of the same name apart.
+// Each table carries its own columns and foreign keys: a lookup by name cannot tell two schemas' tables apart.
 struct AISchemaTable: Sendable {
     let table: TableInfo
     let columns: [ColumnInfo]
@@ -26,7 +18,7 @@ struct AISchemaTable: Sendable {
 
 struct AISchemaRankingInput: Sendable {
     let tables: [TableInfo]
-    let columnsByTable: [String: [ColumnInfo]]
+    let columnsByTable: [CatalogName: [ColumnInfo]]
     let question: String
     let queryReferences: [TableReference]
     let defaultSchema: String?
@@ -35,8 +27,6 @@ struct AISchemaRankingInput: Sendable {
 
 struct AISchemaContext {
     static let maxQueryLength = 2_000
-
-    // MARK: - Public
 
     static func buildSystemPrompt(
         databaseType: DatabaseType,
@@ -65,7 +55,7 @@ struct AISchemaContext {
             let schemaContext = buildSchemaSection(
                 tables: tables,
                 defaultSchema: defaultSchema,
-                maxTables: settings.maxSchemaTables,
+                maxTables: settings.clampedMaxSchemaTables,
                 identifierQuote: identifierQuote
             )
             if !schemaContext.isEmpty {
@@ -117,10 +107,7 @@ struct AISchemaContext {
         return parts.joined(separator: "\n")
     }
 
-    // MARK: - Private
-
-    /// A table outside `defaultSchema` is named with its schema, so two tables that share a name
-    /// read as two tables rather than one listed twice.
+    // A table outside defaultSchema is named with its schema, so two tables sharing a name read as two.
     static func buildSchemaSection(
         tables: [AISchemaTable],
         defaultSchema: String?,
@@ -177,7 +164,7 @@ struct AISchemaContext {
     // follow, best first.
     static func relevantTableNames(
         in tables: [TableInfo],
-        columnsByTable: [String: [ColumnInfo]],
+        columnsByTable: [CatalogName: [ColumnInfo]],
         question: String,
         queryReferences: [TableReference] = [],
         defaultSchema: String? = nil,
@@ -187,14 +174,15 @@ struct AISchemaContext {
         var names = indices(of: queryReferences, in: tables, defaultSchema: defaultSchema).map { tables[$0].name }
         // Columns count only once every table has them, or a table loaded on an earlier turn would
         // outrank a better match whose columns were never read.
-        let columns = tables.allSatisfy { columnsByTable[$0.name] != nil } ? columnsByTable : [:]
+        let columns = tables.allSatisfy { columnsByTable[CatalogName($0.name)] != nil } ? columnsByTable : [:]
         let documents = tables.map { table in
-            var details = (columns[table.name] ?? []).flatMap { [$0.name, $0.comment ?? ""] }
+            var details = (columns[CatalogName(table.name)] ?? []).flatMap { [$0.name, $0.comment ?? ""] }
             if let comment = table.comment { details.append(comment) }
             return SchemaRelevanceDocument(name: table.name, details: details)
         }
-        var seen = Set(names)
-        for offset in SchemaRelevanceRanker.rank(documents, for: question) where seen.insert(tables[offset].name).inserted {
+        var seen = Set(names.map { CatalogName($0) })
+        for offset in SchemaRelevanceRanker.rank(documents, for: question)
+            where seen.insert(CatalogName(tables[offset].name)).inserted {
             names.append(tables[offset].name)
         }
         return names

@@ -100,7 +100,7 @@ struct AIProviderModelFetchTests {
             session: stubSession()
         )
         _ = try await provider.fetchAvailableModels()
-        #expect(StubModelListProtocol.lastRequestedURL() == "https://api.anthropic.com/v1/models")
+        #expect(StubModelListProtocol.lastRequestedURL() == "https://api.anthropic.com/v1/models?limit=1000")
     }
 
     @Test("OpenAI Responses reaches the model list under the base the user configured")
@@ -192,13 +192,13 @@ struct AIProviderModelFetchTests {
         _ = try await provider.fetchAvailableModels()
         #expect(
             StubModelListProtocol.lastRequestedURL()
-                == "https://generativelanguage.googleapis.com/v1beta/models"
+                == "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"
         )
     }
 
     /// OpenAI's list holds embedding, speech, image and realtime models beside the chat ones, and
-    /// picking one in the chat panel failed the turn.
-    @Test("OpenAI's own model list keeps only the models Responses can chat with")
+    /// picking one in the chat panel failed the turn. Its list carries ids only, so the catalog decides.
+    @Test("OpenAI's own model list keeps only the chat models the catalog knows, a fine-tune by its base")
     func openAIListKeepsChatModels() async throws {
         StubModelListProtocol.respond(status: 200, body: #"""
         {"object":"list","data":[
@@ -210,8 +210,13 @@ struct AIProviderModelFetchTests {
         ]}
         """#)
         let provider = OpenAIResponsesProvider(endpoint: "https://api.openai.com", apiKey: "key", session: stubSession())
-        let models = try await provider.fetchAvailableModels()
-        #expect(models.map(\.id) == ["ft:gpt-4.1:acme::abc123", "gpt-5.5", "o3"])
+        let models = AIModelMerge.merge(
+            live: try await provider.fetchAvailableModels(),
+            reference: try AIModelReferenceFixtures.file.providers["openai"],
+            source: AIModelSource(config: AIProviderConfig(type: .openAI))
+        )
+        #expect(models.map(\.id) == ["ft:gpt-4.1:acme::abc123", "gpt-5.5"])
+        #expect(models.last?.displayName == "GPT-5.5")
     }
 
     @Test("A gateway in OpenAI's place keeps every model it lists")
@@ -250,21 +255,28 @@ struct AIProviderModelFetchTests {
             ["id": "grok-voice-3.0"]
         ]
         for entry in keep {
-            #expect(OpenAIResponsesProvider.listsChatModel(entry, dialect: .xai, host: "api.x.ai"))
+            #expect(OpenAIResponsesProvider.listsXAIChatModel(entry))
         }
         for entry in drop {
-            #expect(!OpenAIResponsesProvider.listsChatModel(entry, dialect: .xai, host: "api.x.ai"))
+            #expect(!OpenAIResponsesProvider.listsXAIChatModel(entry))
         }
     }
 
-    @Test("OpenAI's regional hosts are filtered like its main one; a fine-tune is judged by its base model")
-    func openAIRegionalHostAndFineTunes() {
-        let whisper: [String: Any] = ["id": "whisper-1"]
-        #expect(!OpenAIResponsesProvider.listsChatModel(whisper, dialect: .openAI, host: "eu.api.openai.com"))
-        #expect(OpenAIResponsesProvider.listsChatModel(whisper, dialect: .openAI, host: "gateway.internal"))
-        #expect(OpenAIResponsesProvider.isOpenAIChatModel("ft:gpt-4o-mini-2024-07-18:watts-energy::AbC123"))
-        #expect(OpenAIResponsesProvider.isOpenAIChatModel("ft:gpt-4.1:acme:doc-search:x1"))
-        #expect(!OpenAIResponsesProvider.isOpenAIChatModel("ft:whisper-1:acme::x2"))
+    @Test("OpenAI's regional hosts hide unknown ids like its main one; a gateway keeps them")
+    func openAIRegionalHost() {
+        #expect(AIModelSource(config: AIProviderConfig(type: .openAI, endpoint: "https://eu.api.openai.com")).hidesUnknown)
+        #expect(!AIModelSource(config: AIProviderConfig(type: .openAI, endpoint: "https://gateway.internal")).hidesUnknown)
+    }
+
+    @Test("OpenAI's list decodes its dates, and a shutdown date marks the model deprecated")
+    func openAIListedModelDates() throws {
+        let model = try #require(OpenAIResponsesProvider.decodeListedModel(
+            ["id": "gpt-4.5-preview", "created": 1_740_000_000, "shutdown_date": 1_752_000_000]
+        ))
+        #expect(model.released == Date(timeIntervalSince1970: 1_740_000_000))
+        #expect(model.isDeprecated)
+        #expect(model.retiresAt == Date(timeIntervalSince1970: 1_752_000_000))
+        #expect(OpenAIResponsesProvider.decodeListedModel(["id": "gpt-5.5", "shutdown_date": NSNull()])?.isDeprecated == false)
     }
 
     @Test("Without a usable language-models answer, xAI's list comes from its model list minus image models")

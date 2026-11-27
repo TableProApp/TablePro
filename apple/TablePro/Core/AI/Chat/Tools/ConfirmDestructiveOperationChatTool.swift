@@ -20,15 +20,26 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             "query": ChatToolSchemaBuilder.string(description: "The destructive query to execute"),
             "confirmation_phrase": ChatToolSchemaBuilder.string(
                 description: "Must be exactly: I understand this is irreversible"
+            ),
+            "database": ChatToolSchemaBuilder.string(
+                description: "Run against this database. Pass null to use current.",
+                optional: true
+            ),
+            "schema": ChatToolSchemaBuilder.string(
+                description: "Run against this schema. Pass null to use current.",
+                optional: true
             )
-        ],
-        required: ["query", "confirmation_phrase"]
+        ]
     )
     let mode: ChatToolMode = .agentOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
+        try ChatToolArgumentDecoder.rejectUnknownKeys(input, declaredBy: inputSchema)
         let query = try ChatToolArgumentDecoder.requireString(input, key: "query")
         let confirmationPhrase = try ChatToolArgumentDecoder.requireString(input, key: "confirmation_phrase")
+        // The approval card names these, so the statement runs where the card says.
+        let database = ChatToolArgumentDecoder.optionalString(input, key: "database")
+        let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")
 
         guard confirmationPhrase == Self.requiredPhrase else {
             return ChatToolResult(
@@ -71,15 +82,18 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
         // A script holds each result set to this, as execute_query does; 0 would keep one row on SQL Server.
         let maxRows = MCPLimitResolver.resolveMaxRows(requested: nil, settings: mcpSettings)
-        let scope = try await context.bridge.resolveScope(
+        let target = try await ChatToolTarget.runTarget(
+            context: context,
             connectionId: connectionId,
-            database: nil,
-            schema: nil
+            database: database,
+            schema: schema
         )
+        let scope = target.scope
         let planned = try await context.bridge.plannedScript(scope: scope, query: query, maxRows: maxRows)
         let operation = try await context.authPolicy.checkSafeModeDialog(
             operation: PendingOperation(
                 scope: scope,
+                driverGeneration: target.driverGeneration,
                 databaseType: meta.databaseType,
                 statements: [planned.statement],
                 kind: .destructiveQuery,

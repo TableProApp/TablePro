@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use crate::column::{ColumnInfo, SqlTypeExpr};
-use crate::dialect::BindError;
-use crate::sql_syntax::mongo::{ShellCall, ShellValue};
+use crate::column::{ColumnInfo, ColumnType, SqlTypeExpr};
+use crate::dialect::{BindError, LiteralError};
+use crate::sql_syntax::mongo::{ShellCall, ShellValue, parse_value};
 use crate::statement::{BoundParam, ParamType, Statement, StatementBuilder};
 use crate::value::Value;
 use crate::value::order::decimal_of;
@@ -19,9 +19,22 @@ impl ShellParams {
         Self::default()
     }
 
+    // As `StatementBuilder::inlining`: each value is written as its shell literal and none is bound.
+    pub(crate) fn like(builder: &StatementBuilder) -> Self {
+        match builder.is_inlining() {
+            true => Self {
+                builder: StatementBuilder::inlining(),
+            },
+            false => Self::new(),
+        }
+    }
+
     /// Bind `value` as the next parameter, typed by `column` where there
     /// is one, and return the marker that stands for it.
     pub(crate) fn bind(&mut self, value: Value, column: Option<&ColumnInfo>) -> Result<ShellValue, BindError> {
+        if self.builder.is_inlining() {
+            return inline_literal(&value, column);
+        }
         let param = bind_param(value, column, None)?;
         Ok(ShellValue::Param(self.builder.push_bound(param)))
     }
@@ -51,6 +64,22 @@ impl ShellParams {
         }
         builder.push_sql(&renumbered(filter, first).to_string());
     }
+}
+
+fn inline_literal(value: &Value, column: Option<&ColumnInfo>) -> Result<ShellValue, BindError> {
+    let unknown = ColumnType::unknown();
+    let column_type = column.map_or(&unknown, |column| &column.column_type);
+    let text = super::shell_literal(value, column_type).map_err(|error| match error {
+        LiteralError::Undecodable { reason } => BindError::Undecodable { reason },
+        LiteralError::Unrepresentable { found } => BindError::Unrepresentable {
+            expected: "a shell literal",
+            found,
+        },
+    })?;
+    parse_value(&text).map_err(|_| BindError::Unrepresentable {
+        expected: "a shell literal",
+        found: value.variant_name(),
+    })
 }
 
 fn renumbered(value: &ShellValue, by: usize) -> ShellValue {

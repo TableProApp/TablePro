@@ -12,7 +12,9 @@ import Foundation
 // or a parsed statement gets what `answer` returns for it; without one, each statement of a simple query gets an empty
 // completion, except that a statement holding `failingStatement` gets an error and the ones after it nothing. Cancel
 // requests arrive on connections of their own: each is counted, and a statement waiting for one then fails as a
-// cancelled statement does.
+// cancelled statement does. A query answered with `copyIn` starts a copy-in: the server keeps every CopyData byte, and
+// answers CopyDone with `COPY <line count>` (or the scripted failure) and CopyFail with 57014, as PostgreSQL does, or
+// takes no data until a cancel request arrives.
 final class LibPQScriptedServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
@@ -34,8 +36,25 @@ final class LibPQScriptedServer: @unchecked Sendable {
         // After the rows, wait for a cancel request and fail with 57014. A statement nobody cancels completes.
         var waitsForCancel = false
         var failure: Failure?
+        // Sent after the rows in place of the completion, as a statement that fails part way through its result.
+        var failureAfterRows: Failure?
+        var copyIn: CopyIn?
+        // The command tag in place of `SELECT <row count>`, such as `INSERT 0 1`.
+        var completion: String?
+        // Closes the session at the next Sync instead of answering it, so every reply but the ReadyForQuery arrives.
+        var closesSessionAtSync = false
     }
 
+    struct CopyIn: Sendable {
+        var binary = false
+        // Sent after CopyDone in place of the completion, as a row the server refuses is reported.
+        var failure: Failure?
+        // Reads nothing until a cancel request arrives, then fails with 57014 and passes over the rest of the copy,
+        // as a server waiting for a row lock does.
+        var takesNoDataUntilCancelled = false
+    }
+
+    static let backendProcessID: Int32 = 4_242
     static let idle = UInt8(ascii: "I")
     static let inTransaction = UInt8(ascii: "T")
     static let failedTransaction = UInt8(ascii: "E")
@@ -65,12 +84,21 @@ final class LibPQScriptedServer: @unchecked Sendable {
     private let failingStatement: String?
     private let lock = NSLock()
     private var received: [String] = []
+    private var parsed: [String] = []
     private var bindings: [[String?]] = []
     private var cancels = 0
     private var isClosed = false
+    private var copied = Data()
+    private var copyFailures: [String] = []
 
     var queries: [String] {
         lock.withLock { received }
+    }
+
+    // The statements the extended protocol's Parse brought in, in order, leaving out the ones a failure passed over
+    // until the next Sync, as PostgreSQL does.
+    var parsedStatements: [String] {
+        lock.withLock { parsed }
     }
 
     // Each Bind's parameters as text, nil for a null.
@@ -80,6 +108,15 @@ final class LibPQScriptedServer: @unchecked Sendable {
 
     var cancelRequests: Int {
         lock.withLock { cancels }
+    }
+
+    var copyData: Data {
+        lock.withLock { copied }
+    }
+
+    // Each CopyFail's message.
+    var copyFailMessages: [String] {
+        lock.withLock { copyFailures }
     }
 
     init(
@@ -140,6 +177,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
 
         var statement: Statement?
         var failed = false
+        var closesAtSync = false
         while let type = receive(client, 1)?.first, let body = receiveBody(client) {
             var reply: [UInt8] = []
             switch type {
@@ -148,7 +186,10 @@ final class LibPQScriptedServer: @unchecked Sendable {
                 let earlier = record(query)
                 onQuery(query)
                 var simpleFailed = false
-                if let scripted = answer(query) {
+                let scripted = answer(query)
+                if let copyIn = scripted?.copyIn {
+                    guard copy(copyIn, on: client, failed: &simpleFailed) else { return }
+                } else if let scripted {
                     if scripted.failure == nil, !scripted.columns.isEmpty {
                         guard send(client, Self.rowDescription(scripted.columns)) else { return }
                     }
@@ -162,6 +203,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
             case UInt8(ascii: "P"):
                 let query = Self.cString(body, from: Self.cString(body, from: 0).next).text
                 let earlier = record(query)
+                if !failed { lock.withLock { parsed.append(query) } }
                 onQuery(query)
                 statement = Statement(query: query, earlier: earlier, answer: answer(query) ?? Answer())
                 if !failed { reply = Self.message("1", []) }
@@ -175,7 +217,9 @@ final class LibPQScriptedServer: @unchecked Sendable {
             case UInt8(ascii: "E"):
                 guard !failed, let statement else { break }
                 guard execute(statement.answer, on: client, failed: &failed) else { return }
+                closesAtSync = closesAtSync || statement.answer.closesSessionAtSync
             case UInt8(ascii: "S"):
+                if closesAtSync { return }
                 var state = statement.map { status($0.query, $0.earlier) } ?? Self.idle
                 if failed, state == Self.inTransaction { state = Self.failedTransaction }
                 reply = Self.message("Z", [state])
@@ -206,13 +250,62 @@ final class LibPQScriptedServer: @unchecked Sendable {
             return send(client, Self.errorResponse(failure))
         }
         guard send(client, answer.rows.flatMap(Self.dataRow)) else { return false }
+        if let failure = answer.failureAfterRows {
+            failed = true
+            return send(client, Self.errorResponse(failure))
+        }
         if answer.waitsForCancel, cancelArrived.wait(timeout: .now() + Self.cancelWait) == .success {
             failed = true
             return send(client, Self.errorResponse(Failure(
                 sqlState: "57014", message: "canceling statement due to user request"
             )))
         }
-        return send(client, Self.message("C", Array("SELECT \(answer.rows.count)".utf8) + [0]))
+        let completion = answer.completion ?? "SELECT \(answer.rows.count)"
+        return send(client, Self.message("C", Array(completion.utf8) + [0]))
+    }
+
+    // CopyInResponse with every column in the copy's format, then CopyData until CopyDone or CopyFail.
+    private func copy(_ copyIn: CopyIn, on client: Int32, failed: inout Bool) -> Bool {
+        let format: UInt8 = copyIn.binary ? 1 : 0
+        guard send(client, Self.message("G", [format] + Self.bytes(UInt16(1)) + Self.bytes(UInt16(format)))) else {
+            return false
+        }
+        if copyIn.takesNoDataUntilCancelled {
+            guard cancelArrived.wait(timeout: .now() + Self.cancelWait) == .success else { return false }
+            failed = true
+            guard send(client, Self.errorResponse(Failure(
+                sqlState: "57014", message: "canceling statement due to user request"
+            ))) else { return false }
+            while let type = receive(client, 1)?.first, let body = receiveBody(client) {
+                if type == UInt8(ascii: "f") { lock.withLock { copyFailures.append(Self.cString(body, from: 0).text) } }
+                if type == UInt8(ascii: "c") || type == UInt8(ascii: "f") { return true }
+            }
+            return false
+        }
+        var lines = 0
+        while let type = receive(client, 1)?.first, let body = receiveBody(client) {
+            switch type {
+            case UInt8(ascii: "d"):
+                lines += body.filter { $0 == UInt8(ascii: "\n") }.count
+                lock.withLock { copied.append(contentsOf: body) }
+            case UInt8(ascii: "c"):
+                if let failure = copyIn.failure {
+                    failed = true
+                    return send(client, Self.errorResponse(failure))
+                }
+                return send(client, Self.message("C", Array("COPY \(lines)".utf8) + [0]))
+            case UInt8(ascii: "f"):
+                let reason = Self.cString(body, from: 0).text
+                lock.withLock { copyFailures.append(reason) }
+                failed = true
+                return send(client, Self.errorResponse(Failure(
+                    sqlState: "57014", message: "COPY from stdin failed: \(reason)"
+                )))
+            default:
+                return false
+            }
+        }
+        return false
     }
 
     private func acceptCancelRequests() {
@@ -278,7 +371,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
             for (name, value) in Self.parameters {
                 reply += Self.message("S", Array(name.utf8) + [0] + Array(value.utf8) + [0])
             }
-            reply += Self.message("K", Self.bytes(UInt32(4_242)) + Self.bytes(UInt32(7_777)))
+            reply += Self.message("K", Self.bytes(UInt32(Self.backendProcessID)) + Self.bytes(UInt32(7_777)))
             reply += Self.message("Z", [Self.idle])
             return send(client, reply)
         }

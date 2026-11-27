@@ -12,12 +12,37 @@ struct DatabaseTreeTableRows {
     enum Schema: Equatable {
         case own
         case fixed(String?)
+
+        static func == (lhs: Schema, rhs: Schema) -> Bool {
+            switch (lhs, rhs) {
+            case (.own, .own): true
+            case let (.fixed(left), .fixed(right)): CatalogName.same(left, right)
+            default: false
+            }
+        }
+    }
+
+    // How many rows at each end of a new list are the rows already built. A load usually changes a few of thousands,
+    // and building a row's id is most of what a load costs here.
+    struct KeptEnds: Equatable {
+        let head: Int
+        let tail: Int
     }
 
     let tables: SameRows<TableInfo>
     let database: String?
     let schema: Schema
     let nodes: [DatabaseTreeNode]
+
+    func keptEnds(in new: [TableInfo]) -> KeptEnds {
+        let old = tables.rows
+        let limit = min(old.count, new.count)
+        var head = 0
+        while head < limit, old[head] == new[head] { head += 1 }
+        var tail = 0
+        while tail < limit - head, old[old.count - 1 - tail] == new[new.count - 1 - tail] { tail += 1 }
+        return KeptEnds(head: head, tail: tail)
+    }
 }
 
 /// Turning the connection's metadata into the rows the outline draws. The three sidebar shapes
@@ -25,16 +50,22 @@ struct DatabaseTreeTableRows {
 extension DatabaseTreeOutlineCoordinator {
     internal func node(id: String, kind: DatabaseTreeNode.Kind) -> DatabaseTreeNode {
         if let existing = nodeCache[id] {
+            let wasExpandable = existing.isExpandable
+            let partitionTable = existing.partitionRef?.tableRef
             existing.kind = kind
-            return existing
+            existing.lastBuiltPass = rebuildPass
+            if partitionTable != existing.partitionRef?.tableRef { nodeCache.invalidateTableIndex() }
+            // A row keeps its disclosure triangle as long as the object keeps its identity, so a flip takes a new row.
+            guard existing.isExpandable != wasExpandable else { return existing }
         }
         let created = DatabaseTreeNode(id: id, kind: kind)
+        created.lastBuiltPass = rebuildPass
         nodeCache[id] = created
         return created
     }
 
     internal func resolvedChildren(of item: Any?) -> [DatabaseTreeNode] {
-        let key = (item as? DatabaseTreeNode)?.id ?? ""
+        let key = CatalogName((item as? DatabaseTreeNode)?.id ?? "")
         if let cached = childrenCache[key] { return cached }
         let built = buildChildren(of: item as? DatabaseTreeNode)
         childrenCache[key] = built
@@ -363,7 +394,7 @@ extension DatabaseTreeOutlineCoordinator {
                 schema: schema,
                 searchText: searchText,
                 database: browsingDatabase,
-                filter: { self.loadedContentMemo.buckets(for: schema, source: $0) }
+                filter: { self.loadedContentMemo.buckets(for: CatalogName(schema), source: $0) }
             ),
             listingMatches: schemaService.loadedScope(for: connectionId).flatMap { listingMatches(database: $0.database) },
             listingCoversSchema: !systemSchemas.contains(schema)
@@ -419,11 +450,11 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func hierarchicalListingRows(schema: String) -> [TableInfo]? {
         guard let matches = hierarchicalListing(answering: schema) else { return nil }
-        return matches.rowsBySchema[schema] ?? []
+        return matches.rowsBySchema[CatalogName(schema)] ?? []
     }
 
     internal func hierarchicalListingMatchesTable(in schema: String) -> Bool {
-        hierarchicalListing(answering: schema)?.matched.contains(schema) ?? false
+        hierarchicalListing(answering: schema)?.matched.contains(CatalogName(schema)) ?? false
     }
 
     private func hierarchicalListing(answering schema: String) -> DatabaseTreeFilter.SchemaListingMatches? {
@@ -664,7 +695,7 @@ extension DatabaseTreeOutlineCoordinator {
               !systemSchemas.contains(schema),
               let matches = listingMatches(database: database), matches.answers(for: schema)
         else { return nil }
-        return matches.rowsBySchema[schema] ?? []
+        return matches.rowsBySchema[CatalogName(schema)] ?? []
     }
 
     /// The schema-grouped shape reads its objects from the connection's own schema service and the
@@ -868,18 +899,33 @@ extension DatabaseTreeOutlineCoordinator {
             case .fixed(let fixed): DatabaseTreeTableRef(database: database, schema: fixed, table: table)
             }
         }
+        func reused(_ node: DatabaseTreeNode, for table: TableInfo) -> DatabaseTreeNode {
+            node.kind = .table(ref(table))
+            node.lastBuiltPass = rebuildPass
+            return node
+        }
         let rows = SameRows(rows: tables)
-        if let built = tableRowMemo[parentId], built.tables == rows, built.database == database, built.schema == schema {
+        let built = tableRowMemo[CatalogName(parentId)].flatMap {
+            CatalogName.same($0.database, database) && $0.schema == schema ? $0 : nil
+        }
+        if let built, built.tables == rows {
             for (node, table) in zip(built.nodes, tables) {
-                node.kind = .table(ref(table))
+                _ = reused(node, for: table)
             }
             return built.nodes
         }
-        let nodes = tables.map { table in
-            let tableRef = ref(table)
+        let kept = built?.keptEnds(in: tables) ?? DatabaseTreeTableRows.KeptEnds(head: 0, tail: 0)
+        let nodes = tables.indices.map { index -> DatabaseTreeNode in
+            if let built, index < kept.head {
+                return reused(built.nodes[index], for: tables[index])
+            }
+            if let built, index >= tables.count - kept.tail {
+                return reused(built.nodes[index - tables.count + built.nodes.count], for: tables[index])
+            }
+            let tableRef = ref(tables[index])
             return node(id: DatabaseTreeNode.tableId(tableRef), kind: .table(tableRef))
         }
-        tableRowMemo[parentId] = DatabaseTreeTableRows(tables: rows, database: database, schema: schema, nodes: nodes)
+        tableRowMemo[CatalogName(parentId)] = DatabaseTreeTableRows(tables: rows, database: database, schema: schema, nodes: nodes)
         return nodes
     }
 

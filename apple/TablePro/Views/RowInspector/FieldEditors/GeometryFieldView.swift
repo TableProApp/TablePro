@@ -29,9 +29,14 @@ internal struct GeometryFieldView: View {
         Mode(rawValue: storedMode) ?? .map
     }
 
+    // The latch of the row on screen: a mode another row decided is undecided here.
+    private var rowLatch: ModeLatch {
+        latch.scoped(to: context.documentID)
+    }
+
     var body: some View {
         let resolution = resolvePreview()
-        let mode = latch.shown(preferred: preferredMode, preview: resolution.preview)
+        let mode = rowLatch.shown(preferred: preferredMode, preview: resolution.preview)
         VStack(alignment: .leading, spacing: 4) {
             toolbar(mode: mode, preview: resolution.preview)
             switch mode {
@@ -43,30 +48,34 @@ internal struct GeometryFieldView: View {
         }
         // On a bare container the row's accessibility value lands on the picker and the caption.
         .accessibilityElement(children: .contain)
-        .onAppear { onTabStopChange?(mode == .text) }
-        // No reset on disappear: the lazy list unmounts off-screen rows, and Tab would then stop on a map.
-        .onChange(of: mode) { onTabStopChange?($0 == .text) }
-        // Reruns when a read starts or ends, so whichever preview comes first latches the mode.
-        .task(id: resolution.pending) {
+        // No reset on disappear: the lazy list unmounts off-screen rows, and Tab would then stop on a map. Keyed by the
+        // document too, since the registry files the field under an id each row reissues.
+        .task(id: TabStop(documentID: context.documentID, isText: mode == .text)) {
+            onTabStopChange?(mode == .text)
+        }
+        // Reruns when a read starts or ends, or another row opens, so whichever preview comes first latches the mode.
+        .task(id: PreviewRead(documentID: context.documentID, pending: resolution.pending)) {
+            latch = rowLatch
             guard let pending = resolution.pending else {
                 latch.offer(preferred: preferredMode, preview: resolution.preview)
                 return
             }
-            guard let loaded = await previews.load(pending, source: descriptor.source) else { return }
+            guard let loaded = await previews.load(pending, source: descriptor.source), !Task.isCancelled else { return }
+            latch = rowLatch
             latch.offer(preferred: preferredMode, preview: loaded)
         }
     }
 
     // Text mode reads nothing: the value is parsed only while a map is, or may be, on screen.
     private func resolvePreview() -> GeometryFieldPreviewStore.Resolution {
-        guard latch.needsPreview(preferred: preferredMode) else {
+        guard rowLatch.needsPreview(preferred: preferredMode) else {
             return GeometryFieldPreviewStore.Resolution(preview: nil, pending: nil)
         }
         let request = GeometryFieldPreviewStore.Request(
             text: context.value.wrappedValue,
             state: context.valueState
         )
-        return previews.resolve(request, source: descriptor.source)
+        return previews.resolve(request, source: descriptor.source, documentID: context.documentID)
     }
 
     // MARK: - Toolbar
@@ -112,6 +121,7 @@ internal struct GeometryFieldView: View {
         Binding(
             get: { mode },
             set: { chosen in
+                latch = rowLatch
                 latch.choose(chosen)
                 storedMode = chosen.rawValue
             }
@@ -221,6 +231,18 @@ internal struct GeometryFieldView: View {
 
 // MARK: - Mode
 
+private extension GeometryFieldView {
+    struct TabStop: Equatable {
+        let documentID: UUID?
+        let isText: Bool
+    }
+
+    struct PreviewRead: Equatable {
+        let documentID: UUID?
+        let pending: GeometryFieldPreviewStore.Request?
+    }
+}
+
 internal extension GeometryFieldView {
     enum Mode: String, Hashable, Sendable {
         case text
@@ -237,9 +259,14 @@ internal extension GeometryFieldView {
         }
     }
 
-    // Decided once per view: following the text would swap the editor from under the caret once a typed value draws.
+    // Decided once per row: following the text would swap the editor from under the caret once a typed value draws.
     struct ModeLatch: Equatable {
         private(set) var mode: Mode?
+        private(set) var documentID: UUID?
+
+        func scoped(to documentID: UUID?) -> ModeLatch {
+            documentID == self.documentID ? self : ModeLatch(mode: nil, documentID: documentID)
+        }
 
         mutating func offer(preferred: Mode, preview: GeometryFieldPreview?) {
             guard mode == nil else { return }
@@ -283,6 +310,8 @@ internal final class GeometryFieldPreviewStore: ObservableObject {
     internal private(set) var token = 0
     private var loaded: Request?
     private var pending: Request?
+    // Another row drops the last row's preview, which would otherwise stay up while the new value reads.
+    private var documentID: UUID?
     // A parse runs to the end, so a pane re-added mid-read joins it instead of starting a second one.
     private var inFlight: (request: Request, task: Task<GeometryFieldPreview, Never>)?
     private let reader: Reader
@@ -293,7 +322,13 @@ internal final class GeometryFieldPreviewStore: ObservableObject {
         self.reader = reader
     }
 
-    internal func resolve(_ request: Request, source: GeometryFieldSource) -> Resolution {
+    internal func resolve(_ request: Request, source: GeometryFieldSource, documentID: UUID? = nil) -> Resolution {
+        if documentID != self.documentID {
+            self.documentID = documentID
+            loaded = nil
+            pending = nil
+            preview = nil
+        }
         if request == loaded { return Resolution(preview: preview, pending: nil) }
         if request == pending { return Resolution(preview: preview, pending: request) }
         guard GeometryFieldPreview.readsSynchronously(request.text) else {

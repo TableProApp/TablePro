@@ -1,12 +1,15 @@
 //! Column kinds from SQLite's structured catalogue, and table
 //! definitions with their dependents.
 
-use tablepro_core::Value;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
+use sqlx::{Connection as _, Executor as _};
 use tablepro_core::column::{ColumnDefault, ColumnKind, IntegerKind, IntegerWidth};
 use tablepro_core::ddl::{GeneratedStorage, IdentityStyle, SchemaObjectKind};
-use tablepro_core::meta::TableRef;
+use tablepro_core::meta::{ObjectScope, TableRef};
+use tablepro_core::{DriverError, ServerCode, Value};
 
-use crate::support::{TestFile, apply, call};
+use crate::crafted_schema::{allow_writable_schema, sqlite_refuses_a_stored_tail};
+use crate::support::{TestFile, apply, assert_refused_as_malformed, call, connect, writable};
 
 #[tokio::test]
 async fn strict_table_is_not_dynamic() {
@@ -306,6 +309,128 @@ async fn inbound_keys_read_alone_are_the_definitions() {
     connection.close().await.unwrap();
 }
 
+// A large real schema stays under the catalog budget: every table, and every key into a table thousands of others
+// point at, read whole and in order. SQLite takes time quadratic in the tables to create them, hence not 50,000.
+#[tokio::test]
+async fn a_large_catalog_reads_whole() {
+    const CHILDREN: usize = 5_000;
+    const WIDE_KEYS: usize = 500;
+    let file = TestFile::new().await;
+    let mut script = String::from("BEGIN; CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT UNIQUE);");
+    for child in 0..CHILDREN {
+        script.push_str(&format!(
+            "CREATE TABLE child_{child:05} (id INTEGER PRIMARY KEY, owner INTEGER REFERENCES users, email TEXT, \
+             CONSTRAINT by_email_{child:05} FOREIGN KEY (email) REFERENCES users (email));"
+        ));
+    }
+    let columns: Vec<String> = (0..WIDE_KEYS * 2).map(|column| format!("c{column} INTEGER")).collect();
+    let keys: Vec<String> = (0..WIDE_KEYS)
+        .map(|column| format!("FOREIGN KEY (c{column}) REFERENCES users"))
+        .collect();
+    script.push_str(&format!(
+        "CREATE TABLE wide ({}, {}); COMMIT;",
+        columns.join(", "),
+        keys.join(", ")
+    ));
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    writer.execute(sqlx::AssertSqlSafe(script)).await.unwrap();
+    writer.close().await.unwrap();
+    let connection = file.open().await;
+    let users = TableRef::unqualified("users");
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, call())
+        .await
+        .unwrap();
+    let inbound = connection.fetch_inbound_foreign_keys(&users, call()).await.unwrap();
+    let definition = connection.fetch_table_definition(&users, call()).await.unwrap();
+    let wide = connection
+        .fetch_outbound_foreign_keys(&TableRef::unqualified("wide"), call())
+        .await
+        .unwrap();
+
+    assert_eq!(objects.len(), CHILDREN + 2);
+    assert_eq!(inbound.len(), CHILDREN * 2 + WIDE_KEYS);
+    type Key<'a> = (&'a str, &'a str, &'a [String], &'a [String], bool);
+    let first: Vec<Key<'_>> = inbound[..2]
+        .iter()
+        .map(|key| {
+            (
+                key.table.name.as_str(),
+                key.name.as_str(),
+                key.columns.as_slice(),
+                key.referenced_columns.as_slice(),
+                key.child_compares_alike,
+            )
+        })
+        .collect();
+    assert_eq!(
+        first,
+        [
+            (
+                "child_00000",
+                "by_email_00000",
+                &["email".to_owned()][..],
+                &["email".to_owned()][..],
+                true
+            ),
+            (
+                "child_00000",
+                "fk_child_00000_1",
+                &["owner".to_owned()][..],
+                &["id".to_owned()][..],
+                true
+            ),
+        ]
+    );
+    assert!(
+        inbound.windows(2).all(|pair| pair[0].table.name <= pair[1].table.name),
+        "ordered by child"
+    );
+    assert_eq!(inbound.last().map(|key| key.table.name.as_str()), Some("wide"));
+    assert_eq!(definition.inbound_foreign_keys, inbound);
+    assert_eq!(wide.len(), WIDE_KEYS);
+    assert!(
+        wide.iter()
+            .enumerate()
+            .all(|(id, key)| key.key.name == format!("fk_wide_{id}")
+                && key.key.ref_table == "users"
+                && key.key.ref_columns == ["id"]
+                && key.parent_compares_alike)
+    );
+    connection.close().await.unwrap();
+}
+
+// Only tables whose CREATE TABLE names the parent are asked for their keys, so a name written with its quote doubled,
+// or in other case, still finds them.
+#[tokio::test]
+async fn keys_into_a_table_are_found_however_its_name_is_written() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE \"we\"\"ird's\" (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE doubled (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES \"WE\"\"IRD's\")",
+            "CREATE TABLE quoted (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES 'we\"ird''s' (id))",
+            "CREATE TABLE ticked (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES `we\"ird's`)",
+            "CREATE TABLE unrelated (id INTEGER PRIMARY KEY, other INTEGER REFERENCES doubled)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&TableRef::unqualified("we\"ird's"), call())
+        .await
+        .unwrap();
+
+    let children: Vec<&str> = inbound.iter().map(|key| key.table.name.as_str()).collect();
+    assert_eq!(children, ["doubled", "quoted", "ticked"]);
+    connection.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn dependents_and_source_are_read() {
     let file = TestFile::new().await;
@@ -355,5 +480,139 @@ async fn dependents_and_source_are_read() {
     let generated = doubled.attributes.generated.as_ref().unwrap();
     assert_eq!(generated.storage, GeneratedStorage::Stored);
     assert_eq!(generated.expression.as_sql(), "total * 2");
+    connection.close().await.unwrap();
+}
+
+async fn create(file: &TestFile, sql: String) {
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    writer.execute(sqlx::AssertSqlSafe(sql)).await.unwrap();
+    writer.close().await.unwrap();
+}
+
+// Past ten million bytes SQLite calls the schema malformed, so a crafted statement cannot reach the catalog reads.
+#[tokio::test]
+async fn a_create_statement_past_ten_million_bytes_does_not_open() {
+    let file = TestFile::new().await;
+    create(
+        &file,
+        format!("CREATE TABLE fits (a INTEGER /* {} */)", "x".repeat(9_000_000)),
+    )
+    .await;
+    let connection = file.open().await;
+    let columns = connection.fetch_columns(&TableRef::unqualified("fits"), call()).await;
+    assert_eq!(columns.map(|columns| columns.len()), Ok(1));
+    connection.close().await.unwrap();
+
+    create(
+        &file,
+        format!("CREATE TABLE past (a INTEGER /* {} */)", "x".repeat(10_000_000)),
+    )
+    .await;
+    let opened = connect(file.endpoint(), writable()).await.map(|_| ());
+
+    assert!(
+        matches!(&opened, Err(DriverError::Server(diagnostics))
+            if matches!(diagnostics.code, Some(ServerCode::Sqlite { primary: 11, .. }))),
+        "{opened:?}"
+    );
+}
+
+// A SQLite without the stored tail check parses a stored CREATE text only to its statement's end, so a crafted file can
+// carry any tail after it; the catalog reads that parse the text refuse it past the same cap, before parsing it.
+#[tokio::test]
+async fn a_stored_create_text_past_the_cap_is_refused_before_it_is_parsed() {
+    let file = TestFile::new().await;
+    create(&file, "CREATE TABLE t (a INTEGER)".to_owned()).await;
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    allow_writable_schema(&mut writer).await.unwrap();
+    writer.execute("PRAGMA writable_schema = ON").await.unwrap();
+    writer
+        .execute(
+            "UPDATE sqlite_schema SET sql = sql || '; ' || replace(hex(zeroblob(5500000)), '00', 'x ') \
+             WHERE name = 't'",
+        )
+        .await
+        .unwrap();
+    writer.close().await.unwrap();
+    if sqlite_refuses_a_stored_tail(file.directory()).await.unwrap() {
+        assert_refused_as_malformed(&file).await;
+        return;
+    }
+    let connection = file.open().await;
+    let table = TableRef::unqualified("t");
+
+    let objects = connection.list_objects(&ObjectScope::DefaultSchema, call()).await;
+    let columns = connection.fetch_columns(&table, call()).await;
+    let keys = connection.fetch_foreign_keys(&table, call()).await.map(|_| ());
+    let definition = connection.fetch_table_definition(&table, call()).await.map(|_| ());
+
+    assert_eq!(
+        objects.map(|objects| objects.len()),
+        Ok(1),
+        "SQLite read the statement and left the tail"
+    );
+    assert_eq!(
+        columns.map(|columns| columns.len()),
+        Ok(1),
+        "a read that parses no text reads as before"
+    );
+    let refused = Err(DriverError::CatalogTooLarge {
+        limit_bytes: 10_000_000,
+    });
+    assert_eq!(keys, refused);
+    assert_eq!(definition, refused);
+    connection.close().await.unwrap();
+}
+
+// A tail under the cap is cut where SQLite stops reading: an index's tail of 50,000 additions, which sqlparser would
+// drop one call per term, and a table's tail, which would reach a rebuild's source and a dump.
+#[tokio::test]
+async fn a_stored_text_is_read_to_its_first_statement() {
+    let file = TestFile::new().await;
+    create(&file, "CREATE TABLE p (id INTEGER PRIMARY KEY)".to_owned()).await;
+    create(&file, "CREATE TABLE c (a INTEGER REFERENCES p)".to_owned()).await;
+    create(&file, "CREATE INDEX ci ON c (a) WHERE a > 0".to_owned()).await;
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    allow_writable_schema(&mut writer).await.unwrap();
+    writer.execute("PRAGMA writable_schema = ON").await.unwrap();
+    writer
+        .execute("UPDATE sqlite_schema SET sql = sql || '; DROP TABLE p' WHERE name = 'c'")
+        .await
+        .unwrap();
+    writer
+        .execute(sqlx::AssertSqlSafe(format!(
+            "UPDATE sqlite_schema SET sql = sql || '; SELECT {}' WHERE name = 'ci'",
+            vec!["1"; 50_000].join("+")
+        )))
+        .await
+        .unwrap();
+    writer.close().await.unwrap();
+    if sqlite_refuses_a_stored_tail(file.directory()).await.unwrap() {
+        assert_refused_as_malformed(&file).await;
+        return;
+    }
+    let connection = file.open().await;
+    let table = TableRef::unqualified("c");
+
+    let definition = connection.fetch_table_definition(&table, call()).await.unwrap();
+    let indexes = connection.fetch_indexes(&table, call()).await.unwrap();
+
+    assert_eq!(
+        definition.source.map(|source| source.create_statement),
+        Some("CREATE TABLE c (a INTEGER REFERENCES p)".to_owned())
+    );
+    assert_eq!(definition.foreign_keys.len(), 1);
+    assert_eq!(indexes.len(), 1);
+    assert_eq!(indexes[0].predicate.as_deref(), Some("a > 0"));
+    assert_eq!(
+        indexes[0].definition.as_deref(),
+        Some("CREATE INDEX \"main\".ci ON c (a) WHERE a > 0")
+    );
     connection.close().await.unwrap();
 }

@@ -191,7 +191,8 @@ struct MCPScriptResultTests {
         let context = ChatToolContext(
             connectionId: driver.connection.id,
             bridge: MCPConnectionBridge(),
-            authPolicy: authPolicy()
+            authPolicy: authPolicy(),
+            chatMode: .agent
         )
 
         let result = try await ExecuteQueryChatTool().execute(input: .object(["query": .string(script)]), context: context)
@@ -229,6 +230,7 @@ struct MCPScriptResultTests {
                 historyRecorder: DiscardingHistory(),
                 executionGate: gate
             ),
+            chatMode: .agent,
             sessionId: sessionId,
             approvalWasExplicit: true,
             policyLookup: { _ in .alwaysAllow }

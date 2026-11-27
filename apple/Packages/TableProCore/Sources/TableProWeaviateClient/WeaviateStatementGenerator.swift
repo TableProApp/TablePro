@@ -140,22 +140,18 @@ public enum WeaviateStatementGenerator {
             "properties": properties(from: patch, types: types)
         ]
         guard let body = try? WeaviateJSON.text(payload) else { return nil }
-        return WeaviateWriteRequest(
-            method: "PATCH",
-            path: "/v1/objects/\(WeaviatePathEncoding.segment(uuid))",
-            query: ["class": collection],
-            body: body
-        )
+        return WeaviateWriteRequest(method: "PATCH", path: objectPath(collection: collection, uuid: uuid), body: body)
     }
 
+    // The server reads no `class` parameter on `/v1/objects/{id}` and deletes the id in every collection that holds it
+    // (Weaviate 1.40 `usecases/objects/delete.go`), so a row is named by its collection's route.
     private static func delete(collection: String, change: WeaviateTrackedChange) -> WeaviateWriteRequest? {
         guard let uuid = change.uuid, !uuid.isEmpty else { return nil }
-        return WeaviateWriteRequest(
-            method: "DELETE",
-            path: "/v1/objects/\(WeaviatePathEncoding.segment(uuid))",
-            query: ["class": collection],
-            body: nil
-        )
+        return WeaviateWriteRequest(method: "DELETE", path: objectPath(collection: collection, uuid: uuid), body: nil)
+    }
+
+    private static func objectPath(collection: String, uuid: String) -> String {
+        "/v1/objects/\(WeaviatePathEncoding.segment(collection))/\(WeaviatePathEncoding.segment(uuid))"
     }
 
     private static func properties(from values: [String: String?], types: [String: String]) -> [String: Any] {

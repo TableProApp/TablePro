@@ -704,20 +704,19 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.72.1"
+version = "0.73.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
+checksum = "787ef8ef523575546b106a58213d6e6b06198a05c2f757258c68a74273670cfa"
 dependencies = [
  "bitflags 2.13.2",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "regex",
  "rustc-hash",
- "shlex 1.3.0",
- "syn 2.0.119",
+ "shlex 2.0.1",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -2088,9 +2087,9 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "duckdb"
-version = "1.20000.1"
+version = "1.20001.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d807ca47d4fa206f102ff568046e018fb84518eb0a0b5e65a165a2eb7bd4a7c2"
+checksum = "eb19e64a2117302336d7e1cc85156b04e7cc2e6fbd974df918cf3b90d35e9f05"
 dependencies = [
  "arrow",
  "cast",
@@ -2274,7 +2273,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2470,9 +2469,9 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -2812,7 +2811,7 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps 9.0.0",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3983,9 +3982,9 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "lcms2"
-version = "6.2.0"
+version = "6.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80205450f4d8b4de92f18111de879f3df4a6b728915e89b73c38f7a59a81ad90"
+checksum = "678106a51fa289d2c059f8594a7b980b4f3ac396c22d60094587dad7ab952f41"
 dependencies = [
  "bytemuck",
  "foreign-types",
@@ -3994,9 +3993,9 @@ dependencies = [
 
 [[package]]
 name = "lcms2-sys"
-version = "4.0.7"
+version = "4.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "264db0b78119c5a37d78bb41fb355daab29b3b29430b53cd92e3da51f0ab06cc"
+checksum = "9a0fc4c537f27eb6fd5497862c47072f731c96fc914eba9f63f385240d5978b3"
 dependencies = [
  "cc",
  "dunce",
@@ -4099,9 +4098,9 @@ checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "libduckdb-sys"
-version = "1.20000.1"
+version = "1.20001.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0140448c472968ee5cf5ba697435deebe558b366ef1e5c080d24d9696b600725"
+checksum = "d1c27e11ec482b43f1e55c782835ec441b3f188a065bfa0d8962b1ba678711ed"
 dependencies = [
  "cc",
  "flate2",
@@ -4177,11 +4176,11 @@ checksum = "60276e2d41bbb68b323e566047a1bfbf952050b157d8b5cdc74c07c1bf4ca3b6"
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.37.0"
+version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
+checksum = "b06e69070b7e12262b0cd90832f0a7396f142a2b330181255562decf9f0c6215"
 dependencies = [
- "bindgen 0.72.1",
+ "bindgen 0.73.2",
  "cc",
  "pkg-config",
  "vcpkg",
@@ -5404,8 +5403,7 @@ dependencies = [
 [[package]]
 name = "postgres-protocol"
 version = "0.6.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08808e3c483c46e999108051c78334f473d5adb59d78bb80a1268c7e6aa6c514"
+source = "git+https://github.com/TableProApp/rust-postgres?rev=f8bdf78d12df410a1c1b485445a9d0683361a173#f8bdf78d12df410a1c1b485445a9d0683361a173"
 dependencies = [
  "base64 0.22.1",
  "byteorder",
@@ -5422,8 +5420,7 @@ dependencies = [
 [[package]]
 name = "postgres-types"
 version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "851ca9db4932932d69f3ea811b1abe63087a0f740a47692619dd40d4899b68be"
+source = "git+https://github.com/TableProApp/rust-postgres?rev=f8bdf78d12df410a1c1b485445a9d0683361a173#f8bdf78d12df410a1c1b485445a9d0683361a173"
 dependencies = [
  "bytes",
  "chrono",
@@ -5726,7 +5723,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6323,7 +6320,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6381,7 +6378,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7137,9 +7134,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "378620ccc25c62c89d8be1c819e76a88d59bdcc3304733330788948e619bfd71"
+checksum = "edb1dddfbdfe5fb99dba0541a87b2edb8adbd59e45815db22d32d4fbbb8813dd"
 dependencies = [
  "sqlx-core",
  "sqlx-macros",
@@ -7150,9 +7147,8 @@ dependencies = [
 
 [[package]]
 name = "sqlx-core"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05b44e85bf579a8eeb4ceaa77a3a523baf2bf0e9bac7e40f405d537b5d2d5ccb"
+version = "0.9.1"
+source = "git+https://github.com/TableProApp/sqlx?rev=642b5cec1deb0f3d801c27b4221ad9e40a4f6712#642b5cec1deb0f3d801c27b4221ad9e40a4f6712"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -7175,7 +7171,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "smallvec",
  "thiserror 2.0.20",
  "tokio",
@@ -7188,9 +7184,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-macros"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd2b84f2bc39a5705ef27ec785a11c934a41bbd4a24941e257927cddc26b60bf"
+checksum = "bf62c58a1e7fd6031ee684eee21d07572f5aebe71c273a01ae4f04eeeba47c47"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7201,9 +7197,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-macros-core"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb8d96de5fdc85a5c4ec813432b523ec637e80ba98f046555f75f7908ddac7c3"
+checksum = "c1ff75c9d609ac84aa8a3e0d92b5c0c54bf541a7f70db492fb40c9a4bea792c8"
 dependencies = [
  "cfg-if",
  "dotenvy",
@@ -7214,7 +7210,7 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "sqlx-core",
  "sqlx-mysql",
  "sqlx-postgres",
@@ -7227,9 +7223,8 @@ dependencies = [
 
 [[package]]
 name = "sqlx-mysql"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90b8020fe17c5f2c245bfa2505d7ef59c5604839527c740266ad2214acebea27"
+version = "0.9.1"
+source = "git+https://github.com/TableProApp/sqlx?rev=642b5cec1deb0f3d801c27b4221ad9e40a4f6712#642b5cec1deb0f3d801c27b4221ad9e40a4f6712"
 dependencies = [
  "bitflags 2.13.2",
  "byteorder",
@@ -7257,9 +7252,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-postgres"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87a2bdd6e83f6b3ea525ca9fee568030508b58355a43d0b2c1674d5f79dcd65e"
+checksum = "b0e9e02f764a1fe640eeefc8eb33eeddd274204654ec9f2db8ff851a1dee2364"
 dependencies = [
  "atoi 2.0.0",
  "base64 0.22.1",
@@ -7294,9 +7289,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-sqlite"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "488e99c397a62007e4229aec669a179816339afc6d2620ca6fa420dbee2e982c"
+checksum = "88b6b78a34ddcb1db4046d462db8f79cee811019d7297b99fca8fac5de26672e"
 dependencies = [
  "atoi 2.0.0",
  "chrono",
@@ -7618,6 +7613,7 @@ dependencies = [
  "tracing",
  "tracing-log",
  "tracing-subscriber",
+ "unicode-segmentation",
  "unicode-width",
  "uuid",
  "x11rb",
@@ -7639,14 +7635,11 @@ dependencies = [
  "hyper-util",
  "jsonwebtoken",
  "oauth2",
- "openapiv3",
- "progenitor",
- "progenitor-client",
- "regress",
  "reqwest",
  "secrecy",
  "serde",
  "serde_json",
+ "tablepro-cloud-api",
  "tablepro-core",
  "tablepro-storage",
  "tempfile",
@@ -7662,6 +7655,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "chrono",
  "futures-util",
  "http",
  "http-body-util",
@@ -7674,6 +7668,7 @@ dependencies = [
  "sse-stream",
  "tablepro-core",
  "tablepro-net",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -7718,6 +7713,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-cloud-api"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "http",
+ "openapiv3",
+ "progenitor",
+ "progenitor-client",
+ "regress",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
 name = "tablepro-core"
 version = "0.0.0"
 dependencies = [
@@ -7727,20 +7741,28 @@ dependencies = [
  "csv",
  "flate2",
  "futures",
+ "getrandom 0.3.4",
+ "hmac 0.13.0",
  "num-bigint 0.4.8",
  "percent-encoding",
  "proptest",
+ "regex",
  "rust_xlsxwriter",
  "rustix",
  "rustls-pki-types",
  "secrecy",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
+ "sqlformat",
  "sqlparser",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+ "unicode-normalization",
+ "unicode-segmentation",
  "unicode-width",
+ "url",
  "uuid",
  "winapi-util",
  "zip",
@@ -7958,6 +7980,11 @@ dependencies = [
  "futures",
  "russh",
  "secrecy",
+ "serde_json",
+ "sha2 0.11.0",
+ "tablepro-account",
+ "tablepro-ai",
+ "tablepro-cli",
  "tablepro-core",
  "tablepro-driver-cassandra",
  "tablepro-driver-clickhouse",
@@ -7968,9 +7995,17 @@ dependencies = [
  "tablepro-driver-postgres",
  "tablepro-driver-redis",
  "tablepro-driver-sqlite",
+ "tablepro-foreign-import",
+ "tablepro-keys",
+ "tablepro-mcp",
+ "tablepro-net",
+ "tablepro-records",
  "tablepro-session",
  "tablepro-ssh",
  "tablepro-storage",
+ "tablepro-sync",
+ "tablepro-sync-testing",
+ "tablepro-test-support",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
@@ -7979,6 +8014,7 @@ dependencies = [
  "uniffi",
  "uuid",
  "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]
@@ -7986,6 +8022,7 @@ name = "tablepro-foreign-import"
 version = "0.0.0"
 dependencies = [
  "aes 0.8.4",
+ "aws-lc-rs",
  "base64 0.22.1",
  "blowfish 0.9.1",
  "cbc 0.1.2",
@@ -8009,6 +8046,24 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "tablepro-keys"
+version = "0.0.0"
+dependencies = [
+ "aws-lc-rs",
+ "base64 0.22.1",
+ "hex",
+ "proptest",
+ "rustls",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "url",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -8049,6 +8104,7 @@ dependencies = [
  "subtle",
  "tablepro-core",
  "tablepro-driver-sqlite",
+ "tablepro-net",
  "tablepro-session",
  "tablepro-ssh",
  "tablepro-storage",
@@ -8085,6 +8141,23 @@ dependencies = [
  "tower-service",
  "tracing",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "tablepro-records"
+version = "0.0.0"
+dependencies = [
+ "hex",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tablepro-core",
+ "tablepro-storage",
+ "tempfile",
+ "thiserror 2.0.20",
+ "unicode-normalization",
+ "uuid",
 ]
 
 [[package]]
@@ -8142,10 +8215,11 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
- "proptest",
+ "hex",
  "secrecy",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "tablepro-core",
  "tempfile",
@@ -8154,6 +8228,38 @@ dependencies = [
  "tracing",
  "unicode-normalization",
  "uuid",
+]
+
+[[package]]
+name = "tablepro-sync"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "secrecy",
+ "serde_json",
+ "tablepro-keys",
+ "tablepro-records",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "tablepro-sync-testing"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "secrecy",
+ "serde_json",
+ "sha2 0.11.0",
+ "tablepro-keys",
+ "tablepro-records",
+ "tablepro-sync",
+ "tokio",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -8181,6 +8287,8 @@ dependencies = [
  "async-trait",
  "futures",
  "secrecy",
+ "serde",
+ "serde_json",
  "tablepro-core",
  "tablepro-net",
  "tempfile",
@@ -8240,7 +8348,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8497,8 +8605,7 @@ dependencies = [
 [[package]]
 name = "tokio-postgres"
 version = "0.7.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a528f7d280f6d5b9cd149635c8705b0dd049754bc67d81d31fa25169a93809d3"
+source = "git+https://github.com/TableProApp/rust-postgres?rev=f8bdf78d12df410a1c1b485445a9d0683361a173#f8bdf78d12df410a1c1b485445a9d0683361a173"
 dependencies = [
  "async-trait",
  "byteorder",
@@ -9153,9 +9260,9 @@ dependencies = [
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",
@@ -9436,7 +9543,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

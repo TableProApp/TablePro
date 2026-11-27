@@ -3,7 +3,7 @@ use gtk4::{gio, glib};
 use tablepro_storage::{ConnectionColor, ConnectionTag};
 use uuid::Uuid;
 
-use crate::services::library_outline::{LibraryOutline, LibrarySection};
+use crate::services::library_outline::{LibraryItem, LibraryOutline, LibrarySection};
 use crate::ui::connection_appearance::color_menu_label;
 use crate::ui::menu_label;
 
@@ -20,6 +20,8 @@ pub(super) const CHANGE_LIBRARY: &str = "change-library";
 pub(super) const SET_FAVOURITE: &str = "set-favourite";
 pub(super) const SET_COLOR: &str = "set-color";
 pub(super) const MOVE_TO_GROUP: &str = "move-to-group";
+pub(super) const CONNECTION_TO_PROJECT: &str = "connection-to-project";
+pub(super) const GROUP_TO_PROJECT: &str = "group-to-project";
 pub(super) const NEW_TAG: &str = "new-tag";
 pub(super) const SET_TAG: &str = "set-tag";
 /// The window's, since the picker's primary menu offers it too.
@@ -94,6 +96,9 @@ pub(crate) fn connection_menu_with(
         Some(&crate::i18n::gettext("_Move to Group")),
         &move_to_group_menu(&target, outline),
     );
+    if let Some(projects) = move_to_project_menu(LibraryItem::Connection(id), outline) {
+        file.append_submenu(Some(&crate::i18n::gettext("Move to Pro_ject")), &projects);
+    }
     menu.append_section(None, &file);
     // Recent is ordered by the last connect, which a move cannot change.
     if section != LibrarySection::Recent {
@@ -191,6 +196,35 @@ fn move_to_group_menu(target: &glib::Variant, outline: &LibraryOutline) -> gio::
     menu
 }
 
+// `None` with no project to move to, and for a connection or a subgroup whose group decides its project.
+pub(super) fn move_to_project_menu(moved: LibraryItem, outline: &LibraryOutline) -> Option<gio::Menu> {
+    if outline.parent_of(moved) != Some(None) {
+        return None;
+    }
+    let projects = outline.list().projects_in_order();
+    if projects.is_empty() {
+        return None;
+    }
+    let (action, id) = match moved {
+        LibraryItem::Connection(id) => (CONNECTION_TO_PROJECT, id),
+        LibraryItem::Group(id) => (GROUP_TO_PROJECT, id),
+    };
+    let to = |project: &str| (id.to_string(), project.to_owned()).to_variant();
+    let menu = gio::Menu::new();
+    menu.append_item(&item(&crate::i18n::gettext("_No Project"), PICKER, action, &to(NONE)));
+    let listed = gio::Menu::new();
+    for project in projects {
+        listed.append_item(&item(
+            &menu_label(project.name.as_str()),
+            PICKER,
+            action,
+            &to(&project.id.to_string()),
+        ));
+    }
+    menu.append_section(None, &listed);
+    Some(menu)
+}
+
 /// Every tag as a check item ticked at the ones the connection has,
 /// then a way to make one and to change them all.
 fn tag_menu(target: &glib::Variant, tags: &[ConnectionTag]) -> gio::Menu {
@@ -199,7 +233,7 @@ fn tag_menu(target: &glib::Variant, tags: &[ConnectionTag]) -> gio::Menu {
         let existing = gio::Menu::new();
         for tag in tags {
             existing.append_item(&gio::MenuItem::new(
-                Some(&menu_label(tag.name.as_str())),
+                Some(&menu_label(&tag.name.shown())),
                 Some(&format!("{ROW}.{}", tag_action(tag.id))),
             ));
         }

@@ -388,7 +388,7 @@ pub(crate) fn saved_connection(database: &std::path::Path) -> SavedConnection {
         database: database.display().to_string(),
         username: String::new(),
         tls: TlsConfig::verify_full(),
-        safe_mode: tablepro_core::SafeModeLevel::Off,
+        safe_mode: tablepro_core::SafeModeLevel::Silent,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
@@ -397,10 +397,14 @@ pub(crate) fn saved_connection(database: &std::path::Path) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 
@@ -415,7 +419,7 @@ fn network_connection() -> SavedConnection {
         database: "shop".to_owned(),
         username: "app".to_owned(),
         tls: TlsConfig::verify_full(),
-        safe_mode: tablepro_core::SafeModeLevel::Off,
+        safe_mode: tablepro_core::SafeModeLevel::Silent,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
@@ -424,10 +428,14 @@ fn network_connection() -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 
@@ -544,14 +552,14 @@ fn the_safe_mode_action_moves_the_session_between_levels_that_write_and_saves_it
 
     pick_level(&test, "confirm-writes");
     wait_until(WAIT, || {
-        stored_level(&test) == Some(tablepro_core::SafeModeLevel::ConfirmWrites)
+        stored_level(&test) == Some(tablepro_core::SafeModeLevel::Alert)
     })
     .expect("the level saved back");
 
     let Some((_, session)) = test.window.front_session() else {
         panic!("the window left its workspace");
     };
-    assert_eq!(session.safe_mode(), tablepro_core::SafeModeLevel::ConfirmWrites);
+    assert_eq!(session.safe_mode(), tablepro_core::SafeModeLevel::Alert);
     assert_eq!(ticked_level(&test).as_deref(), Some("confirm-writes"));
     assert_eq!(test.connector.calls().len(), 1, "a level that writes reconnected");
 }

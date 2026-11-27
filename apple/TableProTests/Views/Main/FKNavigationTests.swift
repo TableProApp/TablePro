@@ -12,7 +12,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -31,7 +30,8 @@ struct FKNavigationTests {
         #expect(payload.databaseName == "db")
         #expect(payload.isView == false)
         #expect(payload.initialFilterState?.filters == [filter])
-        #expect(payload.initialFilterState?.appliedFilters == [filter])
+        #expect(payload.initialFilterState?.applied?.filters == [filter])
+        #expect(payload.initialFilterState?.applied?.logicMode == .and)
         #expect(payload.initialFilterState?.isVisible == true)
     }
 
@@ -43,7 +43,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -68,7 +67,7 @@ struct FKNavigationTests {
         #expect(opened.count == 1)
         #expect(opened.first?.tableName == "users")
         #expect(opened.first?.forcesNewTab == true)
-        #expect(opened.first?.initialFilterState?.appliedFilters.first?.value == "42")
+        #expect(opened.first?.initialFilterState?.applied?.filters.first?.value == "42")
     }
 
     @Test("Plain click on the already-open referenced table does not open a second tab")
@@ -79,7 +78,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -111,7 +109,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -153,7 +150,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -182,7 +178,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -204,7 +199,7 @@ struct FKNavigationTests {
         #expect(tabManager.selectedTab?.execution.lastExecutedAt != nil)
         #expect(opened.count == 1)
         #expect(opened.first?.tableName == "users")
-        #expect(opened.first?.initialFilterState?.appliedFilters.first?.value == "42")
+        #expect(opened.first?.initialFilterState?.applied?.filters.first?.value == "42")
     }
 
     @Test("Plain click from a query tab with unexecuted SQL opens a new tab")
@@ -215,7 +210,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -244,7 +238,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -276,7 +269,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -285,7 +277,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -314,10 +305,9 @@ struct FKNavigationTests {
             databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
-            let applied = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
-            $0.filterState.filters = [applied]
-            $0.filterState.commit = .all
-            $0.filterState.executedFilters = [applied]
+            let reference = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
+            $0.filterState.filters = [reference]
+            $0.filterState.applied = .checkedRows(of: [reference], logicMode: .and)
         }
         let existingTargetTabId = targetTabManager.selectedTab?.id
 
@@ -333,9 +323,7 @@ struct FKNavigationTests {
         #expect(targetTabManager.selectedTab?.id == existingTargetTabId)
     }
 
-    /// Revealing a tab elsewhere leaves the source behind the same way opening a new one does, so
-    /// it has to be kept for the same reason: a preview tab the reader navigated away from would
-    /// otherwise be retargeted by their next sidebar click.
+    // A preview tab the reader left would otherwise be retargeted by their next sidebar click.
     @Test("Revealing an open tab keeps the preview tab the reference was followed from")
     @MainActor
     func revealingAnOpenTabPromotesTheSourcePreviewTab() throws {
@@ -345,7 +333,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -354,7 +341,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -385,10 +371,9 @@ struct FKNavigationTests {
             databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
-            let applied = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
-            $0.filterState.filters = [applied]
-            $0.filterState.commit = .all
-            $0.filterState.executedFilters = [applied]
+            let reference = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
+            $0.filterState.filters = [reference]
+            $0.filterState.applied = .checkedRows(of: [reference], logicMode: .and)
         }
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
@@ -407,7 +392,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -416,7 +400,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -445,10 +428,9 @@ struct FKNavigationTests {
             databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
-            let applied = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
-            $0.filterState.filters = [applied]
-            $0.filterState.commit = .all
-            $0.filterState.executedFilters = [applied]
+            let reference = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
+            $0.filterState.filters = [reference]
+            $0.filterState.applied = .checkedRows(of: [reference], logicMode: .and)
         }
 
         var opened: [EditorTabPayload] = []
@@ -458,13 +440,11 @@ struct FKNavigationTests {
         originCoordinator.navigateToFKReference(value: "99", fkInfo: fkInfo, intent: .follow)
 
         #expect(opened.count == 1)
-        #expect(opened.first?.initialFilterState?.appliedFilters.first?.value == "99")
-        #expect(targetTabManager.selectedTab?.filterState.appliedFilters.first?.value == "42")
+        #expect(opened.first?.initialFilterState?.applied?.filters.first?.value == "99")
+        #expect(targetTabManager.selectedTab?.filterState.applied?.filters.first?.value == "42")
     }
 
-    /// `appliedFilters` resolves from the panel's editable draft, so a filter row edited and not
-    /// applied made a tab claim a reference it was not showing. Revealing it runs no query, so the
-    /// reader landed on the rows the tab really held while the app reported it had found the row.
+    // Revealing runs no query, so a match on the unapplied draft landed the reader on rows without the reference.
     @Test("A tab whose filter edit was never applied is not treated as showing the reference")
     @MainActor
     func anUnappliedFilterEditDoesNotCountAsShowingTheReference() throws {
@@ -474,7 +454,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -483,7 +462,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -511,14 +489,14 @@ struct FKNavigationTests {
             databaseType: connection.type,
             databaseName: targetCoordinator.browseDatabaseName
         )
-        /// Fetched for 7, then edited to 42 in the panel without pressing Apply.
         targetTabManager.mutate(at: 0) {
-            $0.filterState.executedFilters = [
-                TableFilter(columnName: "id", filterOperator: .equal, value: "7"),
-            ]
-            $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
-            $0.filterState.commit = .all
+            let fetched = TableFilter(columnName: "id", filterOperator: .equal, value: "7")
+            var edited = fetched
+            edited.value = "42"
+            $0.filterState.filters = [edited]
+            $0.filterState.applied = .checkedRows(of: [fetched], logicMode: .and)
         }
+        #expect(targetTabManager.tabs[0].filterState.status == .changesNotApplied)
 
         var opened: [EditorTabPayload] = []
         originCoordinator.openTabInNewWindow = { opened.append($0) }
@@ -531,8 +509,7 @@ struct FKNavigationTests {
         #expect(targetTabManager.tabs.count == 1)
     }
 
-    /// A window hosts several connections, so a reveal that cannot put the tab in front of the
-    /// reader has to open the reference rather than leave the click doing nothing.
+    // A window hosts several connections, so a reveal that cannot show the tab opens the reference instead.
     @Test("A reveal that cannot be shown falls back to opening the reference")
     @MainActor
     func anUnreachableRevealOpensTheReferenceInstead() throws {
@@ -542,7 +519,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -551,7 +527,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -577,9 +552,9 @@ struct FKNavigationTests {
             databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
-            $0.filterState.executedFilters = [
-                TableFilter(columnName: "id", filterOperator: .equal, value: "42"),
-            ]
+            let reference = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
+            $0.filterState.filters = [reference]
+            $0.filterState.applied = .checkedRows(of: [reference], logicMode: .and)
         }
 
         var opened: [EditorTabPayload] = []
@@ -601,7 +576,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -613,10 +587,9 @@ struct FKNavigationTests {
             databaseName: originCoordinator.browseDatabaseName
         )
         originTabManager.mutate(at: 0) {
-            let applied = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
-            $0.filterState.filters = [applied]
-            $0.filterState.commit = .all
-            $0.filterState.executedFilters = [applied]
+            let reference = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
+            $0.filterState.filters = [reference]
+            $0.filterState.applied = .checkedRows(of: [reference], logicMode: .and)
         }
         try originTabManager.addTableTab(
             tableName: "orders",
@@ -634,9 +607,7 @@ struct FKNavigationTests {
         #expect(originTabManager.selectedTab?.tableContext.tableName == "orders")
     }
 
-    /// The hop that still records history is the one that stays in the tab: a reference into the
-    /// table the tab is already showing. A jump that opens its own tab records nothing, because
-    /// the tab it came from is still there to go back to.
+    // Only a hop that stays in the tab records history; a jump to its own tab leaves the source to go back to.
     @Test("A hop within the same table records the source view, and Back restores it")
     @MainActor
     func sameTableHopRecordsHistoryAndBackRestoresIt() throws {
@@ -645,7 +616,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -658,7 +628,7 @@ struct FKNavigationTests {
         let outgoingFilter = TableFilter(columnName: "status", filterOperator: .equal, value: "open")
         tabManager.mutate(at: 0) {
             $0.filterState.filters = [outgoingFilter]
-            $0.filterState.commit = .all
+            $0.filterState.applied = .checkedRows(of: [outgoingFilter], logicMode: .and)
             $0.pagination.pageSize = 100
             $0.pagination.currentPage = 3
         }
@@ -667,7 +637,7 @@ struct FKNavigationTests {
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "id")
         coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
 
-        #expect(tabManager.selectedTab?.filterState.appliedFilters.first?.value == "42")
+        #expect(tabManager.selectedTab?.filterState.applied?.filters.first?.value == "42")
         #expect(coordinator.canNavigateBack)
         #expect(coordinator.canNavigateForward == false)
 
@@ -675,7 +645,7 @@ struct FKNavigationTests {
 
         #expect(tabManager.tabs.count == 1)
         #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
-        #expect(tabManager.selectedTab?.filterState.appliedFilters.first?.value == "open")
+        #expect(tabManager.selectedTab?.filterState.applied?.filters.first?.value == "open")
         #expect(tabManager.selectedTab?.restoredPage == 3)
         #expect(tabManager.selectedTab?.restoredPageSize == 100)
         #expect(coordinator.canNavigateBack == false)
@@ -690,7 +660,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -704,12 +673,12 @@ struct FKNavigationTests {
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "id")
         coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
         coordinator.navigateBack()
-        #expect(tabManager.selectedTab?.filterState.appliedFilters.isEmpty == true)
+        #expect(tabManager.selectedTab?.filterState.isFiltering == false)
 
         coordinator.navigateForward()
 
         #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
-        #expect(tabManager.selectedTab?.filterState.appliedFilters.first?.value == "42")
+        #expect(tabManager.selectedTab?.filterState.applied?.filters.first?.value == "42")
         #expect(coordinator.canNavigateForward == false)
         #expect(coordinator.canNavigateBack)
     }
@@ -722,7 +691,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -740,7 +708,7 @@ struct FKNavigationTests {
 
         coordinator.navigateToFKReference(value: "7", fkInfo: byId, intent: .follow)
 
-        #expect(tabManager.selectedTab?.filterState.appliedFilters.first?.value == "7")
+        #expect(tabManager.selectedTab?.filterState.applied?.filters.first?.value == "7")
         #expect(coordinator.canNavigateForward == false)
         #expect(coordinator.canNavigateBack)
     }
@@ -753,7 +721,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -782,7 +749,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -818,7 +784,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -849,7 +814,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -883,7 +847,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -911,7 +874,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -942,7 +904,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -973,7 +934,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1005,7 +965,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1046,7 +1005,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1075,6 +1033,46 @@ struct FKNavigationTests {
         #expect(cachedAfter)
     }
 
+    @Test("A table with no primary key keeps the definition phase 2 read")
+    @MainActor
+    func metadataCacheCoversTablesWithoutPrimaryKey() throws {
+        let connection = TestFixtures.makeConnection(database: "db")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "events",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+        let tabId = tabManager.tabs[0].id
+
+        var rows = TableRows.from(
+            queryRows: [],
+            columns: ["payload"],
+            columnTypes: [],
+            columnDefaults: ["payload": nil]
+        )
+        _ = rows.updateDisplayMetadata(columnForeignKeys: [:])
+        coordinator.setActiveTableRows(rows, for: tabId)
+        #expect(coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "events") == false)
+
+        _ = rows.updateDisplayMetadata(hasAuthoritativeSchema: true)
+        coordinator.setActiveTableRows(rows, for: tabId)
+        #expect(coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "events"))
+
+        coordinator.tabSessionRegistry.recordChange(
+            TableFreshness.Change(extent: .definition, at: .now),
+            for: tabId
+        )
+        #expect(coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "events") == false)
+    }
+
     // MARK: - The referenced namespace
 
     /// MySQL reports `REFERENCED_TABLE_SCHEMA`, which names the referenced DATABASE, so carrying it
@@ -1088,7 +1086,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1121,7 +1118,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1154,7 +1150,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1191,7 +1186,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }

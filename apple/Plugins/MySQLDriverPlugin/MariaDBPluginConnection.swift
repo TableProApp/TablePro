@@ -148,6 +148,16 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private var baselineSelectLimit: UInt64?
     private var hasCapturedBaselineSelectLimit = false
 
+    // Only touched from `queue`.
+    internal var databaseProof = MySQLSessionDatabaseProof()
+
+    // Set where a `USE` was left out. That `USE` used to reset the cap, so the next statement does it. Only touched
+    // from `queue`.
+    private var selectLimitMayHaveMoved = false
+
+    // Set once this session accepted a cap, so a later cap can go out with its statement. Only touched from `queue`.
+    private var hasAcceptedSelectLimit = false
+
     // Whether this session already waits long enough for a streaming reader. Only touched from `queue`.
     private var hasStreamingWriteTimeout = false
 
@@ -238,6 +248,23 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             _sessionEndedByKill = true
             _sessionEndedByApprovedKill = _sessionEndedByApprovedKill || approved
         }
+    }
+
+    // The flight whose replies are still being read, which a Stop keeps killing until they are in.
+    private var _flightGeneration: Int?
+
+    private func isReadingFlight(_ generation: Int) -> Bool {
+        stateLock.withLock { _flightGeneration == generation }
+    }
+
+    private func beginFlight(_ generation: Int) {
+        stateLock.withLock { _flightGeneration = generation }
+    }
+
+    // A kill still on its way would land on the statement queued behind the flight, so the cancel queue drains first.
+    private func endFlight() {
+        stateLock.withLock { _flightGeneration = nil }
+        cancelQueue.sync {}
     }
 
     private var _sessionMayEnd: @Sendable () -> Bool = { false }
@@ -405,6 +432,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self.baselineSelectLimit = nil
             self.hasCapturedBaselineSelectLimit = false
             self.hasStreamingWriteTimeout = false
+            self.databaseProof = MySQLSessionDatabaseProof()
+            self.selectLimitMayHaveMoved = false
+            self.hasAcceptedSelectLimit = false
 
             let threadId = mysql_thread_id(handle)
             self.stateLock.lock()
@@ -655,14 +685,30 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard mayEndSession || !target.endsSession else { return }
         guard let threadId = connectedThreadId, let statement = target.statement(threadId: threadId) else { return }
         cancelQueue.async { [self] in
-            guard deliverKill(statement) else { return }
-            if target.endsSession {
+            let delivered = deliverKill(statement)
+            if delivered, target.endsSession {
                 recordSessionEndedByKill(approved: true)
-            } else {
+            } else if delivered {
                 recordKillDelivered(generation: generation)
             }
+            guard !target.endsSession else { return }
+            keepStoppingFlight(generation: generation, statement: statement)
         }
     }
+
+    // A kill stops only the statement running when it lands, and the server drops one that lands between two queued
+    // statements, so a Stop during a flight kills again until every reply is in.
+    private func keepStoppingFlight(generation: Int, statement: String) {
+        cancelQueue.asyncAfter(deadline: .now() + .milliseconds(Self.flightKillIntervalMilliseconds)) { [weak self] in
+            guard let self, self.isReadingFlight(generation) else { return }
+            if self.deliverKill(statement) {
+                self.recordKillDelivered(generation: generation)
+            }
+            self.keepStoppingFlight(generation: generation, statement: statement)
+        }
+    }
+
+    private static let flightKillIntervalMilliseconds = 250
 
     /// Stops a statement this connection is still reading so the rest can be drained. Never with a
     /// kill that ends the session: only Stop sends one, and only when the driver allows it.
@@ -847,25 +893,39 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         baselineSelectLimit = UInt64(String(cString: valuePtr))
     }
 
+    // Answers the cap to send with the statement instead, which only a read on a session that accepted one before gets.
+    @discardableResult
     private func reconcileSelectLimit(
         rowCap: Int?,
         statement query: String,
-        on mysql: UnsafeMutablePointer<MYSQL>
-    ) throws {
-        /// Only trustworthy while this connection holds no limit of its own: a statement misread as
-        /// single-row would otherwise keep a stale cap installed and end early under it, and the
-        /// client would compare that short count against the current cap and call it complete.
-        if appliedSelectLimit == nil, rowCap != nil, mysqlStatementReturnsAtMostOneRow(query) {
-            return
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        mayFly: Bool = false
+    ) throws -> UInt64? {
+        let desired = mysqlClampedRowCap(rowCap).map { mysqlSelectLimitRows(forRowCap: $0) }
+        let action: MySQLSelectLimitAction
+        if selectLimitMayHaveMoved, appliedSelectLimit != nil {
+            action = mysqlSelectLimitActionAfterSkippedUse(
+                desired: desired,
+                returnsAtMostOneRow: desired != nil && mysqlStatementReturnsAtMostOneRow(query)
+            )
+        } else {
+            /// Only trustworthy while this connection holds no limit of its own: a statement misread as
+            /// single-row would otherwise keep a stale cap installed and end early under it, and the
+            /// client would compare that short count against the current cap and call it complete.
+            if appliedSelectLimit == nil, rowCap != nil, mysqlStatementReturnsAtMostOneRow(query) {
+                return nil
+            }
+            action = mysqlSelectLimitAction(applied: appliedSelectLimit, desired: desired)
         }
 
-        let desired = mysqlClampedRowCap(rowCap).map { mysqlSelectLimitRows(forRowCap: $0) }
         let sessionFlavor = flavor
         let statement: String
-        switch mysqlSelectLimitAction(applied: appliedSelectLimit, desired: desired) {
+        switch action {
         case .none:
-            return
+            return nil
         case .apply(let rows):
+            // Only where a refused `SET` would leave the read running under the limit main would run it under.
+            if mayFly, hasAcceptedSelectLimit, appliedSelectLimit == nil || appliedSelectLimit == rows { return rows }
             captureBaselineSelectLimit(from: mysql)
             statement = sessionFlavor.selectLimitStatement(rows: rows)
         case .reset:
@@ -886,9 +946,71 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             /// is already installed would run the statement under a stricter limit than it asked for
             /// and report the short result as complete.
             guard appliedSelectLimit == nil else { throw error }
+            return nil
+        }
+        appliedSelectLimit = action == .reset ? nil : desired
+        hasAcceptedSelectLimit = hasAcceptedSelectLimit || action != .reset
+        selectLimitMayHaveMoved = false
+        return nil
+    }
+
+    // Both go out before either reply is read, so no statement of the driver's own lands between the cap and the read.
+    // Answers what `mysql_real_query` would for the statement, whose reply is always read: it has run by then.
+    private func sendWithSelectLimit(
+        _ query: String,
+        rows: UInt64,
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        generation: Int
+    ) throws -> Int32 {
+        let limit = flavor.selectLimitStatement(rows: rows)
+        guard limit.withCString({ mysql_send_query(mysql, $0, UInt(limit.utf8.count)) }) == 0 else {
+            throw noting(getError(), generation: generation)
+        }
+        guard query.withCString({ mysql_send_query(mysql, $0, UInt(query.utf8.count)) }) == 0 else {
+            let failure = getError()
+            _ = mysql_read_query_result(mysql)
+            throw failure
+        }
+        guard mysql_read_query_result(mysql) == 0 else {
+            let failure = noting(getError(), generation: generation)
+            logger.warning("SQL_SELECT_LIMIT not reconciled: \(failure.code) \(failure.message)")
+            guard !mysqlClientErrorCodes.contains(failure.code) else { throw failure }
+            if cancellationGate.isCancelled(generation) {
+                discardReply(on: mysql, generation: generation)
+                throw CancellationError()
+            }
+            // A read that succeeds leaves the refused cap's error in `mysql_errno`; with no result pending, this
+            // call clears it and reads nothing. Measured with Connector/C 3.4.4 on MySQL 8.4.11 and MariaDB 13.0.2.
+            guard mysql_more_results(mysql) == 0, mysql_next_result(mysql) == -1 else {
+                // The read's reply is still unread, and the session cannot be put back in step without it.
+                mariadb_cancel(mysql)
+                throw failure
+            }
+            return mysql_read_query_result(mysql) == 0 ? 0 : 1
+        }
+        if let discarded = mysql_store_result(mysql) {
+            mysql_free_result(discarded)
+        }
+        appliedSelectLimit = rows
+        selectLimitMayHaveMoved = false
+        if cancellationGate.isCancelled(generation) {
+            killStatementOnServer(on: mysql, generation: generation)
+        }
+        return mysql_read_query_result(mysql) == 0 ? 0 : 1
+    }
+
+    // The session refuses its next statement with 2014 until a reply already asked for is read.
+    private func discardReply(on mysql: UnsafeMutablePointer<MYSQL>, generation: Int) {
+        killStatementOnServer(on: mysql, generation: generation)
+        guard mysql_read_query_result(mysql) == 0 else {
+            _ = noting(readError(from: mysql), generation: generation)
             return
         }
-        appliedSelectLimit = desired
+        if let result = mysql_use_result(mysql) {
+            while mysql_fetch_row(result) != nil {}
+            mysql_free_result(result)
+        }
+        discardTrailingResults(on: mysql, generation: generation)
     }
 
     private func isExpectedInterruption(errno: UInt32, message: String, wasTruncated: Bool) -> Bool {
@@ -903,6 +1025,40 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
             return try executeQuerySync(queryToRun, rowCap: rowCap, byteLimit: byteLimit)
+        }
+    }
+
+    // Decided on `queue`, after every statement queued ahead of this one has run.
+    func enterDatabase(
+        _ database: String,
+        statement: String,
+        mayStay: @escaping @Sendable () -> Bool
+    ) async throws {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
+            if databaseProof.proves(database), !sessionEndedByKill, mayStay() {
+                selectLimitMayHaveMoved = selectLimitMayHaveMoved || appliedSelectLimit != nil
+                return
+            }
+            _ = try executeQuerySync(statement)
+            databaseProof.noteEntered(database)
+        }
+    }
+
+    // Takes statements spelled with backslash escapes. Nil when `admits` declines once the statements queued ahead
+    // have run. Throws for the flight as a whole only when it could not finish; a refused read is its own answer.
+    func readInOneFlight(
+        _ statements: [String],
+        admits: @escaping @Sendable () -> Bool
+    ) async throws -> [Result<MariaDBPluginQueryResult, MariaDBPluginError>]? {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let first = statements.first else { throw MariaDBPluginError.notConnected }
+            guard !isInTransaction, admits() else { return nil }
+            return try runStatement(first) {
+                try self.runCancellableStatement { mysql, generation in
+                    try self.runFlight(statements, on: mysql, generation: generation)
+                }
+            }
         }
     }
 
@@ -936,6 +1092,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             return try MySQLReadOnlyTransaction.run(
                 state: scope.sessionState(isInTransaction),
                 reason: scope.reason,
+                runsInOpenTransaction: scope.runsInOpenTransaction,
                 send: { _ = try executeQuerySync($0) },
                 statement: {
                     guard let params else {
@@ -1002,11 +1159,30 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         /// reconciliation is a round trip of its own, and leaving it outside this clock charges it
         /// to `total - firstRow`, which the breakdown presents as row transfer.
         let sentAt = Date()
-        try reconcileSelectLimit(rowCap: rowCap, statement: query, on: mysql)
+        let flightRows = try reconcileSelectLimit(
+            rowCap: rowCap,
+            statement: query,
+            on: mysql,
+            mayFly: mysqlStatementIsReadOnly(query)
+                && MySQLServerVersion.readsInOneFlight(banner: serverVersion(), flavor: flavor)
+        )
         if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
-        let queryStatus = query.withCString { queryPtr in
-            mysql_real_query(mysql, queryPtr, UInt(query.utf8.count))
+        // The read waits behind the cap, and a kill landing between the two is dropped, so a Stop keeps killing until
+        // the read is done.
+        if flightRows != nil {
+            beginFlight(generation)
+        }
+        defer {
+            if flightRows != nil { endFlight() }
+        }
+        let queryStatus: Int32
+        if let flightRows {
+            queryStatus = try sendWithSelectLimit(query, rows: flightRows, on: mysql, generation: generation)
+        } else {
+            queryStatus = query.withCString { queryPtr in
+                mysql_real_query(mysql, queryPtr, UInt(query.utf8.count))
+            }
         }
 
         if queryStatus != 0 {
@@ -1149,6 +1325,100 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt),
             columnOrigins: origins
         )
+    }
+
+    // MARK: - One Flight
+
+    // Connector/C 3.4.4 sends while the session is ready and reads each reply under its own packet numbers, so the
+    // replies come back in send order. The whole flight holds `queue`, so no other statement, a queued COMMIT
+    // included, runs until every reply is read.
+    private func runFlight(
+        _ ownStatements: [String],
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        generation: Int
+    ) throws -> [Result<MariaDBPluginQueryResult, MariaDBPluginError>] {
+        try reconcileSelectLimit(rowCap: nil, statement: ownStatements[0], on: mysql)
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+
+        // Spelled here, after every statement queued ahead has replied, so a `sql_mode` change cannot reopen a literal.
+        let spelling = MySQLLiteralSpelling(noBackslashEscapes: noBackslashEscapes)
+        let statements = ownStatements.map(spelling.respelled)
+        for statement in statements.dropFirst() {
+            databaseProof.observe(statement, flavor: flavor)
+        }
+
+        beginFlight(generation)
+        defer { endFlight() }
+
+        for statement in statements {
+            guard statement.withCString({ mysql_send_query(mysql, $0, UInt(statement.utf8.count)) }) == 0 else {
+                throw retiring(getError(), on: mysql)
+            }
+        }
+        var answers: [Result<MariaDBPluginQueryResult, MariaDBPluginError>] = []
+        answers.reserveCapacity(statements.count)
+        for statement in statements {
+            answers.append(try readFlightAnswer(of: statement, on: mysql, generation: generation))
+        }
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+        return answers
+    }
+
+    // A client error can stop inside a reply, so the next read would take the rest of it for another answer.
+    private func retiring(_ failure: MariaDBPluginError, on mysql: UnsafeMutablePointer<MYSQL>) -> MariaDBPluginError {
+        mariadb_cancel(mysql)
+        return failure
+    }
+
+    // Each outcome comes from this reply's own return codes: `mysql_errno` keeps an earlier reply's error until the
+    // next statement is sent.
+    private func readFlightAnswer(
+        of statement: String,
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        generation: Int
+    ) throws -> Result<MariaDBPluginQueryResult, MariaDBPluginError> {
+        guard mysql_read_query_result(mysql) == 0 else {
+            return try flightFailure(on: mysql, generation: generation)
+        }
+        // Read first: a connection lost during the rows resets the count to 0.
+        let expectsRows = mysql_field_count(mysql) != 0
+        guard let result = mysql_store_result(mysql) else {
+            guard !expectsRows else { return try flightFailure(on: mysql, generation: generation) }
+            return .success(MariaDBPluginQueryResult(
+                columns: [], columnTypes: [], columnTypeNames: [],
+                rows: [], affectedRows: mysql_affected_rows(mysql), insertId: 0, isTruncated: false,
+                columnMeta: []
+            ))
+        }
+        defer { mysql_free_result(result) }
+
+        let sessionFlavor = flavor
+        let columns = MariaDBCharacterSet.describeColumns(
+            of: mysql_fetch_fields(result),
+            count: Int(mysql_num_fields(result)),
+            encoding: connectionEncoding,
+            flavor: sessionFlavor,
+            binaryStringsAreText: binaryStringsAreText(in: statement, flavor: sessionFlavor)
+        )
+        var rows: [[PluginCellValue]] = []
+        rows.reserveCapacity(Int(clamping: mysql_num_rows(result)))
+        while let row = mysql_fetch_row(result) {
+            rows.append(textProtocolRow(row, lengths: mysql_fetch_lengths(result), columns: columns))
+        }
+        return .success(MariaDBPluginQueryResult(
+            columns: columns.names, columnTypes: columns.typeCodes, columnTypeNames: columns.typeNames,
+            rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: false,
+            columnMeta: columns.metadata
+        ))
+    }
+
+    private func flightFailure(
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        generation: Int
+    ) throws -> Result<MariaDBPluginQueryResult, MariaDBPluginError> {
+        let failure = noting(readError(from: mysql), generation: generation)
+        guard !mysqlClientErrorCodes.contains(failure.code) else { throw retiring(failure, on: mysql) }
+        return .failure(failure)
     }
 
     // MARK: - Prepared Statements
@@ -1511,6 +1781,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         try MySQLReadOnlyTransaction.run(
                             state: readOnly.sessionState(isInTransaction),
                             reason: readOnly.reason,
+                            runsInOpenTransaction: readOnly.runsInOpenTransaction,
                             send: { _ = try executeQuerySync($0) },
                             statement: stream
                         )
@@ -1569,9 +1840,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             estimatedRowCount: nil
         )), to: continuation, stops: stops)
 
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
+        var batch = PluginRowBatcher()
         while let rowPtr = mysql_fetch_row(resultPtr) {
             if abort.isAborted || cancellationGate.isCancelled(generation) {
                 /// Same shape as the capped buffered read: stop the server first, then
@@ -1583,14 +1852,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 throw CancellationError()
             }
 
-            batch.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
             // A reader that left or a Stop is handled at the top of the loop.
-            if batch.count >= batchSize,
-               PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops) {
-                batch.removeAll(keepingCapacity: true)
+            if batch.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns)),
+               PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops) {
+                batch.removeAll()
             }
         }
-        let delivered = batch.isEmpty || PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops)
+        let delivered = batch.isEmpty
+            || PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops)
 
         if mysql_errno(mysql) != 0 {
             let error = noting(getError(), generation: generation)

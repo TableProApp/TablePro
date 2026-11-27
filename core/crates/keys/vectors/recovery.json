@@ -1,0 +1,245 @@
+{
+  "area": "recovery",
+  "suite": "tp1",
+  "format": 1,
+  "about": "The recovery key: text, checksum and reading, the identity key's seed, K_rec and the blob (ADR 0056, The recovery key)",
+  "text": [
+    {
+      "name": "a recovery key",
+      "op": "recovery_text",
+      "input": {
+        "r_hex": "bc257674b80b63f6806f47d74d0f7c804e04fc25a9e7279eaa2d5044a8572586"
+      },
+      "output": {
+        "checksum_input_hex": "0000001d7461626c6570726f2f76312f7265636f766572792d636865636b73756d0000000374703100000020bc257674b80b63f6806f47d74d0f7c804e04fc25a9e7279eaa2d5044a8572586",
+        "checksum_hex": "44a0b5",
+        "b_hex": "bc257674b80b63f6806f47d74d0f7c804e04fc25a9e7279eaa2d5044a857258644a0b5",
+        "text": "QGJQ-CX5R-1DHZ-D03F-8ZBM-T3VW-G170-9Z15-N7KJ-F7NA-5N84-9A2Q-4P34-985N"
+      }
+    },
+    {
+      "name": "a key that starts with zero bytes",
+      "op": "recovery_text",
+      "input": {
+        "r_hex": "0000000c097ce33985ea45406f79116fc0795669af1bbd148351c19c3ec2238f"
+      },
+      "output": {
+        "checksum_input_hex": "0000001d7461626c6570726f2f76312f7265636f766572792d636865636b73756d00000003747031000000200000000c097ce33985ea45406f79116fc0795669af1bbd148351c19c3ec2238f",
+        "checksum_hex": "bd250a",
+        "b_hex": "0000000c097ce33985ea45406f79116fc0795669af1bbd148351c19c3ec2238fbd250a",
+        "text": "0000-0309-FKHK-K1FA-8N06-YY8H-DZ07-JNK9-NWDV-T543-A70S-RFP2-4E7V-T98A"
+      }
+    }
+  ],
+  "parse": [
+    {
+      "name": "lower case",
+      "op": "recovery_parse",
+      "input": {
+        "text": "0000-0309-fkhk-k1fa-8n06-yy8h-dz07-jnk9-nwdv-t543-a70s-rfp2-4e7v-t98a"
+      },
+      "output": {
+        "r_hex": "0000000c097ce33985ea45406f79116fc0795669af1bbd148351c19c3ec2238f"
+      }
+    },
+    {
+      "name": "O read as 0",
+      "op": "recovery_parse",
+      "input": {
+        "text": "OOO0-0309-FKHK-K1FA-8N06-YY8H-DZ07-JNK9-NWDV-T543-A70S-RFP2-4E7V-T98A"
+      },
+      "output": {
+        "r_hex": "0000000c097ce33985ea45406f79116fc0795669af1bbd148351c19c3ec2238f"
+      }
+    },
+    {
+      "name": "hyphens and spaces dropped",
+      "op": "recovery_parse",
+      "input": {
+        "text": " 0000 - 0309 - FKHK - K1FA - 8N06 - YY8H - DZ07 - JNK9 - NWDV - T543 - A70S - RFP2 - 4E7V - T98A "
+      },
+      "output": {
+        "r_hex": "0000000c097ce33985ea45406f79116fc0795669af1bbd148351c19c3ec2238f"
+      }
+    },
+    {
+      "name": "I and L read as 1",
+      "op": "recovery_parse",
+      "input": {
+        "text": "625G-AVTA-G8EI-Q78G-YEPY-WBYX-B8AE-EK8H-WDH2-96lR-E9WQ-554F-1T6D-C8TV"
+      },
+      "output": {
+        "r_hex": "308b056f4a821c1b9d10f3adee2fdd5a14e74d11e362249838727972948f0e8c"
+      }
+    },
+    {
+      "name": "a bad checksum",
+      "op": "recovery_parse",
+      "row": "Recovery key text with a bad checksum or length",
+      "input": {
+        "text": "QGJQ-CX5R-1DHZ-D03F-8ZBM-T3VW-G170-9Z15-N7KJ-F7NA-5N84-9A2Q-4P34-9852"
+      },
+      "error": "keys.recovery_key",
+      "server": null,
+      "clause": "Recovery key text with a bad checksum or length"
+    },
+    {
+      "name": "a symbol short",
+      "op": "recovery_parse",
+      "row": "Recovery key text with a bad checksum or length",
+      "input": {
+        "text": "QGJQ-CX5R-1DHZ-D03F-8ZBM-T3VW-G170-9Z15-N7KJ-F7NA-5N84-9A2Q-4P34-985"
+      },
+      "error": "keys.recovery_key",
+      "server": null,
+      "clause": "Recovery key text with a bad checksum or length"
+    },
+    {
+      "name": "a symbol over",
+      "op": "recovery_parse",
+      "row": "Recovery key text with a bad checksum or length",
+      "input": {
+        "text": "QGJQ-CX5R-1DHZ-D03F-8ZBM-T3VW-G170-9Z15-N7KJ-F7NA-5N84-9A2Q-4P34-985N0"
+      },
+      "error": "keys.recovery_key",
+      "server": null,
+      "clause": "Recovery key text with a bad checksum or length"
+    },
+    {
+      "name": "U is not a symbol",
+      "op": "recovery_parse",
+      "row": "Recovery key text with a bad checksum or length",
+      "input": {
+        "text": "UGJQ-CX5R-1DHZ-D03F-8ZBM-T3VW-G170-9Z15-N7KJ-F7NA-5N84-9A2Q-4P34-985N"
+      },
+      "error": "keys.recovery_key",
+      "server": null,
+      "clause": "Recovery key text with a bad checksum or length"
+    }
+  ],
+  "identity": [
+    {
+      "name": "IK seed and K_rec",
+      "op": "identity_seed",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "r_hex": "bc257674b80b63f6806f47d74d0f7c804e04fc25a9e7279eaa2d5044a8572586"
+      },
+      "output": {
+        "info_hex": "000000147461626c6570726f2f76312f6964656e74697479000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b8",
+        "seed_hex": "b0aa07f135f586d4f6b8d9799bcb72c1d8476600b87bb87ea61f4d66a82a93cc",
+        "ik_hex": "af5276df90baf56e92aeb19ed94e78805e131435df6f952d82332c15a5928841",
+        "k_rec_info_hex": "000000197461626c6570726f2f76312f7265636f766572792d77726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b8",
+        "k_rec_hex": "c9c08f1242565689fc2742bccafecc3fa136d99159051dd48e9f261adc459fdd"
+      }
+    }
+  ],
+  "blob": [
+    {
+      "name": "the recovery blob",
+      "op": "recovery_blob",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "av": 3,
+        "r_hex": "bc257674b80b63f6806f47d74d0f7c804e04fc25a9e7279eaa2d5044a8572586",
+        "ask_seed_hex": "9bfd4883e67690062b23577ebc7405a18bcc47435c04234959a018d8ece065b8",
+        "aek_secret_hex": "d3fd581b39900487c0cb25a1f54dda8b876ab9f7e3803c0f1a63162bc8a57e52",
+        "nonce_hex": "76caee351f1a932c541eafd9"
+      },
+      "output": {
+        "aad_hex": "000000147461626c6570726f2f76312f7265636f76657279000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000003",
+        "plaintext_hex": "9bfd4883e67690062b23577ebc7405a18bcc47435c04234959a018d8ece065b8d3fd581b39900487c0cb25a1f54dda8b876ab9f7e3803c0f1a63162bc8a57e52",
+        "ct_hex": "eee6f99a76375d471e9d01d40f22955f0962edad3304bd33bd992f0a31ac7f5c3ab9b7e2f135ada875b73cfbb59d63b681b2a60d7e16da4b5ed5b70beef0f68bba2534845e634af7db5b865a4ab105a2",
+        "record": {
+          "kind": "key.recovery",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/3",
+          "fields": {
+            "suite": "tp1",
+            "nonce": "dsruNR8akyxUHq_Z",
+            "ct": "7ub5mnY3XUcenQHUDyKVXwli7a0zBL0zvZkvCjGsf1w6ubfi8TWtqHW3PPu1nWO2gbKmDX4W2kte1bcL7vD2i7olNIReY0r321uGWkqxBaI"
+          }
+        }
+      }
+    },
+    {
+      "name": "another origin",
+      "op": "recovery_blob_open",
+      "row": "A blob for another origin, account or `av`",
+      "input": {
+        "origin": "https://other.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "av": 3,
+        "r_hex": "bc257674b80b63f6806f47d74d0f7c804e04fc25a9e7279eaa2d5044a8572586",
+        "fields": {
+          "suite": "tp1",
+          "nonce": "dsruNR8akyxUHq_Z",
+          "ct": "7ub5mnY3XUcenQHUDyKVXwli7a0zBL0zvZkvCjGsf1w6ubfi8TWtqHW3PPu1nWO2gbKmDX4W2kte1bcL7vD2i7olNIReY0r321uGWkqxBaI"
+        }
+      },
+      "error": "keys.open",
+      "server": null,
+      "clause": "A blob for another origin, account or `av`"
+    },
+    {
+      "name": "another account",
+      "op": "recovery_blob_open",
+      "row": "A blob for another origin, account or `av`",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90",
+        "av": 3,
+        "r_hex": "bc257674b80b63f6806f47d74d0f7c804e04fc25a9e7279eaa2d5044a8572586",
+        "fields": {
+          "suite": "tp1",
+          "nonce": "dsruNR8akyxUHq_Z",
+          "ct": "7ub5mnY3XUcenQHUDyKVXwli7a0zBL0zvZkvCjGsf1w6ubfi8TWtqHW3PPu1nWO2gbKmDX4W2kte1bcL7vD2i7olNIReY0r321uGWkqxBaI"
+        }
+      },
+      "error": "keys.open",
+      "server": null,
+      "clause": "A blob for another origin, account or `av`"
+    },
+    {
+      "name": "another av",
+      "op": "recovery_blob_open",
+      "row": "A blob for another origin, account or `av`",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "av": 4,
+        "r_hex": "bc257674b80b63f6806f47d74d0f7c804e04fc25a9e7279eaa2d5044a8572586",
+        "fields": {
+          "suite": "tp1",
+          "nonce": "dsruNR8akyxUHq_Z",
+          "ct": "7ub5mnY3XUcenQHUDyKVXwli7a0zBL0zvZkvCjGsf1w6ubfi8TWtqHW3PPu1nWO2gbKmDX4W2kte1bcL7vD2i7olNIReY0r321uGWkqxBaI"
+        }
+      },
+      "error": "keys.open",
+      "server": null,
+      "clause": "A blob for another origin, account or `av`"
+    },
+    {
+      "name": "blob keys that do not give the certificate's public keys",
+      "op": "recovery_blob_open",
+      "row": "Account keys in a wrap or blob that do not match their certificate",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "av": 3,
+        "r_hex": "bc257674b80b63f6806f47d74d0f7c804e04fc25a9e7279eaa2d5044a8572586",
+        "fields": {
+          "suite": "tp1",
+          "nonce": "dsruNR8akyxUHq_Z",
+          "ct": "7ub5mnY3XUcenQHUDyKVXwli7a0zBL0zvZkvCjGsf1w6ubfi8TWtqHW3PPu1nWO2gbKmDX4W2kte1bcL7vD2i7olNIReY0r321uGWkqxBaI"
+        },
+        "certificate_ask_hex": "61f3495374f2d0618f56c60b4b1e5d06aae806c536dacb6d706cd7a49e4cd627",
+        "certificate_aek_hex": "83df86002ba38ca588970cd91e5a671202220680a962cd856b17fd7b64404438"
+      },
+      "error": "keys.mismatch",
+      "server": null,
+      "clause": "Account keys in a wrap or blob that do not match their certificate"
+    }
+  ]
+}

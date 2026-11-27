@@ -27,6 +27,7 @@ struct SQLOutsideReachNamesTests {
             "filesystem_functions": SQLStatementTiering.filesystemFunctions,
             "duckdb_functions": SQLStatementTiering.functionsReachingOutside[duckDB] ?? [],
             "duckdb_families": Set(SQLStatementTiering.functionFamiliesReachingOutside[duckDB] ?? []),
+            "duckdb_pragmas": SQLStatementTiering.duckDBPragmasReachingOutside,
             "clickhouse_functions": SQLStatementTiering.functionsReachingOutside[clickHouse] ?? [],
             "clickhouse_families": Set(SQLStatementTiering.functionFamiliesReachingOutside[clickHouse] ?? []),
         ]

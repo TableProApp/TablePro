@@ -108,6 +108,13 @@ struct InvisibleCharacterRemoverTests {
         #expect(clean("/* a /* b */\u{A0} */ SELECT\u{A0}1", grammar: grammar) == "/* a /* b */\u{A0} */ SELECT 1")
     }
 
+    // Measured on PostgreSQL 17.11: the NBSP left a syntax error, and the cleaned text returns `ab`.
+    @Test("A non-ASCII space between the parts of a PostgreSQL string is cleaned, so the parts join as they run")
+    func nonASCIISpaceBeforeAContinuedString() {
+        #expect(clean("SELECT E'a'\u{A0}\n'b'", grammar: TestGrammar.postgres) == "SELECT E'a' \n'b'")
+        #expect(clean("SELECT E'a'\n\u{3000}'b\u{A0}c'", grammar: TestGrammar.postgres) == "SELECT E'a'\n 'b\u{A0}c'")
+    }
+
     @Test("A bracketed identifier keeps its characters where brackets quote names")
     func bracketedIdentifier() {
         let grammar = TestGrammar.sqlite

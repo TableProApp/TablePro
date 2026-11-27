@@ -165,15 +165,15 @@ extension DatabaseType {
         switch rawValue {
         case "PostgreSQL", "Redshift", "CockroachDB":
             return String(localized: """
-                Preferred tries TLS first, falls back to plain. Matches psql and DataGrip defaults. \
-                Required by AWS RDS, Cloud SQL, Heroku, Supabase, Neon.
+                Preferred tries TLS first and connects without it when the server offers none. \
+                Use Required for AWS RDS, Cloud SQL, Heroku, Supabase and Neon.
                 """)
         case "KingbaseES", "StarRocks":
             return String(localized: "Preferred tries TLS first, falls back to plain.")
         case _ where pluginTypeId == "MySQL":
             return String(localized: """
-                Preferred performs a 2-pass connect: tries TLS first, falls back to plain only on \
-                SSL handshake errors. Required by Cloud SQL and Azure MySQL.
+                Preferred tries TLS first and connects without it when the TLS handshake fails. \
+                Use Required for Cloud SQL and Azure Database for MySQL, which refuse an unencrypted connection.
                 """)
         case "SQL Server":
             return String(localized: "Preferred requests TLS; the server decides. Required by SQL Server 2022 and Azure SQL Database.")

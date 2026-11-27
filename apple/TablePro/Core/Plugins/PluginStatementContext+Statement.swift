@@ -25,6 +25,14 @@ extension PluginStatementContext {
     ) -> PluginStatementContext {
         var context = caller
         context.readOnly = caller.readOnly || statement(query, databaseType: databaseType).readOnly
+        context.readFunctionCalls(in: query, databaseType: databaseType)
         return context
+    }
+
+    // At Read-Only a session holding a transaction runs a read in it, outside the read-only mode, when the read calls
+    // only built-in functions.
+    mutating func readFunctionCalls(in query: String, databaseType: DatabaseType) {
+        guard enforcesReadOnly else { return }
+        callsUnlistedFunction = ReadOnlyFunctionCalls.callsUnlistedFunction(query, databaseType: databaseType)
     }
 }

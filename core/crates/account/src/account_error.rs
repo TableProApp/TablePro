@@ -1,7 +1,11 @@
 use std::time::Duration;
 
+use tablepro_cloud_api::{ApiError, StepUpChallenge, http_text};
+
 use crate::entitlement::EntitlementError;
+use crate::license::LicenseError;
 use crate::profile::Device;
+use crate::server::ServerError;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AccountError {
@@ -15,6 +19,8 @@ pub enum AccountError {
     SignInCanceled,
     #[error("the sign-in was refused: {error}")]
     SignInRefused { error: String, description: Option<String> },
+    #[error("the sign-in answer did not name the server it was sent to")]
+    SignInIssuerMismatch,
     #[error("not signed in")]
     SignedOut,
     #[error("this device was removed from the account")]
@@ -23,17 +29,45 @@ pub enum AccountError {
     DeviceLimitReached { devices: Vec<Device> },
     #[error("the offline file is for another account than the one signed in")]
     OtherAccount,
+    // RFC 9470: the call needs a fresher or stronger sign-in, which `Account::step_up` makes.
+    #[error("the call needs a fresh step-up")]
+    StepUpRequired(StepUpChallenge),
+    // The browser stepped up a sign-in of another account than this one, so its tokens were revoked.
+    #[error("the step-up was made for another account than the one signed in")]
+    StepUpOtherAccount,
     #[error("the server refused the request ({status} {code}): {detail}")]
     Refused { status: u16, code: String, detail: String },
     #[error("the account service asked for fewer requests (retry after {retry_after:?})")]
     RateLimited { retry_after: Option<Duration> },
     #[error(transparent)]
     Entitlement(#[from] EntitlementError),
+    #[error(transparent)]
+    Server(#[from] ServerError),
+    #[error(transparent)]
+    License(#[from] LicenseError),
     #[error("cannot keep the account's state in {path}: {detail}")]
     Storage { path: String, detail: String },
     #[error("unexpected answer from the account service: {0}")]
     Protocol(String),
 }
+
+// Problem codes an app words on its own (PLAN, tablepro-cloud api.md). They stay `Refused`, so a match on the
+// variants keeps compiling; any other refused code is account.refused.
+const WORDED_REFUSALS: [(&str, &str); 13] = [
+    ("email_unverified", "account.email_unverified"),
+    ("pro_required", "account.pro_required"),
+    ("sharing_disabled", "account.sharing_disabled"),
+    ("team_sharing_disabled", "account.team_sharing_disabled"),
+    ("seat_required", "account.seat_required"),
+    ("not_found", "account.not_found"),
+    ("share_limit_reached", "account.share_limit_reached"),
+    ("share_revoked", "account.share_revoked"),
+    ("share_removed", "account.share_removed"),
+    ("validation_failed", "account.validation_failed"),
+    ("snapshot_too_large", "account.snapshot_too_large"),
+    ("share_password_required", "account.share_password_required"),
+    ("share_password_wrong", "account.share_password_wrong"),
+];
 
 impl AccountError {
     // A stable code an app outside Rust words the error from.
@@ -44,27 +78,90 @@ impl AccountError {
             Self::SignInTimedOut => "account.sign_in_timed_out",
             Self::SignInCanceled => "account.sign_in_canceled",
             Self::SignInRefused { .. } => "account.sign_in_refused",
+            Self::SignInIssuerMismatch => "account.sign_in_issuer_mismatch",
             Self::SignedOut => "account.signed_out",
             Self::DeviceRevoked => "account.device_revoked",
             Self::DeviceLimitReached { .. } => "account.device_limit_reached",
             Self::OtherAccount => "account.other_account",
-            Self::Refused { .. } => "account.refused",
+            Self::StepUpRequired(_) => "account.step_up_required",
+            Self::StepUpOtherAccount => "account.step_up_other_account",
+            Self::Refused { code, .. } => WORDED_REFUSALS
+                .iter()
+                .find(|(problem, _)| problem == code)
+                .map_or("account.refused", |(_, worded)| worded),
             Self::RateLimited { .. } => "account.rate_limited",
             Self::Entitlement(_) => "account.entitlement",
+            Self::Server(error) => error.code(),
+            Self::License(error) => error.code(),
             Self::Storage { .. } => "account.storage",
             Self::Protocol(_) => "account.protocol",
         }
     }
 
-    // reqwest keeps the cause, such as a refused connection, a level down.
-    pub(crate) fn unreachable(error: &dyn std::error::Error) -> Self {
-        let mut detail = error.to_string();
-        let mut source = error.source();
-        while let Some(cause) = source {
-            detail.push_str(": ");
-            detail.push_str(&cause.to_string());
-            source = cause.source();
+    pub(crate) fn unreachable(error: reqwest::Error) -> Self {
+        Self::Unreachable(http_text(error))
+    }
+}
+
+impl From<ApiError> for AccountError {
+    fn from(error: ApiError) -> Self {
+        match error {
+            ApiError::Unreachable(detail) => Self::Unreachable(detail),
+            ApiError::DeviceRevoked => Self::DeviceRevoked,
+            ApiError::DeviceLimitReached { devices } => Self::DeviceLimitReached {
+                devices: devices.into_iter().map(Into::into).collect(),
+            },
+            ApiError::Refused { status, code, detail } => Self::Refused { status, code, detail },
+            ApiError::StepUpRequired(challenge) => Self::StepUpRequired(challenge),
+            // The account signs no DPoP proof, so it has no retry to make.
+            ApiError::UseDpopNonce { .. } => Self::Refused {
+                status: 401,
+                code: "use_dpop_nonce".to_owned(),
+                detail: "the server wants a DPoP proof with its nonce".to_owned(),
+            },
+            // Only a share's snapshot gets that large.
+            ApiError::TooLarge => Self::Refused {
+                status: 413,
+                code: "snapshot_too_large".to_owned(),
+                detail: "the request is larger than the server takes".to_owned(),
+            },
+            ApiError::RateLimited { retry_after } => Self::RateLimited { retry_after },
+            ApiError::Protocol(detail) => Self::Protocol(detail),
         }
-        Self::Unreachable(detail)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn refused(code: &str) -> AccountError {
+        AccountError::Refused {
+            status: 403,
+            code: code.to_owned(),
+            detail: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_problem_an_app_words_has_its_own_code_and_any_other_is_refused() {
+        assert_eq!(refused("pro_required").code(), "account.pro_required");
+        assert_eq!(refused("share_limit_reached").code(), "account.share_limit_reached");
+        assert_eq!(refused("share_password_wrong").code(), "account.share_password_wrong");
+        assert_eq!(refused("account_locked").code(), "account.refused");
+    }
+
+    #[test]
+    fn every_worded_problem_has_a_code_of_its_own() {
+        let mut codes: Vec<&str> = WORDED_REFUSALS.iter().map(|(_, code)| *code).collect();
+        codes.sort_unstable();
+        codes.dedup();
+
+        assert_eq!(codes.len(), WORDED_REFUSALS.len());
+        assert!(
+            WORDED_REFUSALS
+                .iter()
+                .all(|(problem, code)| code.strip_prefix("account.") == Some(*problem))
+        );
     }
 }

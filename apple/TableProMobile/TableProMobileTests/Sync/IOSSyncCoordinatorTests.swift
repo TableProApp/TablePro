@@ -129,6 +129,8 @@ private actor FakeSyncTransport: IOSSyncTransport {
         return accountId
     }
 
+    func saveSubscription() async throws {}
+
     func ensureZoneExists() async throws {
         zoneSaves += 1
     }
@@ -211,7 +213,8 @@ struct IOSSyncCoordinatorTests {
             makeTransport: { transport },
             isEnabled: { box.syncEnabled },
             notificationCenter: notificationCenter,
-            networkMonitor: nil
+            networkMonitor: nil,
+            pushRegistrar: .inert
         )
         coordinator.getCurrentState = { (box.connections, box.groups, box.tags) }
         coordinator.onConnectionsChanged = { box.connections = $0; return box.saves }
@@ -244,6 +247,22 @@ struct IOSSyncCoordinatorTests {
         #expect(box.connections.contains { $0.id == remote.id })
         let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection)
         #expect(pushed.first { $0.id == local.id }?.name == "New")
+    }
+
+    @Test("Sync turned off during the download, as a managed configuration does, uploads nothing")
+    func turnedOffDuringPullUploadsNothing() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.connections = [local]
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+        box.duringPull = { box.syncEnabled = false }
+
+        await coordinator.sync()
+
+        #expect(await transport.pushedRecords.isEmpty)
+        #expect(coordinator.status == .disabled(.userDisabled))
     }
 
     @Test("A copy stored before this build read it takes the profile link from the cached record")

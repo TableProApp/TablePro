@@ -1,16 +1,14 @@
-//
-//  SettingsView.swift
-//  TablePro
-//
+import Foundation
 
-import SwiftUI
-
-enum SettingsPane: String, CaseIterable {
-    case general, appearance, editor, data, keyboard, profiles, notifications, ai, mcp, plugins, sync, account
+// The rawValue is the stored last-used pane, so it never follows a title.
+enum SettingsPane: String, CaseIterable, Sendable {
+    case general, sidebar, connections, appearance, editor, data, keyboard, profiles, notifications, ai, mcp, plugins, sync, account
 
     var title: String {
         switch self {
         case .general: String(localized: "General")
+        case .sidebar: String(localized: "Sidebar & Tabs")
+        case .connections: String(localized: "Connections")
         case .appearance: String(localized: "Appearance")
         case .editor: String(localized: "Editor")
         case .data: String(localized: "Data")
@@ -19,11 +17,8 @@ enum SettingsPane: String, CaseIterable {
         case .notifications: String(localized: "Notifications")
         case .ai: String(localized: "AI")
         case .mcp: "MCP"
-        // The rawValue and the URL id stay "plugins": they are the stored pane and a published link.
         case .plugins: String(localized: "Extensions")
-        case .sync: String(localized: "Sync")
-        /// The stored rawValue stays "account": it is the tab item identifier and the pane the
-        /// window restores, so renaming it would silently reset everyone's last-used pane.
+        case .sync: String(localized: "iCloud Sync")
         case .account: String(localized: "Account")
         }
     }
@@ -31,16 +26,18 @@ enum SettingsPane: String, CaseIterable {
     var symbol: String {
         switch self {
         case .general: "gearshape"
-        case .appearance: "paintbrush"
-        case .editor: "doc.text"
+        case .sidebar: "sidebar.left"
+        case .connections: "cylinder.split.1x2"
+        case .appearance: "circle.lefthalf.filled"
+        case .editor: "square.and.pencil"
         case .data: "tablecells"
         case .keyboard: "keyboard"
         case .profiles: "person.badge.key"
         case .notifications: "bell"
         case .ai: "sparkles"
-        case .mcp: "network"
+        case .mcp: "point.3.connected.trianglepath.dotted"
         case .plugins: "puzzlepiece.extension"
-        case .sync: "arrow.triangle.2.circlepath"
+        case .sync: "icloud"
         case .account: "person.crop.circle"
         }
     }

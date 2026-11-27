@@ -20,16 +20,70 @@ extension PostgreSQLPluginDriver {
 
     var providesBulkIndexFetch: Bool { true }
 
+    // Each is the per-table read with its table predicate dropped, decoded by the same row reader.
+    var exportBulkReads: PluginExportBulkReads {
+        exportCatalog.schemaDDLReads.union([.columns, .foreignKeys, .indexes])
+    }
+
+    func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] {
+        try await exportCatalog.fetchAllIndexDDL(schema: schema)
+    }
+
+    func fetchAllTableDDL(schema: String?) async throws -> [String: String] {
+        try await exportCatalog.fetchAllTableDDL(schema: schema)
+    }
+
+    func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] {
+        try await exportCatalog.fetchAllCommentDDL(schema: schema)
+    }
+
+    func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] {
+        try await exportCatalog.fetchAllDependentSequences(schema: schema)
+    }
+
+    func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]] {
+        try await exportCatalog.fetchAllDependentTypes(schema: schema)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await exportCatalog.fetchAllColumnsForExport(schema: schema)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await exportCatalog.fetchAllForeignKeysForExport(schema: schema)
+    }
+
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
+        try await schemaIndexes(schema: schema, keepsSpellingsApart: true)
+    }
+
+    func fetchAllIndexesForExport(schema: String?) async throws -> [String: [PluginIndexInfo]] {
+        try await schemaIndexes(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func schemaIndexes(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginIndexInfo]] {
         let resolvedSchema = schema ?? core.currentSchema
         let query = PostgreSQLIndexQueries.indexList(
             schema: resolvedSchema, table: nil, capabilities: catalogCapabilities
         )
         let result = try await catalogRead(query, namesRelativeTo: resolvedSchema)
-        let ddl = try await fetchIndexSpellings(schema: resolvedSchema, table: nil)
+        let spellings = try await catalogRead(PostgreSQLIndexQueries.indexDDLQuery(schema: resolvedSchema, table: nil))
+        return try Self.indexesByTable(
+            rows: result.rows, spellingRows: spellings.rows, keepsSpellingsApart: keepsSpellingsApart
+        )
+    }
 
+    static func indexesByTable(
+        rows: [[PluginCellValue]],
+        spellingRows: [[PluginCellValue]],
+        keepsSpellingsApart: Bool
+    ) throws -> [String: [PluginIndexInfo]] {
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings((rows + spellingRows).compactMap { $0.first?.asText })
+        }
+        let ddl = PostgreSQLIndexQueries.indexDDL(rows: spellingRows)
         var indexes: [String: [PluginIndexInfo]] = [:]
-        for row in result.rows {
+        for row in rows {
             guard let decoded = PostgreSQLIndexRow.index(from: row, ddl: ddl) else { continue }
             indexes[decoded.table, default: []].append(decoded.index)
         }
@@ -41,6 +95,7 @@ extension PostgreSQLPluginDriver {
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
         let query = PostgreSQLSchemaQueries.allTableMetadata(schema: schema ?? core.currentSchema)
         let result = try await catalogRead(query)
+        try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
 
         var metadata: [String: PluginTableMetadata] = [:]
         for row in result.rows {

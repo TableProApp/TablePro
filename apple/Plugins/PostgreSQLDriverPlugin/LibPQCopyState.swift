@@ -24,11 +24,16 @@ nonisolated enum LibPQCopyState {
         }
     }
 
-    static func finishPendingResults(_ conn: OpaquePointer, cancellingOutput: Bool) -> LibPQDrainOutcome {
+    static func finishPendingResults(
+        _ conn: OpaquePointer,
+        cancellingOutput: Bool,
+        inspecting inspect: (OpaquePointer) -> Void = { _ in }
+    ) -> LibPQDrainOutcome {
         LibPQPendingResultDrain.drain(
             nextResult: {
                 guard let result = PQgetResult(conn) else { return nil }
                 defer { PQclear(result) }
+                inspect(result)
                 return copy(of: result).map(LibPQPendingResult.copy) ?? .completed
             },
             endCopy: { end($0, conn: conn, cancellingOutput: cancellingOutput) }

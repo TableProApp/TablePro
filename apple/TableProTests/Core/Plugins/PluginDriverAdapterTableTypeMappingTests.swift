@@ -53,7 +53,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
             PluginTableInfo(name: "PREFIX", type: "prefix")
         ]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.count == 3)
         #expect(tables.allSatisfy { $0.type == .table })
     }
@@ -63,7 +63,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "user_summary", type: "VIEW")]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.first?.type == .view)
     }
 
@@ -72,7 +72,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "daily_sales", type: "MATERIALIZED VIEW")]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.first?.type == .materializedView)
     }
 
@@ -81,7 +81,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "daily_sales", type: "materialized_view")]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.first?.type == .materializedView)
     }
 
@@ -90,7 +90,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "remote_users", type: "FOREIGN TABLE")]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.first?.type == .foreignTable)
     }
 
@@ -99,7 +99,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "remote_users", type: "foreign_table")]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.first?.type == .foreignTable)
     }
 
@@ -112,7 +112,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
             PluginTableInfo(name: "sys_views", type: "system view")
         ]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.count == 3)
         #expect(tables.allSatisfy { $0.type == .systemTable })
     }
@@ -126,7 +126,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
             PluginTableInfo(name: "events", type: "external_table")
         ]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.count == 2)
         #expect(tables.allSatisfy { $0.type == .externalTable })
         #expect(tables.allSatisfy { !$0.type.allowsRowEditing })
@@ -148,7 +148,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
             )
         ]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
 
         #expect(tables.map(\.type) == [.sequence, .table, .partitionedTable])
         #expect(tables.map(\.isSystemVersioned) == [false, true, true])
@@ -160,7 +160,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "thing", type: "GIBBERISH")]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.first?.type == .table)
     }
 
@@ -174,7 +174,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
             PluginTableInfo(name: "f1", type: "Foreign Table")
         ]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables[0].type == .table)
         #expect(tables[1].type == .view)
         #expect(tables[2].type == .materializedView)
@@ -200,7 +200,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
             PluginTableInfo(name: "logs", type: "Partitioned Table")
         ]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.count == 3)
         #expect(tables.allSatisfy { $0.type == .partitionedTable })
     }
@@ -213,7 +213,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
             PluginTableInfo(name: "users", type: "BASE TABLE")
         ]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables[0].type == .partitionedTable)
         #expect(tables[1].type == .table)
     }
@@ -245,7 +245,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
             PluginTableInfo(name: "orders", type: "TABLE", schema: "public")
         ]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         let bySchema = Dictionary(grouping: tables, by: { $0.schema ?? "" })
         #expect(bySchema["analytics"]?.first?.name == "users")
         #expect(bySchema["public"]?.first?.name == "orders")
@@ -260,7 +260,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables.first?.schema == "audit")
     }
 
-    @Test("fetchTables() stamps the schema the rows were actually read from")
+    @Test("fetchTables(schema: nil) stamps the schema the rows were actually read from")
     func defaultFetchStampsCurrentSchema() async throws {
         let driver = StubTableTypeDriver()
         driver.stubbedSupportsSchemas = true
@@ -268,18 +268,18 @@ struct PluginDriverAdapterTableTypeMappingTests {
         driver.stubbedTables = [PluginTableInfo(name: "def_encounter", type: "TABLE")]
         let adapter = makeAdapter(driver: driver)
 
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
 
         #expect(driver.requestedTableSchema == .some("custom"))
         #expect(tables.first?.schema == "custom")
     }
 
-    @Test("fetchTables() stays schema-less for an engine without schemas")
+    @Test("fetchTables(schema: nil) stays schema-less for an engine without schemas")
     func defaultFetchStaysSchemaLess() async throws {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "users", type: "TABLE")]
         let adapter = makeAdapter(driver: driver)
-        let tables = try await adapter.fetchTables()
+        let tables = try await adapter.fetchTables(schema: nil)
         #expect(tables.first?.schema == nil)
     }
 }

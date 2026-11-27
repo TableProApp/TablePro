@@ -51,6 +51,6 @@ internal extension PostgreSQLPluginDriver {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name)) ON \(qualifiedTable(table, schema: schema))"
+        exportCatalog.generateDropTriggerSQL(name: name, table: table, schema: schema)
     }
 }

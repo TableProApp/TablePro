@@ -288,9 +288,21 @@ struct ClaudeAgentRegistrationTests {
         )
         #expect(AIProviderType.claudeAgent.displayName == "Claude Agent")
         #expect(!descriptor.allowsEndpointConfiguration)
-        #expect(descriptor.curatedModels.map(\.id) == ["opus", "sonnet", "haiku"])
+        #expect(descriptor.fetchesModelList)
 
         let config = AIProviderConfig(type: .claudeAgent, model: "sonnet")
         #expect(descriptor.makeProvider(config, nil) is ClaudeAgentProvider)
+    }
+
+    // The aliases follow each line's newest model; `default` is the account's own and sends no --model.
+    @Test("Claude Agent lists the CLI's aliases with the account default first")
+    func claudeAgentModels() async throws {
+        let models = try await ClaudeAgentProvider(model: "").fetchAvailableModels()
+        #expect(models.map(\.id) == ["default", "opus", "sonnet", "haiku"])
+        #expect(models.first?.isProviderDefault == true)
+        let arguments = ClaudeAgentProvider.inferenceArguments(
+            prompt: "hi", model: "default", systemPrompt: nil, mcpConfigPath: nil, allowedToolNames: nil
+        )
+        #expect(!arguments.contains("--model"))
     }
 }

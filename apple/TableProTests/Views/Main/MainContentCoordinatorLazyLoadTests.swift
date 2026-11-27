@@ -148,7 +148,7 @@ struct MainContentCoordinatorLazyLoadTests {
             return
         }
         tabManager.tabs[idx].execution.lastExecutedAt = Date()
-        tabManager.tabs[idx].pendingChanges.deletedRowIDs = [.existing(0)]
+        coordinator.changeManager(forTab: tabId).recordRowDeletion(rowID: .existing(0), originalRow: ["1"])
         coordinator.tabSessionRegistry.recordChange(TableFreshness.Change(extent: .rows, at: .now), for: tabId)
 
         coordinator.lazyLoadCurrentTabIfNeeded()
@@ -161,11 +161,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
         seedRows(coordinator, for: tabId, rowCount: 1)
-        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-            Issue.record("expected tab to exist")
-            return
-        }
-        tabManager.tabs[idx].pendingChanges.deletedRowIDs = [.existing(0)]
+        coordinator.changeManager(forTab: tabId).recordRowDeletion(rowID: .existing(0), originalRow: ["1"])
 
         coordinator.lazyLoadCurrentTabIfNeeded()
         #expect(coordinator.parkedTableLoad == nil)

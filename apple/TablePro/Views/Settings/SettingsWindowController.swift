@@ -1,191 +1,202 @@
-//
-//  SettingsWindowController.swift
-//  TablePro
-//
-
 import AppKit
-import os
-import SwiftUI
 
-// An AppKit window, so the app needs no SwiftUI Settings scene.
+// An AppKit window, so the app needs no SwiftUI Settings scene (which would rewrite NSApp.mainMenu).
 @MainActor
-internal final class SettingsWindowController: NSWindowController {
+internal final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    // A new name: the old one holds 768 and 800 wide frames and heights shrunk by contentLayoutRect.
+    internal static let frameAutosaveName = "settings-sidebar"
+    internal static let styleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+    private static let preferredContentHeight: CGFloat = 700
+    private static let screenMargin: CGFloat = 80
+
     private static var shared: SettingsWindowController?
 
-    internal static func present(pane: SettingsPane? = nil) {
-        let controller = shared ?? SettingsWindowController()
+    internal let split: SettingsSplitViewController
+
+    internal static func present(_ request: SettingsRequest) {
+        switch request {
+        case .open(let location):
+            present(location)
+        case .revealPlugin(let pluginId):
+            presentPlugin(revealing: pluginId)
+        }
+    }
+
+    // Cmd-, on a visible window only brings it forward; a location navigates unless a sheet is up.
+    internal static func present(_ location: SettingsLocation? = nil) {
+        let controller = sharedController(opening: location)
+        controller.prepareToShow(location)
+        controller.showAndActivate()
+    }
+
+    // A loaded plugin opens its page; anything else asks the Extensions pane to find it once its list loads.
+    internal static func presentPlugin(revealing pluginId: String?) {
+        let location = pluginId.map { SettingsLocation(route: .plugin(id: $0)) } ?? .root(.plugins)
+        let controller = sharedController(opening: location)
+        if controller.prepareToShow(location), pluginId == nil {
+            controller.split.model.requestPluginReveal(nil)
+        }
+        controller.showAndActivate()
+    }
+
+    private static func sharedController(opening location: SettingsLocation?) -> SettingsWindowController {
+        if let shared { return shared }
+        let controller = SettingsWindowController(
+            registryClient: .shared,
+            initial: .root(location?.pane ?? SettingsSplitViewController.persistedPane)
+        )
         shared = controller
-        controller.paneController?.select(pane)
-        controller.showWindow(nil)
-        controller.window?.makeKeyAndOrderFront(nil)
-        AppActivationPolicyController.shared.activate()
+        return controller
     }
 
-    private var paneController: SettingsPaneTabViewController? {
-        contentViewController as? SettingsPaneTabViewController
-    }
-
-    // A defaulted parameter would let `SettingsWindowController()` resolve to the inherited `init()`, which builds no window.
+    // A defaulted parameter alone would let `SettingsWindowController()` resolve to an inherited init that builds no window.
     internal convenience init() {
         self.init(registryClient: .shared)
     }
 
-    internal convenience init(registryClient: RegistryClient) {
-        let panes = SettingsPaneTabViewController(registryClient: registryClient)
+    internal init(registryClient: RegistryClient, initial: SettingsLocation? = nil) {
+        let split = SettingsSplitViewController(registryClient: registryClient, initial: initial)
+        self.split = split
 
-        // NSWindow(contentViewController:) binds the title to the panes controller's, so nothing writes window.title.
-        let window = NSWindow(contentViewController: panes)
+        // This init binds window.title to split.title, so the Window menu and VoiceOver read the page.
+        let window = NSWindow(contentViewController: split)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
+        window.styleMask = Self.styleMask
         window.keepsKeyViewLoopCurrent()
-        window.styleMask = [.titled, .closable, .resizable]
-        window.toolbarStyle = .preference
         window.isRestorable = false
-        window.contentMinSize = SettingsPaneTabViewController.paneSize
-        window.setContentSize(SettingsPaneTabViewController.paneSize)
-        window.applyAutosaveName(WindowIdentifier.settings)
-        // contentMinSize only limits a drag, so a frame saved before the window had a minimum is grown back here.
-        window.setContentSize(
-            NSSize(
-                width: max(window.contentLayoutRect.width, SettingsPaneTabViewController.paneSize.width),
-                height: max(window.contentLayoutRect.height, SettingsPaneTabViewController.paneSize.height)
-            )
+        window.tabbingMode = .disallowed
+        window.collectionBehavior.insert([.fullScreenNone, .fullScreenDisallowsTiling])
+        window.titleVisibility = .visible
+        window.toolbarStyle = .unified
+        window.toolbar = split.toolbarController.makeToolbar()
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
+        window.initialFirstResponder = split.sidebar.tableView
+        Self.applyFrame(to: window, autosaveName: SplitViewAutosaveName.current(Self.frameAutosaveName))
+
+        super.init(window: window)
+        window.delegate = self
+        split.syncChrome()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationWillTerminate(_:)),
+            name: NSApplication.willTerminateNotification,
+            object: nil
         )
-        self.init(window: window)
-    }
-}
-
-internal final class SettingsPaneTabViewController: NSTabViewController {
-    // Fits twelve items in a .preference toolbar; at 720 the last one hides behind an overflow chevron.
-    internal static let paneSize = NSSize(width: 800, height: 500)
-    internal static let paneOrder: [SettingsPane] = SettingsPane.allCases
-
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SettingsWindow")
-
-    private let registryClient: RegistryClient
-
-    internal init(registryClient: RegistryClient = .shared) {
-        self.registryClient = registryClient
-        super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     internal required init?(coder: NSCoder) {
-        fatalError("SettingsPaneTabViewController does not support NSCoder init")
+        fatalError("SettingsWindowController does not support NSCoder init")
     }
 
-    private var persistedPane: SettingsPane {
-        let stored = AppStorageEnvironment.shared.defaults.string(forKey: PreferenceKeys.selectedSettingsPane.name)
-        guard let stored, let pane = SettingsPane(rawValue: stored) else { return .general }
-        return pane
-    }
-
-    internal func select(_ pane: SettingsPane?) {
-        // Before macOS 14, reading view loads it, which is all loadViewIfNeeded() does.
-        if #available(macOS 14.0, *) {
-            loadViewIfNeeded()
-        } else {
-            _ = view
+    // Returns false when nothing navigated: an attached sheet, or no location for a window already on screen.
+    @discardableResult
+    internal func prepareToShow(_ location: SettingsLocation?) -> Bool {
+        guard let window, window.attachedSheet == nil else { return false }
+        if window.isVisible || window.isMiniaturized {
+            guard let location else { return false }
+            split.endEditing()
+            split.navigate(to: location, recordsHistory: true)
+            return true
         }
-        let wanted = pane ?? persistedPane
-        guard let index = Self.paneOrder.firstIndex(of: wanted) else {
-            Self.logger.error("Settings pane \(wanted.rawValue, privacy: .public) has no tab and cannot be shown")
-            return
+        split.navigate(to: location ?? .root(SettingsSplitViewController.persistedPane), recordsHistory: false)
+        split.windowWillOpen()
+        window.makeFirstResponder(split.sidebar.tableView)
+        return true
+    }
+
+    private func showAndActivate() {
+        if window?.isMiniaturized == true {
+            window?.deminiaturize(nil)
         }
-        selectedTabViewItemIndex = index
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        AppActivationPolicyController.shared.activate()
     }
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        tabStyle = .toolbar
-        // Adding the first item selects and persists .general, so the saved pane is read before any item exists.
-        let restored = persistedPane
-        for pane in Self.paneOrder {
-            addTabViewItem(makeTabViewItem(for: pane))
+    internal static func defaultContentSize(on screen: NSScreen?) -> NSSize {
+        let available = (screen?.visibleFrame.height ?? 800) - screenMargin
+        let height = max(SettingsSplitViewController.minimumContentSize.height, min(preferredContentHeight, available))
+        return NSSize(width: SettingsSplitViewController.contentWidth, height: height)
+    }
+
+    // Reads the content size from contentRect(forFrameRect:): contentLayoutRect leaves out the toolbar
+    // band, and writing it back shrank the window on every launch.
+    internal static func applyFrame(to window: NSWindow, autosaveName: NSWindow.FrameAutosaveName?) {
+        let width = SettingsSplitViewController.contentWidth
+        let minimumHeight = SettingsSplitViewController.minimumContentSize.height
+        let preferred = defaultContentSize(on: window.screen ?? NSScreen.main)
+        window.setContentSize(preferred)
+
+        // Restored before the size limits go on: AppKit clamps a restored frame to them, which hides an older width.
+        var restored = false
+        if let autosaveName {
+            window.setFrameAutosaveName(autosaveName)
+            restored = window.setFrameUsingName(autosaveName)
         }
-        select(restored)
+        let content = window.contentRect(forFrameRect: window.frame).size
+        window.contentMinSize = SettingsSplitViewController.minimumContentSize
+        window.contentMaxSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+        if !restored || abs(content.width - width) > 0.5 {
+            window.setContentSize(preferred)
+            window.center()
+        } else if content.height < minimumHeight {
+            window.setContentSize(NSSize(width: width, height: minimumHeight))
+        }
     }
 
-    override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
-        super.tabView(tabView, didSelect: tabViewItem)
-        guard let identifier = tabViewItem?.identifier as? String,
-              let pane = SettingsPane(rawValue: identifier) else { return }
-        AppStorageEnvironment.shared.defaults.set(pane.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
+    internal func windowShouldClose(_ sender: NSWindow) -> Bool {
+        split.endEditing()
+        return true
     }
 
-    private func makeTabViewItem(for pane: SettingsPane) -> NSTabViewItem {
-        let content = SettingsPaneContent(pane: pane, registryClient: registryClient)
-            .frame(
-                minWidth: Self.paneSize.width,
-                maxWidth: .infinity,
-                minHeight: Self.paneSize.height,
-                maxHeight: .infinity
-            )
-            .environment(\.appServices, .live)
-        let hosting = NSHostingController(rootView: content)
-        // The window owns the minimum size; the title still reaches it, as NSTabViewController mirrors the selected child's.
-        hosting.sizingOptions = []
-        hosting.title = pane.title
+    internal func windowWillClose(_ notification: Notification) {
+        split.endEditing()
+        split.windowDidClose()
+        // Next turn, after AppKit finishes closing; a window reopened in the meantime keeps its panes.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window?.isVisible != true, self.window?.isMiniaturized != true else { return }
+            self.split.releasePanes()
+        }
+    }
 
-        let item = NSTabViewItem(viewController: hosting)
-        item.label = pane.title
-        item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)
-        item.identifier = pane.rawValue
-        return item
+    internal func windowDidBecomeKey(_ notification: Notification) {
+        split.detail.windowDidBecomeKey()
+    }
+
+    @objc private func applicationWillTerminate(_ notification: Notification) {
+        split.endEditing()
+    }
+
+    @objc internal func navigateBack(_ sender: Any?) {
+        split.goBack()
+    }
+
+    @objc internal func navigateForward(_ sender: Any?) {
+        split.goForward()
+    }
+
+    @objc internal func performFind(_ sender: Any?) {
+        split.focusSearch()
+    }
+
+    @objc internal func focusSidebarFilter(_ sender: Any?) {
+        split.focusSidebarSearch()
     }
 }
 
-private struct SettingsPaneContent: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
-
-    private let pane: SettingsPane
-    private let registryClient: RegistryClient
-
-    fileprivate init(pane: SettingsPane, registryClient: RegistryClient) {
-        self.pane = pane
-        self.registryClient = registryClient
-    }
-
-    fileprivate var body: some View {
-        switch pane {
-        case .general:
-            GeneralSettingsView(
-                settings: $settingsManager.general,
-                tabSettings: $settingsManager.tabs,
-                updater: SoftwareUpdater.shared,
-                onResetAll: { settingsManager.resetToDefaults() }
-            )
-        case .appearance:
-            AppearanceSettingsView(settings: $settingsManager.appearance)
-        case .editor:
-            EditorSettingsView(
-                settings: $settingsManager.editor,
-                formatter: $settingsManager.formatter,
-                typography: $settingsManager.typography
-            )
-        case .data:
-            DataResultsSettingsView(
-                dataGrid: $settingsManager.dataGrid,
-                valueColors: $settingsManager.valueColors,
-                history: $settingsManager.history,
-                editor: $settingsManager.editor,
-                typography: $settingsManager.typography
-            )
-        case .keyboard:
-            KeyboardSettingsView(settings: $settingsManager.keyboard)
-        case .profiles:
-            ProfilesSettingsView()
-        case .notifications:
-            NotificationsSettingsView(settings: $settingsManager.notifications)
-        case .ai:
-            AISettingsView(settings: $settingsManager.ai)
-        case .mcp:
-            MCPSettingsView(settings: $settingsManager.mcp)
-        case .plugins:
-            InstalledPluginsView(registryClient: registryClient)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .sync:
-            SyncSettingsView()
-        case .account:
-            AccountSettingsView(model: AccountSettingsModel(services: .shared))
+extension SettingsWindowController: NSMenuItemValidation {
+    internal func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let isFree = window?.attachedSheet == nil
+        switch menuItem.action {
+        case #selector(navigateBack(_:)):
+            return isFree && split.model.canGoBack
+        case #selector(navigateForward(_:)):
+            return isFree && split.model.canGoForward
+        case #selector(performFind(_:)), #selector(focusSidebarFilter(_:)):
+            return isFree
+        default:
+            return true
         }
     }
 }

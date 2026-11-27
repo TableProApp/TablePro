@@ -18,6 +18,8 @@ mod imp {
         #[template_child]
         pub new_connection_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub project_button: TemplateChild<gtk::MenuButton>,
+        #[template_child]
         pub search_toggle: TemplateChild<gtk::ToggleButton>,
         #[template_child]
         pub search_bar: TemplateChild<gtk::SearchBar>,
@@ -59,6 +61,8 @@ mod imp {
                 &crate::i18n::gettext("Search Connections"),
                 Some(SEARCH_ACTION),
             );
+            // Named before the list is read, so the switcher never shows as an unlabelled button.
+            self.obj().show_project(None);
             self.search_bar.connect_entry(&*self.search_entry);
             self.search_toggle
                 .bind_property("active", &*self.search_bar, "search-mode-enabled")
@@ -117,6 +121,31 @@ impl PickerPage {
         page
     }
 
+    // The switcher at the header's start: the projects as one radio section, then what makes and manages them.
+    pub fn set_project_menu(&self, projects: &gio::Menu) {
+        self.imp()
+            .project_button
+            .set_menu_model(Some(&crate::ui::projects::switcher_menu(projects)));
+    }
+
+    // `None` is All Connections.
+    pub fn show_project(&self, name: Option<&str>) {
+        let button = self.imp().project_button.get();
+        let all = crate::ui::projects::all_connections();
+        let name = name.unwrap_or(all.as_str());
+        button.set_label(name);
+        // A menu button reads its label from a child, which a screen reader does not name it by.
+        button.update_property(&[
+            gtk::accessible::Property::Label(name),
+            gtk::accessible::Property::Description(&crate::i18n::gettext("Switch Project")),
+        ]);
+    }
+
+    #[cfg(test)]
+    pub fn project_button(&self) -> gtk::MenuButton {
+        self.imp().project_button.get()
+    }
+
     pub fn toast_overlay(&self) -> adw::ToastOverlay {
         self.imp().toast_overlay.get()
     }
@@ -131,6 +160,13 @@ impl PickerPage {
 
     pub fn search_entry(&self) -> gtk::SearchEntry {
         self.imp().search_entry.get()
+    }
+
+    // The text goes with the bar, so the list shows every connection again.
+    pub fn end_search(&self) {
+        let imp = self.imp();
+        imp.search_bar.set_search_mode(false);
+        imp.search_entry.set_text("");
     }
 
     #[cfg(test)]

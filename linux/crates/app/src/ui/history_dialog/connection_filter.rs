@@ -32,15 +32,26 @@ impl ConnectionFilterModel {
         &self.labels
     }
 
+    // The first choice stands for every connection listed: the library's, or one project's.
+    pub(crate) fn set_all_label(&self, project: Option<&str>) {
+        let label = match project {
+            Some(project) => crate::i18n::gettext_f("All in {project}", &[("project", project)]),
+            None => gettext("All Connections"),
+        };
+        if self.labels.string(0).is_none_or(|shown| shown != label.as_str()) {
+            self.labels.splice(0, 1, &[label.as_str()]);
+        }
+    }
+
     pub(crate) fn fill(&self, connections: &[HistoryConnection], saved: &[SavedConnection]) {
         let mut listed: Vec<(String, Uuid)> = connections
             .iter()
             .map(|connection| {
-                let name = saved
-                    .iter()
-                    .find(|saved| saved.id == connection.id)
-                    .map_or(&connection.name, |saved| &saved.name);
-                (name.clone(), connection.id)
+                let name = saved.iter().find(|saved| saved.id == connection.id).map_or_else(
+                    || connection.name.clone(),
+                    |saved| tablepro_storage::shown_name(&saved.name),
+                );
+                (name, connection.id)
             })
             .collect();
         listed.sort_by_cached_key(|(name, id)| (name.to_lowercase(), *id));
@@ -92,7 +103,7 @@ mod tests {
             database: "app".to_owned(),
             username: "postgres".to_owned(),
             tls: tablepro_core::TlsConfig::verify_full(),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
@@ -101,10 +112,14 @@ mod tests {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         }
     }
 

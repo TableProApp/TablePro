@@ -10,21 +10,17 @@ extension QueryTab {
         execution.lastExecutedAt != nil
     }
 
-    /// A query tab the user has invested work in, by typing into it, running it or opening a file
-    /// into it. A tab holding query work must not be silently reused in place. An empty file counts:
-    /// a table that took its tab over kept the file, and saving wrote the table's query into it.
+    // Never reused in place. An empty file counts: a table that took its tab over kept the file, and Save wrote its query there.
     var holdsQueryWork: Bool {
         guard tabType == .query else { return false }
-        return hasQueryText || hasExecutedQuery || content.sourceFileURL != nil
+        return hasQueryText || hasExecutedQuery || content.sourceFileURL != nil || isNamedByUser
     }
 
-    /// Whether closing this tab loses something worth bringing back. Only the text of a query
-    /// tab and the browse context of a table tab can be reconstructed; the utility tab types
-    /// carry no user-authored content.
+    // Only a query tab's text or name and a table tab's browse context can be rebuilt; utility tabs hold nothing the user wrote.
     var isReopenCandidate: Bool {
         switch tabType {
         case .query:
-            return hasQueryText
+            return hasQueryText || isNamedByUser
         case .table:
             return !(tableContext.tableName ?? "").isEmpty
         default:

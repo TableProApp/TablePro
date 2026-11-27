@@ -64,7 +64,7 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { lock.withLock { serverAgent } }
     var parameterStyle: ParameterStyle { .dollar }
 
-    var currentDatabase: String { lock.withLock { database } }
+    var currentDatabase: String? { lock.withLock { database.isEmpty ? nil : database } }
     var usesElementId: Bool { lock.withLock { boltVersion.hasElementIds } }
 
     func beginTransaction() async throws {}
@@ -115,7 +115,8 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return self.connection
         }
         if let replaced { await replaced.close() }
-        if currentDatabase.isEmpty, let home = try? await homeDatabase() {
+        // With none named, requests run in the user's home database, which `ALTER USER ... SET HOME DATABASE` moves.
+        if currentDatabase == nil, let home = try? await homeDatabase(), !home.isEmpty {
             lock.withLock { database = home }
         }
     }

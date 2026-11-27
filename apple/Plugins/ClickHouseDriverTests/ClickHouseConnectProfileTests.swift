@@ -22,10 +22,11 @@ struct ClickHouseConnectProfileTests {
         version: String,
         settings: [ClickHouseURLSetting],
         readonly: String = "0",
-        catalog: Set<ClickHouseCatalogFeature> = Set(ClickHouseCatalogFeature.allCases)
+        catalog: Set<ClickHouseCatalogFeature> = Set(ClickHouseCatalogFeature.allCases),
+        database: String = "default"
     ) -> ClickHouseStubReply {
-        if request.body == "SELECT version()" {
-            return tsv(["version()"], [[version]])
+        if request.body == ClickHouseServerProfile.openingQuery {
+            return tsv(["version()", "currentDatabase()"], [[version, database]])
         }
         if request.body.hasPrefix("SELECT * FROM system.settings") {
             return tsv(
@@ -151,6 +152,57 @@ struct ClickHouseConnectProfileTests {
         #expect(driver.serverProfile.hasTableComments)
         #expect(driver.serverProfile.hasFunctionOrigin)
         #expect(!driver.serverProfile.hasDataSkippingIndices)
+    }
+
+    @Test("With no database named, the connect reads the user's default and every request after it names that database")
+    func blankDatabaseNamesTheDefault() async throws {
+        let server = ClickHouseStubServer { request in
+            Self.answer(request, version: "25.8.33.6", settings: ClickHouseURLSetting.allCases, database: "analytics")
+        }
+        let driver = server.unconnectedDriver(database: "")
+        defer { driver.disconnect() }
+
+        try await driver.connect()
+        _ = try await driver.execute(query: "TRUNCATE TABLE orders")
+        _ = try await driver.executeBoundedQuery(query: "SELECT 43", rowCap: 10)
+
+        #expect(driver.currentDatabase == "analytics")
+        let truncate = try #require(server.requests.first { $0.body == "TRUNCATE TABLE orders" })
+        let bounded = try #require(server.requests.first { $0.body.hasPrefix("SELECT 43") })
+        #expect(truncate.item("database") == "analytics")
+        #expect(bounded.item("database") == "analytics")
+    }
+
+    // The default database was a fourth request of its own, after the version and both probes (#4544).
+    @Test("With no database named, the connect reads the default in its first request and sends three in all")
+    func blankDatabaseCostsNoExtraRequest() async throws {
+        let server = ClickHouseStubServer { request in
+            Self.answer(request, version: "25.8.33.6", settings: ClickHouseURLSetting.allCases, database: "analytics")
+        }
+        let driver = server.unconnectedDriver(database: "")
+        defer { driver.disconnect() }
+
+        try await driver.connect()
+
+        #expect(server.requests.count == 3)
+        #expect(server.requests.first?.body == ClickHouseServerProfile.openingQuery)
+        #expect(driver.currentDatabase == "analytics")
+    }
+
+    @Test("A default the server does not name leaves the connect open and no database reported")
+    func unreadDefaultIsNotReported() async throws {
+        let server = ClickHouseStubServer { request in
+            if request.body == ClickHouseServerProfile.openingQuery {
+                return Self.tsv(["version()"], [["25.8.33.6"]])
+            }
+            return Self.answer(request, version: "25.8.33.6", settings: ClickHouseURLSetting.allCases)
+        }
+        let driver = server.unconnectedDriver(database: "")
+        defer { driver.disconnect() }
+
+        try await driver.connect()
+
+        #expect(driver.currentDatabase == nil)
     }
 
     @Test("A server that refuses the version query fails the connect with its own answer")

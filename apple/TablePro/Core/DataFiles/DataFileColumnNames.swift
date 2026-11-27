@@ -47,6 +47,12 @@ struct DataFileColumnNames: Equatable {
         indexByID[id]
     }
 
+    // The name the same column has in `updated`, nil once it is gone. A name no column holds stays as it is.
+    func carrying(_ name: String, to updated: DataFileColumnNames) -> String? {
+        guard let id = id(forName: name) else { return name }
+        return updated.name(for: id)
+    }
+
     private static func baseName(_ raw: String, position: Int) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {

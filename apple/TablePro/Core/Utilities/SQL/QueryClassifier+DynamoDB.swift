@@ -34,6 +34,27 @@ extension QueryClassifier {
         return (carried + following).contains { isDangerousQuery($0, databaseType: .dynamodb) }
     }
 
+    // Nil for PartiQL. A request reads or changes items, or defines a table, its TTL, its backups or its tags. The
+    // PartiQL it carries and the text after its body are read by the SQL rule.
+    static func dynamoDBIsDataStatement(_ statement: String, grammar: SQLLexicalGrammar) -> Bool? {
+        guard let request = DynamoDBRequestStatement(statement, grammar: grammar) else { return nil }
+        guard let action = request.action else { return false }
+        switch action {
+        case .createTable, .updateTable, .deleteTable, .updateTimeToLive, .updateContinuousBackups, .tagResource,
+             .untagResource:
+            return false
+        case .executeStatement, .executeTransaction, .batchExecuteStatement:
+            guard let carried = request.partiQLStatements, carried.count == request.partiQLEntryCount,
+                  carried.allSatisfy({ isSQLDataStatement($0, databaseType: .dynamodb) == true })
+            else { return false }
+        case .browse, .scan, .query, .getItem, .batchGetItem, .transactGetItems, .describeTable, .listTables,
+             .describeTimeToLive, .describeContinuousBackups, .listTagsOfResource, .describeLimits, .putItem,
+             .updateItem, .deleteItem, .batchWriteItem, .transactWriteItems:
+            break
+        }
+        return request.hasOnlyReadWindowAfterBody || isSQLDataStatement(request.trailingText, databaseType: .dynamodb) == true
+    }
+
     private static func dynamoDBTier(of request: DynamoDBRequestStatement) -> QueryTier {
         guard let action = request.action else { return .destructive }
         guard let body = request.body, body.isObject else { return worstTier(of: action) }

@@ -52,7 +52,7 @@ struct ERDiagramPointerInputTests {
             nodes: [near, far],
             edges: [],
             nodeRects: [near.id: rect(centredOn: Self.nearCentre), far.id: rect(centredOn: Self.farCentre)],
-            nodeIndex: [near.tableName: near.id, far.tableName: far.id],
+            nodeIndex: [CatalogName(near.tableName): near.id, CatalogName(far.tableName): far.id],
             clusterColors: [:],
             selectedNodeIds: [],
             size: Self.canvasSize

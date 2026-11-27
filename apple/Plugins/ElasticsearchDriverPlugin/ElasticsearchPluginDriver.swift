@@ -21,6 +21,8 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
     static let maxResultWindow = 10_000
     static let deepPageBatchSize = 1_000
     static let pitKeepAlive = "1m"
+    // Half the keep-alive, so a renewal that waits on a slow node still lands before the point-in-time expires.
+    static let pitRenewalInterval: TimeInterval = 30
 
     var connection: ElasticsearchConnection? { lock.withLock { _connection } }
 

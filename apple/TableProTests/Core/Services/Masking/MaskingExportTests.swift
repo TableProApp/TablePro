@@ -48,6 +48,40 @@ private final class FixedRowsDataSource: PluginExportDataSource, @unchecked Send
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? { 2 }
 }
 
+private final class SchemaReadSource: PluginExportDataSource, @unchecked Sendable {
+    let databaseTypeId = "PostgreSQL"
+    var bulkReads: PluginExportBulkReads { [.indexDDL, .commentDDL, .dependentSequences, .dependentTypes] }
+
+    func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func execute(query: String) async throws -> PluginQueryResult {
+        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func fetchTableDDL(table: String, databaseName: String) async throws -> String { "" }
+    func quoteIdentifier(_ identifier: String) -> String { identifier }
+    func escapeStringLiteral(_ value: String) -> String { value }
+    func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? { nil }
+
+    func fetchAllIndexDDL(databaseName: String) async throws -> [String: [String]] {
+        ["customers": ["CREATE INDEX customers_email ON \(databaseName).customers (email)"]]
+    }
+
+    func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]] {
+        ["customers": ["COMMENT ON TABLE \(databaseName).customers IS 'People'"]]
+    }
+
+    func fetchAllDependentSequences(databaseName: String) async throws -> [String: [PluginSequenceInfo]] {
+        ["customers": [PluginSequenceInfo(name: "customers_id_seq", ddl: "CREATE SEQUENCE customers_id_seq;")]]
+    }
+
+    func fetchAllDependentTypes(databaseName: String) async throws -> [String: [PluginEnumTypeInfo]] {
+        ["customers": [PluginEnumTypeInfo(name: "mood", labels: ["happy", "sad"])]]
+    }
+}
+
 struct MaskingExportTests {
     private let policy = MaskingPolicy(rules: [MaskingRule(pattern: "*.email")])
 
@@ -57,6 +91,22 @@ struct MaskingExportTests {
             if case .rows(let chunk) = element { rows += chunk }
         }
         return rows
+    }
+
+    @Test("A masked dump takes the schema-wide catalog reads of the source it wraps, which hold no row values")
+    func schemaReadsReachTheWrappedSource() async throws {
+        let source = MaskingExportDataSource(base: SchemaReadSource(), policy: policy)
+
+        let indexDDL = try await source.fetchAllIndexDDL(databaseName: "shop")
+        let commentDDL = try await source.fetchAllCommentDDL(databaseName: "shop")
+        let sequences = try await source.fetchAllDependentSequences(databaseName: "shop")
+        let types = try await source.fetchAllDependentTypes(databaseName: "shop")
+
+        #expect(source.bulkReads == [.indexDDL, .commentDDL, .dependentSequences, .dependentTypes])
+        #expect(indexDDL == ["customers": ["CREATE INDEX customers_email ON shop.customers (email)"]])
+        #expect(commentDDL == ["customers": ["COMMENT ON TABLE shop.customers IS 'People'"]])
+        #expect(sequences["customers"]?.map { $0.name } == ["customers_id_seq"])
+        #expect(types["customers"]?.map { $0.labels } == [["happy", "sad"]])
     }
 
     @Test("File > Export streams a masked column masked, by table and by object")
@@ -145,7 +195,7 @@ struct MaskingExportTests {
             databaseType: .mysql,
             driver: nil,
             fillUnloaded: { rows in
-                Dictionary(uniqueKeysWithValues: rows.map { ($0.id, [1: PluginCellValue.text("john@example.com")]) })
+                Dictionary(uniqueKeysWithValues: rows.map { ($0.row.id, [1: PluginCellValue.text("john@example.com")]) })
             }
         )
 
@@ -173,7 +223,7 @@ struct MaskingExportTests {
             fillUnloaded: { rows in
                 let pull = pulls.withLock { $0 }
                 pullsAtEachFill.withLock { $0.append(pull) }
-                return Dictionary(uniqueKeysWithValues: rows.map { ($0.id, [1: PluginCellValue.text("x")]) })
+                return Dictionary(uniqueKeysWithValues: rows.map { ($0.row.id, [1: PluginCellValue.text("x")]) })
             }
         )
         let stream = source.streamExportRows(table: "customers", databaseName: "")

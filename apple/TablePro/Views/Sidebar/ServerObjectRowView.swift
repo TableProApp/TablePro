@@ -1,8 +1,3 @@
-//
-//  ServerObjectRowView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 enum ServerObjectRowLogic {
@@ -27,28 +22,37 @@ enum ServerObjectRowLogic {
 
 // Plain drawn values: `ServerObjectInfo` compares by id, so a refreshed version or state would read as unchanged.
 struct ServerObjectRowView: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let name: String
     let detail: String?
     let iconName: String
     let tooltip: String
     let accessibilityLabel: String
+    let showsIcon: Bool
 
-    init(name: String, detail: String?, iconName: String, tooltip: String, accessibilityLabel: String) {
+    init(
+        name: String,
+        detail: String?,
+        iconName: String,
+        tooltip: String,
+        accessibilityLabel: String,
+        showsIcon: Bool
+    ) {
         self.name = name
         self.detail = detail
         self.iconName = iconName
         self.tooltip = tooltip
         self.accessibilityLabel = accessibilityLabel
+        self.showsIcon = showsIcon
     }
 
-    init(object: ServerObjectInfo, kind: SidebarServerObjectKind) {
+    init(object: ServerObjectInfo, kind: SidebarServerObjectKind, showsIcon: Bool = true) {
         self.init(
             name: object.name,
             detail: object.detail,
             iconName: kind.iconName,
             tooltip: ServerObjectRowLogic.tooltip(for: object, kind: kind),
-            accessibilityLabel: ServerObjectRowLogic.accessibilityLabel(for: object, kind: kind)
+            accessibilityLabel: ServerObjectRowLogic.accessibilityLabel(for: object, kind: kind),
+            showsIcon: showsIcon
         )
     }
 
@@ -71,7 +75,7 @@ struct ServerObjectRowView: View {
                 .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
-        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .sidebarRowIcon(visible: showsIcon)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .help(tooltip)

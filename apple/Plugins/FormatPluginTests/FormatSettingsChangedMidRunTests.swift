@@ -75,6 +75,24 @@ private final class ForeignKeyRecordingSink: PluginImportDataSink, @unchecked Se
     func enableForeignKeyChecks() async throws { enabled += 1 }
 }
 
+// The JSON import reads the target table while it parses the document, after the run has started.
+private final class TableReadingSink: PluginImportDataSink, @unchecked Sendable {
+    let databaseTypeId = "SQLite"
+    var onTargetTableRead: () -> Void = {}
+    private(set) var rows: [[String: PluginCellValue]] = []
+
+    var targetTable: String? {
+        onTargetTableRead()
+        return "people"
+    }
+
+    func execute(statement: String) async throws {}
+    func insertRow(_ values: [String: PluginCellValue]) async throws { rows.append(values) }
+    func beginTransaction() async throws {}
+    func commitTransaction() async throws {}
+    func rollbackTransaction() async throws {}
+}
+
 private final class OneStatementSource: PluginImportSource, @unchecked Sendable {
     func statements() async throws -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
         AsyncThrowingStream { continuation in
@@ -159,7 +177,7 @@ struct FormatSettingsChangedMidRunTests {
             plugin.settings.convertNullToEmpty = false
         }
         let written = try await export(plugin, from: source, fileExtension: "xlsx")
-        let text = try #require(String(bytes: written, encoding: .isoLatin1))
+        let text = try XLSXArchiveContents(written).text
         #expect(!text.contains("<t>NULL</t>"))
     }
 
@@ -181,5 +199,31 @@ struct FormatSettingsChangedMidRunTests {
         )
         #expect(sink.disabled == 1)
         #expect(sink.enabled == 1)
+    }
+
+    @Test("A JSON import keeps skipping an element that is not an object after another window picks a stop mode")
+    func jsonImportKeepsItsSkipChoice() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
+        try Data(#"[{"name": "Ada"}, 5, {"name": "Grace"}]"#.utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let plugin = JSONImportPlugin()
+        let stored = plugin.settings
+        defer { plugin.settings = stored }
+        var options = JSONImportOptions()
+        options.errorHandling = .skipAndContinue
+        options.wrapInTransaction = true
+        options.deleteExistingRows = false
+        plugin.settings = options
+
+        let sink = TableReadingSink()
+        sink.onTargetTableRead = { plugin.settings.errorHandling = .stopAndRollback }
+        let result = try await plugin.performImport(
+            source: RoundTripImportFile(url),
+            sink: sink,
+            progress: PluginImportProgress(progress: Progress())
+        )
+        #expect(sink.rows.compactMap { $0["name"] } == [.text("Ada"), .text("Grace")])
+        #expect(result.skippedStatements == 1)
     }
 }

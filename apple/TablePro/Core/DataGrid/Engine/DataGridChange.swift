@@ -3,9 +3,13 @@ import Foundation
 enum DataGridChange: Equatable {
     case reload
     case columnsChanged
+    // The same columns with other keys, comments or enum labels.
+    case columnMetadataChanged
     case rowsInserted(IndexSet)
     case rowsRemoved(IndexSet)
     case rowsUpdated(IndexSet, columns: IndexSet?)
+    // Pending marks or tints moved with no value under them, on any number of rows.
+    case allRowsRepainted
 
     static let none = DataGridChange.rowsUpdated([], columns: [])
 
@@ -17,7 +21,7 @@ enum DataGridChange: Equatable {
         case .rowsInserted(let indexes), .rowsRemoved(let indexes):
             guard let first = indexes.first, first < rowCount else { return [] }
             return IndexSet(integersIn: first..<rowCount)
-        case .reload, .columnsChanged, .rowsUpdated:
+        case .reload, .columnsChanged, .columnMetadataChanged, .rowsUpdated, .allRowsRepainted:
             return []
         }
     }
@@ -34,6 +38,8 @@ enum DataGridChange: Equatable {
             return .reload
         case .columnsReplaced:
             return .columnsChanged
+        case .columnMetadataChanged:
+            return .columnMetadataChanged
         case .rowsInserted(let storage):
             guard !order.isFiltered else { return .reload }
             return .rowsInserted(storage)

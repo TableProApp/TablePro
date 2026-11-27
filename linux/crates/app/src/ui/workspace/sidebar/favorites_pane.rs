@@ -15,6 +15,7 @@ use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use tablepro_storage::saved_queries::{SavedQueriesSnapshot, SavedQuery, SavedQueryFolder};
+use uuid::Uuid;
 
 use crate::i18n::gettext;
 use index::{Index, Key, Node};
@@ -26,6 +27,7 @@ const KEYS: &str = "favorite-keys";
 const RENAME: &str = "rename";
 const DELETE: &str = "delete";
 const MOVE: &str = "move";
+const SHARE: &str = "share";
 const NEW_FOLDER: &str = "new-folder";
 
 #[derive(Debug, Clone)]
@@ -34,6 +36,7 @@ pub(crate) enum FavoriteAction {
     Rename(SavedQuery),
     Delete(SavedQuery),
     MoveTo(SavedQuery),
+    Share(SavedQuery),
     NewFolder(Option<SavedQueryFolder>),
     RenameFolder(SavedQueryFolder),
     DeleteFolder(SavedQueryFolder),
@@ -220,12 +223,12 @@ impl FavoritesPane {
             .set_visible_child_name(if items.is_empty() { EMPTY } else { LIST });
     }
 
-    pub(crate) fn folder_destinations(&self) -> Vec<(i64, String)> {
+    pub(crate) fn folder_destinations(&self) -> Vec<(Uuid, String)> {
         self.index.borrow().destinations()
     }
 
     #[cfg(test)]
-    pub(crate) fn ids(&self) -> Vec<i64> {
+    pub(crate) fn ids(&self) -> Vec<Uuid> {
         self.index.borrow().queries().iter().map(|query| query.id).collect()
     }
 
@@ -240,7 +243,7 @@ impl FavoritesPane {
     }
 
     #[cfg(test)]
-    pub(crate) fn folder_of_first_query(&self) -> Option<i64> {
+    pub(crate) fn folder_of_first_query(&self) -> Option<Uuid> {
         self.index.borrow().queries().first().and_then(|query| query.folder_id)
     }
 }
@@ -301,7 +304,7 @@ fn status_pages(list: &gtk::ListView, retry: Rc<dyn Fn()>) -> (gtk::Stack, adw::
     (stack, error, retry_button, stale)
 }
 
-fn model_of(index: &Index, parent: Option<i64>) -> gio::ListStore {
+fn model_of(index: &Index, parent: Option<Uuid>) -> gio::ListStore {
     let store = gio::ListStore::new::<glib::BoxedAnyObject>();
     for key in index.children(parent) {
         store.append(&glib::BoxedAnyObject::new(*key));
@@ -319,8 +322,8 @@ fn position_of(tree: &gtk::TreeListModel, key: Key) -> Option<u32> {
 
 #[derive(Default)]
 struct Expansion {
-    expanded: RefCell<HashSet<i64>>,
-    watched: RefCell<HashMap<i64, (gtk::TreeListRow, glib::SignalHandlerId)>>,
+    expanded: RefCell<HashSet<Uuid>>,
+    watched: RefCell<HashMap<Uuid, (gtk::TreeListRow, glib::SignalHandlerId)>>,
     updating: Cell<bool>,
 }
 

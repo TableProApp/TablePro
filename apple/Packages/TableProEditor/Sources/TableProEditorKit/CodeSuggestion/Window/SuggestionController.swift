@@ -7,7 +7,6 @@
 
 import AppKit
 import Carbon.HIToolbox
-import Combine
 import SwiftUI
 import TableProTextEngine
 
@@ -48,7 +47,9 @@ public final class SuggestionController: NSWindowController {
     /// Whether `willCloseNotification` already drove the teardown for the close in progress, so
     /// the explicit call behind it runs only when AppKit posted nothing.
     private var didCleanUpForThisClose = false
-    private var sizeObservers: Set<AnyCancellable> = []
+    // Lays out only the preview below the list, the one part whose height the items do not give.
+    let previewSizer = NSHostingView(rootView: AnyView(EmptyView()))
+    var previewHeights: [SuggestionPreviewSizeKey: CGFloat] = [:]
 
     // MARK: - Initialization
 
@@ -71,28 +72,10 @@ public final class SuggestionController: NSWindowController {
             object: window
         )
 
-        // Resize window when items change
-        model.$items
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateWindowSizeFromContent()
-            }
-            .store(in: &sizeObservers)
-
-        // Resize window only when preview visibility changes (not every arrow key)
-        model.$selectedIndex
-            .receive(on: DispatchQueue.main)
-            .map { [weak self] index -> Bool in
-                guard let self, index >= 0, index < self.model.items.count else { return false }
-                let item = self.model.items[index]
-                return item.documentation != nil || item.sourcePreview != nil
-                    || !(item.pathComponents?.isEmpty ?? true)
-            }
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                self?.updateWindowSizeFromContent()
-            }
-            .store(in: &sizeObservers)
+        // In the turn the items or the selection change, so a panel ordered front next is already its final size.
+        model.onContentChange = { [weak self] in
+            self?.updateWindowSizeFromContent()
+        }
 
         if window.isVisible {
             window.close()
@@ -112,6 +95,7 @@ public final class SuggestionController: NSWindowController {
         isManualTrigger: Bool = false,
         asPopover: Bool = false
     ) {
+        delegate.completionRequestDidBegin(textView: textView)
         model.showCompletions(
             textView: textView,
             delegate: delegate,
@@ -132,7 +116,7 @@ public final class SuggestionController: NSWindowController {
                 popover.show(relativeTo: textViewPosition, of: textView.textView, preferredEdge: .maxY)
                 self.popover = popover
             } else {
-                self.showWindow(attachedTo: parentWindow)
+                // Placed before it is ordered front, so its first frame on screen is where it stays.
                 let editorFrame = textView.view.window.map { window in
                     window.convertToScreen(textView.view.convert(textView.view.bounds, to: nil))
                 }
@@ -141,6 +125,7 @@ public final class SuggestionController: NSWindowController {
                     font: textView.font,
                     editorFrame: editorFrame
                 )
+                self.showWindow(attachedTo: parentWindow)
             }
         }
     }

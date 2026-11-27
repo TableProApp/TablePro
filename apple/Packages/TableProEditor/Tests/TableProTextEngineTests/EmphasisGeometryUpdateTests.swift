@@ -255,10 +255,8 @@ struct EmphasisGeometryUpdateTests {
         return scrollView
     }
 
-    /// A text view with no scroll view, holding text none of which has been laid out yet.
-    ///
-    /// `visibleRect` is infinite without a scroll view, so a text view built around its text lays all of it out on
-    /// the spot. The text has to arrive after the frame does for any of it to be left unlaid.
+    // A text view built around its text lays out its first band in init, so the text arrives after the frame to
+    // leave every line unlaid.
     private func makeTallTextView(string: String) -> TextView {
         let textView = TextView(string: "", wrapLines: false)
         textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 20_000)

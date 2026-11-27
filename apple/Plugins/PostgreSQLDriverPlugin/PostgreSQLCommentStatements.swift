@@ -8,7 +8,7 @@
 
 import Foundation
 
-public enum PostgreSQLCommentStatements {
+nonisolated public enum PostgreSQLCommentStatements {
     /// The relation's own comment first, then one row per commented column in `attnum` order, which
     /// is the order `pg_dump` writes them in.
     ///
@@ -17,21 +17,32 @@ public enum PostgreSQLCommentStatements {
     /// write. A row with no description is filtered out here rather than rendered as `IS NULL`, which
     /// would erase a comment instead of restoring one.
     public static func catalogQuery(name: String, schema: String) -> String {
-        let nameLiteral = PostgreSQLObjectQueries.quoteLiteral(name)
+        catalogStatement(name: name, schema: schema)
+    }
+
+    // The per-relation read with its relname predicate dropped and the relation's name projected last.
+    public static func schemaCatalogQuery(schema: String) -> String {
+        catalogStatement(name: nil, schema: schema)
+    }
+
+    private static func catalogStatement(name: String?, schema: String) -> String {
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        let namePredicate = name.map { "\n      AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
+        let relation = name == nil ? ",\n        c.relname AS relname" : ""
+        let projection = name == nil ? "relkind, attname, description, relname" : "relkind, attname, description"
+        let order = name == nil ? "relname, ordinal, attnum" : "ordinal, attnum"
         return """
-        SELECT relkind, attname, description
+        SELECT \(projection)
         FROM (
             SELECT
                 c.relkind::text AS relkind,
                 NULL::text AS attname,
                 pg_catalog.obj_description(c.oid, 'pg_class') AS description,
                 0 AS ordinal,
-                0 AS attnum
+                0 AS attnum\(relation)
             FROM pg_catalog.pg_class c
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = \(schemaLiteral)
-              AND c.relname = \(nameLiteral)
+            WHERE n.nspname = \(schemaLiteral)\(namePredicate)
               AND c.relkind IN ('r', 'p', 'f', 'v', 'm')
               AND pg_catalog.obj_description(c.oid, 'pg_class') IS NOT NULL
             UNION ALL
@@ -40,18 +51,17 @@ public enum PostgreSQLCommentStatements {
                 a.attname AS attname,
                 pg_catalog.col_description(c.oid, a.attnum) AS description,
                 1 AS ordinal,
-                a.attnum AS attnum
+                a.attnum AS attnum\(relation)
             FROM pg_catalog.pg_class c
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
-            WHERE n.nspname = \(schemaLiteral)
-              AND c.relname = \(nameLiteral)
+            WHERE n.nspname = \(schemaLiteral)\(namePredicate)
               AND c.relkind IN ('r', 'p', 'f', 'v', 'm')
               AND a.attnum > 0
               AND NOT a.attisdropped
               AND pg_catalog.col_description(c.oid, a.attnum) IS NOT NULL
         ) AS relation_comments
-        ORDER BY ordinal, attnum
+        ORDER BY \(order)
         """
     }
 

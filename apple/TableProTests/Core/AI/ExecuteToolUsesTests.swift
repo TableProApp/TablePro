@@ -52,7 +52,8 @@ struct ExecuteToolUsesTests {
         ChatToolContext(
             connectionId: nil,
             bridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
+            authPolicy: MCPAuthPolicy(),
+            chatMode: .agent
         )
     }
 

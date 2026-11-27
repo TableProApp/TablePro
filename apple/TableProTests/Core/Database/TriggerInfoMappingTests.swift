@@ -75,7 +75,7 @@ struct TriggerInfoMappingTests {
         let connection = DatabaseConnection(name: "Test", type: .postgresql)
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: driver)
 
-        let triggers = try await adapter.fetchTriggers(table: "t")
+        let triggers = try await adapter.fetchTriggers(table: "t", schema: nil)
         #expect(triggers.count == 1)
         let trigger = try #require(triggers.first)
         #expect(trigger.name == "trg_audit")
@@ -151,19 +151,19 @@ struct TriggerEditingBridgeTests {
     @Test("Adapter bridges the create-trigger template")
     func bridgesTemplate() {
         let adapter = makeAdapter { $0.templateToReturn = "CREATE TRIGGER t ..." }
-        #expect(adapter.createTriggerTemplate(table: "users") == "CREATE TRIGGER t ...")
+        #expect(adapter.createTriggerTemplate(table: "users", schema: nil) == "CREATE TRIGGER t ...")
     }
 
     @Test("Adapter bridges the drop-trigger SQL")
     func bridgesDrop() {
         let adapter = makeAdapter { $0.dropToReturn = "DROP TRIGGER t" }
-        #expect(adapter.generateDropTriggerSQL(name: "t", table: "users") == "DROP TRIGGER t")
+        #expect(adapter.generateDropTriggerSQL(name: "t", table: "users", schema: nil) == "DROP TRIGGER t")
     }
 
     @Test("Adapter bridges the editable definition")
     func bridgesDefinition() async throws {
         let adapter = makeAdapter { $0.definitionToReturn = "CREATE OR REPLACE TRIGGER t ..." }
-        let def = try await adapter.fetchTriggerDefinition(name: "t", table: "users")
+        let def = try await adapter.fetchTriggerDefinition(name: "t", table: "users", schema: nil)
         #expect(def == "CREATE OR REPLACE TRIGGER t ...")
     }
 
@@ -314,7 +314,7 @@ struct TriggerEditSafetyTests {
             name: "bump", timing: "AFTER", event: "INSERT", statement: Self.body, table: "orders",
             definition: Self.fullDefinition
         )
-        let source = try await TriggerEditSource.resolve(trigger, table: "orders", databaseType: .mysql, on: adapter)
+        let source = try await TriggerEditSource.resolve(trigger, table: "orders", schema: nil, databaseType: .mysql, on: adapter)
         #expect(source == Self.fullDefinition)
     }
 
@@ -323,7 +323,7 @@ struct TriggerEditSafetyTests {
         let (_, adapter) = makeStubAndAdapter()
         let trigger = TriggerInfo(name: "bump", timing: "AFTER", event: "INSERT", statement: Self.body, table: "orders")
         await #expect(throws: (any Error).self) {
-            _ = try await TriggerEditSource.resolve(trigger, table: "orders", databaseType: .mysql, on: adapter)
+            _ = try await TriggerEditSource.resolve(trigger, table: "orders", schema: nil, databaseType: .mysql, on: adapter)
         }
     }
 
@@ -331,7 +331,7 @@ struct TriggerEditSafetyTests {
     func fullStatementIsEditable() async throws {
         let (_, adapter) = makeStubAndAdapter()
         let trigger = TriggerInfo(name: "bump", timing: "AFTER", event: "INSERT", statement: Self.fullDefinition, table: "orders")
-        let source = try await TriggerEditSource.resolve(trigger, table: "orders", databaseType: .mysql, on: adapter)
+        let source = try await TriggerEditSource.resolve(trigger, table: "orders", schema: nil, databaseType: .mysql, on: adapter)
         #expect(source == Self.fullDefinition)
     }
 

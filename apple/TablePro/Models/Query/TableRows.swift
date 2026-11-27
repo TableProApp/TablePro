@@ -8,7 +8,8 @@ import TableProPluginKit
 
 struct TableRows: Sendable {
     var rows: ContiguousArray<Row>
-    private(set) var indexByID: [RowID: Int]
+    private var positions: RowPositions
+    private var sparse = SparseRowState()
     var columns: [String]
     var columnTypes: [ColumnType]
     var columnDefaults: [String: String?]
@@ -65,10 +66,14 @@ struct TableRows: Sendable {
         generatedColumns: Set<String> = [],
         rowMatchPolicy: RowMatchPolicy = .none,
         hasAuthoritativeSchema: Bool = false,
-        foreignKeysFetched: Bool = false
+        foreignKeysFetched: Bool = false,
+        absentColumns: [RowID: Set<Int>] = [:]
     ) {
         self.rows = rows
-        self.indexByID = Self.buildIndex(for: rows)
+        self.positions = RowPositions(of: rows)
+        for (id, columns) in absentColumns {
+            sparse.setAbsentColumns(columns, for: id)
+        }
         self.columns = columns
         self.columnTypes = columnTypes
         self.columnDefaults = columnDefaults
@@ -149,16 +154,77 @@ struct TableRows: Sendable {
 
     func isAbsent(row: Int, column: Int) -> Bool {
         guard row >= 0, row < rows.count else { return false }
-        return rows[row].isAbsent(column)
+        return isAbsent(rows[row].id, column: column)
     }
 
     func unloadedByteCount(row: Int, column: Int) -> Int? {
         guard row >= 0, row < rows.count else { return nil }
-        return rows[row].unloadedByteCount(column)
+        return unloadedByteCount(rows[row].id, column: column)
+    }
+
+    func isAbsent(_ id: RowID, column: Int) -> Bool {
+        sparse.absentColumns[id]?.contains(column) == true
+    }
+
+    func absentColumns(of id: RowID) -> Set<Int> {
+        sparse.absentColumns[id] ?? []
+    }
+
+    var absentColumnsByRow: [RowID: Set<Int>] {
+        sparse.absentColumns
+    }
+
+    func unloadedByteCount(_ id: RowID, column: Int) -> Int? {
+        sparse.unloadedColumns[id]?[column]
+    }
+
+    func unloadedColumns(of id: RowID) -> [Int: Int] {
+        sparse.unloadedColumns[id] ?? [:]
+    }
+
+    func unloadedHead(_ id: RowID, column: Int) -> String? {
+        sparse.unloadedHeads[id]?[column]
+    }
+
+    func unloadedHeads(of id: RowID) -> [Int: String] {
+        sparse.unloadedHeads[id] ?? [:]
+    }
+
+    func hasUnloadedValues(_ id: RowID) -> Bool {
+        sparse.unloadedColumns[id] != nil
     }
 
     var hasUnloadedValues: Bool {
-        rows.contains { $0.hasUnloadedValues }
+        !sparse.unloadedColumns.isEmpty
+    }
+
+    var rowIDsWithUnloadedValues: Set<RowID> {
+        Set(sparse.unloadedColumns.keys)
+    }
+
+    // The row with the values it still has to read from the server, or nil when it has none.
+    func unloadedRow(withID id: RowID) -> UnloadedRow? {
+        guard let columns = sparse.unloadedColumns[id], let row = row(withID: id) else { return nil }
+        return UnloadedRow(row: row, columns: columns)
+    }
+
+    func exportSnapshot(of id: RowID) -> DocumentExportSnapshot? {
+        sparse.exportSnapshots[id]
+    }
+
+    // The driver's document while the row still holds the values it came with.
+    func exportDocument(of row: Row) -> PluginExportDocument? {
+        sparse.exportSnapshots[row.id]?.document(matching: row.values, absentColumns: absentColumns(of: row.id))
+    }
+
+    func record(withID id: RowID) -> RowRecord? {
+        guard let row = row(withID: id) else { return nil }
+        return RowRecord(
+            row: row,
+            absentColumns: absentColumns(of: id),
+            unloadedColumns: unloadedColumns(of: id),
+            exportSnapshot: exportSnapshot(of: id)
+        )
     }
 
     /// Masks the held values of every column `incoming` adds. A column already masked keeps its mask, since the
@@ -176,16 +242,21 @@ struct TableRows: Sendable {
             for column in added.keys where column < rows[index].values.count {
                 rows[index].values[column] = addedMasks.value(rows[index].values[column], column: column)
             }
-            if var snapshot = rows[index].exportSnapshot {
-                let masked = Self.maskedFields(in: snapshot.document, columns: columns, masks: addedMasks, policy: exportPolicy, table: exportTable)
-                snapshot.document = ExportDocumentMasking.document(
-                    snapshot.document, columns: columns, masks: addedMasks, policy: exportPolicy,
-                    table: exportTable, excluding: snapshot.maskedFields, row: Array(snapshot.values)
-                )
-                snapshot.maskedFields.formUnion(masked)
-                snapshot.values = ContiguousArray(addedMasks.row(Array(snapshot.values)))
-                rows[index].exportSnapshot = snapshot
-            }
+        }
+        sparse.dropUnloadedHeads(inColumns: Set(added.keys))
+        let columns = columns
+        let policy = exportPolicy
+        let table = exportTable
+        sparse.mapExportSnapshots { original in
+            var snapshot = original
+            let masked = Self.maskedFields(in: snapshot.document, columns: columns, masks: addedMasks, policy: policy, table: table)
+            snapshot.document = ExportDocumentMasking.document(
+                snapshot.document, columns: columns, masks: addedMasks, policy: policy,
+                table: table, excluding: snapshot.maskedFields, row: Array(snapshot.values)
+            )
+            snapshot.maskedFields.formUnion(masked)
+            snapshot.values = ContiguousArray(addedMasks.row(Array(snapshot.values)))
+            return snapshot
         }
         masks = ColumnMasks(styles: masks.styles.merging(added) { current, _ in current })
         return .fullReplace
@@ -221,25 +292,28 @@ struct TableRows: Sendable {
     mutating func fillUnloaded(_ values: [RowID: [Int: PluginCellValue]]) -> Delta {
         var changed: Set<CellPosition> = []
         for (id, columns) in values {
-            guard let row = indexByID[id] else { continue }
-            for (column, value) in columns where rows[row].unloadedColumns[column] != nil {
+            guard let row = positions[id], var unloaded = sparse.unloadedColumns[id] else { continue }
+            for (column, value) in columns where unloaded[column] != nil {
                 guard column < rows[row].values.count else { continue }
                 rows[row].values[column] = masks.value(value, column: column)
-                rows[row].unloadedColumns.removeValue(forKey: column)
+                unloaded.removeValue(forKey: column)
                 changed.insert(CellPosition(row: row, column: column))
             }
+            sparse.setUnloadedColumns(unloaded, for: id)
         }
         return changed.isEmpty ? .none : .cellsChanged(changed)
     }
 
     func index(of id: RowID) -> Int? {
-        indexByID[id]
+        positions[id]
     }
 
     func row(withID id: RowID) -> Row? {
-        guard let index = indexByID[id] else { return nil }
+        guard let index = positions[id] else { return nil }
         return rows[index]
     }
+
+    var hashedPositionCount: Int { positions.hashedCount }
 
     func rowLocator(for id: RowID) -> String? {
         rowLocators[id]
@@ -280,14 +354,13 @@ struct TableRows: Sendable {
 
     private mutating func write(_ value: PluginCellValue, isAbsent: Bool, row: Int, column: Int) -> Bool {
         guard !masks.isMasked(column) else { return false }
-        let wasAbsent = rows[row].isAbsent(column)
-        let wasUnloaded = rows[row].unloadedColumns.removeValue(forKey: column) != nil
+        let id = rows[row].id
+        let wasAbsent = sparse.absentColumns[id]?.contains(column) == true
+        let wasUnloaded = sparse.removeUnloadedColumn(column, for: id)
         guard rows[row].values[column] != value || wasAbsent != isAbsent || wasUnloaded else { return false }
         rows[row].values[column] = value
-        if isAbsent {
-            rows[row].absentColumns.insert(column)
-        } else if wasAbsent {
-            rows[row].absentColumns.remove(column)
+        if isAbsent != wasAbsent {
+            sparse.setAbsent(isAbsent, column: column, for: id)
         }
         return true
     }
@@ -298,12 +371,12 @@ struct TableRows: Sendable {
         values: [PluginCellValue],
         absentColumns: Set<Int> = []
     ) -> Delta {
-        guard indexByID[id] == nil else { return .none }
+        guard positions[id] == nil else { return .none }
         let normalized = Self.normalize(values: values, toCount: columns.count)
-        let row = Row(id: id, values: normalized, absentColumns: Self.clamp(absentColumns, toCount: columns.count))
         let newIndex = rows.count
-        rows.append(row)
-        indexByID[row.id] = newIndex
+        rows.append(Row(id: id, values: normalized))
+        positions.append(id, at: newIndex)
+        sparse.setAbsentColumns(Self.clamp(absentColumns, toCount: columns.count), for: id)
         return .rowsInserted(IndexSet(integer: newIndex))
     }
 
@@ -314,13 +387,11 @@ struct TableRows: Sendable {
         values: [PluginCellValue],
         absentColumns: Set<Int> = []
     ) -> Delta {
-        guard index >= 0, index <= rows.count, indexByID[id] == nil else { return .none }
+        guard index >= 0, index <= rows.count, positions[id] == nil else { return .none }
         let normalized = Self.normalize(values: values, toCount: columns.count)
-        let row = Row(id: id, values: normalized, absentColumns: Self.clamp(absentColumns, toCount: columns.count))
-        rows.insert(row, at: index)
-        for offset in index..<rows.count {
-            indexByID[rows[offset].id] = offset
-        }
+        rows.insert(Row(id: id, values: normalized), at: index)
+        positions.reindex(from: index, in: rows)
+        sparse.setAbsentColumns(Self.clamp(absentColumns, toCount: columns.count), for: id)
         return .rowsInserted(IndexSet(integer: index))
     }
 
@@ -336,23 +407,25 @@ struct TableRows: Sendable {
         guard !pageRows.isEmpty else { return .none }
         let firstIndex = rows.count
         rows.reserveCapacity(rows.count + pageRows.count)
-        indexByID.reserveCapacity(indexByID.count + pageRows.count)
-        for (idx, values) in pageRows.enumerated() {
+        for (idx, read) in pageRows.enumerated() {
+            let unloaded = Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count)
+            let (values, heads) = Self.liftingHeads(read, unloaded: unloaded, masks: masks)
             let normalized = Self.normalize(values: masks.row(values), toCount: columns.count)
-            let row = Row(
-                id: .existing(offset + idx),
-                values: normalized,
-                absentColumns: Self.clamp(absentCells[idx] ?? [], toCount: columns.count),
-                unloadedColumns: Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count),
-                exportSnapshot: Self.exportSnapshot(
+            let id = RowID.existing(offset + idx)
+            sparse.setAbsentColumns(Self.clamp(absentCells[idx] ?? [], toCount: columns.count), for: id)
+            sparse.setUnloadedColumns(unloaded, for: id)
+            sparse.setUnloadedHeads(heads, for: id)
+            sparse.setExportSnapshot(
+                Self.exportSnapshot(
                     documents: exportDocuments, index: idx, count: pageRows.count,
                     columns: columns, values: normalized, rawValues: values, absent: absentCells[idx] ?? [], masks: masks,
                     policy: exportPolicy, table: exportTable
-                )
+                ),
+                for: id
             )
             let newIndex = firstIndex + idx
-            rows.append(row)
-            indexByID[row.id] = newIndex
+            rows.append(Row(id: id, values: normalized))
+            positions.append(id, at: newIndex)
         }
         rowLocators.merge(Self.locators(pageLocators, rowCount: pageRows.count, offset: offset)) { $1 }
         return .rowsInserted(IndexSet(integersIn: firstIndex...(rows.count - 1)))
@@ -363,7 +436,7 @@ struct TableRows: Sendable {
         guard !rowIDs.isEmpty else { return .none }
         var indices = IndexSet()
         for id in rowIDs {
-            if let i = indexByID[id] {
+            if let i = positions[id] {
                 indices.insert(i)
             }
         }
@@ -378,12 +451,26 @@ struct TableRows: Sendable {
 
     /// Puts the rows in a new order and rebuilds the id index with them.
     ///
-    /// The ids are the ones the rows already carry, so a reorder keeps every row's identity and
-    /// only `indexByID` has to move. Assigning `rows` on its own leaves that index pointing at the
-    /// old positions, which is what every lookup by `RowID` reads.
+    /// The ids are the ones the rows already carry, so a reorder keeps every row's identity, and the state kept by id
+    /// stays with its row. Assigning `rows` on its own leaves the positions pointing at the old order, which is what
+    /// every lookup by `RowID` reads.
     mutating func reorderRows(_ reordered: ContiguousArray<Row>) {
         rows = reordered
-        indexByID = Self.buildIndex(for: reordered)
+        positions = RowPositions(of: reordered)
+    }
+
+    // For a result whose rows the tab's buffer took over: the columns and their metadata stay readable.
+    mutating func releaseRows() {
+        rows = []
+        positions = RowPositions()
+        sparse = SparseRowState()
+        rowLocators = [:]
+    }
+
+    func sharesRows(with other: TableRows) -> Bool {
+        guard !rows.isEmpty else { return false }
+        let mine = rows.withUnsafeBufferPointer { $0.baseAddress }
+        return mine == other.rows.withUnsafeBufferPointer { $0.baseAddress }
     }
 
     @discardableResult
@@ -422,9 +509,10 @@ struct TableRows: Sendable {
         hasAuthoritativeSchema: Bool? = nil
     ) -> Delta {
         var didChange = false
+        var typesChanged = false
         if let columnTypes, columnTypes != self.columnTypes {
             self.columnTypes = columnTypes
-            didChange = true
+            typesChanged = true
         }
         if let columnDefaults, columnDefaults != self.columnDefaults {
             self.columnDefaults = columnDefaults
@@ -469,7 +557,8 @@ struct TableRows: Sendable {
             self.hasAuthoritativeSchema = hasAuthoritativeSchema
             didChange = true
         }
-        return didChange ? .columnsReplaced : .none
+        if typesChanged { return .columnsReplaced }
+        return didChange ? .columnMetadataChanged : .none
     }
 
     static func from(
@@ -574,7 +663,8 @@ struct TableRows: Sendable {
 
     private mutating func adopt(_ prepared: PreparedRows) {
         rows = prepared.rows
-        indexByID = prepared.indexByID
+        positions = prepared.positions
+        sparse = prepared.sparse
         rowLocators = prepared.rowLocators
     }
 
@@ -640,33 +730,39 @@ struct TableRows: Sendable {
         let columnCount = shape.columns.count
         var rows = ContiguousArray<Row>()
         rows.reserveCapacity(count)
-        var index = [RowID: Int]()
-        index.reserveCapacity(count)
+        var positions = RowPositions()
+        var sparse = SparseRowState()
         for (position, rowIndex) in zip(0..., queryRows.indices) {
             if stopsOnCancel, position.isMultiple(of: cancellationCheckInterval), Task.isCancelled {
-                return PreparedRows(shape: shape, rows: [], indexByID: [:], rowLocators: [:], isComplete: false)
+                return PreparedRows(
+                    shape: shape, rows: [], positions: RowPositions(), sparse: SparseRowState(), rowLocators: [:],
+                    isComplete: false
+                )
             }
-            let values = queryRows[rowIndex]
+            let unloaded = clamp(unloadedCells[position] ?? [:], toCount: columnCount)
+            let (values, heads) = liftingHeads(queryRows[rowIndex], unloaded: unloaded, masks: shape.masks)
             let normalized = normalize(values: shape.masks.row(values), toCount: columnCount)
             let absent = absentCells[position] ?? []
-            let row = Row(
-                id: .existing(offset + position),
-                values: normalized,
-                absentColumns: clamp(absent, toCount: columnCount),
-                unloadedColumns: clamp(unloadedCells[position] ?? [:], toCount: columnCount),
-                exportSnapshot: exportSnapshot(
+            let id = RowID.existing(offset + position)
+            sparse.setAbsentColumns(clamp(absent, toCount: columnCount), for: id)
+            sparse.setUnloadedColumns(unloaded, for: id)
+            sparse.setUnloadedHeads(heads, for: id)
+            sparse.setExportSnapshot(
+                exportSnapshot(
                     documents: exportDocuments, index: position, count: count,
                     columns: shape.columns, values: normalized, rawValues: values, absent: absent, masks: shape.masks,
                     policy: shape.exportPolicy, table: shape.exportTable
-                )
+                ),
+                for: id
             )
-            rows.append(row)
-            index[row.id] = position
+            rows.append(Row(id: id, values: normalized))
+            positions.append(id, at: position)
         }
         return PreparedRows(
             shape: shape,
             rows: rows,
-            indexByID: index,
+            positions: positions,
+            sparse: sparse,
             rowLocators: locators(rowLocators, rowCount: count, offset: offset),
             isComplete: true
         )
@@ -679,6 +775,15 @@ struct TableRows: Sendable {
         policy: MaskingPolicy, table: String?
     ) -> DocumentExportSnapshot? {
         guard let documents, documents.count == count else { return nil }
+        // Nothing can mask a field, so each document is kept as read instead of rebuilt field by field.
+        guard !masks.isEmpty || !policy.isEmpty else {
+            return DocumentExportSnapshot(
+                document: documents[index],
+                values: values,
+                absentColumns: clamp(absent, toCount: columns.count),
+                maskedFields: []
+            )
+        }
         return DocumentExportSnapshot(
             document: ExportDocumentMasking.document(
                 documents[index], columns: columns, masks: masks, policy: policy, table: table, row: rawValues
@@ -715,13 +820,11 @@ struct TableRows: Sendable {
         for index in indices.reversed() {
             let removedID = rows[index].id
             rows.remove(at: index)
-            indexByID.removeValue(forKey: removedID)
+            sparse.removeRow(removedID)
             rowLocators.removeValue(forKey: removedID)
         }
-        if let minRemoved = indices.min(), minRemoved < rows.count {
-            for offset in minRemoved..<rows.count {
-                indexByID[rows[offset].id] = offset
-            }
+        if let minRemoved = indices.min() {
+            positions.reindex(from: minRemoved, in: rows)
         }
         return .rowsRemoved(indices)
     }
@@ -751,13 +854,24 @@ struct TableRows: Sendable {
         return unloadedColumns.filter { $0.key >= 0 && $0.key < targetCount }
     }
 
-    private static func buildIndex(for rows: ContiguousArray<Row>) -> [RowID: Int] {
-        var index = [RowID: Int]()
-        index.reserveCapacity(rows.count)
-        for (i, row) in rows.enumerated() {
-            index[row.id] = i
+    // A cut text arrives with its first characters in the cell. The row holds NULL there, as for any value left on the
+    // server, so no reader takes the characters for the value; the grid shows them. A masked column shows only the size,
+    // since a mask over the first characters is not the mask of the value.
+    static func liftingHeads(
+        _ values: [PluginCellValue],
+        unloaded: [Int: Int],
+        masks: ColumnMasks
+    ) -> (values: [PluginCellValue], heads: [Int: String]) {
+        guard !unloaded.isEmpty else { return (values, [:]) }
+        var values = values
+        var heads: [Int: String] = [:]
+        for column in unloaded.keys where values.indices.contains(column) {
+            if case .text(let head) = values[column], !head.isEmpty, !masks.isMasked(column) {
+                heads[column] = head
+            }
+            values[column] = .null
         }
-        return index
+        return (values, heads)
     }
 }
 
@@ -782,7 +896,8 @@ extension TableRows {
     struct PreparedRows: Sendable {
         let shape: RowShape
         let rows: ContiguousArray<Row>
-        fileprivate let indexByID: [RowID: Int]
+        fileprivate let positions: RowPositions
+        fileprivate let sparse: SparseRowState
         fileprivate let rowLocators: [RowID: String]
         // False when a Stop ended the build early: the rows are not the result.
         let isComplete: Bool
@@ -790,5 +905,15 @@ extension TableRows {
         func fits(_ target: RowShape) -> Bool {
             isComplete && shape == target
         }
+    }
+}
+
+extension TableRows {
+    // A row with the state kept beside it, for telling whether it is still the record it was.
+    struct RowRecord: Equatable {
+        let row: Row
+        let absentColumns: Set<Int>
+        let unloadedColumns: [Int: Int]
+        let exportSnapshot: DocumentExportSnapshot?
     }
 }

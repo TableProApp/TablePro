@@ -85,7 +85,7 @@ public struct BrowseTableTool: MCPToolImplementation {
             offset: offset
         )
 
-        let scope = try await MCPScopeArguments.resolve(
+        let scope = try await MCPScopeArguments.resolveForAppStatements(
             arguments,
             connectionId: connectionId,
             services: services
@@ -348,7 +348,8 @@ public struct InsertRowsTool: MCPToolImplementation {
         properties: [
             "table": MCPToolSchema.string(String(localized: "Table that received the rows")),
             "rows_submitted": MCPToolSchema.integer(String(localized: "Rows sent")),
-            "rows_affected": MCPToolSchema.integer(String(localized: "Rows the engine reported inserting"))
+            "rows_affected": MCPToolSchema.integer(String(localized: "Rows the engine reported inserting")),
+            "status_message": MCPToolSchema.string(String(localized: "What happened to the open transaction, when it matters"))
         ],
         required: ["table", "rows_submitted", "rows_affected"]
     )
@@ -396,7 +397,7 @@ public struct InsertRowsTool: MCPToolImplementation {
         // Before anything connects: every statement this builds is an INSERT.
         try MCPStatementGate.classify(kind: .writeQuery, meta: meta, allowsDestructive: false, context: context)
 
-        let scope = try await MCPScopeArguments.resolve(
+        let scope = try await MCPScopeArguments.resolveForAppStatements(
             arguments,
             connectionId: connectionId,
             services: services

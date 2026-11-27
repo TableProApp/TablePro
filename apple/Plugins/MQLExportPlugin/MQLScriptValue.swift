@@ -10,7 +10,7 @@ import TableProPluginKit
 
 /// A literal value read out of shell text, which the export writes again by its own rules rather
 /// than copying the text it came from.
-indirect enum MQLScriptValue: Equatable {
+nonisolated indirect enum MQLScriptValue: Equatable {
     case string(String)
     case number(String)
     case boolean(Bool)
@@ -150,7 +150,7 @@ indirect enum MQLScriptValue: Equatable {
     }
 }
 
-struct MQLScriptMember: Equatable {
+nonisolated struct MQLScriptMember: Equatable {
     let key: String
     let value: MQLScriptValue
 }
@@ -159,7 +159,7 @@ struct MQLScriptMember: Equatable {
 ///
 /// Each read either returns what it matched and moves past it, or returns nil. A caller that needs
 /// to try one shape and then another works on a copy, which is cheap because the tokens are shared.
-struct MQLScriptReader {
+nonisolated struct MQLScriptReader {
     private let tokens: [MQLScriptToken]
     private(set) var index: Int
 

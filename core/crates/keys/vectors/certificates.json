@@ -1,0 +1,674 @@
+{
+  "area": "certificates",
+  "suite": "tp1",
+  "format": 1,
+  "about": "Account and device certificates, the replace endorsement, cancels, IK changes and version steps (ADR 0056, Signed objects and wraps, Pins). In `ed25519`, `cofactorless_equation_holds` says that [S]B = R + [k]A holds for the signature, so only the refusal the case names stops it. `aws_lc_rs_takes_it` says whether aws-lc-rs 1.18.1, the library tablepro-keys verifies with, takes it without the crate's checks before it. It is given only for the canonical points of small order: for a non-canonical encoding the answer differs by platform, and the Windows build takes the sign-bit encodings of x = 0.",
+  "account": [
+    {
+      "name": "account certificate of kind 0",
+      "op": "account_certificate",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "av": 1,
+        "kind": 0,
+        "ik_seed_hex": "e2cd9253257865dab2564c97acd058ed5fda64a3eb1d5b8930d8d42e9d8174cb",
+        "ask_seed_hex": "a6a69901b497ca64635168dab3049a7c293bb634421072c459d31528e1fc1d39",
+        "aek_secret_hex": "711ee9b2b8ecbaa555f2fa4b70ea8c36c9c7da752d040c041dc4571ad3c36f56"
+      },
+      "output": {
+        "message_hex": "000000137461626c6570726f2f76312f6163636f756e74000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b80000000100000020ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb0600000020c86307db003499a1f0a21e722bf23b3a834cd768e6afa3fa7f6c856825f29af500000020559ec05e6c122bf9cc47b4738e0042923cce3b5530b7da3e484bbf826a8a1f6500",
+        "sig_hex": "f6effee80ed619ba684a72aabaf6fba329f206f2d132bdb9683abc87c29433f7841f62717b2a23c0fd5dd1b70595fa8fd2365290bdd725bae9c2fd2f99a9ee01",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields": {
+            "suite": "tp1",
+            "kind": 0,
+            "ik": "zLk3KL_ybFDMx3sQbj-nsHV_htyt1yuCZr47wp7R-wY",
+            "ask": "yGMH2wA0maHwoh5yK_I7OoNM12jmr6P6f2yFaCXymvU",
+            "aek": "VZ7AXmwSK_nMR7RzjgBCkjzOO1Uwt9o-SEu_gmqKH2U",
+            "sig": "9u_-6A7WGbpoSnKquvb7oynyBvLRMr25aDq8h8KUM_eEH2JxeyojwP1d0bcFlfqP0jZSkL3XJbrpwv0vmanuAQ"
+          }
+        }
+      }
+    },
+    {
+      "name": "account certificate of kind 1",
+      "op": "account_certificate",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "av": 2,
+        "kind": 1,
+        "ik_seed_hex": "89ef73d2cea438314131ca8ba122a5a0403ae3b2f98f978960606bd28b6ebdc3",
+        "ask_seed_hex": "a9ab0f4e6ff52419fbeb82ee144da38bbf55a2eead344e97bc4fa1da677c0ad4",
+        "aek_secret_hex": "ae68a8ce7a71b70339801f10520a74284ddb5c60b6595d2e275bc83e1cd69519",
+        "previous_ik_seed_hex": "e2cd9253257865dab2564c97acd058ed5fda64a3eb1d5b8930d8d42e9d8174cb"
+      },
+      "output": {
+        "message_hex": "000000137461626c6570726f2f76312f6163636f756e74000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b80000000200000020c95a221f10626fd2816711bf0cd78e82ee5b05c569b15446a60513e26c88870100000020bd730b1b12e7261ba9771d510c0b42c0c5ac85f82891cc1a8e258dd125536a1c00000020d842d1660fe19ba95546d8d62e04338828cc055f15f085a082e44493a9bbc72001",
+        "sig_hex": "19564fabf480b648542d6555e062b0ea588bf7f24421678d62a51ce8f1281b5113ca06f0cb6e17d615148e99c519e126f217e73a80f33fd0aa92a43ec7a43902",
+        "replace_message_hex": "000000137461626c6570726f2f76312f7265706c616365000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b80000000200000020c95a221f10626fd2816711bf0cd78e82ee5b05c569b15446a60513e26c888701",
+        "replace_sig_hex": "fb94e3f0a7540f13b2eec14e0ad00844bc5c6afc3bc55dadbdcad332fd3ba803fdcd8661b1f4b2af742e7eae7b7753fa26e6c4990cd2eac3a309c6f2f1d60d01",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+          "fields": {
+            "suite": "tp1",
+            "kind": 1,
+            "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+            "ask": "vXMLGxLnJhupdx1RDAtCwMWshfgokcwajiWN0SVTahw",
+            "aek": "2ELRZg_hm6lVRtjWLgQziCjMBV8V8IWgguREk6m7xyA",
+            "sig": "GVZPq_SAtkhULWVV4GKw6liL9_JEIWeNYqUc6PEoG1ETygbwy24X1hUUjpnFGeEm8hfnOoDzP9CqkqQ-x6Q5Ag",
+            "replace_sig": "-5Tj8KdUDxOy7sFOCtAIRLxcavw7xV2tvcrTMv07qAP9zYZhsfSyr3Qufq57d1P6JubEmQzS6sOjCcby8dYNAQ"
+          }
+        }
+      }
+    },
+    {
+      "name": "account certificate of kind 2",
+      "op": "account_certificate",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "av": 3,
+        "kind": 2,
+        "ik_seed_hex": "e2cd9253257865dab2564c97acd058ed5fda64a3eb1d5b8930d8d42e9d8174cb",
+        "ask_seed_hex": "c3e6ea787e21f80a7cc3d2299f0a42a9702a9a5bcbff23759589f2376fa8ad50",
+        "aek_secret_hex": "d7dcceec3abf1394d01444f30bdd82a756d6085004179b8a5e012a40b64ee96c"
+      },
+      "output": {
+        "message_hex": "000000137461626c6570726f2f76312f6163636f756e74000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b80000000300000020ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb0600000020fa600bf289a0bd6883a3df7ee0d8b8067745ae55e5d2a797732adbd52d352114000000208e03409106ca0d8fbdfb9b8126eab6dbc7346f1dda36c921ca5355321a2baf3502",
+        "sig_hex": "cdacd727cb39587946def197384a9be5481086b0313be346214c03728a51a53568e684255c60a696900ea7cac31836b15a36848dfc4f52a8e4b08e59d7a17602",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/3",
+          "fields": {
+            "suite": "tp1",
+            "kind": 2,
+            "ik": "zLk3KL_ybFDMx3sQbj-nsHV_htyt1yuCZr47wp7R-wY",
+            "ask": "-mAL8omgvWiDo99-4Ni4BndFrlXl0qeXcyrb1S01IRQ",
+            "aek": "jgNAkQbKDY-9-5uBJuq228c0bx3aNskhylNVMhorrzU",
+            "sig": "zazXJ8s5WHlG3vGXOEqb5UgQhrAxO-NGIUwDcopRpTVo5oQlXGCmlpAOp8rDGDaxWjaEjfxPUqjksI5Z16F2Ag"
+          }
+        }
+      }
+    },
+    {
+      "name": "account certificate of kind 3",
+      "op": "account_certificate",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "av": 4,
+        "kind": 3,
+        "ik_seed_hex": "e2cd9253257865dab2564c97acd058ed5fda64a3eb1d5b8930d8d42e9d8174cb",
+        "ask_seed_hex": "1c0d1fa9f83e1e7c5fd331921755d3abab055ec50cb3c3fd79f72a9527befb21",
+        "aek_secret_hex": "fbfabb5fd2bde40fa2304c265a3fac70d48dc27be55367bec5b754107e921b8f"
+      },
+      "output": {
+        "message_hex": "000000137461626c6570726f2f76312f6163636f756e74000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b80000000400000020ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06000000205029b708572cea9d7297c503a62fedae3107fb062d5a2ed2ba5a3721b2b9d06600000020613669378727fb039a05288f8c2d43c6132e933a695508f326fb0edc5682047003",
+        "sig_hex": "0ac75f41b855c29cb7712d8df3571c311a0deee665275bdaa58eeb298f86103e9e151e7789593f4ec2667ea165b3ff17574f7bc6f2c9834ae714616d28ea0401",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/4",
+          "fields": {
+            "suite": "tp1",
+            "kind": 3,
+            "ik": "zLk3KL_ybFDMx3sQbj-nsHV_htyt1yuCZr47wp7R-wY",
+            "ask": "UCm3CFcs6p1yl8UDpi_trjEH-wYtWi7Sulo3IbK50GY",
+            "aek": "YTZpN4cn-wOaBSiPjC1DxhMukzppVQjzJvsO3FaCBHA",
+            "sig": "CsdfQbhVwpy3cS2N81ccMRoN7uZlJ1vapY7rKY-GED6eFR53iVk_TsJmfqFls_8XV097xvLJg0rnFGFtKOoEAQ"
+          }
+        }
+      }
+    }
+  ],
+  "device": [
+    {
+      "name": "device certificate",
+      "op": "device_certificate",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "av": 2,
+        "key_device": "4BDEA62F-D000-4418-AA20-AA32E9DFF53B",
+        "dek_secret_hex": "689e818c606903be313b333ab0335db8ff60c99a6415ff0bd491f9e0e0258687",
+        "dsk_seed_hex": "fa0ba5e166ab1d29ddab1d6c21cd0a05c6486fa8a2bb9d81904c1bc400d98ecd",
+        "ask_seed_hex": "a9ab0f4e6ff52419fbeb82ee144da38bbf55a2eead344e97bc4fa1da677c0ad4"
+      },
+      "output": {
+        "message_hex": "000000127461626c6570726f2f76312f646576696365000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000002000000104bdea62fd0004418aa20aa32e9dff53b00000020c4b91b760a3b361e3d0259ea0d374e5425cfdf40f9d95bebd9c49395890962140000002065aa60a23d2c05379202ef30723862ebd91e9931e02dfd5ba5214df48210d7f3",
+        "sig_hex": "8c275c01a94bd0d6d6c6c31fba384cd2fcbd84e1649e24837d63ca2849f31d6b6b18754d67c7b234a23af52a001ef5f85b2067fd27c2f1fb045c75bb30bc260b",
+        "record": {
+          "kind": "key.device",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/4BDEA62F-D000-4418-AA20-AA32E9DFF53B/2",
+          "fields": {
+            "suite": "tp1",
+            "dek": "xLkbdgo7Nh49AlnqDTdOVCXP30D52Vvr2cSTlYkJYhQ",
+            "dsk": "Zapgoj0sBTeSAu8wcjhi69kemTHgLf1bpSFN9IIQ1_M",
+            "sig": "jCdcAalL0NbWxsMfujhM0vy9hOFkniSDfWPKKEnzHWtrGHVNZ8eyNKI69SoAHvX4WyBn_SfC8fsEXHW7MLwmCw"
+          }
+        }
+      }
+    }
+  ],
+  "cancel": [
+    {
+      "name": "cancel with the recovery key",
+      "op": "cancel",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "reset_av": 3,
+        "proposed_ik_hex": "a843524f5f23f72bac39ea184c8ef6f0ff919d6981088e17eb8c8c96ad76e509",
+        "ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06",
+        "sig_hex": "b800bd220066216558e2f31fcda249569e91621c6db222d3341ffc1d8261f1ba50530312825910b3fd933a1f40b197c6969102385b29b115d6610b90feb74805",
+        "ik_seed_hex": "e2cd9253257865dab2564c97acd058ed5fda64a3eb1d5b8930d8d42e9d8174cb"
+      },
+      "output": {
+        "message_hex": "000000127461626c6570726f2f76312f63616e63656c000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b80000000300000020a843524f5f23f72bac39ea184c8ef6f0ff919d6981088e17eb8c8c96ad76e509",
+        "sig_hex": "b800bd220066216558e2f31fcda249569e91621c6db222d3341ffc1d8261f1ba50530312825910b3fd933a1f40b197c6969102385b29b115d6610b90feb74805"
+      }
+    },
+    {
+      "name": "a cancel signed for one reset, replayed against a later reset at the same av",
+      "op": "verify_cancel",
+      "row": "A cancel signed for one reset, replayed against a later reset at the same `av`",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "reset_av": 3,
+        "proposed_ik_hex": "e28874a07364737508fd480b97e5bb30d27332d43d6d767e2b5d65d12f5eb4bd",
+        "ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06",
+        "sig_hex": "b800bd220066216558e2f31fcda249569e91621c6db222d3341ffc1d8261f1ba50530312825910b3fd933a1f40b197c6969102385b29b115d6610b90feb74805"
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "A cancel signed for one reset, replayed against a later reset at the same `av`"
+    }
+  ],
+  "verify": [
+    {
+      "name": "a certificate naming one IK, signed by another",
+      "op": "verify_account_certificate",
+      "row": "A certificate under another IK",
+      "input": {
+        "origin": "https://sync.example.com",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields": {
+            "suite": "tp1",
+            "kind": 0,
+            "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+            "ask": "yGMH2wA0maHwoh5yK_I7OoNM12jmr6P6f2yFaCXymvU",
+            "aek": "VZ7AXmwSK_nMR7RzjgBCkjzOO1Uwt9o-SEu_gmqKH2U",
+            "sig": "9u_-6A7WGbpoSnKquvb7oynyBvLRMr25aDq8h8KUM_eEH2JxeyojwP1d0bcFlfqP0jZSkL3XJbrpwv0vmanuAQ"
+          }
+        }
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "A certificate under another IK"
+    },
+    {
+      "name": "a replace endorsed by the new IK instead of the old",
+      "op": "verify_account_certificate",
+      "row": "A replace without the old IK's endorsement",
+      "input": {
+        "origin": "https://sync.example.com",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+          "fields": {
+            "suite": "tp1",
+            "kind": 1,
+            "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+            "ask": "vXMLGxLnJhupdx1RDAtCwMWshfgokcwajiWN0SVTahw",
+            "aek": "2ELRZg_hm6lVRtjWLgQziCjMBV8V8IWgguREk6m7xyA",
+            "sig": "GVZPq_SAtkhULWVV4GKw6liL9_JEIWeNYqUc6PEoG1ETygbwy24X1hUUjpnFGeEm8hfnOoDzP9CqkqQ-x6Q5Ag",
+            "replace_sig": "yV1uyhaRE7mrjjXWNx9MhayfF1FwAtTfmhONJGd8TckkXaAgi8yjfwclyNurKRNA32b3dmk4EOt1kustz-MGAw"
+          }
+        },
+        "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+      },
+      "error": "keys.unendorsed",
+      "server": "bad_statement",
+      "clause": "A replace without the old IK's endorsement"
+    },
+    {
+      "name": "a replace whose endorsement has S + L",
+      "op": "verify_account_certificate",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "origin": "https://sync.example.com",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+          "fields": {
+            "suite": "tp1",
+            "kind": 1,
+            "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+            "ask": "vXMLGxLnJhupdx1RDAtCwMWshfgokcwajiWN0SVTahw",
+            "aek": "2ELRZg_hm6lVRtjWLgQziCjMBV8V8IWgguREk6m7xyA",
+            "sig": "GVZPq_SAtkhULWVV4GKw6liL9_JEIWeNYqUc6PEoG1ETygbwy24X1hUUjpnFGeEm8hfnOoDzP9CqkqQ-x6Q5Ag",
+            "replace_sig": "-5Tj8KdUDxOy7sFOCtAIRLxcavw7xV2tvcrTMv07qAPqoXy-y1fFB0vLdVFacTIPJ-bEmQzS6sOjCcby8dYNEQ"
+          }
+        },
+        "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a replace whose endorsement has a non-canonical R",
+      "op": "verify_account_certificate",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "origin": "https://sync.example.com",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+          "fields": {
+            "suite": "tp1",
+            "kind": 1,
+            "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+            "ask": "vXMLGxLnJhupdx1RDAtCwMWshfgokcwajiWN0SVTahw",
+            "aek": "2ELRZg_hm6lVRtjWLgQziCjMBV8V8IWgguREk6m7xyA",
+            "sig": "GVZPq_SAtkhULWVV4GKw6liL9_JEIWeNYqUc6PEoG1ETygbwy24X1hUUjpnFGeEm8hfnOoDzP9CqkqQ-x6Q5Ag",
+            "replace_sig": "7v_______________________________________3_9zYZhsfSyr3Qufq57d1P6JubEmQzS6sOjCcby8dYNAQ"
+          }
+        },
+        "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "an IK change with no endorsement, as after a reset",
+      "op": "verify_account_certificate",
+      "row": "An IK change with no endorsement",
+      "input": {
+        "origin": "https://sync.example.com",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+          "fields": {
+            "suite": "tp1",
+            "kind": 2,
+            "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+            "ask": "vXMLGxLnJhupdx1RDAtCwMWshfgokcwajiWN0SVTahw",
+            "aek": "2ELRZg_hm6lVRtjWLgQziCjMBV8V8IWgguREk6m7xyA",
+            "sig": "qZNnOj15KtHeDGnBRf35eK_wbrAWP715_iKxQ3C0rnlnnnA83KreINHCJFzS29EEiNuUIZ6icKqwxBQmi1J8Cw"
+          }
+        },
+        "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+      },
+      "error": "keys.unendorsed",
+      "server": null,
+      "clause": "An IK change with no endorsement"
+    },
+    {
+      "name": "a replace the old IK endorsed",
+      "op": "verify_account_certificate",
+      "input": {
+        "origin": "https://sync.example.com",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2",
+          "fields": {
+            "suite": "tp1",
+            "kind": 1,
+            "ik": "yVoiHxBib9KBZxG_DNeOgu5bBcVpsVRGpgUT4myIhwE",
+            "ask": "vXMLGxLnJhupdx1RDAtCwMWshfgokcwajiWN0SVTahw",
+            "aek": "2ELRZg_hm6lVRtjWLgQziCjMBV8V8IWgguREk6m7xyA",
+            "sig": "GVZPq_SAtkhULWVV4GKw6liL9_JEIWeNYqUc6PEoG1ETygbwy24X1hUUjpnFGeEm8hfnOoDzP9CqkqQ-x6Q5Ag",
+            "replace_sig": "-5Tj8KdUDxOy7sFOCtAIRLxcavw7xV2tvcrTMv07qAP9zYZhsfSyr3Qufq57d1P6JubEmQzS6sOjCcby8dYNAQ"
+          }
+        },
+        "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+      },
+      "output": {
+        "ik_change": "endorsed"
+      }
+    },
+    {
+      "name": "a rotation under the same IK",
+      "op": "verify_account_certificate",
+      "input": {
+        "origin": "https://sync.example.com",
+        "record": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/3",
+          "fields": {
+            "suite": "tp1",
+            "kind": 0,
+            "ik": "zLk3KL_ybFDMx3sQbj-nsHV_htyt1yuCZr47wp7R-wY",
+            "ask": "-mAL8omgvWiDo99-4Ni4BndFrlXl0qeXcyrb1S01IRQ",
+            "aek": "jgNAkQbKDY-9-5uBJuq228c0bx3aNskhylNVMhorrzU",
+            "sig": "dpQa7pwfDOVqZ5wkUiQpX3-lHDSwBKccXdZtzhd34Djzy4R4-hDU8CsKkscxSOxVZmzfOiRVSpmAOoMMRpMICg"
+          }
+        },
+        "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
+      },
+      "output": {
+        "ik_change": "same"
+      }
+    },
+    {
+      "name": "the certificate under the retired IK verifies a version record signed before the replace",
+      "op": "verify_under_certificate",
+      "row": "A certificate under an IK seen replaced, offered as the newest; the same certificate verifying an object signed before the replace",
+      "input": {
+        "origin": "https://sync.example.com",
+        "certificate": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields": {
+            "suite": "tp1",
+            "kind": 0,
+            "ik": "zLk3KL_ybFDMx3sQbj-nsHV_htyt1yuCZr47wp7R-wY",
+            "ask": "yGMH2wA0maHwoh5yK_I7OoNM12jmr6P6f2yFaCXymvU",
+            "aek": "VZ7AXmwSK_nMR7RzjgBCkjzOO1Uwt9o-SEu_gmqKH2U",
+            "sig": "9u_-6A7WGbpoSnKquvb7oynyBvLRMr25aDq8h8KUM_eEH2JxeyojwP1d0bcFlfqP0jZSkL3XJbrpwv0vmanuAQ"
+          }
+        },
+        "record": {
+          "kind": "key.version",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/personal/1",
+          "fields": {
+            "suite": "tp1",
+            "start": 1,
+            "kid": "0dh7ajjIRrMnoZrmyRfAM7mA4IJ06U89au1qgJFAfsw",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 1,
+            "sig": "YW0LRhVg_Pu6Be4KFi0ScyOZ32blqCyrNEv9Z5X6GkxrSCoMkAEJg-QJDdRfwgT4zemJOazxok1eo372Gmq-DA"
+          }
+        }
+      },
+      "output": {
+        "ok": true
+      },
+      "server": null,
+      "clause": "the same certificate verifying an object signed before the replace"
+    }
+  ],
+  "steps": [
+    {
+      "name": "an av that goes back",
+      "op": "check_step",
+      "row": "An `av` that goes back; one that skips",
+      "input": {
+        "held": 4,
+        "offered": 3
+      },
+      "error": "keys.stale",
+      "server": "bad_statement",
+      "clause": "An `av` that goes back"
+    },
+    {
+      "name": "an av that repeats",
+      "op": "check_step",
+      "row": "An `av` that goes back; one that skips",
+      "input": {
+        "held": 4,
+        "offered": 4
+      },
+      "error": "keys.stale",
+      "server": "bad_statement",
+      "clause": "An `av` that goes back"
+    },
+    {
+      "name": "an av that skips",
+      "op": "check_step",
+      "row": "An `av` that goes back; one that skips",
+      "input": {
+        "held": 4,
+        "offered": 6
+      },
+      "error": "keys.step",
+      "server": "bad_statement",
+      "clause": "one that skips"
+    },
+    {
+      "name": "the next av",
+      "op": "check_step",
+      "input": {
+        "held": 4,
+        "offered": 5
+      },
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "name": "a first version",
+      "op": "check_step",
+      "input": {
+        "held": null,
+        "offered": 1
+      },
+      "output": {
+        "ok": true
+      }
+    }
+  ],
+  "ed25519": [
+    {
+      "name": "a valid signature",
+      "op": "ed25519_verify",
+      "input": {
+        "public_hex": "e8fdd4dbe43ad643b99076c8333669aa1c9ebd0863c6133726ea5047d2708475",
+        "message_hex": "7461626c6570726f2d6b657973206564323535313920766563746f7200",
+        "sig_hex": "bb1bd9ab598680081b450de0b1b6d9992b2a8a56d0bb5203e90c368cc31cc95b333836bc4795a9b27ec2723063dbe03b0960f5386e417ee1b43d6d258cba510e"
+      },
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "name": "a forgery under A of order 1 (01000000)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "0100000000000000000000000000000000000000000000000000000000000000",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f7220302030",
+        "sig_hex": "c93f66fc37e6d4e0ae5991b48ed26377f4d51f46c50e8c2843512a363782bc1a54a5d286cc00903771af8218cc1987eb7d3e615748e71df7e8b02ab9769bac05",
+        "cofactorless_equation_holds": true,
+        "aws_lc_rs_takes_it": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under A of order 2 (ecffffff)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f7220312034",
+        "sig_hex": "2436ac8a9185da77608b2ad22f7254670e54dd1b1c43511ca4cef06a8a7d8abf8f08772419de6e58a274bde11dc94bd748d56ccb8bee3c799bce4040b38fb703",
+        "cofactorless_equation_holds": true,
+        "aws_lc_rs_takes_it": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under A of order 4 (00000000)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f7220322037",
+        "sig_hex": "883a1aeefdafd9c74969efb512073777dae982bd69e7bc9bde599f370bc6e4a37f9519ef4d655f1d5db0751cd176c13510a0270c1d471fbff8f4f4801c51a105",
+        "cofactorless_equation_holds": true,
+        "aws_lc_rs_takes_it": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under A of order 4 (00000000, sign bit set)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "0000000000000000000000000000000000000000000000000000000000000080",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f7220332031",
+        "sig_hex": "fd613a6b862b967191846358a06c6a8e7acde03cafee1d82acad020757fd34b54581f10ba8e703566ce66b94ea11ffb54f85299d9a4827753e76c79d928e850d",
+        "cofactorless_equation_holds": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under A of order 8 (c7176a70)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f7220342031",
+        "sig_hex": "ce241eb31a9069bc9f8ec1f9c65dee60f333768219914a998da4acdb6b8cb2da2a86208a37d1458f9a87d934940045dea18deef66c24cbe01193ad60f0c3cc08",
+        "cofactorless_equation_holds": true,
+        "aws_lc_rs_takes_it": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under A of order 8 (c7176a70, sign bit set)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f7220352037",
+        "sig_hex": "928c3250e0664b0f3e7adce6a8778feee2d78a789034771f56d17bf925113355fa70d17f9232d82112894932f5bc4aaf9f4d9d05ac8bc00cefad8787e651ea00",
+        "cofactorless_equation_holds": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under A of order 8 (26e8958f)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f7220362032",
+        "sig_hex": "46e59202cf8b1a29bf5fb1c1b5eb0bef6fc0267f1059a5a8dd7bc858353b51507df2f427fc62d400900bf29dfc3c3d5a4604ae36b38aac6d8162a5c138b3e004",
+        "cofactorless_equation_holds": true,
+        "aws_lc_rs_takes_it": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under A of order 8 (26e8958f, sign bit set)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f722037203235",
+        "sig_hex": "c5ba3bad10393819959612fab91bb5ebb77650af6b6746158a6275e5c1ee5efd2f03c4b3ec6a4456f63d2f5c83e8250b3b92398c0ff2a8c807b21c4a171a6a00",
+        "cofactorless_equation_holds": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under A of order 1 (01000000, sign bit set)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "0100000000000000000000000000000000000000000000000000000000000080",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f7220382030",
+        "sig_hex": "ee2f107aa4ee6cb5457bfd2cddd530e7872d01fa37768dd59660cf9f1ec67cd2f209695628c3b512bc71c28135146d1e6f57e323085b0db7aecbd0cd328ae508",
+        "cofactorless_equation_holds": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under A of order 2 (ecffffff, sign bit set)",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f7220392030",
+        "sig_hex": "b778883a5baf778109defb6b9144fcf7ec803e748f02d593016bcad8477ed266d20f187cb03c2d94fccdab739391f2aaa588e42a792cb85adf78faedcd4ce503",
+        "cofactorless_equation_holds": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a forgery under a non-canonical A, y = p + 1",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+        "message_hex": "7461626c6570726f2d6b65797320736d616c6c2d6f7264657220666f726765727920766563746f72206e6f6e2d63616e6f6e6963616c2030",
+        "sig_hex": "d3479ff4cdccf546613f46e26350000b3b3ddf414aa4e74576953d3b5f388dc0858b492ca42d97f85e19c33b5c09ae72ccc9f2047949eadfa46e753c36370b03",
+        "cofactorless_equation_holds": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "R the identity with the sign bit set",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "e8fdd4dbe43ad643b99076c8333669aa1c9ebd0863c6133726ea5047d2708475",
+        "message_hex": "7461626c6570726f2d6b657973206564323535313920766563746f7200",
+        "sig_hex": "0100000000000000000000000000000000000000000000000000000000000080528a4686383781c9b50334f8f487a096f2d53702533da3cef0864ee926d78b02",
+        "cofactorless_equation_holds": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "a non-canonical R, y = p + 1",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "e8fdd4dbe43ad643b99076c8333669aa1c9ebd0863c6133726ea5047d2708475",
+        "message_hex": "7461626c6570726f2d6b657973206564323535313920766563746f7200",
+        "sig_hex": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f901b3a3c9604f4f63ed24fd1cf35fe3d7bbb9da1bee7a7f365bff8c02af69b02",
+        "cofactorless_equation_holds": true
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    },
+    {
+      "name": "S + L, at or above L",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "e8fdd4dbe43ad643b99076c8333669aa1c9ebd0863c6133726ea5047d2708475",
+        "message_hex": "7461626c6570726f2d6b657973206564323535313920766563746f7200",
+        "sig_hex": "bb1bd9ab598680081b450de0b1b6d9992b2a8a56d0bb5203e90c368cc31cc95b200c2c1962f8bb0a555f6ad341d5bf500960f5386e417ee1b43d6d258cba511e"
+      },
+      "error": "keys.signature",
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
+    }
+  ]
+}
