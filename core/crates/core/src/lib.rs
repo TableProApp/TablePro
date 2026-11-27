@@ -59,6 +59,7 @@ mod network_endpoint;
 mod network_options;
 mod network_target;
 mod owned_calls;
+pub mod plan;
 pub mod query_result;
 mod query_timeout;
 mod read_emitter;

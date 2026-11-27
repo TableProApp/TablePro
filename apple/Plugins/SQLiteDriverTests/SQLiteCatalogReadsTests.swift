@@ -281,3 +281,24 @@ struct SQLiteCatalogReadsTests {
         #expect(driver.generateDropTriggerSQL(name: "trg", table: "t", schema: "auth") == "DROP TRIGGER IF EXISTS `auth`.`trg`")
     }
 }
+
+// A seek past 'a' under NOCASE passes 'A' too, which a key collated BINARY keeps as another row.
+struct SQLiteKeySortCollationTests {
+    @Test("A table with a COLLATE clause, or no definition, keeps its pages on the offset")
+    func collationKeepsTheOffset() async throws {
+        let collated = RecordingRunner([
+            [["table", "CREATE TABLE t (id TEXT COLLATE NOCASE NOT NULL, PRIMARY KEY (id COLLATE BINARY))"]],
+        ])
+        #expect(try await !SQLiteCatalogReads.primaryKeyNamesOneRow(table: "t", schema: nil, run: collated.run))
+
+        let missing = RecordingRunner([[]])
+        #expect(try await !SQLiteCatalogReads.primaryKeyNamesOneRow(table: "t", schema: nil, run: missing.run))
+    }
+
+    @Test("A table with no COLLATE clause seeks")
+    func plainTableSeeks() async throws {
+        let plain = RecordingRunner([[["table", "CREATE TABLE t (id TEXT NOT NULL PRIMARY KEY, name TEXT)"]]])
+        #expect(try await SQLiteCatalogReads.primaryKeyNamesOneRow(table: "t", schema: "main", run: plain.run))
+        #expect(await plain.sent == [SQLiteTemporarySchema.definitionQuery(name: "t", types: ["table"], schema: "main")])
+    }
+}

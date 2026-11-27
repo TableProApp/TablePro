@@ -1,5 +1,5 @@
-// The connection library's kinds (0051, Kinds; 0054, Adapters): connections, groups, tags, SSH and credential profiles
-// over the core's connection store, one file, and table folders and their items over the saved queries' database. Each
+// The connection library's kinds (0051, Kinds; 0054, Adapters): connections, groups, tags, projects, SSH and credential
+// profiles over the core's connection store, one file, and table folders and their items over the saved queries' database. Each
 // record's wire fields are its CloudKit fields in snake case with the Mac's values (0061, 4), so a Mac-written copy and
 // the store's agree member by member. Local only and sample connections never leave the device, and neither do the
 // column layouts and table folders of a connection that does not sync.
@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use async_trait::async_trait;
 use serde_json::Value;
 use tablepro_records::Kind;
+use tablepro_records::cloudkit::record_type_of;
 use tablepro_records::record_id::{parse_uuid, uuid_id};
 use tablepro_storage::{
     ConnectionList, ConnectionListState, ConnectionStore, LibraryChange, SavedQueryDatabase, SshProfile, StorageError,
@@ -49,26 +50,58 @@ pub enum Provider {
 
 pub use super::saved_queries::SAVED_QUERY_STORE;
 
-const KINDS: [Kind; 5] = [
+const KINDS: [Kind; 6] = [
     Kind::Connection,
     Kind::Group,
     Kind::Tag,
+    Kind::ConnectionProject,
     Kind::SshProfile,
     Kind::CredentialProfile,
 ];
 
-// The five kinds connections.json holds, each its own adapter over the one store.
+// iCloud carries projects only once Production holds their type and the field on both members, as the Mac's
+// `SyncWritableSchema.writesProjects` reads it. Until then no pulled record names a project, so a pull keeps this
+// device's membership.
+fn carries_projects(provider: Provider) -> bool {
+    let deployed = |kind: Kind, field: Option<&str>| {
+        record_type_of(kind).is_some_and(|record_type| {
+            record_type.deployed
+                && field.is_none_or(|name| record_type.fields.iter().any(|held| held.name == name && held.deployed))
+        })
+    };
+    match provider {
+        Provider::TableproSync => true,
+        Provider::ICloud => {
+            deployed(Kind::ConnectionProject, None)
+                && deployed(Kind::Connection, Some("projectId"))
+                && deployed(Kind::Group, Some("projectId"))
+        }
+    }
+}
+
+// The six kinds connections.json holds, each its own adapter over the one store.
 pub struct LibraryAdapter {
     store: ConnectionStore,
     kind: Kind,
     names: DriverNames,
+    // Whether a pulled record says which project its connection or group is in (`carries_projects`).
+    projects: bool,
     // This device's id as the host keeps it, which names the routes it publishes.
     publisher: Option<Uuid>,
     seen: Mutex<Option<HashMap<String, Seen>>>,
+    // Set by a batch the store refused, which the engine then applies one change at a time: each of those checks
+    // against the same read, until the next read.
+    retrying: Mutex<bool>,
 }
 
 impl LibraryAdapter {
-    pub fn all(store: &ConnectionStore, names: DriverNames, publisher: Option<Uuid>) -> Vec<Arc<dyn RecordAdapter>> {
+    pub fn all(
+        store: &ConnectionStore,
+        names: DriverNames,
+        provider: Provider,
+        publisher: Option<Uuid>,
+    ) -> Vec<Arc<dyn RecordAdapter>> {
+        let projects = carries_projects(provider);
         KINDS
             .into_iter()
             .map(|kind| {
@@ -76,8 +109,10 @@ impl LibraryAdapter {
                     store: store.clone(),
                     kind,
                     names,
+                    projects,
                     publisher,
                     seen: Mutex::new(None),
+                    retrying: Mutex::new(false),
                 }) as Arc<dyn RecordAdapter>
             })
             .collect()
@@ -92,7 +127,7 @@ pub fn adapters(
     provider: Provider,
     publisher: Option<Uuid>,
 ) -> Vec<Arc<dyn RecordAdapter>> {
-    let mut all = LibraryAdapter::all(store, names, publisher);
+    let mut all = LibraryAdapter::all(store, names, provider, publisher);
     if let Some(saved) = saved {
         all.extend(TableFolderAdapter::all(saved, store));
         all.extend(FavouriteAdapter::all(saved, store, provider));
@@ -241,6 +276,13 @@ fn local_records(
                 .collect(),
             Vec::new(),
         ),
+        Kind::ConnectionProject => (
+            list.projects
+                .iter()
+                .map(|project| record(project.id, groups::project_to_wire(project), Standing::Syncs))
+                .collect(),
+            Vec::new(),
+        ),
         Kind::SshProfile => (
             list.ssh_profiles
                 .iter()
@@ -265,30 +307,35 @@ fn local_records(
 }
 
 // What the pulled records write, read against the list as it is under the store's write lock: a member a record
-// carries as the store's copy reads keeps the store's value (`connection::model`).
-fn settled(kind: Kind, names: DriverNames, list: &ConnectionList, changes: Vec<LocalChange>) -> Vec<LibraryChange> {
-    let settled = changes
-        .into_iter()
-        .filter_map(|change| {
-            let (record_id, fields) = match change {
-                LocalChange::Put { record_id, fields } => (record_id, Some(fields)),
-                LocalChange::Delete { record_id } => (record_id, None),
-            };
-            let Some(id) = parse_uuid(&record_id) else {
-                tracing::warn!(kind = kind.as_str(), "a record whose id is not a UUID was left out");
-                return None;
-            };
-            Some(match fields {
-                None => gone(kind, id),
-                Some(fields) => put(kind, names, list, id, &fields),
-            })
-        })
-        .collect();
-    if kind == Kind::CredentialProfile {
+// carries as the store's copy reads keeps the store's value (`connection::model`). None when a record is one the store
+// cannot hold, which the engine then holds by id rather than read as a deletion.
+fn settled(
+    kind: Kind,
+    names: DriverNames,
+    projects: bool,
+    list: &ConnectionList,
+    changes: Vec<LocalChange>,
+) -> Option<Vec<LibraryChange>> {
+    let mut settled = Vec::with_capacity(changes.len());
+    for change in changes {
+        let (record_id, fields) = match change {
+            LocalChange::Put { record_id, fields } => (record_id, Some(fields)),
+            LocalChange::Delete { record_id } => (record_id, None),
+        };
+        let Some(id) = parse_uuid(&record_id) else {
+            tracing::warn!(kind = kind.as_str(), "a record whose id is not a UUID was left out");
+            continue;
+        };
+        settled.push(match fields {
+            None => gone(kind, id),
+            Some(fields) => put(kind, names, projects, list, id, &fields)?,
+        });
+    }
+    Some(if kind == Kind::CredentialProfile {
         unique_profile_names(list, settled)
     } else {
         settled
-    }
+    })
 }
 
 // Every picker offers a credential profile by its name alone and the editor refuses two of one name, so a pull that
@@ -360,13 +407,21 @@ fn gone(kind: Kind, id: Uuid) -> LibraryChange {
         Kind::Connection => LibraryChange::ConnectionGone(id),
         Kind::Group => LibraryChange::GroupGone(id),
         Kind::Tag => LibraryChange::TagGone(id),
+        Kind::ConnectionProject => LibraryChange::ProjectGone(id),
         Kind::SshProfile => LibraryChange::SshProfileGone(id),
         _ => LibraryChange::CredentialProfileGone(id),
     }
 }
 
-fn put(kind: Kind, names: DriverNames, list: &ConnectionList, id: Uuid, fields: &Value) -> LibraryChange {
-    match kind {
+fn put(
+    kind: Kind,
+    names: DriverNames,
+    projects: bool,
+    list: &ConnectionList,
+    id: Uuid,
+    fields: &Value,
+) -> Option<LibraryChange> {
+    Some(match kind {
         Kind::Connection => {
             let held = list
                 .connections
@@ -377,7 +432,10 @@ fn put(kind: Kind, names: DriverNames, list: &ConnectionList, id: Uuid, fields: 
                     favorite: list.is_favorite(id),
                     profile: followed(list, saved),
                 });
-            let (connection, favorite) = connection::model(id, fields, held, names);
+            let (mut connection, favorite) = connection::model(id, fields, held, names);
+            if !projects {
+                connection.project_id = held.and_then(|held| held.saved.project_id);
+            }
             LibraryChange::Connection {
                 connection: Box::new(connection),
                 favorite,
@@ -385,7 +443,15 @@ fn put(kind: Kind, names: DriverNames, list: &ConnectionList, id: Uuid, fields: 
         }
         Kind::Group => {
             let stored = list.groups.iter().find(|group| group.id == id);
-            LibraryChange::Group(groups::group(id, fields, stored))
+            let mut group = groups::group(id, fields, stored);
+            if !projects {
+                group.project_id = stored.and_then(|stored| stored.project_id);
+            }
+            LibraryChange::Group(group)
+        }
+        Kind::ConnectionProject => {
+            let stored = list.projects.iter().find(|project| project.id == id);
+            LibraryChange::Project(groups::project(id, fields, stored)?)
         }
         Kind::Tag => {
             let stored = list.tags.iter().find(|tag| tag.id == id);
@@ -399,7 +465,7 @@ fn put(kind: Kind, names: DriverNames, list: &ConnectionList, id: Uuid, fields: 
             let stored = list.credential_profiles.iter().find(|profile| profile.id == id);
             LibraryChange::CredentialProfile(profiles::credential(id, fields, stored))
         }
-    }
+    })
 }
 
 #[async_trait]
@@ -441,6 +507,7 @@ impl RecordAdapter for LibraryAdapter {
             &library.unreadable_credential_profiles,
         );
         *lock(&self.seen) = Some(seen(&records));
+        *lock(&self.retrying) = false;
         Ok(records)
     }
 
@@ -448,10 +515,16 @@ impl RecordAdapter for LibraryAdapter {
         if scope != ScopeName::Personal || changes.is_empty() {
             return self.identity().await;
         }
-        let expected = lock(&self.seen).take();
-        let (store, kind, names, publisher) = (self.store.clone(), self.kind, self.names, self.publisher);
-        let (written, changed) = blocking(move || {
-            let mut changed = false;
+        let retrying = *lock(&self.retrying);
+        let expected = if retrying {
+            lock(&self.seen).clone()
+        } else {
+            lock(&self.seen).take()
+        };
+        let (store, kind, names, projects, publisher) =
+            (self.store.clone(), self.kind, self.names, self.projects, self.publisher);
+        let (written, changed, refused, expected) = blocking(move || {
+            let (mut changed, mut refused) = (false, false);
             let written = store.apply_synced_blocking(|list| {
                 if let Some(expected) = &expected {
                     let held = &list.unreadable_profiles;
@@ -461,14 +534,26 @@ impl RecordAdapter for LibraryAdapter {
                         return Vec::new();
                     }
                 }
-                settled(kind, names, list, changes)
+                settled(kind, names, projects, list, changes).unwrap_or_else(|| {
+                    refused = true;
+                    Vec::new()
+                })
             });
-            (written, changed)
+            (written, changed, refused, expected)
         })
         .await?;
         let identity = written.map_err(store_error)?;
         if changed {
+            *lock(&self.seen) = None;
+            *lock(&self.retrying) = false;
             return Err(stale(STORE));
+        }
+        if refused {
+            *lock(&self.seen) = expected;
+            *lock(&self.retrying) = true;
+            return Err(AdapterError::Unreadable {
+                detail: format!("a {} the store cannot hold", kind.as_str()),
+            });
         }
         Ok(stamp(identity))
     }

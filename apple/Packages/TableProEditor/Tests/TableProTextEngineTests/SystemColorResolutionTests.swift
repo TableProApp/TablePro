@@ -39,6 +39,18 @@ struct SystemColorResolutionTests {
         #expect(layer.fillColor == expected)
     }
 
+    @Test("Without focus a selection draws unemphasized, unless the view asks for the focused colors")
+    func unfocusedSelectionDrawsEmphasizedOnRequest() throws {
+        let textView = makeLaidOutTextView()
+        let manager = try #require(textView.selectionManager)
+        manager.selectionBackgroundColor = .systemRed
+
+        #expect(manager.selectedRangeFillColor == .unemphasizedSelectedTextBackgroundColor)
+
+        manager.drawsSelectionEmphasized = true
+        #expect(manager.selectedRangeFillColor == .systemRed)
+    }
+
     @Test("A drawn caret resolves its color where AppKit draws it")
     func cursorViewResolvesInItsAppearance() throws {
         let cursor = CursorView(color: .textColor)

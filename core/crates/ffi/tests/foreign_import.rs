@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
     Core, ForeignAppDirsArg, ForeignAppTag, ForeignImportRequest, ForeignSourceInfo, HostConfig, HostSecretError,
-    HostSecrets, PasswordOfferTag, PasswordOutcomeTag, QueryAvailabilityTag, ResolutionTag, ScanDepthTag,
-    SecretItemTag, SecretKindTag, SourceAvailabilityTag,
+    HostSecrets, PasswordOfferTag, PasswordOutcomeTag, ProfileKindTag, QueryAvailabilityTag, ResolutionTag,
+    ScanDepthTag, SecretDeletionTag, SecretItemTag, SecretKindTag, SourceAvailabilityTag,
 };
 
 #[derive(Default)]
@@ -55,6 +55,10 @@ impl HostSecrets for Shared {
     fn delete_connection(&self, id: String) -> Result<(), HostSecretError> {
         self.0.stored.lock().unwrap().retain(|(stored, _), _| *stored != id);
         Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
@@ -147,8 +151,8 @@ async fn another_app_s_connection_lands_with_its_password_and_saved_query_once()
         .unwrap();
     let rows = review.connections();
     let choices = review.choices();
-    let outcome = review.apply().await.unwrap();
-    let again = review.apply().await.err().unwrap();
+    let outcome = review.apply(None).await.unwrap();
+    let again = review.apply(None).await.err().unwrap();
     let library = core.library().unwrap().snapshot().await.unwrap();
     let saved = &library.connections[0];
     let queries = core
@@ -209,7 +213,7 @@ async fn a_second_read_matches_the_saved_connection_and_keeps_it_for_the_queries
         core.clone()
             .read_foreign(ForeignAppTag::DBeaver, dirs(dir.path()), None, EVERYTHING, None)
     };
-    read().await.unwrap().apply().await.unwrap();
+    read().await.unwrap().apply(None).await.unwrap();
     let saved_id = core.library().unwrap().snapshot().await.unwrap().connections[0]
         .id
         .clone();
@@ -218,7 +222,7 @@ async fn a_second_read_matches_the_saved_connection_and_keeps_it_for_the_queries
     let before = review.choices();
     review.set_selected("General/windows".to_owned(), true);
     let checked = review.choices();
-    let outcome = review.apply().await.unwrap();
+    let outcome = review.apply(None).await.unwrap();
     let count = core.library().unwrap().snapshot().await.unwrap().connections.len();
 
     assert_eq!(review.connections()[0].duplicate.as_ref().unwrap().id, saved_id);
@@ -241,6 +245,29 @@ async fn a_second_read_matches_the_saved_connection_and_keeps_it_for_the_queries
 }
 
 #[tokio::test]
+async fn another_app_s_connection_lands_in_the_project_the_import_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Arc::new(Vault::default());
+    let core = core(dir.path(), &vault);
+    dbeaver(dir.path());
+    let library = core.library().unwrap();
+    let acme = library.create_project("Acme".to_owned(), None).await.unwrap();
+    let review = core
+        .clone()
+        .read_foreign(ForeignAppTag::DBeaver, dirs(dir.path()), None, EVERYTHING, None)
+        .await
+        .unwrap();
+
+    let malformed = review.apply(Some("acme".to_owned())).await.err().unwrap();
+    review.apply(Some(acme.id.clone())).await.unwrap();
+    let scoped = library.snapshot_in(Some(acme.id.clone())).await.unwrap();
+
+    assert_eq!(malformed.code(), "library.invalid_id");
+    assert_eq!(scoped.connections.len(), 1);
+    assert_eq!(scoped.connections[0].project_id.as_deref(), Some(acme.id.as_str()));
+}
+
+#[tokio::test]
 async fn a_replaced_connection_keeps_its_id_in_the_outcome() {
     let dir = tempfile::tempdir().unwrap();
     let vault = Arc::new(Vault::default());
@@ -250,7 +277,7 @@ async fn a_replaced_connection_keeps_its_id_in_the_outcome() {
         core.clone()
             .read_foreign(ForeignAppTag::DBeaver, dirs(dir.path()), None, EVERYTHING, None)
     };
-    read().await.unwrap().apply().await.unwrap();
+    read().await.unwrap().apply(None).await.unwrap();
     let saved_id = core.library().unwrap().snapshot().await.unwrap().connections[0]
         .id
         .clone();
@@ -263,7 +290,7 @@ async fn a_replaced_connection_keeps_its_id_in_the_outcome() {
             ResolutionTag::Replace { id: saved_id.clone() },
         )
         .unwrap();
-    let outcome = review.apply().await.unwrap();
+    let outcome = review.apply(None).await.unwrap();
 
     assert!(replaced);
     assert_eq!((outcome.connections, outcome.replaced), (1, 1));
@@ -318,9 +345,9 @@ async fn a_library_that_changed_after_the_read_refuses_the_import() {
         .read_foreign(ForeignAppTag::DBeaver, dirs(dir.path()), None, EVERYTHING, None)
         .await
         .unwrap();
-    first.apply().await.unwrap();
+    first.apply(None).await.unwrap();
 
-    let refused = late.apply().await.err().unwrap();
+    let refused = late.apply(None).await.err().unwrap();
     let count = core.library().unwrap().snapshot().await.unwrap().connections.len();
 
     assert_eq!(refused.code(), "storage.import_outdated");

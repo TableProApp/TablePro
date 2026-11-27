@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
-    ConnectionRecord, ConnectionSecrets, Core, HostConfig, HostSecretError, HostSecrets, SafeModeTag, SecretItemTag,
-    SecretKindTag, SshAuthTag, SshSettings, TlsModeTag, TlsSettings,
+    ConnectionRecord, ConnectionSecrets, Core, HostConfig, HostSecretError, HostSecrets, ProfileKindTag, SafeModeTag,
+    SecretDeletionTag, SecretItemTag, SecretKindTag, SshAuthTag, SshSettings, TlsModeTag, TlsSettings,
 };
 
 type Stored = Arc<Mutex<HashMap<(String, SecretKindTag), SecretString>>>;
@@ -74,6 +74,10 @@ impl HostSecrets for MemorySecrets {
         Ok(())
     }
 
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
+    }
+
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
         Ok(None)
     }
@@ -132,6 +136,7 @@ fn record(name: &str) -> ConnectionRecord {
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        project_id: None,
         icon: None,
         order: 0,
     }
@@ -150,7 +155,7 @@ async fn a_copy_lands_after_its_original_with_a_new_id_and_every_secret() {
     let dir = tempfile::tempdir().unwrap();
     let vault = MemorySecrets::default();
     let library = core(dir.path(), vault.clone()).library().unwrap();
-    let group = library.create_group("Work".to_owned(), None).await.unwrap();
+    let group = library.create_group("Work".to_owned(), None, None).await.unwrap();
     let mut shop = record("Shop");
     shop.group_id = Some(group.id.clone());
     let shop = library.save(shop, secrets()).await.unwrap();
@@ -228,13 +233,16 @@ async fn an_exported_file_holds_every_connection_and_no_secret_and_imports_back(
         .unwrap();
     let file = dir.path().join("connections.json");
 
-    let count = library.export_file(file.display().to_string()).await.unwrap();
+    let count = library.export_file(file.display().to_string(), None).await.unwrap();
     let text = std::fs::read_to_string(&file).unwrap();
     let elsewhere = core(&dir.path().join("two"), MemorySecrets::default())
         .library()
         .unwrap();
-    let imported = elsewhere.import_file(file.display().to_string()).await.unwrap();
-    let relative = library.export_file("connections.json".to_owned()).await.unwrap_err();
+    let imported = elsewhere.import_file(file.display().to_string(), None).await.unwrap();
+    let relative = library
+        .export_file("connections.json".to_owned(), None)
+        .await
+        .unwrap_err();
 
     assert_eq!(count, 2);
     assert!(text.contains("db.example.com") && text.contains("Warehouse"), "{text}");
@@ -264,7 +272,7 @@ async fn an_imported_file_names_each_connection_it_wrote_in_file_order() {
         .await
         .unwrap();
     let file = dir.path().join("connections.json");
-    library.export_file(file.display().to_string()).await.unwrap();
+    library.export_file(file.display().to_string(), None).await.unwrap();
     let elsewhere = core(&dir.path().join("two"), MemorySecrets::default())
         .library()
         .unwrap();
@@ -273,8 +281,8 @@ async fn an_imported_file_names_each_connection_it_wrote_in_file_order() {
         .await
         .unwrap();
 
-    let first = elsewhere.import_file(file.display().to_string()).await.unwrap();
-    let again = elsewhere.import_file(file.display().to_string()).await.unwrap();
+    let first = elsewhere.import_file(file.display().to_string(), None).await.unwrap();
+    let again = elsewhere.import_file(file.display().to_string(), None).await.unwrap();
 
     assert_eq!((first.added, first.updated), (2, 0));
     assert_eq!(first.connection_ids, [shop.id, warehouse.id]);

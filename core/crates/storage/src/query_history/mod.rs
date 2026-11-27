@@ -117,6 +117,24 @@ macro_rules! bind_entry {
 }
 pub(crate) use {bind_details, bind_entry};
 
+// One bound value however many ids, so a large project stays under SQLite's limit on bound parameters.
+const CONNECTION_IN_SET: &str = "h.connection_id IN (SELECT value FROM json_each(?))";
+
+pub(crate) fn id_set(ids: &[Uuid]) -> String {
+    let mut set = String::with_capacity(ids.len() * 39 + 2);
+    set.push('[');
+    for (index, id) in ids.iter().enumerate() {
+        if index > 0 {
+            set.push(',');
+        }
+        set.push('"');
+        set.push_str(&id.to_string());
+        set.push('"');
+    }
+    set.push(']');
+    set
+}
+
 /// A value for a placeholder of a statement built from parts.
 pub(crate) enum Bind {
     Text(String),
@@ -622,19 +640,30 @@ impl QueryHistory {
     /// Every connection the history holds entries for, under the name
     /// of its latest run, so a renamed connection is listed once.
     pub async fn connections_with_history(&self) -> Result<Vec<HistoryConnection>, StorageError> {
-        let rows: Vec<(String, String)> = sqlx::query_as(
+        self.connections_with_history_in(None).await
+    }
+
+    pub async fn connections_with_history_in(
+        &self,
+        connections: Option<&[Uuid]>,
+    ) -> Result<Vec<HistoryConnection>, StorageError> {
+        let scope = connections.map_or(String::new(), |_| format!("WHERE {CONNECTION_IN_SET}"));
+        let sql = format!(
             "SELECT connection_id, connection_name FROM (
-                 SELECT connection_id, connection_name,
+                 SELECT h.connection_id, h.connection_name,
                         ROW_NUMBER() OVER (
-                            PARTITION BY connection_id ORDER BY executed_at DESC, id DESC
+                            PARTITION BY h.connection_id ORDER BY h.executed_at DESC, h.id DESC
                         ) AS recency
-                 FROM history
+                 FROM history h {scope}
              )
              WHERE recency = 1
-             ORDER BY connection_name COLLATE NOCASE, connection_id",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+             ORDER BY connection_name COLLATE NOCASE, connection_id"
+        );
+        let mut statement = sqlx::query_as(AssertSqlSafe(sql));
+        if let Some(connections) = connections {
+            statement = statement.bind(id_set(connections));
+        }
+        let rows: Vec<(String, String)> = statement.fetch_all(&self.pool).await?;
         Ok(rows
             .into_iter()
             .filter_map(|(id, name)| Uuid::parse_str(&id).ok().map(|id| HistoryConnection { id, name }))
@@ -707,8 +736,8 @@ fn filter_clauses(query: &HistoryQuery) -> (Vec<String>, Vec<Bind>) {
         binds.push(Bind::Text(connection.to_string()));
     }
     if let Some(connections) = &query.connections {
-        clauses.push(one_of("h.connection_id", connections.len()));
-        binds.extend(connections.iter().map(|id| Bind::Text(id.to_string())));
+        clauses.push(CONNECTION_IN_SET.to_owned());
+        binds.push(Bind::Text(id_set(connections)));
     }
     if let Some(sources) = &query.sources {
         clauses.push(one_of("h.source", sources.len()));
@@ -728,8 +757,8 @@ fn filter_clauses(query: &HistoryQuery) -> (Vec<String>, Vec<Bind>) {
     (clauses, binds)
 }
 
-// No placeholder for an empty list, which then matches no row. A filter list is the user's choice of connections or
-// sources, far under SQLite's limit on parameters.
+// No placeholder for an empty list, which then matches no row. A list of run sources is far under SQLite's limit on
+// parameters.
 fn one_of(column: &str, count: usize) -> String {
     match count {
         0 => "0".to_owned(),
@@ -1618,6 +1647,75 @@ mod tests {
             ),
             ["SELECT ok"]
         );
+    }
+
+    #[tokio::test]
+    async fn a_set_of_connections_scopes_the_search_and_the_connection_list() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let (first, second, outside) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        for (sql, connection, name) in [
+            ("SELECT 1", first, "alpha"),
+            ("SELECT 2", second, "beta"),
+            ("SELECT 3", outside, "gamma"),
+        ] {
+            let mut run = entry(sql, connection);
+            run.connection_name = name.to_owned();
+            history.record(run).await.expect("record");
+        }
+        let queries = |entries: Vec<Entry>| {
+            let mut queries: Vec<String> = entries.into_iter().map(|entry| entry.query).collect();
+            queries.sort();
+            queries
+        };
+
+        let mut scoped = HistoryQuery::from_input("select");
+        scoped.connections = Some(vec![first, second, Uuid::new_v4()]);
+        assert_eq!(queries(find(&history, &scoped).await), ["SELECT 1", "SELECT 2"]);
+
+        // The one connection narrows the set, and one outside it finds nothing.
+        scoped.connection = Some(second);
+        assert_eq!(queries(find(&history, &scoped).await), ["SELECT 2"]);
+        scoped.connection = Some(outside);
+        assert!(find(&history, &scoped).await.is_empty());
+
+        let mut nothing = HistoryQuery::default();
+        nothing.connections = Some(Vec::new());
+        assert!(find(&history, &nothing).await.is_empty());
+        assert_eq!(find(&history, &HistoryQuery::default()).await.len(), 3);
+
+        let names = |connections: Vec<HistoryConnection>| -> Vec<String> {
+            connections.into_iter().map(|connection| connection.name).collect()
+        };
+        let listed = history
+            .connections_with_history_in(Some(&[second, first]))
+            .await
+            .expect("list");
+        assert_eq!(names(listed), ["alpha", "beta"]);
+        let none = history.connections_with_history_in(Some(&[])).await.expect("list");
+        assert!(none.is_empty());
+        let every = history.connections_with_history_in(None).await.expect("list");
+        assert_eq!(names(every), ["alpha", "beta", "gamma"]);
+    }
+
+    #[tokio::test]
+    async fn a_set_past_the_bound_parameter_limit_is_one_statement() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let member = Uuid::new_v4();
+        history.record(entry("SELECT 1", member)).await.expect("record");
+        history.record(entry("SELECT 2", Uuid::new_v4())).await.expect("record");
+        let mut many: Vec<Uuid> = (0..40_000).map(|_| Uuid::new_v4()).collect();
+        many.push(member);
+
+        let mut scoped = HistoryQuery::default();
+        scoped.connections = Some(many.clone());
+        let found = find(&history, &scoped).await;
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].connection_id, member);
+        let listed = history.connections_with_history_in(Some(&many)).await.expect("list");
+        assert_eq!(listed.len(), 1);
     }
 
     #[tokio::test]

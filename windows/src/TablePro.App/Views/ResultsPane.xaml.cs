@@ -37,6 +37,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     private bool _showsJson;
     private CancellationTokenSource? _jsonWrite;
     private bool _jsonStale;
+    private readonly QueryPlanView _planView = new() { Visibility = Visibility.Collapsed };
+    private bool _showsPlan;
 
     private static readonly TimeSpan SummaryDelay = TimeSpan.FromMilliseconds(150);
 
@@ -48,6 +50,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         InitializeComponent();
         Grid.SetRow(_jsonView, 1);
         ResultsArea.Children.Add(_jsonView);
+        Grid.SetRow(_planView, 1);
+        ResultsArea.Children.Add(_planView);
         Placeholder.Text = Strings.Get("ResultsEmpty");
         ResultGrid.SizeColumnsToContent = true;
         ResultGrid.ShowsCellTips = true;
@@ -87,10 +91,11 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     // The text the Edit menu's Copy and Select All reach once text had focus: the messages or the JSON, whichever shows.
     internal TextBox? ShownText =>
         MessagesText.Visibility == Visibility.Visible ? MessagesText
+        : _showsPlan ? _planView.ShownText
         : _jsonView.ShowsText ? _jsonView.TextBox
         : null;
 
-    // JSON hides the grid, so Copy and Select All must not reach its selection.
+    // JSON and the plan hide the grid, so Copy and Select All must not reach its selection.
     internal bool ShowsGrid => ResultGrid.Visibility == Visibility.Visible;
 
     // The columns of the set the grid shows.
@@ -332,6 +337,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public void Clear()
     {
+        ClearPlan();
         Release();
         Outcome = null;
         RowsAffected = null;
@@ -343,11 +349,40 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         SelectView(ResultsView.Results);
     }
 
+    // The plan the tab's Explain command built, shown over the results area with its own Tree and Raw modes. A null
+    // plan means the output did not parse, so only its raw text shows.
+    internal void ShowPlan(QueryPlan? plan, string rawText)
+    {
+        ArgumentNullException.ThrowIfNull(rawText);
+        ClearErrorActions();
+        ErrorBar.IsOpen = false;
+        Release();
+        _showsPlan = true;
+        _planView.Show(plan, rawText);
+        ViewBar.Visibility = Visibility.Collapsed;
+        ResultsArea.Visibility = Visibility.Visible;
+        ShowResultViews();
+        Status(Strings.Get(plan is null ? "PlanRawOnly" : "PlanReady"));
+    }
+
+    private void ClearPlan()
+    {
+        if (!_showsPlan)
+        {
+            return;
+        }
+
+        _showsPlan = false;
+        _planView.Clear();
+        _planView.Visibility = Visibility.Collapsed;
+    }
+
     // The sets shown stay until the new run's first set has rows or ends, so a sort or a refresh never blanks the grid.
     public async Task ShowRunAsync(ITabRun run, GridSort sort, int visibleColumns, int keptSets,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(run);
+        ClearPlan();
         ClearErrorActions();
         ErrorBar.IsOpen = false;
         Status(Strings.Get("StatusRunning"));
@@ -802,6 +837,18 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     // The grid stays under the JSON view with its rows, selection and edits, so Data finds it as it was left.
     private void ShowResultViews()
     {
+        if (_showsPlan)
+        {
+            ResultGrid.Visibility = Visibility.Collapsed;
+            _jsonView.Visibility = Visibility.Collapsed;
+            Placeholder.Visibility = Visibility.Collapsed;
+            BottomBar.Visibility = Visibility.Collapsed;
+            ResultPicker.Visibility = Visibility.Collapsed;
+            _planView.Visibility = Visibility.Visible;
+            return;
+        }
+
+        _planView.Visibility = Visibility.Collapsed;
         var shown = _picked is not null;
         ResultGrid.Visibility = shown && !_showsJson ? Visibility.Visible : Visibility.Collapsed;
         _jsonView.Visibility = shown && _showsJson ? Visibility.Visible : Visibility.Collapsed;

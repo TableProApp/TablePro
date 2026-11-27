@@ -5,6 +5,7 @@
 //  Created by Khan Winter on 9/12/22.
 //
 
+import AppKit
 import Foundation
 import OSLog
 import SwiftTreeSitter
@@ -67,6 +68,23 @@ public final class TreeSitterClient: HighlightProviding {
 
     /// Main thread only: the document's text, kept in step with every edit so a parse gets it without a copy.
     private var text: TextSnapshot?
+
+    /// Main thread only: the language the client was last set up with.
+    private var languageID: GrammarID?
+
+    /// Main thread only: a parse to install on the next set up instead of parsing, if that set up is for its storage.
+    private var pendingAdoption: ParkedParse?
+
+    /// A committed parse kept with a document the editor does not show, so showing it again needs no parse.
+    public struct ParkedParse {
+        fileprivate let state: TreeSitterState
+        fileprivate let text: TextSnapshot
+        fileprivate let languageID: GrammarID
+        fileprivate weak var storage: NSTextStorage?
+
+        /// The UTF-16 length of the text the parse is for.
+        public var length: Int { text.length }
+    }
 
     /// The end point of the previous edit.
     private var oldEndPoint: Point?
@@ -147,6 +165,14 @@ public final class TreeSitterClient: HighlightProviding {
     ///   - codeLanguage: The language to use for parsing.
     public func setUp(textView: TextView, codeLanguage: CodeLanguage) {
         Self.logger.debug("TreeSitterClient setting up with language: \(codeLanguage.id.rawValue, privacy: .public)")
+        let adoption = pendingAdoption
+        pendingAdoption = nil
+        languageID = codeLanguage.id
+        if let adoption, adoption.storage === textView.textStorage, adoption.languageID == codeLanguage.id,
+           adoption.text.length == textView.textStorage.length {
+            install(adoption)
+            return
+        }
 
         let snapshot = Self.signposter.withIntervalSignpost("snapshot", "\(Self.threadName, privacy: .public)") {
             textView.createTextSnapshot()
@@ -195,6 +221,39 @@ public final class TreeSitterClient: HighlightProviding {
                 onCancel: {}
             )
         }
+    }
+
+    /// The committed parse of `storage`, to keep while another document is shown. `nil` when it is not committed
+    /// yet: an edit or a set up is still being parsed.
+    public func park(storage: NSTextStorage) -> ParkedParse? {
+        guard let languageID, text?.length == storage.length else { return nil }
+        return pipeline.withValue { pipeline in
+            guard pipeline.edits.isEmpty, let state = pipeline.state, let stateText = pipeline.stateText,
+                  stateText.length == storage.length else { return nil }
+            return ParkedParse(state: state, text: stateText, languageID: languageID, storage: storage)
+        }
+    }
+
+    /// Installs `parked` on the next set up instead of parsing, when that set up is for the storage it was parked
+    /// from, in the same language and length.
+    public func adopt(_ parked: ParkedParse?) {
+        pendingAdoption = parked
+    }
+
+    private func install(_ parked: ParkedParse) {
+        text = parked.text
+        executor.cancelAll(below: .all)
+        let previous = pipeline.mutate { pipeline in
+            pipeline.setUpGeneration &+= 1
+            pipeline.revision &+= 1
+            pipeline.edits = []
+            pipeline.text = parked.text
+            let previous = pipeline.state
+            pipeline.state = parked.state
+            pipeline.stateText = parked.text
+            return previous
+        }
+        Self.releaseOffMain(previous)
     }
 
     // MARK: - HighlightProviding

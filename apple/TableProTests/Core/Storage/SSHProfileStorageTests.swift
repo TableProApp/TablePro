@@ -42,7 +42,6 @@ struct SSHProfileStorageTests {
         )
         connections = connectionStorage
         storage = SSHProfileStorage(
-            userDefaults: profileDefaults,
             keychain: keychain,
             syncJournal: tracker.journal,
             connectionStorage: connectionStorage
@@ -155,13 +154,21 @@ struct SSHProfileStorageTests {
 
     @Test("A save that cannot run reports the failure instead of returning silently")
     func saveReportsFailureAfterFailedLoad() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let profileDefaults = try pool.make().defaults
         profileDefaults.set(Data("not json".utf8), forKey: "com.TablePro.sshProfiles")
         let corrupted = SSHProfileStorage(
-            userDefaults: profileDefaults,
             keychain: InMemoryKeychain(),
             syncJournal: SyncHostJournal(),
-            connectionStorage: connections
+            connectionStorage: ConnectionStorage(
+                fileURL: folder.appendingPathComponent("connections.json"),
+                userDefaults: profileDefaults,
+                syncJournal: SyncHostJournal(),
+                keychain: InMemoryKeychain()
+            )
         )
 
         #expect(corrupted.loadProfiles().isEmpty)
@@ -210,7 +217,6 @@ struct SSHProfileStorageTests {
             keychain: lockedKeychain
         )
         let lockedStorage = SSHProfileStorage(
-            userDefaults: try pool.make().defaults,
             keychain: lockedKeychain,
             syncJournal: SyncHostJournal(),
             connectionStorage: lockedConnections

@@ -29,6 +29,9 @@ struct DataGridConfiguration: Equatable {
     // The theme editor shows a theme's value colors even while Color values by type is off.
     var overridesValueColorSetting: Bool = false
 
+    // The theme editor's preview never takes focus, yet shows the selection and active-cell border a focused grid draws.
+    var drawsFocused: Bool = false
+
     // Off on the Structure grids, whose Copy writes definitions a paste reads back.
     var appliesRowCopyFormat: Bool = false
 

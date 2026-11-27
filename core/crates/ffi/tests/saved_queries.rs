@@ -10,13 +10,15 @@ use std::sync::Arc;
 use secrecy::SecretString;
 use tablepro_ffi::{
     Core, DatabaseEnvironmentTag, FavouriteTableInfo, FileOpenRequest, HistoryExportFormat, HistoryOutcomeTag,
-    HistoryRun, HostConfig, HostSecretError, HostSecrets, SavedQueryDraft, SecretItemTag, SecretKindTag,
+    HistoryRun, HostConfig, HostSecretError, HostSecrets, ProfileKindTag, SavedQueryDraft, SecretDeletionTag,
+    SecretItemTag, SecretKindTag,
 };
 
 fn shown(text: impl Into<String>, connection: Option<String>) -> tablepro_ffi::HistoryFilterArg {
     tablepro_ffi::HistoryFilterArg {
         text: text.into(),
         connection_ids: connection.map(|id| vec![id]),
+        project_id: None,
         sources: None,
         status: tablepro_ffi::HistoryStatusTag::Any,
         executed_after_ms: None,
@@ -45,6 +47,10 @@ impl HostSecrets for NoSecrets {
 
     fn delete_connection(&self, _: String) -> Result<(), HostSecretError> {
         Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError> {
+        Ok(SecretDeletionTag::Deleted)
     }
 
     fn load_item(&self, _: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {

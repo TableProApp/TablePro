@@ -821,6 +821,80 @@ final class WelcomeViewModelTests {
         #expect(connectionStorage.loadConnection(id: moving.id)?.groupId == nil)
     }
 
+    // Two projects in the library the group store reads its project ids from.
+    private func makeProjects() throws -> (acme: ConnectionProject, globex: ConnectionProject) {
+        let projects = ProjectStorage(
+            connectionStorage: self.connectionStorage,
+            groupStorage: self.groupStorage,
+            appEvents: AppEvents()
+        )
+        return (try projects.createProject(name: "Acme"), try projects.createProject(name: "Globex"))
+    }
+
+    @Test("Undo of a group moved under another project's group restores its parent, project and order past a root of its name there")
+    func testUndoPutsAGroupBackAcrossProjects() throws {
+        let (acme, globex) = try makeProjects()
+        try groupStorage.addGroup(ConnectionGroup(name: "Other", projectId: acme.id))
+        let moving = ConnectionGroup(name: "Staging", projectId: acme.id)
+        try groupStorage.addGroup(moving)
+        try groupStorage.addGroup(ConnectionGroup(name: "Staging", projectId: globex.id))
+        let parent = ConnectionGroup(name: "Production", projectId: globex.id)
+        try groupStorage.addGroup(parent)
+        let original = try #require(groupStorage.group(for: moving.id))
+        viewModel.loadConnections()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+
+        undoManager.beginUndoGrouping()
+        viewModel.moveGroups([moving.id], toParent: parent.id, before: nil, undoManager: undoManager)
+        undoManager.endUndoGrouping()
+        #expect(groupStorage.group(for: moving.id)?.parentId == parent.id)
+
+        undoManager.undo()
+
+        #expect(groupStorage.group(for: moving.id) == original)
+        #expect(viewModel.libraryErrorMessage == nil)
+        #expect(undoManager.canRedo)
+
+        undoManager.redo()
+
+        #expect(groupStorage.group(for: moving.id)?.parentId == parent.id)
+    }
+
+    @Test("An undo the library cannot take back reports why, changes nothing and offers no redo")
+    func testUndoThatCannotApplyReports() throws {
+        let (acme, globex) = try makeProjects()
+        let moving = ConnectionGroup(name: "Staging", projectId: acme.id)
+        try groupStorage.addGroup(moving)
+        let parent = ConnectionGroup(name: "Production", projectId: globex.id)
+        try groupStorage.addGroup(parent)
+        let member = DatabaseConnection(name: "Prod", type: .mysql, projectId: acme.id)
+        save([member])
+        viewModel.loadConnections()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+
+        undoManager.beginUndoGrouping()
+        viewModel.performUndoable("Move", undoManager: undoManager) {
+            try? groupStorage.moveGroups([moving.id], toParent: parent.id, before: nil)
+            _ = connectionStorage.moveConnections(
+                [member.id], toGroup: moving.id, before: nil, groups: groupStorage.loadGroups()
+            )
+        }
+        undoManager.endUndoGrouping()
+        #expect(connectionStorage.loadConnection(id: member.id)?.groupId == moving.id)
+        // What a pull can bring between the move and its undo.
+        try groupStorage.addGroup(ConnectionGroup(name: "Staging", projectId: acme.id))
+        let before = groupStorage.loadGroups()
+
+        undoManager.undo()
+
+        #expect(viewModel.libraryErrorMessage == GroupStorageError.duplicateName("Staging").localizedDescription)
+        #expect(groupStorage.loadGroups() == before)
+        #expect(connectionStorage.loadConnection(id: member.id)?.groupId == moving.id)
+        #expect(!undoManager.canRedo)
+    }
+
     @Test func testDeleteMeansWhatTheSectionHolds() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)

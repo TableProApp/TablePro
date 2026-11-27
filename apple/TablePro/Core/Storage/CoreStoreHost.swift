@@ -21,23 +21,28 @@ nonisolated final class CoreStoreHost: @unchecked Sendable {
                 items: KeychainHostSecrets(keychain: AccountKeychain(keychain: AppStorageEnvironment.shared.deviceOnlyKeychain)),
                 connections: ConnectionKeychainSecrets(keychain: AppStorageEnvironment.shared.keychain) { id in
                     LocalOnlyConnections.shared.isLocalOnly(id)
-                }
+                },
+                profiles: .shared
             )
-        }
+        },
+        reportKey: { ConnectionStoreIntegrity.shared.libraryReportKey() }
     )
 
     let folder: URL
     private let makeSecrets: @Sendable () -> any HostSecrets
+    private let reportKey: @Sendable () -> String?
     private let clientVersion: String
     private let opened = OSAllocatedUnfairLock<Core?>(initialState: nil)
 
     init(
         folder: URL,
         makeSecrets: @escaping @Sendable () -> any HostSecrets,
+        reportKey: @escaping @Sendable () -> String? = { nil },
         clientVersion: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     ) {
         self.folder = folder
         self.makeSecrets = makeSecrets
+        self.reportKey = reportKey
         self.clientVersion = clientVersion
     }
 
@@ -55,6 +60,10 @@ nonisolated final class CoreStoreHost: @unchecked Sendable {
                     config: HostConfig(clientVersion: clientVersion, storageDir: folder.path),
                     secrets: makeSecrets()
                 )
+                // Before anything writes the library, so each write the core makes itself is reported for the tag.
+                if let key = reportKey() {
+                    try core.reportLibraryWrites(key: key)
+                }
                 opened = core
                 return core
             } catch {

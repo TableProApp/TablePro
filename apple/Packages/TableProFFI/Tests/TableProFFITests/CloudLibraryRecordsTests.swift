@@ -8,6 +8,7 @@ private final class NoSecrets: HostSecrets, Sendable {
     func relabel(connectionId: String, kind: SecretKindTag, label: String) throws {}
     func delete(connectionId: String, kind: SecretKindTag) throws {}
     func deleteConnection(connectionId: String) throws {}
+    func deleteProfile(profileId: String, kind: ProfileKindTag) throws -> SecretDeletionTag { .deleted }
     func loadItem(item: SecretItemTag) throws -> String? { nil }
     func storeItem(item: SecretItemTag, secret: String) throws {}
     func deleteItem(item: SecretItemTag) throws {}
@@ -46,7 +47,7 @@ private let emptyRecords = CloudLibraryRecords(groups: [], connections: [])
 
 @Test func aLibrarySendsItsRecordsAsTheMacWritesThemAndThenNothing() async throws {
     let library = try makeLibrary()
-    let work = try await library.createGroup(name: "Work", parentId: nil)
+    let work = try await library.createGroup(name: "Work", parentId: nil, projectId: nil)
     let id = try await save("production", in: library)
     try await library.moveToGroup(ids: [id], groupId: work.id, before: nil)
     try await library.setFavorite(id: id, favorite: true)

@@ -3,6 +3,7 @@ use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope, SchemaInfo};
 use tokio_postgres::Client;
 
 use super::{decode_error, text_rows};
+use crate::catalog_release::CatalogRelease;
 
 /// Schemas this session can use: no TOAST schemas, and no other
 /// session's temporary schema. The default is the session's first
@@ -10,9 +11,9 @@ use super::{decode_error, text_rows};
 pub(super) const SCHEMAS_SQL: &str = "\
 SELECT n.nspname::text,
        COALESCE(n.nspname = pg_catalog.current_setting('tablepro.catalog_default_schema'), false),
-       n.nspname = 'information_schema' OR pg_catalog.starts_with(n.nspname, 'pg_')
+       n.nspname = 'information_schema' OR pg_catalog.left(n.nspname::text, 3) = 'pg_'
 FROM pg_catalog.pg_namespace n
-WHERE NOT pg_catalog.starts_with(n.nspname, 'pg_toast')
+WHERE pg_catalog.left(n.nspname::text, 8) <> 'pg_toast'
   AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
 ORDER BY n.nspname";
 
@@ -24,21 +25,21 @@ FROM (
     FROM pg_catalog.pg_class c
     WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
   UNION ALL
-    SELECT p.pronamespace, p.proname::text, CASE p.prokind WHEN 'f' THEN 'fn' ELSE 'pr' END, NULL::text
+    SELECT p.pronamespace, p.proname::text, CASE {p.prokind} WHEN 'f' THEN 'fn' ELSE 'pr' END, NULL::text
     FROM pg_catalog.pg_proc p
-    WHERE p.prokind IN ('f', 'p')
+    WHERE {p.prokind} IN ('f', 'p')
   UNION ALL
     SELECT c.relnamespace, t.tgname::text, 'tg', c.relname::text
     FROM pg_catalog.pg_trigger t
     JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
-    WHERE NOT t.tgisinternal AND t.tgparentid = 0::oid
+    WHERE NOT t.tgisinternal AND {t.tgparentid} = 0::pg_catalog.oid
 ) o
 JOIN pg_catalog.pg_namespace n ON n.oid = o.namespace
 WHERE NOT pg_catalog.pg_is_other_temp_schema(n.oid)
   AND CASE $1
         WHEN 'default' THEN n.nspname = pg_catalog.current_setting('tablepro.catalog_default_schema')
         WHEN 'schema' THEN n.nspname = $2
-        ELSE n.nspname <> 'information_schema' AND NOT pg_catalog.starts_with(n.nspname, 'pg_')
+        ELSE n.nspname <> 'information_schema' AND pg_catalog.left(n.nspname::text, 3) <> 'pg_'
       END
 ORDER BY 1, 2, 3, 4";
 
@@ -83,14 +84,18 @@ pub(crate) async fn list_databases(client: &Client) -> Result<Vec<SchemaInfo>, D
         .collect()
 }
 
-pub(crate) async fn list_objects(client: &Client, scope: &ObjectScope) -> Result<Vec<ObjectInfo>, DriverError> {
+pub(crate) async fn list_objects(
+    client: &Client,
+    release: CatalogRelease,
+    scope: &ObjectScope,
+) -> Result<Vec<ObjectInfo>, DriverError> {
     let (mode, schema) = match scope {
         ObjectScope::DefaultSchema => ("default", ""),
         ObjectScope::Schema(schema) => ("schema", schema.as_str()),
         ObjectScope::AllSchemas => ("all", ""),
     };
     let field = decode_error("pg_class");
-    let rows = text_rows(client, OBJECTS_SQL, &[mode, schema]).await?;
+    let rows = text_rows(client, &release.render(OBJECTS_SQL), &[mode, schema]).await?;
     let mut objects = Vec::with_capacity(rows.len());
     for row in &rows {
         let code: String = row.try_get(2).map_err(&field)?;

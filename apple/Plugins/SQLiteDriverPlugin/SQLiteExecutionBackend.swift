@@ -284,8 +284,12 @@ nonisolated final class SQLiteLocalCanceller: SQLiteCanceller, @unchecked Sendab
 }
 
 // Opens a SQLite database with the plugin's own SQLite build on macOS, the SDK's on iOS, and runs statements against it.
+// Its jobs run on a queue of its own, since a statement, a lock wait and a spill past its budget each block the thread.
 actor SQLiteLocalBackend: SQLiteExecutionBackend {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteLocalBackend")
+
+    nonisolated private let executor = SQLiteConnectionExecutor(label: "com.TablePro.sqlite.connection")
+    nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
 
     private var db: OpaquePointer?
     // Kept past close: the handle points at it, and a close that SQLite refuses leaves the handle open.
@@ -636,7 +640,8 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
                 return
             }
             if batch.append(Self.readRow(statement, columnCount: columnCount)) {
-                // Synchronous on the actor's thread: an await here would let another call reach the handle mid-statement.
+                // Synchronous on the backend's own queue, where a block is allowed: an await here would let another call
+                // reach the handle mid-statement.
                 guard spill.deliver(batch.rows) else {
                     sqlite3_finalize(statement)
                     return

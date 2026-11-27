@@ -18,19 +18,23 @@ public struct BundleConnection: Sendable, Equatable {
     public var groupRef: BundleRef?
     public var tagNames: [String]
     public var credentialProfileRef: BundleRef?
+    // Read only while the connection is in no group. A grouped one follows its top-level group.
+    public var projectRef: BundleRef?
 
     public init(
         ref: BundleRef,
         settings: ExportableConnection,
         groupRef: BundleRef? = nil,
         tagNames: [String] = [],
-        credentialProfileRef: BundleRef? = nil
+        credentialProfileRef: BundleRef? = nil,
+        projectRef: BundleRef? = nil
     ) {
         self.ref = ref
         self.settings = settings
         self.groupRef = groupRef
         self.tagNames = tagNames
         self.credentialProfileRef = credentialProfileRef
+        self.projectRef = projectRef
     }
 }
 
@@ -40,19 +44,40 @@ public struct BundleGroup: Codable, Sendable, Equatable {
     public var color: String?
     public var iconName: String?
     public var parentRef: BundleRef?
+    // Read only on a top-level group.
+    public var projectRef: BundleRef?
 
     public init(
         ref: BundleRef,
         name: String,
         color: String? = nil,
         iconName: String? = nil,
-        parentRef: BundleRef? = nil
+        parentRef: BundleRef? = nil,
+        projectRef: BundleRef? = nil
     ) {
         self.ref = ref
         self.name = name
         self.color = color
         self.iconName = iconName
         self.parentRef = parentRef
+        self.projectRef = projectRef
+    }
+}
+
+public struct BundleProject: Codable, Sendable, Equatable {
+    public var ref: BundleRef
+    // The project's id where it was exported, so a second import finds the project the first one made.
+    public var id: UUID?
+    public var name: String
+    public var color: String?
+    public var iconName: String?
+
+    public init(ref: BundleRef, id: UUID? = nil, name: String, color: String? = nil, iconName: String? = nil) {
+        self.ref = ref
+        self.id = id
+        self.name = name
+        self.color = color
+        self.iconName = iconName
     }
 }
 
@@ -140,7 +165,9 @@ public struct ConnectionBundle: Sendable, Equatable {
     public let credentials: [BundleRef: ExportableCredentials]
     public let queryFolders: [BundleQueryFolder]
     public let savedQueries: [BundleSavedQuery]
+    public let projects: [BundleProject]
 
+    private let projectPositions: [BundleRef: Int]
     private let connectionPositions: [BundleRef: Int]
     private let groupPositions: [BundleRef: Int]
     private let profilePositions: [BundleRef: Int]
@@ -155,7 +182,8 @@ public struct ConnectionBundle: Sendable, Equatable {
         credentialProfiles: [BundleCredentialProfile] = [],
         credentials: [BundleRef: ExportableCredentials] = [:],
         queryFolders: [BundleQueryFolder] = [],
-        savedQueries: [BundleSavedQuery] = []
+        savedQueries: [BundleSavedQuery] = [],
+        projects: [BundleProject] = []
     ) throws {
         if let violation = BundleViolation.first(
             connections: connections,
@@ -163,7 +191,8 @@ public struct ConnectionBundle: Sendable, Equatable {
             credentialProfiles: credentialProfiles,
             credentials: credentials,
             queryFolders: queryFolders,
-            savedQueries: savedQueries
+            savedQueries: savedQueries,
+            projects: projects
         ) {
             throw ConnectionBundleError.invalidBundle(violation.message)
         }
@@ -176,7 +205,8 @@ public struct ConnectionBundle: Sendable, Equatable {
             credentialProfiles: credentialProfiles,
             credentials: credentials,
             queryFolders: queryFolders,
-            savedQueries: savedQueries
+            savedQueries: savedQueries,
+            projects: projects
         )
     }
 
@@ -189,7 +219,8 @@ public struct ConnectionBundle: Sendable, Equatable {
         credentialProfiles: [BundleCredentialProfile],
         credentials: [BundleRef: ExportableCredentials],
         queryFolders: [BundleQueryFolder],
-        savedQueries: [BundleSavedQuery]
+        savedQueries: [BundleSavedQuery],
+        projects: [BundleProject]
     ) {
         self.exportedAt = exportedAt
         self.appVersion = appVersion
@@ -200,6 +231,8 @@ public struct ConnectionBundle: Sendable, Equatable {
         self.credentials = credentials
         self.queryFolders = queryFolders
         self.savedQueries = savedQueries
+        self.projects = projects
+        projectPositions = Self.positions(of: projects.map(\.ref))
         connectionPositions = Self.positions(of: connections.map(\.ref))
         groupPositions = Self.positions(of: groups.map(\.ref))
         profilePositions = Self.positions(of: credentialProfiles.map(\.ref))
@@ -221,6 +254,19 @@ public struct ConnectionBundle: Sendable, Equatable {
     public func credentialProfile(_ ref: BundleRef?) -> BundleCredentialProfile? {
         guard let ref, let position = profilePositions[ref] else { return nil }
         return credentialProfiles[position]
+    }
+
+    public func project(_ ref: BundleRef?) -> BundleProject? {
+        guard let ref, let position = projectPositions[ref] else { return nil }
+        return projects[position]
+    }
+
+    // The project a connection is in: its top-level group's when it is grouped, else its own.
+    public func project(of connection: BundleConnection) -> BundleProject? {
+        if let root = groupChain(connection.groupRef).first {
+            return project(root.projectRef)
+        }
+        return project(connection.projectRef)
     }
 
     public func savedQueryCount(for connection: BundleRef) -> Int {
@@ -250,6 +296,11 @@ public struct ConnectionBundle: Sendable, Equatable {
                 var copy = group
                 copy.iconName = LibrarySymbolCatalog.normalizedName(group.iconName)
                 return copy
+            },
+            projects: projects.map { project in
+                var copy = project
+                copy.iconName = LibrarySymbolCatalog.normalizedName(project.iconName)
+                return copy
             }
         )
     }
@@ -257,7 +308,8 @@ public struct ConnectionBundle: Sendable, Equatable {
     private func rebuilt(
         connections: [BundleConnection]? = nil,
         groups: [BundleGroup]? = nil,
-        credentials: [BundleRef: ExportableCredentials]? = nil
+        credentials: [BundleRef: ExportableCredentials]? = nil,
+        projects: [BundleProject]? = nil
     ) -> ConnectionBundle {
         ConnectionBundle(
             unchecked: exportedAt,
@@ -268,7 +320,8 @@ public struct ConnectionBundle: Sendable, Equatable {
             credentialProfiles: credentialProfiles,
             credentials: credentials ?? self.credentials,
             queryFolders: queryFolders,
-            savedQueries: savedQueries
+            savedQueries: savedQueries,
+            projects: projects ?? self.projects
         )
     }
 

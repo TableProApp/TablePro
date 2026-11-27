@@ -26,7 +26,7 @@ fn store(root: &TempDir) -> ConnectionStore {
     ConnectionStore::new(&paths(root))
 }
 
-fn plain(name: &str) -> SavedConnection {
+pub(super) fn plain(name: &str) -> SavedConnection {
     SavedConnection {
         id: Uuid::new_v4(),
         name: name.to_owned(),
@@ -45,6 +45,7 @@ fn plain(name: &str) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
@@ -215,7 +216,7 @@ fn unknown_keys_survive_a_rewrite_at_every_level() {
         "connections": [{
             "id": id, "name": "n", "driver_id": "postgres", "host": "h", "port": 5432, "database": "d",
             "username": "u", "tls": {"mode": "disable"}, "safe_mode": "off", "external_access": "read_only",
-            "ai_policy": "ask", "project_id": "CBCAF15E-97D4-4B75-8D5D-01D586CADC97",
+            "ai_policy": "ask", "project_id": "CBCAF15E-97D4-4B75-8D5D-01D586CADC97", "workspace_id": "w1",
             "ssh_route": {"version": 1, "publisher": id, "basis": "b", "hops": [],
                 "target": {"alias": "a", "host": "h", "port": 22, "username": "u"}, "signed_by": "newer"},
             "origin": "shared_vault"
@@ -232,7 +233,9 @@ fn unknown_keys_survive_a_rewrite_at_every_level() {
 
     let entry = &raw["connections"][0];
     assert_eq!(entry["name"], "renamed");
-    assert_eq!(entry["project_id"], "CBCAF15E-97D4-4B75-8D5D-01D586CADC97");
+    assert_eq!(entry["workspace_id"], "w1");
+    // A known key now, kept as stored though no project holds it, in the form a write gives a UUID.
+    assert_eq!(entry["project_id"], "cbcaf15e-97d4-4b75-8d5d-01d586cadc97");
     assert_eq!(entry["ssh_route"]["signed_by"], "newer");
     assert_eq!(entry["origin"], "shared_vault");
     assert_eq!(raw["ssh_profiles"][0]["totp_mode"], "prompt_at_connect");
@@ -382,7 +385,7 @@ fn importing_its_own_export_updates_rather_than_doubles() {
 }
 
 #[test]
-fn profiles_are_saved_replaced_and_deleted_by_id() {
+fn a_library_write_saves_replaces_and_takes_out_profiles_by_id() {
     let root = TempDir::new().expect("tempdir");
     let store = store(&root);
     let mut ssh = SshProfile {
@@ -416,24 +419,40 @@ fn profiles_are_saved_replaced_and_deleted_by_id() {
         unknown: BTreeMap::new(),
     };
 
-    store.save_ssh_profile_blocking(ssh.clone()).expect("save");
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![ssh.clone()],
+            credential_profiles: vec![credential.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("save");
     ssh.name = "Edge".to_owned();
-    store.save_ssh_profile_blocking(ssh.clone()).expect("replace");
-    store
-        .save_credential_profile_blocking(credential.clone())
-        .expect("save");
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![ssh.clone()],
+            credential_profiles: vec![credential.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("replace");
     let list = store.list_blocking().expect("the list");
-
     assert_eq!(list.ssh_profiles.to_vec(), vec![ssh.clone()]);
     assert_eq!(list.credential_profiles.to_vec(), vec![credential.clone()]);
-    assert_eq!(
-        store.delete_ssh_profile_blocking(ssh.id).expect("delete"),
-        RemoveOutcome::Removed
-    );
-    assert_eq!(
-        store.delete_credential_profile_blocking(ssh.id).expect("delete"),
-        RemoveOutcome::NotPresent
-    );
+
+    replace(
+        &store,
+        LibraryWrite {
+            credential_profiles: vec![credential.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("take one out");
+    let list = ConnectionStore::new(&paths(&root)).list_blocking().expect("the list");
+    assert!(list.ssh_profiles.is_empty());
+    assert_eq!(list.credential_profiles.to_vec(), vec![credential]);
 }
 
 #[test]
@@ -537,7 +556,7 @@ fn journaled(root: &TempDir) -> (ConnectionStore, Arc<Recording>) {
     (store, journal)
 }
 
-fn ssh_profile() -> SshProfile {
+pub(super) fn ssh_profile() -> SshProfile {
     SshProfile {
         id: Uuid::new_v4(),
         name: "p".to_owned(),
@@ -607,11 +626,40 @@ fn every_group_write_tells_the_journal() {
         .expect("move");
     assert_eq!(journal.take(), vec![vec![RecordKind::Connection]]);
     store
-        .move_connections_to_group_named_blocking(&[other.id], None, name("Lab"))
+        .move_connections_to_group_named_blocking(&[other.id], None, None, name("Lab"))
         .expect("file");
     store.move_groups_blocking(&[group.id], None, None).expect("reorder");
     store.delete_group_blocking(group.id).expect("ungroup");
     assert_eq!(journal.take(), vec![both(), vec![RecordKind::Group], both()]);
+}
+
+#[test]
+fn every_project_write_tells_the_journal_and_a_move_names_the_connection() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, journal) = journaled(&root);
+    let connection = plain("a");
+    store.upsert_blocking(connection.clone()).expect("upsert");
+    journal.take();
+    let name = |text: &str| crate::ConnectionProjectName::new(text).expect("a project name");
+
+    let acme = store
+        .create_project_blocking(crate::ConnectionProject::new(name("Acme")))
+        .expect("project");
+    store
+        .rename_project_blocking(acme.id, name("Acme Corp"))
+        .expect("rename");
+    assert_eq!(journal.take(), vec![vec![RecordKind::ConnectionProject]; 2]);
+
+    store
+        .move_connections_to_project_blocking(&[connection.id], Some(acme.id))
+        .expect("move");
+    assert_eq!(journal.take(), vec![vec![RecordKind::Connection]]);
+
+    store.delete_project_blocking(acme.id).expect("delete");
+    assert_eq!(
+        journal.take(),
+        vec![vec![RecordKind::Connection, RecordKind::ConnectionProject]]
+    );
 }
 
 #[test]
@@ -629,15 +677,16 @@ fn every_profile_import_and_restore_write_tells_the_journal() {
         unknown: BTreeMap::new(),
     };
 
-    store.save_ssh_profile_blocking(profile.clone()).expect("ssh profile");
-    store.delete_ssh_profile_blocking(profile.id).expect("ssh profile gone");
+    let with = |ssh_profiles: Vec<SshProfile>, credential_profiles: Vec<CredentialProfile>| LibraryWrite {
+        ssh_profiles,
+        credential_profiles,
+        ..LibraryWrite::default()
+    };
+    replace(&store, with(vec![profile.clone()], Vec::new())).expect("ssh profile");
+    replace(&store, with(Vec::new(), Vec::new())).expect("ssh profile gone");
     assert_eq!(journal.take(), vec![vec![RecordKind::SshProfile]; 2]);
-    store
-        .save_credential_profile_blocking(credential.clone())
-        .expect("credential profile");
-    store
-        .delete_credential_profile_blocking(credential.id)
-        .expect("credential profile gone");
+    replace(&store, with(Vec::new(), vec![credential.clone()])).expect("credential profile");
+    replace(&store, with(Vec::new(), Vec::new())).expect("credential profile gone");
     assert_eq!(journal.take(), vec![vec![RecordKind::CredentialProfile]; 2]);
 
     let list = store.list_blocking().expect("the list");
@@ -645,6 +694,7 @@ fn every_profile_import_and_restore_write_tells_the_journal() {
         connection: plain("c"),
         group_path: Vec::new(),
         replaces: None,
+        project_id: None,
     };
     store.add_imported_blocking(&list, vec![imported]).expect("imported");
     let mut file: serde_json::Value = serde_json::from_slice(&store.export_blocking().expect("export")).expect("json");
@@ -792,6 +842,7 @@ fn library_as_another_app_holds_it() -> LibraryWrite {
         order: 9,
         color: None,
         icon: None,
+        project_id: None,
     };
     let preset = ConnectionTag {
         is_preset: true,
@@ -818,6 +869,9 @@ fn library_as_another_app_holds_it() -> LibraryWrite {
         connections: vec![first, second],
         groups: vec![blank],
         tags: vec![preset, long],
+        projects: Vec::new(),
+        ssh_profiles: Vec::new(),
+        credential_profiles: Vec::new(),
         removing: Vec::new(),
     }
 }
@@ -836,6 +890,9 @@ fn a_library_write_keeps_every_id_and_value_as_given() {
             groups: list.groups.to_vec(),
             tags: list.tags.to_vec(),
             favorites: list.favorites.to_vec(),
+            projects: Vec::new(),
+            ssh_profiles: list.ssh_profiles.to_vec(),
+            credential_profiles: list.credential_profiles.to_vec(),
             removing: Vec::new(),
         }
     };
@@ -926,6 +983,44 @@ fn a_library_write_refuses_an_id_named_twice_and_writes_nothing() {
 }
 
 #[test]
+fn a_library_write_holds_its_projects_and_the_project_each_member_names() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let acme = crate::ConnectionProject::new(crate::ConnectionProjectName::new("Acme").expect("a project name"));
+    let mut library = library_as_another_app_holds_it();
+    library.projects = vec![acme.clone(), acme.clone()];
+
+    let repeated = replace(&store, library.clone());
+    assert!(
+        matches!(repeated, Err(StorageError::RepeatedId { id }) if id == acme.id),
+        "{repeated:?}"
+    );
+
+    library.projects = vec![acme.clone()];
+    library.connections[0].group_id = None;
+    library.connections[0].project_id = Some(acme.id);
+    replace(&store, library.clone()).expect("write");
+    let list = store.list_blocking().expect("list");
+    assert_eq!(
+        list.projects.iter().map(|project| project.id).collect::<Vec<_>>(),
+        [acme.id]
+    );
+    assert_eq!(list.connections[0].project_id, Some(acme.id));
+    assert_eq!(list.membership().of_connection(&list.connections[0]), Some(acme.id));
+
+    library.projects = Vec::new();
+    replace(&store, library).expect("write");
+    let list = store.list_blocking().expect("list");
+    assert!(list.projects.is_empty());
+    assert_eq!(
+        list.connections[0].project_id,
+        Some(acme.id),
+        "kept as written, read as no project"
+    );
+    assert_eq!(list.membership().of_connection(&list.connections[0]), None);
+}
+
+#[test]
 fn a_library_write_keeps_a_connection_this_build_cannot_read_unless_it_names_it() {
     let root = TempDir::new().expect("tempdir");
     let (store, held) = seeded_with_unreadable(&root, false);
@@ -998,6 +1093,7 @@ fn an_edit_keeps_a_group_that_has_not_arrived_and_an_orphan_group_reorders_at_th
         order: 0,
         color: None,
         icon: None,
+        project_id: None,
     };
     library.groups.push(orphan.clone());
     replace(&store, library.clone()).expect("write");
@@ -1032,6 +1128,7 @@ fn stored_group(name: &str, parent_id: Option<Uuid>) -> ConnectionGroup {
         order: 0,
         color: None,
         icon: None,
+        project_id: None,
     }
 }
 
@@ -1133,8 +1230,25 @@ fn an_import_files_into_a_group_that_reads_at_the_top_by_its_name() {
 
 // Over the file as the store holds it now, as a host that just checked it writes.
 fn replace(store: &ConnectionStore, write: LibraryWrite) -> Result<Option<String>, StorageError> {
+    replace_deleting(store, write, |_| true)
+}
+
+fn replace_deleting(
+    store: &ConnectionStore,
+    write: LibraryWrite,
+    delete: impl FnMut(SecretOwner) -> bool,
+) -> Result<Option<String>, StorageError> {
     let over = store.read_library_blocking()?.digest;
-    store.replace_library_blocking(over.as_deref(), |_| Ok::<_, StorageError>(write))
+    store.replace_library_blocking(over.as_deref(), |_| Ok::<_, StorageError>(write), delete)
+}
+
+// The deletions the file still lists, as it holds them on disk.
+fn pending(root: &TempDir) -> Vec<SecretOwner> {
+    let bytes = std::fs::read(paths(root).connections_file()).expect("the file");
+    let raw: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    raw.get("secrets_to_delete")
+        .map(|list| serde_json::from_value(list.clone()).expect("owners"))
+        .unwrap_or_default()
 }
 
 fn sha256_of(path: &std::path::Path) -> String {
@@ -1167,6 +1281,9 @@ fn a_library_read_and_write_give_the_digest_of_the_bytes_on_disk() {
                 groups: read.list.groups.to_vec(),
                 tags: read.list.tags.to_vec(),
                 favorites: read.list.favorites.to_vec(),
+                projects: Vec::new(),
+                ssh_profiles: read.list.ssh_profiles.to_vec(),
+                credential_profiles: read.list.credential_profiles.to_vec(),
                 removing: Vec::new(),
             }
         )
@@ -1180,7 +1297,14 @@ fn a_rebuild_keeps_only_what_it_names_and_starts_a_new_generation() {
     let root = TempDir::new().expect("tempdir");
     let (store, held) = seeded_with_unreadable(&root, false);
     let journal = Arc::new(Recording::default());
-    store.save_ssh_profile_blocking(ssh_profile()).expect("a profile");
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![ssh_profile()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("a profile");
     let mut kept = plain("kept");
     kept.unknown = BTreeMap::from([("from_a_newer_build".to_owned(), json!(true))]);
     store.upsert_blocking(kept.clone()).expect("save");
@@ -1255,10 +1379,12 @@ fn a_library_write_over_a_file_that_changed_since_is_refused() {
         .replace("Prod", "Planted");
     std::fs::write(&path, &swapped).expect("a swap");
 
-    let over_old = store.replace_library_blocking(vouched.as_deref(), |_| {
-        Ok::<_, StorageError>(library_as_another_app_holds_it())
-    });
-    let over_none = store.replace_library_blocking(None, |_| Ok::<_, StorageError>(LibraryWrite::default()));
+    let over_old = store.replace_library_blocking(
+        vouched.as_deref(),
+        |_| Ok::<_, StorageError>(library_as_another_app_holds_it()),
+        |_| true,
+    );
+    let over_none = store.replace_library_blocking(None, |_| Ok::<_, StorageError>(LibraryWrite::default()), |_| true);
 
     assert!(matches!(over_old, Err(StorageError::LibraryChanged)), "{over_old:?}");
     assert!(matches!(over_none, Err(StorageError::LibraryChanged)), "{over_none:?}");
@@ -1272,9 +1398,11 @@ fn a_library_write_over_a_file_swapped_for_one_that_does_not_read_is_refused_as_
     let vouched = replace(&store, library_as_another_app_holds_it()).expect("write");
     std::fs::write(paths(&root).connections_file(), b"{ half an edit").expect("a swap");
 
-    let refused = store.replace_library_blocking(vouched.as_deref(), |_| {
-        Ok::<_, StorageError>(library_as_another_app_holds_it())
-    });
+    let refused = store.replace_library_blocking(
+        vouched.as_deref(),
+        |_| Ok::<_, StorageError>(library_as_another_app_holds_it()),
+        |_| true,
+    );
 
     assert!(matches!(refused, Err(StorageError::LibraryChanged)), "{refused:?}");
 }
@@ -1399,4 +1527,656 @@ fn a_rebuild_refuses_an_id_named_twice() {
     );
 
     assert!(matches!(refused, Err(StorageError::RepeatedId { .. })), "{refused:?}");
+}
+
+// Values no form would write, and keys a newer build stored in them.
+fn profiles_as_another_app_holds_them() -> (SshProfile, CredentialProfile) {
+    let mut ssh = ssh_profile();
+    ssh.name = " Bastion\t(EU) ".to_owned();
+    ssh.ssh.host = " bastion ".to_owned();
+    ssh.ssh.unknown = BTreeMap::from([("from_a_newer_build".to_owned(), json!(true))]);
+    let credential = CredentialProfile {
+        id: Uuid::new_v4(),
+        name: " readonly ".to_owned(),
+        username: "reader".to_owned(),
+        password: CredentialPassword::Stored,
+        secure_field_ids: vec!["token".to_owned()],
+        order: 4,
+        unknown: BTreeMap::from([("from_a_newer_build".to_owned(), json!(1))]),
+    };
+    (ssh, credential)
+}
+
+fn seeded_with_unreadable_profiles(root: &TempDir) -> (ConnectionStore, Uuid, Uuid) {
+    let path = paths(root).connections_file();
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+    let (ssh, credential) = (Uuid::new_v4(), Uuid::new_v4());
+    let file = json!({
+        "version": 1,
+        "connections": [],
+        "ssh_profiles": [{"id": ssh, "name": "p", "host": "h", "auth": {"kind": "quantum"}}],
+        "credential_profiles": [{"id": credential, "name": "c", "password": {"mode": "hardware_key"}}],
+    });
+    std::fs::write(&path, serde_json::to_vec(&file).expect("json")).expect("seed");
+    (store(root), ssh, credential)
+}
+
+#[test]
+fn a_library_write_keeps_each_profile_as_given_and_names_the_ones_it_wrote_and_deleted() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, journal) = journaled(&root);
+    let (ssh, credential) = profiles_as_another_app_holds_them();
+    let entry = |kind, written: &[Uuid], deleted: &[Uuid]| {
+        JournalEntry::new(kind)
+            .wrote(written.iter().copied().map(RecordRef::Id))
+            .deleted(deleted.iter().copied().map(RecordRef::Id))
+    };
+
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![ssh.clone()],
+            credential_profiles: vec![credential.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+    let reread = ConnectionStore::new(&paths(&root)).list_blocking().expect("the list");
+    assert_eq!(reread.ssh_profiles.as_ref(), std::slice::from_ref(&ssh));
+    assert_eq!(reread.credential_profiles.as_ref(), std::slice::from_ref(&credential));
+    let renamed = SshProfile {
+        name: "Edge".to_owned(),
+        ..ssh.clone()
+    };
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![renamed.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+
+    assert_eq!(
+        journal.take_entries(),
+        vec![
+            vec![
+                entry(RecordKind::SshProfile, &[ssh.id], &[]),
+                entry(RecordKind::CredentialProfile, &[credential.id], &[]),
+            ],
+            vec![
+                entry(RecordKind::SshProfile, &[ssh.id], &[]),
+                entry(RecordKind::CredentialProfile, &[], &[credential.id]),
+            ],
+        ]
+    );
+    assert_eq!(store.list_blocking().expect("list").ssh_profiles.to_vec(), [renamed]);
+}
+
+#[test]
+fn a_profile_write_over_a_file_that_changed_since_is_refused() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let (ssh, credential) = profiles_as_another_app_holds_them();
+    let vouched = replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![ssh.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+    let path = paths(&root).connections_file();
+    let swapped = std::fs::read_to_string(&path)
+        .expect("the file")
+        .replace("bastion", "planted");
+    std::fs::write(&path, &swapped).expect("a swap");
+
+    let mut deleted = Vec::new();
+    let refused = store.replace_library_blocking(
+        vouched.as_deref(),
+        |_| {
+            Ok::<_, StorageError>(LibraryWrite {
+                credential_profiles: vec![credential.clone()],
+                ..LibraryWrite::default()
+            })
+        },
+        |owner| {
+            deleted.push(owner);
+            true
+        },
+    );
+
+    assert!(matches!(refused, Err(StorageError::LibraryChanged)), "{refused:?}");
+    assert!(deleted.is_empty(), "a refused write deleted {deleted:?}");
+    assert_eq!(std::fs::read_to_string(&path).expect("the file"), swapped);
+}
+
+#[test]
+fn a_library_write_after_a_profile_write_goes_on_over_the_digest_it_returned() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let (ssh, _) = profiles_as_another_app_holds_them();
+    let library = library_as_another_app_holds_it();
+    let with_profile = LibraryWrite {
+        ssh_profiles: vec![ssh.clone()],
+        ..library.clone()
+    };
+
+    let first = store
+        .replace_library_blocking(None, |_| Ok::<_, StorageError>(library.clone()), |_| true)
+        .expect("the library");
+    let profiled = store
+        .replace_library_blocking(
+            first.as_deref(),
+            |_| Ok::<_, StorageError>(with_profile.clone()),
+            |_| true,
+        )
+        .expect("a profile");
+    let next = store
+        .replace_library_blocking(
+            profiled.as_deref(),
+            |_| {
+                Ok::<_, StorageError>(LibraryWrite {
+                    favorites: Vec::new(),
+                    ..with_profile.clone()
+                })
+            },
+            |_| true,
+        )
+        .expect("the next write");
+
+    assert_ne!(profiled, first);
+    assert_eq!(
+        next.as_deref(),
+        Some(sha256_of(&paths(&root).connections_file()).as_str())
+    );
+    assert_eq!(store.list_blocking().expect("list").ssh_profiles.to_vec(), [ssh]);
+}
+
+#[test]
+fn a_library_write_keeps_a_profile_this_build_cannot_read_unless_it_names_or_removes_it() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, ssh, credential) = seeded_with_unreadable_profiles(&root);
+    let readable = SshProfile {
+        id: ssh,
+        ..ssh_profile()
+    };
+
+    replace(&store, LibraryWrite::default()).expect("a write that names neither");
+    let held: BTreeSet<Uuid> = store
+        .list_blocking()
+        .expect("list")
+        .unreadable_profiles
+        .iter()
+        .copied()
+        .collect();
+    assert_eq!(held, BTreeSet::from([ssh, credential]));
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![readable.clone()],
+            removing: vec![credential],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+
+    let list = ConnectionStore::new(&paths(&root)).list_blocking().expect("list");
+    assert!(list.unreadable_profiles.is_empty(), "{:?}", list.unreadable_profiles);
+    assert_eq!(list.ssh_profiles.to_vec(), [readable]);
+    assert!(list.credential_profiles.is_empty());
+}
+
+fn seeded_with(root: &TempDir, file: &serde_json::Value) -> ConnectionStore {
+    let path = paths(root).connections_file();
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+    std::fs::write(&path, serde_json::to_vec(file).expect("json")).expect("seed");
+    store(root)
+}
+
+fn unreadable_connection(id: Uuid) -> serde_json::Value {
+    let mut entry = serde_json::to_value(SavedConnection { id, ..plain("held") }).expect("json");
+    entry["auth_mode"] = json!("from_the_future");
+    entry
+}
+
+#[test]
+fn a_write_takes_out_the_secrets_of_what_it_removed_once_it_has_landed() {
+    let root = TempDir::new().expect("tempdir");
+    let (held_connection, held_ssh, held_credential) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    let store = seeded_with(
+        &root,
+        &json!({
+            "version": 1,
+            "connections": [unreadable_connection(held_connection)],
+            "ssh_profiles": [{"id": held_ssh, "name": "p", "host": "h", "auth": {"kind": "quantum"}}],
+            "credential_profiles": [{"id": held_credential, "name": "c", "password": {"mode": "hardware_key"}}],
+        }),
+    );
+    let (kept, dropped) = (ssh_profile(), ssh_profile());
+    let readable = plain("readable");
+    replace(
+        &store,
+        LibraryWrite {
+            connections: vec![readable.clone()],
+            ssh_profiles: vec![kept.clone(), dropped.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+    let mut deleted = Vec::new();
+    let mut seen_on_disk = Vec::new();
+
+    replace_deleting(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![kept.clone()],
+            removing: vec![held_connection, held_credential],
+            ..LibraryWrite::default()
+        },
+        |owner| {
+            seen_on_disk.push(pending(&root));
+            deleted.push(owner);
+            true
+        },
+    )
+    .expect("write");
+
+    let owner = SecretOwner::new;
+    assert_eq!(
+        deleted,
+        [
+            owner(SecretOwnerKind::Connection, held_connection),
+            owner(SecretOwnerKind::SshProfile, dropped.id),
+            owner(SecretOwnerKind::CredentialProfile, held_credential),
+        ],
+        "the readable connection the write left out keeps its secrets for its host"
+    );
+    assert!(
+        seen_on_disk.iter().all(|listed| listed.len() == 3),
+        "a secret went before the write that took its record out had landed: {seen_on_disk:?}"
+    );
+    assert!(pending(&root).is_empty());
+    let list = ConnectionStore::new(&paths(&root)).list_blocking().expect("list");
+    assert_eq!(list.ssh_profiles.to_vec(), [kept]);
+    assert_eq!(list.unreadable_profiles.to_vec(), [held_ssh]);
+    assert!(list.connections.is_empty() && list.unreadable.is_empty());
+}
+
+#[test]
+fn a_crash_between_the_two_writes_leaves_the_deletions_for_the_next_write() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let profile = ssh_profile();
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![profile.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+
+    let crashed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        replace_deleting(&store, LibraryWrite::default(), |_| panic!("the app stops here"))
+    }));
+
+    assert!(crashed.is_err());
+    let owner = SecretOwner::new(SecretOwnerKind::SshProfile, profile.id);
+    assert_eq!(pending(&root), [owner]);
+    let reopened = ConnectionStore::new(&paths(&root));
+    assert!(reopened.list_blocking().expect("list").ssh_profiles.is_empty());
+    let mut deleted = Vec::new();
+    replace_deleting(&reopened, LibraryWrite::default(), |owner| {
+        deleted.push(owner);
+        true
+    })
+    .expect("the next write");
+    assert_eq!(deleted, [owner]);
+    assert!(pending(&root).is_empty());
+}
+
+#[test]
+fn a_secret_the_host_could_not_delete_is_tried_again_by_the_next_write() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let (ssh, credential) = profiles_as_another_app_holds_them();
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![ssh.clone()],
+            credential_profiles: vec![credential.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+
+    let landed = replace_deleting(&store, LibraryWrite::default(), |owner| {
+        owner.kind == SecretOwnerKind::SshProfile
+    })
+    .expect("the write lands");
+
+    assert_eq!(
+        landed.as_deref(),
+        Some(sha256_of(&paths(&root).connections_file()).as_str())
+    );
+    let left = SecretOwner::new(SecretOwnerKind::CredentialProfile, credential.id);
+    assert_eq!(pending(&root), [left]);
+    let mut retried = Vec::new();
+    replace_deleting(&store, LibraryWrite::default(), |owner| {
+        retried.push(owner);
+        true
+    })
+    .expect("a write that changes nothing else");
+    assert_eq!(retried, [left]);
+    assert!(pending(&root).is_empty());
+}
+
+// A file where the folder was makes the cleanup's write fail whoever runs the test, root included.
+#[cfg(unix)]
+#[test]
+fn a_cleanup_that_cannot_be_written_keeps_the_write_s_digest_and_its_deletions() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let profile = ssh_profile();
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![profile.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+    let file = paths(&root).connections_file();
+    let folder = file.parent().expect("the folder").to_path_buf();
+    let aside = folder.with_extension("aside");
+
+    let landed = replace_deleting(&store, LibraryWrite::default(), |_| {
+        std::fs::rename(&folder, &aside).expect("move the folder");
+        std::fs::write(&folder, b"").expect("a file in its place");
+        true
+    })
+    .expect("the write landed");
+    std::fs::remove_file(&folder).expect("the file");
+    std::fs::rename(&aside, &folder).expect("the folder back");
+
+    assert_eq!(landed.as_deref(), Some(sha256_of(&file).as_str()));
+    let owner = SecretOwner::new(SecretOwnerKind::SshProfile, profile.id);
+    assert_eq!(pending(&root), [owner]);
+    let mut retried = Vec::new();
+    store
+        .replace_library_blocking(
+            landed.as_deref(),
+            |_| Ok::<_, StorageError>(LibraryWrite::default()),
+            |owner| {
+                retried.push(owner);
+                true
+            },
+        )
+        .expect("a write over the digest it was given");
+    assert_eq!(retried, [owner]);
+    assert!(pending(&root).is_empty());
+}
+
+#[test]
+fn an_owner_that_came_back_before_the_retry_keeps_its_secrets() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let profile = ssh_profile();
+    let with_it = LibraryWrite {
+        ssh_profiles: vec![profile.clone()],
+        ..LibraryWrite::default()
+    };
+    replace(&store, with_it.clone()).expect("write");
+    replace_deleting(&store, LibraryWrite::default(), |_| false).expect("the write lands");
+    assert_eq!(
+        pending(&root),
+        [SecretOwner::new(SecretOwnerKind::SshProfile, profile.id)]
+    );
+    let mut deleted = Vec::new();
+
+    replace_deleting(&store, with_it, |owner| {
+        deleted.push(owner);
+        true
+    })
+    .expect("a pull brings it back");
+
+    assert!(deleted.is_empty(), "a live profile lost its secrets: {deleted:?}");
+    assert!(pending(&root).is_empty());
+    assert_eq!(store.list_blocking().expect("list").ssh_profiles.to_vec(), [profile]);
+}
+
+#[test]
+fn no_other_writer_gets_in_between_the_write_and_its_deletions() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let profile = ssh_profile();
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![profile.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+    // Another store on the same file, as the sync engine or another process writes it.
+    let other = ConnectionStore::new(&paths(&root));
+    let pulled = plain("pulled");
+    let mut writer = None;
+
+    replace_deleting(&store, LibraryWrite::default(), |_| {
+        let (other, pulled) = (other.clone(), pulled.clone());
+        let started = std::thread::spawn(move || other.upsert_blocking(pulled));
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(!started.is_finished(), "a writer got in while the deletions ran");
+        writer = Some(started);
+        true
+    })
+    .expect("write");
+
+    writer
+        .expect("a deletion ran")
+        .join()
+        .expect("the writer")
+        .expect("its write");
+    assert!(pending(&root).is_empty());
+    let list = store.list_blocking().expect("list");
+    assert!(list.ssh_profiles.is_empty());
+    assert_eq!(list.connections.to_vec(), [pulled]);
+}
+
+#[test]
+fn a_write_without_the_lock_file_deletes_no_secret_and_leaves_the_list() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let profile = ssh_profile();
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![profile.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+    let mut lock = paths(&root).connections_file().into_os_string();
+    lock.push(".lock");
+    // The lock file stays between writes; a directory in its place makes it fail to open.
+    if std::path::Path::new(&lock).exists() {
+        std::fs::remove_file(&lock).expect("the lock file");
+    }
+    std::fs::create_dir(&lock).expect("a directory where the lock file goes");
+    let mut deleted = Vec::new();
+
+    replace_deleting(&store, LibraryWrite::default(), |owner| {
+        deleted.push(owner);
+        true
+    })
+    .expect("the write still lands on its re-read");
+
+    assert!(deleted.is_empty(), "a secret went without the lock: {deleted:?}");
+    let owner = SecretOwner::new(SecretOwnerKind::SshProfile, profile.id);
+    assert_eq!(pending(&root), [owner]);
+    std::fs::remove_dir(&lock).expect("the directory");
+    replace_deleting(&store, LibraryWrite::default(), |owner| {
+        deleted.push(owner);
+        true
+    })
+    .expect("the next write");
+    assert_eq!(deleted, [owner]);
+    assert!(pending(&root).is_empty());
+}
+
+#[test]
+fn a_rebuild_drops_the_deletions_its_file_listed() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let profile = ssh_profile();
+    replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![profile.clone()],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+    replace_deleting(&store, LibraryWrite::default(), |_| false).expect("the write lands");
+
+    store
+        .rebuild_library_blocking(LibraryWrite::default(), SystemTime::now())
+        .expect("rebuild");
+
+    assert!(pending(&root).is_empty());
+}
+
+#[test]
+fn a_removal_that_names_an_id_the_file_holds_as_two_kinds_is_refused() {
+    let root = TempDir::new().expect("tempdir");
+    let shared = Uuid::new_v4();
+    let store = seeded_with(
+        &root,
+        &json!({
+            "version": 1,
+            "connections": [unreadable_connection(shared)],
+            "ssh_profiles": [{"id": shared, "name": "p", "host": "h", "auth": {"kind": "quantum"}}],
+        }),
+    );
+    let mut deleted = Vec::new();
+
+    let refused = replace_deleting(
+        &store,
+        LibraryWrite {
+            removing: vec![shared],
+            ..LibraryWrite::default()
+        },
+        |owner| {
+            deleted.push(owner);
+            true
+        },
+    );
+
+    assert!(
+        matches!(refused, Err(StorageError::RepeatedId { id }) if id == shared),
+        "{refused:?}"
+    );
+    assert!(deleted.is_empty());
+    let list = store.list_blocking().expect("list");
+    assert_eq!(list.unreadable.to_vec(), [shared]);
+    assert_eq!(list.unreadable_profiles.to_vec(), [shared]);
+}
+
+#[test]
+fn a_file_with_a_newer_build_s_deletions_and_keys_still_reads_and_keeps_the_deletions() {
+    let root = TempDir::new().expect("tempdir");
+    let newer = json!({"kind": "team_item", "id": Uuid::new_v4()});
+    let store = seeded_with(
+        &root,
+        &json!({
+            "version": 1,
+            "connections": [],
+            "secrets_to_delete": [newer],
+            "from_a_newer_build": {"anything": true},
+        }),
+    );
+    let mut deleted = Vec::new();
+
+    replace_deleting(
+        &store,
+        LibraryWrite {
+            connections: vec![plain("a")],
+            ..LibraryWrite::default()
+        },
+        |owner| {
+            deleted.push(owner);
+            true
+        },
+    )
+    .expect("write");
+
+    assert!(deleted.is_empty());
+    let raw: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(paths(&root).connections_file()).expect("the file")).expect("json");
+    assert_eq!(raw["secrets_to_delete"], json!([newer]));
+    assert_eq!(store.list_blocking().expect("list").connections.len(), 1);
+}
+
+#[test]
+fn a_library_write_refuses_a_profile_named_twice_or_both_kept_and_removed() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let (ssh, credential) = profiles_as_another_app_holds_them();
+
+    let ssh_twice = replace(
+        &store,
+        LibraryWrite {
+            ssh_profiles: vec![ssh.clone(), ssh.clone()],
+            ..LibraryWrite::default()
+        },
+    );
+    let credential_twice = replace(
+        &store,
+        LibraryWrite {
+            credential_profiles: vec![credential.clone(), credential.clone()],
+            ..LibraryWrite::default()
+        },
+    );
+    let kept_and_removed = replace(
+        &store,
+        LibraryWrite {
+            credential_profiles: vec![credential.clone()],
+            removing: vec![credential.id],
+            ..LibraryWrite::default()
+        },
+    );
+
+    assert!(matches!(ssh_twice, Err(StorageError::RepeatedId { id }) if id == ssh.id));
+    assert!(matches!(credential_twice, Err(StorageError::RepeatedId { id }) if id == credential.id));
+    assert!(matches!(kept_and_removed, Err(StorageError::RepeatedId { id }) if id == credential.id));
+    assert_eq!(
+        store.read_library_blocking().expect("read").digest,
+        None,
+        "nothing was written"
+    );
+}
+
+#[test]
+fn a_rebuild_keeps_the_profiles_it_names() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let (ssh, credential) = profiles_as_another_app_holds_them();
+
+    store
+        .rebuild_library_blocking(
+            LibraryWrite {
+                ssh_profiles: vec![ssh.clone()],
+                credential_profiles: vec![credential.clone()],
+                ..LibraryWrite::default()
+            },
+            SystemTime::now(),
+        )
+        .expect("rebuild");
+
+    let list = ConnectionStore::new(&paths(&root)).list_blocking().expect("list");
+    assert_eq!(list.ssh_profiles.to_vec(), [ssh]);
+    assert_eq!(list.credential_profiles.to_vec(), [credential]);
 }

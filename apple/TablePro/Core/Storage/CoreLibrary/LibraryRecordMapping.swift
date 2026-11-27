@@ -58,6 +58,7 @@ nonisolated enum LibraryRecordMapping {
             iconName: record.icon.flatMap(symbol),
             tagIds: record.tags.compactMap(UUID.init(uuidString:)),
             groupId: record.groupId.flatMap(UUID.init(uuidString:)),
+            projectId: record.projectId.flatMap(UUID.init(uuidString:)),
             sshProfileId: sshProfileId,
             sshTunnelMode: tunnelMode,
             credentialMode: details.credentialProfileId.flatMap(UUID.init(uuidString:)).map { .profile(id: $0) } ?? .inline,
@@ -133,6 +134,7 @@ nonisolated enum LibraryRecordMapping {
             }.map(\.uuidString),
             aiPolicy: aiPolicyTag(connection.aiPolicy),
             externalAccess: externalAccessTag(connection.externalAccess),
+            projectId: connection.projectId?.uuidString,
             icon: icon(connection.iconName),
             order: UInt32(clamping: connection.sortOrder)
         )
@@ -180,7 +182,8 @@ nonisolated enum LibraryRecordMapping {
             color: color(record.color),
             iconName: record.icon.flatMap(symbol),
             parentId: record.parentId.flatMap(UUID.init(uuidString:)),
-            sortOrder: Int(record.order)
+            sortOrder: Int(record.order),
+            projectId: record.projectId.flatMap(UUID.init(uuidString:))
         )
     }
 
@@ -191,8 +194,116 @@ nonisolated enum LibraryRecordMapping {
             parentId: group.parentId?.uuidString,
             order: UInt32(clamping: group.sortOrder),
             color: colorId(group.color, keeping: stored?.color),
+            projectId: group.projectId?.uuidString,
             icon: icon(group.iconName)
         )
+    }
+
+    // MARK: - Projects
+
+    static func project(_ record: ProjectRecord) -> ConnectionProject {
+        ConnectionProject(
+            id: UUID(uuidString: record.id) ?? UUID(),
+            name: record.name,
+            color: color(record.color),
+            iconName: record.icon.flatMap(symbol),
+            sortOrder: Int(record.order)
+        )
+    }
+
+    static func record(_ project: ConnectionProject, keeping stored: ProjectRecord?) -> ProjectRecord {
+        ProjectRecord(
+            id: project.id.uuidString,
+            name: projectName(project.name),
+            order: UInt32(clamping: project.sortOrder),
+            color: colorId(project.color, keeping: stored?.color),
+            icon: icon(project.iconName)
+        )
+    }
+
+    // The core refuses a control character in a project name, which the Mac let a person type, so one goes as a space;
+    // a name of nothing else goes escaped, as the core keeps a group's.
+    static func projectName(_ name: String) -> String {
+        let scalars = name.unicodeScalars.map { $0.properties.generalCategory == .control ? " " : $0 }
+        let spaced = String(String.UnicodeScalarView(scalars))
+        guard spaced.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return spaced }
+        return name.unicodeScalars.map { $0.escaped(asASCII: true) }.joined()
+    }
+
+    // MARK: - Profiles
+
+    // The core keeps a profile's SSH settings as a connection's, so a hop id it lacks is derived from the profile's id.
+    static func sshProfile(_ record: SshProfileRecord) -> SSHProfile {
+        let config = sshConfiguration(record.ssh, connectionId: record.id)
+        return SSHProfile(
+            id: UUID(uuidString: record.id) ?? UUID(),
+            name: record.name,
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            authMethod: config.authMethod,
+            privateKeyPath: config.privateKeyPath,
+            agentSocketPath: config.agentSocketPath,
+            jumpHosts: config.jumpHosts,
+            totpMode: config.totpMode,
+            totpAlgorithm: config.totpAlgorithm,
+            totpDigits: config.totpDigits,
+            totpPeriod: config.totpPeriod
+        )
+    }
+
+    static func record(_ profile: SSHProfile, keeping stored: SshProfileRecord?) -> SshProfileRecord {
+        SshProfileRecord(
+            id: profile.id.uuidString,
+            name: profile.name,
+            ssh: sshSettings(profile.toSSHConfiguration(), enabled: true, keeping: stored?.ssh)
+        )
+    }
+
+    static func credentialProfile(_ record: CredentialProfileRecord) -> CredentialProfile {
+        CredentialProfile(
+            id: UUID(uuidString: record.id) ?? UUID(),
+            name: record.name,
+            username: record.username,
+            passwordMode: passwordMode(record.password),
+            secureFieldIds: record.secureFieldIds,
+            sortOrder: Int(record.order)
+        )
+    }
+
+    static func record(_ profile: CredentialProfile) -> CredentialProfileRecord {
+        CredentialProfileRecord(
+            id: profile.id.uuidString,
+            name: profile.name,
+            username: profile.username,
+            password: passwordRecord(profile.passwordMode),
+            secureFieldIds: profile.secureFieldIds,
+            order: UInt32(clamping: profile.sortOrder)
+        )
+    }
+
+    // A source the Mac cannot name reads as a prompt, as a malformed one in credentialProfiles.json always has.
+    private static func passwordMode(_ record: CredentialPasswordRecord) -> CredentialPasswordMode {
+        switch record {
+        case .stored: .stored
+        case .prompt: .prompt
+        case .pgpass: .pgpass
+        case .reference(let reference): passwordSource(reference: reference, local: nil).map { .source($0) } ?? .prompt
+        case .local(let source): passwordSource(reference: nil, local: source).map { .source($0) } ?? .prompt
+        }
+    }
+
+    private static func passwordRecord(_ mode: CredentialPasswordMode) -> CredentialPasswordRecord {
+        switch mode {
+        case .stored: return .stored
+        case .prompt: return .prompt
+        case .pgpass: return .pgpass
+        case .source(let source):
+            let (reference, local) = passwordSourceRecords(source)
+            if let local { return .local(source: local) }
+            if let reference { return .reference(reference: reference) }
+            return .prompt
+        }
     }
 
     static func tag(_ record: TagRecord) -> ConnectionTag {

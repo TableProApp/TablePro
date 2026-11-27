@@ -38,6 +38,8 @@ enum WelcomeActiveSheet: Identifiable {
     case projectFolderScan(URL)
     case deeplinkImport(ConnectionBundle)
     case teamLibraryConflicts
+    case newProject
+    case manageProjects
 
     var id: String {
         switch self {
@@ -55,6 +57,8 @@ enum WelcomeActiveSheet: Identifiable {
                 .map { "\($0.settings.type)-\($0.settings.name)-\($0.settings.host)-\($0.settings.port)" }
                 .joined(separator: ",")
         case .teamLibraryConflicts: "teamLibraryConflicts"
+        case .newProject: "newProject"
+        case .manageProjects: "manageProjects"
         }
     }
 }
@@ -75,6 +79,8 @@ final class WelcomeViewModel: ObservableObject {
     let services: AppServices
     let recentConnections: RecentConnectionsStore
     let listPreferences: ConnectionListPreferences
+    let scope: ConnectionScope
+    var projectStorage: ProjectStorage { services.projectStorage }
     weak var outlineController: WelcomeOutlineControlling?
     var storage: ConnectionStorage { services.connectionStorage }
     var groupStorage: GroupStorage { services.groupStorage }
@@ -89,6 +95,15 @@ final class WelcomeViewModel: ObservableObject {
     private(set) var tagsById: [UUID: ConnectionTag] = [:]
     private(set) var groupGraph = LibraryGroupGraph(groups: [ConnectionGroup]())
     private(set) var groupConnectionCounts: [UUID: Int] = [:]
+    // The lists above hold the whole library, so an edit, a lookup by id and the device state never lose
+    // another project's records. Only what is listed reads this.
+    private(set) var scopedLibrary = LibraryScopedLibrary<DatabaseConnection, ConnectionGroup>(
+        projectId: nil,
+        connections: [],
+        groups: []
+    )
+    @Published private(set) var projects: [ConnectionProject] = []
+    @Published private(set) var activeProjectId: UUID?
     @Published var linkedConnections: [LinkedConnection] = [] {
         didSet { rebuildOutline() }
     }
@@ -155,6 +170,7 @@ final class WelcomeViewModel: ObservableObject {
 
     private var connectionUpdatedCancellable: AnyCancellable?
     private var listStateCancellable: AnyCancellable?
+    private var scopeCancellable: AnyCancellable?
     private var showsRecentCancellable: AnyCancellable?
     private var linkedFoldersCancellable: AnyCancellable?
     private var teamLibraryCancellable: AnyCancellable?
@@ -178,13 +194,15 @@ final class WelcomeViewModel: ObservableObject {
         importableAppDetector: @escaping @MainActor () async -> Bool = { await !ForeignSourceScanner.probe().isEmpty },
         groupExpansionStore: WelcomeGroupExpansionStore = WelcomeGroupExpansionStore(),
         recentConnections: RecentConnectionsStore = .shared,
-        listPreferences: ConnectionListPreferences = .shared
+        listPreferences: ConnectionListPreferences = .shared,
+        scope: ConnectionScope = .shared
     ) {
         self.services = services
         self.importableAppDetector = importableAppDetector
         self.groupExpansionStore = groupExpansionStore
         self.recentConnections = recentConnections
         self.listPreferences = listPreferences
+        self.scope = scope
         self.sortMode = listPreferences.sortMode
         self.showsRecent = listPreferences.showsRecent
         let storedExpansion = groupExpansionStore.load()
@@ -201,8 +219,16 @@ final class WelcomeViewModel: ObservableObject {
     // MARK: - Derived State
 
     var availableTags: [ConnectionTag] {
-        let usedIds = Set(connections.flatMap(\.tagIds))
+        let usedIds = Set(scopedLibrary.connections.flatMap(\.tagIds))
         return tags.filter { usedIds.contains($0.id) }
+    }
+
+    var scopedGroups: [ConnectionGroup] {
+        scopedLibrary.groups
+    }
+
+    var activeProject: ConnectionProject? {
+        activeProjectId.flatMap { id in projects.first { $0.id == id } }
     }
 
     func tagSuggestions(matching text: String) -> [ConnectionTag] {
@@ -273,7 +299,8 @@ final class WelcomeViewModel: ObservableObject {
             hasAnyConnection: hasAnyConnection,
             hasVisibleContent: !outline.isEmpty,
             searchText: query.trimmedText,
-            isTagFiltered: !tagFilterIds.isEmpty
+            isTagFiltered: !tagFilterIds.isEmpty,
+            activeProjectName: activeProject?.name
         ))
     }
 
@@ -293,6 +320,7 @@ final class WelcomeViewModel: ObservableObject {
     // MARK: - Outline
 
     func rebuildOutline() {
+        refreshScope()
         guard filtersStillApply() else { return }
         connectionsById = Dictionary(connections.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         groupsById = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -315,8 +343,8 @@ final class WelcomeViewModel: ObservableObject {
 
     func outlineRequest(query: LibraryQuery) -> LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag> {
         LibraryOutlineRequest(
-            connections: connections,
-            groups: groups,
+            connections: scopedLibrary.connections,
+            groups: scopedLibrary.groups,
             tags: tags,
             sortMode: sortMode,
             query: query,
@@ -373,7 +401,7 @@ final class WelcomeViewModel: ObservableObject {
             searchText = ""
             return false
         }
-        let usedTagIds = Set(connections.flatMap(\.tagIds))
+        let usedTagIds = Set(scopedLibrary.connections.flatMap(\.tagIds))
         let keptTagIds = tagFilterIds.filter { usedTagIds.contains($0) }
         guard keptTagIds.count == tagFilterIds.count else {
             tagFilterIds = keptTagIds
@@ -406,6 +434,18 @@ final class WelcomeViewModel: ObservableObject {
             rebuildOutline()
         }
         focusList(selectFirstRow: true)
+    }
+
+    // Read on every rebuild: the active project and the project list change outside this window.
+    private func refreshScope() {
+        scopedLibrary = scope.scoped(connections: connections, groups: groups)
+        let stored = projectStorage.loadProjects()
+        if projects != stored {
+            projects = stored
+        }
+        if activeProjectId != scopedLibrary.projectId {
+            activeProjectId = scopedLibrary.projectId
+        }
     }
 
     func setSortMode(_ mode: LibrarySortMode) {
@@ -467,6 +507,12 @@ final class WelcomeViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.listStateDidChange()
+            }
+
+        // Sent on the main actor. The outline view holds the reload back while a drag or a rename runs.
+        scopeCancellable = scope.scopedSetChanged
+            .sink { [weak self] _ in
+                self?.loadConnections()
             }
 
         showsRecentCancellable = listPreferences.$showsRecent
@@ -611,6 +657,13 @@ final class WelcomeViewModel: ObservableObject {
         )
         guard !connections.isEmpty else { return }
         recentConnections.retain(only: Set(connections.map(\.id)).union(unreadableIds))
+    }
+
+    // The list shows one project and the saved order holds every project's, so a change made here is merged in.
+    func saveFavoritesOrder(_ updated: [UUID], replacing displayed: [UUID]) {
+        listPreferences.setFavoritesOrder(
+            LibraryOrdering.favoritesOrder(listPreferences.favoritesOrder, scoped: displayed, reorderedTo: updated)
+        )
     }
 
     // MARK: - Connecting
@@ -917,7 +970,9 @@ final class WelcomeViewModel: ObservableObject {
         parentId: UUID?,
         moving connectionIds: [UUID]
     ) throws {
-        let group = ConnectionGroup(name: name, color: color, iconName: iconName, parentId: parentId)
+        let group = scope.placingInActiveProject(
+            ConnectionGroup(name: name, color: color, iconName: iconName, parentId: parentId)
+        )
         try groupStorage.addGroup(group)
         expandedGroupIds.insert(group.id)
         if let parentId {
@@ -925,7 +980,7 @@ final class WelcomeViewModel: ObservableObject {
         }
         groups = groupStorage.loadGroups()
         if !connectionIds.isEmpty,
-           !storage.moveConnections(connectionIds, toGroup: group.id, before: nil, validGroupIds: Set(groups.map(\.id))) {
+           !storage.moveConnections(connectionIds, toGroup: group.id, before: nil, groups: groups) {
             reportLibraryWriteFailure()
         }
         loadConnections()

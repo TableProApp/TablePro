@@ -609,8 +609,8 @@ extension ConnectionEditorEngine {
                 id: "tableData",
                 title: String(localized: "Table Data"),
                 footer: String(localized: """
-                    A larger binary value stays on the server until you open, copy or export it. \
-                    Applies to tables with a primary key.
+                    A larger text, JSON or binary value stays on the server until you open, copy or export it. \
+                    The grid shows the start of a text value. Applies to tables with a primary key.
                     """),
                 rows: [.builtIn(.binaryInlineLimit)]
             ))

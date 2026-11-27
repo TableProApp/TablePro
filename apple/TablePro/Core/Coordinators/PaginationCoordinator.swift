@@ -26,11 +26,13 @@ final class PaginationCoordinator: ObservableObject {
         guard canSeek, let (tab, _) = parent.tabManager.selectedTabAndIndex, tab.tabType == .table else { return }
         let loadedRowCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
         guard tab.pagination.canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
-        paginateAfterConfirmation(tabId: tab.id) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
+        paginateAfterConfirmation(tabId: tab.id, move: .next) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
     }
 
+    // Page 1 is read from the start, which no seek beats.
     func goToPreviousPage() {
-        seekIfPossible(where: \.hasPreviousPage) { $0.goToPreviousPage() }
+        let move: PageMove? = (parent.tabManager.selectedTab?.pagination.currentPage ?? 0) > 2 ? .previous : nil
+        seekIfPossible(where: \.hasPreviousPage, move: move) { $0.goToPreviousPage() }
     }
 
     func goToFirstPage() {
@@ -38,7 +40,7 @@ final class PaginationCoordinator: ObservableObject {
     }
 
     func goToLastPage() {
-        seekIfPossible(where: { $0.isLastPageKnown && $0.currentPage != $0.totalPages }) { $0.goToLastPage() }
+        seekIfPossible(where: { $0.isLastPageKnown && $0.currentPage != $0.totalPages }, move: .last) { $0.goToLastPage() }
     }
 
     func goToPage(_ page: Int) {
@@ -58,10 +60,11 @@ final class PaginationCoordinator: ObservableObject {
 
     private func seekIfPossible(
         where condition: (PaginationState) -> Bool,
+        move: PageMove? = nil,
         mutate: @escaping (inout PaginationState) -> Void
     ) {
         guard canSeek else { return }
-        paginateIfPossible(where: condition, mutate: mutate)
+        paginateIfPossible(where: condition, move: move, mutate: mutate)
     }
 
     // Only sized from a real count: the driver's estimate (MySQL guessed 420,000) loaded a LIMIT that silently dropped rows.
@@ -115,22 +118,29 @@ final class PaginationCoordinator: ObservableObject {
     // A query tab has no pages: the reload would write a generated table page over the user's SQL.
     private func paginateIfPossible(
         where condition: (PaginationState) -> Bool = { _ in true },
+        move: PageMove? = nil,
         mutate: @escaping (inout PaginationState) -> Void
     ) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
               tab.tabType == .table,
               condition(tab.pagination) else { return }
-        paginateAfterConfirmation(tabId: tab.id, mutate: mutate)
+        paginateAfterConfirmation(tabId: tab.id, move: move, mutate: mutate)
     }
 
+    // The edge row is read after the confirmation, once a discard has put the page's rows back as the server has them.
     private func paginateAfterConfirmation(
         tabId: UUID,
+        move: PageMove? = nil,
         mutate: @escaping (inout PaginationState) -> Void
     ) {
         parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .pagination) { [weak self] confirmed in
             guard let self, confirmed else { return }
+            let seek = move.flatMap { move in
+                parent.tabManager.tabs.first(where: { $0.id == tabId }).flatMap { parent.pageSeek(for: $0, move: move) }
+            }
             guard parent.tabManager.mutate(tabId: tabId, { tab in
                 mutate(&tab.pagination)
+                if let seek { tab.pagination.seek = seek }
                 tab.paginationVersion += 1
             }) else { return }
             reloadPage(ofTab: tabId)
@@ -321,7 +331,7 @@ final class PaginationCoordinator: ObservableObject {
         let owner = TabQueryTaskOwner.unclaimedWork(tabId: tabId, token: workToken)
         let lease = DriverLeaseOwner()
         let isTableTab = parent.tabManager.tabs[idx].tabType == .table
-        let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: parent.tabManager.tabs[idx], sql: baseQuery) : []
+        let unloadedLayout = isTableTab ? parent.unloadedValueLayout(for: parent.tabManager.tabs[idx], sql: baseQuery) : nil
         let failureOutput = ServerOutputBox()
         let safeModeIsReadOnly = parent.runsAtReadOnly
 
@@ -371,14 +381,15 @@ final class PaginationCoordinator: ObservableObject {
                         }
                         return try await driver.executeUserQuery(query: baseQuery, rowCap: nil, parameters: parameters)
                     }
-                    let result: QueryResult
+                    var result: QueryResult
                     if isTableTab {
                         // A table tab's own reads print nothing, as on its first page.
                         result = try await rerun()
                     } else {
                         result = try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput, rerun)
                     }
-                    return result.foldingUnloadedValues(lengthColumns: lengthColumns)
+                    result.foldUnloadedValues(unloadedLayout)
+                    return result
                 }
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")

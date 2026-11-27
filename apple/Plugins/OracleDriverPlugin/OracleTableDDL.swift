@@ -46,7 +46,7 @@ nonisolated internal enum OracleTableDDL {
 
     private static func checkCondition(of constraint: OracleTableConstraint) throws -> String {
         let condition = SQLExpressionFragment.strippingComments(constraint.condition ?? "", databaseTypeId: "Oracle")
-        guard !constraint.conditionMayBeCut, !condition.isEmpty, isSingleExpression(condition) else {
+        guard !condition.isEmpty, isSingleExpression(condition) else {
             throw OracleStatementError(message: String(
                 format: String(localized: "The condition of check constraint %@ cannot be written as SQL."),
                 constraint.name
@@ -71,9 +71,9 @@ nonisolated internal enum OracleTableDDL {
         }
     }
 
-    /// `TEXT_VC` is the view's query alone, so its column names go in the header: a view declared
-    /// `v (public_id) AS SELECT internal_id ...` replayed without them exposes `INTERNAL_ID`, and one
-    /// over an unaliased expression cannot be recreated at all. `DBMS_METADATA` writes the list too.
+    // `ALL_VIEWS.TEXT` is the view's query alone, so its column names go in the header: a view declared
+    // `v (public_id) AS SELECT internal_id ...` replayed without them exposes `INTERNAL_ID`, and one
+    // over an unaliased expression cannot be recreated at all. `DBMS_METADATA` writes the list too.
     static func createView(qualifiedView: String, columns: [String], query: String, quote: (String) -> String) -> String {
         let columnList = columns.isEmpty ? "" : " (" + columns.map(quote).joined(separator: ", ") + ")"
         return "CREATE OR REPLACE VIEW \(qualifiedView)\(columnList) AS\n\(query)"

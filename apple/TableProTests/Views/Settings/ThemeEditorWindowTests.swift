@@ -3,6 +3,7 @@ import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProTestSupport
+import TableProTextEngine
 import TableProTheme
 import Testing
 
@@ -68,6 +69,32 @@ struct ThemeEditorWindowTests {
 
         #expect(window.firstResponder === window)
         #expect(window.firstResponder?.undoManager === controller.model.undoManager)
+        windows.closeEditor(for: "user.aaaa0002")
+    }
+
+    // Unfocused, the preview drew the system's grey and the inactive row, so no selection slot ever showed in it (#4468).
+    @Test("The preview draws the focused selection colors without holding focus")
+    func previewDrawsTheFocusedSelection() async throws {
+        let fixture = try Fixture()
+        try fixture.install(Fixture.theme("user.aaaa0002", "Midnight"), as: "Midnight.json")
+        let windows = makeWindows(fixture)
+        windows.openEditor(for: "user.aaaa0002")
+        let controller = try #require(windows.controller(for: "user.aaaa0002"))
+        let window = try #require(controller.window)
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        let views = Self.subviews(of: try #require(window.contentView))
+        let editor = try #require(views.compactMap { $0 as? TextView }.first { $0.isInsideThemePreview })
+        #expect(editor.selectionManager.drawsSelectionEmphasized)
+
+        let grid = try #require(views.compactMap { $0 as? NSTableView }.first { $0.isInsideThemePreview })
+        let row = ThemePreviewGridSample.selectedRow
+        try await waitUntil { grid.rowView(atRow: row, makeIfNecessary: false)?.isSelected == true }
+        controller.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: window))
+        #expect(window.firstResponder === window)
+
+        let rowView = try #require(grid.rowView(atRow: row, makeIfNecessary: false))
+        #expect(rowView.isEmphasized)
         windows.closeEditor(for: "user.aaaa0002")
     }
 

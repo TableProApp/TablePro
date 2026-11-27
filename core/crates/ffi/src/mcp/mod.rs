@@ -32,12 +32,14 @@ impl Core {
                 tracing::warn!(%error, "the MCP server could not read the saved connections");
             }
         }));
+        let project = app_bridge::ActiveProject::default();
         let bridge = app_bridge::AppBridge {
             app: Arc::from(host),
             sessions: self.open_sessions(),
             tasks: self.tasks.clone(),
             history: self.history_access(),
             requests: AtomicU64::new(1),
+            project: project.clone(),
         };
         let context = ToolContext {
             host: Arc::new(bridge),
@@ -49,6 +51,7 @@ impl Core {
             context,
             self.client_version(),
             Arc::from(listener),
+            project,
         )))
     }
 }

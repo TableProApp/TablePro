@@ -110,18 +110,30 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             _workbench.HistoryCleared -= OnHistoryRecorded;
             _workbench.HistoryCleared += OnHistoryRecorded;
+            _workbench.ScopeChanged -= OnScopeChanged;
+            _workbench.ScopeChanged += OnScopeChanged;
             _workbench.SavedQueriesChanged -= OnSavedQueriesChanged;
             _workbench.SavedQueriesChanged += OnSavedQueriesChanged;
             _workbench.SettingsChanged -= OnSettingsChanged;
             _workbench.SettingsChanged += OnSettingsChanged;
-            // A clear or an import while another page showed reached no handler here, so the panes read again.
-            OnHistoryRecorded(this, EventArgs.Empty);
+            // A clear, an import or a scope change while another page showed reached no handler here, so the panes
+            // read again; the every-connection list reads once, in the scope as it is now.
+            if (_historyPane is { ListsEveryConnection: true })
+            {
+                OnScopeChanged(this, EventArgs.Empty);
+            }
+            else
+            {
+                OnHistoryRecorded(this, EventArgs.Empty);
+            }
+
             OnSavedQueriesChanged(this, EventArgs.Empty);
             AssistantChanged();
         };
         Unloaded += (_, _) =>
         {
             _workbench.HistoryCleared -= OnHistoryRecorded;
+            _workbench.ScopeChanged -= OnScopeChanged;
             _workbench.SavedQueriesChanged -= OnSavedQueriesChanged;
             _workbench.SettingsChanged -= OnSettingsChanged;
         };
@@ -691,9 +703,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 return;
             }
 
-            // A file opened without saving gets a new id each time it opens, so its pane lists every connection's runs.
+            // A file opened without saving gets a new id each time it opens, so its pane lists the runs of every
+            // connection the active project holds.
             var connection = _connection.ConnectionId is null ? (Guid?)null : session.Id;
-            pane = new HistoryPane(history is null ? null : new HistoryList(new CoreHistoryStore(history), connection))
+            var project = connection is null ? _workbench.ActiveProject : null;
+            var list = history is null
+                ? null
+                : new HistoryList(new CoreHistoryStore(history), connection, projectId: project);
+            pane = new HistoryPane(list)
             {
                 CanSaveQuery = CanShowSavedQueries,
             };
@@ -875,6 +892,16 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (HistoryVisible && _historyPane is { } pane)
         {
             await pane.RefreshAsync().ConfigureAwait(true);
+        }
+    }
+
+    // One connection's pane is its own whatever the project; only the every-connection list follows the scope,
+    // which a move or a delete changes as a switch does.
+    private async void OnScopeChanged(object? sender, EventArgs e)
+    {
+        if (_historyPane is { } pane)
+        {
+            await pane.ShowProjectAsync(_workbench.ActiveProject).ConfigureAwait(true);
         }
     }
 

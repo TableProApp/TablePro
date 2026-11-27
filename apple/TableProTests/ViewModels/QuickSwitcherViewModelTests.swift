@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -288,6 +289,67 @@ struct QuickSwitcherViewModelTests {
         vm.invalidateCrossConnectionQueryItems()
         await vm.loadCrossConnectionQueryItems()
 
+        #expect(vm.crossConnectionQueryItems.map(\.frecencyKey) == ["favorite_\(favorite.id.uuidString)"])
+    }
+
+    @Test("The scope signal reloads the queries of other connections for the project in force")
+    func scopeSignalReloadsCrossConnectionQueries() async {
+        let local = TestFixtures.makeConnection(name: "Primary", database: "app")
+        let remote = TestFixtures.makeConnection(name: "Analytics", database: "warehouse")
+        let databaseManager = DatabaseManager()
+        let schemaService = SchemaService()
+        let schemaRefreshService = SchemaRefreshService(
+            schemaService: schemaService,
+            providerRegistry: SchemaProviderRegistry(),
+            metadataDriverProvider: databaseManager,
+            databaseManager: databaseManager
+        )
+        let favoriteStorage = SQLFavoriteStorage(
+            databaseURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("quick-switcher-scope-\(UUID().uuidString).db"),
+            removeDatabaseOnDeinit: true
+        )
+        let services = makeServices(
+            databaseManager: databaseManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService,
+            sqlFavoriteManager: SQLFavoriteManager(storage: favoriteStorage)
+        )
+        for connection in [local, remote] {
+            var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+            session.status = .connected
+            databaseManager.injectSession(session, for: connection.id)
+        }
+        defer {
+            databaseManager.removeSession(for: local.id)
+            databaseManager.removeSession(for: remote.id)
+        }
+        let favorite = SQLFavorite(name: "Daily revenue", query: "SELECT 1", connectionId: remote.id)
+        #expect(await favoriteStorage.addFavorite(favorite))
+        let project = ScopedProject()
+        let scopeChanged = PassthroughSubject<Void, Never>()
+        let vm = QuickSwitcherViewModel(
+            connectionId: local.id,
+            services: services,
+            defaults: makeDefaults(),
+            projectConnectionIds: { project.connectionIds },
+            scopeChanged: scopeChanged.eraseToAnyPublisher()
+        )
+        vm.scope = .queries
+        await vm.loadCrossConnectionQueryItems()
+        #expect(vm.crossConnectionQueryItems.map(\.frecencyKey) == ["favorite_\(favorite.id.uuidString)"])
+        let revision = vm.crossConnectionQueryContentRevision
+
+        // The other connection moved out of the active project.
+        project.connectionIds = [local.id]
+        scopeChanged.send()
+        #expect(vm.crossConnectionQueryContentRevision != revision, "Published, so the panel's load task runs again")
+        await vm.loadCrossConnectionQueryItems()
+        #expect(vm.crossConnectionQueryItems.isEmpty)
+
+        project.connectionIds = nil
+        scopeChanged.send()
+        await vm.loadCrossConnectionQueryItems()
         #expect(vm.crossConnectionQueryItems.map(\.frecencyKey) == ["favorite_\(favorite.id.uuidString)"])
     }
 
@@ -1376,4 +1438,9 @@ struct QuickSwitcherViewModelTests {
 
         #expect(groups.isEmpty)
     }
+}
+
+@MainActor
+private final class ScopedProject {
+    var connectionIds: Set<UUID>?
 }

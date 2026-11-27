@@ -28,6 +28,9 @@ final class HistoryPanelState: ObservableObject {
         set { QueryHistoryCaptureState.shared.isPaused = newValue }
     }
 
+    // The active project's connections, or nil in All Connections, where a run whose connection is gone still shows.
+    var projectConnectionIds: @MainActor () -> Set<UUID>? = { ConnectionScope.shared.allowedConnectionIds }
+
     private init(connectionId: UUID) {
         self.connectionId = connectionId
         let preferences = HistoryPanelPreferencesStorage.load(for: connectionId)
@@ -57,7 +60,8 @@ final class HistoryPanelState: ObservableObject {
             sources: sources,
             outcome: outcome,
             searchText: trimmed.isEmpty ? nil : trimmed,
-            since: dateRange.since(from: referenceDate)
+            since: dateRange.since(from: referenceDate),
+            allowedConnectionIds: scope == .all ? projectConnectionIds() : nil
         )
     }
 

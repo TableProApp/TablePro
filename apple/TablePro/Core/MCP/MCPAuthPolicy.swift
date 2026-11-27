@@ -27,12 +27,22 @@ struct MCPConnectionAuthSnapshot: Sendable {
 
 typealias MCPConnectionSnapshotResolver = @Sendable (UUID) async -> MCPConnectionAuthSnapshot?
 typealias MCPConnectionIdsProvider = @Sendable () async -> Set<UUID>
+// The connections of the active project, or nil in All Connections.
+typealias MCPActiveProjectScopeProvider = @Sendable () async -> Set<UUID>?
+
+extension MCPPrincipal {
+    // The in-app chat works on its own window's connection, whatever project the Welcome window shows.
+    var followsActiveProject: Bool {
+        tokenId != Self.inAppAssistantTokenId && !metadata.isClaudeAgentCredential
+    }
+}
 
 public actor MCPAuthPolicy {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPAuthPolicy")
 
     private let connectionResolver: MCPConnectionSnapshotResolver
     private let connectionIdsProvider: MCPConnectionIdsProvider
+    private let activeProjectScope: MCPActiveProjectScopeProvider
     private let approvalLedger: MCPApprovalLedger
     private let historyRecorder: QueryHistoryRecording
     private let approvalSetting: MCPConnectionApprovalReading
@@ -47,6 +57,7 @@ public actor MCPAuthPolicy {
     init(
         connectionResolver: @escaping MCPConnectionSnapshotResolver,
         connectionIdsProvider: @escaping MCPConnectionIdsProvider = MCPAuthPolicy.defaultConnectionIdsProvider,
+        activeProjectScope: @escaping MCPActiveProjectScopeProvider = MCPAuthPolicy.defaultActiveProjectScope,
         approvalLedger: MCPApprovalLedger = MCPApprovalLedger(),
         historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared,
         approvalSetting: MCPConnectionApprovalReading = MCPSettingsApprovalReader(),
@@ -55,6 +66,7 @@ public actor MCPAuthPolicy {
     ) {
         self.connectionResolver = connectionResolver
         self.connectionIdsProvider = connectionIdsProvider
+        self.activeProjectScope = activeProjectScope
         self.approvalLedger = approvalLedger
         self.historyRecorder = historyRecorder
         self.approvalSetting = approvalSetting
@@ -96,6 +108,11 @@ public actor MCPAuthPolicy {
 
         if !principal.connectionAccess.allows(connectionId) {
             return .denied(reason: String(localized: "Token does not have access to this connection"))
+        }
+
+        // A listing scope the user moves, not an access control: it only narrows what the checks above allow.
+        if await isOutsideActiveProject(connectionId, for: principal) {
+            return .denied(reason: Self.outsideActiveProjectRefusal)
         }
 
         // Before the approval prompt, so nobody is asked about a statement the request already ruled out.
@@ -151,7 +168,9 @@ public actor MCPAuthPolicy {
 
     func readableConnectionIds(principal: MCPPrincipal, from candidates: Set<UUID>) async -> Set<UUID> {
         var readable: Set<UUID> = []
+        let inProject = principal.followsActiveProject ? await activeProjectScope() : nil
         for candidate in candidates {
+            if let inProject, !inProject.contains(candidate) { continue }
             guard let snapshot = await connectionResolver(candidate) else { continue }
             guard snapshot.policy != .never else { continue }
             guard snapshot.externalAccess != .blocked else { continue }
@@ -436,6 +455,19 @@ public actor MCPAuthPolicy {
         }
         guard MCPToolName.writeQueryTools.contains(tool), let sql else { return false }
         return QueryClassifier.isWriteQuery(sql, databaseType: DatabaseType(rawValue: databaseType))
+    }
+
+    static var outsideActiveProjectRefusal: String {
+        String(localized: "This connection is in another project. Switch to that project or to All Connections in TablePro to reach it.")
+    }
+
+    private func isOutsideActiveProject(_ connectionId: UUID, for principal: MCPPrincipal) async -> Bool {
+        guard principal.followsActiveProject, let inProject = await activeProjectScope() else { return false }
+        return !inProject.contains(connectionId)
+    }
+
+    static let defaultActiveProjectScope: MCPActiveProjectScopeProvider = {
+        await MainActor.run { ConnectionScope.shared.allowedConnectionIds }
     }
 
     static let defaultConnectionIdsProvider: MCPConnectionIdsProvider = {

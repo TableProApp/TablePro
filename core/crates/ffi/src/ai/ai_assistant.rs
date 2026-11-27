@@ -206,7 +206,9 @@ impl Inner {
         let streaming = tablepro_ai::stream_reply(&client, &endpoint, &request, cancel.clone(), sender);
         let forwarding = async {
             while let Some(event) = receiver.recv().await {
-                state.post(event.into());
+                if let Some(event) = AiReplyEvent::from_reply(event) {
+                    state.post(event);
+                }
             }
         };
         // Dropping the stream on a stop ends its request.

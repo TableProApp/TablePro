@@ -118,7 +118,6 @@ struct SyncDirtyMarkingTests {
     @Test("Editing one SSH profile marks that profile alone")
     func sshProfileUpdateMarksOnlyThatProfile() throws {
         let storage = SSHProfileStorage(
-            userDefaults: try defaults("ssh"),
             keychain: keychain,
             syncJournal: tracker.journal,
             connectionStorage: connections
@@ -137,11 +136,9 @@ struct SyncDirtyMarkingTests {
     @Test("Editing one credential profile marks that profile alone")
     func credentialProfileUpdateMarksOnlyThatProfile() throws {
         let storage = CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
             syncJournal: tracker.journal,
-            connectionStorage: connections,
-            integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
+            connectionStorage: connections
         )
         #expect(storage.addProfile(CredentialProfile(name: "Reader", username: "reader")))
         #expect(storage.addProfile(CredentialProfile(name: "Writer", username: "writer")))

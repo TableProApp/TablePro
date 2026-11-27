@@ -845,7 +845,7 @@ final class ConnectionFormViewModel {
 
     private func writeToLibrary(_ draft: DatabaseConnection, appState: AppState) -> LibraryWriteOutcome {
         guard isEditing || addedNewConnection else {
-            guard appState.addConnection(draft) else { return .refused }
+            guard appState.addConnectionToActiveProject(draft) else { return .refused }
             addedNewConnection = true
             return .applied
         }

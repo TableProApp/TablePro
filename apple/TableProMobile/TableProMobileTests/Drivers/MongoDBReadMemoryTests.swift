@@ -81,12 +81,13 @@ struct MongoDBReadMemoryTests {
 
     @Test("Locators the read already took give the same kinds as reading them from each document")
     func givenLocatorsMatchParsedOnes() {
-        var read = Self.read([
+        let texts = [
             #"{"_id":{"$oid":"64b7f0000000000000000001"},"n":{"$numberLong":"7"}}"#,
             #"{"_id":"text id","n":{"$numberInt":"7"}}"#,
-        ])
+        ]
+        var read = Self.read(texts)
         let parsed = MongoDBNumberKinds.recording(read, representation: .unspecified)
-        read.locators = read.texts.map(MongoDocumentIdentity.locator(inDocument:))
+        read.locators = texts.map(MongoDocumentIdentity.locator(inDocument:))
         let given = MongoDBNumberKinds.recording(read, representation: .unspecified)
         for locator in read.locators?.compactMap({ $0 }) ?? [] {
             #expect(given.kinds(ofRow: locator) == parsed.kinds(ofRow: locator))

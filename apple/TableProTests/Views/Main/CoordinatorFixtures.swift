@@ -8,8 +8,11 @@ final class CoordinatorFixtures {
 
     nonisolated init() {}
 
-    func make(connection: DatabaseConnection = TestFixtures.makeConnection()) -> CoordinatorFixture {
-        let fixture = CoordinatorFixture(connection: connection)
+    func make(
+        connection: DatabaseConnection = TestFixtures.makeConnection(),
+        driver: (any DatabaseDriver)? = nil
+    ) -> CoordinatorFixture {
+        let fixture = CoordinatorFixture(connection: connection, driver: driver)
         kept.append(fixture)
         return fixture
     }

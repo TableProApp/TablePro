@@ -57,6 +57,14 @@ struct ConnectionStoreIntegrity: Sendable {
         keySource.key() != nil
     }
 
+    // The key the core seals the library writes it makes itself with: derived from the tag's key, so it is the same at
+    // every launch and nothing outside TablePro can forge a report.
+    func libraryReportKey() -> String? {
+        guard let key = keySource.key() else { return nil }
+        let code = HMAC<SHA256>.authenticationCode(for: Data("TablePro core library writes".utf8), using: key)
+        return Data(code).map { String(format: "%02x", $0) }.joined()
+    }
+
     static func tagURL(for fileURL: URL) -> URL {
         fileURL.appendingPathExtension("hmac")
     }

@@ -77,10 +77,18 @@ extension ConnectionEditorStore {
         var record: DatabaseConnection
         let reviewed: DatabaseConnection
         var plan: SecretWritePlan
+        let groups = services.groupStorage.loadGroups()
         if let existingIndex {
             let fresh = connections[existingIndex]
             let merged = enforcingInvariants(edits.applied(to: fresh, since: baselineEdits))
             record = merged.record
+            // Read before the save: a connection the form takes out of a group keeps that group's project.
+            record.projectId = LibraryProjectNormalizer.movingConnections(
+                [record.id],
+                toGroup: record.groupId,
+                connections: connections,
+                groups: groups
+            ).connectionProjectId(record.id, current: fresh.projectId)
             if fresh.groupId != record.groupId {
                 record.sortOrder = ConnectionStorage.nextSortOrder(in: connections, groupId: record.groupId)
             }
@@ -91,6 +99,12 @@ extension ConnectionEditorStore {
             settlePlaintextSecrets(merged.plaintextSecrets, plan: &plan, record: &record)
         } else {
             record = enforcingInvariants(edits.applied(to: DatabaseConnection(id: connectionId, name: ""))).record
+            // A new connection lands in the active project. Inside a group it stores none of its own.
+            record.projectId = LibraryProjectNormalizer.connectionProjectId(
+                scope.activeProjectId,
+                groupId: record.groupId,
+                groups: groups
+            )
             record.sortOrder = ConnectionStorage.nextSortOrder(in: connections, groupId: record.groupId)
             reviewed = record
             plan = ConnectionEditorEngine.secretPlan(saving, traits, originalTraits: originalTraits, context)

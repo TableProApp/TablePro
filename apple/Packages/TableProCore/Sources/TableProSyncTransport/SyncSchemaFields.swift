@@ -7,12 +7,33 @@ public enum ConnectionGroupSyncField: String, SyncSchemaField {
     case iconName
     case parentId
     case sortOrder
+    case projectId
     case modifiedAtLocal
     case schemaVersion
 
     public static let verifiedInProduction: Set<Self> = [
         .groupId, .name, .color, .iconName, .parentId, .sortOrder, .modifiedAtLocal, .schemaVersion
     ]
+}
+
+public extension ConnectionGroupSyncField {
+    // In each app's readable content, so a build that cached a group before it read the field fetches it once.
+    static let projectContentKind = "\(SyncRecordType.group.rawValue)/\(Self.projectId.rawValue).v1"
+}
+
+// Empty until `ConnectionProject` is in the Production schema. Fill it, add `.project` to
+// `SyncRecordType.verifiedInProduction` and `projectId` to the connection and group sets in one commit,
+// with the refreshed `production-schema.ckdb`.
+public enum ConnectionProjectSyncField: String, SyncSchemaField {
+    case projectId
+    case name
+    case color
+    case iconName
+    case sortOrder
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = []
 }
 
 public enum ConnectionTagSyncField: String, SyncSchemaField {

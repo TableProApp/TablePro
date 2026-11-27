@@ -2,6 +2,8 @@ mod connection_color;
 mod connection_group;
 mod connection_group_name;
 mod connection_icon;
+mod connection_project;
+mod connection_project_name;
 mod connection_tag;
 mod connection_tag_name;
 mod connections;
@@ -19,6 +21,7 @@ mod lenient;
 mod library_icon;
 mod name_rules;
 mod paths;
+mod project_name_error;
 pub mod query_history;
 pub mod saved_queries;
 mod saved_query_database;
@@ -34,17 +37,20 @@ pub use connection_color::ConnectionColor;
 pub use connection_group::ConnectionGroup;
 pub use connection_group_name::ConnectionGroupName;
 pub use connection_icon::ConnectionIcon;
+pub use connection_project::ConnectionProject;
+pub use connection_project_name::ConnectionProjectName;
 pub use connection_tag::ConnectionTag;
 pub use connection_tag_name::ConnectionTagName;
 pub use connections::field_trust;
 pub use connections::{
-    CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionList,
+    CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, CommittedWrite, ConnectionDetails, ConnectionList,
     ConnectionListSnapshot, ConnectionListState, ConnectionOrigin, ConnectionStore, CredentialPassword,
     CredentialProfile, CredentialReference, DeviceOnly, ImportChange, ImportEntry, ImportPreview, ImportReport,
-    ImportedConnection, KnownOrigin, LibraryChange, LibraryRead, LibraryWrite, LocalPasswordSource, Rebuilt,
-    RemoteFileAccess, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig, SocksProxy, SshJumpAuth,
-    SshJumpHost, SshProfile, SshRemoteFile, SshRoute, SshRouteHop, SshRouteTarget, SshTotp, SshTotpAlgorithm,
-    SshTotpMode, SyncedLibrary, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
+    ImportedConnection, KnownOrigin, LibraryChange, LibraryRead, LibraryWrite, LocalPasswordSource, ProjectMembership,
+    Rebuilt, RemoteFileAccess, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig, SecretOwner,
+    SecretOwnerKind, SocksProxy, SshJumpAuth, SshJumpHost, SshProfile, SshRemoteFile, SshRoute, SshRouteHop,
+    SshRouteTarget, SshTotp, SshTotpAlgorithm, SshTotpMode, SyncedLibrary, TunnelCommand, TunnelCommandMethod,
+    VaultAuth, VaultDatabaseRole,
 };
 pub use credentials::{
     CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretItemLabeler,
@@ -63,6 +69,7 @@ pub use journal::{ChangeJournal, JournalEntry, RecordKind, RecordRef};
 pub use library_icon::{LibraryIcon, SymbolName};
 pub use name_rules::shown as shown_name;
 pub use paths::StoragePaths;
+pub use project_name_error::ProjectNameError;
 pub use query_history::QueryHistory;
 pub use saved_queries::{
     SavedQueries, SavedQueriesSnapshot, SavedQueryContents, SavedQueryFolder, SavedQueryFolders, SavedQuerySettlement,

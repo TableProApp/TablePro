@@ -22,6 +22,7 @@ public struct SyncRecordEdit {
         record: CKRecord,
         base: CKRecord?,
         baseAsWritten: CKRecord? = nil,
+        schema: SyncWritableSchema = .production,
         settle: ((_ merged: CKRecord, _ server: CKRecord) -> Void)? = nil
     ) {
         let pushed = record.fields(Field.self)
@@ -44,14 +45,14 @@ public struct SyncRecordEdit {
         self.editedKeys = Set(edited.map(\.key))
         self.hasBase = base != nil
         self.apply = { target in
-            let fields = target.fields(Field.self, absentValues: .clear)
+            let fields = target.fields(Field.self, absentValues: .clear, schema: schema)
             for (field, value) in values {
                 fields[field] = value
             }
         }
         self.whole = {
             let fresh = CKRecord(recordType: record.recordType, recordID: record.recordID)
-            let fields = fresh.fields(Field.self)
+            let fields = fresh.fields(Field.self, schema: schema)
             for field in Field.allCases {
                 fields[field] = pushed[field]
             }

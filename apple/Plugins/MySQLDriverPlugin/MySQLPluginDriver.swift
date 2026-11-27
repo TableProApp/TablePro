@@ -426,6 +426,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         rowCap: Int?,
         parameters: [PluginCellValue]?,
+        kinds: [PluginColumnKind?]? = nil,
         byteLimit: Int?
     ) async throws -> PluginQueryResult {
         let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
@@ -435,7 +436,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
         return try await retryingAfterStop {
-            try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: cap, byteLimit: byteLimit)
+            try await self.executeParameterizedOnce(
+                query: query, parameters: parameters, kinds: kinds, rowCap: cap, byteLimit: byteLimit
+            )
         }
     }
 
@@ -465,6 +468,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func executeParameterizedOnce(
         query: String,
         parameters: [PluginCellValue],
+        kinds: [PluginColumnKind?]? = nil,
         rowCap: Int?,
         byteLimit: Int?
     ) async throws -> PluginQueryResult {
@@ -475,7 +479,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result: MariaDBPluginQueryResult
         do {
             result = try await conn.executeParameterizedQuery(
-                query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit
+                query, parameters: parameters, kinds: kinds, rowCap: rowCap, byteLimit: byteLimit
             )
         } catch {
             noteFailure(query)
@@ -1476,11 +1480,13 @@ extension MySQLPluginDriver {
     ) async throws -> PluginQueryResult {
         guard let scope = readOnlyScope(context) else {
             return try await runUserQuery(
-                query: query, rowCap: rowCap, parameters: parameters, byteLimit: context.resultByteLimit
+                query: query, rowCap: rowCap, parameters: parameters, kinds: context.parameterKinds,
+                byteLimit: context.resultByteLimit
             )
         }
         return try await readOnlyRead(
-            query: query, parameters: parameters, rowCap: rowCap, byteLimit: context.resultByteLimit, scope: scope
+            query: query, parameters: parameters, kinds: context.parameterKinds, rowCap: rowCap,
+            byteLimit: context.resultByteLimit, scope: scope
         )
     }
 
@@ -1500,11 +1506,13 @@ extension MySQLPluginDriver {
     ) async throws -> PluginQueryResult {
         guard let scope = readOnlyScope(context) else {
             return try await runUserQuery(
-                query: query, rowCap: nil, parameters: parameters, byteLimit: context.resultByteLimit
+                query: query, rowCap: nil, parameters: parameters, kinds: context.parameterKinds,
+                byteLimit: context.resultByteLimit
             )
         }
         return try await readOnlyRead(
-            query: query, parameters: parameters, rowCap: nil, byteLimit: context.resultByteLimit, scope: scope
+            query: query, parameters: parameters, kinds: context.parameterKinds, rowCap: nil,
+            byteLimit: context.resultByteLimit, scope: scope
         )
     }
 
@@ -1545,6 +1553,7 @@ extension MySQLPluginDriver {
     private func readOnlyRead(
         query: String,
         parameters: [PluginCellValue]?,
+        kinds: [PluginColumnKind?]? = nil,
         rowCap: Int?,
         byteLimit: Int?,
         scope: MySQLReadOnlyTransaction.Scope
@@ -1552,7 +1561,8 @@ extension MySQLPluginDriver {
         let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
         return try await retryingAfterStop {
             try await self.executeReadOnly(
-                query: query, parameters: parameters, rowCap: cap, byteLimit: byteLimit, scope: scope, isRetry: false
+                query: query, parameters: parameters, kinds: kinds, rowCap: cap, byteLimit: byteLimit, scope: scope,
+                isRetry: false
             )
         }
     }
@@ -1561,6 +1571,7 @@ extension MySQLPluginDriver {
     private func executeReadOnly(
         query: String,
         parameters: [PluginCellValue]?,
+        kinds: [PluginColumnKind?]? = nil,
         rowCap: Int?,
         byteLimit: Int?,
         scope: MySQLReadOnlyTransaction.Scope,
@@ -1574,7 +1585,7 @@ extension MySQLPluginDriver {
 
         do {
             let result = try await conn.executeReadOnly(
-                query, parameters: parameters, rowCap: rowCap, byteLimit: byteLimit, scope: scope
+                query, parameters: parameters, kinds: kinds, rowCap: rowCap, byteLimit: byteLimit, scope: scope
             )
             return Self.pluginResult(result, startedAt: startTime)
         } catch let error as MariaDBPluginError where !isRetry

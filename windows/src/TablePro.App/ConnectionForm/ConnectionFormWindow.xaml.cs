@@ -29,6 +29,8 @@ public sealed partial class ConnectionFormWindow : Window
     private DatabaseEngine? _engine;
     private bool _createFile;
     private IReadOnlyList<ConnectionGroup> _groups = [];
+    private int _groupsRead;
+    private bool _groupsShown;
     private readonly Guid? _groupToSelect;
     private CancellationTokenSource? _testing;
     private bool _busy;
@@ -59,7 +61,17 @@ public sealed partial class ConnectionFormWindow : Window
         Themes.Apply(this, workbench.Settings.Theme);
         FillEngines(string.Empty);
         FillColors();
-        Closed += (_, _) => _testing?.Cancel();
+        Closed += (_, _) =>
+        {
+            _testing?.Cancel();
+            workbench.ScopeChanged -= OnScopeChanged;
+        };
+        // A new connection lands in the active project, so its groups follow a switch made in another window.
+        if (existing is null)
+        {
+            workbench.ScopeChanged += OnScopeChanged;
+        }
+
         _groupToSelect = existing?.GroupId;
         if (existing is not null && workbench.Engine(existing.EngineId) is { } engine)
         {
@@ -138,18 +150,32 @@ public sealed partial class ConnectionFormWindow : Window
         }
     }
 
+    private async void OnScopeChanged(object? sender, EventArgs e) => await LoadGroupsAsync().ConfigureAwait(true);
+
     private async Task LoadGroupsAsync()
     {
+        var read = ++_groupsRead;
+        IReadOnlyList<ConnectionGroup> groups;
         try
         {
-            var snapshot = await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true);
-            _groups = snapshot.Groups;
+            var scope = LibraryScope.FormScope(_existing, _workbench.ActiveProject);
+            var snapshot = await _workbench.Library.GetSnapshotAsync(scope).ConfigureAwait(true);
+            groups = snapshot.Groups;
         }
         catch (TableProException)
         {
-            _groups = [];
+            groups = [];
         }
 
+        // A later read is of the scope as it is now; this one would list another project's groups.
+        if (read != _groupsRead)
+        {
+            return;
+        }
+
+        // The group picked stays picked while the new scope still holds it.
+        var picked = _groupsShown && GroupBox.SelectedItem is ComboBoxItem chosen ? chosen.Tag as Guid? : null;
+        _groups = groups;
         var byId = _groups.ToDictionary(group => group.Id);
         GroupBox.Items.Clear();
         GroupBox.Items.Add(new ComboBoxItem { Content = Strings.Get("GroupNone"), Tag = null });
@@ -158,7 +184,8 @@ public sealed partial class ConnectionFormWindow : Window
             GroupBox.Items.Add(new ComboBoxItem { Content = LibraryTree.GroupPath(group.Id, byId), Tag = group.Id });
         }
 
-        var selected = _draft?.GroupId ?? _groupToSelect;
+        var selected = _groupsShown ? picked : _draft?.GroupId ?? _groupToSelect;
+        _groupsShown = true;
         GroupBox.SelectedItem = GroupBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag is Guid id && id == selected)
             ?? GroupBox.Items[0];
     }
@@ -809,6 +836,8 @@ public sealed partial class ConnectionFormWindow : Window
             }
 
             var secrets = draft.Secrets();
+            // A new connection lands in the project the Connections page shows; an edit keeps its own.
+            draft.ProjectId = _existing is null ? _workbench.ActiveProject : null;
             var saved = await _workbench.Library.SaveAsync(draft.ToConnection(), secrets).ConfigureAwait(true);
             _workbench.NotifyLibraryChanged();
             var changesConnect = _existing is null

@@ -4,6 +4,7 @@ use tablepro_core::{DriverError, UnsupportedFeature};
 use tokio_postgres::Client;
 
 use super::{decode_error, text_rows};
+use crate::catalog_release::CatalogRelease;
 
 /// `prokind` keeps a function and a procedure of one name apart, and
 /// leaves out aggregates, which `pg_get_functiondef` refuses.
@@ -11,7 +12,7 @@ pub(super) const FUNCTIONS_SQL: &str = "\
 SELECT pg_catalog.pg_get_functiondef(p.oid)::text
 FROM pg_catalog.pg_proc p
 JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname::text = $1 AND p.proname::text = $2 AND p.prokind::text = $3
+WHERE n.nspname::text = $1 AND p.proname::text = $2 AND {p.prokind}::text = $3
 ORDER BY pg_catalog.pg_get_function_identity_arguments(p.oid), p.oid";
 
 /// Every clause CREATE SEQUENCE takes: the settings, whether it is
@@ -64,13 +65,14 @@ struct SequenceFacts {
 /// Every text names the object with its schema, so it runs in any tab.
 pub(crate) async fn fetch_object_definition(
     client: &Client,
+    release: CatalogRelease,
     object: &ObjectInfo,
 ) -> Result<Option<ObjectDefinition>, DriverError> {
     let schema = object.schema.as_deref().unwrap_or_default();
     let name = object.name.as_str();
     let sql = match (object.kind, object.parent_table.as_deref()) {
-        (ObjectKind::Function, _) => function_definitions(client, schema, name, "f").await?,
-        (ObjectKind::Procedure, _) => function_definitions(client, schema, name, "p").await?,
+        (ObjectKind::Function, _) => function_definitions(client, release, schema, name, "f").await?,
+        (ObjectKind::Procedure, _) => function_definitions(client, release, schema, name, "p").await?,
         (ObjectKind::Sequence, _) => return sequence_definition(client, schema, name).await,
         (ObjectKind::Trigger, Some(table)) => trigger_definition(client, schema, name, table).await?,
         _ => {
@@ -88,13 +90,14 @@ pub(crate) async fn fetch_object_definition(
 
 async fn function_definitions(
     client: &Client,
+    release: CatalogRelease,
     schema: &str,
     name: &str,
     prokind: &str,
 ) -> Result<Option<String>, DriverError> {
     let field = decode_error("pg_proc");
     let mut definitions = Vec::new();
-    for row in text_rows(client, FUNCTIONS_SQL, &[schema, name, prokind]).await? {
+    for row in text_rows(client, &release.render(FUNCTIONS_SQL), &[schema, name, prokind]).await? {
         let text: Option<String> = row.try_get(0).map_err(&field)?;
         definitions.extend(text.map(|text| terminated(&text)));
     }

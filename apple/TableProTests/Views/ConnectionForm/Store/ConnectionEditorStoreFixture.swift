@@ -67,6 +67,9 @@ final class ConnectionEditorStoreFixture {
     let keychain = RecordingKeychain()
     let events = AppEvents()
     let storage: ConnectionStorage
+    let groups: GroupStorage
+    let projects: ProjectStorage
+    let scope: ConnectionScope
     let sshProfiles: SSHProfileStorage
     let credentialProfiles: CredentialProfileStorage
     let recents: RecentConnectionsStore
@@ -92,9 +95,23 @@ final class ConnectionEditorStoreFixture {
             appEvents: events
         )
         self.storage = storage
-        sshProfiles = SSHProfileStorage(userDefaults: defaults, keychain: keychain, connectionStorage: storage)
+        let groups = GroupStorage(connectionStorage: storage, appEvents: events)
+        self.groups = groups
+        let projects = ProjectStorage(
+            connectionStorage: storage,
+            groupStorage: groups,
+            appEvents: events
+        )
+        self.projects = projects
+        scope = ConnectionScope(
+            userDefaults: defaults,
+            connectionStorage: storage,
+            groupStorage: groups,
+            projectStorage: projects,
+            appEvents: events
+        )
+        sshProfiles = SSHProfileStorage(keychain: keychain, connectionStorage: storage)
         credentialProfiles = CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
             connectionStorage: storage
         )
@@ -129,7 +146,7 @@ final class ConnectionEditorStoreFixture {
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
             aiAccessApprovals: live.aiAccessApprovals,
-            groupStorage: live.groupStorage,
+            groupStorage: groups,
             tagStorage: live.tagStorage,
             sshProfileStorage: sshProfiles,
             credentialProfileStorage: credentialProfiles,
@@ -158,7 +175,8 @@ final class ConnectionEditorStoreFixture {
             recentConnections: recents,
             listPreferences: listPreferences,
             managedPolicy: NoManagedPolicy(),
-            approvalStores: [envVarApprovals, localCredentialApprovals]
+            approvalStores: [envVarApprovals, localCredentialApprovals],
+            scope: scope
         )
     }
 

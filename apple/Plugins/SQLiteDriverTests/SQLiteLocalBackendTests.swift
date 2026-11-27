@@ -438,3 +438,81 @@ struct SQLitePulledReadTests {
         }
     }
 }
+
+struct SQLiteLocalBackendThreadTests {
+    // Holds the file's exclusive lock on a connection of its own, so every reader waits in the busy handler until the
+    // lock goes, as it would for a database another process has locked with the busy timeout at 0.
+    private final class Locker: @unchecked Sendable {
+        private let lock = NSLock()
+        private var db: OpaquePointer?
+
+        init(path: String) throws {
+            guard sqlite3_open(path, &db) == SQLITE_OK,
+                  sqlite3_exec(db, "BEGIN EXCLUSIVE", nil, nil, nil) == SQLITE_OK else {
+                sqlite3_close(db)
+                throw SQLitePluginError.queryFailed("could not lock the test database")
+            }
+        }
+
+        func release() {
+            lock.withLock {
+                guard let db else { return }
+                sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+                sqlite3_close(db)
+                self.db = nil
+            }
+        }
+    }
+
+    @Test("Statements waiting on a locked database, one per core and more, leave the process's other tasks running",
+          .timeLimit(.minutes(1)))
+    func lockWaitsLeaveTheSharedPoolFree() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("sqlite-pool-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let config = DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: url.path)
+        let setup = SQLitePluginDriver(config: config, backend: SQLiteLocalBackend(path: url.path))
+        try await setup.connect()
+        _ = try await setup.execute(query: "CREATE TABLE t (id INTEGER)")
+        await setup.close()
+
+        let waiters = (0..<(ProcessInfo.processInfo.activeProcessorCount + 2)).map { _ in
+            SQLitePluginDriver(config: config, backend: SQLiteLocalBackend(path: url.path))
+        }
+        for waiter in waiters {
+            try await waiter.connect()
+        }
+        let locker = try Locker(path: url.path)
+        let reads = waiters.map { waiter in
+            Task { try await waiter.execute(query: "SELECT count(*) FROM t").rows.first?.first?.asText }
+        }
+
+        // Ends the waits from a thread outside the pool, so a starved pool still lets the test finish and fail. A queue
+        // of its own, since waits that wake every 10 ms on the pool's threads also hold back `DispatchQueue.global()`.
+        let releasedByWatchdog = OSAllocatedUnfairLock(initialState: false)
+        DispatchQueue(label: "com.TablePro.tests.sqlite-lock-watchdog").asyncAfter(deadline: .now() + 10) {
+            releasedByWatchdog.withLock { $0 = true }
+            locker.release()
+        }
+        // Nothing outside SQLite says when every reader is waiting, so other tasks keep running for a while after the
+        // readers start: once the waits hold the pool, the next one runs only when the watchdog ends them.
+        let probing = ContinuousClock.now
+        var probes = 0
+        while ContinuousClock.now - probing < .seconds(2), !releasedByWatchdog.withLock({ $0 }) {
+            probes += await Task.detached { 1 }.value
+        }
+        let starved = releasedByWatchdog.withLock { $0 }
+        locker.release()
+
+        var counts: [String?] = []
+        for read in reads {
+            counts.append(try await read.value)
+        }
+        for waiter in waiters {
+            await waiter.close()
+        }
+
+        #expect(probes > 0)
+        #expect(!starved)
+        #expect(counts == Array(repeating: "0", count: waiters.count))
+    }
+}

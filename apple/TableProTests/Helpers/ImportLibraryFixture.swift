@@ -20,6 +20,7 @@ final class ImportLibraryFixture {
     let connections: ConnectionStorage
     let groups: GroupStorage
     let tags: TagStorage
+    let projects: ProjectStorage
     let profiles: CredentialProfileStorage
     let sshProfiles: SSHProfileStorage
     let favorites: SQLFavoriteManager
@@ -71,21 +72,25 @@ final class ImportLibraryFixture {
             integrity: integrity
         )
         connections = connectionStorage
-        groups = GroupStorage(
+        let groupStorage = GroupStorage(
             syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             appEvents: events
         )
-        tags = TagStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage, appEvents: events)
-        profiles = CredentialProfileStorage(
-            fileURL: profilesURL,
-            keychain: keychain,
+        groups = groupStorage
+        projects = ProjectStorage(
             syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
-            integrity: integrity
+            groupStorage: groupStorage,
+            appEvents: events
+        )
+        tags = TagStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage, appEvents: events)
+        profiles = CredentialProfileStorage(
+            keychain: keychain,
+            syncJournal: tracker.journal,
+            connectionStorage: connectionStorage
         )
         sshProfiles = SSHProfileStorage(
-            userDefaults: defaults,
             keychain: keychain,
             syncJournal: tracker.journal,
             connectionStorage: connectionStorage
@@ -104,7 +109,8 @@ final class ImportLibraryFixture {
             tags: tags,
             profiles: profiles,
             sshProfiles: sshProfiles,
-            favorites: favorites
+            favorites: favorites,
+            projects: projects
         )
     }
 
@@ -116,7 +122,8 @@ final class ImportLibraryFixture {
             profiles: profiles,
             sshProfiles: sshProfiles,
             favorites: favorites,
-            appVersion: "Tests"
+            appVersion: "Tests",
+            projects: projects
         )
     }
 
@@ -135,14 +142,23 @@ final class ImportLibraryFixture {
     func importDefaults(
         of bundle: ConnectionBundle,
         registeredTypeIds: Set<String> = ["MySQL", "PostgreSQL", "Redis"],
-        makeId: () -> UUID = UUID.init
+        targetProjectId: UUID? = nil,
+        makeId: () -> UUID = UUID.init,
+        choosing choose: (inout ImportSelection, ImportPreview) -> Void = { _, _ in }
     ) async throws -> ImportOutcome {
         let preview = ConnectionImportAnalyzer.analyze(
             CollectedImport(bundle: bundle, source: .file(name: "Shared.tablepro")),
             library: try await store.snapshot(),
             environment: Self.environment(registeredTypeIds: registeredTypeIds)
         )
-        let plan = ImportPlanner.plan(preview, selection: ImportSelection.defaults(for: preview), makeId: makeId)
+        var selection = ImportSelection.defaults(for: preview)
+        choose(&selection, preview)
+        let plan = ImportPlanner.plan(
+            preview,
+            selection: selection,
+            targetProjectId: targetProjectId,
+            makeId: makeId
+        )
         return await ImportApplier.apply(plan, library: store, savedQueries: favorites)
     }
 

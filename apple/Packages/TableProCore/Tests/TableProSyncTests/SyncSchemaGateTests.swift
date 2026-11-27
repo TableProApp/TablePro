@@ -60,7 +60,7 @@ struct SyncSchemaGateTests {
     /// refreshed `production-schema.ckdb`. Anything gated and unlisted is a type that will never
     /// sync, which is what this test exists to catch; anything listed and no longer gated means the
     /// deploy landed and the entry is stale. Comparing sets catches both.
-    private static let pendingProductionDeploy: Set<SyncRecordType> = []
+    private static let pendingProductionDeploy: Set<SyncRecordType> = [.project]
 
     @Test("Every record type the app declares is deployed, or is explicitly awaiting deployment")
     func allRecordTypesAreWritable() {
@@ -72,6 +72,48 @@ struct SyncSchemaGateTests {
             Gated record types: \(gated.map(\.rawValue).sorted()). \
             Awaiting deployment: \(Self.pendingProductionDeploy.map(\.rawValue).sorted())
             """
+        )
+    }
+
+    @Test("Project sync stays off until the type and both membership fields are deployed")
+    func projectSyncWaitsForTheDeploy() {
+        let deployed = SyncRecordType.project.isWritable
+            && ConnectionSyncField.projectId.isWritable
+            && ConnectionGroupSyncField.projectId.isWritable
+
+        #expect(SyncSchemaGate.isProjectSyncWritable == deployed)
+        #expect(SyncRecordType.project.isWritable == !ConnectionProjectSyncField.writableKeys.isEmpty)
+    }
+
+    @Test("A project record is withheld while its type is not deployed")
+    func undeployedProjectRecordsAreWithheld() {
+        let record = Self.record(ofType: .project, id: "a")
+
+        #expect(SyncSchemaGate.publishable(records: [record]).isEmpty == !SyncRecordType.project.isWritable)
+        #expect(SyncSchemaGate.publishable(deletions: [record.recordID]).isEmpty == !SyncRecordType.project.isWritable)
+    }
+
+    @Test("Each membership field has its own content kind")
+    func membershipContentKinds() {
+        #expect(ConnectionSyncField.projectContentKind == "Connection/projectId.v1")
+        #expect(ConnectionGroupSyncField.projectContentKind == "ConnectionGroup/projectId.v1")
+        #expect(ConnectionSyncField.projectContentKind != ConnectionSyncField.sshRouteContentKind)
+    }
+
+    @Test("The membership kinds are readable only while a pull reads membership, so opening the gate grows the set")
+    func membershipKindsFollowTheGate() {
+        #expect(SyncSchemaGate.membershipContentKinds(readsProjects: false).isEmpty)
+        #expect(SyncSchemaGate.membershipContentKinds(readsProjects: true) == [
+            ConnectionSyncField.projectContentKind,
+            ConnectionGroupSyncField.projectContentKind
+        ])
+        #expect(
+            SyncSchemaGate.membershipContentKinds(readsProjects: true, groups: false)
+                == [ConnectionSyncField.projectContentKind]
+        )
+        #expect(
+            SyncSchemaGate.membershipContentKinds(readsProjects: true, connections: false)
+                == [ConnectionGroupSyncField.projectContentKind]
         )
     }
 

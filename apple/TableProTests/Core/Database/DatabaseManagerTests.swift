@@ -414,10 +414,37 @@ struct DatabaseManagerDatabaseSwitchTests {
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
 
         let warning = await DatabaseManager.shared.restoreSchemaAndDatabase(
-            on: adapter, savedSchema: "idb", savedDatabase: "ice"
+            on: adapter, savedSchema: "idb", savedDatabase: "ice", startupCommands: nil
         )
 
         #expect(pluginDriver.switches == ["database ice", "schema idb"])
         #expect(warning == nil)
+    }
+
+    // The reconnect asked the driver to land on the schema, and a second SET cost a round trip (#4544).
+    @Test("A reconnect that landed on the schema sends no switch of its own")
+    func reconnectOnTheSchemaSendsNoSwitch() async {
+        let connection = TestFixtures.makeConnection(type: .mssql)
+        let pluginDriver = DatabaseSwitchingDriver(currentSchema: "idb")
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+
+        _ = await DatabaseManager.shared.restoreSchemaAndDatabase(
+            on: adapter, savedSchema: "idb", savedDatabase: nil, startupCommands: nil
+        )
+
+        #expect(pluginDriver.switches.isEmpty)
+    }
+
+    @Test("A reconnect whose startup commands ran still moves the schema, which they may have moved")
+    func reconnectAfterStartupCommandsSwitches() async {
+        let connection = TestFixtures.makeConnection(type: .mssql)
+        let pluginDriver = DatabaseSwitchingDriver(currentSchema: "idb")
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+
+        _ = await DatabaseManager.shared.restoreSchemaAndDatabase(
+            on: adapter, savedSchema: "idb", savedDatabase: nil, startupCommands: "SET search_path = other"
+        )
+
+        #expect(pluginDriver.switches == ["schema idb"])
     }
 }

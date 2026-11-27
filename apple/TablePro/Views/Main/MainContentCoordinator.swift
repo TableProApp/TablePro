@@ -268,7 +268,9 @@ final class MainContentCoordinator: ObservableObject {
 
     // Not published: the editor writes it on every caret move, and a publish re-rendered every view observing this
     // coordinator. Readers take it when they need it.
-    var cursorPositions: [CursorPosition] = []
+    var cursorPositions: [CursorPosition] = [] {
+        didSet { tabManager.notePersistedStateChange() }
+    }
     @Published var activeSheet: ActiveSheet? {
         didSet { releaseImportFileUnlessImporting() }
     }
@@ -337,7 +339,6 @@ final class MainContentCoordinator: ObservableObject {
     // Not on `QueryTab`: that is the persisted shape, and staying out of its `Equatable` keeps a push from re-publishing tabs.
     internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
     internal var redisDatabaseSwitchTask: Task<Void, Never>?
-    var periodicSaveTask: Task<Void, Never>?
     var draftSaveTask: Task<Void, Never>?
     var draftSaveTabIds: Set<UUID> = []
     var draftSaveClock: any Clock<Duration> = ContinuousClock()
@@ -441,6 +442,7 @@ final class MainContentCoordinator: ObservableObject {
 
     private func registerForPersistence() {
         Self.activeCoordinators[instanceId] = self
+        tabManager.onPersistedStateChange = { [weak self] in self?.scheduleDraftSave() }
     }
 
     private func unregisterFromPersistence() {
@@ -483,6 +485,11 @@ final class MainContentCoordinator: ObservableObject {
                     .map(coordinator.enrichedForPersistence)
             }
             .filter { seen.insert($0.id).inserted }
+    }
+
+    // One generation per hosting window, the windows `aggregatedTabs` reads, so a window that joins or leaves counts too.
+    static func persistenceGenerations(for connectionId: UUID) -> [UUID: UInt64] {
+        activeCoordinators.filter { $0.value.connectionId == connectionId }.mapValues(\.tabManager.persistenceGeneration)
     }
 
     func enrichedForPersistence(_ tab: QueryTab) -> QueryTab {
@@ -712,7 +719,6 @@ final class MainContentCoordinator: ObservableObject {
             registerForPersistence()
             // Live coordinators change only here and in `teardown()`, so a switch has nothing new to write.
             SessionRecoveryTracker.sync()
-            startPeriodicSave()
             startFileWatcherIfNeeded()
         }
         setupPluginDriver()
@@ -883,8 +889,8 @@ final class MainContentCoordinator: ObservableObject {
         cancelAllRowCountTasks()
         cancelAllPhase2Work()
         cancelCatalogPageReloads()
-        periodicSaveTask?.cancel()
-        periodicSaveTask = nil
+        // Only the activated owner set the hook; a throwaway instance sharing the manager must not take it away.
+        if isActivated { tabManager.onPersistedStateChange = nil }
         draftSaveTask?.cancel()
         draftSaveTask = nil
         redisDatabaseSwitchTask?.cancel()
@@ -1098,6 +1104,7 @@ final class MainContentCoordinator: ObservableObject {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
         TableLoadTracer.shared.stage(.executeRequested, tabId: tabId)
 
+        let keyedPage = keyedPageStatement(forTab: tabId)
         let sql = tab.content.query
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             traceNavigationAbandoned(tabId: tabId, outcome: .emptyQuery)
@@ -1109,7 +1116,10 @@ final class MainContentCoordinator: ObservableObject {
             && tab.execution.lastExecutedAt == nil
         let gatesRawFilter = rawFilterNeedsReadOnlyGate(Self.browseFilters(tab.filterState))
         guard asksBeforeFirstLoad || gatesRawFilter else {
-            executeQueryInternal(sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource)
+            executeQueryInternal(
+                sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource,
+                keyedPage: keyedPage
+            )
             return nil
         }
         guard !isShowingSafeModePrompt else {
@@ -1150,7 +1160,8 @@ final class MainContentCoordinator: ObservableObject {
             switch decision {
             case .authorized:
                 executeQueryInternal(
-                    sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource
+                    sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource,
+                    keyedPage: keyedPage
                 )
             case .denied(let reason, _):
                 traceNavigationAbandoned(tabId: tabId, outcome: .safeModeDenied)
@@ -1167,7 +1178,8 @@ final class MainContentCoordinator: ObservableObject {
         bypassRowLimit: Bool = false,
         anchor: StatementAnchor? = nil,
         viewport: GridReloadIntent = .firstRow,
-        source: ResultSourceChange = .newSource
+        source: ResultSourceChange = .newSource,
+        keyedPage: KeyedPageStatement? = nil
     ) {
         queryExecutionCoordinator.startSingleRun(
             SingleRunRequest(
@@ -1176,7 +1188,8 @@ final class MainContentCoordinator: ObservableObject {
                 trigger: trigger,
                 bypassRowLimit: bypassRowLimit,
                 anchor: anchor,
-                install: ResultInstall(viewport: viewport, source: source)
+                install: ResultInstall(viewport: viewport, source: source),
+                keyedPage: keyedPage
             ),
             onTab: tabId
         )

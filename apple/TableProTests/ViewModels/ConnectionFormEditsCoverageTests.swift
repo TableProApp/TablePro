@@ -52,7 +52,8 @@ struct ConnectionFormEditsCoverageTests {
         "isFavorite",
         "passwordSource",
         "sshRoute",
-        "origin"
+        "origin",
+        "projectId"
     ]
 
     private static func storedPropertyNames() -> Set<String> {
@@ -111,6 +112,7 @@ struct ConnectionFormEditsCoverageTests {
         original.passwordSource = .env(variable: "PGPASSWORD")
         original.iconName = "server.rack"
         original.origin = .imported
+        original.projectId = UUID()
 
         let result = ConnectionFormEdits(
             name: original.name,

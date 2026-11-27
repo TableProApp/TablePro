@@ -10,9 +10,9 @@ use serde_json::{Value, json};
 use tablepro_records::Kind;
 use tablepro_records::record_id::uuid_id;
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTagName, CredentialProfile,
-    DatabaseEnvironment, FavouriteTable, SavedConnection, SavedQueryDatabase, SshProfile, StoragePaths, TableRef,
-    TableScope,
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionProject, ConnectionProjectName, ConnectionStore,
+    ConnectionTagName, CredentialProfile, DatabaseEnvironment, FavouriteTable, LibraryWrite, SavedConnection,
+    SavedQueryDatabase, SshProfile, StorageError, StoragePaths, TableRef, TableScope,
 };
 use tablepro_sync::adapters::library;
 use tablepro_sync::api::control::SyncControl;
@@ -112,6 +112,12 @@ async fn seed(library: &Library) -> (Uuid, Uuid) {
     let tag = store
         .create_tag_blocking(ConnectionTagName::new("prod").unwrap(), ConnectionColor::Red)
         .unwrap();
+    let project = store
+        .create_project_blocking(ConnectionProject::new(ConnectionProjectName::new("Acme").unwrap()))
+        .unwrap();
+    store
+        .move_groups_to_project_blocking(&[group.id], Some(project.id))
+        .unwrap();
     let mut saved = connection(CONNECTION, "Shop");
     saved.group_id = Some(group.id);
     saved.tags = vec![tag.id];
@@ -120,12 +126,30 @@ async fn seed(library: &Library) -> (Uuid, Uuid) {
         "id": Uuid::from_u128(7), "name": "edge", "host": "edge.example.com", "auth": {"kind": "agent"},
     }))
     .unwrap();
-    store.save_ssh_profile_blocking(profile).unwrap();
     let credentials: CredentialProfile = serde_json::from_value(json!({
         "id": Uuid::from_u128(8), "name": "ops", "username": "ops", "password": {"mode": "prompt"},
     }))
     .unwrap();
-    store.save_credential_profile_blocking(credentials).unwrap();
+    // Profiles are written only through the checked library write, which writes the whole library.
+    let over = store.read_library_blocking().unwrap().digest;
+    store
+        .replace_library_blocking(
+            over.as_deref(),
+            |list| {
+                Ok::<_, StorageError>(LibraryWrite {
+                    connections: list.connections.to_vec(),
+                    groups: list.groups.to_vec(),
+                    tags: list.tags.to_vec(),
+                    favorites: list.favorites.to_vec(),
+                    projects: list.projects.to_vec(),
+                    ssh_profiles: vec![profile],
+                    credential_profiles: vec![credentials],
+                    removing: Vec::new(),
+                })
+            },
+            |_| true,
+        )
+        .unwrap();
     let folders = library.history.table_folders();
     let folder = folders
         .create(
@@ -566,4 +590,130 @@ async fn a_profile_link_waiting_for_the_person_stays_waiting_through_a_later_edi
         waiting.iter().any(|approval| approval.field == "/ssh_profile_id"),
         "{waiting:?}"
     );
+}
+
+fn project(store: &ConnectionStore, name: &str) -> Uuid {
+    store
+        .create_project_blocking(ConnectionProject::new(ConnectionProjectName::new(name).unwrap()))
+        .unwrap()
+        .id
+}
+
+fn effective(store: &ConnectionStore) -> Option<Uuid> {
+    let list = store.list_blocking().unwrap();
+    list.effective_project(&list.connections[0])
+}
+
+// A project and a connection's moves between projects land on the other device, out of every project too.
+#[tokio::test]
+async fn a_project_and_a_connection_s_moves_between_projects_land_on_the_other_device() {
+    let server = FakeServer::new();
+    let (mac_library, mini_library) = (Library::new().await, Library::new().await);
+    let mac = mac_library.device(&server, "dev_mac").await;
+    let mini = mini_library.device(&server, "dev_mini").await;
+    let (acme, globex) = (
+        project(&mac_library.store, "Acme"),
+        project(&mac_library.store, "Globex"),
+    );
+    mac_library
+        .store
+        .upsert_blocking(connection(CONNECTION, "Shop"))
+        .unwrap();
+    let id = Uuid::from_u128(CONNECTION);
+    mac_library
+        .store
+        .move_connections_to_project_blocking(&[id], Some(acme))
+        .unwrap();
+
+    mac.sync().await;
+    take_everything(&mini).await;
+    let pulled = mini_library.store.list_blocking().unwrap();
+    let in_acme = effective(&mini_library.store);
+    mac_library
+        .store
+        .move_connections_to_project_blocking(&[id], Some(globex))
+        .unwrap();
+    mac.sync().await;
+    take_everything(&mini).await;
+    let in_globex = effective(&mini_library.store);
+    mac_library
+        .store
+        .move_connections_to_project_blocking(&[id], None)
+        .unwrap();
+    mac.sync().await;
+    take_everything(&mini).await;
+
+    let names: Vec<&str> = pulled
+        .projects_in_order()
+        .into_iter()
+        .map(|project| project.name.as_str())
+        .collect();
+    assert_eq!(names, ["Acme", "Globex"]);
+    assert_eq!(in_acme, Some(acme));
+    assert_eq!(in_globex, Some(globex));
+    assert_eq!(effective(&mini_library.store), None);
+    assert_eq!(mini.sync().await.pushed, 0);
+}
+
+// A project deleted on one device leaves its connections in no project on the other, and nothing goes back up.
+#[tokio::test]
+async fn a_deleted_project_leaves_its_connections_in_no_project_on_the_other_device() {
+    let server = FakeServer::new();
+    let (mac_library, mini_library) = (Library::new().await, Library::new().await);
+    let mac = mac_library.device(&server, "dev_mac").await;
+    let mini = mini_library.device(&server, "dev_mini").await;
+    let acme = project(&mac_library.store, "Acme");
+    mac_library
+        .store
+        .upsert_blocking(connection(CONNECTION, "Shop"))
+        .unwrap();
+    mac_library
+        .store
+        .move_connections_to_project_blocking(&[Uuid::from_u128(CONNECTION)], Some(acme))
+        .unwrap();
+    mac.sync().await;
+    take_everything(&mini).await;
+    let before = effective(&mini_library.store);
+
+    mac_library.store.delete_project_blocking(acme).unwrap();
+    mac.sync().await;
+    take_everything(&mini).await;
+
+    assert_eq!(before, Some(acme));
+    assert!(mini_library.store.list_blocking().unwrap().projects.is_empty());
+    assert_eq!(effective(&mini_library.store), None);
+    assert_eq!(mini.sync().await.pushed, 0);
+}
+
+// A device that never touches the project sends only what it changed, so its edit leaves the project as it was: a
+// build before projects keeps the member as one it does not read, and its push is the same patch.
+#[tokio::test]
+async fn an_edit_from_a_device_that_never_touches_the_project_leaves_it() {
+    let server = FakeServer::new();
+    let (mac_library, mini_library) = (Library::new().await, Library::new().await);
+    let mac = mac_library.device(&server, "dev_mac").await;
+    let mini = mini_library.device(&server, "dev_mini").await;
+    let acme = project(&mac_library.store, "Acme");
+    mac_library
+        .store
+        .upsert_blocking(connection(CONNECTION, "Shop"))
+        .unwrap();
+    let id = Uuid::from_u128(CONNECTION);
+    mac_library
+        .store
+        .move_connections_to_project_blocking(&[id], Some(acme))
+        .unwrap();
+    mac.sync().await;
+    take_everything(&mini).await;
+
+    mini_library
+        .store
+        .update_blocking(id, |saved| saved.name = "Shop 2".to_owned())
+        .unwrap();
+    mini.sync().await;
+    take_everything(&mac).await;
+
+    let list = mac_library.store.list_blocking().unwrap();
+    assert_eq!(list.connections[0].name, "Shop 2");
+    assert_eq!(effective(&mac_library.store), Some(acme));
 }

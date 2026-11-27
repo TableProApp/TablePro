@@ -23,6 +23,7 @@ struct LibPQStreamHeaderTests {
     func zeroRowResultCarriesTheRowDescription() {
         #expect(LibPQPluginConnection.carriesRowDescription(PGRES_TUPLES_OK))
         #expect(LibPQPluginConnection.carriesRowDescription(PGRES_SINGLE_TUPLE))
+        #expect(LibPQPluginConnection.carriesRowDescription(PGRES_TUPLES_CHUNK))
     }
 
     @Test("A command and a failure describe no rows")

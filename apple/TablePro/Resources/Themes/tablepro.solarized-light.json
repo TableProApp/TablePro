@@ -22,7 +22,7 @@
     "nullValue": "#93A1A1",
     "number": "#B90B6A",
     "rowNumber": "#93A1A1",
-    "selection": "#DFCA88",
+    "selection": "#DDC57D",
     "selectionText": "#073642",
     "string": "#006B65",
     "text": "#657B83",
@@ -35,7 +35,7 @@
     "cursor": "#657B83",
     "invisibles": "#586E7580",
     "lineNumber": "#93A1A1",
-    "selection": "#EEE8D5",
+    "selection": "#C4D9DD",
     "syntax": {
       "comment": "#93A1A1",
       "function": "#268BD2",

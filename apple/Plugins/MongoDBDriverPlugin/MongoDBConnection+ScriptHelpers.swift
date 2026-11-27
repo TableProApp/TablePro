@@ -1,36 +1,90 @@
 import Foundation
 import TableProPluginKit
 
-/// One page of documents, kept as canonical Extended JSON.
+/// One page of documents, kept as the server sent them.
 ///
 /// The script runtime has two consumers for the same documents and they want different shapes: the
 /// result grid wants Swift values, and the JavaScript side wants Extended JSON it can revive into
-/// `ObjectId`, `Date` and the rest. Keeping the canonical text is the only representation both can
-/// be derived from without losing a type on the way, so a document that is never read from
-/// JavaScript costs one conversion rather than two.
+/// `ObjectId`, `Date` and the rest. A document from a cursor stays BSON, which both are read from without
+/// losing a type, and becomes text only when JavaScript asks for it. A document a script built is
+/// already text.
 nonisolated struct MongoScriptDocumentBatch: Sendable {
-    var json: [String]
+    enum Document: Sendable {
+        case bson(Data)
+        case json(String)
+    }
+
+    var documents: [Document]
     var isTruncated: Bool
 
     /// Whether these are whole documents as stored, which is what makes each one's `_id` a locator
     /// the grid can hand back to edit it. A projection or a pipeline builds documents of its own.
     var holdsStoredDocuments = false
 
-    static let empty = MongoScriptDocumentBatch(json: [], isTruncated: false)
+    static let empty = MongoScriptDocumentBatch(documents: [], isTruncated: false)
+
+    init(documents: [Document], isTruncated: Bool) {
+        self.documents = documents
+        self.isTruncated = isTruncated
+    }
+
+    init(json: [String], isTruncated: Bool) {
+        self.init(documents: json.map(Document.json), isTruncated: isTruncated)
+    }
+
+    var count: Int { documents.count }
+
+    var isEmpty: Bool { documents.isEmpty }
+
+    /// Each document as canonical Extended JSON, for the JavaScript side.
+    var json: [String] { documents.compactMap(\.json) }
 
     var jsonArray: String { "[\(json.joined(separator: ","))]" }
 
     var readDocuments: MongoReadDocuments {
-        var dictionaries: [[String: Any]] = []
-        var texts: [String] = []
-        for document in json {
-            guard let data = document.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data),
-                  let dictionary = object as? [String: Any] else { continue }
-            dictionaries.append(MongoDBConnection.unwrapExtendedJson(dictionary) as? [String: Any] ?? dictionary)
-            texts.append(document)
+        let interval = MongoReadTrace.signposter.beginInterval("Decode", "\(documents.count) documents")
+        defer { MongoReadTrace.signposter.endInterval("Decode", interval) }
+        #if canImport(CLibMongoc)
+        let reader = MongoBsonDocumentReader()
+        #endif
+        var read: [MongoReadDocument] = []
+        read.reserveCapacity(documents.count)
+        for document in documents {
+            switch document {
+            case .bson(let stored):
+                #if canImport(CLibMongoc)
+                if let document = reader.read(stored) { read.append(document) }
+                #endif
+            case .json(let text):
+                if let document = MongoReadDocument(canonicalJSON: text) { read.append(document) }
+            }
         }
-        return MongoReadDocuments(dictionaries: dictionaries, texts: texts)
+        return MongoReadDocuments(read)
+    }
+}
+
+nonisolated extension MongoScriptDocumentBatch.Document {
+    /// Canonical Extended JSON, made from the stored bytes with libbson. Nil for bytes libbson cannot write as
+    /// JSON, which the read before this one left out as well.
+    var json: String? {
+        switch self {
+        case .json(let text):
+            return text
+        case .bson(let stored):
+            #if canImport(CLibMongoc)
+            return stored.withUnsafeBytes { raw -> String? in
+                guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                      let bson = bson_new_from_data(base, raw.count) else { return nil }
+                defer { bson_destroy(bson) }
+                var length = 0
+                guard let text = bson_as_canonical_extended_json(bson, &length) else { return nil }
+                defer { bson_free(text) }
+                return String(cString: text)
+            }
+            #else
+            return nil
+            #endif
+        }
     }
 }
 
@@ -329,15 +383,17 @@ nonisolated extension MongoDBConnection {
     private func iterateCursorJson(_ cursor: OpaquePointer, cap: Int) throws -> MongoScriptDocumentBatch {
         try checkCancelled()
 
+        let interval = MongoReadTrace.signposter.beginInterval("Cursor read")
+        defer { MongoReadTrace.signposter.endInterval("Cursor read", interval) }
         let ceiling = cap > 0 ? min(cap, PluginRowLimits.emergencyMax) : PluginRowLimits.emergencyMax
-        var documents: [String] = []
+        var documents: [MongoScriptDocumentBatch.Document] = []
         var pointer: OpaquePointer?
         var truncated = false
 
         while mongoc_cursor_next(cursor, &pointer) {
             try checkCancelled()
-            if let document = pointer, let json = bsonToJson(document) {
-                documents.append(json)
+            if let document = pointer {
+                documents.append(.bson(MongoLibbsonCodec.storedBytes(of: document)))
             }
             if documents.count >= ceiling {
                 truncated = true
@@ -350,7 +406,7 @@ nonisolated extension MongoDBConnection {
         if mongoc_cursor_error(cursor, &error) {
             throw makeError(error)
         }
-        return MongoScriptDocumentBatch(json: documents, isTruncated: truncated)
+        return MongoScriptDocumentBatch(documents: documents, isTruncated: truncated)
     }
 }
 #endif

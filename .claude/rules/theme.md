@@ -38,6 +38,9 @@ paths:
 
 - **A content window subclasses `ContentWindow`** and holds a `ThemeWindowBackdrop`. On macOS 26 and later the backdrop sets `window.background` only while the theme sets it; earlier the window keeps its own color. Code asks `ThemeWindowBackdrop.canReachChrome`, never an `#available` of its own.
 - `ContentWindow` owns the titlebar. Before macOS 26 it stays opaque: a transparent one there swaps its material for a flat fill.
+- **In full screen the titlebar stays opaque too.** There it moves into a window of its own, and transparent under a custom window color it draws an opaque system backstop over one titlebar section, the sidebar's when the window has an inspector. Handing the color back once full screen has begun does not remove it (`apple/scripts/probes/check-fullscreen-titlebar-backstop.sh`). So the full-screen toolbar is the system material in every theme.
+- **An opaque titlebar makes its accessories vibrant**, where system fills resolve darker. A vibrant editor tab strip resolves its fills in its window's appearance (`EditorTabStripPalette.drawing(_:_:)`), so it draws the same on either titlebar, and its track takes the theme only while it is not vibrant. Never build an appearance by name for this: `NSAppearance(named:)` returns nil for the high-contrast names, and the window's appearance already carries Increase Contrast.
+- **A delegate of a content window forwards `windowDidFailToEnterFullScreen(_:)` to `ContentWindow.fullScreenEntryDidFail()`.** AppKit can refuse full screen after `willEnterFullScreen` and tells only the delegate.
 - The detail column sits on `DetailColumnBackdrop`, so a pane that draws nothing shows `window.background`. `DetailPaneBackdropFill` goes only there.
 - A glass sidebar or inspector pane sits on `SplitItemBackdrop`, pinned to the pane's edges and not its safe area, so it covers the titlebar band too. It draws only under Reduce Transparency (Content, never chrome) and is clear otherwise, so the glass shows.
 
@@ -50,7 +53,8 @@ paths:
 
 ## Theme editor
 
-- The preview is a real `SourceEditor` and `DataGridView` on `ThemeScope.fixed(_:)`. It never takes focus: its editor and grid answer Undo with their own histories.
+- The preview is a real `SourceEditor` and `DataGridView` on `ThemeScope.fixed(_:)`. It never takes focus: its editor and grid answer Undo with their own histories. It still draws the focused selection (`drawsSelectionEmphasized`, `DataGridConfiguration.drawsFocused`), so the selection slots show in it; the grid's inactive selection shows only in a window.
+- **Every bundled theme's selections clear the floors in `ThemeContrastTests`**: CIEDE2000 15 from each surface they fill (7 for the grid's inactive one), and every color drawn on them keeps half its contrast (a third for whitespace marks). The SQL editor keeps syntax colors on its selection, so a brighter fill costs keywords and comments their contrast.
 - **Set the window's delegate before its content.** A window whose undo manager was read with no delegate keeps its own and never asks `windowWillReturnUndoManager(_:)`.
 
 ## Sync

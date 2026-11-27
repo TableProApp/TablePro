@@ -3,7 +3,7 @@ use uuid::Uuid;
 use super::{ConnectionList, ConnectionStore, ConnectionsDocument, CredentialProfile, SavedConnection, SshProfile};
 use crate::error::StorageError;
 use crate::store_identity::StoreIdentity;
-use crate::{ConnectionGroup, ConnectionTag};
+use crate::{ConnectionGroup, ConnectionProject, ConnectionTag};
 
 // One record a sync pull settled (core ADR 0054, Adapters). Values go in as given, places and links included, since a
 // pull can bring a connection before its group, tag or profile, and its siblings' places with it.
@@ -18,6 +18,10 @@ pub enum LibraryChange {
     GroupGone(Uuid),
     Tag(ConnectionTag),
     TagGone(Uuid),
+    Project(ConnectionProject),
+    // Its connections and groups keep the id, which no project holds then, so they read as in no project (core ADR
+    // 0067, Repair), as a deleted group's connections keep theirs.
+    ProjectGone(Uuid),
     SshProfile(SshProfile),
     SshProfileGone(Uuid),
     CredentialProfile(CredentialProfile),
@@ -79,6 +83,8 @@ impl ConnectionsDocument {
             LibraryChange::GroupGone(id) => self.groups.retain(|group| group.id != id),
             LibraryChange::Tag(tag) => put_by_id(&mut self.tags, tag, |tag| tag.id),
             LibraryChange::TagGone(id) => self.tags.retain(|tag| tag.id != id),
+            LibraryChange::Project(project) => put_by_id(&mut self.projects, project, |project| project.id),
+            LibraryChange::ProjectGone(id) => self.projects.retain(|project| project.id != id),
             LibraryChange::SshProfile(profile) => {
                 self.ssh_profiles.release(profile.id);
                 put_by_id(&mut self.ssh_profiles, profile, |profile| profile.id);
@@ -169,6 +175,7 @@ mod tests {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,

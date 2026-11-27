@@ -6,10 +6,12 @@ use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::SecretKind;
 use tablepro_core::ddl::DropDatabaseOptions;
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, ConnectionTagName, SavedConnection};
+use tablepro_storage::{
+    ConnectionColor, ConnectionGroupName, ConnectionProjectName, ConnectionTag, ConnectionTagName, SavedConnection,
+};
 use uuid::Uuid;
 
-use crate::services::library_outline::LibraryMove;
+use crate::services::library_outline::{LibraryItem, LibraryMove};
 use crate::services::saved_connection_editor::GroupChoice;
 
 use super::connect_failure_details::Remedy;
@@ -203,6 +205,8 @@ pub(crate) enum SessionWindowInput {
     UpdateTag(ConnectionTag),
     DeleteTag(Uuid),
     ManageTags,
+    NewProject,
+    ManageProjects,
     ExportConnections,
     ImportConnections,
     /// The file the user picked to import, read off the GTK thread.
@@ -248,6 +252,23 @@ pub(crate) enum LibraryEdit {
     DeleteGroup(Uuid),
     Change(LibraryMove),
     SetFavourite(Uuid, bool),
+    // `switch` makes the new project the active one, as the switcher's New Project… does.
+    CreateProject {
+        name: ConnectionProjectName,
+        switch: bool,
+    },
+    RenameProject(Uuid, ConnectionProjectName),
+    // The dialog asked before sending it.
+    DeleteProject(Uuid),
+    MoveProject {
+        id: Uuid,
+        before: Option<Uuid>,
+    },
+    // `None` is no project.
+    MoveToProject {
+        item: LibraryItem,
+        project: Option<Uuid>,
+    },
 }
 
 #[derive(Debug)]

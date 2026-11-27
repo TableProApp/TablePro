@@ -54,6 +54,12 @@ public class TextSelectionManager: NSObject {
     public var highlightSelectedLine: Bool = true
     public var selectedLineBackgroundColor = NSColor.selectedTextBackgroundColor.withSystemEffect(.disabled)
     public var selectionBackgroundColor = NSColor.selectedTextBackgroundColor
+    // A view that never takes focus, such as a theme preview, still shows the selection a focused one draws.
+    public var drawsSelectionEmphasized = false {
+        didSet {
+            delegate?.setNeedsDisplay()
+        }
+    }
     public var useSystemCursor: Bool = false {
         didSet {
             updateSelectionViews()

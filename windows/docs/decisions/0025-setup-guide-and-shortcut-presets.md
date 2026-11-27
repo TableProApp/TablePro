@@ -1,6 +1,6 @@
 # 0025: The setup guide and shortcut presets
 
-- **Status**: Accepted; the Steps bullet superseded by [0026](0026-setup-guide-hero-and-selectable-cards.md)
+- **Status**: Accepted; the Steps bullet superseded by [0026](0026-setup-guide-hero-and-selectable-cards.md); "The id, not a copy of the keys" and "no per-key editor" reversed by [0028](0028-per-shortcut-rebinding.md)
 - **Date**: 2026-11-25
 
 ## Context

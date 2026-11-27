@@ -6,6 +6,7 @@ use tablepro_account::{RefreshTokenVault, RefreshTokenVaults, SignInKey};
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
+use tablepro_storage::{SecretOwner, SecretOwnerKind};
 use uuid::Uuid;
 
 /// What the app says about itself when it starts the core.
@@ -36,7 +37,12 @@ pub trait HostSecrets: Send + Sync {
 
     fn delete(&self, connection_id: String, kind: SecretKindTag) -> Result<(), HostSecretError>;
 
+    // A library write calls it, and delete_profile, while it holds the library's lock, so neither may call the library.
     fn delete_connection(&self, connection_id: String) -> Result<(), HostSecretError>;
+
+    // Every secret of an SSH or credential profile, which the store keeps apart from connections'. NotOwned is a host's
+    // answer for secrets another app keeps, as the Mac keeps those iOS reads: the core then stops asking.
+    fn delete_profile(&self, profile_id: String, kind: ProfileKindTag) -> Result<SecretDeletionTag, HostSecretError>;
 
     fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError>;
 
@@ -51,6 +57,18 @@ pub enum SecretKindTag {
     DatabasePassword,
     SshPassword,
     SshPassphrase,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum ProfileKindTag {
+    Ssh,
+    Credential,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SecretDeletionTag {
+    Deleted,
+    NotOwned,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -182,6 +200,24 @@ impl SecretVault for HostSecretStore {
     }
 }
 
+// Deletes a removed record's secrets on the calling thread: a library write calls it from the blocking thread it runs
+// on, while it holds the store's lock.
+pub(crate) trait SecretDeleter: Send + Sync {
+    fn delete_secrets(&self, owner: SecretOwner) -> Result<SecretDeletionTag, SecretError>;
+}
+
+impl SecretDeleter for HostSecretStore {
+    fn delete_secrets(&self, owner: SecretOwner) -> Result<SecretDeletionTag, SecretError> {
+        let id = owner.id.to_string();
+        let answered = match owner.kind {
+            SecretOwnerKind::Connection => self.host.delete_connection(id).map(|()| SecretDeletionTag::Deleted),
+            SecretOwnerKind::SshProfile => self.host.delete_profile(id, ProfileKindTag::Ssh),
+            SecretOwnerKind::CredentialProfile => self.host.delete_profile(id, ProfileKindTag::Credential),
+        };
+        answered.map_err(SecretError::from)
+    }
+}
+
 #[async_trait]
 impl SecretItems for HostSecretStore {
     async fn load_item(&self, item: SecretItem) -> Result<Option<SecretString>, SecretError> {
@@ -253,6 +289,7 @@ mod tests {
     struct MemorySecrets {
         stored: Mutex<HashMap<(String, SecretKindTag), (SecretString, String)>>,
         items: Mutex<HashMap<SecretItemTag, SecretString>>,
+        profiles_deleted: Mutex<Vec<(String, ProfileKindTag)>>,
         locked: bool,
     }
 
@@ -296,6 +333,21 @@ mod tests {
             Ok(())
         }
 
+        fn delete_profile(
+            &self,
+            profile_id: String,
+            kind: ProfileKindTag,
+        ) -> Result<SecretDeletionTag, HostSecretError> {
+            if self.locked {
+                return Err(HostSecretError::Locked);
+            }
+            self.profiles_deleted.lock().unwrap().push((profile_id, kind));
+            Ok(match kind {
+                ProfileKindTag::Ssh => SecretDeletionTag::Deleted,
+                ProfileKindTag::Credential => SecretDeletionTag::NotOwned,
+            })
+        }
+
         fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
             Ok(self.items.lock().unwrap().get(&item).cloned())
         }
@@ -334,6 +386,47 @@ mod tests {
             Some("hunter2".to_owned())
         );
         assert!(!after_delete.is_stored());
+    }
+
+    #[test]
+    fn a_removed_record_s_secrets_go_by_its_id_and_kind_and_a_locked_store_says_so() {
+        let host = Arc::new(MemorySecrets::default());
+        let store = HostSecretStore {
+            host: host.clone(),
+            tasks: runtime::tasks().unwrap(),
+        };
+        let id = Uuid::new_v4();
+        host.stored.lock().unwrap().insert(
+            (id.to_string(), SecretKindTag::DatabasePassword),
+            (SecretString::from("connection"), String::new()),
+        );
+
+        let answer = store
+            .delete_secrets(SecretOwner::new(SecretOwnerKind::CredentialProfile, id))
+            .unwrap();
+        let connection_kept = !host.stored.lock().unwrap().is_empty();
+        let connection = store
+            .delete_secrets(SecretOwner::new(SecretOwnerKind::Connection, id))
+            .unwrap();
+        let locked = HostSecretStore::new(
+            Box::new(MemorySecrets {
+                locked: true,
+                ..MemorySecrets::default()
+            }),
+            runtime::tasks().unwrap(),
+        )
+        .delete_secrets(SecretOwner::new(SecretOwnerKind::SshProfile, id));
+
+        assert!(connection_kept, "a profile's delete took a connection's secret");
+        assert_eq!(connection, SecretDeletionTag::Deleted);
+        assert!(host.stored.lock().unwrap().is_empty());
+
+        assert_eq!(answer, SecretDeletionTag::NotOwned, "the host's own answer comes back");
+        assert_eq!(
+            *host.profiles_deleted.lock().unwrap(),
+            [(id.to_string(), ProfileKindTag::Credential)]
+        );
+        assert!(matches!(locked, Err(SecretError::Locked)), "{locked:?}");
     }
 
     #[tokio::test]

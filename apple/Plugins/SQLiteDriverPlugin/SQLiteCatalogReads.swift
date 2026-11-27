@@ -56,6 +56,14 @@ nonisolated enum SQLiteCatalogReads {
         }
     }
 
+    // SQLite lets a key's collation differ from the column's, which the page sorts by: with `id TEXT COLLATE NOCASE` and
+    // `PRIMARY KEY (id COLLATE BINARY)`, 'a' and 'A' are two keys and one place in the order. Any COLLATE in the table,
+    // or no definition to read, keeps the page on its offset.
+    static func primaryKeyNamesOneRow(table: String, schema: String?, run: Run) async throws -> Bool {
+        guard let statement = try await createTableStatement(table: table, schema: schema, run: run) else { return false }
+        return statement.range(of: "COLLATE", options: .caseInsensitive) == nil
+    }
+
     static func createTableStatement(table: String, schema: String?, run: Run) async throws -> String? {
         let query = SQLiteTemporarySchema.definitionQuery(name: table, types: ["table"], schema: schema)
         let result = try await run(query)

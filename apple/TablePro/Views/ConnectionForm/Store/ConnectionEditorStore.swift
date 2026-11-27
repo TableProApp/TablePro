@@ -49,6 +49,7 @@ final class ConnectionEditorStore: ObservableObject {
     let listPreferences: ConnectionListPreferences
     let cloudSQLProxyDownload: CloudSQLProxyDownload
     let managedPolicy: any ManagedPolicyReading
+    let scope: ConnectionScope
     let approvalStores: [ConnectionApprovalStore]
 
     // Written only through update(_:), the edit methods and the binding helpers, which keep everything below in step.
@@ -125,9 +126,11 @@ final class ConnectionEditorStore: ObservableObject {
         listPreferences: ConnectionListPreferences = .shared,
         cloudSQLProxyDownload: CloudSQLProxyDownload = .shared,
         managedPolicy: any ManagedPolicyReading = ManagedPolicyReader.shared,
-        approvalStores: [ConnectionApprovalStore] = ConnectionApprovalStore.all
+        approvalStores: [ConnectionApprovalStore] = ConnectionApprovalStore.all,
+        scope: ConnectionScope = .shared
     ) {
         self.services = services
+        self.scope = scope
         self.recentConnections = recentConnections
         self.listPreferences = listPreferences
         self.cloudSQLProxyDownload = cloudSQLProxyDownload

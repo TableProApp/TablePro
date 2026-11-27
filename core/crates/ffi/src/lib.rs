@@ -33,8 +33,10 @@ mod keymap;
 mod library;
 mod library_contents;
 mod library_details;
+mod library_writes;
 mod masking;
 mod mcp;
+mod plan;
 mod prompter;
 mod references;
 mod results;
@@ -103,7 +105,10 @@ pub use history::{
     HistoryOutcomeTag, HistoryPageInfo, HistoryRun, HistoryRunDetails, HistorySourceTag, HistoryStatusTag,
     QueryHistoryStore, StatementTypeTag,
 };
-pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
+pub use host::{
+    HostConfig, HostSecretError, HostSecretStore, HostSecrets, ProfileKindTag, SecretDeletionTag, SecretItemTag,
+    SecretKindTag,
+};
 pub use host_stores::{
     FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,
     FavouriteStoreContents, FavouriteTableRecord, HistoryDetailsRecord, HistoryEntryRecord, HistoryIdentityInfo,
@@ -118,7 +123,7 @@ pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use keymap::{KeymapBindingInfo, KeymapPlatformTag, KeymapPresetInfo, keymap_preset, keymap_presets};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
-    LibraryIconRecord, LibrarySnapshot, RemoteFileAccessTag, SafeModeTag, SshAuthTag, SshJumpAuthTag,
+    LibraryIconRecord, LibrarySnapshot, ProjectRecord, RemoteFileAccessTag, SafeModeTag, SshAuthTag, SshJumpAuthTag,
     SshJumpHostRecord, SshOptionsRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TagRecord,
     TlsModeTag, TlsSettings, check_jump_hosts, jump_hosts_text, parse_jump_hosts,
 };
@@ -131,6 +136,7 @@ pub use library_details::{
     LocalPasswordSourceRecord, SocksProxyRecord, SshProfileRecord, SshRouteHopRecord, SshRouteRecord,
     SshRouteTargetRecord, TunnelCommandMethodTag, TunnelCommandRecord, VaultAuthRecord,
 };
+pub use library_writes::LibraryWriteReport;
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,
     ShareColumnMasking, ShareRefusal, ShareSummary,

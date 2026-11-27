@@ -3,29 +3,72 @@ import TableProConnectionLibrary
 import TableProModels
 
 nonisolated enum IntentConnectionLoader {
+    // Every connection, whatever its project: a saved shortcut, a link or a widget tap names one by id.
     static func load() -> [DatabaseConnection] {
-        guard let fileURL else { return [] }
-        guard let data = try? Data(contentsOf: fileURL) else { return [] }
-        return decode(data)
+        guard let directory else { return [] }
+        return load(in: directory)
     }
 
     static func connection(id: UUID) -> DatabaseConnection? {
         load().first { $0.id == id }
     }
 
+    // What a picker offers: the active project's connections, like the list in the app.
+    static func suggested() -> [DatabaseConnection] {
+        guard let directory else { return [] }
+        return suggested(in: directory, defaults: .standard)
+    }
+
+    static func load(in directory: URL) -> [DatabaseConnection] {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("connections.json")) else { return [] }
+        return decode(data)
+    }
+
+    static func suggested(in directory: URL, defaults: UserDefaults) -> [DatabaseConnection] {
+        let connections = load(in: directory)
+        guard let activeProjectId = ConnectionLibraryPreferences.activeProjectId(in: defaults),
+              let groups: [ConnectionGroup] = list("groups.json", in: directory),
+              let projects = projects(in: directory)
+        else { return connections }
+        return LibraryProjectScope.scoped(
+            connections: connections,
+            groups: groups,
+            projects: projects,
+            active: activeProjectId
+        ).connections
+    }
+
     static func decode(_ data: Data) -> [DatabaseConnection] {
         (try? LibraryFileRecords<DatabaseConnection>(decoding: data).elements) ?? []
     }
 
-    private static var fileURL: URL? {
-        guard let directory = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first else {
-            return nil
+    // Empty when there is no file, nil when the file cannot be read: membership is unknown then, so nothing is hidden.
+    private static func list<Element: Codable>(_ name: String, in directory: URL) -> [Element]? {
+        let url = directory.appendingPathComponent(name)
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? LibraryFileRecords<Element>(decoding: data).elements
+    }
+
+    // The project list lives only in the core's store, so its ids are read from there; nil when that file cannot be read.
+    private static func projects(in directory: URL) -> [ConnectionProject]? {
+        let url = directory.appendingPathComponent("Core", isDirectory: true).appendingPathComponent("connections.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        guard let data = try? Data(contentsOf: url),
+              let stored = try? JSONDecoder().decode(StoredProjects.self, from: data) else { return nil }
+        return (stored.projects ?? []).compactMap { UUID(uuidString: $0.id).map { ConnectionProject(id: $0) } }
+    }
+
+    private struct StoredProjects: Decodable {
+        struct Entry: Decodable {
+            let id: String
         }
-        return directory
+
+        let projects: [Entry]?
+    }
+
+    private static var directory: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("TableProMobile", isDirectory: true)
-            .appendingPathComponent("connections.json")
     }
 }

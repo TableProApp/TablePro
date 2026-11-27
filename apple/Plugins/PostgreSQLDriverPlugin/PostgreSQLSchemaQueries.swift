@@ -94,6 +94,21 @@ nonisolated enum PostgreSQLSchemaQueries {
         """
     }
 
+    /// A row when a SELECT of the table also reads inheritance children. A partitioned table is left out: its key
+    /// holds every partition key column, so it stays unique across the partitions.
+    static func inheritanceChildren(schema: String, table: String) -> String {
+        """
+        SELECT 1
+        FROM pg_catalog.pg_inherits i
+        JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+        JOIN pg_catalog.pg_namespace pn ON pn.oid = parent.relnamespace
+        WHERE pn.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+          AND parent.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
+          AND parent.relkind <> 'p'
+        LIMIT 1
+        """
+    }
+
     /// `reltuples` is -1 from PostgreSQL 14 until the first VACUUM or ANALYZE, which is no estimate at all.
     static func rowEstimate(reltuples: String?) -> Int64? {
         guard let reltuples, let estimate = Int64(reltuples), estimate >= 0 else { return nil }
@@ -220,6 +235,16 @@ nonisolated enum PostgreSQLSchemaQueries {
 
     static func setSearchPath(toSchema schema: String) -> String {
         "SET search_path TO \(quotedSchemaIdentifier(schema))"
+    }
+
+    // As `setSearchPath`, unless the session's current schema already is the one named, so a path that names more
+    // schemas than the first keeps them, as a host's `switchSchemaIfNeeded` keeps them. `false` makes it last the
+    // session, as a plain `SET` does.
+    static func setSearchPathUnlessCurrent(toSchema schema: String) -> String {
+        let path = PostgreSQLObjectQueries.quoteLiteral(quotedSchemaIdentifier(schema))
+        let name = PostgreSQLObjectQueries.quoteLiteral(schema)
+        return "SELECT pg_catalog.set_config('search_path', \(path), false) "
+            + "WHERE pg_catalog.current_schema() IS DISTINCT FROM \(name)"
     }
 
     private static func quotedSchemaIdentifier(_ schema: String) -> String {

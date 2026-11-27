@@ -273,7 +273,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         welcomeItem.target = self
         menu.addItem(welcomeItem)
 
-        let connections = ConnectionStorage.shared.loadConnections()
+        let connections = ConnectionScope.shared.connections
         if !connections.isEmpty {
             let connectionsItem = NSMenuItem(title: String(localized: "Open Connection"), action: nil, keyEquivalent: "")
             let submenu = NSMenu()

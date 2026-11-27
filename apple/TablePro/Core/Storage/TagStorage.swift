@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProImport
 import TableProSyncTransport
 
@@ -61,8 +62,7 @@ internal final class TagStorage {
         return image.tags
     }
 
-    /// A save that failed leaves the store holding the previous set, so a caller that goes on to
-    /// write related state must check the result.
+    // False leaves the store holding the previous set, so a caller that goes on to write related state checks it.
     @discardableResult
     internal func saveTags(_ tags: [ConnectionTag]) -> Bool {
         let previous = loadTags()

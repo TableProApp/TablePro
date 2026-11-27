@@ -70,25 +70,25 @@ nonisolated final class MongoScriptCursor {
 
     /// Documents the script has not consumed yet, materialising on the first ask.
     func remaining(loader: (MongoScriptCursor) throws -> MongoScriptDocumentBatch) throws -> MongoScriptDocumentBatch {
-        if let drainedIsTruncated { return MongoScriptDocumentBatch(json: [], isTruncated: drainedIsTruncated) }
+        if let drainedIsTruncated { return MongoScriptDocumentBatch(documents: [], isTruncated: drainedIsTruncated) }
         let batch = try materialise(loader: loader)
-        let rest = position < batch.json.count ? Array(batch.json[position...]) : []
+        let rest = position < batch.count ? Array(batch.documents[position...]) : []
         markExhausted(batch)
-        return MongoScriptDocumentBatch(json: rest, isTruncated: batch.isTruncated)
+        return MongoScriptDocumentBatch(documents: rest, isTruncated: batch.isTruncated)
     }
 
     func page(
         size: Int,
         loader: (MongoScriptCursor) throws -> MongoScriptDocumentBatch
     ) throws -> (batch: MongoScriptDocumentBatch, done: Bool) {
-        if let drainedIsTruncated { return (MongoScriptDocumentBatch(json: [], isTruncated: drainedIsTruncated), true) }
+        if let drainedIsTruncated { return (MongoScriptDocumentBatch(documents: [], isTruncated: drainedIsTruncated), true) }
         let batch = try materialise(loader: loader)
-        let end = min(position + max(size, 1), batch.json.count)
-        let slice = position < end ? Array(batch.json[position ..< end]) : []
+        let end = min(position + max(size, 1), batch.count)
+        let slice = position < end ? Array(batch.documents[position ..< end]) : []
         position = end
-        let done = position >= batch.json.count
+        let done = position >= batch.count
         if done { markExhausted(batch) }
-        return (MongoScriptDocumentBatch(json: slice, isTruncated: batch.isTruncated), done)
+        return (MongoScriptDocumentBatch(documents: slice, isTruncated: batch.isTruncated), done)
     }
 
     private func markExhausted(_ batch: MongoScriptDocumentBatch) {

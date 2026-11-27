@@ -43,16 +43,18 @@ public struct SyncRecordFields<Field: SyncSchemaField> {
 
     public let record: CKRecord
     private let absentValues: AbsentValueWrite
+    private let schema: SyncWritableSchema
 
-    public init(_ record: CKRecord, absentValues: AbsentValueWrite = .leave) {
+    public init(_ record: CKRecord, absentValues: AbsentValueWrite = .leave, schema: SyncWritableSchema = .production) {
         self.record = record
         self.absentValues = absentValues
+        self.schema = schema
     }
 
     public subscript(field: Field) -> Any? {
         get { record[field.key] }
         nonmutating set {
-            guard field.isWritable else { return }
+            guard schema.writes(field) else { return }
             let replacement = newValue as? any CKRecordValueProtocol
             guard !CKRecord.isEqualRecordValue(record[field.key], replacement)
                 || (replacement == nil && absentValues == .clear) else { return }
@@ -64,9 +66,10 @@ public struct SyncRecordFields<Field: SyncSchemaField> {
 public extension CKRecord {
     func fields<Field: SyncSchemaField>(
         _ type: Field.Type,
-        absentValues: SyncRecordFields<Field>.AbsentValueWrite = .leave
+        absentValues: SyncRecordFields<Field>.AbsentValueWrite = .leave,
+        schema: SyncWritableSchema = .production
     ) -> SyncRecordFields<Field> {
-        SyncRecordFields(self, absentValues: absentValues)
+        SyncRecordFields(self, absentValues: absentValues, schema: schema)
     }
 
     static func isEqualRecordValue(_ lhs: Any?, _ rhs: Any?) -> Bool {

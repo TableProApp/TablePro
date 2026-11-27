@@ -427,6 +427,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing?
 
+    // Whether this table's key names one row of a read of it, which a page seek past an edge row relies on.
+    func primaryKeyNamesOneRow(inTable table: String, schema: String?) async throws -> Bool
+
     // MARK: - Table Options
 
     /// Nil where the engine has no table options.
@@ -1004,6 +1007,8 @@ extension DatabaseDriver {
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? { nil }
 
+    func primaryKeyNamesOneRow(inTable table: String, schema: String?) async throws -> Bool { primaryKeyNamesOneRow }
+
     func fetchTableOptions(tableName: String, schema: String?) async throws -> TableOptions? { nil }
 
     func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog? { nil }
@@ -1170,7 +1175,8 @@ enum DatabaseDriverFactory {
         deadline: ConnectionDeadline? = nil,
         timeoutEndpoint: ConnectionTimeoutEndpoint? = nil,
         effectiveQueryTimeoutSeconds: Int? = nil,
-        preparedConfiguration: PreparedDriverConfiguration? = nil
+        preparedConfiguration: PreparedDriverConfiguration? = nil,
+        initialSchema: String? = nil
     ) async throws -> DatabaseDriver {
         let prepared: PreparedDriverConfiguration
         if let preparedConfiguration {
@@ -1200,7 +1206,8 @@ enum DatabaseDriverFactory {
             deadline: connectionDeadline,
             timeoutEndpoint: endpoint,
             effectiveQueryTimeoutSeconds: effectiveQueryTimeoutSeconds,
-            requiresHostDeadline: requiresHostDeadline
+            requiresHostDeadline: requiresHostDeadline,
+            initialSchema: initialSchema
         )
     }
 
@@ -1211,7 +1218,8 @@ enum DatabaseDriverFactory {
         deadline: ConnectionDeadline,
         timeoutEndpoint: ConnectionTimeoutEndpoint,
         effectiveQueryTimeoutSeconds providedQueryTimeoutSeconds: Int?,
-        requiresHostDeadline: Bool
+        requiresHostDeadline: Bool,
+        initialSchema: String?
     ) async throws -> DatabaseDriver {
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             throw PluginManager.shared.driverUnavailableError(for: connection.type)
@@ -1260,6 +1268,10 @@ enum DatabaseDriverFactory {
             at: configurationSample
         ) {
             additionalFields[key] = value
+        }
+        // A driver that can land on a schema while it signs in reads this, so the move costs no round trip of its own.
+        if let initialSchema, !initialSchema.isEmpty {
+            additionalFields["initialSchema"] = initialSchema
         }
         let config = DriverConnectionConfig(
             host: connection.host,

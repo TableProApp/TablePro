@@ -96,6 +96,10 @@ struct PluginMetadataSnapshot: Sendable {
         // database, such as ClickHouse's `default`, leaves this false.
         var browsingRequiresSelectedDatabase: Bool = false
         var pagination: PaginationCapability = .offset
+        // Whether a table page in key order is read past the edge row of the page beside it rather than at its offset.
+        // A seek trusts the key to name one row, so only an engine that enforces a primary key as unique seeks:
+        // Redshift, Snowflake and BigQuery accept duplicate keys, and a seek past one would skip its twins.
+        var seeksKeyedPages: Bool = false
         // Whether an exact count reads the whole table with no estimate to stand in for it, and only the driver
         // knows how to count it. DynamoDB bills a `Scan` of every item and has no `COUNT(*)`; Cassandra reads
         // every partition, because `LIMIT` does not bound `COUNT(*)`, and a filtered count needs CQL the host
@@ -171,8 +175,8 @@ struct PluginMetadataSnapshot: Sendable {
         // False where users and roles are different kinds: there a role never logs in, and Can log in is a user's lock.
         var supportsRoleLogin: Bool = true
 
-        // Set, a table page reads a large binary value's size through it and loads the value on demand.
-        var binaryLengthFunction: String?
+        // Set, a table page reads a large value's size and the start of its text through them, and loads the value on demand.
+        var largeValueFunctions: LargeValueFunctions?
 
         // Whether a table's DDL can state a CHECK value list in the form `QuerySqlParser` reads. False where the
         // server rewrites the clause into another shape, or where the driver fills `allowedValues` itself.
@@ -846,6 +850,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 browsingRequiresSelectedDatabase: existingSnapshot?.capabilities
                     .browsingRequiresSelectedDatabase ?? false,
                 pagination: existingSnapshot?.capabilities.pagination ?? .offset,
+                seeksKeyedPages: existingSnapshot?.capabilities.seeksKeyedPages ?? false,
                 exactRowCountIsFullScan: existingSnapshot?.capabilities.exactRowCountIsFullScan ?? false,
                 supportsColumnSort: existingSnapshot?.capabilities.supportsColumnSort ?? true,
                 supportsMatchAnyFilters: existingSnapshot?.capabilities.supportsMatchAnyFilters ?? true,
@@ -865,7 +870,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
                     .supportsPrincipalConnectionLimit ?? true,
                 supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
-                binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction,
+                largeValueFunctions: existingSnapshot?.capabilities.largeValueFunctions,
                 readsCheckListsFromDDL: existingSnapshot?.capabilities.readsCheckListsFromDDL ?? true,
                 readOnlyEnforcement: existingSnapshot?.capabilities.readOnlyEnforcement ?? .loginPrivileges,
                 statementPolicyInDriver: existingSnapshot?.capabilities.statementPolicyInDriver ?? false,

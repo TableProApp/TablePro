@@ -249,7 +249,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH",
+                    seeksKeyedPages: true,
+                    largeValueFunctions: .mySQL,
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
@@ -322,7 +323,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH",
+                    seeksKeyedPages: true,
+                    largeValueFunctions: .mySQL,
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
@@ -403,6 +405,8 @@ extension PluginMetadataRegistry {
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .preferred,
                     verifiesServerWithSystemTrust: true,
+                    seeksKeyedPages: true,
+                    largeValueFunctions: .postgreSQL,
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
@@ -685,10 +689,12 @@ extension PluginMetadataRegistry {
                     supportsCheckConstraintEditing: true,
                     supportsGeneratedColumns: true,
                     supportsDatabaseTriggerBrowse: true,
+                    seeksKeyedPages: true,
                     localFilePathField: .database,
                     newDatabaseFileExtensions: Self.sqliteFileExtensions,
                     supportsRemoteDatabaseFile: true,
                     supportsRemoteDatabaseSession: true,
+                    largeValueFunctions: .sqlite,
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .engineEnforced
                 ),

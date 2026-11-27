@@ -35,7 +35,7 @@ struct GroupFormSheet: View {
     }
 
     var body: some View {
-        let graph = LibraryGroupGraph(groups: appState.groups)
+        let graph = LibraryGroupGraph(groups: appState.groupChoices(including: existingGroup?.id ?? parentId))
         let groupId = placementGroupId
         let parents = graph.flattened().filter { graph.canPlace(groupId, under: $0.id) }
         NavigationStack {

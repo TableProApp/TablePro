@@ -11,6 +11,7 @@ use std::time::Duration;
 use gio::prelude::SettingsExt;
 use tablepro_core::AiProvider;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
+use uuid::Uuid;
 
 pub use editor_font::EditorFont;
 pub use error::SettingsError;
@@ -286,6 +287,23 @@ impl AppSettings {
 
     pub fn set_restore_session(&self, restore: bool) -> Result<(), SettingsError> {
         self.set_boolean(keys::RESTORE_SESSION, restore)
+    }
+
+    // Empty or unreadable is All Connections; whether a project still has the id is the list's to say.
+    pub fn active_project(&self) -> Option<Uuid> {
+        Uuid::parse_str(self.settings.string(keys::ACTIVE_PROJECT).as_str()).ok()
+    }
+
+    pub fn set_active_project(&self, project: Option<Uuid>) -> Result<(), SettingsError> {
+        let id = project.map(|id| id.to_string()).unwrap_or_default();
+        self.set_string(keys::ACTIVE_PROJECT, &id)
+    }
+
+    pub fn connect_active_project_changed(&self, changed: impl Fn(Option<Uuid>) + 'static) -> glib::SignalHandlerId {
+        self.settings
+            .connect_changed(Some(keys::ACTIVE_PROJECT), move |settings, key| {
+                changed(Uuid::parse_str(settings.string(key).as_str()).ok());
+            })
     }
 
     pub fn last_seen_version(&self) -> String {
