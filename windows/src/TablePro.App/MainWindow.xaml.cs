@@ -1953,6 +1953,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuAiReview.IsEnabled = canAsk;
         MenuAiExplain.IsEnabled = canAsk;
         MenuAiOptimize.IsEnabled = canAsk;
+        MenuExplainPlan.IsEnabled = workspace?.CanExplainPlan ?? false;
         MenuSaveQuery.IsEnabled = workspace?.CanSaveQuery ?? false;
         MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
         MenuShareResult.IsEnabled = workspace?.CanShareResult ?? false;
@@ -2243,6 +2244,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void OnAiExplain(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Explain);
 
     private void OnAiOptimize(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Optimize);
+
+    private void OnExplainPlan(object sender, RoutedEventArgs e) => Workspace?.ExplainPlan();
 
     private async void OnSaveQuery(object sender, RoutedEventArgs e)
     {

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tablepro_core::plan::{ExplainPlanFormat, ExplainVariant};
 use tablepro_core::{
     ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError, TimeoutPhase,
     UnsupportedFeature,
@@ -35,6 +36,16 @@ impl DatabaseDriver for SqliteDriver {
 
     fn capabilities(&self) -> &'static DriverCapabilities {
         &CAPABILITIES
+    }
+
+    fn explain_variants(&self) -> &'static [ExplainVariant] {
+        const VARIANTS: &[ExplainVariant] = &[ExplainVariant::prefix(
+            "explain",
+            "Explain",
+            "EXPLAIN QUERY PLAN",
+            ExplainPlanFormat::SQLITE_QUERY_PLAN,
+        )];
+        VARIANTS
     }
 
     async fn connect(

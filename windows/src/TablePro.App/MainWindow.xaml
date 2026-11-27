@@ -159,6 +159,7 @@
                 <MenuFlyoutItem x:Uid="MenuAiReview" x:Name="MenuAiReview" Click="OnAiReview" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuAiExplain" x:Name="MenuAiExplain" Click="OnAiExplain" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuAiOptimize" x:Name="MenuAiOptimize" Click="OnAiOptimize" IsEnabled="False" />
+                <MenuFlyoutItem x:Uid="MenuExplainPlan" x:Name="MenuExplainPlan" Click="OnExplainPlan" IsEnabled="False" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuFilterRows" x:Name="MenuFilterRows" Click="OnFilterRows" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Filter" /></MenuFlyoutItem.Icon>
