@@ -13,6 +13,15 @@ public enum OracleCertificateField: Sendable, Equatable {
     case clientKey
 }
 
+public enum OracleRedirectFailure: Sendable, Equatable {
+    case throughTunnel
+    case unreadable
+    case needsTLS
+    case tooManyRedirects
+    case unreachable(detail: String?)
+    case refused(detail: String)
+}
+
 public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case notConnected
     case connectionFailed(String)
@@ -34,6 +43,8 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case certificateUnavailable(field: OracleCertificateField, path: String)
     case certificateAuthorityRequired
     case verifyIdentityNeedsHostName(address: String)
+    case listenerRedirectFailed(OracleRedirectFailure, target: String?)
+    case connectionRefused
 
     public var errorDescription: String? {
         switch self {
@@ -88,6 +99,10 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return String(format: Self.certificateUnavailableFormat(for: field), path)
         case .certificateAuthorityRequired:
             return String(localized: "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate.")
+        case .listenerRedirectFailed(let failure, let target):
+            return Self.redirectMessage(failure, target: target)
+        case .connectionRefused:
+            return String(localized: "The server refused the connection. Check the host and port, and that the Oracle listener is running.")
         case .verifyIdentityNeedsHostName(let address):
             return String(
                 format: String(localized: """
@@ -95,6 +110,56 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
                     is an IP address. Enter the server's host name, or set SSL Mode to Verify CA.
                     """),
                 address
+            )
+        }
+    }
+
+    private static func redirectMessage(_ failure: OracleRedirectFailure, target: String?) -> String {
+        let unreadable = String(localized: "The Oracle listener redirected the connection to an address TablePro could not read.")
+        guard let target else {
+            if case .tooManyRedirects = failure {
+                return String(localized: "The Oracle listeners redirected the connection too many times.")
+            }
+            return unreadable
+        }
+        switch failure {
+        case .throughTunnel:
+            return String(
+                format: String(localized: """
+                    The Oracle listener redirected the connection to %@, which the tunnel does not forward. Enter that \
+                    host and port as this connection's host and port so the tunnel reaches them.
+                    """),
+                target
+            )
+        case .unreadable:
+            return unreadable
+        case .needsTLS:
+            return String(
+                format: String(localized: "The Oracle listener redirected the connection to %@, which expects TLS. Set an SSL mode for this connection."),
+                target
+            )
+        case .tooManyRedirects:
+            return String(
+                format: String(localized: "The Oracle listeners redirected the connection too many times. The last address was %@."),
+                target
+            )
+        case .refused(let detail):
+            return String(
+                format: String(localized: "The Oracle listener redirected the connection to %1$@, and the listener there refused it. %2$@"),
+                target,
+                detail
+            )
+        case .unreachable(let detail):
+            guard let detail else {
+                return String(
+                    format: String(localized: "The Oracle listener redirected the connection to %@, which could not be reached."),
+                    target
+                )
+            }
+            return String(
+                format: String(localized: "The Oracle listener redirected the connection to %1$@, which could not be reached (%2$@)."),
+                target,
+                detail
             )
         }
     }

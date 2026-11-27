@@ -226,6 +226,7 @@ fn driver_codes(error: &DriverError, codes: &mut Vec<String>) {
             }
         }
         DriverError::Config(config) => codes.push(config.code().to_owned()),
+        DriverError::Unsupported { feature } => codes.push(feature.code().to_owned()),
         DriverError::RolledBack { source, .. }
         | DriverError::CommitOutcomeUnknown { source, .. }
         | DriverError::PartiallyApplied { source, .. } => driver_codes(source, codes),
