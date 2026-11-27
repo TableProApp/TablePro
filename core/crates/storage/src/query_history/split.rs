@@ -82,6 +82,9 @@ pub(crate) async fn before_saved_queries_open(paths: &StoragePaths) -> Result<()
     let path = paths.history_database();
     let pool = super::connect(&path).await?;
     let moved = copy_and_move(&pool, &path, paths).await;
+    if moved.is_ok() {
+        compact_if_owed(&pool, &path).await;
+    }
     pool.close().await;
     moved
 }
@@ -98,6 +101,7 @@ pub(crate) const MOVED_AWAY: i64 = i64::MAX;
 pub(crate) async fn relocate(paths: &StoragePaths) -> Result<(), StorageError> {
     let old = history_before_move(paths);
     if paths.history_database().exists() {
+        tidy_left(&old).await;
         return Ok(());
     }
     let folder = paths.history_folder();
@@ -115,17 +119,19 @@ pub(crate) async fn relocate(paths: &StoragePaths) -> Result<(), StorageError> {
     let released = held.close().await;
     moved?;
     released?;
+    tidy_left(&old).await;
     Ok(())
 }
 
 // Exclusive locking keeps every lock the connection takes until it closes. Switching a WAL file to a rollback journal
 // needs the only connection to it and writes the WAL back into it first, and the write transaction takes the lock
-// when the file already had a rollback journal.
+// when the file already had a rollback journal. Under exclusive locking a deleting journal is kept with its pages
+// until the connection closes, and a truncating one is emptied at every commit.
 async fn hold(path: &Path) -> Result<SqliteConnection, StorageError> {
     let connected = SqliteConnectOptions::new()
         .filename(path)
         .locking_mode(SqliteLockingMode::Exclusive)
-        .journal_mode(SqliteJournalMode::Delete)
+        .journal_mode(SqliteJournalMode::Truncate)
         .pragma("secure_delete", "ON")
         // With foreign keys on, a drop first deletes every row and runs each cascade, which a deep folder tree takes
         // past SQLite's recursion limit.
@@ -159,7 +165,7 @@ async fn take_lock(database: &mut SqliteConnection, path: &Path) -> Result<(), S
     transaction.commit().await?;
     let wal = sidecar(path, "-wal");
     let left = std::fs::metadata(&wal).map(|found| found.len() > 0).unwrap_or(false);
-    if !mode.eq_ignore_ascii_case("delete") || left {
+    if !mode.eq_ignore_ascii_case("truncate") || left {
         return Err(held_elsewhere(path));
     }
     Ok(())
@@ -181,9 +187,10 @@ fn held_elsewhere(path: &Path) -> StorageError {
     }
 }
 
-// A crash leaves the old file whole and unmarked, so the next open copies it again, or marked with its synced copy in
-// the folder, which the next open renames into place. The upgrade copies move only under the lock, so a move another
-// process refuses leaves them where an older build's cleanup finds them.
+// A crash leaves the old file whole and unmarked, so the next open removes the copy it left and copies it again, or
+// marked with its synced copy in the folder, which the next open renames into place. The upgrade copies move only under
+// the lock, so a move another process refuses leaves them where an older build's cleanup finds them. The compaction the
+// mark leaves owed runs once the lock is released, as on every later open.
 async fn move_held(database: &mut SqliteConnection, paths: &StoragePaths) -> Result<(), StorageError> {
     let old = history_before_move(paths);
     let new = paths.history_database();
@@ -196,9 +203,6 @@ async fn move_held(database: &mut SqliteConnection, paths: &StoragePaths) -> Res
         #[cfg(test)]
         pause_here(&old).await;
         mark(database).await?;
-    }
-    if let Err(error) = sqlx::query("VACUUM").execute(&mut *database).await {
-        tracing::warn!(%error, "the file the history left keeps its size");
     }
     // A rollback journal leaves the WAL index unused.
     if let Err(error) = std::fs::remove_file(sidecar(&old, "-shm"))
@@ -288,8 +292,53 @@ async fn mark(database: &mut SqliteConnection) -> Result<(), StorageError> {
     .bind(MOVED_AWAY)
     .execute(&mut *transaction)
     .await?;
+    owe_compaction(&mut *transaction).await?;
     transaction.commit().await?;
     Ok(())
+}
+
+// What the move leaves to finish in the file the history left, on every open until it is done: its compaction, and a
+// rollback journal a move cut short after the mark left beside it. Neither holds back an open.
+async fn tidy_left(old: &Path) {
+    if !old.is_file() {
+        return;
+    }
+    if let Err(error) = tidy(old).await {
+        tracing::warn!(%error, "the file the history left is not tidied yet");
+    }
+}
+
+async fn tidy(old: &Path) -> Result<(), StorageError> {
+    let mut database = SqliteConnectOptions::new()
+        .filename(old)
+        // Another open tidying it, or an older build refused by it, is let be until the next open.
+        .busy_timeout(std::time::Duration::from_millis(500))
+        .pragma("secure_delete", "ON")
+        .disable_statement_logging()
+        .connect()
+        .await?;
+    let tidied = tidy_held(&mut database, old).await;
+    let closed = database.close().await;
+    tidied?;
+    closed?;
+    Ok(())
+}
+
+// The first read rolls back a journal a crash left mid-transaction, and the write lock keeps any other connection from
+// starting one, so a journal still there is this file's leftover. A file that is not marked is an older build's.
+async fn tidy_held(database: &mut SqliteConnection, old: &Path) -> Result<(), StorageError> {
+    if !is_marked(database).await? {
+        return Ok(());
+    }
+    let transaction = database.begin_with(AssertSqlSafe("BEGIN EXCLUSIVE")).await?;
+    let journal = sidecar(old, "-journal");
+    if let Err(source) = std::fs::remove_file(&journal)
+        && source.kind() != std::io::ErrorKind::NotFound
+    {
+        return Err(StorageError::Io { path: journal, source });
+    }
+    transaction.commit().await?;
+    compact(database, old).await
 }
 
 // Journals with their copies, as `upgrade_copies::move_with_sidecars_blocking` orders them.
@@ -360,11 +409,6 @@ async fn copy_and_move(pool: &SqlitePool, path: &Path, paths: &StoragePaths) -> 
 // Before the history's migrations run. A new database gets its schema from them, and one a newer build wrote is left
 // for them to refuse.
 pub(crate) async fn move_out(pool: &SqlitePool, paths: &StoragePaths) -> Result<(), StorageError> {
-    take_out(pool, paths).await?;
-    compact_if_owed(pool).await
-}
-
-pub(super) async fn take_out(pool: &SqlitePool, paths: &StoragePaths) -> Result<(), StorageError> {
     let Some(applied) = applied(pool).await? else {
         return Ok(());
     };
@@ -399,45 +443,89 @@ pub(super) async fn take_out(pool: &SqlitePool, paths: &StoragePaths) -> Result<
     Migrate::apply(&mut *transaction, &schema::MIGRATOR.table_name, migration)
         .await
         .map_err(StorageError::HistoryMigration)?;
-    sqlx::query(AssertSqlSafe(format!(
-        "CREATE TABLE IF NOT EXISTS {COMPACTION_OWED} (id INTEGER PRIMARY KEY CHECK (id = 1))"
-    )))
-    .execute(&mut *transaction)
-    .await?;
+    owe_compaction(&mut *transaction).await?;
     transaction.commit().await?;
     finish(paths)
 }
 
-// Written with the drop, so an open after a crash still compacts the file.
+// In a file while it owes a compaction, written in the transaction that frees the pages and checked on every open of
+// that file until the compaction is done.
 pub(super) const COMPACTION_OWED: &str = "compaction_owed";
 
-// The text of the saved queries stays in the pages the drop freed until a VACUUM rewrites the file, and in the file and
-// its WAL until a checkpoint folds the rewrite in and empties the WAL. A checkpoint another connection blocks leaves it
-// owed for the next open, and so does a VACUUM that fails, which costs only space.
-async fn compact_if_owed(pool: &SqlitePool) -> Result<(), StorageError> {
+async fn owe_compaction(database: &mut SqliteConnection) -> Result<(), StorageError> {
+    sqlx::query(AssertSqlSafe(format!(
+        "CREATE TABLE IF NOT EXISTS {COMPACTION_OWED} (id INTEGER PRIMARY KEY CHECK (id = 1))"
+    )))
+    .execute(&mut *database)
+    .await?;
+    Ok(())
+}
+
+// On every open of `history.db`, whichever store opens it, so a compaction a crash, a failure or a reader cut off is
+// done by a later open.
+pub(crate) async fn compact_if_owed(pool: &SqlitePool, path: &Path) {
+    let compacted = match pool.acquire().await {
+        Ok(mut connection) => compact(&mut connection, path).await,
+        Err(error) => Err(error.into()),
+    };
+    if let Err(error) = compacted {
+        tracing::warn!(%error, "the history keeps pages it no longer uses until a later open compacts it");
+    }
+}
+
+// Freed pages keep what they held until a VACUUM rewrites the file, and the file and its WAL keep the old pages until a
+// checkpoint folds the rewrite in and empties the WAL.
+async fn compact(database: &mut SqliteConnection, path: &Path) -> Result<(), StorageError> {
     let owed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?")
         .bind(COMPACTION_OWED)
-        .fetch_one(pool)
+        .fetch_one(&mut *database)
         .await?;
     if owed == 0 {
         return Ok(());
     }
-    let mut connection = pool.acquire().await?;
-    if let Err(error) = sqlx::query("VACUUM").execute(&mut *connection).await {
-        tracing::warn!(%error, "the history keeps the pages the saved queries left until it can be compacted");
-        return Ok(());
-    }
+    vacuum(database, path).await?;
+    // A file with a rollback journal answers 0, -1, -1.
     let (blocked, frames, folded): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
-        .fetch_one(&mut *connection)
+        .fetch_one(&mut *database)
         .await?;
     if blocked != 0 || frames != folded {
-        return Ok(());
+        return Err(StorageError::Io {
+            path: path.to_owned(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "a reader holds the pages the VACUUM replaced",
+            ),
+        });
     }
+    // Another process may have finished the same compaction.
     sqlx::query(AssertSqlSafe(format!("DROP TABLE IF EXISTS {COMPACTION_OWED}")))
-        .execute(&mut *connection)
+        .execute(&mut *database)
         .await?;
     Ok(())
 }
+
+async fn vacuum(database: &mut SqliteConnection, path: &Path) -> Result<(), StorageError> {
+    #[cfg(test)]
+    if FAILING_VACUUMS
+        .lock()
+        .expect("failing")
+        .iter()
+        .any(|failing| failing == path)
+    {
+        return Err(StorageError::Io {
+            path: path.to_owned(),
+            source: std::io::Error::other("a VACUUM a test failed"),
+        });
+    }
+    #[cfg(not(test))]
+    let _ = path;
+    sqlx::query("VACUUM").execute(&mut *database).await?;
+    Ok(())
+}
+
+// The files whose VACUUM a test fails.
+#[cfg(test)]
+pub(super) static FAILING_VACUUMS: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
 
 // None for a database no migration has run on.
 async fn applied(pool: &SqlitePool) -> Result<Option<Vec<i64>>, StorageError> {

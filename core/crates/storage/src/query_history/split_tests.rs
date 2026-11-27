@@ -10,7 +10,7 @@ use sqlx::{AssertSqlSafe, ConnectOptions, Connection, SqlitePool};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-use super::fixtures::old_database;
+use super::fixtures::{BETA_5, old_database};
 use super::schema;
 use super::split::{COMPACTION_OWED, MOVE_OUT, MOVED, MOVED_AWAY, history_before_move, partial_of};
 use super::{HistoryPageRequest, HistoryQuery, QueryHistory};
@@ -952,7 +952,7 @@ async fn a_compaction_a_crash_cut_off_runs_at_the_next_open() {
         .execute(&pool)
         .await
         .expect("no zeroing");
-    super::split::take_out(&pool, &old.paths).await.expect("the drop");
+    super::split::move_out(&pool, &old.paths).await.expect("the drop");
     pool.close().await;
     assert!(
         holds(&old.paths.history_database(), SAVED_TEXT),
@@ -975,4 +975,161 @@ async fn a_compaction_a_crash_cut_off_runs_at_the_next_open() {
             .any(|name| name == COMPACTION_OWED)
     );
     assert_history_kept(&old, &history).await;
+}
+
+fn owes(names: &[String]) -> bool {
+    names.iter().any(|name| name == COMPACTION_OWED)
+}
+
+// A VACUUM that fails holds back neither open, and leaves the compaction owed in both files until one succeeds.
+#[tokio::test]
+async fn a_vacuum_that_fails_is_owed_until_a_later_open_does_it() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let old = old_file_with_saved_text(&root).await;
+    let (history_path, before) = (old.paths.history_database(), history_before_move(&old.paths));
+    super::split::FAILING_VACUUMS
+        .lock()
+        .expect("failing")
+        .extend([history_path.clone(), before.clone()]);
+
+    let history = QueryHistory::open(&old.paths).await.expect("history");
+    assert_history_kept(&old, &history).await;
+    history.pool().close().await;
+
+    assert!(owes(&tables(&history_path).await));
+    assert!(owes(&tables(&before).await));
+    assert!(
+        holds(&history_path, SAVED_TEXT),
+        "the failed VACUUM was not what left the text"
+    );
+    super::split::FAILING_VACUUMS
+        .lock()
+        .expect("failing")
+        .retain(|failing| failing != &history_path && failing != &before);
+
+    let history = QueryHistory::open(&old.paths).await.expect("history");
+    history.pool().close().await;
+
+    assert!(!owes(&tables(&history_path).await));
+    assert!(!holds(&history_path, SAVED_TEXT));
+    assert_left_marked(&old.paths).await;
+}
+
+// A reader that keeps the checkpoint from emptying the WAL leaves the compaction owed, and the next open finishes it.
+#[tokio::test]
+async fn a_reader_blocking_the_checkpoint_leaves_the_compaction_owed() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let old = old_file_with_saved_text(&root).await;
+    {
+        let _moving = super::split::MOVING.lock().await;
+        super::split::relocate(&old.paths).await.expect("the folder");
+    }
+    let history_path = old.paths.history_database();
+    let readers = super::connect(&history_path).await.expect("another process");
+    let mut reader = readers.acquire().await.expect("a reader");
+    sqlx::query("BEGIN").execute(&mut *reader).await.expect("begin");
+    let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM history")
+        .fetch_one(&mut *reader)
+        .await
+        .expect("a read");
+
+    let history = QueryHistory::open(&old.paths).await.expect("history");
+    assert!(owes(&tables(&history_path).await), "the WAL was emptied under a reader");
+    sqlx::query("ROLLBACK")
+        .execute(&mut *reader)
+        .await
+        .expect("end the read");
+    drop(reader);
+    readers.close().await;
+    history.pool().close().await;
+
+    let history = QueryHistory::open(&old.paths).await.expect("history");
+    history.pool().close().await;
+
+    assert!(!owes(&tables(&history_path).await));
+    assert!(!holds(&history_path, SAVED_TEXT));
+}
+
+// A crash between the copy and the mark leaves the copy beside a file an older build can still write. The next open
+// removes that copy and copies the file again, with what the older build wrote meanwhile.
+#[tokio::test]
+async fn a_crash_between_the_copy_and_the_mark_copies_again() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let old = old_file(&root).await;
+    let before = history_before_move(&old.paths);
+    let partial = partial_of(&old.paths.history_database());
+    let (held, on_hold) = oneshot::channel();
+    let (_resume, resumed) = oneshot::channel::<()>();
+    super::split::PAUSES.lock().expect("pauses").push(super::split::Pause {
+        path: before.clone(),
+        held,
+        resume: resumed,
+    });
+    let paths = old.paths.clone();
+    let opening = tokio::spawn(async move { QueryHistory::open(&paths).await });
+    on_hold.await.expect("the move took its lock");
+    opening.abort();
+    let _ = opening.await;
+    assert!(partial.exists(), "the crash left no copy, so this tests nothing");
+
+    let older = super::connect(&before).await.expect("an older build");
+    sqlx::query(
+        "INSERT INTO history (record_id, query, query_folded, driver_id, connection_id, connection_name, \
+         executed_at, success) VALUES (?, 'SELECT meanwhile', 'select meanwhile', 'sqlite', ?, 'local', 1800000004, 1)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(old.connection.to_string())
+    .execute(&older)
+    .await
+    .expect("an older build's write");
+    older.close().await;
+
+    let history = QueryHistory::open(&old.paths).await.expect("history");
+
+    let queries: Vec<String> = history
+        .entries()
+        .await
+        .expect("entries")
+        .into_iter()
+        .map(|entry| entry.query)
+        .collect();
+    assert!(queries.iter().any(|query| query == "SELECT meanwhile"), "{queries:?}");
+    assert!(!partial.exists());
+    assert_left_marked(&old.paths).await;
+}
+
+// A rollback journal beside the file the history left, as a crash after the rename and before the lock was let go
+// leaves it, holds the history's old pages. Any later open removes it, and leaves the journal of an older build's file.
+#[tokio::test]
+async fn a_journal_left_beside_the_marked_file_is_removed_by_a_later_open() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let old = old_file(&root).await;
+    QueryHistory::open(&old.paths)
+        .await
+        .expect("history")
+        .pool()
+        .close()
+        .await;
+    let before = history_before_move(&old.paths);
+    let journal = format!("{}-journal", before.display());
+    let mut left = vec![0_u8; 512];
+    left.extend_from_slice(b"select kept");
+    std::fs::write(&journal, &left).expect("a journal the crash left");
+
+    let history = QueryHistory::open(&old.paths).await.expect("history");
+    history.pool().close().await;
+    assert!(
+        !Path::new(&journal).exists(),
+        "the journal with the history's pages stayed"
+    );
+
+    let elsewhere = tempfile::tempdir().expect("tempdir");
+    let (older_paths, older) = old_database(&elsewhere, BETA_5).await;
+    older.close().await;
+    std::fs::copy(history_before_move(&older_paths), &before).expect("an older build's file where the history was");
+    std::fs::write(&journal, &left).expect("its journal");
+
+    drop(QueryHistory::open(&old.paths).await.expect("history"));
+
+    assert_eq!(std::fs::read(&journal).expect("left alone"), left);
 }
