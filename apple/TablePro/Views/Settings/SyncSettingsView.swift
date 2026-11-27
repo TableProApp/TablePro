@@ -61,7 +61,7 @@ struct SyncSettingsView: View {
             if let notice = layout.serviceNotice {
                 Section {
                     SyncServiceNoticeRow(notice: notice) {
-                        sheet = notice == .awaitsMoveBack ? .moveToICloud : moveToService
+                        sheet = notice == .awaitsMoveBack ? moveToICloud : moveToService
                     }
                 }
             }
@@ -112,8 +112,8 @@ struct SyncSettingsView: View {
             switch sheet {
             case .moveToService(let fromICloud, let session):
                 SyncMoveSheet(moves: moves, fromICloud: fromICloud, session: session)
-            case .moveToICloud:
-                SyncMoveBackSheet(moves: moves)
+            case .moveToICloud(let session):
+                SyncMoveBackSheet(moves: moves, session: session)
             }
         }
         .alert(String(localized: "Delete TablePro's Data from iCloud?"), isPresented: $asksICloudDeletion) {
@@ -174,7 +174,7 @@ struct SyncSettingsView: View {
                 return
             }
             if current == .tableproSync {
-                sheet = .moveToICloud
+                sheet = moveToICloud
             } else {
                 settings.provider = .iCloud
             }
@@ -187,9 +187,13 @@ struct SyncSettingsView: View {
         }
     }
 
-    // Bound to the sign-in it opens under: the plan the person confirms is that account's.
+    // Each move is bound to the sign-in it opens under: the plan the person confirms is that account's.
     private var moveToService: SyncProviderSheet {
         .moveToService(fromICloud: movesFromICloud, session: featureAccess.state.sessionID)
+    }
+
+    private var moveToICloud: SyncProviderSheet {
+        .moveToICloud(session: featureAccess.state.sessionID)
     }
 
     // MARK: - Rows
@@ -438,7 +442,7 @@ struct SyncSettingsView: View {
 
 enum SyncProviderSheet: Hashable, Identifiable {
     case moveToService(fromICloud: Bool, session: String?)
-    case moveToICloud
+    case moveToICloud(session: String?)
 
     var id: Self { self }
 }

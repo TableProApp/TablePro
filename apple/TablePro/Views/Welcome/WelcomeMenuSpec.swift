@@ -181,8 +181,8 @@ internal enum WelcomeMenuSpec {
         if currentGroupId != nil {
             organize.append(.command(Titles.removeFromGroup, .moveToGroup([id], nil)))
         }
-        if let syncItem = syncItem([id], allLocalOnly: connection.localOnly, provider: context.syncProvider) {
-            organize.append(syncItem)
+        if let item = syncItem([id], allLocalOnly: connection.localOnly, provider: context.syncProvider) {
+            organize.append(item)
         }
 
         let deleteTitle = section == .connections ? Titles.delete(count: 1) : Titles.deleteConnection
@@ -210,8 +210,8 @@ internal enum WelcomeMenuSpec {
         if connections.contains(where: { validGroupId(of: $0, groups: context.groups) != nil }) {
             organize.append(.command(Titles.removeFromGroup, .moveToGroup(ids, nil)))
         }
-        if let syncItem = syncItem(ids, allLocalOnly: connections.allSatisfy(\.localOnly), provider: context.syncProvider) {
-            organize.append(syncItem)
+        if let item = syncItem(ids, allLocalOnly: connections.allSatisfy(\.localOnly), provider: context.syncProvider) {
+            organize.append(item)
         }
 
         return [

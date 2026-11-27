@@ -9,11 +9,11 @@ import TableProFFI
 import TableProLogRedaction
 
 // The history in `query_history.db` and the core's, entry for entry under the Mac's ids (core ADR 0052, History).
-// The core's is what the History pane reads, with the runs other devices synced; the Mac's store keeps what only this
-// device needs (plan and Rewind snapshots, the insights) and what the previous stable reads. Each run goes to both.
-// The person's deletion leaves a tombstone in the core so it syncs; a run the Mac's store let go on its own (retention,
-// or the previous stable after a downgrade) leaves the core without one. A run the core let go after both held it, as a
-// deletion another device synced, is never put back.
+// The Mac's store keeps what only this device needs (plan and Rewind snapshots, the insights), so it stays what the
+// History pane reads; the core holds the fields that sync. Each run goes to both. The person's deletion leaves a
+// tombstone in the core so it syncs; a run the Mac's store let go on its own (retention, or the previous stable after a
+// downgrade) leaves the core without one. A run the core let go after both held it, as a deletion another device
+// synced, is never put back.
 internal actor QueryHistoryCoreMirror {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryHistoryCoreMirror")
     private static let entriesPerWrite = 500
@@ -66,7 +66,7 @@ internal actor QueryHistoryCoreMirror {
         await serialized { [self] in await pushOnce() }
     }
 
-    // The person deleted these runs, here or from the pane: each leaves the core with a tombstone, so the deletion syncs.
+    // The person deleted these runs: each leaves the core with a tombstone, so the deletion syncs.
     internal func deleted(_ ids: Set<UUID>) async -> Bool {
         await serialized { [self] in await deletedOnce(ids) }
     }
@@ -107,53 +107,6 @@ internal actor QueryHistoryCoreMirror {
         return await pushOnce()
     }
 
-    // The pane cleared what it shows: every run the filter matches in the core, other devices' included, and the ones
-    // the Mac's store dropped for the same filter by id, in case its search read one differently.
-    internal func cleared(matching filter: QueryHistoryFilter, localIds: Set<UUID>) async -> Bool {
-        await serialized { [self] in await clearedOnce(matching: filter, localIds: localIds) }
-    }
-
-    private func clearedOnce(matching filter: QueryHistoryFilter, localIds: Set<UUID>) async -> Bool {
-        if let arg = CoreHistoryMapping.filter(filter) {
-            do {
-                _ = try await database.history().deleteMatching(filter: arg)
-            } catch {
-                Self.logger.error("The core's history kept runs cleared here: \(LogRedaction.publicDescription(of: error), privacy: .public)")
-                return false
-            }
-        }
-        return await deletedOnce(localIds)
-    }
-
-    // A page of the core's history for the pane, newest first. Nil when the core's store cannot be read.
-    internal func search(_ filter: QueryHistoryFilter, after cursor: QueryHistoryCursor?, limit: Int) async -> QueryHistoryPage? {
-        guard limit > 0, let arg = CoreHistoryMapping.filter(filter) else { return .empty }
-        let after: HistoryCursorArg?
-        switch cursor {
-        case nil:
-            after = nil
-        case .core(let pinned, let executedAtSecs, let row)?:
-            after = HistoryCursorArg(pinned: pinned, executedAtSecs: executedAtSecs, id: row)
-        // A cursor from the Mac's store means nothing here, so the pane starts over.
-        case .local?:
-            return .empty
-        }
-        do {
-            let page = try await database.history().search(
-                filter: arg,
-                after: after,
-                limit: UInt32(clamping: limit)
-            )
-            return QueryHistoryPage(
-                entries: page.entries.compactMap(CoreHistoryMapping.entry),
-                nextCursor: page.next.map { .core(pinned: $0.pinned, executedAtSecs: $0.executedAtSecs, row: $0.id) }
-            )
-        } catch {
-            Self.logger.error("The core's history did not read: \(LogRedaction.publicDescription(of: error), privacy: .public)")
-            return nil
-        }
-    }
-
     // Runs a pull or an older build brought have no shape, which never leaves a device: this build reads each with its
     // grammar, a page at a time, until none is left.
     @discardableResult
@@ -164,9 +117,14 @@ internal actor QueryHistoryCoreMirror {
     private func fillFingerprintsOnce() async -> Bool {
         do {
             let store = try await database.history()
+            var previous: Set<Int64> = []
             while true {
                 let page = try await store.entriesWithoutFingerprint(limit: UInt32(Self.entriesPerWrite))
                 guard !page.isEmpty else { return true }
+                // The same page again means the last write took none of it, and asking more would never end.
+                let ids = Set(page.map(\.id))
+                guard ids != previous else { return false }
+                previous = ids
                 let read = page.map { entry in
                     HistoryFingerprintArg(
                         id: entry.id,
@@ -263,34 +221,8 @@ internal actor QueryHistoryCoreMirror {
     }
 }
 
-// The Mac's history terms and the core's (core ADR 0060, History pane).
+// The Mac's history terms in the core's (core ADR 0060).
 nonisolated enum CoreHistoryMapping {
-    // Nil for a filter that matches nothing, which the core is never asked.
-    static func filter(_ filter: QueryHistoryFilter) -> HistoryFilterArg? {
-        guard !filter.matchesNothing else { return nil }
-        var connections = filter.allowedConnectionIds
-        if let scoped = filter.scope.connectionId {
-            connections = (connections ?? [scoped]).intersection([scoped])
-        }
-        if let connections, connections.isEmpty { return nil }
-        // Every source is no filter at all, so a run another app recorded without one still shows.
-        let sources = filter.sources == Set(QueryHistorySource.allCases) ? nil : filter.sources.map(sourceTag)
-        let status: HistoryStatusTag
-        switch filter.outcome {
-        case .any: status = .any
-        case .succeeded: status = .succeeded
-        case .failed: status = .failed
-        }
-        return HistoryFilterArg(
-            text: filter.searchText ?? "",
-            connectionIds: connections.map { $0.map(\.uuidString).sorted() },
-            sources: sources,
-            status: status,
-            executedAfterMs: filter.since.map(CoreMirrorTime.milliseconds),
-            executedBeforeMs: filter.until.map(CoreMirrorTime.milliseconds)
-        )
-    }
-
     static func details(_ row: CoreHistoryRow) -> HistoryRunDetails {
         HistoryRunDetails(
             database: row.databaseName.isEmpty ? nil : row.databaseName,
@@ -300,43 +232,6 @@ nonisolated enum CoreHistoryMapping {
             firstRowMs: row.firstRowTime.map { CoreMirrorTime.milliseconds(seconds: $0) },
             serverMs: row.serverTime.map { CoreMirrorTime.milliseconds(seconds: $0) },
             fingerprint: row.shapeHash == 0 ? nil : row.shapeHash
-        )
-    }
-
-    // Nil for a run with no connection or an id that is not a UUID, which the pane has no row for.
-    static func entry(_ info: HistoryEntryInfo) -> QueryHistoryEntry? {
-        guard let id = UUID(uuidString: info.recordId),
-              let connectionId = info.connectionId.flatMap(UUID.init(uuidString:))
-        else { return nil }
-        let succeeded: Bool
-        let message: String?
-        switch info.outcome {
-        case .succeeded:
-            succeeded = true
-            message = nil
-        case .failed(let text):
-            succeeded = false
-            message = text.isEmpty ? nil : text
-        case .cancelled:
-            succeeded = false
-            message = nil
-        }
-        return QueryHistoryEntry(
-            id: id,
-            query: info.sql,
-            connectionId: connectionId,
-            databaseName: info.details.database ?? "",
-            databaseType: DatabaseType(rawValue: info.driverId),
-            schemaName: info.details.schema,
-            source: info.details.source.map(source) ?? .editor,
-            statementType: info.details.statementType.map(statementType),
-            executedAt: CoreMirrorTime.date(info.executedAtMs),
-            executionTime: Double(info.durationMs ?? 0) / 1_000,
-            rowCount: info.rowsAffected.map { Int(clamping: $0) } ?? -1,
-            wasSuccessful: succeeded,
-            errorMessage: message,
-            firstRowTime: info.details.firstRowMs.map { Double($0) / 1_000 },
-            serverTime: info.details.serverMs.map { Double($0) / 1_000 }
         )
     }
 
@@ -355,34 +250,8 @@ nonisolated enum CoreHistoryMapping {
         }
     }
 
-    static func source(_ tag: HistorySourceTag) -> QueryHistorySource {
-        switch tag {
-        case .editor: .editor
-        case .explain: .explain
-        case .tableBrowse: .tableBrowse
-        case .rowEdit: .rowEdit
-        case .structureDdl: .structureDDL
-        case .import: .dataImport
-        case .mcp: .mcp
-        case .script: .script
-        case .shortcuts: .shortcuts
-        case .commandLine: .commandLine
-        }
-    }
-
     static func statementTag(_ type: QueryHistoryStatementType) -> StatementTypeTag {
         switch type {
-        case .select: .select
-        case .insert: .insert
-        case .update: .update
-        case .delete: .delete
-        case .ddl: .ddl
-        case .other: .other
-        }
-    }
-
-    static func statementType(_ tag: StatementTypeTag) -> QueryHistoryStatementType {
-        switch tag {
         case .select: .select
         case .insert: .insert
         case .update: .update

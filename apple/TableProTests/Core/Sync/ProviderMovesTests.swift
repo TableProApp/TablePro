@@ -246,6 +246,19 @@ struct ProviderMovesTests {
         #expect(fixture.provider == .iCloud)
     }
 
+    @Test("A move back confirmed under one sign-in runs nothing once another holds the account")
+    func moveBackConfirmedUnderAnotherSignInStops() async throws {
+        let fixture = Fixture(provider: .tableproSync, open: .tableproSync)
+        fixture.sessionID = "session-b"
+
+        await #expect(throws: ProviderMoveError.signInChanged) {
+            try await fixture.moves.moveToICloud(confirmedDeletions: 3, confirmedUnder: "session-a")
+        }
+
+        #expect(fixture.log.all.isEmpty)
+        #expect(fixture.provider == .tableproSync)
+    }
+
     @Test("From Off it is the first upload, on the service open for Off")
     func moveFromOff() async throws {
         let fixture = Fixture(provider: .off)
@@ -377,7 +390,7 @@ struct ProviderMovesTests {
     func moveBack() async throws {
         let fixture = Fixture(provider: .tableproSync, open: .tableproSync)
 
-        try await fixture.moves.moveToICloud(confirmedDeletions: 3)
+        try await fixture.moves.moveToICloud(confirmedDeletions: 3, confirmedUnder: nil)
 
         #expect(fixture.log.all == ["passesFinished", "openCloudKit", "tablepro-sync moveToIcloud 3", "provider icloud"])
         #expect(fixture.provider == .iCloud)
@@ -390,7 +403,7 @@ struct ProviderMovesTests {
         fixture.opened?.update { $0.moveFails = true }
 
         await #expect(throws: ScriptedFailure.self) {
-            try await fixture.moves.moveToICloud(confirmedDeletions: 3)
+            try await fixture.moves.moveToICloud(confirmedDeletions: 3, confirmedUnder: nil)
         }
 
         #expect(fixture.log.all == ["passesFinished", "openCloudKit", "tablepro-sync moveToIcloud 3", "closeCloudKit"])
@@ -404,7 +417,7 @@ struct ProviderMovesTests {
         let gate = AsyncGate()
         fixture.opened?.update { $0.moveBackGate = gate }
 
-        let move = Task { try await fixture.moves.moveToICloud(confirmedDeletions: 3) }
+        let move = Task { try await fixture.moves.moveToICloud(confirmedDeletions: 3, confirmedUnder: nil) }
         await gate.arrived(1)
         fixture.slice.update { $0.provider = .off }
         await gate.open()
@@ -422,7 +435,7 @@ struct ProviderMovesTests {
         fixture.snapshot = ManagedPolicySnapshot(iCloudSyncAllowed: false)
 
         await #expect(throws: ProviderMoveError.notAllowed) {
-            try await fixture.moves.moveToICloud(confirmedDeletions: 0)
+            try await fixture.moves.moveToICloud(confirmedDeletions: 0, confirmedUnder: nil)
         }
         #expect(fixture.log.all.isEmpty)
     }

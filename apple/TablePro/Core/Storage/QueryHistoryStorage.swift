@@ -715,20 +715,14 @@ actor QueryHistoryStorage {
         to clause: inout QueryHistorySqlClause,
         columnPrefix prefix: String
     ) {
-        switch cursor {
-        case nil:
-            return
-        case .local(let executedAt, let id)?:
-            clause.append(
-                " AND (\(prefix)executed_at < ? OR (\(prefix)executed_at = ? AND \(prefix)id < ?))",
-                .double(executedAt.timeIntervalSince1970),
-                .double(executedAt.timeIntervalSince1970),
-                .text(id.uuidString)
-            )
-        // The core's page names its own rows, which this store does not hold, so nothing follows it here.
-        case .core?:
-            clause.append(" AND 0")
-        }
+        guard let cursor else { return }
+        let executedAt = cursor.executedAt.timeIntervalSince1970
+        clause.append(
+            " AND (\(prefix)executed_at < ? OR (\(prefix)executed_at = ? AND \(prefix)id < ?))",
+            .double(executedAt),
+            .double(executedAt),
+            .text(cursor.id.uuidString)
+        )
     }
 
     /// FTS5 matches whole tokens, so an unadorned term never matches the word being typed, and a

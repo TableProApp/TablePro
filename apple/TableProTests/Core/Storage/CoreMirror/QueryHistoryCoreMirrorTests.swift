@@ -103,28 +103,6 @@ struct QueryHistoryCoreMirrorTests {
         #expect(entry.details.fingerprint == SQLQueryFingerprint.hash("SELECT broken", databaseType: .postgresql))
     }
 
-    @Test("The pane reads the core's history, a run another device synced included, with this Mac's terms")
-    func thePaneReadsTheCore() async throws {
-        #expect(await manager.record(run("SELECT mine", at: 1_700_000_000)))
-        await mirror.push()
-        let foreign = try await foreignRun("SELECT theirs", at: 1_700_000_100_000)
-
-        let page = await manager.fetch(QueryHistoryFilter(scope: .connection(connectionId)), after: nil, limit: 1)
-        let first = try #require(page.entries.first)
-        #expect(first.id == foreign)
-        #expect(first.databaseName == "shop")
-        #expect(first.source == .editor)
-        #expect(first.rowCount == 7)
-        #expect(first.executionTime == 0.04)
-        let cursor = try #require(page.nextCursor)
-        let next = await manager.fetch(QueryHistoryFilter(scope: .connection(connectionId)), after: cursor, limit: 1)
-        #expect(next.entries.map(\.query) == ["SELECT mine"])
-        #expect(next.nextCursor == nil)
-
-        let none = await manager.fetch(QueryHistoryFilter(scope: .all, sources: [.mcp]), after: nil, limit: 10)
-        #expect(none.entries.isEmpty)
-    }
-
     @Test("The person's deletion leaves a tombstone, and a later push never puts the run back")
     func deletionLeavesATombstone() async throws {
         let entry = run("SELECT 1", at: 1_700_000_000)
@@ -150,19 +128,6 @@ struct QueryHistoryCoreMirrorTests {
 
         #expect(try await coreIds().isEmpty)
         #expect(await storage.entryIds() == [entry.id])
-    }
-
-    @Test("Clearing what the pane shows takes another device's matching runs from the core too")
-    func clearingTheFilterReachesOtherDevicesRuns() async throws {
-        let kept = run("SELECT kept", at: 1_700_000_000)
-        #expect(await manager.record(run("SELECT orders", at: 1_700_000_050)))
-        #expect(await manager.record(kept))
-        await mirror.push()
-        _ = try await foreignRun("SELECT orders", at: 1_700_000_100_000)
-
-        #expect(await manager.clear(matching: QueryHistoryFilter(scope: .all, searchText: "orders")))
-
-        #expect(try await coreIds() == [kept.id])
     }
 
     @Test("Runs another device synced get their shape from this Mac's grammar, a page at a time")
@@ -227,7 +192,7 @@ struct QueryHistoryCoreMirrorTests {
 
 @MainActor
 struct QueryHistoryPassFollowerTests {
-    @Test("Each finished sync pass reads the history once, and a status change with no new pass reads nothing")
+    @Test("Each finished sync pass fills the shapes once, and a status change with no new pass does nothing")
     func eachPassOnce() async throws {
         let changes = PassthroughSubject<Void, Never>()
         var pass: Int64?

@@ -84,19 +84,8 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
         await storage.isStoreAvailable()
     }
 
-    // The core's history, other devices' runs included, and this store's only while the core's cannot be read. A page
-    // goes on in the store its cursor came from.
     func fetch(_ filter: QueryHistoryFilter, after cursor: QueryHistoryCursor?, limit: Int) async -> QueryHistoryPage {
-        if let coreMirror, cursor.map(Self.isCore) ?? true,
-           let page = await coreMirror.search(filter, after: cursor, limit: limit) {
-            return page
-        }
-        return await storage.fetch(filter, after: cursor, limit: limit)
-    }
-
-    private static func isCore(_ cursor: QueryHistoryCursor) -> Bool {
-        if case .core = cursor { return true }
-        return false
+        await storage.fetch(filter, after: cursor, limit: limit)
     }
 
     func count(scope: QueryHistoryScope) async -> Int {
@@ -145,8 +134,7 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
 
     // MARK: - Deleting
 
-    // Each reports a failure while the core still holds what went, so nobody is told SQL is gone that is not. A run the
-    // pane shows may be another device's, which only the core holds.
+    // Each reports a failure while the core still holds what went, so nobody is told SQL is gone that is not.
     func delete(id: UUID) async -> Bool {
         let success = await storage.delete(id: id)
         guard success else { return false }
@@ -181,12 +169,10 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
         let mirrored: Bool
         if everyRow {
             mirrored = await coreMirror?.cleared(connectionId: nil) ?? true
-        } else if let coreMirror {
-            let after = await storage.entryIds()
-            let localIds = before.flatMap { before in after.map { before.subtracting($0) } } ?? []
-            mirrored = await coreMirror.cleared(matching: filter, localIds: localIds)
+        } else if let before, let after = await storage.entryIds() {
+            mirrored = await coreMirror?.deleted(before.subtracting(after)) ?? true
         } else {
-            mirrored = true
+            mirrored = await coreMirror?.push() ?? true
         }
         await MainActor.run {
             AppEvents.shared.queryHistoryDidUpdate.send(nil)
@@ -239,7 +225,7 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
     }
 }
 
-// After each finished pass of the sync service: the runs it pulled get their shape, and the History pane reads again.
+// After each finished pass of the sync service, the runs it pulled get their shape.
 @MainActor
 final class QueryHistoryPassFollower {
     static let shared = QueryHistoryPassFollower()
@@ -252,7 +238,6 @@ final class QueryHistoryPassFollower {
             host?.openedEngine(for: .off)?.status().lastPassMs
         }) {
             await QueryHistoryManager.shared.coreMirror?.fillFingerprints()
-            AppEvents.shared.queryHistoryDidUpdate.send(nil)
         }
     }
 

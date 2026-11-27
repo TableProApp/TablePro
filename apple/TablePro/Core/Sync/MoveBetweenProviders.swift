@@ -239,11 +239,14 @@ internal final class ProviderMoves: ObservableObject {
 
     // The move back fetches and deletes on CloudKit while iCloud is still off here, so the transport opens for it.
     // iCloud then turns on as it does today, once the core is done.
-    func moveToICloud(confirmedDeletions: UInt64) async throws {
+    // `session` is the sign-in the person confirmed the count under; its service is the one the move may run on.
+    func moveToICloud(confirmedDeletions: UInt64, confirmedUnder session: String?) async throws {
+        guard host.session() == session else { throw ProviderMoveError.signInChanged }
         guard choices.providers.contains(.icloud) else { throw ProviderMoveError.notAllowed }
         let asked = choice
         try await exclusively {
             let engine = try await host.engine(.tableproSync)
+            guard host.session() == session else { throw ProviderMoveError.signInChanged }
             // iCloud turns on before CloudKit would close again, so the coordinator takes the transport over open.
             try await withCloudKit(asked) {
                 try await engine.moveToIcloud(confirmedDeletions: confirmedDeletions)

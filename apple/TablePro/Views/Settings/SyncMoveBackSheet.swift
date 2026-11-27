@@ -15,6 +15,8 @@ struct SyncMoveBackSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var moves: ProviderMoves
+    // The sign-in the sheet opened under. Another sign-in, or a sign-out, closes it.
+    let session: String?
 
     @State private var step: Step = .loading
     @State private var plan: MoveBackPlanInfo?
@@ -52,7 +54,6 @@ struct SyncMoveBackSheet: View {
         .task {
             await loadPlan()
         }
-        // The plan it shows is the account's it opened under.
         .onReceive(AccountServices.shared.events.receive(on: DispatchQueue.main)) { _ in
             dismiss()
         }
@@ -143,7 +144,7 @@ struct SyncMoveBackSheet: View {
         guard let plan else { return }
         step = .moving
         do {
-            try await moves.moveToICloud(confirmedDeletions: plan.icloudDeletions)
+            try await moves.moveToICloud(confirmedDeletions: plan.icloudDeletions, confirmedUnder: session)
             dismiss()
         } catch {
             Self.logger.error("The move back to iCloud failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
