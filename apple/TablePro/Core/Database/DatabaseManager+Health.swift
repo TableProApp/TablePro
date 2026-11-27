@@ -37,27 +37,10 @@ extension DatabaseManager {
 
         let monitor = ConnectionHealthMonitor(
             connectionId: connectionId,
-            pingInterval: { await AppSettingsManager.shared.general.connectionHealthCheck.interval },
+            pingInterval: { await Self.healthCheckInterval() },
             pingHandler: { [weak self] in
                 guard let self else { return false }
-                await self.closeIdleOpenedLanes(for: connectionId)
-                if await self.queriesInFlight[connectionId] != nil {
-                    Self.logger.debug("Ping skipped, operation in flight for \(connectionId)")
-                    return true
-                }
-                guard let mainDriver = await self.activeSessions[connectionId]?.driver else {
-                    Self.logger.debug("Ping skipped, no active driver for \(connectionId)")
-                    return false
-                }
-                await self.notePinged(mainDriver, for: connectionId)
-                do {
-                    try await mainDriver.ping()
-                    await self.noteAnsweredPing(connectionId, driver: mainDriver)
-                    return true
-                } catch {
-                    Self.logger.debug("Ping failed for \(connectionId): \(error.publicLogShape, privacy: .public)")
-                    return false
-                }
+                return await self.pingSessionDriver(connectionId)
             },
             onPingFailed: { [weak self] in
                 guard let self else { return .handedOff }
@@ -67,6 +50,63 @@ extension DatabaseManager {
 
         healthMonitors[connectionId] = monitor
         await monitor.startMonitoring()
+    }
+
+    /// While the app is inactive nobody is waiting on an answer, and `verifyBeforeUse` checks a connection older
+    /// than `ConnectionHealthCheck.freshness` when the user comes back to it, so a ping more often than that only
+    /// wakes the network and keeps a serverless database billing.
+    internal static func healthCheckInterval(
+        setting: ConnectionHealthCheck = AppSettingsManager.shared.general.connectionHealthCheck,
+        appIsActive: Bool = NSApp?.isActive ?? true
+    ) -> Duration? {
+        guard let interval = setting.interval else { return nil }
+        return appIsActive ? interval : max(interval, ConnectionHealthCheck.freshness)
+    }
+
+    /// The ping is a turn on the session driver's gate, so it never sits on the driver between two pieces of the
+    /// user's work. A held gate means the connection is busy, and the work holding it reports a dead connection
+    /// itself, so the ping is skipped rather than queued.
+    internal func pingSessionDriver(_ connectionId: UUID) async -> Bool {
+        await closeIdleOpenedLanes(for: connectionId)
+        let key = browsedGateKey(for: connectionId)
+        guard queriesInFlight[connectionId] == nil, !sessionDriverGate.isHeld(key) else {
+            Self.logger.debug("Ping skipped, the connection is in use for \(connectionId)")
+            return true
+        }
+        guard let mainDriver = activeSessions[connectionId]?.driver else {
+            Self.logger.debug("Ping skipped, no active driver for \(connectionId)")
+            return false
+        }
+        do {
+            return try await sessionDriverGate.withExclusiveAccess(key) {
+                // A switch or a reconnect that held the gate first replaced the driver, which needs no ping.
+                guard activeSessions[connectionId]?.driver === mainDriver else { return true }
+                notePinged(mainDriver, for: connectionId)
+                do {
+                    // Counted as an operation, so a check before use skips instead of pinging the same driver beside it.
+                    try await trackOperation(sessionId: connectionId) {
+                        try await mainDriver.ping()
+                    }
+                    noteAnsweredPing(connectionId, driver: mainDriver)
+                    return true
+                } catch {
+                    Self.logger.debug("Ping failed for \(connectionId): \(error.publicLogShape, privacy: .public)")
+                    return false
+                }
+            }
+        } catch {
+            // The gate was drained: the connection is going away, and nothing is left to report.
+            return true
+        }
+    }
+
+    /// Starts each running monitor again, so one that stretched its interval while the app was inactive pings on
+    /// the configured one from now on.
+    internal func restartHealthMonitors() async {
+        for connectionId in Array(healthMonitors.keys) {
+            guard let session = activeSessions[connectionId], session.liveness == .live else { continue }
+            await startHealthMonitor(for: connectionId)
+        }
     }
 
     internal func healthCheckFailed(_ connectionId: UUID) -> ConnectionHealthMonitor.FailureHandling {
@@ -332,7 +372,8 @@ extension DatabaseManager {
         let restoreWarning = await restoreSchemaAndDatabase(
             on: driver,
             savedSchema: session.browseSchema,
-            savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.browseDatabase
+            savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.browseDatabase,
+            startupCommands: session.connection.startupCommands
         )
 
         return ReconnectResult(
@@ -371,7 +412,8 @@ extension DatabaseManager {
     func restoreSchemaAndDatabase(
         on driver: DatabaseDriver,
         savedSchema: String?,
-        savedDatabase: String?
+        savedDatabase: String?,
+        startupCommands: String?
     ) async -> String? {
         var warnings: [String?] = []
         // The schema lives inside the database, and a database switch can leave the driver on none.
@@ -387,9 +429,16 @@ extension DatabaseManager {
             }
         }
 
+        // The reconnect asked the driver to land on the schema, so only a move it cannot see is sent again: one by
+        // the user's startup commands, or by the database switch above.
+        let schemaMayHaveMoved = savedDatabase != nil || Self.hasStartupCommands(startupCommands)
         if let savedSchema, let schemaDriver = driver as? SchemaSwitchable {
             do {
-                try await schemaDriver.switchSchema(to: savedSchema)
+                if schemaMayHaveMoved {
+                    try await schemaDriver.switchSchema(to: savedSchema)
+                } else {
+                    try await schemaDriver.switchSchemaIfNeeded(to: savedSchema)
+                }
             } catch {
                 Self.logger.warning("Failed to restore schema '\(savedSchema)' on reconnect: \(error.localizedDescription)")
                 warnings.append(String(
@@ -528,7 +577,8 @@ extension DatabaseManager {
             let restoreWarning = await restoreSchemaAndDatabase(
                 on: driver,
                 savedSchema: activeSessions[sessionId]?.browseSchema,
-                savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.browseDatabase
+                savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.browseDatabase,
+                startupCommands: session.connection.startupCommands
             )
             guard isCurrentAttempt(generation, for: sessionId) else {
                 driver.disconnect()
@@ -608,7 +658,8 @@ extension DatabaseManager {
                     deadline: deadline,
                     timeoutEndpoint: timeoutEndpoint,
                     effectiveQueryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
-                    preparedConfiguration: preparedConfiguration
+                    preparedConfiguration: preparedConfiguration,
+                    initialSchema: Self.hasStartupCommands(session.connection.startupCommands) ? nil : session.browseSchema
                 )
                 driver = candidate
                 try await candidate.connect()

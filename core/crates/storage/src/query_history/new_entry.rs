@@ -6,6 +6,8 @@ use super::Outcome;
 
 #[derive(Debug, Clone)]
 pub struct NewEntry {
+    // A new UUIDv4 for a run this device saw; the entry's own for one a pull or another store brings.
+    pub record_id: Uuid,
     pub query: String,
     pub driver_id: String,
     pub connection_id: Uuid,

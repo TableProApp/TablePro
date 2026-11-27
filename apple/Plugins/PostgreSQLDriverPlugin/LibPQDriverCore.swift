@@ -35,6 +35,14 @@ final class LibPQDriverCore: @unchecked Sendable {
     var currentSchema: String { schemaState.withLock { $0.current } }
     private var selectedSchema: String? { schemaState.withLock { $0.selected } }
 
+    // Where a connect lands: the schema the user chose on this core, which a reconnect sets again, else the one the
+    // host asked to start in, which it names only when no startup command of the user's could move the path after it.
+    private var schemaLanding: LibPQSchemaLanding? {
+        if let selectedSchema { return .selected(selectedSchema) }
+        guard let initial = config.additionalFields["initialSchema"], !initial.isEmpty else { return nil }
+        return .initial(initial)
+    }
+
     var onPostConnect: (@Sendable () async throws -> Void)?
     var connectPlan: LibPQConnectPlan?
     var directTLSMemory: LibPQDirectTLSMemory?
@@ -136,29 +144,42 @@ final class LibPQDriverCore: @unchecked Sendable {
                     _lostConnection = false
                 }
 
+                let landing = schemaLanding
                 let sessionSchema: PostgreSQLSchemaProbe
+                var targetApplied = false
                 if let connectPlan {
-                    sessionSchema = await runConnectPlan(connectPlan, on: pqConn)
+                    (sessionSchema, targetApplied) = await runConnectPlan(connectPlan, landing: landing, on: pqConn)
                 } else {
                     sessionSchema = await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema)
                 }
+                // A session that already starts in its initial schema keeps its path, which may name more schemas.
+                let startsThere = landing?.startsIn(sessionSchema) == true
+                if startsThere { targetApplied = true }
                 switch sessionSchema {
                 case .schema(let schema):
                     schemaState.withLock { $0.current = schema }
-                case .empty:
+                case .empty where !targetApplied:
                     if let fallback = await firstFallbackSchema(pqConn) {
                         schemaState.withLock { $0.current = fallback }
                         _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
                     }
-                case .failed:
+                case .empty, .failed:
                     break
                 }
 
-                if let selectedSchema,
-                   (try? await pqConn.executeQuery(
-                       PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema)
-                   )) != nil {
-                    schemaState.withLock { $0.current = selectedSchema }
+                if let landing {
+                    if !targetApplied {
+                        targetApplied = (try? await pqConn.executeQuery(
+                            PostgreSQLSchemaQueries.setSearchPath(toSchema: landing.schema)
+                        )) != nil
+                    }
+                    if targetApplied {
+                        schemaState.withLock {
+                            $0.current = landing.schema
+                            // A path this connect set is the one a reconnect of this core sets again.
+                            if !startsThere { $0.selected = landing.schema }
+                        }
+                    }
                 }
 
                 try await onPostConnect?()
@@ -177,9 +198,26 @@ final class LibPQDriverCore: @unchecked Sendable {
     }
 
     // The settings go last: a statement that fails rolls back every `SET` before it in the implicit transaction, and
-    // the reads have answered by then.
-    private func runConnectPlan(_ plan: LibPQConnectPlan, on pqConn: LibPQPluginConnection) async -> PostgreSQLSchemaProbe {
+    // the reads have answered by then. The schema rides in the same Query, so it costs no round trip of its own, and
+    // works behind a pooler that refuses the startup `options` parameter. An initial schema goes right after the
+    // schema read, before any read pins the path, so it can compare against the session's own current schema and
+    // leave a path that already starts there alone. A schema the user chose is set as a `SET` would set it. Neither
+    // fails on a schema that is not there. Answers whether the schema stands, which it does not when a read failed.
+    private func runConnectPlan(
+        _ plan: LibPQConnectPlan,
+        landing: LibPQSchemaLanding?,
+        on pqConn: LibPQPluginConnection
+    ) async -> (probe: PostgreSQLSchemaProbe, schemaApplied: Bool) {
+        var leading = [PostgreSQLSchemaQueries.currentSchema]
         var settings: [String] = []
+        switch landing {
+        case .initial(let schema):
+            leading.append(PostgreSQLSchemaQueries.setSearchPathUnlessCurrent(toSchema: schema))
+        case .selected(let schema):
+            settings.append(PostgreSQLSchemaQueries.setSearchPath(toSchema: schema))
+        case nil:
+            break
+        }
         if let milliseconds = plan.statementTimeoutMilliseconds {
             settings.append(LibPQConnectPlan.statementTimeout(milliseconds: milliseconds))
         }
@@ -188,13 +226,9 @@ final class LibPQDriverCore: @unchecked Sendable {
             : nil
         if let scanSetting { settings.append(scanSetting) }
 
-        let batch = LibPQCatalogBatch(
-            leading: [PostgreSQLSchemaQueries.currentSchema],
-            reads: plan.reads,
-            trailing: settings
-        )
+        let batch = LibPQCatalogBatch(leading: leading, reads: plan.reads, trailing: settings)
         let startTime = Date()
-        guard let answered = try? await pqConn.executeStatementBatch(batch.text) else { return .failed }
+        guard let answered = try? await pqConn.executeStatementBatch(batch.text) else { return (.failed, false) }
         let executionTime = Date().timeIntervalSince(startTime)
 
         var answers: [String: Result<PluginQueryResult, Error>] = [:]
@@ -202,6 +236,8 @@ final class LibPQDriverCore: @unchecked Sendable {
             answers[read.statement] = answered[index].map { Self.pluginResult($0, executionTime: executionTime) }
         }
         let committed = answered.count == batch.statementCount && answered.allSatisfy { (try? $0.get()) != nil }
+        // Only a Query that ran to the end committed its settings: a later failure rolled the `SET` back.
+        let schemaApplied = landing != nil && committed
         connectionLock.withLock {
             connectAnswers = answers
             connectAppliedTimeoutMilliseconds = committed ? plan.statementTimeoutMilliseconds : nil
@@ -211,7 +247,7 @@ final class LibPQDriverCore: @unchecked Sendable {
             await finishBrowseScanSetting(scanSetting, answered: answered, batch: batch, on: pqConn)
         }
         let schemaRows = answered.first.flatMap { try? $0.get().rows }
-        return PostgreSQLSchemaQueries.probe(rows: schemaRows)
+        return (PostgreSQLSchemaQueries.probe(rows: schemaRows), schemaApplied)
     }
 
     // A read that failed ended the Query before the setting, so it goes alone. One the server refused stays refused.
@@ -980,5 +1016,22 @@ extension LibPQBackedDriver {
     /// statement this plugin builds goes through that instead.
     func escapeStringLiteral(_ value: String) -> String {
         LibPQStringConformance.escape(value, standardConformingStrings: core.standardConformingStrings)
+    }
+}
+
+// Which schema a connect lands on, and how it is set there.
+nonisolated enum LibPQSchemaLanding: Equatable, Sendable {
+    case selected(String)
+    case initial(String)
+
+    var schema: String {
+        switch self {
+        case .selected(let schema), .initial(let schema): return schema
+        }
+    }
+
+    func startsIn(_ probe: PostgreSQLSchemaProbe) -> Bool {
+        guard case .initial(let schema) = self, case .schema(let current) = probe else { return false }
+        return current.utf8.elementsEqual(schema.utf8)
     }
 }

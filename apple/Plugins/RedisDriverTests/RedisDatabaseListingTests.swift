@@ -187,6 +187,20 @@ struct RedisDatabaseListingTests {
         #expect(channel.sentCommands == [["CONFIG", "GET", "databases"], ["INFO", "keyspace"]])
     }
 
+    // Each was a round trip of its own, one after the other (#4544).
+    @Test("A listing with key counts sends CONFIG GET and INFO keyspace in one pipeline")
+    func countAndKeyspaceShareAPipeline() async throws {
+        let channel = StubRedisChannel([
+            .array([.string("databases"), .string("16")]),
+            .string("# Keyspace\r\ndb2:keys=4\r\n")
+        ])
+        let listing = try await channel.databaseListing(includingKeyCounts: true)
+        #expect(listing.databaseCount == 16)
+        #expect(listing.keyCount(forDatabase: 2) == 4)
+        #expect(channel.pipelineSizes == [2])
+        #expect(channel.sentScopes == [.outsideBlock, .outsideBlock])
+    }
+
     @Test("A removed CONFIG on a server with keys in db20 lists through db20")
     func removedConfigWidensToKeyspace() async throws {
         let channel = StubRedisChannel([Self.removedConfig, .string("# Keyspace\r\ndb0:keys=1\r\ndb20:keys=1\r\n")])

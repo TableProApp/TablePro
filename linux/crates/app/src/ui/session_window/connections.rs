@@ -249,8 +249,10 @@ impl SessionWindow {
 
     /// The name a dialog or toast calls a saved connection by.
     fn connection_name(&self, id: Uuid) -> String {
-        self.saved_connection(id)
-            .map_or_else(|| crate::i18n::gettext("this connection"), |saved| saved.name)
+        self.saved_connection(id).map_or_else(
+            || crate::i18n::gettext("this connection"),
+            |saved| tablepro_storage::shown_name(&saved.name),
+        )
     }
 
     /// Ask before deleting: the delete takes the keyring secrets with it

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use tablepro_core::meta::{ObjectInfo, TableRef};
+use uuid::Uuid;
 
 use super::matching;
 
@@ -13,14 +14,14 @@ pub(super) enum Identity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum QueryId {
-    Saved(i64),
+    Saved(Uuid),
     Past(i64),
 }
 
 #[derive(Debug, Clone)]
 pub(super) enum Candidate {
     Table(ObjectInfo),
-    SavedQuery { id: i64, name: String },
+    SavedQuery { id: Uuid, name: String },
     PastQuery { id: i64, name: String, sql: Arc<str> },
 }
 
@@ -55,10 +56,12 @@ impl Candidate {
         }
     }
 
-    fn id_order(&self) -> i64 {
+    // Compared only within one source, which `source_order` already split.
+    fn id_order(&self) -> u128 {
         match self {
             Self::Table(_) => 0,
-            Self::SavedQuery { id, .. } | Self::PastQuery { id, .. } => *id,
+            Self::SavedQuery { id, .. } => id.as_u128(),
+            Self::PastQuery { id, .. } => u128::try_from(*id).unwrap_or_default(),
         }
     }
 }
@@ -171,15 +174,15 @@ mod tests {
             &[object("main", "orders", ObjectKind::Table)],
             vec![
                 Candidate::SavedQuery {
-                    id: 2,
+                    id: Uuid::from_u128(2),
                     name: "orders".into(),
                 },
                 Candidate::SavedQuery {
-                    id: 1,
+                    id: Uuid::from_u128(1),
                     name: "orders".into(),
                 },
                 Candidate::SavedQuery {
-                    id: 3,
+                    id: Uuid::from_u128(3),
                     name: "other".into(),
                 },
             ],
@@ -187,8 +190,8 @@ mod tests {
         let found = index.search("ord");
         assert_eq!(found.len(), 3);
         assert!(matches!(found[0], Candidate::Table(_)));
-        assert_eq!(found[1].identity(), Identity::Query(QueryId::Saved(1)));
-        assert_eq!(found[2].identity(), Identity::Query(QueryId::Saved(2)));
+        assert_eq!(found[1].identity(), Identity::Query(QueryId::Saved(Uuid::from_u128(1))));
+        assert_eq!(found[2].identity(), Identity::Query(QueryId::Saved(Uuid::from_u128(2))));
     }
     #[test]
     fn table_saved_and_past_queries_share_the_same_rank_and_source_ties() {
@@ -201,7 +204,7 @@ mod tests {
                     sql: Arc::from("orders"),
                 },
                 Candidate::SavedQuery {
-                    id: 2,
+                    id: Uuid::from_u128(2),
                     name: "orders".into(),
                 },
             ],

@@ -26,10 +26,12 @@ mod foreign_import;
 mod history;
 mod host;
 mod host_key;
+mod host_stores;
 mod import;
 mod key_read;
 mod keymap;
 mod library;
+mod library_contents;
 mod library_details;
 mod masking;
 mod mcp;
@@ -44,6 +46,7 @@ mod saved_queries;
 mod session;
 mod statement_at;
 mod structure;
+mod sync;
 mod syntax;
 mod table_folders;
 #[cfg(test)]
@@ -99,6 +102,12 @@ pub use history::{
     QueryHistoryStore,
 };
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
+pub use host_stores::{
+    FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,
+    FavouriteStoreContents, FavouriteTableRecord, HistoryEntryRecord, SavedQueryFolderRecord, SavedQueryRecord,
+    SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome, TableFolderRecordWrite,
+    TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
+};
 pub use import::{
     CsvDelimiterTag, CsvImport, CsvImportCheck, CsvImportOutcome, CsvPreview, CsvReadOptions, CsvRowFault,
     ImportColumnInfo, LineSpan,
@@ -107,7 +116,12 @@ pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use keymap::{KeymapBindingInfo, KeymapPlatformTag, KeymapPresetInfo, keymap_preset, keymap_presets};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
-    LibrarySnapshot, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
+    LibraryIconRecord, LibrarySnapshot, RemoteFileAccessTag, SafeModeTag, SshAuthTag, SshJumpAuthTag,
+    SshJumpHostRecord, SshOptionsRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TagRecord,
+    TlsModeTag, TlsSettings, check_jump_hosts, jump_hosts_text, parse_jump_hosts,
+};
+pub use library_contents::{
+    LibraryConnectionRecord, LibraryContents, LibraryWriteRecord, library_icon_for_symbol, library_icon_symbol,
 };
 pub use library_details::{
     CloudSqlAuthTag, CloudSqlProxyRecord, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord,
@@ -138,6 +152,19 @@ pub use session::{
 };
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
+pub use sync::{
+    AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, CloudKitAccount, CloudKitChanges, CloudKitDeletion,
+    CloudKitFailure, CloudKitFetched, CloudKitField, CloudKitOutcome, CloudKitRecord, CloudKitTransport, CloudKitValue,
+    ConflictChoiceTag, DeviceItemClassTag, DeviceItemTag, FingerprintInfo, GenesisOutcomeTag, HeldReasonTag,
+    HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings, KeyChangeInfo, KeyNoticeInfo,
+    KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg,
+    LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo, MoveBackPlanInfo,
+    MovePlanInfo, NewIdentityChoiceTag, PassReasonTag, PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo,
+    RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo,
+    SessionEndTag, SessionPhaseTag, SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag,
+    StoppedDeviceInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag,
+    SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
+};
 pub use syntax::SqlGrammarTag;
 pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};
 

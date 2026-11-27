@@ -70,6 +70,11 @@ final class DatabaseManager: ObservableObject {
     internal var queriesInFlight: [UUID: Int] = [:]
     /// Tracks when the first query started for each session (used for staleness detection).
     internal var queryStartTimes: [UUID: Date] = [:]
+    /// Connections whose session driver is serving a metadata read the pool would have had to dial for. One at a
+    /// time, decided synchronously, so two reads that both find the session idle do not both queue on its gate.
+    internal var lentMetadataReads: Set<UUID> = []
+    /// Session drivers that ran a statement a person or an agent wrote, which a lent read would follow.
+    internal var authoredStatementDrivers: [UUID: [AuthoredStatementDriver]] = [:]
 
     /// When each connection's server last answered, whether that was the connect itself, a health
     /// check, or a check made because the user was about to use it.
@@ -88,6 +93,11 @@ final class DatabaseManager: ObservableObject {
 
     // One reconnect loop per session, owned by DatabaseManager+Recovery.swift.
     internal var recoveryLoops: [UUID: SessionRecoveryLoop] = [:]
+    /// The last network path the monitor reported; satisfied until it says otherwise, as in a test host.
+    internal var networkPath: NetworkPathSnapshot?
+    /// Recovery loops waiting for the network path to come back or change, woken together when it does.
+    internal var networkChangeWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+    internal var networkMonitor: ConnectionNetworkMonitor?
     internal let recoveryClock: any Clock<Duration>
 
     /// Why a session was torn down, kept past the session entry so a window that only observes

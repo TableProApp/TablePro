@@ -33,9 +33,6 @@ actor CloudflareTunnelManager: TunnelManaging {
     /// Static registry for synchronous termination during app shutdown.
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
-    /// Prevents App Nap from throttling the supervised process while tunnels are active.
-    private var appNapActivity: NSObjectProtocol?
-
     init(
         runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() },
         reaperTimings: StaleProcessReaper.Timings = .production
@@ -139,7 +136,6 @@ actor CloudflareTunnelManager: TunnelManaging {
         Self.runnerRegistry.withLock { $0[connectionId] = nil }
         pidRecords.removeValue(forKey: connectionId)
         persistPidRecords()
-        updateAppNapState()
         state.runner.stop()
     }
 
@@ -150,7 +146,6 @@ actor CloudflareTunnelManager: TunnelManaging {
         pidRecords.removeAll()
         persistPidRecords()
         Self.runnerRegistry.withLock { $0.removeAll() }
-        updateAppNapState()
         for (_, state) in current {
             state.runner.stop()
         }
@@ -227,7 +222,6 @@ actor CloudflareTunnelManager: TunnelManaging {
             pidRecords[connectionId] = CloudflaredPidRecord(pid: pid, binaryPath: binaryPath)
             persistPidRecords()
         }
-        updateAppNapState()
         startDeathWatch(connectionId: connectionId, runner: runner)
     }
 
@@ -243,7 +237,6 @@ actor CloudflareTunnelManager: TunnelManaging {
         Self.runnerRegistry.withLock { $0[connectionId] = nil }
         pidRecords.removeValue(forKey: connectionId)
         persistPidRecords()
-        updateAppNapState()
         guard !result.wasRequested else { return }
         Self.logger.warning("Cloudflare tunnel died for connection \(connectionId.uuidString, privacy: .public)")
         await DatabaseManager.shared.handleCloudflareTunnelDied(connectionId: connectionId)
@@ -341,23 +334,8 @@ actor CloudflareTunnelManager: TunnelManaging {
         }
     }
 
-
     private static func isPortInUse(_ stderrTail: String) -> Bool {
         stderrTail.lowercased().contains("address already in use")
-    }
-
-    // MARK: - Private: App Nap
-
-    private func updateAppNapState() {
-        if !tunnels.isEmpty, appNapActivity == nil {
-            appNapActivity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiatedAllowingIdleSystemSleep,
-                reason: "Cloudflare tunnel process requires timely execution"
-            )
-        } else if tunnels.isEmpty, let activity = appNapActivity {
-            ProcessInfo.processInfo.endActivity(activity)
-            appNapActivity = nil
-        }
     }
 }
 

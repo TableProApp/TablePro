@@ -56,6 +56,9 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     func cancelCurrentQuery()
 
     func serverVersion() -> String?
+    /// The `INFO server` reply the connect read for the version, so the mode check reads it again only from a
+    /// channel that did not keep one.
+    var connectServerInfo: String? { get }
     func currentDatabase() -> Int
     /// The database the next command runs on: a SELECT queued in an open block has not moved the
     /// session yet, but everything after it in the block runs there.
@@ -68,6 +71,8 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     func reportedDatabaseCount() async throws -> Int?
     /// Keys per database, or nil when the server declined to count them.
     func keyCountsByDatabase() async throws -> [Int: Int]?
+    /// Both of the above for a listing that wants both, in one round trip where one node answers them.
+    func databaseCountAndKeyCounts() async throws -> (reported: Int?, keyCounts: [Int: Int]?)
 
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply]
@@ -93,6 +98,7 @@ protocol RedisCommandChannel: AnyObject, Sendable {
 extension RedisCommandChannel {
     func pubSubConnection() -> RedisPluginConnection? { nil }
 
+    var connectServerInfo: String? { nil }
     var supportsDatabaseSelection: Bool { true }
     var supportsTransactions: Bool { true }
     var partitionsKeyspace: Bool { false }

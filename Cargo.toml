@@ -16,6 +16,8 @@ members = [
     "core/crates/session",
     "core/crates/ssh",
     "core/crates/storage",
+    "core/crates/sync",
+    "core/crates/sync/testing",
     "core/crates/test-fixtures",
     "core/crates/test-support",
     "core/crates/drivers/cassandra",
@@ -53,6 +55,7 @@ tablepro-driver-postgres = { path = "core/crates/drivers/postgres" }
 tablepro-driver-redis = { path = "core/crates/drivers/redis" }
 tablepro-driver-sqlite = { path = "core/crates/drivers/sqlite" }
 tablepro-foreign-import = { path = "core/crates/foreign-import" }
+tablepro-keys = { path = "core/crates/keys" }
 tablepro-mcp = { path = "core/crates/mcp" }
 tablepro-net = { path = "core/crates/net" }
 tablepro-records = { path = "core/crates/records" }
@@ -60,6 +63,8 @@ tablepro-linux-platform = { path = "linux/crates/platform" }
 tablepro-session = { path = "core/crates/session" }
 tablepro-ssh = { path = "core/crates/ssh" }
 tablepro-storage = { path = "core/crates/storage" }
+tablepro-sync = { path = "core/crates/sync" }
+tablepro-sync-testing = { path = "core/crates/sync/testing" }
 tablepro-test-fixtures = { path = "core/crates/test-fixtures" }
 tablepro-test-support = { path = "core/crates/test-support" }
 async-trait = "0.1"

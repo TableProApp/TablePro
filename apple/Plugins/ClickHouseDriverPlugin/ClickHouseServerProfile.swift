@@ -31,6 +31,9 @@ nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
         catalog: Set(ClickHouseCatalogFeature.allCases)
     )
 
+    /// The connect's first request: the version, and the database a request naming none runs in.
+    static let openingQuery = "SELECT version(), currentDatabase()"
+
     /// `system.settings` is readable by every user, grants or not, and reports per user whether
     /// a setting can be changed. Its `readonly` column arrived in 20.3, so the columns are read by
     /// name, and the user's own `readonly` setting answers for 19.16.

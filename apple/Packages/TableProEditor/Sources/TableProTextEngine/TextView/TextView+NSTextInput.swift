@@ -335,10 +335,12 @@ extension TextView: NSTextInputClient {
         return resolved
     }
 
-    /// Returns an attributed string representing the receiver's text storage.
-    /// - Returns: The attributed string of the receiver’s text storage.
+    /// Returns the receiver's text storage itself, as `NSTextView` does.
+    ///
+    /// A substring of the whole document copies every character and attribute run, about 41 ms and 5.7 MB at 1.9M
+    /// characters, for a caller that reads only the part it needs.
     @objc public func attributedString() -> NSAttributedString {
-        textStorage.attributedSubstring(from: documentRange)
+        textStorage
     }
 
     // MARK: - Positions

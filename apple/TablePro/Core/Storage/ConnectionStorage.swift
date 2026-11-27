@@ -666,6 +666,11 @@ final class ConnectionStorage {
         return resolveString(.init(label: "SSH password", connectionId: connectionId), forKey: key)
     }
 
+    func sshPasswordRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "SSH password", connectionId: connectionId), forKey: key)
+    }
+
     func deleteSSHPassword(for connectionId: UUID) {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
         deleteSecret(forKey: key, connectionId: connectionId)
@@ -682,6 +687,11 @@ final class ConnectionStorage {
     func loadKeyPassphrase(for connectionId: UUID) -> String? {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
         return resolveString(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
+    }
+
+    func keyPassphraseRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func deleteKeyPassphrase(for connectionId: UUID) {
@@ -752,6 +762,11 @@ final class ConnectionStorage {
     func loadTOTPSecret(for connectionId: UUID) -> String? {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
         return resolveString(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
+    }
+
+    func totpSecretRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
     }
 
     func deleteTOTPSecret(for connectionId: UUID) {

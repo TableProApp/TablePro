@@ -1,13 +1,14 @@
 use std::collections::HashSet;
 
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::KeysError;
 use crate::b64;
 use crate::body::{KeyBody, WrapBody, body_json};
 use crate::crypto::TAG_LEN;
 use crate::encoding::{AccountId, KeyDeviceId, KeyPurpose, Version, uuid_from_wire, uuid_to_wire};
-use crate::json::{self, JsonValue, Members, push_string};
+use crate::json::{self, Count, JsonValue, Members, Sink, push_string};
 use crate::keys::Ed25519Public;
 use crate::keys::Signature;
 use crate::padding;
@@ -40,7 +41,7 @@ impl PinHow {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TrustPin {
     pub account: AccountId,
     pub ik: Ed25519Public,
@@ -58,7 +59,7 @@ impl TrustPin {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TrustVersion {
     // The account for `personal` and `history`, the team for `team`.
     pub owner: Uuid,
@@ -69,21 +70,70 @@ pub struct TrustVersion {
 }
 
 // The `trust` wrap's plaintext: the approver's pins and the newest version of each scope key it holds.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Clone, PartialEq, Eq, Default)]
 pub struct TrustPlaintext {
     pub pins: Vec<TrustPin>,
     pub versions: Vec<TrustVersion>,
 }
 
+// Whom a person trusts is private, so no account, key or digest is printed.
+impl std::fmt::Debug for TrustPin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrustPin")
+            .field("how", &self.how)
+            .field("alert", &self.alert)
+            .field("replaced", &self.replaced.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for TrustVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrustVersion")
+            .field("purpose", &self.purpose)
+            .field("version", &self.version)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for TrustPlaintext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrustPlaintext")
+            .field("pins", &self.pins)
+            .field("versions", &self.versions)
+            .finish()
+    }
+}
+
 // 1 MiB a record, on its `fields` encoded without HTML escaping (ADR 0051, Limits).
 pub const RECORD_LIMIT: usize = 1 << 20;
 
-fn encode_pin(pin: &TrustPin, out: &mut String) {
+// Written straight into `out`, so the integer leaves no copy on the heap.
+fn push_version(out: &mut impl Sink, version: Version) {
+    let mut digits = [0_u8; 10];
+    let mut at = digits.len();
+    let mut value = version.get();
+    loop {
+        at -= 1;
+        digits[at] = b'0' + (value % 10) as u8;
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+    for digit in &digits[at..] {
+        out.push(char::from(*digit));
+    }
+}
+
+fn encode_pin(pin: &TrustPin, out: &mut impl Sink) {
     out.push_str("{\"account\":");
-    push_string(out, &pin.account.to_wire());
+    push_string(out, &Zeroizing::new(pin.account.to_wire()));
     out.push_str(",\"ik\":");
-    push_string(out, &b64::encode(&pin.ik.0));
-    out.push_str(&format!(",\"av\":{},\"how\":", pin.av));
+    push_string(out, &Zeroizing::new(b64::encode(&pin.ik.0)));
+    out.push_str(",\"av\":");
+    push_version(out, pin.av);
+    out.push_str(",\"how\":");
     push_string(out, pin.how.name());
     out.push_str(if pin.alert {
         ",\"alert\":true,\"replaced\":["
@@ -94,18 +144,20 @@ fn encode_pin(pin: &TrustPin, out: &mut String) {
         if position > 0 {
             out.push(',');
         }
-        push_string(out, &b64::encode(&replaced.0));
+        push_string(out, &Zeroizing::new(b64::encode(&replaced.0)));
     }
     out.push_str("]}");
 }
 
-fn encode_version(version: &TrustVersion, out: &mut String) {
+fn encode_version(version: &TrustVersion, out: &mut impl Sink) {
     out.push_str("{\"owner\":");
-    push_string(out, &uuid_to_wire(version.owner));
+    push_string(out, &Zeroizing::new(uuid_to_wire(version.owner)));
     out.push_str(",\"purpose\":");
     push_string(out, version.purpose.name());
-    out.push_str(&format!(",\"version\":{},\"record\":", version.version));
-    push_string(out, &b64::encode(&version.record));
+    out.push_str(",\"version\":");
+    push_version(out, version.version);
+    out.push_str(",\"record\":");
+    push_string(out, &Zeroizing::new(b64::encode(&version.record)));
     out.push('}');
 }
 
@@ -129,29 +181,37 @@ pub fn trust_wrap_record_len(plaintext_len: usize, wrapper_av: Version) -> Resul
 }
 
 impl TrustPlaintext {
-    pub fn encode(&self) -> String {
-        let mut out = String::from("{\"v\":1,\"pins\":[");
+    // Sized before it is written, so no copy of the plaintext is left behind by a reallocation.
+    pub fn encode(&self) -> Zeroizing<String> {
+        let mut count = Count::default();
+        self.encode_into(&mut count);
+        let mut out = Zeroizing::new(String::with_capacity(count.0));
+        self.encode_into(&mut *out);
+        out
+    }
+
+    fn encode_into(&self, out: &mut impl Sink) {
+        out.push_str("{\"v\":1,\"pins\":[");
         for (index, pin) in self.pins.iter().enumerate() {
             if index > 0 {
                 out.push(',');
             }
-            encode_pin(pin, &mut out);
+            encode_pin(pin, out);
         }
         out.push_str("],\"versions\":[");
         for (index, version) in self.versions.iter().enumerate() {
             if index > 0 {
                 out.push(',');
             }
-            encode_version(version, &mut out);
+            encode_version(version, out);
         }
         out.push_str("]}");
-        out
     }
 
     // Refuses a duplicate, missing or wrongly typed member and an unknown `v`; ignores an unknown
     // member. `pins` holds one entry per account and `versions` one per scope key.
     pub fn parse(bytes: &[u8]) -> Result<Self, KeysError> {
-        let value = json::parse(bytes)?;
+        let value = Zeroizing::new(json::parse(bytes)?);
         let mut members = Members::of(&value)?;
         check_format(&mut members)?;
         let pins = members.array("pins")?.iter().map(parse_pin).collect::<Result<_, _>>()?;
@@ -184,24 +244,27 @@ impl TrustPlaintext {
     // takes with `how` `first_use`, no alert and no replaced IK; None when it still does not fit, since
     // no alert, comparison or replaced IK is dropped (ADR 0056, Pins).
     pub fn fit_record(&self, limit: usize, wrapper_av: Version) -> Result<Option<Self>, KeysError> {
-        let empty = Self {
+        let mut empty = Count::default();
+        Self {
             pins: Vec::new(),
             versions: self.versions.clone(),
         }
-        .encode()
-        .len();
+        .encode_into(&mut empty);
+        let empty = empty.0;
         let pin_lens: Vec<usize> = self
             .pins
             .iter()
             .map(|pin| {
-                let mut out = String::new();
-                encode_pin(pin, &mut out);
-                out.len()
+                let mut count = Count::default();
+                encode_pin(pin, &mut count);
+                count.0
             })
             .collect();
         let mut kept = vec![true; self.pins.len()];
         let mut kept_len: usize = pin_lens.iter().sum();
         let mut kept_count = self.pins.len();
+        // Each pass leaves out the next droppable pin from the end, so the whole fit is one walk.
+        let mut droppable = (0..self.pins.len()).rev().filter(|index| self.pins[*index].droppable());
         loop {
             let plaintext_len = empty + kept_len + kept_count.saturating_sub(1);
             if trust_wrap_record_len(plaintext_len, wrapper_av)? <= limit {
@@ -217,10 +280,7 @@ impl TrustPlaintext {
                     versions: self.versions.clone(),
                 }));
             }
-            let Some(last) = (0..self.pins.len())
-                .rev()
-                .find(|index| kept[*index] && self.pins[*index].droppable())
-            else {
+            let Some(last) = droppable.next() else {
                 return Ok(None);
             };
             kept[last] = false;
@@ -259,7 +319,7 @@ fn parse_pin(value: &JsonValue) -> Result<TrustPin, KeysError> {
     })
 }
 
-fn parse_version(value: &JsonValue) -> Result<TrustVersion, KeysError> {
+pub(crate) fn parse_version(value: &JsonValue) -> Result<TrustVersion, KeysError> {
     let mut members = Members::of(value)?;
     let owner = uuid_from_wire(members.string("owner")?)?;
     let purpose = KeyPurpose::parse(members.string("purpose")?)?;
@@ -308,6 +368,8 @@ mod tests {
     #[test]
     fn round_trips() {
         let trust = sample();
+        let encoded = trust.encode();
+        assert_eq!(encoded.capacity(), encoded.len(), "sized once, so never moved");
         assert_eq!(TrustPlaintext::parse(trust.encode().as_bytes()).unwrap(), trust);
     }
 

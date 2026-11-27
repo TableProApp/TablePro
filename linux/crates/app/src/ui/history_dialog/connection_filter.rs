@@ -36,11 +36,11 @@ impl ConnectionFilterModel {
         let mut listed: Vec<(String, Uuid)> = connections
             .iter()
             .map(|connection| {
-                let name = saved
-                    .iter()
-                    .find(|saved| saved.id == connection.id)
-                    .map_or(&connection.name, |saved| &saved.name);
-                (name.clone(), connection.id)
+                let name = saved.iter().find(|saved| saved.id == connection.id).map_or_else(
+                    || connection.name.clone(),
+                    |saved| tablepro_storage::shown_name(&saved.name),
+                );
+                (name, connection.id)
             })
             .collect();
         listed.sort_by_cached_key(|(name, id)| (name.to_lowercase(), *id));
@@ -92,7 +92,7 @@ mod tests {
             database: "app".to_owned(),
             username: "postgres".to_owned(),
             tls: tablepro_core::TlsConfig::verify_full(),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,

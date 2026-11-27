@@ -20,6 +20,9 @@ struct EditorTabHistory {
 final class EditorUndoHistories {
     private var entries: [UUID: EditorTabHistory] = [:]
 
+    /// The documents of the tabs the editor does not show, keyed by tab id, so switching back rebuilds nothing.
+    let documents = EditorDocumentCache()
+
     func store(_ history: EditorTabHistory?, for tabId: UUID) {
         entries[tabId] = history
     }
@@ -30,9 +33,11 @@ final class EditorUndoHistories {
 
     func forget(_ tabId: UUID) {
         entries.removeValue(forKey: tabId)
+        documents.forget(AnyHashable(tabId))
     }
 
     func forgetAll(except openTabIds: Set<UUID>) {
+        documents.forgetAll(except: Set(openTabIds.map { AnyHashable($0) }))
         guard entries.keys.contains(where: { !openTabIds.contains($0) }) else { return }
         entries = entries.filter { openTabIds.contains($0.key) }
     }

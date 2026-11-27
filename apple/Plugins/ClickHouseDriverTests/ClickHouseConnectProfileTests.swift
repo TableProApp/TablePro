@@ -22,10 +22,11 @@ struct ClickHouseConnectProfileTests {
         version: String,
         settings: [ClickHouseURLSetting],
         readonly: String = "0",
-        catalog: Set<ClickHouseCatalogFeature> = Set(ClickHouseCatalogFeature.allCases)
+        catalog: Set<ClickHouseCatalogFeature> = Set(ClickHouseCatalogFeature.allCases),
+        database: String = "default"
     ) -> ClickHouseStubReply {
-        if request.body == "SELECT version()" {
-            return tsv(["version()"], [[version]])
+        if request.body == ClickHouseServerProfile.openingQuery {
+            return tsv(["version()", "currentDatabase()"], [[version, database]])
         }
         if request.body.hasPrefix("SELECT * FROM system.settings") {
             return tsv(
@@ -156,10 +157,7 @@ struct ClickHouseConnectProfileTests {
     @Test("With no database named, the connect reads the user's default and every request after it names that database")
     func blankDatabaseNamesTheDefault() async throws {
         let server = ClickHouseStubServer { request in
-            if request.body == "SELECT currentDatabase()" {
-                return Self.tsv(["currentDatabase()"], [["analytics"]])
-            }
-            return Self.answer(request, version: "25.8.33.6", settings: ClickHouseURLSetting.allCases)
+            Self.answer(request, version: "25.8.33.6", settings: ClickHouseURLSetting.allCases, database: "analytics")
         }
         let driver = server.unconnectedDriver(database: "")
         defer { driver.disconnect() }
@@ -175,11 +173,27 @@ struct ClickHouseConnectProfileTests {
         #expect(bounded.item("database") == "analytics")
     }
 
+    // The default database was a fourth request of its own, after the version and both probes (#4544).
+    @Test("With no database named, the connect reads the default in its first request and sends three in all")
+    func blankDatabaseCostsNoExtraRequest() async throws {
+        let server = ClickHouseStubServer { request in
+            Self.answer(request, version: "25.8.33.6", settings: ClickHouseURLSetting.allCases, database: "analytics")
+        }
+        let driver = server.unconnectedDriver(database: "")
+        defer { driver.disconnect() }
+
+        try await driver.connect()
+
+        #expect(server.requests.count == 3)
+        #expect(server.requests.first?.body == ClickHouseServerProfile.openingQuery)
+        #expect(driver.currentDatabase == "analytics")
+    }
+
     @Test("A default the server does not name leaves the connect open and no database reported")
     func unreadDefaultIsNotReported() async throws {
         let server = ClickHouseStubServer { request in
-            if request.body == "SELECT currentDatabase()" {
-                return ClickHouseStubReply(statusCode: 500, body: "Code: 497. DB::Exception: Not enough privileges. (ACCESS_DENIED)")
+            if request.body == ClickHouseServerProfile.openingQuery {
+                return Self.tsv(["version()"], [["25.8.33.6"]])
             }
             return Self.answer(request, version: "25.8.33.6", settings: ClickHouseURLSetting.allCases)
         }
