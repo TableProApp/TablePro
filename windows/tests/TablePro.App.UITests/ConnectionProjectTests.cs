@@ -15,7 +15,7 @@ public sealed partial class ShellTests
     public void TheConnectionsPageShowsOneProjectAndItsSearchStaysInside(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.Find("HomeItem").AsListBoxItem().Select();
         app.Front();
         app.RightClick(
