@@ -66,7 +66,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
     var main: DataGridPane { container.main }
     var frozen: DataGridPane { container.frozen }
     var panes: [DataGridPane] { container.panes }
-    var gridHasFocus: Bool { container.gridHasFocus }
+    var gridHasFocus: Bool { container.gridHasFocus || model.configuration.drawsFocused }
 
     // A table that is not wrapping never sees heightOfRow, so it stays the fixed-pitch table it has always been.
     override func responds(to aSelector: Selector!) -> Bool {

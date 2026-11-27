@@ -3,6 +3,7 @@ import SwiftUI
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProTextEngine
 import TableProTheme
 
 // The real editor and grid on a fixed scope, so the preview cannot disagree with a window.
@@ -113,7 +114,7 @@ private struct ThemePreviewEditor: View {
     let scope: ThemeScope
 
     @State private var state = SourceEditorState(cursorPositions: ThemePreviewSample.cursorPositions)
-    @State private var statementBand = ThemePreviewStatementBand()
+    @State private var editorSetup = ThemePreviewEditorSetup()
 
     var body: some View {
         SourceEditor(
@@ -121,7 +122,7 @@ private struct ThemePreviewEditor: View {
             language: EditorLanguage.sql.treeSitterLanguage,
             configuration: configuration,
             state: $state,
-            coordinators: [statementBand]
+            coordinators: [editorSetup]
         )
     }
 
@@ -150,9 +151,10 @@ private struct ThemePreviewEditor: View {
 }
 
 @MainActor
-private final class ThemePreviewStatementBand: TextViewCoordinator {
+private final class ThemePreviewEditorSetup: TextViewCoordinator {
     func prepareCoordinator(controller: TextViewController) {
         controller.highlightedStatementRange = ThemePreviewSample.statementRange
+        controller.textView.selectionManager.drawsSelectionEmphasized = true
     }
 
     func controllerDidAppear(controller: TextViewController) {
@@ -231,6 +233,7 @@ internal enum ThemePreviewGridSample {
         configuration.supportsColumnSort = false
         configuration.colorsValuesByType = true
         configuration.overridesValueColorSetting = true
+        configuration.drawsFocused = true
         return configuration
     }
 
