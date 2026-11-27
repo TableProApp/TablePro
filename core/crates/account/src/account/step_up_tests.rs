@@ -278,7 +278,8 @@ impl WebAuthenticator for Authenticator {
     async fn authenticate(&self, url: &Url, _: &str) -> Result<Url, WebAuthenticationError> {
         self.opened.lock().expect("the pages").push(url.clone());
         if let Some(gate) = &self.gate {
-            let _ = gate.acquire().await;
+            // Forgotten: a dropped permit went back and let the next waiting page answer too.
+            gate.acquire().await.expect("the gate").forget();
         }
         (self.answer)(url)
     }
