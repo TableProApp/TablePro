@@ -276,6 +276,11 @@ as amended). The rows move first, once and without loss, whichever of
   and AUTOINCREMENT counters into `.saved_queries.db.partial`, which is
   synced. The drop then commits in the same lock, and only after that is the
   build renamed to `saved_queries.db`, so the store never exists half made.
+- The drop's transaction also makes the table `compaction_owed`. The open
+  then runs `VACUUM` and a truncating WAL checkpoint, and drops that table
+  only once both finish, so the saved queries' text leaves the file and its
+  WAL. An open after a crash, or after another connection blocked the
+  checkpoint, does it again.
 - A build left by a crash before the drop is removed and made again from
   `history.db`. One left after the drop is renamed into place by the next
   open of either store.
@@ -290,12 +295,25 @@ as amended). The rows move first, once and without loss, whichever of
   generation, and the history's identity does not move.
 - In the same move `history.db` leaves `$XDG_STATE_HOME/<dir>/` for
   `history/`, so a platform that protects files by folder covers every file
-  made beside it. Before either store opens it there, the upgrade copies move
-  first, then the database, once a rollback journal set while no other
-  connection holds it has folded its WAL in, so the one file renamed carries
-  every commit. A crash leaves each file whole on one side and the next open
-  finishes. Another process holding the old file fails the open and moves
-  nothing. Once the folder holds the history, a file an older release makes
+  made beside it. Before either store opens it there, the old file is opened
+  with exclusive locking and a rollback journal. Setting that journal needs
+  the only connection to the file and folds its WAL in, and the connection
+  keeps the lock until the move is done, so no other process reads or
+  writes the file meanwhile. Under that lock:
+  1. `VACUUM INTO` copies it to `history/.history.db.partial`, which is
+     synced.
+  2. One transaction drops every table it holds, with `secure_delete` on,
+     and adds a migration row whose version no build has (`i64::MAX`). An
+     older release reads that row as a file a newer release wrote and
+     refuses to open it.
+  3. The file is compacted, its upgrade copies move into the folder, each
+     with its journals and the journals first, and the copy is renamed to
+     `history/history.db`.
+- A crash before the mark leaves the old file whole, and the next open
+  copies it again. One after it leaves the synced copy, which the next open
+  renames. Another process holding the old file fails the open and moves
+  nothing, the copies included, so an older release's cleanup still finds
+  them. Once the folder holds the history, a file an older release makes
   where it used to be is left alone. The core makes the folder only when it
   is missing.
 
