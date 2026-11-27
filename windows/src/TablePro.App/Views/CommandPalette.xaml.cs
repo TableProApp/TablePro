@@ -11,7 +11,7 @@ using Windows.System;
 
 namespace TablePro.App.Views;
 
-public sealed record PaletteCommitEventArgs(PaletteItem Item, PaletteCommitIntent Intent);
+public sealed record PaletteCommitEventArgs(PaletteItem Item, PaletteCommitIntent Intent) : System.EventArgs;
 
 // The command palette overlay: a Popup over the owning window's Root, a search box, a scope bar and the ranked list the
 // PaletteModel feeds. It mirrors the macOS QuickSwitcher panel, which WinUI has no borderless NSPanel for.
