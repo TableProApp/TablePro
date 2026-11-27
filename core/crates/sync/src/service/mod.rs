@@ -10,33 +10,35 @@ mod scopes;
 use push::AfterPush;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_keys::encoding::KeyPurpose;
+use tablepro_records::Kind;
 
 use crate::adapters::approval::Queue;
 use crate::adapters::categories::DeviceCategories;
 use crate::adapters::conflict::Conflicts;
 use crate::api::adapter::StoreStamp;
 use crate::api::control::{
-    ConflictChoice, HeldRecord, HeldRecordReason, PassReason, PendingApproval, SyncCategories, SyncControl, SyncPhase,
-    SyncStatus, TeamConflict,
+    ConflictChoice, HeldRecord, HeldRecordReason, MovePlan, PassReason, PendingApproval, SyncCategories, SyncControl,
+    SyncPhase, SyncStatus, TeamConflict,
 };
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    ApprovalDecision, KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow,
-    Table,
+    ApprovalDecision, KeyVersionState, Provider, Row, RowKey, RowRange, Standing, StateStore, StateTxn, StoppedCause,
+    StoreRow, Table,
 };
 use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{
     Adapters, Clock, EngineEvents, EngineHooks, Fence, Journal, JournalEntry, JournalIds, Pass, StopSignal,
 };
+use crate::moves::Arrival;
 
 // What the service carries for this device (0054, Providers). Team scopes always use it, and so do the key objects in
 // the personal scope, since team secrets need the account keys; personal data only while it is the personal provider.
@@ -84,6 +86,8 @@ pub struct ServiceSync {
     mode: Mutex<ServiceMode>,
     // What the last full pass found to send, per scope, so the count shown leaves out the scopes that rest.
     queued: Mutex<HashMap<ScopeName, usize>>,
+    // A move to this provider began and has not finished.
+    arriving: AtomicBool,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -112,6 +116,8 @@ pub struct PassReport {
     pub pushed: usize,
     pub conflicts: usize,
     pub refused: Vec<(RecordKey, String)>,
+    // The scopes this pass reached, as the device's keys and lock let it.
+    pub reached: Vec<ScopeName>,
     pub skipped: Vec<(ScopeName, &'static str)>,
     pub pull_only: bool,
     pub queued: usize,
@@ -130,6 +136,8 @@ struct StoreSeen {
 struct PassCtx {
     body: ScopesBody,
     mode: ServiceMode,
+    // Personal data arriving this pass, and by which rule its snapshot meets the device's records.
+    arrival: Option<Arc<Arrival>>,
     // The device held a key when the pass began, which decides the scopes it reaches; each call reads the key itself.
     keyed: bool,
     stores: HashMap<String, StoreSeen>,
@@ -207,6 +215,7 @@ impl ServiceSync {
             events: parts.events,
             mode: Mutex::new(parts.mode),
             queued: Mutex::default(),
+            arriving: AtomicBool::new(false),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),
@@ -379,12 +388,163 @@ impl ServiceSync {
 
     pub async fn run_pass(&self, why: PassReason) -> Result<PassReport, SyncError> {
         let mut session = self.session.lock().await;
+        self.pass_locked(&mut session, why, None).await
+    }
+
+    // Personal data arrives from another provider or from none (0054, Moving between providers): what the service file
+    // kept of the personal scope while it rested is let go, its pull starts from a snapshot that meets the device's
+    // records by `arrival`'s rule, and personal sync is on from then. One that fails leaves personal data resting.
+    pub(crate) async fn run_arrival(&self, arrival: Arrival) -> Result<PassReport, SyncError> {
+        let mut session = self.session.lock().await;
+        self.check_stop()?;
+        // A move called again after it stopped short goes on from the bases its first try committed, so a record merged
+        // then never meets the marker again.
+        if !self.arriving.swap(true, Ordering::SeqCst) {
+            self.let_go_of_personal().await?;
+        }
+        let before = std::mem::replace(
+            &mut *self.mode.lock().unwrap_or_else(PoisonError::into_inner),
+            ServiceMode::Personal,
+        );
+        let outcome = match self
+            .pass_locked(&mut session, PassReason::Person, Some(Arc::new(arrival)))
+            .await
+        {
+            Ok(report) => {
+                // The personal scope was pulled to the end and nothing personal is left to send, so no record goes up
+                // later without the rules of the move.
+                let personal = ScopeName::Personal;
+                let reached = report.reached.contains(&personal)
+                    && !report.pull_only
+                    && !report.skipped.iter().any(|(scope, _)| *scope == personal)
+                    && self.scope_row(personal).await?.is_some_and(|row| row.caught_up);
+                if reached && self.unsent(&session, personal).await? == 0 {
+                    Ok(report)
+                } else {
+                    Err(SyncError::MoveIncomplete)
+                }
+            }
+            Err(error) => Err(error),
+        };
+        if outcome.is_ok() {
+            self.arriving.store(false, Ordering::SeqCst);
+        } else {
+            *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = before;
+            self.refresh_counts().await;
+        }
+        outcome
+    }
+
+    // Personal records the person deleted on the service that this device no longer holds: what a move back to iCloud
+    // may delete there. A `policy` tombstone is not one (0051, Tombstones).
+    pub(crate) async fn deleted_by_the_person(&self) -> Result<Vec<RecordKey>, SyncError> {
+        let scope = ScopeName::Personal;
+        let rows = begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Bases, scope))
+            .await?;
+        let held = self.personal_ids().await?;
+        let mut deleted = Vec::new();
+        for row in rows {
+            let Row::Base(base) = row else { continue };
+            let Some(kind) = base.key.kind.known() else { continue };
+            if base.deleted != Some(crate::api::transport::DeletedReason::User) || kind.is_key() {
+                continue;
+            }
+            if !held.get(&kind).is_some_and(|ids| ids.contains(&base.key.record_id)) {
+                deleted.push(base.key);
+            }
+        }
+        Ok(deleted)
+    }
+
+    // The ids each personal store holds, readable or not.
+    pub(crate) async fn personal_ids(&self) -> Result<HashMap<Kind, HashSet<String>>, SyncError> {
+        let scope = ScopeName::Personal;
+        let mut held: HashMap<Kind, HashSet<String>> = HashMap::new();
+        for adapter in self.adapters.in_scope(scope) {
+            let local = adapter.records(scope).await?;
+            let ids = local
+                .records
+                .into_iter()
+                .map(|record| record.record_id)
+                .chain(local.unreadable);
+            held.entry(adapter.kind()).or_default().extend(ids);
+        }
+        Ok(held)
+    }
+
+    // What a move of personal data here takes and what stays on the device (0054, Moving between providers).
+    pub(crate) async fn personal_plan(&self) -> Result<MovePlan, SyncError> {
+        let categories = self.categories();
+        let mut plan = MovePlan {
+            records: 0,
+            staying_behind: 0,
+            secrets_to_seal: 0,
+        };
+        for adapter in self.adapters.in_scope(ScopeName::Personal) {
+            let kind = adapter.kind();
+            for record in adapter.records(ScopeName::Personal).await?.records {
+                let goes = record.standing == Standing::Syncs && categories.syncs(kind);
+                match (goes, kind) {
+                    (true, Kind::SecretEnvelope) => plan.secrets_to_seal += 1,
+                    (true, _) => plan.records += 1,
+                    (false, _) => plan.staying_behind += 1,
+                }
+            }
+        }
+        Ok(plan)
+    }
+
+    // Every personal row but the key objects': bases, held records, refill copies, waiting values and the batch in
+    // flight, so nothing an earlier spell on TablePro Sync agreed stands in for the copy the arrival meets.
+    async fn let_go_of_personal(&self) -> Result<(), SyncError> {
+        let scope = ScopeName::Personal;
+        let mut txn = begin(&self.state).await?;
+        for table in [
+            Table::Bases,
+            Table::Held,
+            Table::Deferred,
+            Table::Approvals,
+            Table::Conflicts,
+        ] {
+            for row in txn.scan(&RowRange::Scope(table, scope)).await? {
+                let key = match &row {
+                    Row::Base(row) => &row.key,
+                    Row::Held(row) => &row.key,
+                    Row::Deferred(row) => &row.key,
+                    Row::Approval(row) => &row.key,
+                    Row::Conflict(row) => &row.key,
+                    _ => continue,
+                };
+                if !key.kind.is_key() {
+                    txn.delete(&row.key()).await?;
+                }
+            }
+        }
+        txn.delete(&RowKey::Outbox(scope)).await?;
+        if let Some(Row::Scope(mut row)) = txn.get(&RowKey::Scope(scope)).await? {
+            row.cursor = None;
+            row.read_kinds.clear();
+            txn.put(Row::Scope(row)).await?;
+        }
+        self.check_stop()?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    async fn pass_locked(
+        &self,
+        session: &mut Session,
+        why: PassReason,
+        arrival: Option<Arc<Arrival>>,
+    ) -> Result<PassReport, SyncError> {
         tracing::debug!(?why, "sync pass");
         self.set_phase(SyncPhase::Syncing);
         let taken = self.journal.take();
         let named = (why == PassReason::Journal).then(|| taken.clone());
         let journal_only = named.is_some();
-        let outcome = self.run(&mut session, named).await;
+        let outcome = self.run(session, named, arrival).await;
         if outcome.is_err() {
             self.journal.give_back(taken);
         }
@@ -395,7 +555,12 @@ impl ServiceSync {
         outcome
     }
 
-    async fn run(&self, session: &mut Session, named: Option<JournalIds>) -> Result<PassReport, SyncError> {
+    async fn run(
+        &self,
+        session: &mut Session,
+        named: Option<JournalIds>,
+        arrival: Option<Arc<Arrival>>,
+    ) -> Result<PassReport, SyncError> {
         self.check_stop()?;
         self.refill_stale_file(session).await?;
         self.queue().finish_decided().await?;
@@ -408,6 +573,7 @@ impl ServiceSync {
         let mut ctx = PassCtx {
             body,
             mode: self.mode(),
+            arrival,
             keyed,
             stores: HashMap::new(),
             snapshots_done: HashSet::new(),
@@ -427,6 +593,7 @@ impl ServiceSync {
         self.read_stores(&mut ctx, &scopes).await?;
         // Each scope as the newest scopes body says, which a re-read after an expired cursor may have replaced.
         let names: Vec<ScopeName> = scopes.iter().map(|info| info.scope).collect();
+        ctx.report.reached.clone_from(&names);
         for scope in &names {
             if let Some(info) = ctx.body.scopes.iter().find(|info| info.scope == *scope).cloned() {
                 self.pull_or_skip(&mut ctx, session, &info).await?;

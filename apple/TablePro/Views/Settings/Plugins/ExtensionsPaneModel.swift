@@ -356,7 +356,7 @@ internal final class ExtensionsPaneModel: ObservableObject {
                 return .plugin(entry, isStaged: stagedPluginIds.contains(entry.id))
             }
             return .unavailable
-        case .page, .aiProvider:
+        case .page, .aiProvider, .team:
             return .unavailable
         }
     }

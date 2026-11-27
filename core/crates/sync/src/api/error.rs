@@ -47,6 +47,10 @@ pub enum SyncError {
     Changed { what: &'static str },
     #[error("the call was cancelled")]
     Cancelled,
+    // A move between providers stopped before every personal record went up; it goes on from there when called again,
+    // and the provider it left stays stopped (0054, Moving between providers).
+    #[error("the move between providers is not finished")]
+    MoveIncomplete,
 }
 
 impl SyncError {
@@ -71,6 +75,7 @@ impl SyncError {
             Self::NotAllowed { .. } => "sync.not_allowed",
             Self::Changed { .. } => "sync.changed",
             Self::Cancelled => "sync.cancelled",
+            Self::MoveIncomplete => "sync.move_incomplete",
         }
     }
 }

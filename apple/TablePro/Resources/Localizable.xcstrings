@@ -2948,6 +2948,18 @@
         }
       }
     },
+    "%@'s Keys Changed" : {
+
+    },
+    "%@'s device" : {
+
+    },
+    "%@'s keys changed. Compare their words before sharing team keys with them." : {
+
+    },
+    "%@'s words match" : {
+
+    },
     "%@ +%d more" : {
       "localizations" : {
         "en" : {
@@ -5762,6 +5774,9 @@
     "%@ refuses changes from external clients on this connection." : {
 
     },
+    "%@ replaced their recovery key." : {
+
+    },
     "%@ requires a Pro license" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6218,6 +6233,9 @@
           }
         }
       }
+    },
+    "%@ started the team key over. Compare their words before this Mac uses it." : {
+
     },
     "%@ starts MCP servers only as local commands, so it cannot reach TablePro's HTTP server." : {
 
@@ -7818,6 +7836,9 @@
         }
       }
     },
+    "%1$@'s %2$@" : {
+
+    },
     "%1$@ +%2$lld" : {
       "localizations" : {
         "fr" : {
@@ -7915,6 +7936,9 @@
           }
         }
       }
+    },
+    "%1$@ asked to reset your keys on %2$@. It finishes on %3$@ unless you cancel it. If you didn't ask for this, cancel it now." : {
+
     },
     "%1$@ becomes unique on the first %2$lld characters" : {
       "localizations" : {
@@ -16395,6 +16419,9 @@
         }
       }
     },
+    "5,000 members of this team already hold its key. An admin needs to split the team." : {
+
+    },
     "5,000 rows" : {
       "localizations" : {
         "fr" : {
@@ -17937,6 +17964,9 @@
         }
       }
     },
+    "A device asked to reset your keys on %1$@. It finishes on %2$@ unless you cancel it. If you didn't ask for this, cancel it now." : {
+
+    },
     "A DBA can grant it with GRANT DEBUG CONNECT SESSION TO %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -18463,6 +18493,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A key reset is waiting." : {
+
+    },
     "A key with this name already exists." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -18576,6 +18609,9 @@
           }
         }
       }
+    },
+    "A member's device" : {
+
     },
     "A message is never closed." : {
 
@@ -19699,6 +19735,9 @@
         }
       }
     },
+    "A server restore lost your key reset. Confirm it's you to ask for it again." : {
+
+    },
     "A service account key is required" : {
       "localizations" : {
         "fr" : {
@@ -20321,6 +20360,15 @@
         }
       }
     },
+    "A team connection" : {
+
+    },
+    "A team key rotation is due. New passwords for this team wait until the key is rotated." : {
+
+    },
+    "A teammate's Mac sent the team key to your old keys, so TablePro shared your current keys with the team again. The server may have kept your key change from that teammate." : {
+
+    },
     "A test here has no connection to take the host, port and database from." : {
       "localizations" : {
         "fr" : {
@@ -20723,6 +20771,9 @@
         }
       }
     },
+    "Accept Without Comparing" : {
+
+    },
     "Accepted values, or null for a true/false flag" : {
       "localizations" : {
         "fr" : {
@@ -20732,6 +20783,9 @@
           }
         }
       }
+    },
+    "Accepting also shares the team key with their new keys." : {
+
     },
     "Access" : {
       "localizations" : {
@@ -25875,6 +25929,9 @@
           }
         }
       }
+    },
+    "Alerts" : {
+
     },
     "Algorithm" : {
       "localizations" : {
@@ -31622,6 +31679,9 @@
         }
       }
     },
+    "Approve this Mac from another of your devices first." : {
+
+    },
     "Approved %@" : {
       "localizations" : {
         "fr" : {
@@ -32623,6 +32683,26 @@
         }
       }
     },
+    "Ask %@ to read the six words under Settings > Account > Teams > %@ > Show My Words. Confirm only if they match these." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Ask %1$@ to read the six words under Settings > Account > Teams > %2$@ > Show My Words. Confirm only if they match these."
+          }
+        }
+      }
+    },
+    "Ask %@ to read their six words. Until the words match and you accept, this Mac keeps the passwords it already has for %@ and saves no new ones there." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Ask %1$@ to read their six words. Until the words match and you accept, this Mac keeps the passwords it already has for %2$@ and saves no new ones there."
+          }
+        }
+      }
+    },
     "Ask a superuser to run CREATE EXTENSION pldbgapi in this database." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -32877,6 +32957,9 @@
         }
       }
     },
+    "Ask for Reset" : {
+
+    },
     "Ask Every Time" : {
       "localizations" : {
         "fr" : {
@@ -33066,6 +33149,9 @@
           }
         }
       }
+    },
+    "Asking for the reset" : {
+
     },
     "Asks for a value for each :name placeholder before the query runs." : {
       "localizations" : {
@@ -39235,6 +39321,12 @@
         }
       }
     },
+    "Cancel Reset" : {
+
+    },
+    "Cancel Reset…" : {
+
+    },
     "Cancel query for session %@" : {
       "localizations" : {
         "fr" : {
@@ -39274,6 +39366,12 @@
           }
         }
       }
+    },
+    "Cancel the Reset with Your Recovery Key" : {
+
+    },
+    "Cancel the reset?" : {
+
     },
     "Cancel Restore Dump" : {
       "comment" : "A button that cancels a restore dump.",
@@ -39447,6 +39545,9 @@
           }
         }
       }
+    },
+    "Cancel with Recovery Key…" : {
+
     },
     "Cancel Update" : {
       "localizations" : {
@@ -43205,6 +43306,9 @@
 
     },
     "Check Skipped" : {
+
+    },
+    "Check Your Recovery Key" : {
 
     },
     "Check that the Client Key path points to a valid PEM private key." : {
@@ -52692,6 +52796,9 @@
         }
       }
     },
+    "Compare %@'s words" : {
+
+    },
     "Compare again, or exclude the tables not compared yet: %@." : {
       "localizations" : {
         "fr" : {
@@ -52701,6 +52808,9 @@
           }
         }
       }
+    },
+    "Compare each member's words with them. Only those whose words match get the new key." : {
+
     },
     "Compare Now" : {
       "localizations" : {
@@ -52961,6 +53071,12 @@
     "Compare With" : {
 
     },
+    "Compare Words" : {
+
+    },
+    "Compare Words…" : {
+
+    },
     "Compared %@ keys in key order. Rows past the limit were not read on either side, and rows with NULL in a key column are not read under a limit." : {
       "localizations" : {
         "fr" : {
@@ -53132,6 +53248,9 @@
           }
         }
       }
+    },
+    "Compare…" : {
+
     },
     "Comparing" : {
 
@@ -53847,6 +53966,12 @@
         }
       }
     },
+    "Confirm %@" : {
+
+    },
+    "Confirm Again…" : {
+
+    },
     "Confirm Destructive Operation" : {
       "localizations" : {
         "fr" : {
@@ -53886,6 +54011,9 @@
           }
         }
       }
+    },
+    "Confirm It's You…" : {
+
     },
     "Confirm passphrase" : {
       "extractionState" : "stale",
@@ -53951,6 +54079,9 @@
           }
         }
       }
+    },
+    "Confirm this device again?" : {
+
     },
     "Confirm this network resolves the domain, or add the realm to /etc/krb5.conf." : {
       "extractionState" : "manual",
@@ -54046,6 +54177,9 @@
         }
       }
     },
+    "Confirmed" : {
+
+    },
     "Confirmed each time." : {
       "localizations" : {
         "fr" : {
@@ -54055,6 +54189,12 @@
           }
         }
       }
+    },
+    "Confirming it again rotates the team key. Every confirmed member, that device included, gets the new key." : {
+
+    },
+    "Confirm…" : {
+
     },
     "Conflicted" : {
       "localizations" : {
@@ -62693,6 +62833,18 @@
         }
       }
     },
+    "Couldn't Accept %@'s New Keys" : {
+
+    },
+    "Couldn't Ask for the Reset Again" : {
+
+    },
+    "Couldn't Cancel the Reset" : {
+
+    },
+    "Couldn't Check the Code" : {
+
+    },
     "Couldn't check %1$@ before changing its documents: %2$@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -62795,6 +62947,9 @@
         }
       }
     },
+    "Couldn't Confirm %@" : {
+
+    },
     "Couldn't connect" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -62808,6 +62963,9 @@
           }
         }
       }
+    },
+    "Couldn't Create Team Keys" : {
+
     },
     "Couldn't Create the Token" : {
       "localizations" : {
@@ -62901,6 +63059,9 @@
           }
         }
       }
+    },
+    "Couldn't Dismiss the Notice" : {
+
     },
     "Couldn't download cloud-sql-proxy. The server answered with HTTP status %lld." : {
 
@@ -63068,6 +63229,9 @@
         }
       }
     },
+    "Couldn't Finish the Reset" : {
+
+    },
     "Couldn't Format Query" : {
 
     },
@@ -63152,6 +63316,18 @@
       }
     },
     "Couldn't install" : {
+
+    },
+    "Couldn't load the key change." : {
+
+    },
+    "Couldn't load the restart." : {
+
+    },
+    "Couldn't load their words." : {
+
+    },
+    "Couldn't load your words." : {
 
     },
     "Couldn't Load" : {
@@ -63623,6 +63799,9 @@
         }
       }
     },
+    "Couldn't Rotate the Team Key" : {
+
+    },
     "Couldn't Save “%@”" : {
       "localizations" : {
         "fr" : {
@@ -63662,6 +63841,9 @@
           }
         }
       }
+    },
+    "Couldn't Start the Team Key Over" : {
+
     },
     "Couldn't Save File" : {
       "localizations" : {
@@ -63942,6 +64124,9 @@
           }
         }
       }
+    },
+    "Couldn't Use the New Team Key" : {
+
     },
     "Couldn't update" : {
 
@@ -65015,6 +65200,9 @@
         }
       }
     },
+    "Create Team Keys" : {
+
+    },
     "Create Table Failed" : {
       "localizations" : {
         "fr" : {
@@ -65501,6 +65689,9 @@
           }
         }
       }
+    },
+    "Credentials to Rotate" : {
+
     },
     "Credit Card" : {
       "extractionState" : "manual",
@@ -76705,6 +76896,9 @@
         }
       }
     },
+    "Don't Confirm %@" : {
+
+    },
     "Don't save" : {
       "localizations" : {
         "fr" : {
@@ -82618,6 +82812,9 @@
     "Encrypts the connection without checking the server certificate." : {
 
     },
+    "End-to-end keys are not available in this build yet." : {
+
+    },
     "Endpoint" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -85402,6 +85599,9 @@
       }
     },
     "Every column's type, key, default and comment, with indexes and foreign keys. Reads no rows." : {
+
+    },
+    "Every confirmed member gets the new key. New passwords for this team can be saved again once it is done." : {
 
     },
     "Every connection using this profile asks for the password once each time TablePro runs." : {
@@ -95035,6 +95235,12 @@
         }
       }
     },
+    "Finish Reset" : {
+
+    },
+    "Finish Reset…" : {
+
+    },
     "Finding Duplicates…" : {
       "localizations" : {
         "fr" : {
@@ -95068,6 +95274,12 @@
 
     },
     "Finish on the Welcome window" : {
+
+    },
+    "Finish the reset and start empty?" : {
+
+    },
+    "Finish the reset?" : {
 
     },
     "Finish Signing In" : {
@@ -98815,6 +99027,9 @@
         }
       }
     },
+    "Gets the new key" : {
+
+    },
     "Get View Definition" : {
       "localizations" : {
         "fr" : {
@@ -100416,6 +100631,9 @@
         }
       }
     },
+    "Group %lld" : {
+
+    },
     "Group By" : {
       "localizations" : {
         "fr" : {
@@ -101662,6 +101880,9 @@
           }
         }
       }
+    },
+    "Hide Words" : {
+
     },
     "Hide token" : {
       "localizations" : {
@@ -103113,6 +103334,9 @@
           }
         }
       }
+    },
+    "I Saved It" : {
+
     },
     "hyphen" : {
       "extractionState" : "manual",
@@ -105785,6 +106009,9 @@
     "In the connection's SSL/TLS settings, set SSL Mode to Verify Identity, or to Required to skip the certificate check." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "In the same room? Take a photo of their code with your iPhone or iPad instead." : {
+
     },
     "In the sidebar, the inspector and data grid column header tooltips." : {
       "localizations" : {
@@ -110576,6 +110803,9 @@
         }
       }
     },
+    "It can finish on %@, unless one of your devices or your old recovery key cancels it first. Come back to this Mac then to finish it." : {
+
+    },
     "IP address" : {
       "localizations" : {
         "fr" : {
@@ -112946,6 +113176,9 @@
         }
       }
     },
+    "Keep Waiting" : {
+
+    },
     "Keep this plan when history is cleaned up" : {
       "localizations" : {
         "fr" : {
@@ -113892,6 +114125,9 @@
           }
         }
       }
+    },
+    "Keys changed" : {
+
     },
     "Keys listed with lru_crawler metadump" : {
       "extractionState" : "manual",
@@ -115713,6 +115949,9 @@
         }
       }
     },
+    "Leave Out" : {
+
+    },
     "Leave blank to connect without authentication. The password is stored in the macOS Keychain." : {
       "localizations" : {
         "fr" : {
@@ -115925,6 +116164,9 @@
         }
       }
     },
+    "Leave out %@" : {
+
+    },
     "Leave out, or send agent, for the connections an AI client may use. display is for a launcher showing the list to the user: it needs the connections:display scope and adds connections hidden from AI, with user names." : {
       "localizations" : {
         "fr" : {
@@ -116080,6 +116322,9 @@
       }
     },
     "Left out of the INSERT, so the server fills it or leaves it NULL." : {
+
+    },
+    "Left out until you compare their new keys on the team page: %@." : {
 
     },
     "Left out, because they do not import into a table: %@" : {
@@ -120675,6 +120920,9 @@
     "Loading table health…" : {
 
     },
+    "Loading team keys" : {
+
+    },
     "Loading team…" : {
       "localizations" : {
         "fr" : {
@@ -120794,6 +121042,9 @@
           }
         }
       }
+    },
+    "Loading words" : {
+
     },
     "Loading…" : {
       "localizations" : {
@@ -121599,6 +121850,9 @@
           }
         }
       }
+    },
+    "Lost your recovery key? Reset your keys from this Mac. Your passwords and query history stay." : {
+
     },
     "Low" : {
       "localizations" : {
@@ -122667,6 +122921,9 @@
           }
         }
       }
+    },
+    "Manage on the Web…" : {
+
     },
     "Manage…" : {
       "localizations" : {
@@ -125405,6 +125662,9 @@
           }
         }
       }
+    },
+    "Members" : {
+
     },
     "Member Of" : {
       "localizations" : {
@@ -131123,6 +131383,9 @@
         }
       }
     },
+    "New recovery key" : {
+
+    },
     "New Profile…" : {
 
     },
@@ -131518,6 +131781,9 @@
           }
         }
       }
+    },
+    "New words" : {
+
     },
     "New Table…" : {
       "localizations" : {
@@ -135408,6 +135674,9 @@
         }
       }
     },
+    "No members yet." : {
+
+    },
     "No Microsoft Entra ID access token was supplied." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -135622,6 +135891,15 @@
         }
       }
     },
+    "No one on %@ holds the current team key, so it can't be passed on. Starting over makes a new key and shares it with the members you include. Passwords saved under the old key stay readable only where a device still has that key." : {
+
+    },
+    "No one on this team holds the current team key. An owner needs to start it over." : {
+
+    },
+    "No one on this team holds the current team key. Start it over to share passwords with the team again." : {
+
+    },
     "No Object Selected" : {
       "localizations" : {
         "fr" : {
@@ -135746,6 +136024,12 @@
 
     },
     "No other database apps found." : {
+
+    },
+    "No other device and no recovery key? Reset your keys and start empty." : {
+
+    },
+    "No other member has set up their keys yet. You can start over now and confirm them later." : {
 
     },
     "No Output" : {
@@ -137842,6 +138126,9 @@
           }
         }
       }
+    },
+    "No TablePro code was found in the photo. Try again closer to the screen." : {
+
     },
     "No table structure" : {
       "localizations" : {
@@ -156476,6 +156763,9 @@
         }
       }
     },
+    "Previous words" : {
+
+    },
     "Previous Page" : {
       "localizations" : {
         "fr" : {
@@ -159889,6 +160179,9 @@
         }
       }
     },
+    "QR code of your words" : {
+
+    },
     "Qdrant %@ overwrites a point that already has the id. Insert it from the REST editor, or upgrade Qdrant to 1.15 or later." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -163260,6 +163553,9 @@
         }
       }
     },
+    "Read Their Code" : {
+
+    },
     "Read rows from a table with filters, sorting and paging, built by TablePro's own query builder for this engine. Prefer it over hand-writing SELECT: it quotes identifiers, escapes values, and pages the way the app does." : {
       "localizations" : {
         "fr" : {
@@ -163433,6 +163729,9 @@
       }
     },
     "Read the live server panels TablePro shows: active sessions, server metrics, and slow queries. Available on every engine that has a Server Dashboard in TablePro." : {
+
+    },
+    "Read these words to the owner or admin who confirms you, or let them take a photo of the code. They are the same on every device of your account." : {
 
     },
     "Read the live server panels TablePro shows: active sessions, server metrics, and slow queries. Available on PostgreSQL, MySQL, SQL Server, ClickHouse, DuckDB, and SQLite." : {
@@ -163767,6 +164066,9 @@
           }
         }
       }
+    },
+    "Reading the code" : {
+
     },
     "reading rows from '%@'" : {
 
@@ -164961,6 +165263,9 @@
     "Records" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Recovery key" : {
+
     },
     "Recurring" : {
       "extractionState" : "manual",
@@ -170655,6 +170960,9 @@
         }
       }
     },
+    "Reset and Start Empty…" : {
+
+    },
     "Reset All Settings…" : {
       "localizations" : {
         "fr" : {
@@ -170696,6 +171004,9 @@
       }
     },
     "Reset All Shortcuts?" : {
+
+    },
+    "Reset Asked For" : {
 
     },
     "Reset column widths, order, and visibility to defaults" : {
@@ -170817,6 +171128,9 @@
           }
         }
       }
+    },
+    "Reset Keys…" : {
+
     },
     "Reset Layout" : {
       "localizations" : {
@@ -170977,6 +171291,12 @@
           }
         }
       }
+    },
+    "Reset Your Keys" : {
+
+    },
+    "Reset Your Keys and Start Empty" : {
+
     },
     "Reset to %@" : {
       "localizations" : {
@@ -174770,6 +175090,18 @@
     "Rosette" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Rotate" : {
+
+    },
+    "Rotate Team Key" : {
+
+    },
+    "Rotate Team Key…" : {
+
+    },
+    "Rotate the team key?" : {
+
     },
     "Round trip in milliseconds" : {
       "localizations" : {
@@ -183302,6 +183634,9 @@
         }
       }
     },
+    "Secret" : {
+
+    },
     "seconds" : {
       "localizations" : {
         "fr" : {
@@ -189567,6 +189902,9 @@
         }
       }
     },
+    "Show My Words…" : {
+
+    },
     "Show inspector when a row is selected" : {
       "localizations" : {
         "fr" : {
@@ -190707,6 +191045,9 @@
 
     },
     "Show the Imported Connections" : {
+
+    },
+    "Show the Key Again" : {
 
     },
     "Show the messages that arrived while paused" : {
@@ -192116,6 +192457,9 @@
         }
       }
     },
+    "Sign in to your TablePro account again, then try again." : {
+
+    },
     "Sign in to Vault with your browser to use this connection." : {
 
     },
@@ -192164,6 +192508,9 @@
           }
         }
       }
+    },
+    "Sign in to your TablePro account to use end-to-end keys." : {
+
     },
     "Sign In With" : {
       "localizations" : {
@@ -194878,7 +195225,16 @@
     "Some values were longer than 64 KB and were cut there; each one cut ends in a mark with its full length. Read such a value in parts with a narrower query." : {
 
     },
+    "Someone else made this change at the same time. The latest state is shown." : {
+
+    },
     "Someone in %@ changed this item after TablePro last downloaded the team library. Choose the version the team library keeps." : {
+
+    },
+    "Someone who is not on this team started the team key over. Don't accept it unless an owner tells you why." : {
+
+    },
+    "Someone who left this team could read these before they left. Change them on the database servers, then save the new ones in TablePro." : {
 
     },
     "Something went wrong (error %d). Try again in a moment." : {
@@ -194961,6 +195317,9 @@
           }
         }
       }
+    },
+    "Something went wrong. Try again." : {
+
     },
     "Sort and filter connections" : {
       "localizations" : {
@@ -197108,6 +197467,15 @@
         }
       }
     },
+    "SSH key passphrase" : {
+
+    },
+    "SSH one-time code secret" : {
+
+    },
+    "SSH password" : {
+
+    },
     "SSH Key Passphrase Required" : {
       "localizations" : {
         "fr" : {
@@ -197976,6 +198344,9 @@
     "SSL Mode %1$@ checks the certificate of the server behind the tunnel, and this connection leaves that server's host blank. Enter the host the tunnel reaches, or set SSL Mode to %2$@." : {
 
     },
+    "SSL key passphrase" : {
+
+    },
     "SSL/TLS" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -198358,6 +198729,12 @@
     "Start" : {
 
     },
+    "Start Over" : {
+
+    },
+    "Start Over…" : {
+
+    },
     "Start a new %@ session to load it." : {
 
     },
@@ -198410,6 +198787,9 @@
           }
         }
       }
+    },
+    "Start the Team Key Over" : {
+
     },
     "Start the block again with MULTI." : {
       "extractionState" : "manual",
@@ -200600,6 +200980,9 @@
         }
       }
     },
+    "Stopped Devices" : {
+
+    },
     "Stopped after %@" : {
       "localizations" : {
         "fr" : {
@@ -200672,6 +201055,12 @@
           }
         }
       }
+    },
+    "Stopped at version %lld" : {
+
+    },
+    "Stopped at version %lld. Only an owner or admin who held it can confirm it again." : {
+
     },
     "Stopped unexpectedly" : {
       "localizations" : {
@@ -206754,6 +207143,9 @@
         }
       }
     },
+    "TablePro couldn't reach the server. Check your connection and try again." : {
+
+    },
     "TablePro couldn't reach the team library." : {
 
     },
@@ -206763,6 +207155,9 @@
     "TablePro Data Was Removed from iCloud" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro Sync deletes everything you synced to it, passwords and query history included. This can't be undone." : {
+
     },
     "TablePro did not open a window for that connection in time." : {
       "localizations" : {
@@ -208840,6 +209235,9 @@
         }
       }
     },
+    "Take Photo" : {
+
+    },
     "target" : {
       "localizations" : {
         "fr" : {
@@ -209102,6 +209500,9 @@
         }
       }
     },
+    "Team Key" : {
+
+    },
     "Team Library" : {
       "localizations" : {
         "fr" : {
@@ -209188,6 +209589,9 @@
     "Team Library ended for this sign-in before these changes were uploaded: %@." : {
 
     },
+    "Team key" : {
+
+    },
     "Team library updated %@" : {
 
     },
@@ -209240,6 +209644,9 @@
       }
     },
     "Team's Version" : {
+
+    },
+    "Teammates see that your keys changed. An owner or admin of each team confirms you again before you get its passwords." : {
 
     },
     "Teams" : {
@@ -210518,6 +210925,9 @@
         }
       }
     },
+    "That isn't a valid recovery key. Check it and try again." : {
+
+    },
     "That Mac keeps working until its next check, within 7 days, and then paid features pause there." : {
       "localizations" : {
         "fr" : {
@@ -210732,6 +211142,9 @@
     "That result is no longer open. Choose another one." : {
 
     },
+    "That step is no longer open. Start again." : {
+
+    },
     "That tab is not open." : {
       "localizations" : {
         "fr" : {
@@ -210833,6 +211246,9 @@
           }
         }
       }
+    },
+    "The account that made this team key didn't hold the key before it, so this Mac won't use it." : {
+
     },
     "The .bacpac always carries the whole schema. Only the chosen tables' data is narrowed, and tables they reference by foreign key have to be chosen too." : {
       "localizations" : {
@@ -215555,6 +215971,9 @@
     "The group end at byte %lld matches no group start." : {
 
     },
+    "The groups you typed don't match the recovery key. Check them and try again." : {
+
+    },
     "The gzip data ends before its last block." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -215884,6 +216303,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The key reset ended without changing your keys." : {
+
+    },
+    "The key reset was cancelled." : {
+
+    },
     "The key that protects your save history is not available." : {
       "localizations" : {
         "fr" : {
@@ -215935,6 +216360,18 @@
           }
         }
       }
+    },
+    "The keys TablePro has for %@ changed. That happens when they reset their keys, and also when someone stands in for them. Ask them to read their six words and compare them with the new words." : {
+
+    },
+    "The keys the server sent didn't check out, so nothing changed." : {
+
+    },
+    "The keys this Mac has for %@ changed since you compared them. Compare their words again." : {
+
+    },
+    "The keys this Mac has for them aren't the keys they hold, so someone may be standing in for them. Tell the person who runs your TablePro server." : {
+
     },
     "The Keychain could not be read, so the stored secrets are not shown. Editing the name is safe; they are left as they are." : {
       "localizations" : {
@@ -216101,6 +216538,9 @@
           }
         }
       }
+    },
+    "The last photo had no TablePro code in it." : {
+
     },
     "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
 
@@ -217224,6 +217664,9 @@
           }
         }
       }
+    },
+    "the owner" : {
+
     },
     "The open transaction failed. Roll it back on this connection." : {
 
@@ -218965,6 +219408,15 @@
         }
       }
     },
+    "The reset can't finish before its waiting period ends." : {
+
+    },
+    "The reset waits 7 days. Any of your devices, or your old recovery key if you find it, can cancel it in that time." : {
+
+    },
+    "The reset waits 7 days. Your other devices, or your recovery key if you find it, can cancel it in that time." : {
+
+    },
     "the requested offset is outside the partition's range" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -219956,6 +220408,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The server couldn't take this right now. Try again in a moment." : {
+
+    },
     "The server did not accept the client certificate. %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -220084,6 +220539,9 @@
         }
       }
     },
+    "The server lost a team key in a restore. This Mac waits until the device that made it sends it again, then carries on by itself." : {
+
+    },
     "The server no longer knows this license key." : {
       "localizations" : {
         "fr" : {
@@ -220123,6 +220581,12 @@
           }
         }
       }
+    },
+    "The server offered a key that differs from one this Mac already checked, so nothing changed." : {
+
+    },
+    "The server offered a team key that differs from one this Mac already checked. This Mac stopped using this team's keys." : {
+
     },
     "The server offers only ciphers TablePro no longer supports: %@." : {
       "extractionState" : "manual",
@@ -220172,6 +220636,9 @@
 
     },
     "The server refused a change. The changes before it were saved." : {
+
+    },
+    "The server refused the change. Try again." : {
 
     },
     "The server refused the request. Try again in a moment." : {
@@ -221869,6 +222336,9 @@
     "The Table Health history file could not be read. The next refresh starts a new history and keeps the old file." : {
 
     },
+    "The Team Key Was Started Over" : {
+
+    },
     "The table is being read again after the save." : {
 
     },
@@ -222402,6 +222872,15 @@
         }
       }
     },
+    "The team key needs to be rotated first." : {
+
+    },
+    "The team key was started over." : {
+
+    },
+    "The team key was started over. Compare the words of the owner who did it before this Mac uses it." : {
+
+    },
     "The team library asked TablePro to download it again." : {
 
     },
@@ -222412,6 +222891,9 @@
 
     },
     "The team library refused “%@”. It may be too large or hold a field the library never stores." : {
+
+    },
+    "The team's owner hasn't set up its keys yet." : {
 
     },
     "the team library refused it" : {
@@ -223320,6 +223802,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Their code doesn't match the keys this Mac has for them. Don't confirm them." : {
+
+    },
+    "Their code matches. You can confirm them." : {
+
+    },
     "Theme" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -223541,6 +224029,12 @@
       }
     },
     "Themes color the editor, the data grid, other content views and the window background. Controls, sidebars and Settings follow the system appearance." : {
+
+    },
+    "Then TablePro Sync deletes everything you synced to it, passwords and query history included. Team libraries stay." : {
+
+    },
+    "Then your other devices sign out and join again from this Mac. Your passwords and query history stay." : {
 
     },
     "There are no connections to publish." : {
@@ -223833,6 +224327,9 @@
           }
         }
       }
+    },
+    "These devices couldn't verify a newer team key and stopped using it. An owner or admin who held the version a device stopped at confirms it again by rotating the key." : {
+
     },
     "These foreign key columns reference it and keep their narrower type: %@." : {
 
@@ -227430,6 +227927,9 @@
         }
       }
     },
+    "This key change was already settled on this Mac." : {
+
+    },
     "This JSON document is too large for tree view. Use text mode instead." : {
       "localizations" : {
         "fr" : {
@@ -228130,7 +228630,16 @@
         }
       }
     },
+    "This Mac can't do that right now." : {
+
+    },
     "This Mac does not support Apple Intelligence." : {
+
+    },
+    "This Mac holds the team key and can share passwords with the team." : {
+
+    },
+    "This Mac is locked. Approve it again from another of your devices." : {
 
     },
     "this Mac needs %@ free to open that database" : {
@@ -228179,6 +228688,9 @@
     "This Mac no longer has the schema chosen for this column, so the stored bytes show. Choose it again with Display As > Protobuf Schema…" : {
 
     },
+    "This Mac no longer holds a restarted team key." : {
+
+    },
     "This Mac no longer holds a seat." : {
       "localizations" : {
         "fr" : {
@@ -228219,6 +228731,15 @@
         }
       }
     },
+    "This Mac stopped using the team key: it couldn't verify a newer version. An owner or admin needs to confirm this Mac again." : {
+
+    },
+    "This Mac stopped using the team key: it couldn't verify a newer version. An owner or admin who held version %lld needs to confirm this Mac again. TablePro has let them know." : {
+
+    },
+    "This Mac was removed from your account. Sign in again to use your keys." : {
+
+    },
     "This Mac's clock is too far out of sync with the domain controller." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -228230,6 +228751,9 @@
           }
         }
       }
+    },
+    "This Mac's keys are behind. Wait for it to sync, then try again." : {
+
     },
     "This machine is not activated for this license." : {
       "localizations" : {
@@ -228553,6 +229077,9 @@
           }
         }
       }
+    },
+    "This person hasn't shared their keys with the team yet. Try again later." : {
+
     },
     "This pipeline is not something MongoDB can read: %@" : {
       "extractionState" : "manual",
@@ -230317,6 +230844,12 @@
           }
         }
       }
+    },
+    "This team has no keys yet. Create them to share passwords with the team end-to-end." : {
+
+    },
+    "This team's keys ended on this Mac. An owner needs to create a new team and share its connections again." : {
+
     },
     "This token will not be shown again" : {
       "localizations" : {
@@ -235785,6 +236318,12 @@
         }
       }
     },
+    "Type two of its groups from what you saved, so you know the copy is right." : {
+
+    },
+    "Type your recovery key. Hyphens and spaces don't matter." : {
+
+    },
     "Type: %@" : {
       "localizations" : {
         "fr" : {
@@ -237554,6 +238093,9 @@
           }
         }
       }
+    },
+    "Unknown person" : {
+
     },
     "Unknown Snowflake error" : {
       "extractionState" : "manual",
@@ -241083,6 +241625,12 @@
         }
       }
     },
+    "Use this only when you have no other device and no recovery key." : {
+
+    },
+    "Use this when you lost your recovery key and this Mac still has your keys. You get a new recovery key now." : {
+
+    },
     "Used" : {
 
     },
@@ -243908,6 +244456,9 @@
         }
       }
     },
+    "Version %lld" : {
+
+    },
     "Version 4 (random)" : {
 
     },
@@ -244701,6 +245252,12 @@
         }
       }
     },
+    "Waiting for an owner or admin to confirm you. Show them your words so they can compare." : {
+
+    },
+    "Waiting for confirmation" : {
+
+    },
     "Waiting for the database to accept the new Vault user" : {
 
     },
@@ -244713,6 +245270,9 @@
           }
         }
       }
+    },
+    "Waiting for this person to set up their keys" : {
+
     },
     "Waiting for your browser…" : {
       "localizations" : {
@@ -248272,6 +248832,9 @@
     "Withheld: another finding's fix drops the index that covers this one, and dropping both leaves these lookups with no index." : {
 
     },
+    "Word %1$lld, %2$@" : {
+
+    },
     "Word wrap" : {
       "localizations" : {
         "fr" : {
@@ -248311,6 +248874,12 @@
           }
         }
       }
+    },
+    "Words Don't Match" : {
+
+    },
+    "Words Match" : {
+
     },
     "Work & Places" : {
       "extractionState" : "manual",
@@ -248599,6 +249168,9 @@
           }
         }
       }
+    },
+    "Write it down or save it in your password manager. TablePro shows it only this once, and without it a lost device means another reset." : {
+
     },
     "Write Concern" : {
       "extractionState" : "stale",
@@ -249202,6 +249774,9 @@
         }
       }
     },
+    "You confirm it's you with your passkey first. Then you get a new recovery key." : {
+
+    },
     "You have %lld live links." : {
       "localizations" : {
         "en" : {
@@ -249706,6 +250281,9 @@
         }
       }
     },
+    "Your New Recovery Key" : {
+
+    },
     "Your changes will be lost if you don't save them." : {
       "localizations" : {
         "fr" : {
@@ -249894,6 +250472,21 @@
     "Your first change opens a transaction, and nothing is saved until you commit. Structure changes, Users & Roles, Copy To, Generate Rows and Shortcuts actions still save at once." : {
 
     },
+    "Your key reset finished its wait. Finish it on this Mac to use your new keys." : {
+
+    },
+    "Your key reset is waiting. You can finish it on this Mac from %@." : {
+
+    },
+    "Your keys stay as they are, and the new recovery key you saved for this reset won't work." : {
+
+    },
+    "Your keys stay as they are. The device that asked for the reset can ask again." : {
+
+    },
+    "Your keys were reset." : {
+
+    },
     "Your license has expired" : {
       "localizations" : {
         "fr" : {
@@ -250037,6 +250630,12 @@
 
     },
     "Your organization's server licenses this Mac. A license key or an offline file is not needed." : {
+
+    },
+    "Your other devices and the web portal show the reset until then." : {
+
+    },
+    "Your other devices sign out and join again from this Mac. Teammates confirm you again before you get team passwords." : {
 
     },
     "Your organization's TablePro server." : {
@@ -250245,6 +250844,9 @@
         }
       }
     },
+    "Your role on this team doesn't allow this." : {
+
+    },
     "Your subscription is governed by Anthropic's Consumer Terms and Usage Policy. Read them and decide whether this use fits. TablePro cannot grant rights under them." : {
       "localizations" : {
         "fr" : {
@@ -250372,6 +250974,9 @@
       }
     },
     "Your Version" : {
+
+    },
+    "Your Words" : {
 
     },
     "Zoom" : {

@@ -88,6 +88,21 @@ struct SettingsTitleResolverTests {
         #expect(titles.isAvailable(.page(.accountTeams)))
     }
 
+    @Test("A team's keys page follows sign-in, lives under Account and is titled by the team")
+    func teamKeysPageFollowsSignIn() {
+        let switches = Switches()
+        let titles = resolver(switches)
+        let route = SettingsRoute.team(id: "team_01h455vb4pex5vsknk084sn02q", name: "Acme")
+
+        #expect(titles.isAvailable(route))
+        #expect(titles.title(for: route) == "Acme")
+        #expect(route.pane == .account)
+        #expect(route.defaultTitle == "Acme")
+
+        switches.isSignedIn = false
+        #expect(!titles.isAvailable(route))
+    }
+
     @Test("Back skips a Tokens entry while the MCP server is off and lands on the MCP root")
     func backSkipsMCPPagesWhileTheServerIsOff() {
         let switches = Switches()

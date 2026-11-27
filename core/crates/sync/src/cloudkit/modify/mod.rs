@@ -17,7 +17,7 @@ use tablepro_records::Kind;
 use tablepro_records::cloudkit::{CloudValue, RecordType, from_wire, record_name, record_type_of};
 use tablepro_records::record_id::shortened;
 
-pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync};
+pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync, IcloudCopy};
 
 use super::codes;
 use super::fetch::{Categories, Fetcher, PROFILES, SCOPE, ServerChanged, carried};
