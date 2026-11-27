@@ -119,7 +119,8 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
     }
 
     func planMoveToIcloud() async throws -> MoveBackPlanInfo {
-        MoveBackPlanInfo(icloudDeletions: 3)
+        log.append("\(name) planMoveToIcloud")
+        return MoveBackPlanInfo(icloudDeletions: 3)
     }
 
     func moveToIcloud(confirmedDeletions: UInt64) async throws {
@@ -192,7 +193,11 @@ private final class Fixture {
                 }
             ),
             policy: { [unowned self] in snapshot },
-            session: { [unowned self] in sessionID }
+            session: { [unowned self] in sessionID },
+            closeEngine: { [unowned self] in
+                log.append("closeEngine")
+                opened = nil
+            }
         )
         moves = ProviderMoves(host: host, settings: slice)
         if let open {
@@ -386,9 +391,10 @@ struct ProviderMovesTests {
         }
         #expect(fixture.provider == .off)
         #expect(!fixture.log.all.contains("tablepro-sync syncNow"))
-        // TablePro Sync's service replaces the one that moved, and personal sync stops there.
-        #expect(fixture.log.all.last == "tablepro-sync chooseProvider off")
-        #expect(fixture.opened?.opened == .tableproSync)
+        // TablePro Sync's service replaces the one that moved, personal sync stops there, and it closes, so a later
+        // upload opens from Off.
+        #expect(fixture.log.all.suffix(2) == ["tablepro-sync chooseProvider off", "closeEngine"])
+        #expect(fixture.opened == nil)
     }
 
     @Test("A profile that takes TablePro Sync away while the keys are read refuses the move")
@@ -420,6 +426,17 @@ struct ProviderMovesTests {
         #expect(fixture.log.all == ["passesFinished", "openCloudKit", "tablepro-sync moveToIcloud 3", "provider icloud"])
         #expect(fixture.provider == .iCloud)
         #expect(!fixture.cloudKitClosed)
+    }
+
+    @Test("The move-back plan reads iCloud with CloudKit open, which closes again after while iCloud does not run")
+    func moveBackPlanOpensCloudKit() async throws {
+        let fixture = Fixture(provider: .tableproSync, open: .tableproSync)
+
+        let plan = try await fixture.moves.planMoveToICloud()
+
+        #expect(plan.icloudDeletions == 3)
+        #expect(fixture.log.all == ["passesFinished", "openCloudKit", "tablepro-sync planMoveToIcloud", "closeCloudKit"])
+        #expect(fixture.cloudKitClosed)
     }
 
     @Test("A move back that fails closes CloudKit again and stays on TablePro Sync")
@@ -474,7 +491,22 @@ struct ProviderMovesTests {
         await fixture.moves.turnOff()
 
         #expect(fixture.provider == .off)
-        #expect(fixture.log.all == ["provider off", "tablepro-sync chooseProvider off"])
+        #expect(fixture.log.all == ["provider off", "tablepro-sync chooseProvider off", "closeEngine"])
+        #expect(fixture.opened == nil)
+    }
+
+    @Test("TablePro Sync, then Off, then TablePro Sync uploads again, on a service opened Off")
+    func uploadAgainAfterOff() async throws {
+        let fixture = Fixture(provider: .tableproSync, open: .tableproSync)
+        await fixture.moves.turnOff()
+
+        let outcome = try await fixture.moves.moveToService(confirmedUnder: nil)
+
+        #expect(outcome == .moved)
+        #expect(fixture.log.all == [
+            "provider off", "tablepro-sync chooseProvider off", "closeEngine",
+            "off keyState", "off chooseProvider tableproSync", "provider tablepro-sync", "tablepro-sync syncNow"
+        ])
     }
 
     @Test("Off from iCloud is the coordinator's to tell the engine")
@@ -493,7 +525,7 @@ struct ProviderMovesTests {
 
         fixture.slice.value = .default
 
-        try await waitUntil { fixture.opened?.status().provider == .off }
+        try await waitUntil { fixture.log.all.contains("closeEngine") }
         #expect(fixture.log.all.contains("tablepro-sync chooseProvider off"))
     }
 

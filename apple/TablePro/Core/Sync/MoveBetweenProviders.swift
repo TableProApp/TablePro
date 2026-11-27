@@ -39,6 +39,8 @@ internal struct ProviderMoveHost {
     var cloudKit: CloudKitReach
     var policy: @MainActor () -> ManagedPolicySnapshot
     var session: @MainActor () -> String?
+    // Closes the open service, so the next one opens for the provider stored then.
+    var closeEngine: @MainActor () -> Void = {}
 }
 
 internal struct CloudKitReach {
@@ -210,11 +212,21 @@ internal final class ProviderMoves: ObservableObject {
     private func stopPersonalSyncAfterSupersededMove() async {
         guard settings.value.provider == .off else { return }
         do {
-            try await host.engine(.tableproSync).chooseProvider(provider: .off)
+            let engine = try await host.engine(.tableproSync)
+            try await engine.chooseProvider(provider: .off)
+            closeIfOpen(engine)
         } catch {
             Self.logger.error("The moved service did not stop: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
         engineChanged()
+    }
+
+    // A service opened for TablePro Sync keeps that provider for its life and takes choosing it again as done, so once
+    // it is told Off it closes, and a later upload opens a new one from Off, where choosing TablePro Sync uploads.
+    private func closeIfOpen(_ engine: any SyncMoveEngine) {
+        if host.openedEngine(.off) === engine {
+            host.closeEngine()
+        }
     }
 
     // The first pass on the service the stored provider opens now. A choice made meanwhile wins over it.
@@ -230,8 +242,13 @@ internal final class ProviderMoves: ObservableObject {
 
     // MARK: - Back to iCloud
 
+    // The plan reads the iCloud account and fetches the records it would delete, so CloudKit opens for it as for the
+    // move.
     func planMoveToICloud() async throws -> MoveBackPlanInfo {
-        try await host.engine(.tableproSync).planMoveToIcloud()
+        let engine = try await host.engine(.tableproSync)
+        return try await withCloudKit(choice) {
+            try await engine.planMoveToIcloud()
+        }
     }
 
     // The move back fetches and deletes on CloudKit while iCloud is still off here, so the transport opens for it.
@@ -348,6 +365,7 @@ internal final class ProviderMoves: ObservableObject {
                 Self.logger.error("The engine did not take TablePro Sync off: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
             }
             guard let self else { return }
+            closeIfOpen(engine)
             reconciling = nil
             engineStatus = host.openedEngine(.off)?.status()
         }
@@ -461,7 +479,8 @@ extension ProviderMoveHost {
                 close: { engines.transport.close() }
             ),
             policy: { ManagedPolicyCenter.shared.snapshot },
-            session: { FeatureAccess.shared.state.sessionID }
+            session: { FeatureAccess.shared.state.sessionID },
+            closeEngine: { engines.close() }
         )
     }
 }

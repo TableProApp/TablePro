@@ -106,6 +106,18 @@ final class SyncEngineHost {
         }
     }
 
+    // The open service goes, with its flush, and one opens Off in its place, so the team scopes and the keys go on
+    // syncing; a caller for another provider opens its own.
+    func close() {
+        guard let old = opened?.engine else { return }
+        retire(old)
+        opened = nil
+        Task { [weak self] in
+            guard (try? await self?.engine(for: .off)) != nil else { return }
+            self?.reopened.send()
+        }
+    }
+
     private func retire(_ engine: any SyncEngine) {
         let id = UUID()
         retiring[id] = Task { [weak self] in

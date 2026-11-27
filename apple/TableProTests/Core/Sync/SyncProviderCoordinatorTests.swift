@@ -943,6 +943,24 @@ struct SyncEngineHostTests {
         )
     }
 
+    @Test("Closing the open service flushes it and opens one Off in its place")
+    func closeRetiresTheService() async throws {
+        let opened = OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>(initialState: [])
+        let host = Self.reopeningHost(signInChanges: PassthroughSubject<Void, Never>(), opened: opened)
+        let first = try await host.engine(for: .tableproSync)
+
+        host.close()
+        let closed = host.openedEngine(for: .off)
+        try await waitUntil { opened.withLock { $0.count } == 2 }
+        let second = try await host.engine(for: .off)
+
+        #expect(closed == nil)
+        #expect(second !== first)
+        #expect(second === opened.withLock { $0[1].1 })
+        #expect(opened.withLock { $0.map { $0.0 } } == [.tableproSync, .off])
+        try await waitUntil { opened.withLock { $0[0].1 }.read { $0.flushes }.count == 1 }
+    }
+
     @Test("A sign-in change closes the open service and opens one for the same provider")
     func signInChangeReopens() async throws {
         let changes = PassthroughSubject<Void, Never>()
